@@ -179,6 +179,13 @@ class WakeTwoStageDetector private constructor(
         private const val CONFIRM_SECONDS = 2
         private const val PREROLL_SAMPLES = SAMPLE_RATE / 2
         private const val ASSET_DIR = "wake-kws"
+
+        // Ticket 20 interim (Kevin 2026-11-03, "agreed on all 3"): the sweep's middle row, with
+        // WAKE_INPUT_GAIN 4. Chosen WITHOUT negatives: false accepts are unmeasured until the
+        // 2-minute negative is recorded. Was 1.0 / 0.25 (ticket 18 guesses). Mirrored in
+        // tools/wake_eval/core.py.
+        const val KWS_KEYWORDS_SCORE = 5.0f
+        const val KWS_KEYWORDS_THRESHOLD = 0.10f
         // Bumped when a bundled model file changes: files already copied to filesDir are never
         // re-copied, so the first (mobile) encoder would otherwise outlive its replacement.
         private const val COPY_DIR = "wake-kws-v2"
@@ -245,8 +252,8 @@ class WakeTwoStageDetector private constructor(
                     ),
                     maxActivePaths = 4,
                     keywordsFile = keywordsFile.absolutePath,
-                    keywordsScore = 1.0f,
-                    keywordsThreshold = 0.25f,
+                    keywordsScore = KWS_KEYWORDS_SCORE,
+                    keywordsThreshold = KWS_KEYWORDS_THRESHOLD,
                     numTrailingBlanks = 1,
                 )
                 val vadConfig = VadModelConfig(
@@ -264,7 +271,11 @@ class WakeTwoStageDetector private constructor(
                 val vad = Vad(null, vadConfig)
                 val spotter = KeywordSpotter(null, kwsConfig)
                 val stream = spotter.createStream()
-                log("two-stage ready: keywords=" + keywords.trim().lines().joinToString(" | "))
+                log(
+                    "two-stage ready: keywords=" + keywords.trim().lines().joinToString(" | ") +
+                        " threshold=" + KWS_KEYWORDS_THRESHOLD + " score=" + KWS_KEYWORDS_SCORE +
+                        " gain=" + WAKE_INPUT_GAIN,
+                )
                 return Created.Ready(WakeTwoStageDetector(vad, spotter, stream, WakeStageMachine(log), breaker, log))
             } catch (e: Throwable) {
                 return Created.Unavailable("${e.javaClass.simpleName}: ${e.message}")

@@ -32,9 +32,13 @@ PREROLL_SAMPLES = SAMPLE_RATE // 2
 CONFIRM_SAMPLES = 2 * SAMPLE_RATE
 SHORT_SCALE = 32768.0
 
-# Shipped operating point (ticket 18): every one a documented guess, never calibrated.
-APP_KEYWORDS_SCORE = 1.0
-APP_KEYWORDS_THRESHOLD = 0.25
+# Shipped operating point. Ticket 18 shipped guesses (score 1.0, threshold 0.25, no gain); ticket 20's
+# interim point (Kevin 2026-11-03, the sweep's middle row) raised score and threshold and added a fixed
+# input gain, chosen WITHOUT negatives: false accepts unmeasured. Mirrors WakeTwoStageDetector.kt and
+# WakeInputGain.kt.
+APP_KEYWORDS_SCORE = 5.0
+APP_KEYWORDS_THRESHOLD = 0.10
+APP_INPUT_GAIN = 4  # int16 PCM x gain, clipped to [-32768, 32767], ahead of VAD/KWS/ring
 APP_NUM_TRAILING_BLANKS = 1
 APP_MAX_ACTIVE_PATHS = 4
 APP_VAD = {
@@ -185,6 +189,12 @@ def feed_kws(stream: KwsStream, floats: list[float]) -> bool:
     return False
 
 
+def apply_gain(pcm: Sequence[int], gain: int) -> list[int]:
+    """WakeInputGain.apply: int16 PCM times [gain], saturated to the Short range. Recordings are
+    saved raw (ahead of the gain), so a replay of the app's point gains them first."""
+    return [max(-32768, min(32767, s * gain)) for s in pcm]
+
+
 def replay(
     pcm: Sequence[int],
     vad: Vad,
@@ -299,14 +309,14 @@ GRIDS = {
     ),
     "quick": dict(
         keywords_threshold=[0.1, 0.15, 0.2, 0.25],
-        keywords_score=[1.0, 1.5, 2.0],
+        keywords_score=[1.0, 1.5, 2.0, 5.0],
         num_trailing_blanks=[1],
         spelling=[APP_KEYWORD],
         confirm_policy=CONFIRM_POLICIES,
     ),
     "full": dict(
         keywords_threshold=[0.05, 0.1, 0.15, 0.2, 0.25, 0.3],
-        keywords_score=[0.5, 1.0, 1.5, 2.0, 3.0],
+        keywords_score=[0.5, 1.0, 1.5, 2.0, 3.0, 5.0],
         num_trailing_blanks=[1, 2],
         spelling=KEYWORD_SPELLINGS,
         confirm_policy=CONFIRM_POLICIES,

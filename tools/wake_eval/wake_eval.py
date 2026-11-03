@@ -38,7 +38,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import core  # noqa: E402
 
 
-def run(samples: list[core.Sample], points: list[core.Point], kws_dir: Path, vosk_dir: Path) -> list[core.Score]:
+def run(
+    samples: list[core.Sample],
+    points: list[core.Point],
+    kws_dir: Path,
+    vosk_dir: Path,
+    gain: int = core.APP_INPUT_GAIN,
+) -> list[core.Score]:
     import engines
 
     vocab = core.read_vocab(kws_dir / "tokens.txt")
@@ -56,7 +62,8 @@ def run(samples: list[core.Sample], points: list[core.Point], kws_dir: Path, vos
             confirm = confirmers.setdefault(point.confirm_policy, engines.VoskConfirm(point.confirm_policy, vosk_dir))
         score = core.Score(point)
         for s in samples:
-            events = core.replay(s.pcm, engines.SherpaVad(kws_dir), kws, confirm)
+            pcm = core.apply_gain(s.pcm, gain)
+            events = core.replay(pcm, engines.SherpaVad(kws_dir), kws, confirm)
             score.add(s, core.opened(events))
         scores.append(score)
         print(f"[{i}/{len(points)}] recall={score.recall} fa/h={score.false_accepts_per_hour}", file=sys.stderr)
@@ -74,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kws-dir", type=Path, default=None, help="default: the app's assets/wake-kws")
     ap.add_argument("--vosk-dir", type=Path, default=None, help="default: the app's assets/vosk-model")
     ap.add_argument("--top", type=int, default=10)
+    ap.add_argument("--gain", type=int, default=core.APP_INPUT_GAIN,
+                    help="input gain applied to the raw takes (default: the app's, %(default)s)")
     args = ap.parse_args(argv)
 
     samples, skipped = core.load_samples(args.samples)
@@ -93,13 +102,13 @@ def main(argv: list[str] | None = None) -> int:
 
     kws_dir = args.kws_dir or engines.KWS_DIR
     vosk_dir = args.vosk_dir or engines.VOSK_DIR
-    scores = core.rank(run(samples, core.grid(args.grid), kws_dir, vosk_dir))
+    scores = core.rank(run(samples, core.grid(args.grid), kws_dir, vosk_dir, args.gain))
     print(f"{positives} positive takes, {negatives} negative "
           f"({sum(s.seconds for s in samples if not s.positive):.0f} s). "
           f"Target: recall >= {core.RECALL_TARGET:.0%}, <= {core.FA_PER_HOUR_TARGET} false accept/h.")
     for s in scores[: args.top]:
         d = s.as_dict()
-        mark = " (shipped)" if s.point.is_app else ""
+        mark = " (shipped)" if s.point.is_app and args.gain == core.APP_INPUT_GAIN else ""
         meets = "MEETS" if s.meets(core.RECALL_TARGET, core.FA_PER_HOUR_TARGET) else "misses"
         print(f"{meets} recall={d['recall']} fa/h={d['false_accepts_per_hour']} {d['point']}{mark}")
     if args.out:

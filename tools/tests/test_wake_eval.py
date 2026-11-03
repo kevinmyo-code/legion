@@ -73,8 +73,16 @@ def test_shipped_constants_match_the_app():
     assert core.CHUNK == 3200
     assert core.PREROLL_SAMPLES == 8000
     assert core.CONFIRM_SAMPLES == 32000
-    assert (core.APP_KEYWORDS_SCORE, core.APP_KEYWORDS_THRESHOLD, core.APP_NUM_TRAILING_BLANKS) == (1.0, 0.25, 1)
+    assert (core.APP_KEYWORDS_SCORE, core.APP_KEYWORDS_THRESHOLD, core.APP_NUM_TRAILING_BLANKS) == (5.0, 0.10, 1)
+    assert core.APP_INPUT_GAIN == 4
     assert core.keyword_line(core.APP_KEYWORD) == "▁HE Y ▁A L F RE D @hey_alfred"
+
+
+def test_apply_gain_scales_and_saturates_like_the_app():
+    assert core.apply_gain([0, 100, -100, 10_000, -10_000, 32767, -32768], 4) == [
+        0, 400, -400, 32767, -32768, 32767, -32768,
+    ]
+    assert core.apply_gain([5, -5], 1) == [5, -5]
 
 
 def test_a_new_utterance_gets_a_fresh_stream_fed_the_lead_in():

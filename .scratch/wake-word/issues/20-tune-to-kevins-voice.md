@@ -4,7 +4,7 @@ ticket: 20
 title: "Tune the wake word to Kevin's own voice"
 type: build
 status: open
-status-detail: "Steps 1-3 built 2026-10-30 (attempt logging, sample recorder, enrollment screen, offline eval harness in tools/wake_eval/). Owed: Kevin records the 20 takes and the 2-minute negative on the A25; then the eval runs on his recordings and the best operating point ships (phase 2). Thresholds unchanged."
+status-detail: "Steps 1-3 built 2026-10-30. Sweep run 2026-11-03 on 20 positives, 0 negatives (research/20-sweep-2026-11-03.md). INTERIM point shipped 2026-11-03 (Kevin: agreed on all 3): gain 4, keywordsThreshold 0.10, keywordsScore 5.0; chosen without negatives, false accepts unmeasured. Owed: Kevin records the 2-minute negative (neg_ambient_01) on the A25, then the sweep re-runs with it and the point is confirmed or moved."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -78,12 +78,33 @@ From logcat (`MidnightEvents: wake_stage`):
 
 ## Sweep results
 
-None yet. Nothing in this section is to be filled in from anything but `tools/wake_eval/` run on
-his recordings.
+2026-11-03, `research/20-sweep-2026-11-03.md` (from `tools/wake_eval/` on enrollment
+`enroll-20261103-103441-214`): 20 positives, **0 negatives**, so every figure is recall only.
+Capture arrives about 30 dB low (speech RMS -51 to -74 dBFS). Shipped point 4/20; best 14/20
+(gain 8, thr 0.05, score 5.0). No point meets the target; false accepts not measured.
 
 ## Chosen values
 
-Unchanged from ticket 18 until the sweep runs.
+**INTERIM, chosen without negatives** (Kevin 2026-11-03, "agreed on all 3", the sweep's middle
+row, 13/20 recall):
+
+| Setting | Was (ticket 18) | Now | Where |
+|---|---|---|---|
+| Input gain ahead of VAD/KWS/Vosk | 1 | **4** (saturating to Short) | `WakeInputGain.kt` `WAKE_INPUT_GAIN`, applied in `WakeWordEngine.handleChunk` |
+| `keywordsThreshold` | 0.25 | **0.10** | `WakeTwoStageDetector` `KWS_KEYWORDS_THRESHOLD` |
+| `keywordsScore` | 1.0 | **5.0** | `WakeTwoStageDetector` `KWS_KEYWORDS_SCORE` |
+| `numTrailingBlanks` / `maxActivePaths` | 1 / 4 | unchanged | |
+
+- The peak meter and `WakeSampleRecorder` stay raw (gain applies after both), so recordings can be
+  re-swept at any gain. The Vosk-only fallback hears the gained audio too.
+- Mirrored in `tools/wake_eval/core.py` (`APP_KEYWORDS_SCORE`, `APP_KEYWORDS_THRESHOLD`,
+  `APP_INPUT_GAIN`); the CLI replay applies the gain to the raw takes (`--gain N`, default 4; pass
+  `--gain 1` to re-check replay fidelity at the old point).
+- The detector's `wake_stage: utterance ... peak=` figure is now POST-gain (about 4x, +12 dB). Do
+  not compare it with the sweep's raw dBFS numbers; the Settings peak meter and recordings are raw.
+- **False accepts are unmeasured.** This is not "tuned" under the ticket's rule. It stands until
+  Kevin records the 2-minute negative and the sweep re-runs with it; then the point is confirmed or
+  moved. Watch for spurious opens on the phone meanwhile.
 
 ## Verification
 

@@ -437,12 +437,14 @@ object WakeWordEngine {
         }
         _peakLevel.value = peak
         WakeSampleRecorder.onAudio(buf, n)
+        // Ticket 20 interim: the detectors hear a gained copy; the meter and recordings stay raw.
+        val gained = WakeInputGain.apply(buf, n, WAKE_INPUT_GAIN)
         when {
             twoStage != null -> {
-                val open = twoStage.process(buf, n, WakeSampleRecorder::onSignal) { pcm -> confirmWithVosk(rec, pcm) }
+                val open = twoStage.process(gained, n, WakeSampleRecorder::onSignal) { pcm -> confirmWithVosk(rec, pcm) }
                 if (open) triggerConversation(context)
             }
-            rec.acceptWaveForm(buf, n) -> handleResult(rec.result, isFinal = true, context)
+            rec.acceptWaveForm(gained, n) -> handleResult(rec.result, isFinal = true, context)
             else -> handleResult(rec.partialResult, isFinal = false, context)
         }
     }
@@ -455,13 +457,13 @@ object WakeWordEngine {
      */
     private fun createDetector(context: Context): WakeTwoStageDetector? {
         if (!WakeWordPreferences.useTwoStage(context)) {
-            stageLog("two-stage off in Settings - Vosk-only")
+            stageLog("two-stage off in Settings - Vosk-only, gain=$WAKE_INPUT_GAIN")
             return null
         }
         return when (val c = WakeTwoStageDetector.create(context, CompanionProfile.name(context), ::stageLog)) {
             is WakeTwoStageDetector.Companion.Created.Ready -> c.detector
             is WakeTwoStageDetector.Companion.Created.Unavailable -> {
-                stageLog("two-stage unavailable (" + c.reason + ") - falling back to Vosk-only")
+                stageLog("two-stage unavailable (" + c.reason + ") - falling back to Vosk-only, gain=$WAKE_INPUT_GAIN")
                 null
             }
         }
