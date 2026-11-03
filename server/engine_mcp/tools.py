@@ -1557,6 +1557,50 @@ def _monthly_spend(request, args) -> ToolResult:
 
 
 # =============================================================================
+# legion_docs: how LEGION is built, from its own public docs (Kevin, 2026-11-03)
+#
+# Reads `assistant/docs_corpus.json` and nothing else: no household row, no
+# request state. The corpus is an allowlist of the repo's public docs
+# (`assistant/gen_docs_corpus.py`); retrieval is BM25, deterministic, with no
+# model call (`assistant/docs_search.py`).
+# =============================================================================
+
+DOCS_CONTRACT = (
+    "Answer only from these passages, and cite the source of each point you use (\"ADR 0057\", "
+    "or the file and heading). A SUPERSEDED ADR is history, not the current design: say it was "
+    "superseded and by which ADR. A dated snapshot describes the code as it was that day. "
+    "Anything these passages do not say is not covered by the docs: say so, and never fill in "
+    "implementation details from general knowledge."
+)
+
+
+def _legion_docs(request, args) -> ToolResult:
+    from assistant.docs_search import LIMIT_DEFAULT, search, tokens
+
+    query = args["query"].strip()
+    if not tokens(query):
+        return refused(
+            "Nothing was searched. The question has no words to look up in LEGION's docs "
+            f"({query!r}); ask it with the subject named, for example \"how does the "
+            "reconciliation gate work\"."
+        )
+    passages = search(query, args.get("limit", LIMIT_DEFAULT))
+    if not passages:
+        return ok(
+            f"No passage in LEGION's design docs matches {query!r}. The docs do not cover this "
+            "as asked: say so, and do not answer it from general knowledge. Other words for the "
+            "same subject may find something.",
+            {"query": query, "passages": []},
+        )
+    body = "\n\n".join(f"[{i}] {p.label}\n{p.text}" for i, p in enumerate(passages, 1))
+    return ok(
+        f"{len(passages)} passage(s) from LEGION's design docs for {query!r}. {DOCS_CONTRACT}"
+        f"\n\n{body}",
+        {"query": query, "passages": [p.as_dict() for p in passages]},
+    )
+
+
+# =============================================================================
 
 
 @dataclass(frozen=True)
@@ -2041,6 +2085,27 @@ TOOLS: tuple[EngineTool, ...] = (
         handler=_delete_purchase,
         writes=True,
         destructive=True,
+    ),
+    EngineTool(
+        name="legion_docs",
+        title="How LEGION is built",
+        description=(
+            "Searches LEGION's own design docs - the README, the architecture notes, the "
+            "architecture decision records (ADRs) and the glossary - for passages about how "
+            "LEGION is built and why: the engine, tenancy, the reconciliation gate, voice, roles. "
+            "Pass the question's subject as `query`. Answer only from the passages returned and "
+            "cite each source (\"ADR 0057\", or the file and heading). An ADR marked superseded "
+            "must be described as superseded, never as the current design. When the passages do "
+            "not answer it, say the docs do not cover it; never invent an implementation detail."
+        ),
+        input_schema=_object(
+            {
+                "query": {"type": "string", "minLength": 1, "maxLength": 300},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 8},
+            },
+            ("query",),
+        ),
+        handler=_legion_docs,
     ),
 )
 

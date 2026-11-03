@@ -422,6 +422,19 @@ def test_about_kevin_reads_the_profile_and_nothing_of_either_household(world):
     assert "Greenleaf Market" not in text and "Oat milk" not in text
 
 
+def test_legion_docs_reads_the_docs_and_nothing_of_either_household(world):
+    """The docs corpus is the repo's public docs: no demo row, nothing of
+    Kevin's household, whatever the visitor asks."""
+    before = _row_counts()
+    text = _allowed(world, "legion_docs", {"query": "how does the reconciliation gate work"})
+    assert "ADR 0006" in text
+    for query in ("Greenleaf Market", MARK, "Oat milk", "Hand soap refill"):
+        text = _allowed(world, "legion_docs", {"query": query}, echoed=query)
+        body = text.replace(repr(query), "")
+        assert "Greenleaf" not in body and "Oat milk" not in body and MARK not in body
+    assert _row_counts() == before
+
+
 def test_every_allowed_tool_was_exercised():
     """The tests above and in section 4 name each tool by hand; a tool added
     to `RECRUITER_TOOLS` fails here until it gets an isolation test."""
@@ -433,6 +446,7 @@ def test_every_allowed_tool_was_exercised():
         "last_bought",
         "list_purchases",
         "about_kevin",
+        "legion_docs",
         # section 4, the writes
         "write_record",
         "delete_record",

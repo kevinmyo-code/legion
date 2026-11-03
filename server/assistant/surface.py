@@ -101,6 +101,11 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     "archive_checklist",
     "rename_place",
     "skip_event_occurrence",
+    # How LEGION is built (Kevin, 2026-11-03: "yes legion docs tool so they
+    # can ask technical questions"). Reads only the committed corpus of the
+    # public repo's docs (`assistant/docs_corpus.json`): no household row, no
+    # private file.
+    "legion_docs",
     "about_kevin",
 )
 
