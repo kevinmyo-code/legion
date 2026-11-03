@@ -22,6 +22,7 @@ class FakeEngine:
         self.cancel_requested: list[int] = []
         self.files_requested: list[dict] = []
         self.sessions: list[dict] = []
+        self.deliver: dict[int, str | None] = {}
         self.delay = 0.0  # seconds to stall each request (timeout tests)
         self.down = False
         self.requests = 0
@@ -68,8 +69,18 @@ class FakeEngine:
                         return self._reply(200, {"ok": True})
                     m = re.match(r"^/api/claude/tasks/(\d+)/finish/$", p)
                     if m:
-                        engine.finishes.append((int(m.group(1)), json.loads(raw)))
-                        return self._reply(200, {"id": int(m.group(1))})
+                        tid = int(m.group(1))
+                        body = json.loads(raw)
+                        engine.finishes.append((tid, body))
+                        # Like the engine (ticket 09): a page of a `deliver: phone` task is
+                        # requested at finish; file ids are 1000 + task*10 + index.
+                        page = engine.deliver.get(tid) == "phone"
+                        files = [{"id": 1000 + tid * 10 + i, "name": f["name"], "size": f["size"],
+                                  "requested": page and f["name"].lower().endswith((".html", ".htm")),
+                                  "uploaded": False}
+                                 for i, f in enumerate(body.get("found") or [])]
+                        return self._reply(200, {"id": tid, "status": body.get("status"),
+                                                 "files": files, "detail": "Recorded."})
                     m = re.match(r"^/api/claude/tasks/(\d+)/files/$", p)
                     if m:
                         fid = re.search(rb'name="file_id"\r\n\r\n([^\r]*)', raw).group(1).decode()
@@ -88,6 +99,7 @@ class FakeEngine:
         task.setdefault("parent", None)
         task.setdefault("machine", None)
         with self.lock:
+            self.deliver[int(task["id"])] = task.get("deliver")
             self.queued.append(task)
 
     def finished(self, tid: int):

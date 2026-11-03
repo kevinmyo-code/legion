@@ -12,6 +12,7 @@ import com.kevin.legion.service.LiveNotes
 import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveRaise
+import com.kevin.legion.ui.claudesession.ClaudePageActivity
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
@@ -95,6 +96,12 @@ object ClaudeResultPolling {
             // A question opens the mic for the yes; the follow-up window closes it (no ring to end).
             listensForReply = asks,
             listenHoldMs = if (asks) LISTEN_HOLD_MS else 0L,
+            // Ticket 09: a ready page's notification opens it when tapped (the hands path).
+            contentIntent = if (hint.contains(ClaudeResultWatcher.OPEN_PAGE_ACTION)) {
+                ClaudePageActivity.pendingIntent(context, taskId)
+            } else {
+                null
+            },
         )
         return when (ProactiveBus.speakIfAllowed(context, raise)) {
             ProactiveBus.RaiseOutcome.NotNow -> ClaudeDelivery.RETRY

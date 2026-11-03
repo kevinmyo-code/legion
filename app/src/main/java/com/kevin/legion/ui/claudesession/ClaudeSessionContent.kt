@@ -151,6 +151,10 @@ private fun SendBox(state: ClaudeSessionUiState, callbacks: ClaudeSessionCallbac
             Checkbox(checked = state.emailMe, onCheckedChange = callbacks.onEmailMe)
             Text("Email it to me", color = SoftColors.text)
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = state.pageMe, onCheckedChange = callbacks.onPageMe)
+            Text("As a page on my phone (Alienware)", color = SoftColors.text)
+        }
         Button(
             onClick = callbacks.onSend,
             enabled = state.draft.isNotBlank() && !state.sending,
@@ -194,6 +198,15 @@ private fun TaskCard(
 private fun TaskDetail(task: TaskRowUi, state: ClaudeSessionUiState, callbacks: ClaudeSessionCallbacks) {
     task.summary?.let { Line(it) }
     task.question?.let { Line("Question: $it", SoftColors.caution) }
+    task.pageTitle?.let { title ->
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = SoftColors.text, modifier = Modifier.weight(1f))
+            Button(onClick = { callbacks.onOpenPage(task.id) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Open page")
+            }
+        }
+    }
+    if (task.pageTitle == null && task.pageWaiting) Line("The page has not arrived.", SoftColors.caution)
     if (task.needsMachine) {
         Line("Which machine?")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -241,6 +241,34 @@ class TestTasks(WorkerCase):
         self.assertEqual(len(FakeSMTP.sent), 1)
         self.assertEqual(FakeSMTP.sent[0][1], ["kevin@example.com"])
 
+    def test_phone_delivery_asks_for_one_page_and_uploads_it_at_finish(self):
+        page = Path(self.tmp.name) / "atlanta.html"
+        page.write_bytes(b"<html><title>Atlanta</title></html>")
+        other = Path(self.tmp.name) / "notes.txt"
+        other.write_text("n")
+        self.engine.queue(id=56, deliver="phone", request=(
+            f"itinerary {fake(found=[str(page), str(other)], summary='Your page is ready.')}"))
+        self.start()
+        self.wait(lambda: self.engine.uploads, what="page upload")
+        msg = [m for m in self.msgs() if m.startswith("[task 56]")][0]
+        self.assertIn("page on his phone", msg)
+        self.assertIn("ONE self-contained HTML file", msg)
+        time.sleep(0.5)
+        # Only the page went up, without a heartbeat asking; notes.txt waits for a yes.
+        self.assertEqual(self.engine.uploads,
+                         [(56, str(1000 + 560), b"<html><title>Atlanta</title></html>")])
+
+    def test_a_task_without_phone_delivery_uploads_no_page(self):
+        page = Path(self.tmp.name) / "plain.html"
+        page.write_bytes(b"<html></html>")
+        self.engine.queue(id=57, request=f"page {fake(found=[str(page)], summary='made it')}")
+        self.start()
+        self.wait(lambda: self.engine.finished(57), what="task 57")
+        time.sleep(0.6)
+        self.assertEqual(self.engine.uploads, [])
+        msg = [m for m in self.msgs() if m.startswith("[task 57]")][0]
+        self.assertNotIn("page on his phone", msg)
+
     def test_cancel_stops_only_that_helper(self):
         self.engine.queue(id=60, request=f"long {fake(sleep=8)}")
         self.engine.queue(id=61, request=f"short {fake(sleep=1.0, summary='short done')}")

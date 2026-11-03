@@ -24,6 +24,10 @@ data class TaskRowUi(
     val filesMayCome: Boolean,
     val needsConfirmation: Boolean,
     val needsMachine: Boolean,
+    /** A delivered page's title once it is on the engine (ticket 09): an Open page button. */
+    val pageTitle: String? = null,
+    /** Asked for as a page, and the page has not arrived (yet). */
+    val pageWaiting: Boolean = false,
 )
 
 data class SessionRowUi(
@@ -48,6 +52,8 @@ data class ClaudeSessionUiState(
     /** The machine picked for the next send; null is "the one that's on". */
     val pickedMachine: String? = null,
     val emailMe: Boolean = false,
+    /** Send the result as a page on the phone (ticket 09); the Alienware only. */
+    val pageMe: Boolean = false,
     val sending: Boolean = false,
     /** The last action's sentence (sent, queued, which machine, not sent). */
     val message: String? = null,
@@ -71,10 +77,14 @@ object ClaudeSessionRows {
             summary = t.summary,
             question = t.question,
             progress = t.progress.takeIf { t.status == ClaudeTask.RUNNING },
-            files = t.files.map { FileRowUi(it.id, it.name, ClaudeWording.size(it.size), it.uploaded, it.requested) },
+            // A delivered page is opened with its own button, never offered as a file to save.
+            files = t.files.filterNot { t.wantsPage && it.isPage }
+                .map { FileRowUi(it.id, it.name, ClaudeWording.size(it.size), it.uploaded, it.requested) },
             filesMayCome = !overview.summariesOnly(t),
             needsConfirmation = t.needsConfirmation,
             needsMachine = t.status == ClaudeTask.NEEDS_MACHINE,
+            pageTitle = t.pages.firstOrNull()?.title,
+            pageWaiting = t.wantsPage && t.pages.isEmpty() && t.status == ClaudeTask.DONE,
         )
     }
 

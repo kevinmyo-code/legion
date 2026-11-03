@@ -10,7 +10,9 @@ foreign key, each table is in `household.tenancy.TENANT_TABLES`):
 - `claude_tasks`: one row per request Kevin sent. Integer ids on purpose: the
   main session sees "[task 41] ...", and a uuid there would be noise.
 - `claude_task_files`: files a task found (listed) and, on Kevin's yes, the
-  bytes the worker uploaded. Bytes live in Postgres (`content`), like
+  bytes the worker uploaded. A `deliver: phone` task's HTML page is one of
+  these rows too, requested at finish because asking for it was the yes
+  (ticket 09). Bytes live in Postgres (`content`), like
   `device_logs.body_gz`, because Cloud Run's filesystem is ephemeral and the
   upload and the download land on different instances.
 - `claude_code_sessions`: the interactive Claude Code sessions open on each
@@ -66,7 +68,12 @@ ORIGINS: tuple[str, ...] = (ORIGIN_NAMED, ORIGIN_OFFERED)
 # for that one task. The phone sets this; the worker's `send_mail.py` mails the
 # file from Alfred's Gmail on the laptop. The engine only carries the flag.
 DELIVER_EMAIL_SELF = "email_self"
-DELIVERIES: tuple[str, ...] = (DELIVER_EMAIL_SELF,)
+# HTML delivery (claude-session ticket 09, Kevin 2026-11-03): the task's result is
+# a web page the worker uploads; the phone and the web desk open it through a
+# short-lived signed link (`views.PageView`). Asking for it is the yes for that
+# one page (ruling 8's "Kevin asked"). A `listed` machine never takes it.
+DELIVER_PHONE = "phone"
+DELIVERIES: tuple[str, ...] = (DELIVER_EMAIL_SELF, DELIVER_PHONE)
 
 # Ruling 5. `full`: every fixed drive, files may come back. `listed`: the repos
 # folder only, summaries only, never a file.
@@ -91,6 +98,12 @@ SUMMARY_MAX_BYTES = 16 * 1024
 PROGRESS_MAX_CHARS = 120
 FILE_MAX_BYTES = 25 * 1024 * 1024
 RETENTION_DAYS = 30
+# A delivered page (ticket 09): HTML only, at most 5 MB, opened through a
+# signed link that lives 10 minutes.
+PAGE_MAX_BYTES = 5 * 1024 * 1024
+PAGE_SUFFIXES: tuple[str, ...] = (".html", ".htm")
+PAGE_LINK_SECONDS = 10 * 60
+TITLE_MAX_CHARS = 200
 OFFLINE_AFTER_SECONDS = 90
 TASK_CAP_MINUTES = 30
 SILENT_FAIL_MINUTES = 10
@@ -200,6 +213,8 @@ class ClaudeTaskFile(models.Model):
     uploaded_at = models.DateTimeField(null=True, blank=True)
     content = models.BinaryField(null=True, blank=True)
     content_type = models.TextField(blank=True, default="")
+    # A delivered page's <title>, read at upload (ticket 09). Blank otherwise.
+    title = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(db_default=Now())
 
     class Meta:
@@ -208,6 +223,11 @@ class ClaudeTaskFile(models.Model):
 
     def __str__(self) -> str:
         return f"file {self.id} of task {self.task_id}"
+
+    @property
+    def is_page(self) -> bool:
+        """A delivered page: an HTML file of a `deliver: phone` task."""
+        return self.name.lower().endswith(PAGE_SUFFIXES)
 
 
 class ClaudeCodeSession(models.Model):

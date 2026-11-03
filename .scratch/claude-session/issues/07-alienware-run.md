@@ -3,8 +3,8 @@ map: claude-session
 ticket: "07"
 title: "Test: the first run on the Alienware from the phone"
 type: test
-status: kiv
-status-detail: "Parked with the map (Kevin 2026-10-29: dont build it yet)."
+status: open
+status-detail: "Kevin 2026-11-03: \"lets switch it on. lets do 1-4 then we test\". Unparked: merged into dev, worker installed on the Alienware, phone built; owes the engine deploy, then this run (step 9 is ticket 09's Atlanta page)."
 blockers: ["03", "04", "05", "06"]
 blocked-by: ["[[03-engine-app]]", "[[04-worker]]", "[[05-phone]]", "[[06-sessions-reporter]]"]
 open-blockers: 4
@@ -28,3 +28,7 @@ After deploy ("deploy OK"), install, and the phone build.
 6. "What's my LEGION session doing?" names the open interactive session and its project.
 7. Follow-up: "now zip it" reaches the same main session and knows what "it" is.
 8. `tools/voice_audit.py` over the capture: no outcome verb before a result row.
+9. Ticket 09: "Make me an itinerary for a day trip into Atlanta." Alfred offers the Alienware as a
+   page; yes; it is sent with `deliver: phone`. When it is done: "The page ... is ready. Want me to
+   open it?"; yes opens it in LEGION's browser. The page is listed on the web desk's `/claude`
+   with an Open link. A notification tap (assistant off) opens it too.

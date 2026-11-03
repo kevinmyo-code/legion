@@ -2,6 +2,7 @@ package com.kevin.legion.service
 
 import android.content.Context
 import com.kevin.legion.claude.ClaudeOutcome
+import com.kevin.legion.claude.ClaudePageOpener
 import com.kevin.legion.claude.ClaudeSendResult
 import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.claude.ClaudeTaskDraft
@@ -16,8 +17,9 @@ import org.json.JSONObject
  * tool with an `action`, not four: [LiveSetupPayloadSizeTest] holds the Live setup message under a
  * ceiling with almost no headroom, the trade `bought_log` and `books` made. The ticket's four tools
  * are actions here (`send`, `check`, `answer`, `send_file`), plus `assign` (the answer to "which
- * machine?", Kevin 2026-11-01) and `quiet` (the one-instruction silence of the result
- * announcements). `tools/voice_guide.py` and `VoiceGuideDataTest` scan this file.
+ * machine?", Kevin 2026-11-01), `quiet` (the one-instruction silence of the result
+ * announcements) and `open_page` (ticket 09: a `page: true` task's web page, opened in LEGION's
+ * browser through [ClaudePageOpener], on his yes). `tools/voice_guide.py` and `VoiceGuideDataTest` scan this file.
  *
  * **Every action calls [ClaudeSessionController]**, the controller the Claude session screen calls
  * (ADR 0035). A send is reported as sent or queued only from a 2xx, and never as done: its outcome
@@ -38,7 +40,8 @@ object ClaudeSessionToolbox {
         "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check reads " +
             "machines, tasks and open sessions; answer follows up a task (yes=true only for his yes to its " +
             "question); assign picks the machine it asked for; send_file only after he says yes to having " +
-            "a file on his phone; quiet/unquiet stop/restart result announcements. A sent task is not done."
+            "a file on his phone; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
+            "result announcements. A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
         fn(
@@ -47,12 +50,17 @@ object ClaudeSessionToolbox {
             params = JSONObject()
                 .put(
                     "action",
-                    prop("string", null, listOf("send", "check", "answer", "assign", "send_file", "quiet", "unquiet")),
+                    prop(
+                        "string",
+                        null,
+                        listOf("send", "check", "answer", "assign", "send_file", "open_page", "quiet", "unquiet"),
+                    ),
                 )
                 .put("request", prop("string", "The task, or the follow-up, in his words."))
                 .put("machine", prop("string", "Only if named."))
                 .put("offered", prop("boolean", "True if this is his yes to your offer."))
                 .put("email_me", prop("boolean", "True only if he asked to email it to himself."))
+                .put("page", prop("boolean", "True for a researched write-up he reads on his phone (Alienware)."))
                 .put("task_id", prop("integer"))
                 .put("file_id", prop("integer"))
                 .put("yes", prop("boolean")),
@@ -77,6 +85,7 @@ object ClaudeSessionToolbox {
             .apply { if (enum != null) put("enum", JSONArray(enum)) }
 
     /** Null when [name] is not this tool, so [LiveToolbox.dispatch] can fall through. */
+    @Suppress("CyclomaticComplexMethod") // one branch per action, each a one-line call to the controller
     suspend fun dispatch(context: Context, name: String, args: JSONObject): JSONObject? {
         if (name != TOOL_NAME) return null
         val c = controllerFactory(context)
@@ -92,6 +101,7 @@ object ClaudeSessionToolbox {
                         ClaudeTaskDraft.ORIGIN_NAMED
                     },
                     emailMe = args.optBoolean("email_me", false),
+                    page = args.optBoolean("page", false),
                 ),
             )
             "check" -> check(c, args.optString("machine").ifBlank { null })
@@ -100,6 +110,9 @@ object ClaudeSessionToolbox {
             )
             "assign" -> needsTask(taskId) ?: sendResult(c.assign(taskId, args.optString("machine")))
             "send_file" -> needsTask(taskId) ?: sendResult(c.sendFile(taskId, args.optInt("file_id", 0)))
+            "open_page" -> needsTask(taskId) ?: ClaudePageOpener.open(context, c, taskId).let {
+                result(it.opened, it.sentence)
+            }
             "quiet" -> {
                 watchFactory(context).setAnnouncements(false)
                 result(true, "Result announcements are off. Results still wait on the Claude session screen.")
@@ -142,7 +155,9 @@ object ClaudeSessionToolbox {
         val tasks = o.tasks.filter { wanted(it.machine) }.take(CHECK_TASKS)
         if (tasks.isEmpty()) lines += "No tasks yet."
         tasks.forEach { t ->
-            val files = if (o.summariesOnly(t)) "" else t.files.joinToString("") { f ->
+            // A delivered page is opened (open_page), never offered as a file (ticket 09).
+            val offered = t.files.filterNot { t.wantsPage && it.isPage }
+            val files = if (o.summariesOnly(t)) "" else offered.joinToString("") { f ->
                 " [file_id ${f.id}: ${f.name}, ${ClaudeWording.size(f.size)}" +
                     (if (f.uploaded) ", already on the engine" else "") + "]"
             }

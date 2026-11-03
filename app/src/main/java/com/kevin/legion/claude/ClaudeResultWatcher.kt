@@ -1,5 +1,7 @@
 package com.kevin.legion.claude
 
+import java.time.Duration
+import java.time.Instant
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -30,6 +32,7 @@ class ClaudeResultWatcher(
     /** [text] is for the user; [hint] (may be blank) tells the model which call a yes makes. */
     private val announce: suspend (taskId: Int, text: String, hint: String) -> ClaudeDelivery,
     private val saveFile: suspend (name: String, bytes: ByteArray) -> Boolean,
+    private val now: () -> Instant = Instant::now,
 ) {
     private val lock = Mutex()
 
@@ -57,8 +60,12 @@ class ClaudeResultWatcher(
     }
 
     /** True when a finished task was announced. Silenced: forgotten unsaid. Not finished: kept. */
+    @Suppress("ReturnCount") // not finished, page still on its way, or the announcement
     private suspend fun settle(c: ClaudeSessionController, overview: ClaudeOverview, task: ClaudeTask): Boolean {
         if (!task.isFinished) return false
+        // Ticket 09: the page goes up right after the finish. Wait for it a little rather than
+        // announce "ready" before there is anything to open; past the wait, say it did not come.
+        if (task.pagePending && !pageWaitOver(task)) return false
         val only = overview.summariesOnly(task)
         val delivered = !watch.silenced() &&
             announce(task.id, c.wording.result(task, only), hint(task, only)) == ClaudeDelivery.DELIVERED
@@ -99,8 +106,19 @@ class ClaudeResultWatcher(
         return true
     }
 
+    private fun pageWaitOver(task: ClaudeTask): Boolean {
+        val finished = task.finishedAt ?: return true
+        return Duration.between(finished, now()) >= PAGE_WAIT
+    }
+
     companion object {
         const val POLL_INTERVAL_MS = 30_000L
+
+        /** How long a finished task's result waits for its page to reach the engine. */
+        val PAGE_WAIT: Duration = Duration.ofMinutes(3)
+
+        /** The `claude_session` action a yes to "want me to open it?" makes. */
+        const val OPEN_PAGE_ACTION = "open_page"
         private const val LIMIT = 50
         private const val NOT_FOUND = 404
 
@@ -109,10 +127,12 @@ class ClaudeResultWatcher(
          * makes. Blank when the result asks nothing, which is also what keeps the mic closed.
          */
         fun hint(task: ClaudeTask, summariesOnly: Boolean): String {
-            val files = task.files.filterNot { it.uploaded }
+            val files = task.files.filterNot { it.uploaded || (task.wantsPage && it.isPage) }
             return when {
                 task.needsConfirmation ->
                     "On a yes: claude_session answer, task_id ${task.id}, yes true."
+                task.status == ClaudeTask.DONE && task.pages.isNotEmpty() ->
+                    "On a yes: claude_session $OPEN_PAGE_ACTION, task_id ${task.id}."
                 task.status == ClaudeTask.DONE && !summariesOnly && files.isNotEmpty() ->
                     "On a yes: claude_session send_file, task_id ${task.id}, " +
                         files.joinToString(" or ") { "file_id ${it.id} (${it.name})" } + "."

@@ -28,12 +28,20 @@ Rulings this file enforces, by number in the map:
   computed at read time (`claude_session.state`).
 - 17: `deliver: email_self` is accepted on create and returned on every task
   row. The engine only carries it; the worker mails the file from the laptop.
+- Ticket 09 (Kevin 2026-11-03): `deliver: phone` asks for the result as a web
+  page. Refused on create for a named `listed` machine. At finish its HTML
+  files are requested at once (asking was the yes), the worker uploads them
+  (HTML only, 5 MB), and every task row lists them under `artifacts` with a
+  10 minute signed link to `PageView`, which serves the page sandboxed.
 """
 
 from __future__ import annotations
 
 import datetime
+import html
+import re
 
+from django.core import signing
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
@@ -41,6 +49,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status as http
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -49,16 +58,21 @@ from claude_session import serializers as s
 from claude_session.models import (
     CANCEL_REQUESTED,
     CANCELLED,
+    DELIVER_PHONE,
     FILE_MAX_BYTES,
     IN_FLIGHT,
     NEEDS_CONFIRMATION,
     NEEDS_MACHINE,
     OFFLINE_AFTER_SECONDS,
+    PAGE_LINK_SECONDS,
+    PAGE_MAX_BYTES,
+    PAGE_SUFFIXES,
     QUEUED,
     RUNNING,
     SCOPE_LISTED,
     SESSION_WAITING,
     TERMINAL,
+    TITLE_MAX_CHARS,
     ClaudeCodeSession,
     ClaudeMachine,
     ClaudeTask,
@@ -76,6 +90,15 @@ SESSION_ENDED = "ended"
 LISTED_REFUSAL = (
     "Nothing was sent. The {name} returns summaries only, never files (ruling 5)."
 )
+LISTED_PAGE_REFUSAL = (
+    "Nothing was sent. The {name} returns summaries only, so it cannot send a page to the "
+    "phone (ruling 5). Send it to a machine that can, or ask for the summary."
+)
+PAGE_SALT = "claude-session-page"
+# Served exactly like the recruiter report (`demo.content_views`): scripts run
+# in an opaque origin, so the page cannot read a cookie or call the engine.
+PAGE_CSP = "sandbox allow-scripts"
+_TITLE_RE = re.compile(rb"<title[^>]*>(.*?)</title>", re.I | re.S)
 
 
 def _detail(text: str, code: int) -> Response:
@@ -113,11 +136,50 @@ def _file_row(row: ClaudeTaskFile) -> dict:
     }
 
 
+def page_token(row: ClaudeTaskFile) -> str:
+    """The signed part of a page link: this household, this file, minted now."""
+    return signing.TimestampSigner(salt=PAGE_SALT).sign(f"{row.household_id}:{row.id}")
+
+
+def page_url(row: ClaudeTaskFile) -> str:
+    """Relative, like the recruiter assets; the phone joins it to its engine address."""
+    return f"/api/claude/pages/{row.id}/?t={page_token(row)}"
+
+
+def _is_delivered_page(task: ClaudeTask, row: ClaudeTaskFile) -> bool:
+    return task.deliver == DELIVER_PHONE and row.is_page
+
+
+def _artifact_row(row: ClaudeTaskFile) -> dict:
+    return {
+        "id": row.id,
+        "filename": row.name,
+        "title": row.title or row.name,
+        "size": row.size,
+        "url": page_url(row),
+        "expires_in": PAGE_LINK_SECONDS,
+    }
+
+
+def page_title(blob: bytes, fallback: str) -> str:
+    """The page's own <title>, from its first 64 KB, as plain text. The file name otherwise."""
+    m = _TITLE_RE.search(blob[: 64 * 1024])
+    if m is None:
+        return fallback
+    text = html.unescape(m.group(1).decode("utf-8", errors="replace"))
+    text = " ".join(text.split())[:TITLE_MAX_CHARS]
+    return text or fallback
+
+
 def task_row(task: ClaudeTask, now) -> dict:
     """The task shape every GET returns. A failure computed at read time puts
-    its reason, in words, where a worker's summary would be."""
+    its reason, in words, where a worker's summary would be. A delivered page
+    that has arrived is listed under `artifacts` with a fresh signed link."""
     reason = failure_reason(task, now)
     files = sorted(task.files.all(), key=lambda f: f.id)
+    artifacts = [
+        _artifact_row(f) for f in files if f.uploaded_at is not None and _is_delivered_page(task, f)
+    ]
     return {
         "id": task.id,
         "request": task.request,
@@ -128,6 +190,7 @@ def task_row(task: ClaudeTask, now) -> dict:
         "created_at": task.created_at,
         "finished_at": task.finished_at,
         "files": [_file_row(f) for f in files],
+        "artifacts": artifacts,
         "parent": task.parent_id,
         "origin": task.origin,
         "deliver": task.deliver,
@@ -248,6 +311,13 @@ class TaskListCreateView(APIView):
             elif len(online) > 1:
                 status = NEEDS_MACHINE
 
+        # Ticket 09: a page never comes from a `listed` machine, named or picked.
+        listed = machine is not None and machine.scope == SCOPE_LISTED
+        if data["deliver"] == DELIVER_PHONE and listed:
+            return _detail(
+                LISTED_PAGE_REFUSAL.format(name=machine.name), http.HTTP_400_BAD_REQUEST
+            )
+
         task = ClaudeTask.objects.create(
             household=household,
             user=request.user,
@@ -354,6 +424,10 @@ class TaskAssignView(APIView):
                 return _detail(
                     "Nothing was changed. No machine has that name here.",
                     http.HTTP_404_NOT_FOUND,
+                )
+            if task.deliver == DELIVER_PHONE and machine.scope == SCOPE_LISTED:
+                return _detail(
+                    LISTED_PAGE_REFUSAL.format(name=machine.name), http.HTTP_400_BAD_REQUEST
                 )
             task.machine = machine
             task.status = QUEUED
@@ -558,7 +632,11 @@ class ClaimView(APIView):
             queued = scoped(ClaudeTask, request).filter(status=QUEUED)
             mine = queued.filter(machine=machine)
             if only_one_online:
-                mine = queued.filter(machine=machine) | queued.filter(machine__isnull=True)
+                unaddressed = queued.filter(machine__isnull=True)
+                if machine.scope == SCOPE_LISTED:
+                    # Ticket 09: a page request waits for a machine that can send one.
+                    unaddressed = unaddressed.exclude(deliver=DELIVER_PHONE)
+                mine = queued.filter(machine=machine) | unaddressed
             claimed = list(mine.select_for_update(skip_locked=True).order_by("id"))
             for task in claimed:
                 task.machine = machine
@@ -628,10 +706,18 @@ class FinishView(APIView):
             if listed and data["found"]:
                 notes.append("Found files were not kept: this machine returns summaries only.")
             elif data["found"]:
+                # Ticket 09: asking for the page was the yes, so a delivered
+                # page is requested now and rides the next heartbeat up.
+                wants_page = task.deliver == DELIVER_PHONE
                 ClaudeTaskFile.objects.bulk_create(
                     ClaudeTaskFile(
                         household=household, task=task, path=f["path"], name=f["name"],
                         size=f["size"],
+                        requested_at=(
+                            now
+                            if wants_page and f["name"].lower().endswith(PAGE_SUFFIXES)
+                            else None
+                        ),
                     )
                     for f in data["found"]
                 )
@@ -662,7 +748,12 @@ class FileUploadView(APIView):
             403: OpenApiResponse(response=DetailSerializer, description="A listed machine."),
             404: DetailSerializer,
             409: OpenApiResponse(response=DetailSerializer, description="Not requested."),
-            413: OpenApiResponse(response=DetailSerializer, description="Over 25 MB."),
+            413: OpenApiResponse(
+                response=DetailSerializer, description="Over 25 MB (a delivered page: 5 MB)."
+            ),
+            415: OpenApiResponse(
+                response=DetailSerializer, description="A delivered page that is not text/html."
+            ),
         },
     )
     def post(self, request, task_id: int):
@@ -696,12 +787,25 @@ class FileUploadView(APIView):
                 f"{FILE_MAX_BYTES // (1024 * 1024)} MB.",
                 http.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
+        content_type = (getattr(upload, "content_type", "") or "")[:200]
+        page = _is_delivered_page(task, row)
+        if page and upload.size > PAGE_MAX_BYTES:
+            return _detail(
+                f"Nothing was stored. A page is capped at {PAGE_MAX_BYTES // (1024 * 1024)} MB.",
+                http.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        if page and content_type.split(";")[0].strip().lower() != "text/html":
+            return _detail(
+                "Nothing was stored. A page must be uploaded as text/html.",
+                http.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            )
         blob = upload.read()
         row.content = blob
         row.size = len(blob)
-        row.content_type = (getattr(upload, "content_type", "") or "")[:200]
+        row.content_type = "text/html" if page else content_type
+        row.title = page_title(blob, row.name) if page else ""
         row.uploaded_at = timezone.now()
-        row.save(update_fields=["content", "size", "content_type", "uploaded_at"])
+        row.save(update_fields=["content", "size", "content_type", "title", "uploaded_at"])
         return Response(
             {"file_id": row.id, "size": row.size, "detail": "Stored."}, status=http.HTTP_201_CREATED
         )
@@ -733,6 +837,71 @@ class FileDownloadView(APIView):
         )
         safe = "".join(c for c in row.name if c.isprintable() and c not in '"\\') or "file"
         response["Content-Disposition"] = f'attachment; filename="{safe}"'
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
+_PAGE_GONE = "That page link has expired or is not valid. Open the task again for a fresh one."
+
+
+class PageView(APIView):
+    """`GET pages/{file_id}/?t=<signed>`: a delivered page, for the phone's
+    browser and the web desk (ticket 09). No token header: the browser opening
+    it has none, so the query's signature is the whole authority. It names one
+    household and one file and lives `PAGE_LINK_SECONDS`; it is minted only in
+    `task_row`, for a member who could read the task. The page is served with
+    the recruiter report's headers: `sandbox allow-scripts` gives it an opaque
+    origin, so its scripts reach no cookie and no engine route."""
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="api_claude_pages_retrieve",
+        tags=TAGS,
+        auth=[],
+        parameters=[
+            OpenApiParameter("t", str, required=True, description="The signed link token.")
+        ],
+        responses={
+            (200, "text/html"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="The page, with `Content-Security-Policy: sandbox allow-scripts`.",
+            ),
+            404: DetailSerializer,
+        },
+    )
+    def get(self, request, file_id: int):
+        token = request.query_params.get("t", "")
+        try:
+            value = signing.TimestampSigner(salt=PAGE_SALT).unsign(
+                token, max_age=PAGE_LINK_SECONDS
+            )
+            household_id, signed_id = value.split(":", 1)
+            signed_id = int(signed_id)
+        except (signing.BadSignature, ValueError):
+            return _detail(_PAGE_GONE, http.HTTP_404_NOT_FOUND)
+        if signed_id != file_id:
+            return _detail(_PAGE_GONE, http.HTTP_404_NOT_FOUND)
+        # Scoped by the household the signature names; there is no request user.
+        row = (
+            ClaudeTaskFile.objects.filter(
+                household_id=household_id,
+                pk=file_id,
+                uploaded_at__isnull=False,
+                task__deliver=DELIVER_PHONE,
+            )
+            .select_related("task")
+            .first()
+        )
+        if row is None or not row.is_page:
+            return _detail(_PAGE_GONE, http.HTTP_404_NOT_FOUND)
+        response = HttpResponse(bytes(row.content), content_type="text/html; charset=utf-8")
+        response["Content-Security-Policy"] = PAGE_CSP
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
+        response["Referrer-Policy"] = "no-referrer"
+        response["X-Frame-Options"] = "SAMEORIGIN"
         return response
 
 

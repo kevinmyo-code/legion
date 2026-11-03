@@ -2,7 +2,7 @@
 status: accepted
 decided: 2026-10-29
 decided-by: Kevin
-amended: 2026-11-01
+amended: 2026-11-03
 source: "[[decisions#2026-10-29 - Claude session: Alfred hands tasks to Claude Code on Kevin's laptops (Kevin)]]"
 tags: [adr]
 ---
@@ -69,6 +69,14 @@ can take several messages, start a background helper per task, stay free, and re
   running task shows its helper's current step (120 characters, cleared when it finishes).
 - **A hands path exists** (ADR 0035): the Claude session screen on the phone, first.
 - **Nothing logs a request, a summary or a file name**, on the engine or in admin.
+
+- **A researched page reaches the phone** (amended 2026-11-03, Kevin, ticket 09). `deliver:
+  phone` asks for the result as one HTML page. The worker uploads it at finish (asking for it was
+  the yes); the engine keeps it 5 MB at most, `text/html` only, and serves it only through a signed
+  link that names one household and one file and lives 10 minutes, with `Content-Security-Policy:
+  sandbox allow-scripts`, so its scripts run in an opaque origin. Alfred asks before opening it;
+  a yes, a notification tap or the screen's button opens it in LEGION's browser. The web desk lists
+  it under its task. The work laptop never takes one. Retention is the task's 30 days.
 
 ## Consequences
 

@@ -43,6 +43,8 @@ data class ClaudeOverview(val status: ClaudeStatus, val tasks: List<ClaudeTask>)
  *   machine online; more than one online is a "which one?" answered through `assign/`. With none
  *   online it queues for the only machine there is, or asks which when there are several.
  * - `deliver: email_self` only when Kevin named his own email ([send]'s `emailMe`, ruling 17).
+ * - `deliver: phone` only when he asked for the result as a page ([send]'s `page`, ticket 09), and
+ *   never to a summaries-only machine (the engine refuses it too).
  * - `confirms: true` only on Kevin's yes to a task that is `needs_confirmation` ([answer]).
  * - no file from a `listed` machine ever reaches the phone ([sendFile], ruling 5).
  *
@@ -72,9 +74,16 @@ class ClaudeSessionController(
     /**
      * Sends a new task. [machine] is the spoken name or null; [origin] is `named` (Kevin asked for
      * the Claude session) or `offered` (his yes to the offer). [emailMe] is true only when he asked
-     * for it to be emailed to himself.
+     * for it to be emailed to himself; [page] only when he wants the result as a page on his phone.
      */
-    suspend fun send(request: String, machine: String?, origin: String, emailMe: Boolean): ClaudeSendResult {
+    @Suppress("CyclomaticComplexMethod") // each send rule is one guard; split, they would hide the order
+    suspend fun send(
+        request: String,
+        machine: String?,
+        origin: String,
+        emailMe: Boolean,
+        page: Boolean = false,
+    ): ClaudeSendResult {
         val text = request.trim()
         if (text.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.EMPTY_REQUEST)
         val status = backend.status()
@@ -97,12 +106,19 @@ class ClaudeSessionController(
                 }
             }
         }
+        if (page && machines.firstOrNull { it.name == target }?.summariesOnly == true) {
+            return ClaudeSendResult.NotSent(wording.pageNeedsFullMachine(target.orEmpty()))
+        }
         val draft = ClaudeTaskDraft(
             request = text,
             machine = target,
             parent = null,
             origin = origin,
-            deliver = if (emailMe) ClaudeTaskDraft.DELIVER_EMAIL_SELF else null,
+            deliver = when {
+                emailMe -> ClaudeTaskDraft.DELIVER_EMAIL_SELF
+                page -> ClaudeTaskDraft.DELIVER_PHONE
+                else -> null
+            },
             confirms = false,
         )
         val online = machines.filter { it.isOnline }.map { it.name }

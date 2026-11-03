@@ -17,6 +17,7 @@ import { Route as AuthedIndexRouteImport } from './routes/_authed.index'
 import { Route as AuthedBodyRouteImport } from './routes/_authed.body'
 import { Route as AuthedBooksRouteImport } from './routes/_authed.books'
 import { Route as AuthedCalendarRouteImport } from './routes/_authed.calendar'
+import { Route as AuthedClaudeRouteImport } from './routes/_authed.claude'
 import { Route as AuthedFleetRouteImport } from './routes/_authed.fleet'
 import { Route as AuthedListsRouteImport } from './routes/_authed.lists'
 import { Route as AuthedMoneyRouteImport } from './routes/_authed.money'
@@ -78,6 +79,11 @@ const AuthedBooksRoute = AuthedBooksRouteImport.update({
 const AuthedCalendarRoute = AuthedCalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedClaudeRoute = AuthedClaudeRouteImport.update({
+  id: '/claude',
+  path: '/claude',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedFleetRoute = AuthedFleetRouteImport.update({
@@ -206,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/body': typeof AuthedBodyRoute
   '/books': typeof AuthedBooksRoute
   '/calendar': typeof AuthedCalendarRoute
+  '/claude': typeof AuthedClaudeRoute
   '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
   '/money': typeof AuthedMoneyRoute
@@ -237,6 +244,7 @@ export interface FileRoutesByTo {
   '/body': typeof AuthedBodyRoute
   '/books': typeof AuthedBooksRoute
   '/calendar': typeof AuthedCalendarRoute
+  '/claude': typeof AuthedClaudeRoute
   '/fleet': typeof AuthedFleetRoute
   '/lists': typeof AuthedListsRoute
   '/money': typeof AuthedMoneyRoute
@@ -270,6 +278,7 @@ export interface FileRoutesById {
   '/_authed/body': typeof AuthedBodyRoute
   '/_authed/books': typeof AuthedBooksRoute
   '/_authed/calendar': typeof AuthedCalendarRoute
+  '/_authed/claude': typeof AuthedClaudeRoute
   '/_authed/fleet': typeof AuthedFleetRoute
   '/_authed/lists': typeof AuthedListsRoute
   '/_authed/money': typeof AuthedMoneyRoute
@@ -305,6 +314,7 @@ export interface FileRouteTypes {
     | '/body'
     | '/books'
     | '/calendar'
+    | '/claude'
     | '/fleet'
     | '/lists'
     | '/money'
@@ -336,6 +346,7 @@ export interface FileRouteTypes {
     | '/body'
     | '/books'
     | '/calendar'
+    | '/claude'
     | '/fleet'
     | '/lists'
     | '/money'
@@ -368,6 +379,7 @@ export interface FileRouteTypes {
     | '/_authed/body'
     | '/_authed/books'
     | '/_authed/calendar'
+    | '/_authed/claude'
     | '/_authed/fleet'
     | '/_authed/lists'
     | '/_authed/money'
@@ -458,6 +470,13 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof AuthedCalendarRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/claude': {
+      id: '/_authed/claude'
+      path: '/claude'
+      fullPath: '/claude'
+      preLoaderRoute: typeof AuthedClaudeRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/fleet': {
@@ -652,6 +671,7 @@ interface AuthedRouteChildren {
   AuthedBodyRoute: typeof AuthedBodyRoute
   AuthedBooksRoute: typeof AuthedBooksRoute
   AuthedCalendarRoute: typeof AuthedCalendarRoute
+  AuthedClaudeRoute: typeof AuthedClaudeRoute
   AuthedFleetRoute: typeof AuthedFleetRoute
   AuthedListsRoute: typeof AuthedListsRoute
   AuthedMoneyRoute: typeof AuthedMoneyRoute
@@ -674,6 +694,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedBodyRoute: AuthedBodyRoute,
   AuthedBooksRoute: AuthedBooksRoute,
   AuthedCalendarRoute: AuthedCalendarRoute,
+  AuthedClaudeRoute: AuthedClaudeRoute,
   AuthedFleetRoute: AuthedFleetRoute,
   AuthedListsRoute: AuthedListsRoute,
   AuthedMoneyRoute: AuthedMoneyRoute,

@@ -2704,6 +2704,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/claude/pages/{file_id}/:
+    get:
+      operationId: api_claude_pages_retrieve
+      description: |-
+        `GET pages/{file_id}/?t=<signed>`: a delivered page, for the phone's
+        browser and the web desk (ticket 09). No token header: the browser opening
+        it has none, so the query's signature is the whole authority. It names one
+        household and one file and lives `PAGE_LINK_SECONDS`; it is minted only in
+        `task_row`, for a member who could read the task. The page is served with
+        the recruiter report's headers: `sandbox allow-scripts` gives it an opaque
+        origin, so its scripts reach no cookie and no engine route.
+      parameters:
+      - in: path
+        name: file_id
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: t
+        schema:
+          type: string
+        description: The signed link token.
+        required: true
+      tags:
+      - claude
+      responses:
+        '200':
+          content:
+            text/html:
+              schema:
+                type: string
+                format: binary
+          description: 'The page, with `Content-Security-Policy: sandbox allow-scripts`.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/claude/sessions/:
     post:
       operationId: api_claude_sessions_create
@@ -2977,7 +3016,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Detail'
-          description: Over 25 MB.
+          description: 'Over 25 MB (a delivered page: 5 MB).'
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A delivered page that is not text/html.
   /api/claude/tasks/{task_id}/files/{file_id}/:
     get:
       operationId: api_claude_tasks_files_retrieve
@@ -10373,6 +10418,35 @@ components:
       - item
       - ticked_at
       - updated_at
+    ClaudeArtifact:
+      type: object
+      description: A delivered page (ticket 09) that has arrived on the engine.
+      properties:
+        id:
+          type: integer
+          description: The file's id.
+        filename:
+          type: string
+        title:
+          type: string
+          description: The page's own <title>, or the file name.
+        size:
+          type: integer
+          nullable: true
+        url:
+          type: string
+          description: Relative signed link to the page; no token header needed. Minted
+            per read.
+        expires_in:
+          type: integer
+          description: Seconds the link stays valid.
+      required:
+      - expires_in
+      - filename
+      - id
+      - size
+      - title
+      - url
     ClaudeAssign:
       type: object
       properties:
@@ -10761,6 +10835,7 @@ components:
             email_self only when Kevin named his own email in the request (ruling 17).
 
             * `email_self` - email_self
+            * `phone` - phone
           oneOf:
           - $ref: '#/components/schemas/ClaudeTaskDeliverEnum'
           - $ref: '#/components/schemas/NullEnum'
@@ -10789,8 +10864,11 @@ components:
     ClaudeTaskDeliverEnum:
       enum:
       - email_self
+      - phone
       type: string
-      description: '* `email_self` - email_self'
+      description: |-
+        * `email_self` - email_self
+        * `phone` - phone
     ClaudeTaskFileRow:
       type: object
       properties:
@@ -10849,6 +10927,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClaudeTaskFileRow'
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeArtifact'
         parent:
           type: integer
           nullable: true
@@ -10870,6 +10952,7 @@ components:
           format: date-time
           nullable: true
       required:
+      - artifacts
       - confirms
       - created_at
       - deliver

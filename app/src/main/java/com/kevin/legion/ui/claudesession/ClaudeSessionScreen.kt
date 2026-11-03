@@ -2,6 +2,7 @@ package com.kevin.legion.ui.claudesession
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -16,6 +17,7 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
 fun ClaudeSessionScreen(onBack: () -> Unit) {
     val viewModel: ClaudeSessionViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     SoftTheme {
         ClaudeSessionContent(
             state = state,
@@ -25,12 +27,15 @@ fun ClaudeSessionScreen(onBack: () -> Unit) {
                 onDraft = viewModel::setDraft,
                 onPickMachine = viewModel::pickMachine,
                 onEmailMe = viewModel::setEmailMe,
+                onPageMe = viewModel::setPageMe,
                 onSend = viewModel::send,
                 onToggleTask = viewModel::toggleTask,
                 onAnswerText = viewModel::setAnswer,
                 onAnswer = viewModel::answer,
                 onAssign = viewModel::assign,
                 onSendFile = viewModel::sendFile,
+                // The tap path the result notification takes (ticket 09): fresh link, LEGION's browser.
+                onOpenPage = { id -> context.startActivity(ClaudePageActivity.intent(context, id)) },
                 onAnnouncements = viewModel::setAnnouncements,
             ),
         )
@@ -44,6 +49,7 @@ data class ClaudeSessionCallbacks(
     val onDraft: (String) -> Unit = {},
     val onPickMachine: (String?) -> Unit = {},
     val onEmailMe: (Boolean) -> Unit = {},
+    val onPageMe: (Boolean) -> Unit = {},
     val onSend: () -> Unit = {},
     val onToggleTask: (Int) -> Unit = {},
     val onAnswerText: (String) -> Unit = {},
@@ -51,5 +57,7 @@ data class ClaudeSessionCallbacks(
     val onAnswer: (Int, Boolean) -> Unit = { _, _ -> },
     val onAssign: (Int, String) -> Unit = { _, _ -> },
     val onSendFile: (Int, Int) -> Unit = { _, _ -> },
+    /** (task id): open its delivered page in the browser. */
+    val onOpenPage: (Int) -> Unit = {},
     val onAnnouncements: (Boolean) -> Unit = {},
 )

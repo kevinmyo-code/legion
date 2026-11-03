@@ -50,7 +50,17 @@ data class ClaudeTaskFile(
     val size: Long?,
     val uploaded: Boolean,
     val requested: Boolean,
-)
+) {
+    /** An HTML file: on a `deliver: phone` task, the page itself (claude-session ticket 09). */
+    val isPage: Boolean get() = name.lowercase().let { it.endsWith(".html") || it.endsWith(".htm") }
+}
+
+/**
+ * A delivered page that has reached the engine (ticket 09). [url] is a signed link that opens
+ * without a token for about ten minutes, so it is read fresh from the task every time it is
+ * opened and never stored.
+ */
+data class ClaudePage(val id: Int, val filename: String, val title: String, val size: Long?, val url: String)
 
 /** One task as `GET tasks/` and `GET tasks/{id}/` serve it. [machine] is the machine's name. */
 data class ClaudeTask(
@@ -69,9 +79,17 @@ data class ClaudeTask(
     val confirms: Boolean,
     val progress: String?,
     val progressAt: Instant?,
+    /** Delivered pages already on the engine (ticket 09), each with a fresh signed link. */
+    val pages: List<ClaudePage> = emptyList(),
 ) {
     val isFinished: Boolean get() = status in FINISHED
     val needsConfirmation: Boolean get() = status == NEEDS_CONFIRMATION
+
+    /** Kevin asked for the result as a page on his phone. */
+    val wantsPage: Boolean get() = deliver == ClaudeTaskDraft.DELIVER_PHONE
+
+    /** The page was made and asked for, and has not reached the engine yet. */
+    val pagePending: Boolean get() = wantsPage && pages.isEmpty() && files.any { it.isPage && !it.uploaded }
 
     companion object {
         const val QUEUED = "queued"
@@ -106,6 +124,9 @@ data class ClaudeTaskDraft(
         const val ORIGIN_NAMED = "named"
         const val ORIGIN_OFFERED = "offered"
         const val DELIVER_EMAIL_SELF = "email_self"
+
+        /** The result as one web page, opened in LEGION's browser (ticket 09). Never the work laptop. */
+        const val DELIVER_PHONE = "phone"
     }
 }
 

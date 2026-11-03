@@ -79,6 +79,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "d1308329a58170b9",
+      "type": "file",
+      "file": ".scratch/claude-session/issues/09-html-delivery.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -136,6 +146,27 @@
       "fromNode": "0fc1be01f882dc59",
       "fromSide": "right",
       "toNode": "62d51cecd0db4977",
+      "toSide": "left"
+    },
+    {
+      "id": "8d3cd8e2442bc139",
+      "fromNode": "1c27eaf97b90d9ea",
+      "fromSide": "right",
+      "toNode": "d1308329a58170b9",
+      "toSide": "left"
+    },
+    {
+      "id": "6c16fdc0ea274020",
+      "fromNode": "0fc1be01f882dc59",
+      "fromSide": "right",
+      "toNode": "d1308329a58170b9",
+      "toSide": "left"
+    },
+    {
+      "id": "9623d75911656e0c",
+      "fromNode": "f36e39fb6ad340f0",
+      "fromSide": "right",
+      "toNode": "d1308329a58170b9",
       "toSide": "left"
     }
   ]

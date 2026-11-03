@@ -135,6 +135,12 @@ data class ProactiveRaise(
      * 0 means the ordinary follow-up window, which is what `incoming_call` keeps.
      */
     val listenHoldMs: Long = 0L,
+    /**
+     * What tapping the bus's notification opens, when the raise was posted rather than spoken.
+     * Null keeps the old behaviour (a tap only dismisses it). Claude session results with a ready
+     * page set it (claude-session ticket 09): the tap opens the page, the same as saying yes.
+     */
+    val contentIntent: android.app.PendingIntent? = null,
 ) {
     init {
         require(ruleId.isNotBlank()) { "a raise must name the rule that fired it" }

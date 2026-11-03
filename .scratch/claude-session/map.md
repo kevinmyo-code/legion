@@ -4,7 +4,7 @@ title: "Claude session: Alfred talks to Claude Code on Kevin's laptops"
 charted: 2026-10-29
 charted-by: "Kevin + Fable"
 effort: "`.scratch/claude-session/`"
-tickets: 8
+tickets: 9
 open: 6
 status: open
 tags: [map]

@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Bot,
   Car,
   CalendarDays,
   Gamepad2,
@@ -78,6 +79,9 @@ export const NAV: readonly NavItem[] = [
   // Procedures ticket 14: the run inspector and branch report. Desk rail only (spec D1 fixes
   // the family tabs at four); the page itself works at phone width.
   { to: '/runs', label: 'Runs', icon: Workflow, surfaces: DESK, built: true },
+  // Claude-session ticket 09: the tasks the assistant sent to Claude on the laptops, and each delivered
+  // page with an Open link. Desk rail only; the page works at phone width by its URL.
+  { to: '/claude', label: 'Claude', icon: Bot, surfaces: DESK, built: true },
   {
     to: '/settings',
     label: 'Settings',

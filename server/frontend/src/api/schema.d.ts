@@ -1087,6 +1087,228 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/claude/machines/heartbeat/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_claude_machines_heartbeat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/pages/{file_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET pages/{file_id}/?t=<signed>`: a delivered page, for the phone's
+         *     browser and the web desk (ticket 09). No token header: the browser opening
+         *     it has none, so the query's signature is the whole authority. It names one
+         *     household and one file and lives `PAGE_LINK_SECONDS`; it is minted only in
+         *     `task_row`, for a member who could read the task. The page is served with
+         *     the recruiter report's headers: `sandbox allow-scripts` gives it an opaque
+         *     origin, so its scripts reach no cookie and no engine route.
+         */
+        get: operations["api_claude_pages_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/sessions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_claude_sessions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/status/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_claude_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_claude_tasks_list"];
+        put?: never;
+        post: operations["api_claude_tasks_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/{task_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_claude_tasks_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/{task_id}/assign/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST tasks/{id}/assign/ {machine}`: Kevin answered "which machine?"
+         *     for a `needs_machine` task (Kevin 2026-11-01). It becomes `queued` on that
+         *     machine, exactly as if he had named it.
+         */
+        post: operations["api_claude_tasks_assign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/{task_id}/cancel/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_claude_tasks_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/{task_id}/files/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_claude_tasks_files_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/{task_id}/files/{file_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_claude_tasks_files_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/{task_id}/finish/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_claude_tasks_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/{task_id}/send-file/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_claude_tasks_send_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/tasks/claim/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_claude_tasks_claim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/asset/{kind}": {
         parameters: {
             query?: never;
@@ -4274,6 +4496,254 @@ export interface components {
             /** Format: double */
             value?: number | null;
             source?: string;
+        };
+        /** @description A delivered page (ticket 09) that has arrived on the engine. */
+        ClaudeArtifact: {
+            /** @description The file's id. */
+            id: number;
+            filename: string;
+            /** @description The page's own <title>, or the file name. */
+            title: string;
+            size: number | null;
+            /** @description Relative signed link to the page; no token header needed. Minted per read. */
+            url: string;
+            /** @description Seconds the link stays valid. */
+            expires_in: number;
+        };
+        ClaudeAssign: {
+            /** @description The spoken machine name. */
+            machine: string;
+        };
+        ClaudeCancelled: {
+            id: number;
+            status: components["schemas"]["ClaudeTaskStatusEnum"];
+            detail: string;
+        };
+        ClaudeClaim: {
+            name: string;
+        };
+        ClaudeFileRequested: {
+            task: number;
+            file_id: number;
+            path: string;
+        };
+        ClaudeFileUpload: {
+            file_id: number;
+            file: string;
+        };
+        ClaudeFinish: {
+            /**
+             * @description cancelled only for a task in cancel_requested.
+             *
+             *     * `done` - done
+             *     * `failed` - failed
+             *     * `needs_confirmation` - needs_confirmation
+             *     * `cancelled` - cancelled
+             */
+            status: components["schemas"]["ClaudeFinishStatusEnum"];
+            summary?: string | null;
+            question?: string | null;
+            turns?: number | null;
+            duration_ms?: number | null;
+            found?: components["schemas"]["ClaudeFoundFile"][];
+        };
+        ClaudeFinishResult: {
+            id: number;
+            status: components["schemas"]["ClaudeTaskStatusEnum"];
+            files: components["schemas"]["ClaudeTaskFileRow"][];
+            detail: string;
+        };
+        /**
+         * @description * `done` - done
+         *     * `failed` - failed
+         *     * `needs_confirmation` - needs_confirmation
+         *     * `cancelled` - cancelled
+         * @enum {string}
+         */
+        ClaudeFinishStatusEnum: "done" | "failed" | "needs_confirmation" | "cancelled";
+        ClaudeFoundFile: {
+            path: string;
+            name: string;
+            size?: number | null;
+        };
+        ClaudeHeartbeat: {
+            name: string;
+            /** @default  */
+            hostname: string;
+            scope: components["schemas"]["ClaudeMachineScopeEnum"];
+            state: components["schemas"]["ClaudeReportedStateEnum"];
+            /** @description Task ids the worker is running. Accepted; the engine's own rows are the truth. */
+            running?: number[];
+            /** @default  */
+            claude_version: string;
+            /** @description Task id to the helper's current step, for tasks running on this machine. */
+            progress?: {
+                [key: string]: string;
+            };
+        };
+        ClaudeHeartbeatResult: {
+            cancel_requested: number[];
+            files_requested: components["schemas"]["ClaudeFileRequested"][];
+        };
+        ClaudeMachineRef: {
+            name: string;
+            state: components["schemas"]["ClaudeMachineStateEnum"];
+            /** Format: date-time */
+            last_seen_at: string | null;
+        };
+        /**
+         * @description * `full` - full
+         *     * `listed` - listed
+         * @enum {string}
+         */
+        ClaudeMachineScopeEnum: "full" | "listed";
+        /**
+         * @description * `idle` - idle
+         *     * `busy` - busy
+         *     * `offline` - offline
+         * @enum {string}
+         */
+        ClaudeMachineStateEnum: "idle" | "busy" | "offline";
+        /**
+         * @description * `idle` - idle
+         *     * `busy` - busy
+         * @enum {string}
+         */
+        ClaudeReportedStateEnum: "idle" | "busy";
+        ClaudeRunningProgress: {
+            task: number;
+            progress: string | null;
+            /** Format: date-time */
+            progress_at: string | null;
+        };
+        ClaudeSendFile: {
+            file_id: number;
+        };
+        ClaudeSendFileResult: {
+            file_id: number;
+            requested: boolean;
+            uploaded: boolean;
+            detail: string;
+        };
+        ClaudeSessionReport: {
+            machine: string;
+            session_id: string;
+            /** @default  */
+            project: string;
+            state: string;
+            last_prompt_summary?: string | null;
+            /** Format: date-time */
+            at?: string | null;
+        };
+        ClaudeSessionStored: {
+            machine: string;
+            session_id: string;
+            state: string;
+            summary_kept: boolean;
+        };
+        ClaudeStatus: {
+            machines: components["schemas"]["ClaudeStatusMachine"][];
+            sessions: components["schemas"]["ClaudeStatusSession"][];
+        };
+        ClaudeStatusMachine: {
+            name: string;
+            scope: components["schemas"]["ClaudeMachineScopeEnum"];
+            state: components["schemas"]["ClaudeMachineStateEnum"];
+            /** Format: date-time */
+            last_seen_at: string | null;
+            running: number[];
+            progress: components["schemas"]["ClaudeRunningProgress"][];
+        };
+        ClaudeStatusSession: {
+            machine: string;
+            project: string;
+            state: string;
+            last_prompt_summary: string | null;
+            /** Format: date-time */
+            last_seen_at: string;
+        };
+        ClaudeTaskCreate: {
+            request: string;
+            /** @description The spoken machine name, or null to let the engine choose. */
+            machine?: string | null;
+            parent?: number | null;
+            origin: components["schemas"]["ClaudeTaskOriginEnum"];
+            /**
+             * @description email_self only when Kevin named his own email in the request (ruling 17).
+             *
+             *     * `email_self` - email_self
+             *     * `phone` - phone
+             */
+            deliver?: (components["schemas"]["ClaudeTaskDeliverEnum"] | components["schemas"]["NullEnum"]) | null;
+            /**
+             * @description Kevin's yes to the parent's question. Needs a parent in needs_confirmation.
+             * @default false
+             */
+            confirms: boolean;
+        };
+        ClaudeTaskCreated: {
+            id: number;
+            status: components["schemas"]["ClaudeTaskStatusEnum"];
+            machine: components["schemas"]["ClaudeMachineRef"] | null;
+        };
+        /**
+         * @description * `email_self` - email_self
+         *     * `phone` - phone
+         * @enum {string}
+         */
+        ClaudeTaskDeliverEnum: "email_self" | "phone";
+        ClaudeTaskFileRow: {
+            id: number;
+            name: string;
+            size: number | null;
+            uploaded: boolean;
+            requested: boolean;
+        };
+        /**
+         * @description * `named` - named
+         *     * `offered` - offered
+         * @enum {string}
+         */
+        ClaudeTaskOriginEnum: "named" | "offered";
+        ClaudeTaskRow: {
+            id: number;
+            request: string;
+            /** @description The machine's name, or null. */
+            machine: string | null;
+            status: components["schemas"]["ClaudeTaskStatusEnum"];
+            summary: string | null;
+            question: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+            files: components["schemas"]["ClaudeTaskFileRow"][];
+            artifacts: components["schemas"]["ClaudeArtifact"][];
+            parent: number | null;
+            origin: components["schemas"]["ClaudeTaskOriginEnum"];
+            deliver: (components["schemas"]["ClaudeTaskDeliverEnum"] | components["schemas"]["NullEnum"]) | null;
+            confirms: boolean;
+            /** @description The current step while running. */
+            progress: string | null;
+            /** Format: date-time */
+            progress_at: string | null;
+        };
+        /**
+         * @description * `queued` - queued
+         *     * `needs_machine` - needs_machine
+         *     * `running` - running
+         *     * `cancel_requested` - cancel_requested
+         *     * `done` - done
+         *     * `failed` - failed
+         *     * `needs_confirmation` - needs_confirmation
+         *     * `cancelled` - cancelled
+         * @enum {string}
+         */
+        ClaudeTaskStatusEnum: "queued" | "needs_machine" | "running" | "cancel_requested" | "done" | "failed" | "needs_confirmation" | "cancelled";
+        ClaudeUploadResult: {
+            file_id: number;
+            size: number;
+            detail: string;
         };
         /**
          * @description Field-for-field `RemoteCodeClearEvent` / `CodeClearEventUpload`: the
@@ -9346,6 +9816,570 @@ export interface operations {
                 };
             };
             /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_machines_heartbeat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeHeartbeat"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeHeartbeatResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_pages_retrieve: {
+        parameters: {
+            query: {
+                /** @description The signed link token. */
+                t: string;
+            };
+            header?: never;
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page, with `Content-Security-Policy: sandbox allow-scripts`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_sessions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeSessionReport"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeSessionStored"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeStatus"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_list: {
+        parameters: {
+            query?: {
+                /** @description Default 20, at most 100. */
+                limit?: number;
+                /** @description A machine's spoken name. */
+                machine?: string;
+                /** @description One status, as computed at read time. */
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeTaskRow"][];
+                };
+            };
+        };
+    };
+    api_claude_tasks_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description queued, or needs_machine when unnamed and more than one is online. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeTaskCreated"];
+                };
+            };
+            /** @description Refused, nothing stored. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeTaskRow"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_assign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeAssign"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeTaskCreated"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No such task or machine. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not needs_machine. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeCancelled"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Already finished. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_files_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ClaudeFileUpload"];
+            };
+        };
+        responses: {
+            /** @description Already stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeUploadResult"];
+                };
+            };
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeUploadResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A listed machine. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not requested. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Over 25 MB (a delivered page: 5 MB). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A delivered page that is not text/html. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_files_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: number;
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file's bytes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_finish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeFinish"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeFinishResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A listed machine. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not running. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_send_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeSendFile"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeSendFileResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A listed machine. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_claim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeClaim"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeTaskRow"][];
+                };
+            };
+            /** @description Nothing queued for this machine. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No heartbeat yet. */
             404: {
                 headers: {
                     [name: string]: unknown;

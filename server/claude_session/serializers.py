@@ -161,6 +161,19 @@ class ClaudeTaskFileRowSerializer(serializers.Serializer):
     requested = serializers.BooleanField()
 
 
+class ClaudeArtifactSerializer(serializers.Serializer):
+    """A delivered page (ticket 09) that has arrived on the engine."""
+
+    id = serializers.IntegerField(help_text="The file's id.")
+    filename = serializers.CharField()
+    title = serializers.CharField(help_text="The page's own <title>, or the file name.")
+    size = serializers.IntegerField(allow_null=True)
+    url = serializers.CharField(
+        help_text="Relative signed link to the page; no token header needed. Minted per read."
+    )
+    expires_in = serializers.IntegerField(help_text="Seconds the link stays valid.")
+
+
 class ClaudeTaskRowSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     request = serializers.CharField()
@@ -171,6 +184,7 @@ class ClaudeTaskRowSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     finished_at = serializers.DateTimeField(allow_null=True)
     files = ClaudeTaskFileRowSerializer(many=True)
+    artifacts = ClaudeArtifactSerializer(many=True)
     parent = serializers.IntegerField(allow_null=True)
     origin = serializers.ChoiceField(choices=list(ORIGINS))
     deliver = serializers.ChoiceField(choices=list(DELIVERIES), allow_null=True)

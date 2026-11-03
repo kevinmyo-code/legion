@@ -108,6 +108,7 @@ _BODY = "the body aspect (health, food, sleep, workouts) is not part of the demo
 _MEMORY = "the assistant's memory of a household member is not part of the demo"
 _UPLOAD = "uploading documents (Drive, ingestion) is not part of the demo"
 _DEVICE = "it reaches a device or an account outside the household's own rows"
+_CLAUDE = "the Claude session runs on a household member's own laptop"
 
 RECRUITER_DENIED: dict[str, str] = {
     # household settings, members, invites, tokens, passwords
@@ -143,6 +144,19 @@ RECRUITER_DENIED: dict[str, str] = {
     "ingest.plaid_views.BankExchangeView": _BANK,
     "ingest.plaid_views.BankSyncView": _BANK,
     "ingest.freshness.FreshnessView": "the feeds' freshness reports outside accounts",
+    # Claude session (ADR 0067): tasks for Claude Code on a member's laptops
+    "claude_session.views.TaskListCreateView": _CLAUDE,
+    "claude_session.views.TaskDetailView": _CLAUDE,
+    "claude_session.views.TaskCancelView": _CLAUDE,
+    "claude_session.views.TaskAssignView": _CLAUDE,
+    "claude_session.views.TaskSendFileView": _CLAUDE,
+    "claude_session.views.StatusView": _CLAUDE,
+    "claude_session.views.HeartbeatView": _CLAUDE,
+    "claude_session.views.ClaimView": _CLAUDE,
+    "claude_session.views.FinishView": _CLAUDE,
+    "claude_session.views.FileUploadView": _CLAUDE,
+    "claude_session.views.FileDownloadView": _CLAUDE,
+    "claude_session.views.SessionReportView": _CLAUDE,
     # devices, notifications, laptops
     "push.views.VapidKeyView": "notifications are sent to a member's own devices",
     "push.views.SubscriptionListCreateView": "notifications are sent to a member's own devices",

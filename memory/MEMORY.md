@@ -22,6 +22,14 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Claude session switched on - 2026-11-03
+
+- `integrate/claude-session-on` = dev + `feat/claude-session` + ticket 09 (HTML delivery:
+  `deliver: phone`, signed sandboxed page link, `open_page`, web desk `/claude`). Suites green.
+- Owed by Kevin: engine deploy (migrate `claude_session` 0001/0002, `install_schedule.py` for the
+  prune, frontend rebuild), THEN `tools/claude_session/install.ps1` on the Alienware (needs his
+  LEGION sign-in), then ticket 07's run incl. step 9 (Atlanta day trip page).
+
 ## Voice cut-offs - 2026-10-27
 
 - Branch `fix/voice-cutoff-and-latency` (pushed): phone follow-up window and head unit idle timer

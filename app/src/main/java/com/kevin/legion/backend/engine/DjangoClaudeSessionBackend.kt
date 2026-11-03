@@ -6,6 +6,7 @@ import com.kevin.legion.claude.ClaudeFileRequest
 import com.kevin.legion.claude.ClaudeMachine
 import com.kevin.legion.claude.ClaudeMachineRef
 import com.kevin.legion.claude.ClaudeOutcome
+import com.kevin.legion.claude.ClaudePage
 import com.kevin.legion.claude.ClaudeSessionBackend
 import com.kevin.legion.claude.ClaudeStatus
 import com.kevin.legion.claude.ClaudeTask
@@ -34,6 +35,15 @@ private data class FileRow(
 )
 
 @Serializable
+private data class ArtifactRow(
+    val id: Int,
+    val filename: String,
+    val title: String = "",
+    val size: Long? = null,
+    val url: String,
+)
+
+@Serializable
 private data class TaskRow(
     val id: Int,
     val request: String,
@@ -50,8 +60,10 @@ private data class TaskRow(
     val confirms: Boolean = false,
     val progress: String? = null,
     @SerialName("progress_at") val progressAt: String? = null,
+    val artifacts: List<ArtifactRow> = emptyList(),
 ) {
-    fun toTask() = ClaudeTask(
+    /** [resolve] turns the engine's relative page link into one the browser can open. */
+    fun toTask(resolve: (String) -> String = { it }) = ClaudeTask(
         id = id,
         request = request,
         machine = machine,
@@ -67,6 +79,9 @@ private data class TaskRow(
         confirms = confirms,
         progress = progress,
         progressAt = instant(progressAt),
+        pages = artifacts.map {
+            ClaudePage(it.id, it.filename, it.title.ifBlank { it.filename }, it.size, resolve(it.url))
+        },
     )
 }
 
@@ -176,11 +191,17 @@ class DjangoClaudeSessionBackend(private val http: EngineHttp) : ClaudeSessionBa
 
     override suspend fun tasks(limit: Int): ClaudeOutcome<List<ClaudeTask>> =
         outcome(http.get(CLAUDE_ROOT + "tasks/", mapOf("limit" to limit.toString()))) { body ->
-            claudeJson.decodeFromString(ListSerializer(TaskRow.serializer()), body).map { it.toTask() }
+            claudeJson.decodeFromString(ListSerializer(TaskRow.serializer()), body).map { it.toTask(::absolute) }
         }
 
     override suspend fun task(id: Int): ClaudeOutcome<ClaudeTask> =
-        outcome(http.get(CLAUDE_ROOT + "tasks/$id/")) { claudeJson.decodeFromString(TaskRow.serializer(), it).toTask() }
+        outcome(http.get(CLAUDE_ROOT + "tasks/$id/")) {
+            claudeJson.decodeFromString(TaskRow.serializer(), it).toTask(::absolute)
+        }
+
+    /** The engine serves page links relative to itself, like the recruiter assets. */
+    private fun absolute(url: String): String =
+        if (url.startsWith("https://") || url.startsWith("http://")) url else http.absoluteUrl(url) ?: url
 
     override suspend fun create(draft: ClaudeTaskDraft): ClaudeOutcome<ClaudeCreated> {
         val body = claudeJson.encodeToString(

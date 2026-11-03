@@ -17,6 +17,8 @@ HOME_ENV = "LEGION_CLAUDE_HOME"
 
 STATUSES = ("done", "failed", "needs_confirmation")
 DELIVER_EMAIL_SELF = "email_self"  # ruling 17
+DELIVER_PHONE = "phone"  # ticket 09: the result as one HTML page, opened on the phone
+PAGE_CAP_BYTES = 5 * 1024 * 1024  # the engine refuses a bigger page
 UPLOAD_CAP_BYTES = 25 * 1024 * 1024  # uploads to the engine, per file
 
 

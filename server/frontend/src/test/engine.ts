@@ -89,6 +89,8 @@ export interface EngineOptions {
   demo?: Partial<DemoState>
   /** Procedure runs and branch reports (`engine-procedures.ts`); none when absent. */
   procedures?: Partial<ProceduresState>
+  /** The Claude session's tasks, newest first (`GET /api/claude/tasks/`); none when absent. */
+  claude?: components['schemas']['ClaudeTaskRow'][]
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -129,6 +131,8 @@ export interface Engine {
   demo: DemoState
   /** Procedure runs and branch reports (`engine-procedures.ts`). */
   procedures: ProceduresState
+  /** The Claude session's tasks (claude-session ticket 09). */
+  claude: components['schemas']['ClaudeTaskRow'][]
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -384,6 +388,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     books: { ...defaultBooks(), ...options.books },
     demo: { ...defaultDemo(), ...options.demo },
     procedures: { ...defaultProcedures(), ...options.procedures },
+    claude: options.claude ?? [],
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -724,6 +729,10 @@ export function createEngine(options: EngineOptions = {}): Engine {
 
       if (method === 'GET' && pathname === '/api/ledger/spend') {
         return { status: 200, body: spendWithTargets(engine) }
+      }
+
+      if (method === 'GET' && pathname === '/api/claude/tasks/') {
+        return { status: 200, body: engine.claude }
       }
 
       const proceduresReply = handleProcedures(engine, method, pathname, search)

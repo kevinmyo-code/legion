@@ -64,7 +64,9 @@ class ClaudeSessionViewModel(
 
     fun pickMachine(name: String?) = _state.update { it.copy(pickedMachine = name) }
 
-    fun setEmailMe(on: Boolean) = _state.update { it.copy(emailMe = on) }
+    fun setEmailMe(on: Boolean) = _state.update { it.copy(emailMe = on, pageMe = if (on) false else it.pageMe) }
+
+    fun setPageMe(on: Boolean) = _state.update { it.copy(pageMe = on, emailMe = if (on) false else it.emailMe) }
 
     fun toggleTask(id: Int) = _state.update {
         it.copy(expandedTask = if (it.expandedTask == id) null else id, answer = "")
@@ -82,7 +84,7 @@ class ClaudeSessionViewModel(
         val s = _state.value
         if (s.sending) return
         act(clearDraft = true) {
-            controller.send(s.draft, s.pickedMachine, ClaudeTaskDraft.ORIGIN_NAMED, s.emailMe)
+            controller.send(s.draft, s.pickedMachine, ClaudeTaskDraft.ORIGIN_NAMED, s.emailMe, page = s.pageMe)
         }
     }
 

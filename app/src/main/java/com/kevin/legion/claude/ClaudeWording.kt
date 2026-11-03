@@ -15,6 +15,7 @@ import java.util.Locale
  * a send is "sent" or "queued", never finished, and a failure says what did not happen. No
  * assistant name appears in any of it (CLAUDE.md section 1).
  */
+@Suppress("TooManyFunctions") // one function per sentence, so the voice tool and the screen share them
 class ClaudeWording(
     private val now: () -> Instant = Instant::now,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
@@ -82,6 +83,10 @@ class ClaudeWording(
         "Asked the ${machine ?: "machine"} to upload ${file.name}. It is not on the phone yet; it lands in " +
             "Downloads after the machine's next check-in, and I'll say when it has."
 
+    fun pageNeedsFullMachine(machine: String): String =
+        "The $machine returns summaries only, so it can't send a page to your phone. Nothing was sent; " +
+            "ask for it on the Alienware, or for the summary."
+
     fun summariesOnly(machine: String): String =
         "The $machine returns summaries only, never files, so nothing was sent to the phone."
 
@@ -100,10 +105,18 @@ class ClaudeWording(
             ClaudeTask.DONE -> buildString {
                 append("$head is done.")
                 summary?.let { append(" ").append(it) }
-                val offer = task.files.filterNot { it.uploaded }
+                // A delivered page is opened, not saved; it is never offered as a file too.
+                val offer = task.files.filterNot { it.uploaded || (task.wantsPage && it.isPage) }
+                val page = task.pages.firstOrNull()
+                when {
+                    !task.wantsPage -> Unit
+                    page != null -> append(" The page \"${page.title}\" is ready. Want me to open it?")
+                    task.pagePending -> append(" The page has not reached your phone yet, so it can't be opened.")
+                    else -> append(" No page came back with it.")
+                }
                 if (!summariesOnly && offer.isNotEmpty()) {
                     append(" Found ").append(offer.joinToString { "${it.name} (${size(it.size)})" })
-                    append(". Want it on your phone?")
+                    append(if (page != null) "." else ". Want it on your phone?")
                 }
             }
             ClaudeTask.NEEDS_CONFIRMATION ->
@@ -119,6 +132,14 @@ class ClaudeWording(
     }
 
     fun fileSaved(name: String): String = "$name is on your phone, in Downloads."
+
+    // --------------------------------------------------------------------------- pages (ticket 09)
+
+    fun pageOpened(page: ClaudePage): String = "Opened \"${page.title}\" in the browser."
+
+    fun noPage(taskId: Int): String = "Task $taskId has no page on the engine yet, so nothing was opened."
+
+    fun pageNotOpened(page: ClaudePage, why: String): String = "\"${page.title}\" did not open: $why"
 
     fun fileSaveFailed(name: String): String =
         "$name was uploaded but could not be saved to Downloads. Open the Claude session screen to try again."

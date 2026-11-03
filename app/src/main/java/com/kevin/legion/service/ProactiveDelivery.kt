@@ -141,6 +141,7 @@ object ProactiveDelivery {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
+            .apply { raise.contentIntent?.let { setContentIntent(it) } }
             .build()
         return runCatching {
             NotificationManagerCompat.from(context).notify(raise.ruleId.hashCode(), notification)

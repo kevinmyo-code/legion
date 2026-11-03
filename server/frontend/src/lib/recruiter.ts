@@ -19,6 +19,7 @@ export const RECRUITER_DENIED_SCREENS: readonly { prefix: string; reason: string
   { prefix: '/settings', reason: "The household's settings, members, devices and bank link are not part of the demo." },
   { prefix: '/games', reason: 'Games are played between household members, so they are not part of the demo.' },
   { prefix: '/books', reason: "Books live in a folder on a member's laptop, so they are not part of the demo." },
+  { prefix: '/claude', reason: "The Claude session runs on a member's own laptop, so it is not part of the demo." },
 ]
 
 function matches(prefix: string, pathname: string): boolean {

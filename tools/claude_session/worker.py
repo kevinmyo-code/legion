@@ -37,7 +37,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from common import (DELIVER_EMAIL_SELF, UPLOAD_CAP_BYTES, Paths, load_config, norm,  # noqa: E402
+from common import (DELIVER_EMAIL_SELF, DELIVER_PHONE, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, load_config, norm,  # noqa: E402
                     read_json, write_json_atomic)
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
@@ -539,12 +539,34 @@ class Worker:
     def flush_outbox(self) -> None:
         while self.state["outbox"]:
             item = self.state["outbox"][0]
+            reply = None
             try:
-                self.engine.finish(item["task"], item["payload"])
+                reply = self.engine.finish(item["task"], item["payload"])
             except EngineError as e:
                 log.warning("finish for task %s refused HTTP %s; dropped", item["task"], e.status)
             self.state["outbox"].pop(0)
             self.dirty = True
+            self.upload_pages(item["task"], reply)
+
+    def upload_pages(self, tid, reply) -> None:
+        """Ticket 09: a `deliver: phone` task's page goes up right after its finish, without
+        waiting a heartbeat. The engine requested it at finish (asking for it was Kevin's yes);
+        [upload_requested] still checks it is a file this task listed. If the engine is down,
+        the next heartbeat asks again."""
+        t = self._task(tid)
+        if not t or t.get("deliver") != DELIVER_PHONE or not isinstance(reply, dict):
+            return
+        by_name = {}
+        for f in t.get("found", []):
+            by_name.setdefault(f["name"], f["path"])
+        for f in reply.get("files") or []:
+            if f.get("requested") and not f.get("uploaded") and f.get("name") in by_name:
+                try:
+                    self.upload_requested({"task": tid, "file_id": f.get("id"),
+                                           "path": by_name[f["name"]]})
+                except EngineDown:
+                    log.warning("page for task %s not uploaded yet: engine unreachable", tid)
+                    return
 
     def upload_requested(self, req: dict) -> None:
         fid, tid, path = req.get("file_id"), req.get("task"), req.get("path") or ""
@@ -562,6 +584,9 @@ class Worker:
             reason = "file is gone"
         elif Path(path).stat().st_size > UPLOAD_CAP_BYTES:
             reason = "over the upload cap"
+        elif (t.get("deliver") == DELIVER_PHONE and path.lower().endswith((".html", ".htm"))
+              and Path(path).stat().st_size > PAGE_CAP_BYTES):
+            reason = "page over the 5 MB cap"
         if reason:
             self.refused.add(key)
             log.warning("file %s for task %s not uploaded: %s", fid, tid, reason)
@@ -634,6 +659,16 @@ class Worker:
             else:
                 lines.append("Kevin asked for the result by email, but this laptop does not send "
                              "mail. Say so in the summary.")
+        elif t.get("deliver") == DELIVER_PHONE:
+            if self.scope == "full":
+                lines.append("Kevin wants the result as a page on his phone. Write ONE self-contained "
+                             "HTML file in the work folder (a <title>, inline CSS, readable on a phone, "
+                             "no external scripts, under 5 MB) and list it with --found; LEGION sends "
+                             "it to his phone, that is his yes for this one page. The summary says the "
+                             "page is ready and what is in it, in a sentence.")
+            else:  # the engine refuses this; held here too (ruling 5)
+                lines.append("Kevin asked for the result as a page on his phone, but this laptop "
+                             "returns summaries only. Say so in the summary.")
         lines.append(f"Work folder: {work}")
         return "\n".join(lines)
 

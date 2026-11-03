@@ -222,7 +222,9 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[04-net-worth-is-never-one-number\|04]] | build | Net worth as a figure plus what is unverified, never one number  waiting on [[02-what-a-net-worth-may-be\|02]] |
 | [[.scratch/claude-session/map\|claude-session]] | [[04-worker\|04]] | build | Build: the laptop worker (main session, helpers, report.py, install)  waiting on [[02-spike-main-session\|02]] |
 | [[.scratch/claude-session/map\|claude-session]] | [[06-sessions-reporter\|06]] | build | Build: interactive Claude Code sessions reporter hooks  waiting on [[03-engine-app\|03]] |
+| [[.scratch/claude-session/map\|claude-session]] | [[07-alienware-run\|07]] | test | Test: the first run on the Alienware from the phone  waiting on [[03-engine-app\|03]], [[04-worker\|04]], [[05-phone\|05]], [[06-sessions-reporter\|06]] |
 | [[.scratch/claude-session/map\|claude-session]] | [[08-whatsapp-delivery\|08]] | build | Build: WhatsApp delivery of task files to Kevin's own number  waiting on [[03-engine-app\|03]], [[04-worker\|04]] |
+| [[.scratch/claude-session/map\|claude-session]] | [[09-html-delivery\|09]] | build | Build: HTML delivery, a researched page from the Alienware opened on the phone  waiting on [[03-engine-app\|03]], [[04-worker\|04]], [[05-phone\|05]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The projects tool surface, and its hands path  waiting on [[06-the-azure-devops-sync\|06]] |
@@ -311,7 +313,6 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 |---|---|---|---|
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[03-mcp-for-claude-and-gemini\|03]] | build | Build: engine MCP server on the 2026-07-28 spec with OAuth, connected to Claude and the Gemini app |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
-| [[.scratch/claude-session/map\|claude-session]] | [[07-alienware-run\|07]] | test | Test: the first run on the Alienware from the phone |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
@@ -339,7 +340,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
-| [[.scratch/claude-session/map\|claude-session]] | 8 | 7 | [[.scratch/claude-session/claude-session.canvas\|open]] |
+| [[.scratch/claude-session/map\|claude-session]] | 9 | 8 | [[.scratch/claude-session/claude-session.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/conversation-records/map\|conversation-records]] | 6 | 5 | [[.scratch/conversation-records/conversation-records.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |

@@ -7158,3 +7158,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   summary, never a file (ruling 18); a `needs_machine` task is resolved by `POST
   tasks/{id}/assign/`; any household device token may act as the worker for v1 (later, machine
   tokens); `install_schedule.py` runs on deploy so the prune is scheduled.
+
+## 2026-11-03 - Claude session switched on; HTML delivery to the phone (Kevin)
+
+- **Switched on** (Kevin: *"lets switch it on. lets do 1-4 then we test. add the html delivery
+  before we test so we can test everything at once"*): `feat/claude-session` merged into dev
+  (`integrate/claude-session-on`), the worker installed on the Alienware, a phone build from dev;
+  the engine deploy is Kevin's. Ticket 07 (the run) unparked.
+- **HTML delivery** (ticket 09; Kevin's scenario: an itinerary for a day trip into Atlanta, made on
+  the Alienware, pushed to LEGION). `deliver: phone`: the helper writes one HTML page, the worker
+  uploads it at finish (asking was the yes), the engine serves it sandboxed (`sandbox
+  allow-scripts`, as the recruiter report) through a 10 minute signed link, no token header.
+- **Defaults, Kevin may revise:** Alfred asks "want me to open it?" before opening (a yes, or a
+  notification tap, opens it in LEGION's browser); pages also show on the web desk under the task
+  (`/claude`); 30-day retention like the rest; the work laptop never delivers a page (summary only).
+- Live setup payload ceiling raised 24,250 to 24,500 (measured ~24,407 with `claude_session` and
+  its clause), justified in `LiveSetupPayloadSizeTest`.
+- ADR 0067 amended (2026-11-03).

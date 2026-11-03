@@ -128,6 +128,10 @@ class EngineHttp(
      * before deciding to even build a backend - see [EngineBackends]. */
     fun isUsable(): Boolean = EngineConfig.isValidBaseUrl(config.baseUrl()) && config.isSignedIn()
 
+    /** [path] on the saved engine address, or null with no usable address. For a link a browser opens. */
+    fun absoluteUrl(path: String): String? =
+        config.baseUrl().takeIf { EngineConfig.isValidBaseUrl(it) }?.trimEnd('/')?.plus(path)
+
     /**
      * `GET <base><path>?<query>`. [query] entries are attached through Ktor's own
      * `parameter(...)`, never string-concatenated into [path] - **the `+` footgun the server's own

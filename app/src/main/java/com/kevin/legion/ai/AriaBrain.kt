@@ -1003,7 +1003,9 @@ internal const val DATA_ACCESS_CLAUSE =
  * Alienware to...") is sent; not named, the model offers only after its own tools cannot do it, with
  * a one-line version of the task, and a yes counts only as the very next thing the user says. A sent
  * task is queued, never done ([CANNOT_CLAUSE] applied to a result that arrives minutes later), and a
- * found file is named and offered, never sent unasked (ruling 8). At file scope beside
+ * found file is named and offered, never sent unasked (ruling 8). A researched write-up (Kevin
+ * 2026-11-03, ticket 09: "an itinerary for a day trip into Atlanta") is offered to the Alienware
+ * as a page on the phone, and the page opens only on a yes. At file scope beside
  * [CANNOT_CLAUSE], never per persona, and naming no assistant. Presence guarded by
  * [com.kevin.legion.ai.AriaBrainHonestyClauseTest]; obedience is owed to a phone run (ticket 07).
  */
@@ -1012,7 +1014,9 @@ internal const val CLAUDE_SESSION_CLAUSE =
         "yes as their very next words after you offered it. Otherwise, only once your own tools cannot " +
         "do it, offer once: \"That needs your Claude session. Want me to send it: <one-line version>?\" " +
         "A sent task is queued, not done; its outcome comes only from check or its result. A found " +
-        "file: say its name and size and ask if they want it on their phone; never send one unasked. "
+        "file: say its name and size and ask if they want it on their phone; never send one unasked. " +
+        "Research to write up (an itinerary, a plan, a comparison) counts: offer the Alienware, page true. " +
+        "A ready page opens only on their yes (open_page). "
 
 /**
  * The holding line before a slow lookup, and what it may NOT contain (ADR 0065, async-lookups

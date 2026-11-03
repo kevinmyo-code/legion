@@ -68,8 +68,10 @@ class EngineClient:
             data = data.get("tasks", [data] if "id" in data else [])
         return list(data)
 
-    def finish(self, task_id: int, payload: dict) -> None:
-        self._json("POST", f"tasks/{int(task_id)}/finish/", payload)
+    def finish(self, task_id: int, payload: dict) -> dict | None:
+        """The engine's answer: the task's files, a delivered page's already requested."""
+        data = self._json("POST", f"tasks/{int(task_id)}/finish/", payload)
+        return data if isinstance(data, dict) else None
 
     def upload(self, task_id: int, file_id, path: Path) -> None:
         boundary = "----legion" + uuid.uuid4().hex

@@ -165,8 +165,20 @@ class LiveSetupPayloadSizeTest {
      * ONE action-dispatched declaration (seven actions) at 1,135 chars, ~283 tokens; its description
      * keeps only the outcome-verb rule, the password refusal, the ask-first instruction and the
      * "answer in words goes to ask_engine" routing. Headroom is now ~285 tokens.
+     *
+     * **Raised to 24,500 on 2026-11-03 (Kevin: "lets switch it on", claude-session merged into dev
+     * with ticket 09's HTML delivery).** Measured on `integrate/claude-session-on`: 94
+     * declarations, 87,241 chars of tools JSON plus 10,388 chars of system instruction = 97,629
+     * chars, ~24,407 estimated tokens, against ~23,965 before (~442 tokens). `claude_session` is ONE
+     * action-dispatched declaration (eight actions) at 1,155 chars, ~289 tokens, the trade `browser`
+     * and `books` made; `CLAUDE_SESSION_CLAUSE` adds 614 chars, ~153 tokens, to the shared
+     * instructions. Every part of that clause is a send gate or an honesty rule: named-or-offered
+     * (ruling 2), the one offer and the very-next-words yes (ruling 3), "queued, not done", a file
+     * never sent unasked (ruling 8), and the page that opens only on a yes (ticket 09). Trimming any
+     * of them to fit would weaken the rule that stops Alfred sending work to a laptop unasked.
+     * Headroom is now ~93 tokens: the next tool needs a trim or its own justification here.
      */
-    private val ceilingTokens = 24_250
+    private val ceilingTokens = 24_500
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {
