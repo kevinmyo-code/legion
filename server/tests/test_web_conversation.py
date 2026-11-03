@@ -311,6 +311,6 @@ def test_the_read_command_renders_a_web_record_with_its_visit():
     text = out.getvalue()
     assert f"=== batch {DeviceLog.objects.get(batch_id=cid).id}" in text
     assert "| web v?(?) | conversation |" in text
-    assert "visit ref=acme" in text
+    assert f"| conversation {cid} | visit ref=acme" in text
     assert "TOOL -> list_checklists({})" in text
     assert "USER: (typed) What lists do we have?" in text

@@ -37,10 +37,11 @@ from __future__ import annotations
 import datetime
 import gzip
 import json
+import logging
 import re
 import uuid
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from devicelogs.models import (
@@ -50,6 +51,8 @@ from devicelogs.models import (
     VISIT_RETENTION_DAYS,
     DeviceLog,
 )
+
+log = logging.getLogger(__name__)
 
 AUDIT = "LIVE_AUDIT"
 LATENCY = "LIVE_LATENCY"
@@ -232,14 +235,17 @@ def record_tool(request, conversation_id, **call) -> None:
     theirs: the tool has already run, and its answer must not depend on the recorder."""
     if conversation_id is None:
         return
-    with transaction.atomic():
-        row = owned(request, conversation_id)
-        if row is None:
-            return
-        try:
+    try:
+        with transaction.atomic():
+            row = owned(request, conversation_id)
+            if row is None:
+                return
             append(row, tool_lines(**call))
-        except TooLarge:
-            return
+    except TooLarge:
+        return
+    except DatabaseError:
+        # The tool ran; a failed record must not turn its answer into an error.
+        log.warning("conversation record: could not write a tool call", exc_info=True)
 
 
 # ---- the browser's events -----------------------------------------------------

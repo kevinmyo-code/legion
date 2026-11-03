@@ -98,6 +98,7 @@ class Command(BaseCommand):
                 f"({row.app_version_code if row.app_version_code is not None else '?'}) | "
                 f"{row.reason} | device window {row.window_start} .. {row.window_end} | "
                 f"{len(lines)} lines"
+                + (f" | conversation {row.batch_id}" if row.device_label == "web" else "")
                 + (f" | visit ref={row.visit_ref or '-'}" if row.demo_visitor else "")
             )
             self.stdout.write("\n".join(lines))
