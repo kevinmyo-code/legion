@@ -15,6 +15,7 @@ import pytest
 
 from procedures import steps
 from procedures.definition import (
+    ENGINE_READ_THROUGH_TOOLS,
     READ_THROUGH_TOOLS,
     STEP_KINDS,
     DefinitionError,
@@ -110,7 +111,7 @@ def test_an_unknown_tool_is_refused():
     assert "'vehicle_recall', which is not an engine tool" in refused(d)
 
 
-@pytest.mark.parametrize("tool", sorted(READ_THROUGH_TOOLS))
+@pytest.mark.parametrize("tool", sorted(READ_THROUGH_TOOLS | ENGINE_READ_THROUGH_TOOLS))
 def test_a_read_through_tool_is_refused(tool):
     d = read_only()
     d["steps"][1]["tool"] = tool

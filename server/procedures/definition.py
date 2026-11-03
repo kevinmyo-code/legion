@@ -35,6 +35,9 @@ STEP_KINDS: tuple[str, ...] = ("tool", "compute", "decide", "ask", "check", "say
 READ_THROUGH_TOOLS: frozenset[str] = frozenset(
     {"search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status"}
 )
+# Engine-only tools whose results are third-party content, so a procedure may not call them
+# either (ruling 06: a run trace never stores it). web_search returns text from the web.
+ENGINE_READ_THROUGH_TOOLS: frozenset[str] = frozenset({"web_search"})
 # No procedure calls a procedure in v1 (ruling 01).
 PROCEDURE_TOOL = "run_procedure"
 
@@ -281,7 +284,7 @@ def validate(definition) -> Checked:
                     f"In {name!r}, step {sid!r} calls run_procedure; a procedure may not call a "
                     "procedure."
                 )
-            elif tool in READ_THROUGH_TOOLS:
+            elif tool in READ_THROUGH_TOOLS or tool in ENGINE_READ_THROUGH_TOOLS:
                 problems.append(
                     f"In {name!r}, step {sid!r} calls {tool!r}, which reads third-party content; "
                     "a run trace would store it, so no procedure may call it."
