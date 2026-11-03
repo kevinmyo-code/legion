@@ -1610,10 +1610,10 @@ DOCS_CONTRACT = (
 
 
 def _legion_docs(request, args) -> ToolResult:
-    from assistant.docs_search import LIMIT_DEFAULT, search, tokens
+    from assistant.docs_search import LIMIT_DEFAULT, is_overview, search, tokens
 
     query = args["query"].strip()
-    if not tokens(query):
+    if not tokens(query) and not is_overview(query):
         return refused(
             "Nothing was searched. The question has no words to look up in LEGION's docs "
             f"({query!r}); ask it with the subject named, for example \"how does the "
@@ -2130,7 +2130,11 @@ TOOLS: tuple[EngineTool, ...] = (
             "Searches LEGION's own design docs - the README, the architecture notes, the "
             "architecture decision records (ADRs) and the glossary - for passages about how "
             "LEGION is built and why: the engine, tenancy, the reconciliation gate, voice, roles. "
-            "Pass the question's subject as `query`. Answer only from the passages returned and "
+            "Pass the person's WHOLE question as `query`, in their own words (\"Explain to me "
+            "the codebase\", \"how does the voice loop handle interruptions\"), never a single "
+            "word or a topic label: the full question is what finds the right passages. A broad "
+            "question (the codebase, how it works, the architecture) returns the overview: the "
+            "clients, the engine and the head unit. Answer only from the passages returned and "
             "cite each source (\"ADR 0057\", or the file and heading). An ADR marked superseded "
             "must be described as superseded, never as the current design. When the passages do "
             "not answer it, say the docs do not cover it; never invent an implementation detail."
