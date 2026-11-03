@@ -13,9 +13,11 @@ import { runWriteData } from '@/api/refusal'
 
 export const BANK_KEY = ['ingest', 'plaid'] as const
 
-export function useBankStatus() {
+/** `enabled` false asks nothing: a demo visit never reads the bank link (ticket 13). */
+export function useBankStatus(enabled = true) {
   return useQuery({
     queryKey: BANK_KEY,
+    enabled,
     queryFn: async () => {
       const { data, response } = await api.GET('/api/ingest/plaid')
       if (!response.ok || !data) throw new Error(`GET /api/ingest/plaid answered ${response.status}`)

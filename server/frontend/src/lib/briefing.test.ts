@@ -10,6 +10,8 @@ import {
   latestBalances,
   latestOdometer,
   needCategory,
+  pickNextUp,
+  untilWords,
   runningTotal,
   servicesDue,
 } from '@/lib/briefing'
@@ -242,5 +244,42 @@ describe('closingLine', () => {
       'That is everything for this morning. Nothing else is due in the next two weeks.',
     )
     expect(closingLine(new Date(2026, 10, 2, 19), null, false)).toBe('That is everything for this evening.')
+  })
+})
+
+describe('pickNextUp', () => {
+  const at = (h: number, m = 0) => new Date(2026, 10, 2, h, m).toISOString()
+  const row = (start: number, end: number | null, extra: Partial<{ all_day: boolean; done: boolean; kind: string }> = {}) => ({
+    startsAt: at(start),
+    endsAt: end === null ? null : at(end),
+    event: { ...extra },
+  })
+
+  test('the next timed row that has not ended leads; past rows drop; all-day rows stay beside it', () => {
+    const past = row(7, 8)
+    const allDay = row(0, null, { all_day: true })
+    const dentist = row(9, 10)
+    const dinner = row(19, 21)
+    const { next, rest } = pickNextUp([allDay, past, dentist, dinner], new Date(2026, 10, 2, 8, 18))
+    expect(next).toBe(dentist)
+    expect(rest).toEqual([allDay, dinner])
+  })
+
+  test('something under way is still next; a done task is not', () => {
+    const doneTask = row(8, null, { kind: 'task', done: true })
+    const meeting = row(8, 9)
+    expect(pickNextUp([doneTask, meeting], new Date(2026, 10, 2, 8, 30)).next).toBe(meeting)
+  })
+
+  test('an empty or finished day has no next', () => {
+    expect(pickNextUp([], new Date()).next).toBeNull()
+    expect(pickNextUp([row(7, 8)], new Date(2026, 10, 2, 9)).next).toBeNull()
+  })
+
+  test('untilWords counts from the clock', () => {
+    const now = new Date(2026, 10, 2, 8, 18)
+    expect(untilWords(at(9), now)).toBe('in 42 minutes')
+    expect(untilWords(at(11, 23), now)).toBe('in 3 h 5 min')
+    expect(untilWords(at(8), now)).toBe('now')
   })
 })

@@ -407,3 +407,40 @@ export function closingLine(
 export function money(cents: number, currency = 'USD'): string {
   return formatMoney(cents, currency)
 }
+
+// ---- Next up --------------------------------------------------------------------
+
+/** The smallest shape `pickNextUp` reads, so a test needs no whole Occurrence. */
+export interface Timed {
+  startsAt: string
+  endsAt: string | null
+  event: { all_day?: boolean; done?: boolean; kind?: string }
+}
+
+/**
+ * The next thing on today's calendar, and the rest of today. The next thing is
+ * the first timed, not-done occurrence that has not ended; all-day rows and
+ * whatever is later stay in the list beside it. Past rows are left out: the
+ * briefing is about what is still ahead.
+ */
+export function pickNextUp<T extends Timed>(today: readonly T[], now: Date): { next: T | null; rest: T[] } {
+  const at = now.getTime()
+  const ahead = today.filter((occurrence) => {
+    if (occurrence.event.kind === 'task' && occurrence.event.done) return false
+    if (occurrence.event.all_day) return true
+    const end = new Date(occurrence.endsAt ?? occurrence.startsAt).getTime()
+    return end >= at
+  })
+  const next = ahead.find((occurrence) => !occurrence.event.all_day) ?? null
+  return { next, rest: ahead.filter((occurrence) => occurrence !== next) }
+}
+
+/** "in 42 minutes", "in 2 h 5 min", "now": how far off a start is, from the clock. */
+export function untilWords(startsAt: string, now: Date): string {
+  const minutes = Math.round((new Date(startsAt).getTime() - now.getTime()) / 60_000)
+  if (minutes <= 0) return 'now'
+  if (minutes < 60) return `in ${plural(minutes, 'minute')}`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest === 0 ? `in ${plural(hours, 'hour')}` : `in ${hours} h ${rest} min`
+}
