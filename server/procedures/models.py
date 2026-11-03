@@ -49,7 +49,8 @@ class Procedure(models.Model):
     class Meta:
         db_table = "procedures"
         constraints = [
-            # NULLS NOT DISTINCT: two built-ins may not share a name either.
+            # NULLS NOT DISTINCT (Postgres 15+): two built-ins may not share a name either.
+            # Not partial indexes: the tenancy planner would re-key one without household_id.
             models.UniqueConstraint(
                 fields=("household", "name"),
                 name="procedures_household_name_uniq",

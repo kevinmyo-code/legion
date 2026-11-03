@@ -32,7 +32,7 @@ tags: [ticket]
 ## Built (2026-11-03, branch `feat/procedures-foundation`)
 
 - `server/procedures/`: `public.procedures` (household NULL for a built-in, unique name per
-  household with NULLS NOT DISTINCT, tool-name shape) and `public.procedure_versions`
+  household with NULLS NOT DISTINCT (Postgres 15+), tool-name shape) and `public.procedure_versions`
   (definition JSON, source `builtin` / `distilled` / `hand`, `content_sha256`, computed `writes`,
   `is_active`, `approved_by` / `approved_at`). Migration `0001` in `public` with the
   `engine_mcp` search_path swap, plus a trigger: a version's content is immutable; only

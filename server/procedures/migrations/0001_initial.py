@@ -7,6 +7,12 @@
 # written (ruling 01). Born tenanted: `household` is a real ForeignKey.
 #
 # ADDITIVE: two new tables and one new function, nothing existing touched.
+#
+# Needs Postgres 15+ for NULLS NOT DISTINCT (one row per built-in name). The
+# engine runs on Supabase Postgres and compose pins postgres:16. Not a pair of
+# partial indexes: `household.tenancy_sql`'s planner re-keys any unique index
+# lacking household_id, which would turn `(name) WHERE household IS NULL` into
+# `(household_id, name)` and lose the guarantee.
 
 import django.db.models.deletion
 import django.db.models.functions.datetime
