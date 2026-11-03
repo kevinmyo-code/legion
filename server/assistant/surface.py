@@ -13,7 +13,7 @@ told it may call and what the engine will run cannot disagree.
 `EXCLUDED_FROM_WEB` is where a tool would go that the phone and Claude Code
 may call but a browser may not. It is empty: nothing has been ruled out.
 
-## A recruiter gets an allowlist, not the registry (ADR 0068)
+## A recruiter gets an allowlist, not the registry (ADR 0068, ADR 0069)
 
 A recruiter visitor (recruiter-demo ticket 01) is the opposite posture:
 **default deny**. `RECRUITER_TOOLS` names every tool it may call, and a tool
@@ -22,12 +22,20 @@ places the web surface already enforces read from `tools_for(user)` and
 `refusal_for(name, user, args)`, so the declarations a recruiter's Live token
 carries and what the tool door will run cannot disagree for it either.
 
+**Since ticket 13 (ADR 0069) the list is the member web surface minus what
+reaches outside the household's rows or into the body aspect**, writes
+included: each visit has its own throwaway household (`is_demo_visit`) with
+the visitor as its only member, so a write lands where nobody else can see
+it. The tables the record tools may touch are narrowed to `RECRUITER_TABLES`
+(no body, no ingestion ledger, no memory), in the declared enum and at the
+door.
+
 The fence is the server's, never the prompt's: the role comes from the
 visitor's `HouseholdMember` row, which the browser cannot touch, and the
-tenancy (`household.tenancy`) already keeps every read inside the demo
-household. Write refusal is a second fence below this one
-(`household.permissions.write_refusal`), so a write tool listed here by
-mistake would still refuse.
+tenancy (`household.tenancy`) keeps every read and write inside the visit's
+household. `household.permissions.write_refusal` is a second fence below this
+one: a recruiter may write only inside a demo-visit household, and the
+visitor's read-scoped token cannot write at all.
 """
 
 from __future__ import annotations
@@ -42,10 +50,9 @@ EXCLUDED_FROM_WEB: frozenset[str] = frozenset()
 
 WEB_TOOL_NAMES: tuple[str, ...] = tuple(t.name for t in TOOLS if t.name not in EXCLUDED_FROM_WEB)
 
-# Read tools over the six aspects (CLAUDE.md section 1: fleet, ledger, pantry,
-# notes, dates, places), and only reads. Notes and dates live in `events`
-# (`api/events.py`), so `list_events` carries both. The bought log and the
-# checklists are household rows of the same kind and are read-only here.
+# The member web surface less what a recruiter's visit may not reach (ADR
+# 0069): every read and write over the household's own rows, in registry
+# order, plus `about_kevin`.
 #
 # Every registry tool NOT named here is refused for a recruiter. Each one is
 # also named in `RECRUITER_EXCLUDED` below with the reason, and
@@ -53,10 +60,11 @@ WEB_TOOL_NAMES: tuple[str, ...] = tuple(t.name for t in TOOLS if t.name not in E
 # of the two, so a new tool fails the suite until someone classifies it. The
 # runtime check reads `RECRUITER_TOOLS` alone: an unclassified tool is denied.
 #
-# Nothing in the registry reaches mail, calendar, Drive, Spotify, Plaid, device
-# logs or a Claude/code session today; those live on the phone or behind REST
-# routes the recruiter fence refuses (`household.permissions.IsHouseholdMember`).
-# A tool that reached any of them would be refused here by default.
+# Nothing in the registry reaches mail, calendar sync, Drive, Spotify, Plaid,
+# device logs or a Claude/code session today; those live on the phone or
+# behind REST routes the recruiter fence refuses
+# (`household.recruiter_routes`). A tool that reached any of them would be
+# refused here by default.
 #
 # `about_kevin` (ticket 10) is the one tool here that is NOT in the registry:
 # it is for strangers reading about Kevin, so `/mcp` and members' web never
@@ -67,8 +75,17 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     "list_events",
     "list_checklists",
     "last_ticked",
+    "write_record",
+    "delete_record",
+    "add_event",
+    "update_event",
+    "delete_event",
+    "add_checklist_item",
+    "tick_checklist_item",
+    "log_purchase",
     "last_bought",
     "list_purchases",
+    "delete_purchase",
     "about_kevin",
 )
 
@@ -76,34 +93,30 @@ RECRUITER_TOOLS: tuple[str, ...] = (
 # door runs them through `engine_mcp.tools.run_engine_tool` (`tool_for`).
 RECRUITER_ONLY_TOOLS = {ABOUT_KEVIN.name: ABOUT_KEVIN}
 
-_WRITES = "a write; a recruiter reads a fake household and changes none of it"
-
 RECRUITER_EXCLUDED: dict[str, str] = {
     "list_tables": (
-        "its answer names every table, body and voice notes included, and says which are "
-        "'read and write'; for a recruiter both halves are false. read_records' own table "
-        "enum, narrowed below, says what it may read"
+        "its answer names every table, body and memory included, as readable and writable; "
+        "for a recruiter that is false. The record tools' own table enums, narrowed below, "
+        "say what it may touch"
     ),
-    "write_record": _WRITES,
-    "delete_record": _WRITES,
-    "add_event": _WRITES,
-    "update_event": _WRITES,
-    "delete_event": _WRITES,
-    "add_checklist_item": _WRITES,
-    "tick_checklist_item": _WRITES,
-    "log_purchase": _WRITES,
-    "delete_purchase": _WRITES,
 }
 
-# The aspects whose tables `read_records` may read for a recruiter. `body`
-# (health) and `voice_notes` (recordings) are not among the six; `ingest` is
-# the document-ingestion ledger, not a domain; `memory` is already closed to
-# every MCP caller (`engine_mcp.tools.EXCLUDED_ASPECTS`).
-RECRUITER_ASPECTS: frozenset[str] = frozenset({"ledger", "fleet", "pantry", "places"})
+# The aspects whose tables the record tools may read, write or delete for a
+# recruiter: ledger, fleet, pantry, places, and voice notes (Kevin's ruling 4,
+# ticket 13). `body` stays out (ruling 3); `ingest` is the document-ingestion
+# ledger, not a domain, and would show the seed's quarantined receipt (map
+# ruling 11); `memory` is already closed to every MCP caller
+# (`engine_mcp.tools.EXCLUDED_ASPECTS`).
+RECRUITER_ASPECTS: frozenset[str] = frozenset(
+    {"ledger", "fleet", "pantry", "places", "voice_notes"}
+)
 
 RECRUITER_TABLES: frozenset[str] = frozenset(
     table for table, viewset in READABLE.items() if viewset.aspect in RECRUITER_ASPECTS
 )
+
+# The record tools whose `table` argument is narrowed to `RECRUITER_TABLES`.
+RECRUITER_TABLE_TOOLS: frozenset[str] = frozenset({"read_records", "write_record", "delete_record"})
 
 
 def web_tools():
@@ -111,14 +124,15 @@ def web_tools():
 
 
 def _recruiter_tool(tool):
-    """The registry tool as a recruiter is told about it: `read_records`' table
-    enum narrowed to `RECRUITER_TABLES`, so the model is never offered a table
-    the door would refuse."""
-    if tool.name != "read_records":
+    """The registry tool as a recruiter is told about it: the record tools'
+    table enums narrowed to `RECRUITER_TABLES`, so the model is never offered
+    a table the door would refuse."""
+    if tool.name not in RECRUITER_TABLE_TOOLS:
         return tool
     schema = dict(tool.input_schema)
     properties = dict(schema["properties"])
-    properties["table"] = {**properties["table"], "enum": sorted(RECRUITER_TABLES)}
+    allowed = sorted(set(properties["table"]["enum"]) & RECRUITER_TABLES)
+    properties["table"] = {**properties["table"], "enum": allowed}
     schema["properties"] = properties
     return dataclasses.replace(tool, input_schema=schema)
 
@@ -157,14 +171,15 @@ def _recruiter_refusal(name: str, args: dict | None) -> str | None:
     if name not in RECRUITER_TOOLS:
         return (
             f"Nothing was read or written. {name!r} is not available on this demo visit, and "
-            f"nothing ran. A recruiter's assistant may only read the demo household: "
-            f"{', '.join(RECRUITER_TOOLS)}."
+            f"nothing ran. A recruiter's assistant works on its own copy of the demo "
+            f"household with: {', '.join(RECRUITER_TOOLS)}."
         )
     table = (args or {}).get("table")
-    if name == "read_records" and isinstance(table, str) and table not in RECRUITER_TABLES:
+    if name in RECRUITER_TABLE_TOOLS and isinstance(table, str) and table not in RECRUITER_TABLES:
+        verb = "read" if name == "read_records" else "written or deleted"
         return (
-            f"Nothing was read. {table!r} is not readable on this demo visit. Tables it may "
-            f"read: {', '.join(sorted(RECRUITER_TABLES))}."
+            f"Nothing was {verb}. {table!r} is not part of this demo visit. Tables it may "
+            f"use: {', '.join(sorted(RECRUITER_TABLES))}."
         )
     return None
 

@@ -67,7 +67,9 @@ WEB_FRAME = (
 # addresses it to a stranger, says what the demo is, and has the model greet
 # on the first turn. What it offers to try is limited to what
 # `surface.RECRUITER_TOOLS` can actually do: no music (no tool), no receipt
-# quarantine reasons (`ingested_files` is outside `RECRUITER_TABLES`).
+# quarantine reasons (`ingested_files` is outside `RECRUITER_TABLES`). Since
+# ticket 13 (ADR 0069) the visit has its own copy of the household, so the
+# assistant may add, change and delete in it, and says so.
 #
 # Speaking first: a locked Live token's setup carries no conversation turns, so
 # the model cannot open unprompted. The browser (`/try`) sends one hidden
@@ -79,7 +81,8 @@ RECRUITER_OPENER = "(The visitor just joined the demo.)"
 RECRUITER_CAPABILITIES = (
     "what the household spent, on groceries or anything else, from its bank rows",
     "when the car is due for service and what was done to it",
-    "what is on the household's calendar, its checklists, and when something was last bought",
+    "what is on the household's calendar, its checklists, and when something was last bought, "
+    "and adding or changing any of those in their own copy",
     "questions about Kevin himself - his experience, skills and how to reach him - from the "
     "profile he wrote",
 )
@@ -112,8 +115,11 @@ RECRUITER_FRAME = (
     f"{'; '.join(RECRUITER_CAPABILITIES)}. Then ask what they would like to try. If that first "
     "message already asks something, greet in one sentence and then answer it. Greet once; never "
     "repeat the greeting later in the conversation. Offer nothing you have no tool for. "
-    "Everything you can read here is read-only: you can change nothing, and if asked to add, "
-    "tick, log or delete anything, say this demo is read-only. For questions about Kevin, use "
+    "This copy of the household belongs to this visitor alone, for this visit: they can also "
+    "add or change things in their own copy - events, checklist items and ticks, purchases, "
+    "places, notes, the car's records - and nothing they change reaches anyone else; the copy "
+    "is deleted when the visit ends. Say so when it helps. The bank's own statement rows cannot "
+    "be edited by anyone. For questions about Kevin, use "
     "about_kevin and answer only from what it returns; anything it does not say, answer "
     "\"Kevin hasn't shared that here; ask him directly.\" "
 )

@@ -36,7 +36,7 @@ NOW = datetime(2026, 11, 2, 15, 0, tzinfo=UTC)
 
 @pytest.fixture
 def visitor(db):
-    demo = Household.objects.create(name="Demo")
+    demo = Household.objects.create(name="Demo visit greeting", is_demo_visit=True)
     user = User.objects.create_user(email="visitor-test@demo.invalid", first_name="Pat")
     HouseholdMember.objects.create(user=user, household=demo, role=HouseholdMember.RECRUITER)
     return user

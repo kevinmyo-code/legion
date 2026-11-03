@@ -12,6 +12,7 @@ Google is never called: the mint goes through the same fake transport
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import uuid
@@ -32,12 +33,23 @@ from assistant.surface import (
 )
 from engine_mcp.models import Outcome
 from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME
+from engine_mcp.views import McpView
 from household.models import DeviceToken, Household, HouseholdMember, User, is_recruiter
 from household.permissions import (
     DEMO_TOKEN_SESSION_KEY,
-    RECRUITER_ROUTE_REFUSAL,
     RECRUITER_VISIT_OVER,
     RECRUITER_WRITE_REFUSAL,
+    IsHouseholdMember,
+)
+from household.recruiter_routes import (
+    RECRUITER_ALLOWED,
+    RECRUITER_DENIED,
+    RECRUITER_DENIED_ASPECTS,
+    RECRUITER_READ_ONLY,
+    WRITE_REFUSAL_HEAD,
+    denied_refusal,
+    unclassified_refusal,
+    view_key,
 )
 from tests.test_assistant import KEY, _start, _tool, google  # noqa: F401 - fixture
 
@@ -51,7 +63,8 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def demo_household(db):
-    return Household.objects.create(name="Demo")
+    """A visit's own household (ticket 13): flagged, the visitor its only member."""
+    return Household.objects.create(name="Demo visit test", is_demo_visit=True)
 
 
 @pytest.fixture
@@ -132,18 +145,22 @@ def test_every_registry_tool_is_classified_for_recruiters():
         assert reason.strip(), name
 
 
-def test_the_allowlist_is_reads_only():
-    for name in RECRUITER_TOOLS:
-        assert not (RECRUITER_ONLY_TOOLS.get(name) or TOOLS_BY_NAME[name]).writes, name
+def test_the_allowlist_is_the_member_surface_less_list_tables():
+    """Ticket 13 (ADR 0069): writes over the household's own rows are in; the
+    only registry tool out is the one that names body and memory tables."""
+    assert set(RECRUITER_EXCLUDED) == {"list_tables"}
     for tool in TOOLS:
         if tool.writes:
-            assert tool.name in RECRUITER_EXCLUDED, tool.name
+            assert tool.name in RECRUITER_TOOLS, tool.name
+    assert "about_kevin" in RECRUITER_TOOLS
+    assert "about_kevin" not in surface.WEB_TOOL_NAMES
 
 
-def test_recruiter_tables_are_the_four_aspects_read_records_can_reach():
+def test_recruiter_tables_are_the_five_aspects_and_never_body():
     aspects = {READABLE[t].aspect for t in RECRUITER_TABLES}
-    assert aspects == {"ledger", "fleet", "pantry", "places"}
-    for table in ("bodyweight_logs", "voice_notes", "ingested_files", "memories"):
+    assert aspects == {"ledger", "fleet", "pantry", "places", "voice_notes"}
+    assert "voice_notes" in RECRUITER_TABLES  # Kevin's ruling 4
+    for table in ("bodyweight_logs", "meal_logs", "sleep_logs", "ingested_files", "memories"):
         assert table not in RECRUITER_TABLES
 
 
@@ -166,15 +183,23 @@ def test_an_unknown_tool_refuses_a_recruiter_and_lists_only_its_own(recruiter_we
     response = _tool(recruiter_web, "send_mail", {})
     assert response.status_code == 400
     detail = response.data["detail"]
-    assert "write_record" not in detail and "list_tables" not in detail
+    assert "list_tables" not in detail
     for name in RECRUITER_TOOLS:
         assert name in detail
 
 
-def test_read_records_refuses_a_table_outside_the_four_aspects(recruiter_web, no_run):
+def test_read_records_refuses_a_table_outside_the_five_aspects(recruiter_web, no_run):
     response = _tool(recruiter_web, "read_records", {"table": "bodyweight_logs"})
     assert response.status_code == 400
     assert response.data["detail"].startswith("Nothing was read.")
+
+
+@pytest.mark.parametrize("tool", ["write_record", "delete_record"])
+@pytest.mark.parametrize("table", ["bodyweight_logs", "meal_logs", "workout_set_logs"])
+def test_the_record_writes_refuse_a_body_table(recruiter_web, no_run, tool, table):
+    response = _tool(recruiter_web, tool, {"table": table, "identity": "x", "fields": {}})
+    assert response.status_code == 400
+    assert response.data["detail"].startswith("Nothing was written or deleted.")
 
 
 def test_an_allowed_read_runs_inside_the_demo_household(recruiter_web, visitor):
@@ -186,16 +211,28 @@ def test_an_allowed_read_runs_inside_the_demo_household(recruiter_web, visitor):
     assert row.household_id == visitor.household.id
 
 
-def test_a_write_tool_refuses_even_when_the_allowlist_is_wrong(
-    recruiter_web, monkeypatch
-):
-    """The second fence: a recruiter may write nothing by any credential, so a
-    write tool listed by mistake still refuses, in words, before it runs."""
-    monkeypatch.setattr(surface, "RECRUITER_TOOLS", (*RECRUITER_TOOLS, "add_event"))
-    response = _tool(recruiter_web, "add_event", {"title": "x", "kind": "TASK"})
+def test_a_recruiters_write_lands_in_its_own_visit_household(recruiter_web, visitor):
+    from legacy.models.dates import Event
+
+    response = _tool(recruiter_web, "add_event", {"fields": {"title": "Visitor's call"}})
     assert response.status_code == 200, response.data
-    assert response.data["is_error"] is True
-    assert response.data["text"] == RECRUITER_WRITE_REFUSAL
+    assert response.data["is_error"] is False, response.data["text"]
+    [event] = Event.objects.filter(title="Visitor's call")
+    assert event.household_id == visitor.household.id
+
+
+def test_a_write_tool_refuses_a_recruiter_outside_a_demo_visit(recruiter_web, visitor):
+    """The second fence: `write_refusal` lets a recruiter write only inside a
+    demo-visit household. Flip the flag off under it (as a bug might) and the
+    write refuses in words, before it runs."""
+    Household.objects.filter(pk=visitor.household.pk).update(is_demo_visit=False)
+    from household.permissions import write_refusal
+
+    class _Request:
+        user = visitor
+        auth = None
+
+    assert write_refusal(_Request()) == RECRUITER_WRITE_REFUSAL
 
 
 # =============================================================================
@@ -212,6 +249,10 @@ def test_the_recruiter_live_setup_declares_exactly_the_allowlist(recruiter_web, 
     assert [d["name"] for d in declarations] == list(RECRUITER_TOOLS)
     [read] = [d for d in declarations if d["name"] == "read_records"]
     assert read["parameters"]["properties"]["table"]["enum"] == sorted(RECRUITER_TABLES)
+    for name in ("write_record", "delete_record"):
+        [decl] = [d for d in declarations if d["name"] == name]
+        enum = decl["parameters"]["properties"]["table"]["enum"]
+        assert enum and set(enum) <= RECRUITER_TABLES, (name, enum)
     assert KEY not in response.content.decode()
 
 
@@ -224,7 +265,7 @@ def test_an_owner_setup_is_unchanged_by_the_recruiter_role(household_user):
 
 
 # =============================================================================
-# Every other door refuses a recruiter
+# The REST routes: a classified list, walked (ticket 13, ADR 0069)
 # =============================================================================
 
 
@@ -239,19 +280,35 @@ def _routes(resolver=None, prefix=""):
         if isinstance(entry, URLResolver):
             yield from _routes(entry, prefix + pattern)
         elif isinstance(entry, URLPattern):
-            yield prefix + pattern
+            yield prefix + pattern, entry.callback
+
+
+def _view_class(callback):
+    return getattr(callback, "cls", None) or getattr(callback, "view_class", None)
 
 
 def _concrete(route: str) -> str | None:
     if route.startswith("^") or "(?" in route:
-        return None  # the SPA catch-all regex; covered by the SPA test below
+        return None  # the SPA catch-all regex; it serves the app, never data
     path = re.sub(r"<(?:(\w+):)?\w+>", lambda m: _dummy(m.group(1) or "str"), route)
     return "/" + path
 
 
-API_ROUTES = sorted(
-    {p for p in (_concrete(r) for r in _routes()) if p and not p.startswith("/admin/")}
+ROUTES = sorted(
+    {
+        (path, _view_class(cb))
+        for route, cb in _routes()
+        if (path := _concrete(route)) and not path.startswith("/admin/") and _view_class(cb)
+    },
+    key=lambda r: r[0],
 )
+API_ROUTES = sorted({path for path, _cls in ROUTES})
+
+
+def _guarded(cls) -> bool:
+    """Guarded by the household fence (`IsHouseholdMember` or a subclass);
+    anonymous doors (login, csrf, the schema, `/enter`) are not."""
+    return any(issubclass(p, IsHouseholdMember) for p in getattr(cls, "permission_classes", []))
 
 
 def test_the_route_walk_found_the_api():
@@ -261,54 +318,128 @@ def test_the_route_walk_found_the_api():
     assert len(API_ROUTES) > 40
 
 
+def test_every_guarded_route_is_classified_for_recruiters():
+    """A route added later fails here until someone puts its view in
+    `RECRUITER_ALLOWED`, `RECRUITER_READ_ONLY` or `RECRUITER_DENIED` (with a
+    reason). Until then it is refused at run time anyway."""
+    tables = (set(RECRUITER_ALLOWED), set(RECRUITER_READ_ONLY), set(RECRUITER_DENIED))
+    for a, b in itertools.combinations(tables, 2):
+        assert not a & b, a & b
+    unclassified = sorted(
+        {
+            view_key(cls)
+            for _path, cls in ROUTES
+            if _guarded(cls) and not getattr(cls, "allows_recruiter", False)
+        }
+        - set().union(*tables)
+    )
+    assert not unclassified, f"classify for recruiters: {unclassified}"
+    routed = {view_key(cls) for _path, cls in ROUTES}
+    stale = sorted(set().union(*tables) - routed)
+    assert not stale, f"named but not routed: {stale}"
+    for reason in (*RECRUITER_READ_ONLY.values(), *RECRUITER_DENIED.values()):
+        assert reason.strip()
+
+
+def test_the_named_outside_account_and_body_routes_are_denied():
+    """Kevin's rulings 1 and 3, by route: these must never be open."""
+    must_deny = (
+        "/api/ingest/plaid",
+        "/api/ingest/plaid/link-token",
+        "/api/ingest/plaid/exchange",
+        "/api/ingest/plaid/sync",
+        "/api/ingest/sessions",
+        "/api/ingest/statement",
+        "/api/ingest/receipt",
+        "/api/ingest/files/",
+        "/api/device-logs/",
+        "/api/auth/devices",
+        "/api/auth/password",
+        "/api/households/me/invites",
+        "/api/body/bodyweight_logs/",
+        "/api/body/meal_logs/",
+        "/api/body/sleep_logs/",
+        "/api/body/workout_plans/",
+        "/api/memory/memories/",
+        "/api/push/subscriptions",
+        "/api/brief/refresh",
+        "/mcp",
+    )
+    denied = {path for path, cls in ROUTES if view_key(cls) in RECRUITER_DENIED}
+    assert set(must_deny) <= denied, sorted(set(must_deny) - denied)
+
+
+DENIED_ROUTES = [(p, c) for p, c in ROUTES if view_key(c) in RECRUITER_DENIED]
+
+
 @pytest.mark.parametrize("credential", ["session", "token"])
-def test_no_route_gives_a_recruiter_more_than_a_stranger(
+def test_every_denied_route_refuses_a_recruiter_in_words(
     credential, recruiter_web, recruiter_token_client, settings
 ):
-    """Every routed path, GET and POST: what a recruiter gets is a refusal, or
-    exactly what an anonymous caller gets (health, the schema, csrf). The
-    assistant's two POST doors are the only exception, and they are tested
-    above."""
     settings.LEGION_MCP = True
     client = recruiter_web if credential == "session" else recruiter_token_client
-    stranger = APIClient()
-    opened = {"/api/assistant/session", "/api/assistant/tool"}
-    # The recruiter page's own reads (tickets 07 and 10), opened on purpose and
-    # pinned in `tests/test_recruiter_content.py`: the visit itself, and the
-    # page content Kevin loaded for strangers to read; and the companion's name
-    # for the chat header (always Alfred for a recruiter, ticket 05).
-    opened_reads = {
-        "/api/demo/session",
-        "/api/demo/content",
-        "/api/demo/asset/x",
-        "/api/assistant/companion",
-    }
-    assert opened_reads <= set(API_ROUTES)
-    leaks = []
-    for path in API_ROUTES:
-        for method in ("get", "post"):
-            if method == "post" and path in opened:
+    wrong = []
+    for path, cls in DENIED_ROUTES:
+        expected = denied_refusal(RECRUITER_DENIED[view_key(cls)])
+        for method in ("get", "post", "put", "patch", "delete"):
+            response = getattr(client, method)(path, {}, format="json")
+            if response.status_code == 415:  # a multipart-only upload door
+                response = getattr(client, method)(path, {}, format="multipart")
+            if response.status_code == 405:
                 continue
-            if method == "get" and path in opened_reads:
-                continue
-            mine = getattr(client, method)(path, {}, format="json") if method == "post" else (
-                client.get(path)
-            )
-            if not 200 <= mine.status_code < 300:
-                continue
-            theirs = getattr(stranger, method)(path, {}, format="json") if method == "post" else (
-                stranger.get(path)
-            )
-            if not 200 <= theirs.status_code < 300:
-                leaks.append((method.upper(), path, mine.status_code))
-    assert leaks == []
+            if response.status_code == 401 and path == "/mcp" and credential == "session":
+                continue  # /mcp takes no browser session at all: refused before the fence
+            detail = (getattr(response, "data", None) or {}).get("detail")
+            if response.status_code != 403 or detail != expected:
+                wrong.append((method.upper(), path, response.status_code, detail))
+    assert wrong == []
 
 
-def test_a_data_route_refuses_a_recruiter_by_name(recruiter_token_client, recruiter_web):
-    for client in (recruiter_token_client, recruiter_web):
-        response = client.get("/api/places/")
-        assert response.status_code == 403
-        assert response.data["detail"] == RECRUITER_ROUTE_REFUSAL
+def test_read_only_routes_refuse_a_recruiters_write_in_words(recruiter_web):
+    me = recruiter_web.get("/api/auth/me")
+    assert me.status_code == 200 and me.data["role"] == "recruiter"
+    assert recruiter_web.get("/api/households/me").status_code == 200
+    for path, body in (
+        ("/api/auth/me", {"name": "Mallory"}),
+        ("/api/households/me", {"name": "Renamed"}),
+    ):
+        response = recruiter_web.patch(path, body, format="json")
+        assert response.status_code == 403, (path, response.data)
+        assert response.data["detail"].startswith(WRITE_REFUSAL_HEAD), response.data
+
+
+@pytest.mark.parametrize("credential", ["session", "token"])
+def test_no_allowed_route_refuses_a_recruiter_as_a_recruiter(
+    credential, recruiter_web, recruiter_token_client
+):
+    """Every route on the allow list reads for a recruiter (a 403 here would
+    be the fence, which these must not hit)."""
+    client = recruiter_web if credential == "session" else recruiter_token_client
+    fenced = []
+    for path, cls in ROUTES:
+        if view_key(cls) not in RECRUITER_ALLOWED:
+            continue
+        response = client.get(path)
+        detail = str((getattr(response, "data", None) or {}).get("detail", ""))
+        if response.status_code == 403 and "demo visit" in detail:
+            fenced.append((path, detail))
+    assert fenced == []
+
+
+def test_a_recruiter_writes_on_an_allowed_route_through_its_session(recruiter_web, visitor):
+    from legacy.models.dates import Event
+
+    response = recruiter_web.post(
+        "/api/events", {"title": "Recruiter's own event"}, format="json"
+    )
+    assert response.status_code == 201, response.data
+    assert Event.objects.get(title="Recruiter's own event").household_id == visitor.household.id
+
+
+def test_the_read_scoped_visitor_token_still_cannot_write(recruiter_token_client):
+    response = recruiter_token_client.post("/api/events", {"title": "x"}, format="json")
+    assert response.status_code == 403
+    assert "read-only" in response.data["detail"]
 
 
 def test_mcp_refuses_a_recruiter_token(recruiter_token_client, settings):
@@ -320,7 +451,50 @@ def test_mcp_refuses_a_recruiter_token(recruiter_token_client, settings):
         HTTP_ACCEPT="application/json, text/event-stream",
     )
     assert response.status_code == 403
-    assert response.data["detail"] == RECRUITER_ROUTE_REFUSAL
+    assert response.data["detail"] == denied_refusal(RECRUITER_DENIED[view_key(McpView)])
+
+
+def test_an_unclassified_view_is_refused(recruiter_web, monkeypatch):
+    """Run-time default deny: take a view off the allow list and the fence
+    refuses it, in words, even though the route exists."""
+    from household import recruiter_routes
+
+    monkeypatch.setattr(
+        recruiter_routes,
+        "RECRUITER_ALLOWED",
+        recruiter_routes.RECRUITER_ALLOWED - {"api.places.PlaceViewSet"},
+    )
+    response = recruiter_web.get("/api/places/")
+    assert response.status_code == 403
+    assert response.data["detail"] == unclassified_refusal()
+
+
+def test_changes_feed_refuses_body_by_name_and_omits_it_by_default(recruiter_web):
+    named = recruiter_web.get("/api/changes", {"aspects": "body"})
+    assert named.status_code == 403
+    assert named.data["detail"] == denied_refusal(RECRUITER_DENIED_ASPECTS["body"])
+    everything = recruiter_web.get("/api/changes")
+    assert everything.status_code == 200
+    for table in ("bodyweight_logs", "memories", "ingested_files"):
+        assert table not in everything.data
+    assert "places" in everything.data and "events" in everything.data
+
+
+def test_a_recruiter_outside_a_demo_visit_household_is_refused_everywhere(db):
+    """A recruiter made before ticket 13 (in the shared demo household) is an
+    ended visit: nothing, the assistant included."""
+    shared = Household.objects.create(name="Demo")
+    user = User.objects.create_user(email="old-visitor@demo.invalid")
+    HouseholdMember.objects.create(user=user, household=shared, role=HouseholdMember.RECRUITER)
+    token, _raw = _visitor_token(user)
+    client = _recruiter_browser(user, token)
+    for path in ("/api/places/", "/api/auth/me"):
+        response = client.get(path)
+        assert response.status_code == 403
+        assert response.data["detail"] == RECRUITER_VISIT_OVER
+    assert _tool(client, "list_events", {}).status_code == 403
+    response = client.post("/api/events", {"title": "x"}, format="json")
+    assert response.status_code == 403
 
 
 def test_a_recruiter_token_cannot_open_the_assistant(recruiter_token_client, google):  # noqa: F811
