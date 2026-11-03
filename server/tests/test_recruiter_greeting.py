@@ -77,6 +77,10 @@ def test_the_recruiter_prompt_addresses_a_stranger_and_greets(visitor):
     assert 'never as "sir"' in text
     assert "greet the visitor" in text and "what they would like to try" in text
     assert "made-up household" in text
+    # Kevin, 2026-11-03: "tell them in the greeting too". One clause, and the word is
+    # "improve": nothing is trained on these conversations.
+    assert "the conversation may be recorded to improve the assistant" in text
+    assert "train" not in RECRUITER_FRAME.lower()
     # The page's hidden opener is named as a cue, not the visitor's words.
     assert f"The line {RECRUITER_OPENER} is sent by the page" in text
     assert "never quote it" in text
