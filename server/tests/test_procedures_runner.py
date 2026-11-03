@@ -499,12 +499,18 @@ def test_tools_list_names_the_callers_procedures_only(settings, household_user, 
     listed = rpc(client_with(household_user), "tools/list")
     tools = {t["name"]: t for t in json.loads(listed.content)["result"]["tools"]}
     schema = tools["run_procedure"]["inputSchema"]
-    assert schema["properties"]["name"]["enum"] == ["checklist_check"]
+    # The repo's built-ins (ticket 15) and the member's own household's, never household_b's.
+    assert schema["properties"]["name"]["enum"] == [
+        "car_check",
+        "checklist_check",
+        "money_check",
+        "morning_briefing",
+    ]
     assert "theirs" not in tools["run_procedure"]["description"]
     assert tools["run_procedure"]["annotations"]["readOnlyHint"] is False
 
 
-def test_with_nothing_to_run_the_declaration_has_no_empty_enum(household_user):
+def test_with_nothing_to_run_the_declaration_has_no_empty_enum(household_user, no_builtins):
     from assistant import live
     from assistant.surface import tools_for
 

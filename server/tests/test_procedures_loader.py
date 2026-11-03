@@ -20,6 +20,11 @@ from procedures.models import Procedure, ProcedureVersion, Source
 
 pytestmark = pytest.mark.django_db
 
+
+@pytest.fixture(autouse=True)
+def _from_none(no_builtins):
+    """These tests load their own files into an engine holding no built-in yet."""
+
 GOOD = """\
 name: {name}
 description: What is due on the car.

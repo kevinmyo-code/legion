@@ -1,0 +1,41 @@
+# money_check (procedures ticket 09, built in ticket 15). "Money" in one call.
+# Steps, in order: this month's categorised spend against the budget, with the UNVERIFIED part
+# and the spend that still has no category named by monthly_spend itself; the month's first and
+# last day, so groceries cover the same month; each account's balance led by its Now figure,
+# "as of" the bank's own time, UNVERIFIED only where account_balances says so (a bank-feed row
+# is fact, never "unverified"); grocery spend from receipts for the same month, per currency.
+# Every figure is the tool's own words: nothing is added across currencies or restated.
+name: money_check
+description: >-
+  Money this month: spend against the budget (and what still needs a category), each account's
+  balance now, and grocery spend from receipts for the same month.
+steps:
+  - id: spend
+    kind: tool
+    tool: monthly_spend
+    next: month
+  - id: month
+    kind: compute
+    function: month_window
+    args:
+      month: $steps.spend.structured.month
+    next: balances
+  - id: balances
+    kind: tool
+    tool: account_balances
+    next: groceries
+  - id: groceries
+    kind: tool
+    tool: grocery_spend
+    args:
+      from: $steps.month.from
+      to: $steps.month.to
+    next: answer
+  - id: answer
+    kind: say
+    template: |-
+      Spending: {$steps.spend}
+
+      {$steps.balances}
+
+      Groceries: {$steps.groceries}

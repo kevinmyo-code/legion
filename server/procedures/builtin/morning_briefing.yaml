@@ -1,0 +1,50 @@
+# morning_briefing (procedures ticket 09, built in ticket 15). Wraps the daily brief; it does
+# not rebuild it. Steps, in order: the member's latest brief as brief/compose.py wrote it
+# (brief_latest reads the stored row; News is web text and is not repeated), today's events in
+# the household's day, today's checklists with what is ticked. The phone's get_sitrep stays as
+# it is (ruling 09); web and the head unit use this. Not on a recruiter's visit: brief_latest is
+# outside RECRUITER_TOOLS, as /api/brief/latest is outside the visit's routes.
+name: morning_briefing
+description: >-
+  The morning briefing: the latest daily brief (Canvas, Money, Car), today's events and today's
+  checklists.
+steps:
+  - id: brief
+    kind: tool
+    tool: brief_latest
+    next: events
+  - id: events
+    kind: tool
+    tool: list_events
+    args:
+      from: $steps.brief.structured.today_start
+      to: $steps.brief.structured.today_end
+    next: lists
+  - id: lists
+    kind: tool
+    tool: list_checklists
+    args:
+      date: $steps.brief.structured.today
+    next: today
+  - id: today
+    kind: compute
+    function: day_events
+    args:
+      events: $steps.events.structured
+      utc_offset_minutes: $steps.brief.structured.utc_offset_minutes
+    next: ticks
+  - id: ticks
+    kind: compute
+    function: checklist_day
+    args:
+      checklists: $steps.lists.structured.checklists
+      day: $steps.brief.structured.today
+    next: answer
+  - id: answer
+    kind: say
+    template: |-
+      {$steps.brief}
+
+      {$steps.today}
+
+      {$steps.ticks}

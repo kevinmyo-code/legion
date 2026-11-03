@@ -547,3 +547,13 @@ def _no_web_search(monkeypatch):
         raise OSError("the network is off in tests")
 
     monkeypatch.setattr(web_search, "_transport", _offline)
+
+
+@pytest.fixture
+def no_builtins(db):
+    """The repo's built-in procedures (`procedures/builtin/*.yaml`, procedures ticket 15) are
+    loaded on `migrate`, so the test database starts with them. A test about the loader or about
+    an empty procedure list asks for this to start from none."""
+    from procedures.models import Procedure
+
+    Procedure.objects.filter(household__isnull=True).delete()

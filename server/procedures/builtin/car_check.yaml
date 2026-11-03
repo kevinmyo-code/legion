@@ -1,0 +1,70 @@
+# car_check (procedures ticket 09, built in ticket 15). "How's the car" in one call.
+# Steps, in order: name the car and what is past due (from next_service), next service by date
+# and by mileage (miles to go is an ESTIMATE; next_service says so), recent trouble codes with
+# whether a freeze frame was stored, then NHTSA recalls LAST, because it is the one network read:
+# when it fails the run ends there and every household read above is already in the answer,
+# with the recall tool's own "not known" sentence. Recalls are looked up for one car at a time
+# (vehicle_recalls refuses several), so with several cars on file and no `vehicle` input the run
+# stops at recalls, saying so; the runner has no fan-out in v1.
+name: car_check
+description: >-
+  How the car is: which car, anything past due, the next service by date and by mileage (miles
+  to go is an estimate), trouble codes the OBD dongle logged, and NHTSA recalls for its model.
+inputs:
+  vehicle:
+    description: >-
+      Which car, as an id or words from its name, make or model. Leave it out when one car is
+      on file; with several, recalls need it.
+steps:
+  - id: service
+    kind: tool
+    tool: next_service
+    args:
+      vehicle: $inputs.vehicle
+    next: codes
+  - id: codes
+    kind: tool
+    tool: read_records
+    args:
+      table: code_events
+      limit: 200
+    next: clears
+  - id: clears
+    kind: tool
+    tool: read_records
+    args:
+      table: code_clear_events
+      limit: 200
+    next: lead
+  - id: lead
+    kind: compute
+    function: car_lead
+    args:
+      vehicles: $steps.service.structured.vehicles
+    next: trouble
+  - id: trouble
+    kind: compute
+    function: trouble_codes
+    args:
+      vehicles: $steps.service.structured.vehicles
+      events: $steps.codes.structured.rows
+      clears: $steps.clears.structured.rows
+      utc_offset_minutes: $steps.service.structured.utc_offset_minutes
+      limit: 200
+    next: recalls
+  - id: recalls
+    kind: tool
+    tool: vehicle_recalls
+    args:
+      vehicle: $inputs.vehicle
+    next: answer
+  - id: answer
+    kind: say
+    template: |-
+      {$steps.lead}
+
+      {$steps.service}
+
+      {$steps.trouble}
+
+      Recalls: {$steps.recalls}
