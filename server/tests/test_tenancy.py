@@ -894,7 +894,7 @@ def test_the_changes_feed_never_carries_another_households_rows(token_a, token_b
 # =============================================================================
 
 
-def test_procedures_are_scoped_by_household(household_a, household_b):
+def test_procedures_are_scoped_by_household(household_a, household_b, no_builtins):
     """procedures ticket 11 (ADR 0070). No route serves them yet, so this is the leak test at
     the one read path, `procedures.models.visible_to`: a built-in (no household) is visible to
     every household, a household's own procedure to that household alone, and each version
@@ -1439,6 +1439,17 @@ def test_every_mcp_tool_is_scoped_by_household(
     assert "bravo car" in b_reads("next_service", {})
     assert "bravo car" in b_reads("vehicle_recalls", {})
     b_reads("grocery_spend", {})
+    # brief_latest (procedures ticket 15): the member's own brief, never another household's.
+    from brief.models import Brief, Trigger
+
+    Brief.objects.create(
+        household=household_user.household, user=household_user, brief_date="2026-10-05",
+        trigger=Trigger.SCHEDULED,
+        sections=[{"key": "canvas", "title": "Canvas", "status": "ok",
+                   "lines": [{"text": "ALPHA BRIEF LINE"}]}],
+    )
+    assert "No daily brief has been built for you yet" in b_reads("brief_latest", {})
+    assert "ALPHA BRIEF LINE" in call(mcp_a, "brief_latest", {})[1]
     # legion_docs reads the committed docs corpus, never a household row: every
     # household sees the same docs.
     assert "ADR 0045" in b_reads("legion_docs", {"query": "households are tenants"})
@@ -1472,6 +1483,10 @@ def test_every_mcp_tool_is_scoped_by_household(
     _install("places_all", None)
     _install("alpha_only", household_user.household)
     assert "bravo-place" in b_reads("run_procedure", {"name": "places_all"})
+    # The repo's built-ins (ticket 15) read B's own rows: B's one car, B's empty ledger.
+    assert "The car: bravo car." in b_reads("run_procedure", {"name": "car_check"})
+    assert "real empty result" in b_reads("run_procedure", {"name": "money_check"})
+    assert "No daily brief" in b_reads("run_procedure", {"name": "morning_briefing"})
     is_error, text, _ = call(mcp_b, "run_procedure", {"name": "alpha_only"})
     assert is_error and "no procedure called 'alpha_only'" in text, text
     assert call(mcp_b, "next_service", {"vehicle": "alpha"})[0] is True

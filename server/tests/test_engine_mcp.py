@@ -166,7 +166,15 @@ def test_tools_list_is_the_registry_with_its_hints(mcp_read):
         may_write = tool.writes or name == "run_procedure"
         assert hints["readOnlyHint"] is (not may_write), name
         assert hints["destructiveHint"] is tool.destructive, name
-        assert listed["inputSchema"] == tool.input_schema
+        if name == "run_procedure":
+            # Its `name` enum is per caller (`procedures.listing.tool_for`): here, the repo's
+            # built-ins (procedures ticket 15). The rest is the registry's schema.
+            schema = json.loads(json.dumps(listed["inputSchema"]))
+            enum = schema["properties"]["name"].pop("enum")
+            assert enum == ["car_check", "money_check", "morning_briefing"]
+            assert schema == tool.input_schema
+        else:
+            assert listed["inputSchema"] == tool.input_schema
 
 
 # =============================================================================
