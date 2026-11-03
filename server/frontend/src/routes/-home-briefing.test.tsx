@@ -104,6 +104,35 @@ describe('a member with a full household', () => {
     expect(within(balances).getByText('BofA card').closest('li')).toHaveTextContent(/From the bank link.*-\$1,327\.18.*Verified/)
   })
 
+  test("3 Money: the bank link's own balance wins, with its as-of time (Kevin: store them)", async () => {
+    const engine = briefingEngine()
+    engine.settings.bank = {
+      ...engine.settings.bank,
+      accounts: [
+        {
+          name: 'Adv Plus Banking',
+          mask: '7823',
+          type: 'credit',
+          subtype: 'credit card',
+          balance_current_cents: 141007,
+          balance_available_cents: 358993,
+          balance_currency: 'USD',
+          balance_as_of: new Date(2026, 10, 2, 7, 5).toISOString(),
+        },
+      ],
+    }
+    renderApp('/', engine, 'workbench')
+    await ready()
+    const money = section('Money this month')
+    const balances = await within(money).findByRole('list', { name: 'Balances' })
+    await waitFor(() =>
+      expect(within(balances).getByText('BofA card').closest('li')).toHaveTextContent(
+        /Owed, from the bank as of 7:05 AM, Nov 2.*-\$1,410\.07.*Verified/,
+      ),
+    )
+    expect(Object.keys(engine.calls).some((key) => key.includes('/api/ingest/plaid'))).toBe(true)
+  })
+
   test('4 Lists: ticking an item on Groceries is the real tick write', async () => {
     const engine = briefingEngine()
     renderApp('/', engine, 'workbench')
@@ -142,7 +171,7 @@ describe('an empty household', () => {
     expect(within(section('Lists')).getByText('No lists yet. Start one on Lists.')).toBeInTheDocument()
     const money = section('Money this month')
     expect(await within(money).findByText(/No card activity has reached the engine/)).toBeInTheDocument()
-    expect(await within(money).findByText('No statement or bank row on file states a balance yet.')).toBeInTheDocument()
+    expect(await within(money).findByText('No statement, bank row or bank link on file states a balance yet.')).toBeInTheDocument()
     expect(await within(section('Worth a look')).findByText(/^Nothing wants a look/)).toBeInTheDocument()
     expect(await within(section('Around the house')).findByText('No places saved yet.')).toBeInTheDocument()
     expect(screen.getByText(/Nothing else is due in the next two weeks\./)).toBeInTheDocument()
