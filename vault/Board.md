@@ -70,6 +70,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
+| [[.scratch/wake-word/map\|wake-word]] | [[20-tune-to-kevins-voice\|20]] | build | Tune the wake word to Kevin's own voice |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[01-the-calendar-widget\|01]] | build | The calendar widget on the web home - month grid plus day view |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[02-delete-a-finished-list\|02]] | build | Delete a list, from Lists and from Home, and offer it when everything is ticked |
@@ -376,7 +377,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
-| [[.scratch/wake-word/map\|wake-word]] | 19 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |
+| [[.scratch/wake-word/map\|wake-word]] | 20 | 10 | [[.scratch/wake-word/wake-word.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 7 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
 | [[.scratch/web-assistant/map\|web-assistant]] | 10 | 4 | [[.scratch/web-assistant/web-assistant.canvas\|open]] |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |

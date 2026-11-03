@@ -31,6 +31,53 @@ class QuietModeTest {
     @Before
     fun reset() {
         app.getSharedPreferences("quiet_mode", Context.MODE_PRIVATE).edit().clear().commit()
+        app.getSharedPreferences("dumb_mode_dnd_saved", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    /**
+     * Kevin, 2026-11-02: Quiet off, phone still in DND for six days. On the A25, Quiet's "off"
+     * restoring a SILENT ringer makes Android turn its manual DND on with LEGION as the enabler.
+     * Robolectric has no ringer-to-zen coupling, so the test sets that DND by hand mid-Quiet.
+     */
+    @Test
+    fun `off clears a Do Not Disturb that LEGION left and the user never had`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+        QuietMode.enable(app)
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+        QuietMode.disable(app)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, nm.currentInterruptionFilter)
+    }
+
+    @Test
+    fun `off leaves the user's own Do Not Disturb exactly as it was`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+        QuietMode.enable(app)
+        QuietMode.disable(app)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, nm.currentInterruptionFilter)
+    }
+
+    @Test
+    fun `off leaves Do Not Disturb to Matrix mode while Matrix holds the user's save`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+        QuietMode.enable(app)
+        com.kevin.legion.dumb.PrefsDndSavedStore(app).save(com.kevin.legion.dumb.DndSnapshot(1, 0, 0, 0, 0, -1))
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+        QuietMode.disable(app)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_PRIORITY, nm.currentInterruptionFilter)
+    }
+
+    @Test
+    fun `the user's filter is recorded while on and forgotten when off`() {
+        shadowOf(nm).setNotificationPolicyAccessGranted(true)
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+        assertEquals(null, QuietMode.userFilter(app))
+        QuietMode.enable(app)
+        assertEquals(NotificationManager.INTERRUPTION_FILTER_ALL, QuietMode.userFilter(app))
+        QuietMode.disable(app)
+        assertEquals(null, QuietMode.userFilter(app))
     }
 
     @Test

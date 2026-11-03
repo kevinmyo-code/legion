@@ -12,7 +12,7 @@
     <ID>CyclomaticComplexMethod:AreaInfo.kt:AreaInfo$internal fun formatQuakes( body: String, originLat: Double, originLon: Double, now: Long = System.currentTimeMillis(), radiusMiles: Double = QUAKE_RADIUS_MILES, limit: Int = QUAKE_RESULT_LIMIT, ): String</ID>
     <ID>CyclomaticComplexMethod:AriaBrain.kt:AriaBrain$suspend fun buildLiveContext(): String</ID>
     <ID>CyclomaticComplexMethod:AriaForegroundService.kt:AriaForegroundService$private fun startDriveMonitor()</ID>
-    <ID>CyclomaticComplexMethod:AssistantSettingsScreen.kt:@Composable fun AssistantSettingsScreen( onBack: () -&gt; Unit, onOpenCompanions: () -&gt; Unit, onOpenPlaybooks: () -&gt; Unit, onOpenVoiceGuide: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:AssistantSettingsScreen.kt:@Composable fun AssistantSettingsScreen( onBack: () -&gt; Unit, onOpenCompanions: () -&gt; Unit, onOpenPlaybooks: () -&gt; Unit, onOpenVoiceGuide: () -&gt; Unit, onOpenWakeTuning: () -&gt; Unit = {}, )</ID>
     <ID>CyclomaticComplexMethod:BleTransport.kt:BleTransport.Companion$@SuppressLint("MissingPermission") fun connect(context: Context, device: BluetoothDevice, timeoutMs: Long = 12_000): BleTransport</ID>
     <ID>CyclomaticComplexMethod:BodyOutbox.kt:BodyOutboxDrain$suspend fun drain(context: Context, backend: BodyBackend): DrainReport</ID>
     <ID>CyclomaticComplexMethod:BodyScreen.kt:@Composable fun BodyScreen()</ID>
@@ -134,7 +134,7 @@
     <ID>EmptyFunctionBlock:VoiceNoteControllerTest.kt:VoiceNoteControllerTest.FakeAudioCapture${}</ID>
     <ID>EmptyIfBlock:LiveSessionController.kt:LiveSessionController${ }</ID>
     <ID>FunctionNaming:AreaCard.kt:@Composable fun AreaCard(modifier: Modifier = Modifier)</ID>
-    <ID>FunctionNaming:AssistantSettingsScreen.kt:@Composable fun AssistantSettingsScreen( onBack: () -&gt; Unit, onOpenCompanions: () -&gt; Unit, onOpenPlaybooks: () -&gt; Unit, onOpenVoiceGuide: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:AssistantSettingsScreen.kt:@Composable fun AssistantSettingsScreen( onBack: () -&gt; Unit, onOpenCompanions: () -&gt; Unit, onOpenPlaybooks: () -&gt; Unit, onOpenVoiceGuide: () -&gt; Unit, onOpenWakeTuning: () -&gt; Unit = {}, )</ID>
     <ID>FunctionNaming:AssistantStrip.kt:@Composable fun AssistantStrip(onOpenSettings: () -&gt; Unit)</ID>
     <ID>FunctionNaming:AssistantStrip.kt:@Composable private fun AssistantOffRow(onTap: () -&gt; Unit)</ID>
     <ID>FunctionNaming:AssistantStrip.kt:@Composable private fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -&gt; Unit)</ID>
@@ -700,7 +700,7 @@
     <ID>LongMethod:AriaBrain.kt:AriaBrain$suspend fun buildLiveContext(): String</ID>
     <ID>LongMethod:AriaForegroundService.kt:AriaForegroundService$override fun onCreate()</ID>
     <ID>LongMethod:AriaForegroundService.kt:AriaForegroundService$private fun startDriveMonitor()</ID>
-    <ID>LongMethod:AssistantSettingsScreen.kt:@Composable fun AssistantSettingsScreen( onBack: () -&gt; Unit, onOpenCompanions: () -&gt; Unit, onOpenPlaybooks: () -&gt; Unit, onOpenVoiceGuide: () -&gt; Unit, )</ID>
+    <ID>LongMethod:AssistantSettingsScreen.kt:@Composable fun AssistantSettingsScreen( onBack: () -&gt; Unit, onOpenCompanions: () -&gt; Unit, onOpenPlaybooks: () -&gt; Unit, onOpenVoiceGuide: () -&gt; Unit, onOpenWakeTuning: () -&gt; Unit = {}, )</ID>
     <ID>LongMethod:BleTransport.kt:BleTransport.Companion$@SuppressLint("MissingPermission") fun connect(context: Context, device: BluetoothDevice, timeoutMs: Long = 12_000): BleTransport</ID>
     <ID>LongMethod:BodyOutbox.kt:BodyOutboxDrain$suspend fun drain(context: Context, backend: BodyBackend): DrainReport</ID>
     <ID>LongMethod:BodyScreen.kt:@Composable fun BodyScreen()</ID>

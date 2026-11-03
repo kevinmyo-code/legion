@@ -86,6 +86,7 @@ fun DumbModeSettingsScreen(onBack: () -> Unit, onOpenHome: () -> Unit) {
                     },
                 )
                 DumbSetup.notActive(rows)?.let { Text(it, style = LegionType.stamp, color = sem.estimated) }
+                FeedBlockRow(accessibilityOn = facts.accessibilityEnabled)
 
                 Spacer(Modifier.height(8.dp))
                 Text("One-time grants", style = MaterialTheme.typography.labelLarge)

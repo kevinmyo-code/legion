@@ -16,6 +16,8 @@ enum class AppOverride { ALLOW, BLOCK }
 /** Why an app is blocked or open, in the words the settings list shows (never a colour alone). */
 enum class BlockReason(val words: String) {
     SYSTEM("always open: LEGION, Settings or your Home app"),
+    /** Open on a 15 minute pass (ADR 0066). The verdict's [BlockVerdict.words] carries the minutes left. */
+    PASS("15 min pass"),
     MANUAL_BLOCK("you blocked it"),
     MANUAL_ALLOW("you allowed it"),
     KEPT("on the Matrix home list"),
@@ -27,7 +29,14 @@ enum class BlockReason(val words: String) {
     OPEN("not tagged as a feed"),
 }
 
-data class BlockVerdict(val blocked: Boolean, val reason: BlockReason)
+/** [words] is what a list shows: the reason's own words, except [BlockReason.PASS], which adds minutes left. */
+data class BlockVerdict(val blocked: Boolean, val reason: BlockReason, val words: String = reason.words)
+
+/**
+ * What the ladder needs to know about a 15 minute pass (ADR 0066). [leftMs] is null when the app has
+ * no pass running. A pass counts only outside Matrix mode: Matrix leave stays the only Matrix exit.
+ */
+data class PassFacts(val matrixOn: Boolean, val leftMs: Long?)
 
 /** Feed apps blocked whatever their category says (ADR 0062, 2026-10-24). A seed: unknown apps fall to category. */
 object BlockSeed {
@@ -89,7 +98,8 @@ class PrefsAppOverrides(private val prefs: SharedPreferences) : AppOverrides {
  * the settings list and the All apps drawer all ask this and nothing else.
  *
  * Order matters: LEGION, Settings and the Home app are never blocked (bouncing Home would loop);
- * then a manual block, then a manual allow; then kept externals (never blocked by seed or category);
+ * then a running 15 minute pass, outside Matrix mode only (ADR 0066); then a manual block, then a
+ * manual allow; then kept externals (never blocked by seed or category);
  * then the seed list; then the link, mail and SMS exemption (beats category, never seed or a manual
  * block); then category Social, Video and News. Anything else, games included, is open.
  */
@@ -100,10 +110,13 @@ object BlockModel {
         ownPackage: String,
         sources: BlockSources,
         override: AppOverride?,
+        pass: PassFacts? = null,
     ): BlockVerdict {
         if (packageName == ownPackage || packageName in sources.systemPackages()) {
             return BlockVerdict(false, BlockReason.SYSTEM)
         }
+        val passLeft = pass?.leftMs?.takeIf { !pass.matrixOn && it > 0L }
+        if (passLeft != null) return BlockVerdict(false, BlockReason.PASS, FeedPassRule.words(passLeft))
         if (override == AppOverride.BLOCK) return BlockVerdict(true, BlockReason.MANUAL_BLOCK)
         if (override == AppOverride.ALLOW) return BlockVerdict(false, BlockReason.MANUAL_ALLOW)
         if (packageName in sources.keptPackages()) return BlockVerdict(false, BlockReason.KEPT)
@@ -136,8 +149,17 @@ class BlockPolicy(
     private val ownPackage: String,
     private val sources: BlockSources,
     private val overrides: AppOverrides,
+    private val matrixOn: () -> Boolean = { false },
+    private val passLeftMs: (String) -> Long? = { null },
 ) {
     fun verdict(packageName: String): BlockVerdict =
+        BlockModel.decide(
+            packageName, ownPackage, sources, overrides.get(packageName),
+            PassFacts(matrixOn(), passLeftMs(packageName)),
+        )
+
+    /** The verdict with the stored choice but no pass: what the app returns to when a pass ends. */
+    fun verdictWithoutPass(packageName: String): BlockVerdict =
         BlockModel.decide(packageName, ownPackage, sources, overrides.get(packageName))
 
     /** The verdict with no stored choice: what the app would be if left alone. */
@@ -146,11 +168,15 @@ class BlockPolicy(
 
     fun isBlocked(packageName: String): Boolean = verdict(packageName).blocked
 
-    /** Flips [packageName]'s state. A package that is always open is left alone. Returns the new verdict. */
+    /**
+     * Flips [packageName]'s stored state. A package that is always open is left alone. A running pass
+     * is not touched: the flip changes what the app is once the pass ends. Returns the new verdict
+     * without the pass, so the screen can say what the tap changed.
+     */
     fun flip(packageName: String): BlockVerdict {
-        val now = verdict(packageName)
+        val now = verdictWithoutPass(packageName)
         if (now.reason == BlockReason.SYSTEM) return now
         overrides.set(packageName, BlockModel.flipTo(now.blocked, naturalVerdict(packageName).blocked))
-        return verdict(packageName)
+        return verdictWithoutPass(packageName)
     }
 }

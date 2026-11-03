@@ -30,7 +30,44 @@ data class DndSnapshot(
 interface DndGateway {
     fun hasAccess(): Boolean
     fun read(): DndSnapshot
-    fun apply(snapshot: DndSnapshot)
+
+    /** Writes the policy, then the filter unless [writeFilter] is false (see [DumbDnd.exit]). */
+    fun apply(snapshot: DndSnapshot, writeFilter: Boolean = true)
+}
+
+/**
+ * Who owns Do Not Disturb when LEGION has touched it, pure so the stuck-DND rules are testable
+ * (2026-11-02, ADR 0062 amendment). Filters are `INTERRUPTION_FILTER_*` ints; UNKNOWN (0) counts
+ * as ALL, as it does in [AndroidDndGateway.apply].
+ *
+ * The bug this exists for: Kevin turned Quiet off and the phone stayed in DND for six days, calls
+ * and messages silenced. The system's MANUAL rule was on with `enabler=com.kevin.legion`. Android
+ * gives an app no way to read who enabled the manual rule, so LEGION remembers instead what the
+ * user had before LEGION touched anything, and puts THAT back.
+ */
+object DndOwnership {
+    const val FILTER_UNKNOWN = 0
+    const val FILTER_ALL = 1
+
+    fun isAll(filter: Int): Boolean = filter == FILTER_ALL || filter == FILTER_UNKNOWN
+
+    /**
+     * The user's own filter, as either mode should record it on going on. A save the other mode
+     * already holds wins, because the live filter then includes LEGION's own DND: read with Quiet's
+     * rule on, `currentInterruptionFilter` says PRIORITY even though the user had none.
+     */
+    fun userFilter(live: Int, matrixSaved: DndSnapshot?, quietRecorded: Int?): Int =
+        matrixSaved?.filter ?: quietRecorded ?: live
+
+    /**
+     * After Quiet goes off: set the filter back to ALL? Yes when Matrix holds no save (it owns DND
+     * and restores on its own exit), the user had no DND of their own before Quiet, and DND is on
+     * anyway. That DND can only be LEGION's: the manual rule Android turns on when Quiet restores a
+     * silent ringer, or one left by an older build. A Quiet started by a build that recorded
+     * nothing ([userFilter] null) is treated as "the user had none".
+     */
+    fun clearAfterQuietOff(matrixSaved: DndSnapshot?, userFilter: Int?, live: Int): Boolean =
+        matrixSaved == null && isAll(userFilter ?: FILTER_ALL) && !isAll(live)
 }
 
 /** Where the user's own DND state waits while dumb mode owns it. */
@@ -60,14 +97,22 @@ sealed interface DndResult {
  * Quiet mode (`quiet/QuietMode.kt`) uses an automatic zen RULE precisely so as not to touch the
  * global policy; this class does touch it, as the brief for dumb mode specifies. If both are on at
  * once the more restrictive of the two wins, and on leaving, the global state returns to what it was
- * when dumb mode began.
+ * before LEGION touched it: the filter saved is the one Quiet recorded, never Quiet's own PRIORITY
+ * (2026-11-02, see [DndOwnership]).
  */
-class DumbDnd(private val gateway: DndGateway, private val saved: DndSavedStore) {
+class DumbDnd(
+    private val gateway: DndGateway,
+    private val saved: DndSavedStore,
+    /** True while Quiet's automatic rule is on. */
+    private val quietOn: () -> Boolean = { false },
+    /** The filter Quiet recorded as the user's own when it went on; null when Quiet is off or recorded none. */
+    private val quietUserFilter: () -> Int? = { null },
+) {
 
     fun enter(): DndResult {
         if (!gateway.hasAccess()) return DndResult.NoAccess
         return try {
-            if (saved.load() == null) saved.save(gateway.read())
+            if (saved.load() == null) saved.save(userSnapshot())
             gateway.apply(DUMB_POLICY)
             DndResult.Applied
         } catch (e: SecurityException) {
@@ -86,8 +131,22 @@ class DumbDnd(private val gateway: DndGateway, private val saved: DndSavedStore)
         }
     }
 
+    /**
+     * The live policy, with the filter the user had before LEGION. Without this, entering while
+     * Quiet is on saved PRIORITY (Quiet's rule, not the user's), and leaving wrote it back as a
+     * manual DND LEGION then owned forever (2026-11-02).
+     */
+    private fun userSnapshot(): DndSnapshot {
+        val live = gateway.read()
+        val filter = if (quietOn()) quietUserFilter() ?: DndOwnership.FILTER_ALL else live.filter
+        return live.copy(filter = filter)
+    }
+
     private fun restore(previous: DndSnapshot): DndResult = try {
-        gateway.apply(previous)
+        // With Quiet's rule still on, writing ALL would snooze that rule (setting the manual mode
+        // off snoozes active automatic rules), so Quiet would read on while DND is off. Leave the
+        // filter; Quiet's own "off" clears the manual DND then (DndOwnership.clearAfterQuietOff).
+        gateway.apply(previous, writeFilter = !(quietOn() && DndOwnership.isAll(previous.filter)))
         saved.clear()
         DndResult.Applied
     } catch (e: SecurityException) {
@@ -137,9 +196,10 @@ class AndroidDndGateway(context: Context) : DndGateway {
         )
     }
 
-    override fun apply(snapshot: DndSnapshot) {
+    override fun apply(snapshot: DndSnapshot, writeFilter: Boolean) {
         // Policy first, filter second: the filter is what makes the policy take effect.
         nm.notificationPolicy = buildPolicy(snapshot)
+        if (!writeFilter) return
         // UNKNOWN (0) cannot be set; it means the platform did not say, so treat it as "all".
         val filter = snapshot.filter.takeIf { it != NotificationManager.INTERRUPTION_FILTER_UNKNOWN }
             ?: NotificationManager.INTERRUPTION_FILTER_ALL

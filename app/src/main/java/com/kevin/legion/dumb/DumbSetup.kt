@@ -135,7 +135,7 @@ object DumbSetup {
         state = if (facts.accessibilityEnabled) {
             "On. A hidden app that opens is sent back home."
         } else {
-            "Off. Hidden apps opened another way are not sent home. Turn on \"Matrix mode\" under Downloaded apps."
+            "Off. Hidden apps opened another way are not sent home. Turn on \"LEGION blocker\" under Downloaded apps."
         },
         granted = facts.accessibilityEnabled,
         buttonLabel = "Open accessibility",
@@ -214,7 +214,8 @@ object DumbSetup {
         WallpaperManager.getInstance(context).wallpaperInfo?.component?.className == RAIN_WALLPAPER_SERVICE
     }.getOrDefault(false)
 
-    private fun accessibilityOn(context: Context): Boolean = runCatching {
+    /** Whether the LEGION blocker accessibility service is enabled (ADR 0062, ADR 0066). */
+    fun accessibilityOn(context: Context): Boolean = runCatching {
         context.getSystemService(AccessibilityManager::class.java)
             .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { info ->

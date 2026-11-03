@@ -110,3 +110,28 @@ paragraph, including "the browser" being hidden.
 - **LEGION's own screens get sparse Matrix versions**, text-only like Matrix HOME: lists and to-dos,
   calendar and brief, notes and voice notes, ledger, pantry and fleet. The Soft screens are not
   recoloured. Map: `.scratch/matrix-open/`.
+
+## Amendment, 2026-11-02: LEGION never leaves a Do Not Disturb of its own on
+
+Kevin: *"when i take it off quiet mode, its still in do not disturb and i dont get calls or message
+notifications"*. On the A25 (Android 15, One UI) Quiet's rule was off, but the system's MANUAL DND rule
+had been on for six days with `enabler=com.kevin.legion`.
+
+- **Cause (traced, from the A25's `dumpsys audio`):** Quiet "off" restores the saved ringer. When that
+  is SILENT, `setRingerMode` makes Android's ringer delegate turn on manual DND, owned by the caller,
+  LEGION. The rule then outlives Quiet's own. It feeds itself: with DND on the ringer reads SILENT, so
+  the next Quiet "on" saves SILENT again. The log shows `setRingerMode external to 0,
+  caller=com.kevin.legion` at the 11-02 Quiet off. The 10-27 event that started it is older than the
+  phone's logs; that it began the same way is reasoned, not seen.
+- **Second path (code, not seen on the phone):** Matrix saved `currentInterruptionFilter`, which counts
+  Quiet's rule. Entering Matrix with Quiet on saved PRIORITY, and leaving wrote it back as a manual DND.
+- **Rule: the filter restored is the one the user had before LEGION touched DND.** Quiet records it on
+  its first "on"; Matrix saves that record, not the live filter, when Quiet is on. When either mode
+  already holds a save, the other uses it.
+- **Quiet off, with Matrix holding no save:** if the user had no DND before Quiet and DND is on anyway,
+  set the filter back to ALL. A DND the user had is left exactly as it was. A Quiet turned on by an
+  older build that recorded nothing counts as "the user had none".
+- **Matrix off while Quiet is still on:** the policy is restored, the filter is left alone. Writing
+  ALL then would snooze Quiet's rule. Quiet's own "off" ends the manual DND.
+- **Known edge:** Android does not tell an app who enabled the manual rule. If a schedule (such as
+  Sleeping) starts while Quiet is on, Quiet "off" ends it too.

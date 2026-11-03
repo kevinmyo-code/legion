@@ -26,33 +26,70 @@ import com.kevin.legion.MidnightApplication
 import com.kevin.legion.ui.MainActivity
 
 /**
- * "Matrix mode is on" (prototype `Bounce.dc.html`, ADR 0062): shown over LEGION's home after a blocked
- * app was sent away. The blocked app's label is the only thing it says about that app. "Back to
- * home" closes it (Home was already pressed, so LEGION's home is underneath); the small link starts
- * the 60 second leave wait and opens the Leave flow.
+ * The screen a bounced app leaves behind. Two modes, picked by [EXTRA_MATRIX]:
+ *
+ * - **Matrix mode on** (prototype `Bounce.dc.html`, ADR 0062): "Matrix mode is on". "Back to home"
+ *   closes it (Home was already pressed); the small link starts the 60 second leave wait. No pass is
+ *   offered: Matrix leave is the only way out of Matrix mode (ADR 0066).
+ * - **Normal mode, "Block feed apps always"** (ADR 0066): "<App> is blocked", "Go back", and
+ *   "Ask for a 15 min pass", which runs the wall-clock wait and the sentence here and then opens the app.
  */
 class DumbBounceActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val label = intent.getStringExtra(EXTRA_APP_LABEL).orEmpty().ifBlank { "That app" }
+        val packageName = intent.getStringExtra(EXTRA_PACKAGE)
+        val graph = (application as MidnightApplication).dumb
+        // Read the live state, not only the extra: the mode may have changed since the bounce.
+        val matrix = intent.getBooleanExtra(EXTRA_MATRIX, true) || graph.controller.state.value.on
         setContent {
-            DumbBounceScreen(
-                appLabel = label,
-                onBack = { finish() },
-                onLeave = {
-                    (application as MidnightApplication).dumbMode.requestLeave()
-                    startActivity(
-                        Intent(this, MainActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-                    )
-                    finish()
-                },
-            )
+            if (matrix || packageName == null) {
+                DumbBounceScreen(
+                    appLabel = label,
+                    onBack = { finish() },
+                    onLeave = {
+                        graph.controller.requestLeave()
+                        startActivity(
+                            Intent(this, MainActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                        )
+                        finish()
+                    },
+                )
+            } else {
+                FeedBlockedScreen(
+                    appLabel = label,
+                    pass = graph.feedPass,
+                    packageName = packageName,
+                    onBack = {
+                        graph.feedPass.cancelRequest(packageName)
+                        finish()
+                    },
+                    onOpen = {
+                        val launch = packageManager.getLaunchIntentForPackage(packageName)
+                            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        val opened = launch != null && runCatching { startActivity(launch) }.isSuccess
+                        if (opened) finish()
+                        opened
+                    },
+                )
+            }
         }
+    }
+
+    /** singleTop: a second bounce while this screen shows is for a different app; rebuild for it. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        recreate()
     }
 
     companion object {
         const val EXTRA_APP_LABEL = "app_label"
+        const val EXTRA_PACKAGE = "package"
+
+        /** True when Matrix mode was on at the bounce. Missing reads as true: the old, stricter screen. */
+        const val EXTRA_MATRIX = "matrix"
     }
 }
 

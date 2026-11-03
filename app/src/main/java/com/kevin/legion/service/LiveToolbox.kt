@@ -1558,10 +1558,16 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "recall_memory",
-            description = "Search your long-term memory of past conversations and trips with the " +
-                "user. Use when they ask what you remember, reference something from before, or " +
-                "when recalling a past detail would make your reply more personal. Returns the " +
-                "closest-matching memories with the date each was noted.",
+            // 2026-10-30 (LIVE_AUDIT, A25): asked for gift ideas for his wife, the model gave a
+            // generic list and called her "their". The last two sentences: build on what came back
+            // and on what the user said, by name, in the user's own pronouns, and say so when the
+            // memories hold nothing on the question instead of guessing or refusing.
+            description = "Search your long-term memory of past conversations with the user. Use " +
+                "when they ask what you remember, mention someone or something from before, or a " +
+                "past detail would make the reply personal. Returns the closest matches, dated. " +
+                "Build your answer on what it returns and what the user just said, naming people " +
+                "as the user does, with the user's pronouns for them. If nothing returned bears " +
+                "on the question, say so in a clause and ask; never guess and never refuse.",
             params = obj("query" to schema("string", "What to look for, in a few words - e.g. " +
                 "'brakes', 'trip to Tahoe', 'favorite coffee'. Leave empty for the most recent memories.")),
             required = listOf(),
@@ -4018,8 +4024,25 @@ object LiveToolbox {
         val memories = AriaBrain.get(context).recallMemories(query)
         val arr = JSONArray()
         for (m in memories) arr.put(m)
-        return JSONObject().put("success", true).put("count", memories.size).put("memories", arr)
+        val out = JSONObject().put("success", true).put("count", memories.size).put("memories", arr)
+        // Read at answer time, which the tool description is not (2026-10-30, see RECALL_USE_NOTE).
+        if (memories.isNotEmpty()) out.put("how_to_use", RECALL_USE_NOTE)
+        return out
     }
+
+    /**
+     * Rides on every non-empty `recall_memory` result (LIVE_AUDIT, A25, 2026-10-30): with six
+     * memories about his wife in front of it, the model offered generic gift ideas and called her
+     * "their". The description is read once at setup; this is read beside the memories it is
+     * about. Names no assistant and no honorific: the register's "never sir, never Mr" lives in
+     * `ai/Personas.kt` and this must not fight it.
+     */
+    internal const val RECALL_USE_NOTE =
+        "These are things the user told you before. Build the answer on them: name the people, " +
+            "places and details as the user does, use the pronouns the memories use for a person " +
+            "(never 'they' for someone they call she or he), and make suggestions specific to what " +
+            "the memories say rather than generic. If none of them bears on the question, say so " +
+            "in a clause and ask."
 
     // --- Build sheet / spend ledger -------------------------------------
 

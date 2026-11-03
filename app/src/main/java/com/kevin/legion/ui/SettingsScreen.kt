@@ -115,9 +115,16 @@ fun SettingsScreen(
             )
 
             Spacer(Modifier.height(8.dp))
+            // Its own row (Kevin, 2026-10-30: he could not find it inside Matrix mode). Same
+            // preference as the switch on the Matrix mode screen (ADR 0066).
+            Text("Feed blocker", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            com.kevin.legion.ui.dumb.FeedBlockerSettingsRow()
+
+            Spacer(Modifier.height(8.dp))
             SettingsNavRow(
                 label = "Matrix mode",
-                status = "A short list instead of a phone. Held notifications, quiet strangers.",
+                status = "A short list instead of a phone, and the feed-app block (on always if you choose).",
                 onClick = onOpenDumbMode,
             )
 

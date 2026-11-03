@@ -7012,6 +7012,51 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - Amends the 2026-10-27 entry's "400 ms pre-roll" and the 2026-10-28 entry's "normal starts keep
   400 ms". ADR 0064 amended. Ticket `.scratch/async-lookups/issues/08-run5-6-follow-ups.md` item 3.
 
+## 2026-10-30 - Feed apps blocked outside Matrix mode, with a 15 minute pass (Kevin)
+
+- **Feed apps are blocked in normal mode too**, behind a new switch "Block feed apps always" on the
+  Matrix mode settings screen. Same ladder as Matrix mode: seed list, Social/Video/News tag, manual
+  overrides. Own prefs key, not in `DumbModeState`; off by default (clone-and-run), Kevin flips it once.
+- **Escape is a timed pass:** the same 60 s wall-clock wait as Matrix leave, then the typed sentence
+  "I am choosing to open <app> for 15 minutes". Unlocks that ONE app for 15 minutes, then it re-blocks.
+  Persisted per package on the wall clock; nothing in memory a process kill or a lock can reset.
+- **Refused while Matrix mode is on.** Matrix leave stays the only Matrix exit.
+- **Expiry with the app still open** bounces it, from the last foreground window the service saw; no
+  window content is read.
+- Streak, digest, notification hold and code rain stay Matrix-only.
+- **No in-app URL blocking.** The browser stays exempt in `BlockModel`; Kevin sets phone-wide Private DNS
+  (NextDNS) himself to close the web hole.
+- Decided by the build: an unfinished request lapses after 10 minutes, and "Go back" drops it.
+- ADR 0066. Branch `feat/feed-block-always`.
+
+## 2026-11-02 - Feed blocker: turning it off costs the same as a pass (Kevin)
+
+- **Switch OFF and unblocking an app take the pass's friction:** 60 s wall-clock wait from the tap,
+  persisted and clamped like the pass and Matrix leave, then a typed sentence ("I am choosing to turn
+  off the feed blocker", "I am choosing to unblock <app>"). Takes effect right after. Lapses after 10 min.
+- **Turning ON and blocking an app stay instant.**
+- **Matrix mode keeps what it enforces**; the gate applies there too.
+- **Accessibility service off while the switch is on:** ongoing notification "Feed blocker is off:
+  LEGION blocker accessibility service was turned off", tap to Accessibility settings. Checked on
+  service unbind/connect, app foreground and settings resume; no background work.
+- **Friction, not a lock:** no device admin, no uninstall block.
+- ADR 0066 (Consequences, 2026-11-02). Branch `fix/feed-block-off-gate`.
+
+## 2026-11-02 - LEGION never leaves its own Do Not Disturb on (Kevin's bug)
+
+- **Bug:** Quiet off, phone stuck in DND for six days (calls and messages silenced). The A25's manual DND
+  rule had `enabler=com.kevin.legion`.
+- **Cause (traced in `dumpsys audio`):** Quiet off restored a SILENT ringer; Android's ringer delegate
+  turned manual DND on as LEGION. Self-feeding: DND makes the ringer read SILENT, so the next Quiet on
+  saves SILENT. Start on 10-27 is older than the logs (reasoned).
+- **Also fixed:** Matrix saved the filter with Quiet's rule counted in (PRIORITY), and restored it as manual DND.
+- **Rule:** restore the filter the user had before LEGION touched DND. Quiet records it on first "on";
+  Matrix uses that record while Quiet is on. Quiet off with Matrix holding no save: user had none and DND
+  is on, so set ALL. The user's own DND is kept exactly (ADR 0062 rule).
+- **Matrix off while Quiet is on:** policy restored, filter left for Quiet's off (ALL would snooze Quiet's rule).
+- **Known edge:** a schedule that starts during Quiet is ended by Quiet off (enabler is not readable).
+- ADR 0062 (Amendment, 2026-11-02). Branch `fix/quiet-dnd-stuck`.
+
 ## 2026-11-02 - Recruiter is a third household role, and it only narrows (Kevin)
 
 - Ruling (map `.scratch/recruiter-demo/`, ruling 10): recruiters reach the live engine through one
