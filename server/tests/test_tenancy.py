@@ -927,12 +927,13 @@ def test_procedures_are_scoped_by_household(household_a, household_b):
 
 
 def test_procedure_runs_are_scoped_by_household(household_a, household_b, household_user):
-    """procedures ticket 13 (ruling 06). No route reads traces yet (the inspector is ticket 14),
-    so this pins the rows: a run of a BUILT-IN (no household) made in household A carries A on
+    """procedures ticket 13 (ruling 06), and ticket 14's inspector routes. This pins the rows: a
+    run of a BUILT-IN (no household) made in household A carries A on
     the run and on every step row, and nothing of it is household B's."""
     from django.utils import timezone
 
     from procedures.models import Procedure, ProcedureRun, ProcedureStep, ProcedureVersion, Source
+    from tests.conftest import _member
     from tests.test_assistant import browser
 
     definition = {
@@ -961,6 +962,14 @@ def test_procedure_runs_are_scoped_by_household(household_a, household_b, househ
     assert set(ProcedureStep.objects.values_list("household_id", flat=True)) == {household_a.id}
     assert not ProcedureRun.objects.filter(household=household_b).exists()
     assert not ProcedureStep.objects.filter(household=household_b).exists()
+
+
+    # procedures ticket 14: the inspector's routes. B's member sees none of A's run.
+    b_client = browser(_member(household_b, "b-inspector@example.com"))
+    assert b_client.get("/api/procedures/runs").data["results"] == []
+    assert b_client.get(f"/api/procedures/runs/{run.id}").status_code == 404
+    assert b_client.get("/api/procedures/report?name=lists_check").data["runs"] == 0
+    assert [r["id"] for r in client.get("/api/procedures/runs").data["results"]] == [str(run.id)]
 
 
 def test_every_registered_table_has_a_leak_test():

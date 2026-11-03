@@ -592,6 +592,41 @@ def test_the_visitors_declaration_lists_only_procedures_it_may_run(world):
     assert "member_only" not in tool.description and "kevins_own" not in tool.description
 
 
+def test_the_visitors_run_inspector_shows_its_own_runs_and_nothing_of_kevins(world):
+    """procedures ticket 14 (ruling 07): the inspector on the visit's own runs only. A run in
+    Kevin's household of the same built-in is never listed, never readable, never counted in
+    the branch report, and his own procedure is not in the picker."""
+    import json
+
+    from django.utils import timezone
+
+    from procedures.models import ProcedureRun, ProcedureVersion
+
+    _procedure(_visit_read())
+    _procedure(_visit_read("kevins_own"), household=world["kevin"])
+    _allowed(world, "run_procedure", {"name": "visit_read"})
+    (own,) = ProcedureRun.objects.all()
+    kevins = ProcedureRun.objects.create(
+        household=world["kevin"], user=None, caller_kind="web", status="ok",
+        version=ProcedureVersion.objects.get(procedure__name="visit_read"),
+        started_at=timezone.now(), result=f"Kevin's answer {MARK}",
+    )
+    browser = world["browser"]
+    listing = browser.get("/api/procedures/runs")
+    assert listing.status_code == 200, listing.data
+    assert [r["id"] for r in listing.data["results"]] == [str(own.id)]
+    detail = browser.get(f"/api/procedures/runs/{own.id}")
+    assert detail.status_code == 200 and len(detail.data["steps"]) == 4
+    assert browser.get(f"/api/procedures/runs/{kevins.id}").status_code == 404
+    report = browser.get("/api/procedures/report?name=visit_read")
+    assert report.status_code == 200 and report.data["runs"] == 1
+    assert browser.get("/api/procedures/report?name=kevins_own").status_code == 404
+    picker = browser.get("/api/procedures/")
+    assert [v["procedure"] for v in picker.data] == ["visit_read"]
+    for response in (listing, detail, report, picker):
+        assert _leaks(world, json.dumps(response.data, default=str)) == []
+
+
 def test_every_allowed_tool_was_exercised():
     """The tests above and in section 4 name each tool by hand; a tool added
     to `RECRUITER_TOOLS` fails here until it gets an isolation test."""
