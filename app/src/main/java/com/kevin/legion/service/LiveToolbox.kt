@@ -49,6 +49,7 @@ import com.kevin.legion.util.relativeAge
 import com.kevin.legion.util.shortDate
 import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import com.kevin.legion.location.ReminderController
@@ -100,6 +101,8 @@ import com.kevin.legion.vehicle.ColdStartAgent
 import com.kevin.legion.vehicle.DiagnosticAgent
 import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.DtcDescriptions
+import com.kevin.legion.vehicle.DtcLookup
+import com.kevin.legion.vehicle.DtcMeanings
 import com.kevin.legion.vehicle.GarageController
 import com.kevin.legion.vehicle.GaragePreferences
 import com.kevin.legion.vehicle.MaintenanceAgent
@@ -6501,8 +6504,9 @@ object LiveToolbox {
      * escalates to the diagnostics sub-agent here. That escalation is what
      * makes diagnose_codes slow; skipping it is the whole point of this tool
      * existing separately (`.scratch/glance-cards/issues/01-*`). An unknown
-     * code just shows with no description rather than blocking on a Gemini
-     * call for a quick factual "what's the codes" ask.
+     * code never blocks this tool on a Gemini call: since 2026-11-03 it is
+     * looked up in the BACKGROUND ([com.kevin.legion.vehicle.DtcLookup]) and
+     * the glance card is redrawn with the AI-labelled answer when it lands.
      */
     /**
      * Dispatches `get_current_time` (Kevin, 2026-08-07: "ai is telling me its 413 am in katy
@@ -6533,6 +6537,11 @@ object LiveToolbox {
         return result(true, "$stamp ($zoneName, the phone's own clock).")
     }
 
+    /** Outlives the get_codes call, so the glance card can be redrawn after the lookup settles. */
+    private val glanceRefreshScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + Dispatchers.Default,
+    )
+
     private suspend fun getCodes(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return result(false, "The OBD adapter isn't connected, so I can't read any codes.")
@@ -6542,21 +6551,43 @@ object LiveToolbox {
             return result(true, "No codes stored - everything's clear.")
         }
 
-        val info = withContext(Dispatchers.IO) {
-            DtcDescriptions.loadSeed(context) + DtcDescriptions.loadLearned(context)
-        }
-        GlanceCardController.show(
-            GlanceCardPayload(
-                shape = GlanceShape.LIST,
-                title = "Codes",
-                rows = codes.map { code -> GlanceRow(code, info[code]?.first ?: "Not yet described") },
-                sourceTool = "get_codes",
-            )
+        val seed = withContext(Dispatchers.IO) { DtcDescriptions.loadSeed(context) }
+        val learned = withContext(Dispatchers.IO) { DtcDescriptions.loadLearned(context) }
+        val info = seed + learned
+        val lookup = DtcLookup.get(context)
+        val glance = GlanceCardPayload(
+            shape = GlanceShape.LIST,
+            title = "Codes",
+            rows = codeGlanceRows(codes, seed, learned, lookup.state.value),
+            sourceTool = "get_codes",
         )
+        GlanceCardController.show(glance)
+        // Unknown codes (2026-11-03): the card says "Looking this up..." and the diagnostics
+        // sub-agent is asked in the background, never inside this tool's budget. When it settles,
+        // the same card (if still showing) is redrawn with the AI-labelled answer or "No
+        // description yet"; the redraw restarts the card's 5 s dismiss, which is intended.
+        val unknown = codes.filter { it !in info }
+        if (unknown.isNotEmpty()) {
+            val mac0 = ObdBluetoothManager.connectedDeviceAddress
+            val label = mac0?.let { m ->
+                runCatching { com.kevin.legion.vehicle.FleetEngineStore.getByMac(context, m) }.getOrNull()
+                    ?.let { VehicleController.label(it) }
+            }.orEmpty()
+            lookup.request(label, unknown)
+            glanceRefreshScope.launch {
+                lookup.awaitSettled(unknown)
+                val rows = codeGlanceRows(codes, seed, learned, lookup.state.value)
+                GlanceCardController.replace(glance.shownAt, glance.sourceTool) { it.copy(rows = rows) }
+            }
+        }
 
         val spoken = codes.joinToString("; ") { code ->
             val name = info[code]?.first
-            if (name != null) "$code, $name" else code
+            when {
+                name == null -> code
+                code in seed -> "$code, $name"
+                else -> "$code, $name (${DtcMeanings.AI_LABEL})"
+            }
         }
         // Each live code's freeze frame (2026-11-03): the snapshot saved with the newest stored
         // event that carries the code. Mode 02 is not re-read here - ten more PID round trips
@@ -6569,7 +6600,9 @@ object LiveToolbox {
         val perCode = JSONArray()
         for (code in codes) {
             val o = JSONObject().put("code", code)
-            info[code]?.first?.let { o.put("meaning", it) }
+            info[code]?.first?.let {
+                o.put("meaning", it).put("meaningSource", if (code in seed) "code_standard" else "ai_explanation")
+            }
             val ff = stored.firstOrNull { code in CarToolbelt.codeList(it.codesJson) }
                 ?.let { com.kevin.legion.vehicle.FreezeFrame.fields(it.freezeFrameJson, unit) }
                 .orEmpty()

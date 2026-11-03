@@ -21,6 +21,7 @@ import com.kevin.legion.ui.fleet.CodesCard
 import com.kevin.legion.ui.fleet.codesCardState
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.util.TempUnit
+import com.kevin.legion.vehicle.DtcMeanings
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -60,21 +61,29 @@ class CodesCardScreenshotTest {
         vehicleId = "car:jeep", timestamp = now - 8 * day, outcome = "CLEARED", codesBeforeJson = """["P1282"]""",
     )
 
-    private val state = codesCardState(
+    private fun stateWith(
+        learned: Map<String, Pair<String, String>> = emptyMap(),
+        failed: Set<String> = emptySet(),
+    ) = codesCardState(
         vehicleLabel = "1998 Jeep Cherokee",
         events = listOf(noFrame, withFrame),
         clears = listOf(clear),
-        descriptions = mapOf("P0420" to ("Catalyst efficiency below threshold, bank 1" to "")),
+        seed = mapOf("P0420" to ("Catalyst efficiency below threshold, bank 1" to "")),
+        learned = learned,
         tempUnit = TempUnit.CELSIUS,
         zone = ZoneOffset.UTC,
+        failed = failed,
     )
 
-    private fun show(initialSelected: Long?) {
+    // P1282's lookup failed: the golden shows the fallback in words, not a blank.
+    private val state = stateWith(failed = setOf("P1282"))
+
+    private fun show(initialSelected: Long?, cardState: com.kevin.legion.ui.fleet.CodesCardState = state) {
         composeTestRule.setContent {
             SoftTheme {
                 var selected by remember { mutableStateOf(initialSelected) }
                 Box(Modifier.background(MaterialTheme.colorScheme.surface)) {
-                    CodesCard(state, selected, onSelect = { selected = it }, onClose = {})
+                    CodesCard(cardState, selected, onSelect = { selected = it }, onClose = {})
                 }
             }
         }
@@ -95,9 +104,26 @@ class CodesCardScreenshotTest {
         composeTestRule.onNodeWithText("P1282").performClick()
         composeTestRule.onNodeWithText("Freeze frame, P1282").assertIsDisplayed()
         composeTestRule.onNodeWithText("No snapshot was saved for this code.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("No description yet").assertIsDisplayed()
+        composeTestRule.onNodeWithText(DtcMeanings.MANUFACTURER_NOTE).assertIsDisplayed()
         val engineRows = composeTestRule.onAllNodes(androidx.compose.ui.test.hasText("Engine speed"))
         assertTrue(engineRows.fetchSemanticsNodes().isEmpty())
         composeTestRule.onRoot().captureRoboImage("codes-card-no-snapshot.png")
+    }
+
+    @Test
+    fun `an unknown code says it is being looked up`() {
+        show(null, stateWith())
+        composeTestRule.onNodeWithText("Looking this up...").assertIsDisplayed()
+    }
+
+    @Test
+    fun `an AI-written meaning is labelled in words`() {
+        show(null, stateWith(learned = mapOf("P1282" to ("Fuel Pump Relay Control Circuit" to "Relay or wiring."))))
+        composeTestRule.onNodeWithText("Fuel Pump Relay Control Circuit").assertIsDisplayed()
+        composeTestRule.onNodeWithText("AI explanation, not from the code standard").assertIsDisplayed()
+        val aiOnSeedCode = composeTestRule.onAllNodes(androidx.compose.ui.test.hasText(DtcMeanings.AI_LABEL))
+        assertTrue(aiOnSeedCode.fetchSemanticsNodes().size == 1)
     }
 
     @Test
