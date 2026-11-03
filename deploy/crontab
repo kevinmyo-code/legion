@@ -41,8 +41,7 @@
 # VAPID_* keys unset it says push is off and sends nothing.
 */5 * * * * python manage.py push_dispatch
 
-# recruiter-demo ticket 03: rebuild the FAKE demo household recruiters read, so
-# its dates stay relative to today. --reset deletes what the engine allows
-# deleting; gated rows are immutable and are found already committed. 04:15 UTC,
-# clear of backup_nightly.
-15 4 * * * python manage.py seed_demo_household --reset
+# recruiter-demo ticket 13: each recruiter visit has its own copy of the demo
+# household; delete the copies (and their visitors and tokens) whose visit has
+# ended. Hourly at :20, clear of push_dispatch's and morning_brief's minutes.
+20 * * * * python manage.py prune_demo_visitors
