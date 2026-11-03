@@ -38,7 +38,7 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 
 <!-- VOICE-SURFACE:START -->
 
-**127 voice tools across 16 domains**, dispatched from one Gemini Live
+**128 voice tools across 17 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
@@ -54,6 +54,7 @@ model rather than to sell the feature.
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |
 | Music | 4 | &ldquo;Play the Roadtrip playlist&rdquo; |
 | Mail and calendar | 5 | &ldquo;Any mail from the garage?&rdquo; |
+| The web | 1 | &ldquo;Find me a picture of a red XJ on stock height&rdquo; |
 | Books | 1 | &ldquo;What's the last book I read?&rdquo; |
 | Phone calls | 3 | &ldquo;Answer it&rdquo; |
 | Recordings | 4 | &ldquo;Record this meeting&rdquo; |

@@ -2429,6 +2429,10 @@ object LiveToolbox {
         val booksDecls = BooksToolbox.declarations()
         for (i in 0 until booksDecls.length()) fns.put(booksDecls.getJSONObject(i))
 
+        // voice-browser ticket 01 (ADR 0071): LEGION's own browser, one action-dispatched declaration.
+        val browserDecls = BrowserToolbox.declarations()
+        for (i in 0 until browserDecls.length()) fns.put(browserDecls.getJSONObject(i))
+
         return fns
     }
 
@@ -2736,6 +2740,7 @@ object LiveToolbox {
         EngineToolbox.dispatch(context, name, args)?.let { return it }
         PurchaseToolbox.dispatch(context, name, args)?.let { return it }
         BooksToolbox.dispatch(context, name, args)?.let { return it }
+        BrowserToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
@@ -3211,7 +3216,7 @@ object LiveToolbox {
     // is that it was never stored, not that something remembered to exclude it") is exactly why
     // this line, not a habit in `mailExtraction` itself, is what has to be right.
     val EPISODIC_EXCLUDED_TOOLS = setOf(
-        "search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status",
+        "search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status", "browser",
     )
 
     /**
@@ -3250,7 +3255,8 @@ object LiveToolbox {
      * rule numbers, matching [AriaBrain]'s own REMEMBER_ACKS for tone rather than reading like a
      * system error.
      */
-    private const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail - that's on " +
+    // ADR 0071: a web page read in the same turn trips the same gate, so the words name both.
+    private const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail or web pages - that's on " +
         "purpose, not a slip. Tell me the fact yourself, in your own words, and I'll remember that."
 
     /**

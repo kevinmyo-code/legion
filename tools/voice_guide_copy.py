@@ -42,6 +42,7 @@ GROUP_BLURBS = {
     "Goals and advice": "Longer-term things, and the per-aspect advisors.",
     "Music": "Spotify, mostly. Needs it connected in Setup.",
     "Mail and calendar": "Needs a Google account connected.",
+    "The web": "LEGION's own browser. Sites you sign in to stay signed in; saved passwords come from Android's autofill.",
     "Books": "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
     "Phone calls": "Needs phone permissions granted in Setup.",
     "Recordings": "Voice notes and meetings. Audio, a transcript and a summary are all kept until "
@@ -208,6 +209,7 @@ COPY = {
     "create_record": ("Log bench press, 185 for 5", "Writes one new entry into one of your trackers. Only writes what you actually said - never guesses a value.", "Voice only for now, same as list_aspects."),
     "update_record": ("Change that to 190 pounds", "Changes one or more fields on an entry you already logged.", "Voice only for now, same as list_aspects."),
     "delete_record": ("Delete that entry", "Removes one entry (into a 30-day recoverable trash) right away, or asks you to confirm first when it would remove several at once.", "Voice only for now, same as list_aspects."),
+    "browser": ("Find me a picture of a red XJ on stock height", "Opens LEGION's own browser on a Google search, Google Images, or a web address, and says it opened only once the page has loaded. Say 'read it' to hear the page and its numbered links and buttons, then 'tap 3', 'scroll down', 'type my email into 2', 'go back' or 'close the browser'. It never types a password: tap the field and Android's autofill offers the saved one. Before anything that pays, orders, sends, posts, books, deletes or submits a form it asks you first, and only a yes in your very next reply goes ahead. Feed sites like Instagram or YouTube are blocked the same way their apps are. To get an answer spoken rather than a page shown, just ask the question.", "Matrix home's Browser entry, or Browser in the app drawer: the address bar, back, forward, reload and close."),
     "books": ("What's the last book I read?", "Tells you the last book you were reading and where you left off, without opening it; say 'pull it up' to open it there. Also opens a named book from your Books folder in the reader ('Read me Moby-Dick'). Say 'read aloud' to have the phone's own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.", "HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card."),
     "aspect_clerk": ("Log three sets of squats at 225, 5 reps each", "A helper that works out what to read or write across your trackers for a request with more than one step - finding something first, or logging several things from one sentence. Tells you plainly how much of it actually got written.", "Voice only for now, same as list_aspects."),
     "create_aspect": ("Start tracking my reading - book, pages, date finished", "Drafts a brand-new tracker from what you describe and reads the shape back to you. Creates nothing until you say yes.", "Voice only for now, same as list_aspects."),
@@ -225,6 +227,7 @@ GROUPS = {
     "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
     "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status"],
+    "The web": ["browser"],
     "Books": ["books"],
     "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Recordings": ["start_voice_note", "stop_voice_note", "read_voice_note", "list_voice_notes"],

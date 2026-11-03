@@ -201,6 +201,13 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "The web",
+            blurb = "LEGION's own browser. Sites you sign in to stay signed in; saved passwords come from Android's autofill.",
+            entries = listOf(
+                Entry(name = "browser", say = "Find me a picture of a red XJ on stock height", does = "Opens LEGION's own browser on a Google search, Google Images, or a web address, and says it opened only once the page has loaded. Say 'read it' to hear the page and its numbered links and buttons, then 'tap 3', 'scroll down', 'type my email into 2', 'go back' or 'close the browser'. It never types a password: tap the field and Android's autofill offers the saved one. Before anything that pays, orders, sends, posts, books, deletes or submits a form it asks you first, and only a yes in your very next reply goes ahead. Feed sites like Instagram or YouTube are blocked the same way their apps are. To get an answer spoken rather than a page shown, just ask the question.", hands = "Matrix home's Browser entry, or Browser in the app drawer: the address bar, back, forward, reload and close."),
+            ),
+        ),
+        Group(
             title = "Books",
             blurb = "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
             entries = listOf(
@@ -261,6 +268,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 127 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 127
+    /** Total entries across every group above - 128 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 128
 }

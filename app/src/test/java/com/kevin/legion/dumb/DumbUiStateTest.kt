@@ -72,10 +72,12 @@ class DumbUiStateTest {
     }
 
     @Test
-    fun `the kept list is the thirteen entries in the ruled order, WhatsApp after Messages`() {
+    fun `the kept list is the fourteen entries in the ruled order, WhatsApp after Messages`() {
+        // Browser joined after Brief on 2026-11-03 (ADR 0071).
         assertEquals(
             listOf(
-                "Phone", "Messages", "WhatsApp", "Maps", "Camera", "Music", "To-dos", "Calendar", "Brief", "Books",
+                "Phone", "Messages", "WhatsApp", "Maps", "Camera", "Music", "To-dos", "Calendar", "Brief", "Browser",
+                "Books",
                 "All apps", "LEGION", "Assistant",
             ),
             KeptEntry.entries.map { it.label },

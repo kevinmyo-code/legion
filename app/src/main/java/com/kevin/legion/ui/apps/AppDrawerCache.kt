@@ -44,6 +44,9 @@ internal object AppDrawerCache {
     private const val TAG = "AppDrawerCache"
     private const val ICON_PX = 96
 
+    /** The manifest's launcher alias for LEGION's browser (ADR 0071). */
+    private const val BROWSER_ENTRY = "com.kevin.legion.ui.browser.BrowserLauncher"
+
     @Volatile private var cached: Loaded? = null
     private val icons = ConcurrentHashMap<String, ImageBitmap>()
     private val mutex = Mutex()
@@ -113,7 +116,9 @@ internal object AppDrawerCache {
             val activities = runCatching { launcherApps.getActivityList(null, profile) }.getOrDefault(emptyList())
             for (info in activities) {
                 val component = info.componentName
-                if (!isWork && component.packageName == context.packageName) continue // already here
+                // LEGION itself is already here; its "Browser" entry (ADR 0071) is listed like any app.
+                val ownEntry = component.packageName == context.packageName && component.className != BROWSER_ENTRY
+                if (!isWork && ownEntry) continue
                 apps += DrawerApp(info.label.toString(), component.packageName, component.className, isWork, key)
                 val k = iconKey(key, component.packageName, component.className)
                 // The slow part, and now only done for icons not already held.

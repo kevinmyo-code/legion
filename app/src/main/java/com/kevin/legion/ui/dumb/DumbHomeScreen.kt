@@ -49,6 +49,7 @@ import com.kevin.legion.ui.assistant.AssistantChatViewModel
 import com.kevin.legion.ui.assistant.ChatPanelSheet
 import com.kevin.legion.ui.assistant.ChatPanelState
 import com.kevin.legion.ui.assistant.TypedChatUi
+import com.kevin.legion.ui.browser.BrowserActivity
 import com.kevin.legion.ui.home.BooksCallbacks
 import com.kevin.legion.ui.home.BooksHome
 import com.kevin.legion.ui.home.BooksSheet
@@ -171,6 +172,7 @@ fun DumbHome(
                 KeptEntry.CALENDAR -> matrixStack = listOf(MatrixDest.CALENDAR)
                 KeptEntry.BRIEF -> matrixStack = listOf(MatrixDest.BRIEF)
                 KeptEntry.BOOKS -> booksOpen = true
+                KeptEntry.BROWSER -> context.startActivity(BrowserActivity.intent(context))
                 KeptEntry.ALL_APPS -> allAppsOpen = true
                 KeptEntry.LEGION -> matrixStack = listOf(MatrixDest.INDEX)
                 KeptEntry.ASSISTANT -> panel.show()

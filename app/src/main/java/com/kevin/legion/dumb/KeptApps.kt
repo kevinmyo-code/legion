@@ -28,6 +28,9 @@ enum class KeptEntry(val label: String) {
     TODOS("To-dos"),
     CALENDAR("Calendar"),
     BRIEF("Brief"),
+
+    /** LEGION's own browser (ADR 0071). After Brief, so All apps still follows Books. */
+    BROWSER("Browser"),
     BOOKS("Books"),
     ALL_APPS("All apps"),
     LEGION("LEGION"),

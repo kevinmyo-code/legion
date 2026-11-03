@@ -85,6 +85,28 @@ class MidnightApplication : Application() {
      */
     val brief: com.kevin.legion.brief.BriefController by lazy { com.kevin.legion.brief.BriefController.forApp(this) }
 
+    /**
+     * LEGION's browser (ADR 0071): the one owner of the WebView, for the `browser` voice tool and the
+     * browser screen alike (ADR 0035). Its feed check is the app bounce's own: the bounce is running and
+     * [com.kevin.legion.dumb.BlockPolicy] says the site's app is blocked. Built by hand like [dumb].
+     */
+    val browser: com.kevin.legion.browser.BrowserController by lazy {
+        com.kevin.legion.browser.BrowserController(
+            launchScreen = { startActivity(com.kevin.legion.ui.browser.BrowserActivity.intent(this)) },
+            gate = { url ->
+                com.kevin.legion.browser.FeedSiteGate.check(
+                    url = url,
+                    bounceActive = dumb.bounceActive(),
+                    matrixOn = dumb.controller.state.value.on,
+                    isBlocked = dumb.blockPolicy::isBlocked,
+                )
+            },
+        )
+    }
+
+    /** The `browser` voice tool over [browser]; holds the last page's numbers and the ask-first token. */
+    val browserTool: com.kevin.legion.browser.BrowserTool by lazy { com.kevin.legion.browser.BrowserTool(browser) }
+
     /** The mode's state machine, kept as its own name because the tile and the screens read only this. */
     val dumbMode: com.kevin.legion.dumb.DumbModeController get() = dumb.controller
 

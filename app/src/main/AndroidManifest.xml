@@ -502,6 +502,30 @@
                 android:resource="@xml/dumb_bounce_service" />
         </service>
 
+        <!-- LEGION's browser (ADR 0071). Its own task so the page survives between voice commands and
+             whatever MainActivity shows meanwhile. Not exported and reads no extras: the voice tool
+             hands it pages in-process. The alias below is the "Browser" entry every app drawer lists
+             (ADR 0035's hands path); it carries nothing in from another app. -->
+        <activity
+            android:name=".ui.browser.BrowserActivity"
+            android:exported="false"
+            android:label="Browser"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.kevin.legion.browser"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|navigation|uiMode"
+            android:theme="@style/Theme.Legion" />
+        <activity-alias
+            android:name=".ui.browser.BrowserLauncher"
+            android:exported="true"
+            android:label="Browser"
+            android:targetActivity=".ui.browser.BrowserActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- The "Matrix mode is on" screen a bounced app leaves behind. Not exported: only the bounce
              service starts it. Out of Recents so it does not linger as a way back to anything. -->
         <activity

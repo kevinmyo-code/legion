@@ -48,6 +48,8 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/PurchaseToolbox.kt',
     # books ticket 02: the one `books` tool (open a book, continue, read aloud).
     ROOT / 'app/src/main/java/com/kevin/legion/service/BooksToolbox.kt',
+    # voice-browser ticket 01 (ADR 0071): the one `browser` tool.
+    ROOT / 'app/src/main/java/com/kevin/legion/service/BrowserToolbox.kt',
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'

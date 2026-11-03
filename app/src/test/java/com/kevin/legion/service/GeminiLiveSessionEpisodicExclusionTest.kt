@@ -86,10 +86,13 @@ class GeminiLiveSessionEpisodicExclusionTest {
         //
         // SIX since 2026-08-22 (ticket 25): `track_package`/`flight_status` joined, each declared
         // straight to the live session rather than behind `ask_mail` - see those two tests above.
+        //
+        // SEVEN since 2026-11-03 (ADR 0071): `browser`. A web page is other people's words, read to
+        // answer and dropped; the browser's own tool result carries page text, so the tool joins.
         assertEquals(
             setOf(
                 "search_mail", "read_mail", "ask_mail", "get_sitrep",
-                "track_package", "flight_status",
+                "track_package", "flight_status", "browser",
             ),
             LiveToolbox.EPISODIC_EXCLUDED_TOOLS,
         )

@@ -1339,8 +1339,11 @@ class LiveSessionController(context: Context) {
     }
 
     /** The per-tool ceiling: the investigating specialists get a longer leash than plain tools. */
-    private fun toolTimeoutFor(name: String): Long =
-        if (name in SUB_AGENT_TOOLS) SUB_AGENT_TOOL_TIMEOUT_MS else TOOL_TIMEOUT_MS
+    private fun toolTimeoutFor(name: String): Long = when (name) {
+        in SUB_AGENT_TOOLS -> SUB_AGENT_TOOL_TIMEOUT_MS
+        BrowserToolbox.TOOL_NAME -> BROWSER_TOOL_TIMEOUT_MS
+        else -> TOOL_TIMEOUT_MS
+    }
 
     /**
      * [runTool] bounded by [toolTimeoutFor], never throwing: a timeout or a thrown tool comes back
@@ -1668,6 +1671,11 @@ class LiveSessionController(context: Context) {
         // LiveToolbox.DISPATCH_ROUTE_BUDGET_MS (42 s), which must stay below this so the
         // dispatcher's own failure wording speaks rather than this generic timeout.
         internal const val SUB_AGENT_TOOL_TIMEOUT_MS = 45_000L
+
+        // ADR 0071: `browser open` waits for the page to finish (BrowserController.LOAD_MS, 20 s,
+        // plus up to 6 s for the screen to come up), and phone pages often take longer than 10 s.
+        // Above both, so the tool's own "has not finished loading" speaks rather than a timeout.
+        internal const val BROWSER_TOOL_TIMEOUT_MS = 30_000L
         private val SUB_AGENT_TOOLS = setOf(
             "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start",
             "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail",
