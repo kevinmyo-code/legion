@@ -309,13 +309,16 @@ def test_what_the_engine_says_about_the_unbalanced_receipt():
 def test_a_recruiter_can_ask_which_card_charges_are_unverified():
     """`/try` offers "Which card charges are unverified?" (Kevin, 2026-11-02,
     in place of the rejected-receipt chip). Through the recruiter's own tool
-    door, scoped to the seeded demo, the answer is there in words."""
+    door, scoped to the visitor's own seeded copy (ticket 13), the answer is
+    there in words."""
     import uuid
 
+    from household.demo_seed import seed_household
     from household.models import HouseholdMember, User
     from tests.test_recruiter import _recruiter_browser, _visitor_token
 
-    demo = seed(today=TODAY).household
+    demo = Household.objects.create(name="Demo visit seed", is_demo_visit=True)
+    seed_household(demo, today=TODAY, created=True)
     user = User.objects.create_user(email=f"visitor-{uuid.uuid4().hex[:12]}@demo.invalid")
     HouseholdMember.objects.create(user=user, household=demo, role=HouseholdMember.RECRUITER)
     token, _raw = _visitor_token(user)
