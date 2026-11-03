@@ -31,6 +31,7 @@ sealed interface DtcMeaning {
 }
 
 object DtcMeanings {
+    private const val CODE_PREFIX_LEN = 3
     const val AI_LABEL = "AI explanation, not from the code standard"
     const val LOOKING_UP = "Looking this up..."
     const val NO_DESCRIPTION = "No description yet"
@@ -44,7 +45,7 @@ object DtcMeanings {
      */
     fun isManufacturerSpecific(code: String): Boolean {
         val c = code.trim().uppercase()
-        if (c.length < 3) return false
+        if (c.length < CODE_PREFIX_LEN) return false
         return when (c[0]) {
             'P' -> c[1] == '1' || (c[1] == '3' && c[2] in '0'..'3')
             'B', 'C', 'U' -> c[1] == '1' || c[1] == '2'
@@ -59,9 +60,14 @@ object DtcMeanings {
         learned: Map<String, Pair<String, String>>,
         failed: Set<String>,
     ): DtcMeaning {
-        seed[code]?.let { return DtcMeaning.Standard(it.first, it.second) }
-        learned[code]?.let { return DtcMeaning.AiExplanation(it.first, it.second) }
-        return if (code in failed) DtcMeaning.NoDescription else DtcMeaning.LookingUp
+        val fromSeed = seed[code]
+        val fromLearned = learned[code]
+        return when {
+            fromSeed != null -> DtcMeaning.Standard(fromSeed.first, fromSeed.second)
+            fromLearned != null -> DtcMeaning.AiExplanation(fromLearned.first, fromLearned.second)
+            code in failed -> DtcMeaning.NoDescription
+            else -> DtcMeaning.LookingUp
+        }
     }
 
     /** The main line of text for a code. */

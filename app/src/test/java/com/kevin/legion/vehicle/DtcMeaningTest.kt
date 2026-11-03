@@ -61,7 +61,8 @@ class DtcMeaningTest {
         }
         val m = DtcMeanings.resolve("P1282", seed, learned, emptySet())
         assertTrue(DtcMeanings.MANUFACTURER_NOTE in DtcMeanings.notes("P1282", m))
-        assertFalse(DtcMeanings.MANUFACTURER_NOTE in DtcMeanings.notes("P0420", DtcMeanings.resolve("P0420", seed, learned, emptySet())))
+        val generic = DtcMeanings.resolve("P0420", seed, learned, emptySet())
+        assertFalse(DtcMeanings.MANUFACTURER_NOTE in DtcMeanings.notes("P0420", generic))
     }
 
     @Test
@@ -105,7 +106,8 @@ class DtcMeaningTest {
                 retryAfterMs = 1_000L,
             )
             lookup.request("", listOf("P1491"))
-            assertEquals(DtcMeaning.NoDescription, DtcMeanings.resolve("P1491", emptyMap(), lookup.state.value.learned, lookup.state.value.failed))
+            val s = lookup.state.value
+            assertEquals(DtcMeaning.NoDescription, DtcMeanings.resolve("P1491", emptyMap(), s.learned, s.failed))
             clock = 1_000L
             lookup.request("", listOf("P1491"))
             assertEquals(2, calls)

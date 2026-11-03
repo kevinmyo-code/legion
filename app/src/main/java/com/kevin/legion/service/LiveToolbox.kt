@@ -6542,6 +6542,47 @@ object LiveToolbox {
         kotlinx.coroutines.SupervisorJob() + Dispatchers.Default,
     )
 
+    private fun spokenCode(
+        code: String,
+        seed: Map<String, Pair<String, String>>,
+        info: Map<String, Pair<String, String>>,
+    ): String {
+        val name = info[code]?.first
+        return when {
+            name == null -> code
+            code in seed -> "$code, $name"
+            else -> "$code, $name (${DtcMeanings.AI_LABEL})"
+        }
+    }
+
+    /**
+     * Unknown codes (2026-11-03): the glance card says "Looking this up..." and the diagnostics
+     * sub-agent is asked in the background, never inside get_codes' budget. When it settles, the
+     * same card (if still showing) is redrawn with the AI-labelled answer or "No description yet";
+     * the redraw restarts the card's 5 s dismiss, which is intended.
+     */
+    private suspend fun lookUpUnknownCodes(
+        context: Context,
+        codes: List<String>,
+        seed: Map<String, Pair<String, String>>,
+        learned: Map<String, Pair<String, String>>,
+        glance: GlanceCardPayload,
+    ) {
+        val unknown = codes.filter { it !in seed && it !in learned }
+        if (unknown.isEmpty()) return
+        val lookup = DtcLookup.get(context)
+        val label = ObdBluetoothManager.connectedDeviceAddress?.let { m ->
+            runCatching { com.kevin.legion.vehicle.FleetEngineStore.getByMac(context, m) }.getOrNull()
+                ?.let { VehicleController.label(it) }
+        }.orEmpty()
+        lookup.request(label, unknown)
+        glanceRefreshScope.launch {
+            lookup.awaitSettled(unknown)
+            val rows = codeGlanceRows(codes, seed, learned, lookup.state.value)
+            GlanceCardController.replace(glance.shownAt, glance.sourceTool) { it.copy(rows = rows) }
+        }
+    }
+
     private suspend fun getCodes(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return result(false, "The OBD adapter isn't connected, so I can't read any codes.")
@@ -6554,41 +6595,15 @@ object LiveToolbox {
         val seed = withContext(Dispatchers.IO) { DtcDescriptions.loadSeed(context) }
         val learned = withContext(Dispatchers.IO) { DtcDescriptions.loadLearned(context) }
         val info = seed + learned
-        val lookup = DtcLookup.get(context)
         val glance = GlanceCardPayload(
             shape = GlanceShape.LIST,
             title = "Codes",
-            rows = codeGlanceRows(codes, seed, learned, lookup.state.value),
+            rows = codeGlanceRows(codes, seed, learned, DtcLookup.get(context).state.value),
             sourceTool = "get_codes",
         )
         GlanceCardController.show(glance)
-        // Unknown codes (2026-11-03): the card says "Looking this up..." and the diagnostics
-        // sub-agent is asked in the background, never inside this tool's budget. When it settles,
-        // the same card (if still showing) is redrawn with the AI-labelled answer or "No
-        // description yet"; the redraw restarts the card's 5 s dismiss, which is intended.
-        val unknown = codes.filter { it !in info }
-        if (unknown.isNotEmpty()) {
-            val mac0 = ObdBluetoothManager.connectedDeviceAddress
-            val label = mac0?.let { m ->
-                runCatching { com.kevin.legion.vehicle.FleetEngineStore.getByMac(context, m) }.getOrNull()
-                    ?.let { VehicleController.label(it) }
-            }.orEmpty()
-            lookup.request(label, unknown)
-            glanceRefreshScope.launch {
-                lookup.awaitSettled(unknown)
-                val rows = codeGlanceRows(codes, seed, learned, lookup.state.value)
-                GlanceCardController.replace(glance.shownAt, glance.sourceTool) { it.copy(rows = rows) }
-            }
-        }
-
-        val spoken = codes.joinToString("; ") { code ->
-            val name = info[code]?.first
-            when {
-                name == null -> code
-                code in seed -> "$code, $name"
-                else -> "$code, $name (${DtcMeanings.AI_LABEL})"
-            }
-        }
+        lookUpUnknownCodes(context, codes, seed, learned, glance)
+        val spoken = codes.joinToString("; ") { spokenCode(it, seed, info) }
         // Each live code's freeze frame (2026-11-03): the snapshot saved with the newest stored
         // event that carries the code. Mode 02 is not re-read here - ten more PID round trips
         // inside an 8 s tool budget - and the stored frame is the ECU's same latched snapshot.
