@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Sixty-one names (count it with len(); this line was stale three times before).
+# Sixty-three names (count it with len(); this line was stale three times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -136,6 +136,12 @@ TENANT_TABLES: tuple[str, ...] = (
     # tenanted like `briefs` (`books/models.py`).
     "book_positions",
     "book_bookmarks",
+    # procedures ticket 11 (ADR 0070): procedure definitions and their
+    # versions. A built-in has NO household (visible to all, `procedures.models
+    # .visible_to`), like a recruiter visit's `device_logs` row; a hand-made or
+    # distilled one is one household's.
+    "procedures",
+    "procedure_versions",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -185,6 +191,8 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "briefs",
         "book_positions",
         "book_bookmarks",
+        "procedures",
+        "procedure_versions",
     }
 )
 

@@ -894,6 +894,38 @@ def test_the_changes_feed_never_carries_another_households_rows(token_a, token_b
 # =============================================================================
 
 
+def test_procedures_are_scoped_by_household(household_a, household_b):
+    """procedures ticket 11 (ADR 0070). No route serves them yet, so this is the leak test at
+    the one read path, `procedures.models.visible_to`: a built-in (no household) is visible to
+    every household, a household's own procedure to that household alone, and each version
+    carries its procedure's household."""
+    from procedures.models import Procedure, ProcedureVersion, Source, visible_to
+
+    def made(household, name):
+        procedure = Procedure.objects.create(household=household, name=name)
+        ProcedureVersion.objects.create(
+            procedure=procedure, household=household, version=1, definition={"name": name},
+            source=Source.HAND, content_sha256="0" * 64, writes=False,
+        )
+        return procedure
+
+    shared = made(None, "car_check")
+    of_a = made(household_a, "a_only")
+    of_b = made(household_b, "b_only")
+    # Same name in two households is two procedures, not a clash.
+    made(household_a, "same_name")
+    made(household_b, "same_name")
+
+    assert set(visible_to(household_a)) == {shared, of_a} | set(
+        Procedure.objects.filter(household=household_a, name="same_name")
+    )
+    seen_by_b = set(visible_to(household_b))
+    assert of_a not in seen_by_b and shared in seen_by_b and of_b in seen_by_b
+    assert not visible_to(household_b).filter(household=household_a).exists()
+    for version in ProcedureVersion.objects.select_related("procedure"):
+        assert version.household_id == version.procedure.household_id
+
+
 def test_every_registered_table_has_a_leak_test():
     """The generation, made real.
 

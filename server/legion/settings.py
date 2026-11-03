@@ -154,6 +154,9 @@ INSTALLED_APPS = [
     # recruiter-demo ticket 02 (ADR 0068): the shared invite code, hashed, and
     # one `DemoVisit` per recruiter who enters it (`/api/demo/enter`).
     "demo",
+    # procedures ticket 11 (ADR 0070): versioned procedure definitions
+    # (`public.procedures`, `public.procedure_versions`) and the built-in loader.
+    "procedures",
 ]
 
 # recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter

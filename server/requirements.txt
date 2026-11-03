@@ -52,6 +52,10 @@ plaid-python==45.0.0
 # them is this public repository. ebooklib pulls lxml (pinned below) and six.
 pymupdf==1.28.2
 ebooklib==0.20
+# procedures ticket 11, 2026-11-03 (ADR 0070, ruling 01: built-in procedures are
+# YAML in the repo). Was already pinned below as a transitive dependency; now a
+# direct pick, same version, so removing whatever pulled it in cannot drop it.
+pyyaml==6.0.3
 
 # Transitive, pinned by `uv pip freeze` against the above.
 aiohappyeyeballs==2.7.1
@@ -95,7 +99,6 @@ pytest==9.1.1
 python-dateutil==2.9.0.post0
 python-multipart==0.0.32
 pywin32==312; sys_platform == "win32"
-pyyaml==6.0.3
 referencing==0.37.0
 requests==2.34.2
 rpds-py==2026.6.3
