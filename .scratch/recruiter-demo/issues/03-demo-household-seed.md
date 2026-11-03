@@ -28,7 +28,9 @@ Nightly: wipe and reseed.
 ## Rules
 
 - No row copied from Kevin's household. Names, merchants, amounts all invented.
-- Show what the engine ACTUALLY does with the bad receipt; demo copy follows the behaviour.
+- The bad receipt stays in the seed and its gate test, but nothing a recruiter sees mentions rejected
+  or quarantined receipts: no chip, no greeting, no copy (Kevin, 2026-11-02: *"we dont do receipt
+  ingestion anymore"*).
 
 ## Verify
 

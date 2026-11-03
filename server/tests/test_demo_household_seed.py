@@ -306,6 +306,30 @@ def test_what_the_engine_says_about_the_unbalanced_receipt():
     assert "verified: passed the reconciliation gate" in card.text
 
 
+def test_a_recruiter_can_ask_which_card_charges_are_unverified():
+    """`/try` offers "Which card charges are unverified?" (Kevin, 2026-11-02,
+    in place of the rejected-receipt chip). Through the recruiter's own tool
+    door, scoped to the seeded demo, the answer is there in words."""
+    import uuid
+
+    from household.models import HouseholdMember, User
+    from tests.test_recruiter import _recruiter_browser, _visitor_token
+
+    demo = seed(today=TODAY).household
+    user = User.objects.create_user(email=f"visitor-{uuid.uuid4().hex[:12]}@demo.invalid")
+    HouseholdMember.objects.create(user=user, household=demo, role=HouseholdMember.RECRUITER)
+    token, _raw = _visitor_token(user)
+    browser = _recruiter_browser(user, token)
+    response = browser.post(
+        "/api/assistant/tool",
+        {"name": "read_records", "args": {"table": "ledger_transactions", "limit": 200}},
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    assert response.data["is_error"] is False, response.data["text"]
+    assert "UNVERIFIED (UNRECONCILED)" in response.data["text"]
+
+
 # =============================================================================
 # Isolation
 # =============================================================================

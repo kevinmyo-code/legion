@@ -173,6 +173,9 @@ describe('/try', () => {
     const chat = await screen.findByRole('log', { name: 'Conversation with Assistant' })
     expect(chat).toBeInTheDocument()
     expect(screen.getByRole('button', { name: "What's Kevin's experience with Power BI?" })).toBeInTheDocument()
+    // Kevin, 2026-11-02: no receipt ingestion talk; a chip the recruiter tools can answer instead.
+    expect(screen.getByRole('button', { name: 'Which card charges are unverified?' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /receipt/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Close\. This clears/ })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Talk to Assistant' }))

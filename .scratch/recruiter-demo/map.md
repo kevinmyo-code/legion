@@ -78,9 +78,10 @@ web assistant (existing, ADR 0056)
   `claude_session` must be off for recruiters. Role allowlist is the fence; scope is the second one.
 - **Companions:** `assistant/companions.py` keys companion by `User.first_name` (Kevin -> Alfred,
   Mia -> Dorothy). A recruiter companion slots in here.
-- **Honesty and the receipt gate:** `ingest/gate.py` (reconciliation gate, quarantine on totals that
-  do not reconcile). Seed a receipt that fails it and show what the engine ACTUALLY does; do not
-  promise behaviour that is not on dev.
+- **Honesty and the gate:** `ingest/gate.py` (reconciliation gate, quarantine on totals that do not
+  reconcile). The seed keeps one receipt that fails it, but nothing recruiter-facing mentions
+  rejected receipts (Kevin, 2026-11-02: *"we dont do receipt ingestion anymore"*). Recruiters see
+  honesty as verified vs UNVERIFIED bank rows. Do not promise behaviour that is not on dev.
 - **Not reusable for the cap:** `monthly_spend` on `fix/headunit-logs-and-spend` is household ledger
   spend (money), not Gemini spend.
 

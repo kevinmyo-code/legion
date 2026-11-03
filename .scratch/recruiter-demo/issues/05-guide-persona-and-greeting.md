@@ -26,7 +26,9 @@ welcome to kevin's voice app ... 'i can do xxx i can do yyy' what would u like t
   lists 3-4 things it can do, asks what to try.
 - Text chat: same greeting as the first message, plus tappable suggestions, e.g.
   "What did I spend on groceries last month?", "When is the car due for service?",
-  "Why was one receipt rejected?", "What's Kevin's experience with Power BI?"
+  "Which card charges are unverified?", "What's Kevin's experience with Power BI?"
+  (Kevin, 2026-11-02: no receipt-rejection chip; receipt ingestion is not something LEGION does
+  anymore. The card rows are UNRECONCILED and `read_records` says "UNVERIFIED" in words.)
 - Honesty rules unchanged (CLAUDE.md section 7): verified / estimate / refused still show.
 
 ## Open

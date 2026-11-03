@@ -33,7 +33,7 @@ export const OPENING_TURN = '(The visitor just joined the demo.)'
 export const VISITOR_SUGGESTIONS = [
   'What did I spend on groceries last month?',
   'When is the car due for service?',
-  'Why was one receipt rejected?',
+  'Which card charges are unverified?',
   "What's Kevin's experience with Power BI?",
 ] as const
 
