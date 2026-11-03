@@ -1,4 +1,5 @@
 import { AudioError, type AudioIO } from './audio'
+import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { base64ToPcm16, pcm16ToBase64 } from './pcm'
 
 /**
@@ -22,7 +23,11 @@ import { base64ToPcm16, pcm16ToBase64 } from './pcm'
  *    it sets one) or a close ENDS it, in words. The
  *    token's setup is fully locked, so there is no resumption; a new
  *    conversation mints a new token.
- *  - **Persist anything.** Lines live in memory and die with the page.
+ *  - **Persist anything in the browser.** Lines live in memory and die with the
+ *    page. The engine keeps a record of each conversation (Kevin, 2026-11-03:
+ *    "may be recorded to improve" the assistant): it writes the tool calls
+ *    itself, and this class sends it the words, turn ends and timings through
+ *    `LiveDeps.record` (`conversation-record.ts`). Never audio.
  */
 
 export type Notice = {
@@ -74,6 +79,14 @@ export interface SessionInfo {
   companionName: string
   inputAudioMime: string
   outputAudioRate: number
+  /** The engine's record of this conversation; sent with every tool call and upload. */
+  conversationId?: string
+}
+
+/** What a tool call carries besides its name and arguments, for the engine's record. */
+export interface ToolContext {
+  conversationId?: string
+  callId?: string
 }
 
 export type SessionResult = { ok: true; session: SessionInfo } | { ok: false; notice: Notice }
@@ -100,12 +113,14 @@ export interface SocketLike {
 
 export interface LiveDeps {
   startSession(utcOffsetMinutes: number): Promise<SessionResult>
-  runTool(name: string, args: Record<string, unknown>): Promise<ToolResult>
+  runTool(name: string, args: Record<string, unknown>, context?: ToolContext): Promise<ToolResult>
   openSocket(url: string): SocketLike
   /** The device audio. Called once, from the tap that starts the microphone. */
   audio(): AudioIO
   now(): number
   utcOffsetMinutes(): number
+  /** Where the conversation record goes. Absent records nothing (a test that is not about it). */
+  record?: RecordTransport
 }
 
 export interface LiveOptions {
@@ -186,6 +201,18 @@ export class LiveClient {
   private setupTimer: ReturnType<typeof setTimeout> | null = null
   private limitTimer: ReturnType<typeof setTimeout> | null = null
   private inbox: Promise<void> = Promise.resolve()
+  /** The engine's record of the current conversation; null when none is being kept. */
+  private record: ConversationRecord | null = null
+  /** When each transcript line started, for the record. */
+  private readonly lineStarted = new Map<number, number>()
+  private connectStarted = 0
+  /** When the person's turn last ended (typed, or the last word heard), until a reply starts. */
+  private replyFrom: number | null = null
+  private readonly callNames = new Map<string, string>()
+  private readonly onPageHide = () => {
+    // The page may be closing: hand what is not yet stored to the browser to deliver.
+    this.record?.beacon()
+  }
   private readonly onVisibility = () => {
     if (
       typeof document !== 'undefined' &&
@@ -210,6 +237,28 @@ export class LiveClient {
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.onVisibility)
     }
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', this.onPageHide)
+  }
+
+  // ---- the record --------------------------------------------------------
+
+  private rec(event: DistributiveOmit<RecordEvent, 'at_ms'>, at?: number) {
+    if (!this.deps.record) return
+    this.record ??= new ConversationRecord(this.deps.record)
+    this.record.add({ ...event, at_ms: at ?? this.deps.now() } as RecordEvent)
+  }
+
+  /** The conversation is over: send the rest, and keep no more for it. */
+  private finishRecord(reason: string | null, beacon = false) {
+    const record = this.record
+    if (!record) return
+    if (reason !== null && record.conversationId) this.rec({ kind: 'session_end', reason })
+    this.record = null
+    this.lineStarted.clear()
+    this.callNames.clear()
+    this.replyFrom = null
+    if (beacon) record.beacon()
+    else void record.flush()
   }
 
   // ---- store -------------------------------------------------------------
@@ -267,9 +316,11 @@ export class LiveClient {
 
     const wasSpeaking = this.playing
     this.audioIO?.flush()
-    this.closeAi(wasSpeaking)
+    this.closeAi(wasSpeaking, 'barge_in')
     this.closeMe()
     this.push({ kind: 'me', text, via: 'typed', open: false })
+    this.rec({ kind: 'user', text, typed: true })
+    this.replyFrom = this.deps.now()
     if (wasSpeaking) this.push({ kind: 'sys', text: 'Stopped speaking because you typed.' })
     this.typedTurn = true
     this.awaiting = true
@@ -312,6 +363,7 @@ export class LiveClient {
       () => {
         if (generation !== this.micGeneration) return
         this.set({ mic: 'on' })
+        this.rec({ kind: 'mic_open', reason: 'tap' })
         if (this.state.phase === 'idle') return this.connect()
       },
       (error: unknown) => {
@@ -325,6 +377,7 @@ export class LiveClient {
 
   /** Stop talking; the conversation stays open for typing. */
   stopVoice() {
+    if (this.state.mic === 'on') this.rec({ kind: 'mic_closed', reason: 'stopped' })
     this.micGeneration += 1
     this.audioIO?.stopMic()
     this.audioIO?.flush()
@@ -337,12 +390,13 @@ export class LiveClient {
     if (!this.playing) return
     this.audioIO?.flush()
     this.playing = false
-    this.closeAi(true)
+    this.closeAi(true, 'barge_in')
     this.refresh()
   }
 
   /** Throw the conversation away and go back to a blank one. Nothing is kept. */
   reset() {
+    this.finishRecord('New conversation.')
     this.teardown()
     this.generation += 1
     this.queued = []
@@ -355,11 +409,13 @@ export class LiveClient {
 
   /** The page is going away: drop everything, no state to show. */
   dispose() {
+    this.finishRecord('The page closed.', true)
     this.teardown()
     this.generation += 1
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.onVisibility)
     }
+    if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide)
     this.audioIO?.dispose()
     this.audioIO = null
   }
@@ -369,6 +425,7 @@ export class LiveClient {
   private async connect() {
     const generation = ++this.generation
     this.set({ phase: 'connecting', notice: null })
+    this.connectStarted = this.deps.now()
     let result: SessionResult
     try {
       result = await this.deps.startSession(this.deps.utcOffsetMinutes())
@@ -387,6 +444,10 @@ export class LiveClient {
       return
     }
     this.session = result.session
+    if (this.deps.record) {
+      this.record ??= new ConversationRecord(this.deps.record)
+      this.record.conversationId = result.session.conversationId ?? null
+    }
     this.set({ companion: result.session.companionName })
     const limit = this.options.sessionLimit?.()?.trim()
     if (limit) {
@@ -442,6 +503,9 @@ export class LiveClient {
   }
 
   private failStart(notice: Notice) {
+    // Before the mint answered there is no record to keep; after it, the record says why it ended.
+    if (this.record?.conversationId) this.finishRecord(notice.text)
+    else this.dropRecord()
     this.teardown()
     this.generation += 1
     this.audioIO?.stopMic()
@@ -485,7 +549,15 @@ export class LiveClient {
     this.queued = []
     this.closeAi(false)
     this.closeMe()
+    this.finishRecord(sentence)
     this.set({ phase: 'ended', mic: 'off', ended: sentence })
+  }
+
+  private dropRecord() {
+    this.record = null
+    this.lineStarted.clear()
+    this.callNames.clear()
+    this.replyFrom = null
   }
 
   /** Close the socket and timers without touching what is shown. */
@@ -511,6 +583,7 @@ export class LiveClient {
   }
 
   private micLost() {
+    this.rec({ kind: 'mic_closed', reason: 'lost' })
     this.micGeneration += 1
     this.audioIO?.stopMic()
     this.audioIO?.flush()
@@ -567,7 +640,10 @@ export class LiveClient {
     if (message.serverContent) this.onContent(message.serverContent)
     if (message.toolCall?.functionCalls?.length) void this.onToolCall(message.toolCall.functionCalls)
     if (message.toolCallCancellation?.ids) {
-      for (const id of message.toolCallCancellation.ids) this.cancelled.add(id)
+      for (const id of message.toolCallCancellation.ids) {
+        this.cancelled.add(id)
+        this.rec({ kind: 'tool_cancelled', id, name: this.callNames.get(id) ?? '' })
+      }
     }
     if (message.goAway !== undefined) this.end(ENDED_TIME_LIMIT)
   }
@@ -576,6 +652,7 @@ export class LiveClient {
     if (this.state.phase !== 'connecting') return
     if (this.setupTimer) clearTimeout(this.setupTimer)
     this.setupTimer = null
+    this.rec({ kind: 'latency', metric: 'cold_start', ms: Math.max(this.deps.now() - this.connectStarted, 0) })
     this.set({ phase: 'live' })
     const queued = this.queued
     this.queued = []
@@ -596,7 +673,7 @@ export class LiveClient {
     if (content.interrupted) {
       this.audioIO?.flush()
       this.playing = false
-      this.closeAi(true)
+      this.closeAi(true, 'server')
       // A typed turn interrupts whatever was being said, and the interruption
       // arrives AFTER the typed turn was sent: it must not unmute or un-await it.
       if (!this.typedTurn) this.awaiting = false
@@ -625,11 +702,14 @@ export class LiveClient {
       this.closeMe()
       this.awaiting = false
       this.typedTurn = false
+      this.rec({ kind: 'turn_complete' })
+      void this.record?.flush()
     }
     this.refresh()
   }
 
   private appendMe(text: string) {
+    this.replyFrom = this.deps.now()
     const last = this.last()
     if (last?.kind === 'me' && last.open) {
       this.update(last.id, { text: last.text + text })
@@ -637,6 +717,7 @@ export class LiveClient {
     }
     this.closeAi(false)
     this.push({ kind: 'me', text, via: 'spoken', open: true })
+    this.lineStarted.set(this.nextId - 1, this.deps.now())
   }
 
   private appendAi(text: string) {
@@ -647,17 +728,30 @@ export class LiveClient {
     }
     this.closeMe()
     const spoken = this.state.mic === 'on' && !this.typedTurn
+    const now = this.deps.now()
+    if (this.replyFrom !== null) {
+      this.rec({ kind: 'latency', metric: 'reply', ms: Math.max(now - this.replyFrom, 0) }, now)
+      this.replyFrom = null
+    }
     this.push({ kind: 'ai', text, via: spoken ? 'spoken' : 'typed', open: true, cut: false })
+    this.lineStarted.set(this.nextId - 1, now)
   }
 
-  private closeAi(cut: boolean) {
+  private closeAi(cut: boolean, source: 'server' | 'barge_in' = 'server') {
     const last = [...this.state.lines].reverse().find((line) => line.kind === 'ai' && line.open)
-    if (last) this.update(last.id, { open: false, cut } as Partial<Line>)
+    if (!last) return
+    this.update(last.id, { open: false, cut } as Partial<Line>)
+    this.rec({ kind: 'assistant', text: last.text }, this.lineStarted.get(last.id))
+    this.lineStarted.delete(last.id)
+    if (cut) this.rec({ kind: 'interrupted', reason: source })
   }
 
   private closeMe() {
     const last = [...this.state.lines].reverse().find((line) => line.kind === 'me' && line.open)
-    if (last) this.update(last.id, { open: false } as Partial<Line>)
+    if (!last) return
+    this.update(last.id, { open: false } as Partial<Line>)
+    this.rec({ kind: 'user', text: last.text, typed: false }, this.lineStarted.get(last.id))
+    this.lineStarted.delete(last.id)
   }
 
   // ---- tools -------------------------------------------------------------
@@ -666,12 +760,17 @@ export class LiveClient {
     this.closeAi(false)
     this.closeMe()
     this.pendingTools += calls.length
+    for (const call of calls) this.callNames.set(call.id, call.name)
     this.refresh()
+    const conversationId = this.record?.conversationId ?? this.session?.conversationId
     const answered = await Promise.all(
       calls.map(async (call) => {
         let result: ToolResult
         try {
-          result = await this.deps.runTool(call.name, call.args ?? {})
+          result = await this.deps.runTool(call.name, call.args ?? {}, {
+            conversationId: conversationId ?? undefined,
+            callId: call.id,
+          })
         } catch {
           const message = 'Nothing was read or written: the engine could not be reached.'
           result = { success: false, text: message, forward: { success: false, message } }
@@ -693,6 +792,8 @@ export class LiveClient {
     this.refresh()
   }
 }
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
 function micNotice(kind: 'denied' | 'unavailable' | 'lost'): Notice {
   switch (kind) {

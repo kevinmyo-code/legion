@@ -30,6 +30,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add the browser's transcript events to the caller's own conversation record
+         * @description The browser's half of a conversation's record. Write only: there is no read here, for a
+         *     member or a recruiter; the record is read with `manage.py device_logs` on the engine.
+         *
+         *     A recruiter may use this door (`allows_recruiter`, as on the other assistant doors) for its
+         *     OWN conversation only: `web_conversation.owned` matches the id to the caller, and a visit's
+         *     record to a visit. `/api/device-logs/` stays denied to a recruiter.
+         */
+        post: operations["api_assistant_conversation_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assistant/session": {
         parameters: {
             query?: never;
@@ -3528,6 +3553,10 @@ export interface components {
             /** @description False when no companion has been set for this member and this is the default the engine assigns. */
             stored: boolean;
         };
+        AssistantConversationStored: {
+            stored_lines: number;
+            detail: string;
+        };
         AssistantSession: {
             /** @description The ephemeral token's full name (`auth_tokens/...`). Pass it as the `access_token` query parameter on `ws_url`. One conversation; the setup it carries is locked, so the browser's own `setup` message is ignored. */
             token: string;
@@ -3550,10 +3579,17 @@ export interface components {
             input_audio_mime: string;
             /** @description Sample rate of the 16-bit PCM Gemini sends back. */
             output_audio_rate: number;
+            /**
+             * Format: uuid
+             * @description This conversation's record on the engine. Send it with every tool call and with `POST /api/assistant/conversation`. Conversations may be recorded to improve the assistant; no audio is kept.
+             */
+            conversation_id: string;
         };
         AssistantSessionRequest: {
             /** @description Minutes EAST of UTC on the person's own clock: `-new Date().getTimezoneOffset()` in a browser (Houston in summer is -300). Omit it and the engine uses the household's timezone, as a current offset, when its owner has set one; otherwise the assistant is told the offset is unknown. Never an IANA zone id: the zone's name never reaches the prompt. */
             utc_offset_minutes?: number | null;
+            /** @description The browser's clock, epoch milliseconds (`Date.now()`), so the conversation record can put the browser's lines on the engine's clock. Omit it and they are kept as sent. */
+            client_now_ms?: number | null;
         };
         AssistantToolForward: {
             success: boolean;
@@ -3570,6 +3606,16 @@ export interface components {
             args?: {
                 [key: string]: unknown;
             };
+            /**
+             * Format: uuid
+             * @description The mint's `conversation_id`. The engine writes this call, its arguments and its result into that conversation's record. One that is not the caller's is ignored.
+             */
+            conversation_id?: string | null;
+            /**
+             * @description `functionCalls[].id`, as Gemini sent it, for the record.
+             * @default
+             */
+            call_id: string;
         };
         AssistantToolResult: {
             response: components["schemas"]["AssistantToolForward"];
@@ -4235,6 +4281,15 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid: string;
+        };
+        ConversationUpload: {
+            /**
+             * Format: uuid
+             * @description The mint's `conversation_id`.
+             */
+            conversation_id: string;
+            /** @description A JSON array of events: `{kind, at_ms, text?, typed?, reason?, id?, name?, metric?, ms?}`, kind one of user, assistant, interrupted, turn_complete, tool_cancelled, mic_open, mic_closed, session_end, latency. A form field, so that `navigator.sendBeacon` can send it with `csrfmiddlewaretoken` beside it while the page closes. Send only events not yet stored; a repeat is stored once. */
+            events: string;
         };
         ConvertError: {
             /**
@@ -6868,6 +6923,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssistantCompanion"];
+                };
+            };
+        };
+    };
+    api_assistant_conversation_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ConversationUpload"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConversationStored"];
+                };
+            };
+            /** @description Refused; nothing stored. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No conversation with that id is the caller's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Over the cap; nothing stored. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many uploads; nothing stored. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
         };

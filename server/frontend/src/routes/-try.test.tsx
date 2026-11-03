@@ -64,6 +64,14 @@ describe('the access code on /login', () => {
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME' }])
   })
 
+  test('says under the code box that conversations may be recorded', async () => {
+    renderApp('/login', createEngine({ signedIn: false }), 'family')
+    const box = await screen.findByRole('region', { name: 'Have an access code?' })
+    expect(
+      within(box).getByText('Conversations in the demo may be recorded to improve the assistant.'),
+    ).toBeInTheDocument()
+  })
+
   test('a wrong code says so in the engine words and stays on sign-in', async () => {
     const engine = createEngine({ signedIn: false })
     const { router } = renderApp('/login', engine, 'family')
@@ -92,6 +100,9 @@ describe('/try', () => {
   test('with no visit shows only the code box and a way back to sign in', async () => {
     renderApp('/try', createEngine({ signedIn: false }), 'family')
     expect(await screen.findByLabelText('Access code')).toBeInTheDocument()
+    expect(
+      screen.getByText('Conversations in the demo may be recorded to improve the assistant.'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     expect(screen.queryByRole('heading', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
@@ -177,6 +188,8 @@ describe('/try', () => {
     expect(screen.getByRole('button', { name: 'Which card charges are unverified?' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /receipt/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Close\. This clears/ })).not.toBeInTheDocument()
+    // Beside the mic: the recording notice, unnamed until the engine names the companion.
+    expect(screen.getByText('Conversations with the assistant may be recorded to improve it.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Talk to Assistant' }))
     const socket = await connect()
@@ -187,6 +200,16 @@ describe('/try', () => {
     expect(screen.queryByText(OPENING_TURN)).not.toBeInTheDocument()
     // Named by the mint now.
     expect(await screen.findByRole('log', { name: 'Conversation with Dorothy' })).toBeInTheDocument()
+    expect(
+      screen.getByText('Conversations with Dorothy may be recorded to improve the assistant.'),
+    ).toBeInTheDocument()
+
+    // The greeting's turn ends: the browser sends its half of the record.
+    socket.serve({ serverContent: { outputTranscription: { text: 'Good afternoon.' } } })
+    socket.serve({ serverContent: { turnComplete: true } })
+    await waitFor(() => expect(engine.assistant.recordUploads).toHaveLength(1))
+    const kinds = engine.assistant.recordUploads[0].events.map((event) => event.kind)
+    expect(kinds).toEqual(['mic_open', 'latency', 'assistant', 'turn_complete'])
   })
 
   test("a visitor's conversation ends when its token does, with the demo's sentence", async () => {

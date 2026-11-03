@@ -2,7 +2,7 @@ import type { Reply } from './engine'
 
 /**
  * The fake engine's answers for the web assistant (web-assistant 08): the
- * companion read, the token mint and the tool door. It follows
+ * companion read, the token mint, the tool door and the conversation record's upload. It follows
  * `server/assistant/views.py` including its sentences, because the chat shows
  * those verbatim and a fake with its own wording would let a test pass against
  * words the engine never says.
@@ -31,6 +31,10 @@ export interface AssistantState {
   mintBodies: unknown[]
   /** Every tool call the engine was asked to run, in order. */
   toolCalls: { name: string; args: unknown }[]
+  /** What each tool call carried for the conversation record, in the same order. */
+  toolRecordIds: { conversation_id?: unknown; call_id?: unknown }[]
+  /** Every conversation-record upload, its events parsed. */
+  recordUploads: { conversation_id: string; events: { kind: string }[] }[]
   /** How long a minted token lives: 30 minutes for a member; a recruiter's is capped (5 minutes on the engine). */
   sessionMs: number
 }
@@ -43,12 +47,15 @@ export function defaultAssistant(): AssistantState {
     minted: 0,
     mintBodies: [],
     toolCalls: [],
+    toolRecordIds: [],
+    recordUploads: [],
     sessionMs: 30 * 60_000,
   }
 }
 
 export const FAKE_WS_URL = 'wss://live.example.test/ws/BidiGenerateContentConstrained'
 export const FAKE_TOKEN = 'auth_tokens/fake-token-for-tests'
+export const FAKE_CONVERSATION_ID = '00000000-0000-4000-8000-00000000c0de'
 
 export function handleAssistant(
   host: { assistant: AssistantState },
@@ -84,13 +91,20 @@ export function handleAssistant(
         voice_name: 'Kore',
         input_audio_mime: 'audio/pcm;rate=16000',
         output_audio_rate: 24000,
+        conversation_id: FAKE_CONVERSATION_ID,
       },
     }
   }
 
   if (method === 'POST' && pathname === '/api/assistant/tool') {
-    const { name, args } = body as { name: string; args?: unknown }
+    const { name, args, conversation_id, call_id } = body as {
+      name: string
+      args?: unknown
+      conversation_id?: unknown
+      call_id?: unknown
+    }
     a.toolCalls.push({ name, args })
+    a.toolRecordIds.push({ conversation_id, call_id })
     const fixture = a.tools[name]
     if (!fixture) {
       const detail = `Nothing was read or written. ${name} is not a tool the web assistant has.`
@@ -112,6 +126,16 @@ export function handleAssistant(
         response: { success, message: fixture.text },
       },
     }
+  }
+
+  if (method === 'POST' && pathname === '/api/assistant/conversation') {
+    const { conversation_id, events } = body as { conversation_id: string; events: string }
+    if (conversation_id !== FAKE_CONVERSATION_ID) {
+      return { status: 404, body: { detail: 'Nothing was stored. No conversation with that id is yours.' } }
+    }
+    const parsed = JSON.parse(events) as { kind: string }[]
+    a.recordUploads.push({ conversation_id, events: parsed })
+    return { status: 200, body: { stored_lines: parsed.length, detail: 'Stored.' } }
   }
 
   return undefined

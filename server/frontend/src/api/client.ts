@@ -37,6 +37,15 @@ function readCookie(name: string): string | null {
 }
 
 /**
+ * The CSRF token, for the one request that cannot carry the header:
+ * `navigator.sendBeacon` sends it as the `csrfmiddlewaretoken` form field
+ * (`assistant/deps.ts`). Null when there is no cookie yet.
+ */
+export function csrfToken(): string | null {
+  return readCookie(CSRF_COOKIE)
+}
+
+/**
  * Session auth for the browser, in one place.
  *
  * Two things every request needs and neither of which a caller should have to

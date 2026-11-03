@@ -13,7 +13,14 @@ import { Label } from '@/components/ui/label'
  * It only enters the demo; where to go next is the caller's (`/login` moves to
  * `/try`, `/try` re-reads its own session). The engine's refusals are already
  * sentences and are shown as they come.
+ *
+ * Under the box: the demo's conversations may be recorded (Kevin, 2026-11-03,
+ * "like how on a customer service call they say it may be recorded"). The
+ * assistant is not named here: nobody is signed in yet, so the engine has not
+ * said who it is, and a name is never typed into copy.
  */
+export const DEMO_RECORDING_NOTICE = 'Conversations in the demo may be recorded to improve the assistant.'
+
 export function AccessCodeForm({
   refTag,
   onEntered,
@@ -79,6 +86,7 @@ export function AccessCodeForm({
           {error}
         </p>
       )}
+      <p className="text-[0.8125rem] text-muted-foreground">{DEMO_RECORDING_NOTICE}</p>
     </form>
   )
 }

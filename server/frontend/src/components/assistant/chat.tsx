@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 
-import { useAssistant } from '@/assistant/assistant-context'
+import { UNNAMED, useAssistant } from '@/assistant/assistant-context'
 import type { AssistantState, Line } from '@/assistant/live-client'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -32,8 +32,18 @@ import { cn } from '@/lib/utils'
  *    the only signal: both carry a word and an icon.
  *  - Failures, an ended conversation, a blocked microphone are sentences, not a
  *    silent dead button.
- *  - "Not saved" is on screen, because it is true and because closing clears it.
+ *  - What closing does is on screen: it clears the conversation from the screen.
+ *  - "May be recorded to improve the assistant" sits beside the mic, for a
+ *    member and a recruiter alike (Kevin, 2026-11-03): the engine keeps a record
+ *    of each conversation's words and tool calls, never the audio.
  */
+
+/** The recording notice. The companion's name is the engine's; the wording says "improve", never "train". */
+export function recordingNotice(name: string): string {
+  // Before the engine has named the companion there is no name to say.
+  if (name === UNNAMED) return 'Conversations with the assistant may be recorded to improve it.'
+  return `Conversations with ${name} may be recorded to improve the assistant.`
+}
 
 const SUGGESTIONS = ["What's on today?", 'When did we last buy shampoo?', "What's on the Groceries list?"]
 
@@ -187,7 +197,7 @@ export function AssistantChat({
         {ended && state.ended && (
           <div role="status" className="flex flex-col items-center gap-2 py-2 text-center text-sm">
             <p className="font-medium">{state.ended}</p>
-            <p className="text-muted-foreground">What was said stays here until you close this. It is not saved.</p>
+            <p className="text-muted-foreground">What was said stays on this screen until you close this.</p>
             <Button type="button" size="sm" onClick={reset}>
               <RefreshCw />
               New conversation
@@ -239,6 +249,7 @@ export function AssistantChat({
           </Button>
         )}
       </form>
+      <p className="flex-none px-4 pb-2 text-center text-[0.75rem] text-muted-foreground">{recordingNotice(name)}</p>
     </div>
   )
 }
@@ -248,8 +259,8 @@ function SessionLine({ layout }: { layout: 'sheet' | 'panel' }) {
     <p className="flex items-center justify-center gap-1.5 py-1 text-center text-[0.8125rem] text-muted-foreground">
       <Lock className="size-3.5 flex-none" aria-hidden="true" />
       {layout === 'sheet'
-        ? 'Not saved. Closing this, or a screen lock, ends and clears it.'
-        : 'Not saved. Closing this clears it.'}
+        ? 'Closing this, or a screen lock, ends it and clears it from the screen.'
+        : 'Closing this clears it from the screen.'}
     </p>
   )
 }

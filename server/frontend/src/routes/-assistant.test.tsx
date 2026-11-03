@@ -52,7 +52,10 @@ describe('the family surface', () => {
     const sheet = await openFamilyChat('Mabel')
     const box = within(sheet).getByRole('textbox', { name: 'Message Mabel' })
     expect(document.activeElement).toBe(box)
-    expect(within(sheet).getByText(/Not saved/)).toBeInTheDocument()
+    expect(within(sheet).getByText(/clears it from the screen/)).toBeInTheDocument()
+    expect(
+      within(sheet).getByText('Conversations with Mabel may be recorded to improve the assistant.'),
+    ).toBeInTheDocument()
     expect(within(sheet).getByRole('button', { name: 'Talk to Mabel' })).toBeInTheDocument()
   })
 
@@ -66,7 +69,10 @@ describe('the family surface', () => {
 
     const socket = await connect()
     expect(engine.assistant.minted).toBe(1)
-    expect(engine.assistant.mintBodies[0]).toEqual({ utc_offset_minutes: expect.any(Number) })
+    expect(engine.assistant.mintBodies[0]).toEqual({
+      utc_offset_minutes: expect.any(Number),
+      client_now_ms: expect.any(Number),
+    })
     expect(socket.url).toContain('?access_token=auth_tokens%2Ffake-token-for-tests')
     expect(socket.sent[0]).toEqual({ setup: { model: 'models/gemini-3.8-live' } })
     expect(socket.sentOf('clientContent')).toHaveLength(1)
@@ -74,6 +80,11 @@ describe('the family surface', () => {
     socket.serve({ toolCall: { functionCalls: [{ id: 't1', name: 'search_purchases', args: { query: 'shampoo' } }] } })
     expect(await within(sheet).findByText('Done: Shampoo: 3 matches, last bought Sep 28.')).toBeInTheDocument()
     expect(engine.assistant.toolCalls).toEqual([{ name: 'search_purchases', args: { query: 'shampoo' } }])
+    // The tool call names the conversation, so the engine writes it into the record.
+    expect(engine.assistant.toolRecordIds[0]).toEqual({
+      conversation_id: '00000000-0000-4000-8000-00000000c0de',
+      call_id: expect.any(String),
+    })
     expect(socket.sentOf('toolResponse')).toHaveLength(1)
 
     socket.serve({ serverContent: { outputTranscription: { text: 'Three, the last on Sep 28.' }, turnComplete: true } })

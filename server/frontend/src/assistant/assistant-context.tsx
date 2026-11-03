@@ -33,7 +33,7 @@ import { LiveClient, type AssistantState, type LiveDeps } from './live-client'
  */
 
 /** What the rail and the orb call the assistant before the engine has named it in a session. */
-const UNNAMED = 'Assistant'
+export const UNNAMED = 'Assistant'
 
 interface AssistantUi {
   open: boolean

@@ -811,8 +811,18 @@ export function engineFetch(engine: Engine) {
     await engine.delay?.(method, url.pathname, url.searchParams)
     let body: unknown = undefined
     if (method !== 'GET' && method !== 'DELETE') {
-      const text = await input.text()
-      body = text === '' ? undefined : JSON.parse(text)
+      if ((input.headers.get('Content-Type') ?? '').startsWith('multipart/form-data')) {
+        // The conversation record's upload (`assistant/deps.ts`): read the form's fields.
+        const form = await input.formData()
+        const fields: Record<string, unknown> = {}
+        form.forEach((value, key) => {
+          fields[key] = value
+        })
+        body = fields
+      } else {
+        const text = await input.text()
+        body = text === '' ? undefined : JSON.parse(text)
+      }
     }
     return toResponse(engine.handle(method, url.pathname, url.searchParams, body))
   }
