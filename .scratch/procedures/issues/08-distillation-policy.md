@@ -3,11 +3,11 @@ map: procedures
 ticket: "08"
 title: "Distillation: when a repeated trace becomes a proposed procedure"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "resolved 2026-11-03, Kevin: approve all 9 as recommended"
 blockers: ["06"]
 blocked-by: ["[[06-trace-content-and-retention]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -34,3 +34,12 @@ and what makes it live?
   makes it the active version. Dismissed shapes are not proposed again.
 - **Proposer is code first** (sequence mining over parsed lines). A model may NAME a proposal and
   write its description; it does not choose its steps.
+
+## Answer
+
+**Accepted as recommended.** Kevin, 2026-11-03: *"approve all 9 as recommended"*.
+
+- Proposals only, never auto-activated: a `procedure_versions` row with `source = distilled`, unapproved, inactive.
+- Qualifies at 3+ matching successful conversations over 2+ separate days; never from recruiter visits, never from turns that touched a read-through (mail) tool; writes never distil without an `ask` in front.
+- Kevin approves, edits or dismisses in the inspector; dismissed shapes are not proposed again. The proposer is code; a model may only name and describe a proposal.
+- ADR 0070. Build: ticket 20.

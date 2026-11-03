@@ -3,12 +3,12 @@ map: procedures
 ticket: "02"
 title: "The decision step: what a small model may choose and how it is labelled"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "resolved 2026-11-03, Kevin: approve all 9 as recommended"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The decision step: what a small model may choose and how it is labelled
@@ -40,3 +40,14 @@ on which key, and how does the result say a model chose?
 
 - Is a decision step allowed at all inside a procedure that also writes? Recommend **no** in v1:
   a model must not steer which write happens.
+
+## Answer
+
+**Accepted as recommended, including the open question.** Kevin, 2026-11-03: *"approve all 9 as recommended"*.
+
+- A `decide` step picks ONE of the branch names the definition lists, as constrained JSON; it never states a figure, date, name or sentence the user hears. Anything else is a failed step and the run takes `on_fail`.
+- Household's own key (`LEGION_GEMINI_KEY`), `GEMINI_MODEL`; key unset fails the step in words and the run takes `on_fail`.
+- Labelled twice: trace `chosen_by = model` with the model name, and "(a model chose to ...)" in the result. Tokens and an ESTIMATED cost stored, labelled estimate.
+- **Open question ruled: no `decide` step in a procedure that writes (v1).** Refused at load.
+- None of the first procedures uses one; the kind ships proven by a test procedure.
+- ADR 0070. Build: ticket 11 (schema and load-time rules), ticket 12 (running it).

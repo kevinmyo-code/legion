@@ -3,11 +3,11 @@ map: procedures
 ticket: "07"
 title: "Recruiter visits: run_procedure and the run inspector"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "resolved 2026-11-03, Kevin: approve all 9 as recommended"
 blockers: ["06"]
 blocked-by: ["[[06-trace-content-and-retention]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -38,3 +38,12 @@ own visit's runs?
   across households, never distillation proposals.
 - Isolation tests added to `tests/test_recruiter_isolation.py`, prompt-injection case included
   ("run Kevin's money check").
+
+## Answer
+
+**Accepted as recommended.** Kevin, 2026-11-03: *"approve all 9 as recommended"*.
+
+- Recruiters get `run_procedure`, limited to procedures whose every step tool is in `RECRUITER_TOOLS` (computed at list time, enforced per step at run time through `surface.refusal_for`).
+- Recruiters see the inspector for their own visit's runs only; never another household's, never the cross-household branch report, never distillation proposals.
+- Isolation tests in `tests/test_recruiter_isolation.py`, prompt-injection case included.
+- ADR 0070. Build: tickets 12, 14, 18.

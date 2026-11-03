@@ -1,7 +1,8 @@
 ---
-status: accepted
+status: amended
 decided: 2026-10-28
 decided-by: Kevin
+amended: 2026-11-03
 source: "[[decisions#2026-10-28 - Voice: read-only lookups may run non-blocking; writes stay blocking (Kevin)]]"
 tags: [adr]
 ---
@@ -9,6 +10,12 @@ tags: [adr]
 # 65. Read-only lookups may run non-blocking; writes stay blocking
 
 ## Standing
+
+**AMENDED 2026-11-03 by [[0070-procedures-run-by-the-engine]] (procedures ticket 04): the set
+grows from a fixed name list to "these four plus any procedure whose computed `writes` is
+false"**, run through `run_procedure` with `WHEN_IDLE`; a procedure with a write step blocks, and
+the disjointness test grows to cover it. Takes effect when procedures ticket 16 builds the phone
+side. The text below is the original decision, kept as written.
 
 **On the phone's Live socket, a write tool always blocks, and a named read-only lookup may run
 `NON_BLOCKING`**: the model says one short holding line, keeps the floor while the lookup runs, and

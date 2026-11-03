@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["04", "05", "12", "15"]
 blocked-by: ["[[04-how-clients-reach-run-procedure]]", "[[05-engine-down-and-two-implementations]]", "[[12-build-runner-and-tool]]", "[[15-build-first-procedures]]"]
-open-blockers: 4
+open-blockers: 2
 ready: false
 tags: [ticket]
 ---

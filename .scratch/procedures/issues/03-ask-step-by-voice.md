@@ -3,12 +3,12 @@ map: procedures
 ticket: "03"
 title: "The ask step: a procedure that needs a human answer, by voice"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "resolved 2026-11-03, Kevin: approve all 9 as recommended"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The ask step: a procedure that needs a human answer, by voice
@@ -37,3 +37,13 @@ does it ask on a Live voice socket without holding a tool call open?
 ## Open for Kevin
 
 - 2 minutes, or until the conversation ends?
+
+## Answer
+
+**Accepted as recommended, including the open question.** Kevin, 2026-11-03: *"approve all 9 as recommended"*.
+
+- The run returns `status = needs_answer`, the question, the allowed answers and a `resume` token; it never holds the call open. The run row is `waiting`.
+- Only the very next utterance counts as the answer. **Open question ruled: it expires after 2 minutes** (not "until the conversation ends"); anything else or the timeout cancels the run, and the cancel is said ("nothing was logged").
+- Every write step is preceded by an `ask` step unless marked `named_by_request: true`; refused at load otherwise.
+- The resume call that carries a yes for a write is BLOCKING (ADR 0065). Hands path: Yes/No buttons in the inspector and the web assistant (ADR 0035).
+- ADR 0070. Build: ticket 11 (load-time rule), ticket 12 (resume).

@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["07", "13"]
 blocked-by: ["[[07-recruiter-visits]]", "[[13-build-run-traces]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

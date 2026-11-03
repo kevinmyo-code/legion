@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["08", "13", "14"]
 blocked-by: ["[[08-distillation-policy]]", "[[13-build-run-traces]]", "[[14-build-branch-report-and-inspector]]"]
-open-blockers: 3
+open-blockers: 2
 ready: false
 tags: [ticket]
 ---

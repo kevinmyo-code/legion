@@ -7052,3 +7052,28 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   through `plaid_sync.account_map` and joins the rows on its four-digit mask, the way the sync
   files them.
 
+## 2026-11-03 - Procedures: compiled multi-step answers, run by the engine (Kevin)
+
+- Ruling: Kevin, *"approve all 9 as recommended"*, on the nine decisions of map
+  `.scratch/procedures/` (tickets 01-09), charted the same day from the talk on "graph
+  engineering" (Kevin: *"adapt the talk ideas. for everything in legion. phone, laptop, recruiter,
+  headunit"*). Already ruled before charting: no Neo4j, no graph DB; MCP is the portability layer.
+- Format (01): a procedure is a versioned DAG in Postgres (`server/procedures/`, tables
+  `procedures` and `procedure_versions`, tenant tables, household NULL for a built-in); built-ins
+  are YAML in the repo, loaded when the schema is brought up to date; six step kinds (`tool`,
+  `compute`, `decide`, `ask`, `check`, `say`); no loops, recursion or nested procedures; `writes`
+  computed, never declared.
+- Decide (02): a small model on the household's key picks one named branch, never a fact; labelled
+  "a model chose"; not allowed in a procedure that writes. Ask (03): the run returns `needs_answer`
+  and a resume token; only the very next utterance answers; expires after 2 minutes; every write
+  preceded by an ask unless the request named it.
+- Clients (04): phone and head unit declare `run_procedure` directly; on the phone a read-only
+  procedure is NON_BLOCKING `WHEN_IDLE`, amending ADR 0065's fixed set. Engine down (05): voice
+  speaks the engine's car and money figures when the engine is up, the phone's own copy, said so,
+  when it is not.
+- Traces (06): args and trimmed results like the conversation record, 60 days; visit runs deleted
+  with the visit (30-day cap); third-party reads never stored. Recruiters (07): `run_procedure`
+  from their allowlist and the inspector on their own visit. Distillation (08): proposals only,
+  3+ conversations over 2+ days, Kevin approves. First procedures (09): `car_check`,
+  `money_check`, `morning_briefing`; the phone's `get_sitrep` stays as is; laptop deferred.
+- ADR 0070. Build tickets 11-21 already exist on the map.

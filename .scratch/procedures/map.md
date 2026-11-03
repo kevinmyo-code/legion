@@ -5,7 +5,7 @@ charted: 2026-11-03
 charted-by: "Kevin + Opus"
 effort: "`.scratch/procedures/`"
 tickets: 21
-open: 21
+open: 12
 status: open
 tags: [map]
 ---
@@ -29,39 +29,40 @@ is the portability layer; clone-and-run (CLAUDE.md §2).
 
 ## Decisions for Kevin
 
-Each has a recommendation. Each lives in one ticket; this is the index.
+**All nine DECIDED 2026-11-03** (Kevin: *"approve all 9 as recommended"*). Each is ruled in its
+ticket's `## Answer`; the standing parts are ADR 0070. The recommendations below are now the rulings.
 
 1. **Storage and format** ([Procedure format](issues/01-procedure-format-and-storage.md)): new
    `server/procedures/` app, versioned definitions in Postgres, built-ins as YAML in the repo loaded
    on migrate; six step kinds (tool, compute, decide, ask, check, say), DAG only, no loops.
-   *Recommend: yes.*
+   **Decided: yes.**
 2. **The decision step** ([Decision step](issues/02-decision-step-small-model.md)): a small model
    (household key, `gemini-3.5-flash-lite`) may only pick one of the branches the definition names,
    never state a fact; labelled "a model chose" in trace and result; not allowed in a procedure that
-   writes. *Recommend: yes, and none of the first procedures uses one.*
+   writes. **Decided: yes; no `decide` in a writing procedure; none of the first procedures uses one.**
 3. **Asking by voice** ([Ask step](issues/03-ask-step-by-voice.md)): the run returns `needs_answer`
    plus a resume token and ends the call; only the very next utterance counts; expires after 2
-   minutes; every write is preceded by an ask unless the request named it. *Recommend: yes.*
+   minutes; every write is preceded by an ask unless the request named it. **Decided: yes.**
 4. **How clients call it** ([Client reach](issues/04-how-clients-reach-run-procedure.md)): phone and
    head unit declare `run_procedure` DIRECTLY, not behind `ask_engine`; on the phone a read-only
    procedure runs NON_BLOCKING / `WHEN_IDLE` (amends ADR 0065's fixed set), any writing one
-   BLOCKING. *Recommend: yes.*
+   BLOCKING. **Decided: yes.**
 5. **Engine down** ([Engine down](issues/05-engine-down-and-two-implementations.md)): voice answers
    car and money from the engine's procedure when it is up, and falls back to the phone's local
-   tools, said in words, when it is not. *Recommend: yes; retiring the phone's duplicate figures is
-   a later effort.*
+   tools, said in words, when it is not. **Decided: yes; retiring the phone's duplicate figures is
+   a later effort.**
 6. **Trace content and retention** ([Traces](issues/06-trace-content-and-retention.md)): store step
    args and trimmed results like the conversation record (not `McpCall`'s no-args posture); members
-   60 days; recruiter runs deleted with the visit household, 30-day cap. *Recommend: yes.*
+   60 days; recruiter runs deleted with the visit household, 30-day cap. **Decided: yes.**
 7. **Recruiters** ([Recruiter visits](issues/07-recruiter-visits.md)): recruiters get
    `run_procedure` for procedures built only from their allowlist, and see the inspector for their
-   own visit's runs. *Recommend: yes, it is the showcase.*
+   own visit's runs. **Decided: yes.**
 8. **Distillation** ([Distillation policy](issues/08-distillation-policy.md)): proposals from 3+
    matching successful conversations over 2+ days; never from recruiter visits or mail-touching
-   turns; Kevin approves in the inspector; never auto-activated. *Recommend: yes.*
+   turns; Kevin approves in the inspector; never auto-activated. **Decided: yes.**
 9. **First procedures** ([First procedures](issues/09-first-procedures.md)): `car_check`,
    `money_check`, `morning_briefing` (wraps the existing brief); laptop deferred.
-   *Recommend: yes; and keep the phone's `get_sitrep` as is until the evaluation says otherwise.*
+   **Decided: yes; the phone's `get_sitrep` stays as is until the evaluation says otherwise.**
 
 ## Destination
 
@@ -82,7 +83,8 @@ lower latency than today's free routing, on the same asks.
   that fence lives in `AssistantToolView`, not in `run_tool`. A runner that calls `run_tool` alone
   leaks.
 - New tables: `public` schema, `household.tenancy.TENANT_TABLES`, tenancy leak test (ADR 0045).
-- ADR number: write it at build time; 0066 and 0067 are taken on unmerged `feat/claude-session*`.
+- ADR: **0070** (`docs/adr/0070-procedures-run-by-the-engine.md`). 0066 and 0067 are taken on unmerged
+  branches, 0068 and 0069 on dev (checked 2026-11-03).
 - Skills: `/grilling` and `/domain-modeling` for decision tickets; `/tdd` for builds.
 
 ## What exists, so nothing here is invented (traced 2026-11-03 on origin/dev 36ef92ef)
@@ -136,7 +138,27 @@ Full trace with line numbers: [research/call-sequences-today.md](research/call-s
 
 ## Decisions so far
 
-None yet.
+2026-11-03, Kevin: *"approve all 9 as recommended"*. ADR 0070; `memory/library/decisions.md` entry
+"2026-11-03 - Procedures: compiled multi-step answers, run by the engine (Kevin)".
+
+- [Procedure format](issues/01-procedure-format-and-storage.md): `server/procedures/`, Postgres,
+  built-in YAML loaded on migrate, six step kinds, DAG only, computed `writes`.
+- [Decision step](issues/02-decision-step-small-model.md): picks a named branch only, household key,
+  labelled; **not allowed in a procedure that writes**.
+- [Ask step](issues/03-ask-step-by-voice.md): `needs_answer` plus resume token; very next utterance;
+  **2 minutes**; every write preceded by an ask unless named by the request.
+- [Client reach](issues/04-how-clients-reach-run-procedure.md): declared directly on phone and head
+  unit; read-only procedures NON_BLOCKING on the phone (amends ADR 0065).
+- [Engine down](issues/05-engine-down-and-two-implementations.md): **engine's answer when up**, phone's
+  local copy said in words when down.
+- [Traces](issues/06-trace-content-and-retention.md): args and trimmed results, 60 days, visit runs die
+  with the visit (30-day cap), third-party reads never stored.
+- [Recruiter visits](issues/07-recruiter-visits.md): `run_procedure` from their allowlist; inspector on
+  their own visit only.
+- [Distillation](issues/08-distillation-policy.md): proposals only, 3+ conversations over 2+ days,
+  Kevin approves.
+- [First procedures](issues/09-first-procedures.md): `car_check`, `money_check`, `morning_briefing`;
+  **`get_sitrep` stays**; laptop deferred.
 
 ## Not yet specified
 

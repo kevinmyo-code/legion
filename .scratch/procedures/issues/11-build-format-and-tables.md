@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01", "02", "03", "06"]
 blocked-by: ["[[01-procedure-format-and-storage]]", "[[02-decision-step-small-model]]", "[[03-ask-step-by-voice]]", "[[06-trace-content-and-retention]]"]
-open-blockers: 4
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Build: procedures app, definition schema, built-in loader

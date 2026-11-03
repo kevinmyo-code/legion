@@ -3,11 +3,11 @@ map: procedures
 ticket: "09"
 title: "The first procedures and their exact steps"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "resolved 2026-11-03, Kevin: approve all 9 as recommended"
 blockers: ["01"]
 blocked-by: ["[[01-procedure-format-and-storage]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -42,3 +42,12 @@ is not known").
 
 - Does `get_sitrep` on the phone switch to `morning_briefing`, or stay and only web/head unit use
   the procedure?
+
+## Answer
+
+**Accepted as recommended, including the open question.** Kevin, 2026-11-03: *"approve all 9 as recommended"*.
+
+- First built-ins: `car_check`, `money_check`, `morning_briefing` (wraps the brief, does not replace it), with the steps listed above. Laptop deferred to ticket 19.
+- **Open question ruled: the phone's `get_sitrep` stays as it is** until the evaluation says otherwise; web and head unit use `morning_briefing`.
+- Every `say` states what did not happen.
+- Build: ticket 15.

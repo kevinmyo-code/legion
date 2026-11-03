@@ -58,10 +58,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
-| [[.scratch/procedures/map\|procedures]] | [[01-procedure-format-and-storage\|01]] | grilling | Procedure format, step kinds and where a definition lives |
-| [[.scratch/procedures/map\|procedures]] | [[02-decision-step-small-model\|02]] | grilling | The decision step: what a small model may choose and how it is labelled |
-| [[.scratch/procedures/map\|procedures]] | [[03-ask-step-by-voice\|03]] | grilling | The ask step: a procedure that needs a human answer, by voice |
 | [[.scratch/procedures/map\|procedures]] | [[10-baseline-round-trips\|10]] | task | Baseline: measure round trips, latency and tool errors from recorded conversations |
+| [[.scratch/procedures/map\|procedures]] | [[11-build-format-and-tables\|11]] | build | Build: procedures app, definition schema, built-in loader |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[01-recruiter-role-and-allowlist\|01]] | build | Recruiter role and tool allowlist (default deny) |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[03-demo-household-seed\|03]] | build | Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, receipt scan |
@@ -254,22 +252,15 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[07-legion-only-extras\|07]] | decision | Decision: LEGION-only extras (ETA to Mia, leave-by, fuel-aware stops)  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[02-all-apps\|02]] | build | Build: All apps on Matrix HOME  waiting on [[01-block-model\|01]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
-| [[.scratch/procedures/map\|procedures]] | [[04-how-clients-reach-run-procedure\|04]] | grilling | How each client reaches run_procedure (phone, head unit, web, recruiter, laptop)  waiting on [[01-procedure-format-and-storage\|01]] |
-| [[.scratch/procedures/map\|procedures]] | [[05-engine-down-and-two-implementations\|05]] | grilling | Engine down, and the phone's own copies of car and money figures  waiting on [[04-how-clients-reach-run-procedure\|04]] |
-| [[.scratch/procedures/map\|procedures]] | [[06-trace-content-and-retention\|06]] | grilling | What a run trace stores, and how long  waiting on [[01-procedure-format-and-storage\|01]] |
-| [[.scratch/procedures/map\|procedures]] | [[07-recruiter-visits\|07]] | grilling | Recruiter visits: run_procedure and the run inspector  waiting on [[06-trace-content-and-retention\|06]] |
-| [[.scratch/procedures/map\|procedures]] | [[08-distillation-policy\|08]] | grilling | Distillation: when a repeated trace becomes a proposed procedure  waiting on [[06-trace-content-and-retention\|06]] |
-| [[.scratch/procedures/map\|procedures]] | [[09-first-procedures\|09]] | grilling | The first procedures and their exact steps  waiting on [[01-procedure-format-and-storage\|01]] |
-| [[.scratch/procedures/map\|procedures]] | [[11-build-format-and-tables\|11]] | build | Build: procedures app, definition schema, built-in loader  waiting on [[01-procedure-format-and-storage\|01]], [[02-decision-step-small-model\|02]], [[03-ask-step-by-voice\|03]], [[06-trace-content-and-retention\|06]] |
-| [[.scratch/procedures/map\|procedures]] | [[12-build-runner-and-tool\|12]] | build | Build: engine runner and the run_procedure MCP tool  waiting on [[04-how-clients-reach-run-procedure\|04]], [[07-recruiter-visits\|07]], [[11-build-format-and-tables\|11]] |
-| [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention  waiting on [[06-trace-content-and-retention\|06]], [[11-build-format-and-tables\|11]] |
-| [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[07-recruiter-visits\|07]], [[13-build-run-traces\|13]] |
-| [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[09-first-procedures\|09]], [[12-build-runner-and-tool\|12]] |
-| [[.scratch/procedures/map\|procedures]] | [[16-build-phone\|16]] | build | Build: phone declares run_procedure (direct, non-blocking when read-only)  waiting on [[04-how-clients-reach-run-procedure\|04]], [[05-engine-down-and-two-implementations\|05]], [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
-| [[.scratch/procedures/map\|procedures]] | [[17-build-head-unit\|17]] | build | Build: head unit declares run_procedure directly  waiting on [[04-how-clients-reach-run-procedure\|04]], [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
-| [[.scratch/procedures/map\|procedures]] | [[18-build-web-and-recruiter\|18]] | build | Build: web assistant and recruiter visit use run_procedure  waiting on [[07-recruiter-visits\|07]], [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
+| [[.scratch/procedures/map\|procedures]] | [[12-build-runner-and-tool\|12]] | build | Build: engine runner and the run_procedure MCP tool  waiting on [[11-build-format-and-tables\|11]] |
+| [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention  waiting on [[11-build-format-and-tables\|11]] |
+| [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[13-build-run-traces\|13]] |
+| [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[12-build-runner-and-tool\|12]] |
+| [[.scratch/procedures/map\|procedures]] | [[16-build-phone\|16]] | build | Build: phone declares run_procedure (direct, non-blocking when read-only)  waiting on [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
+| [[.scratch/procedures/map\|procedures]] | [[17-build-head-unit\|17]] | build | Build: head unit declares run_procedure directly  waiting on [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
+| [[.scratch/procedures/map\|procedures]] | [[18-build-web-and-recruiter\|18]] | build | Build: web assistant and recruiter visit use run_procedure  waiting on [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
 | [[.scratch/procedures/map\|procedures]] | [[19-laptop-worker\|19]] | grilling | Laptop worker: procedures for the Claude session  waiting on [[12-build-runner-and-tool\|12]] |
-| [[.scratch/procedures/map\|procedures]] | [[20-build-distillation\|20]] | build | Build: distillation proposals and approval in the inspector  waiting on [[08-distillation-policy\|08]], [[13-build-run-traces\|13]], [[14-build-branch-report-and-inspector\|14]] |
+| [[.scratch/procedures/map\|procedures]] | [[20-build-distillation\|20]] | build | Build: distillation proposals and approval in the inspector  waiting on [[13-build-run-traces\|13]], [[14-build-branch-report-and-inspector\|14]] |
 | [[.scratch/procedures/map\|procedures]] | [[21-build-evaluation-replay\|21]] | build | Build: replay recorded asks against procedures vs free routing  waiting on [[10-baseline-round-trips\|10]], [[15-build-first-procedures\|15]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[07-web\|07]] | build | Web: the log screen, log-it form, last-bought on list items  waiting on [[06-server\|06]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[08-phone\|08]] | build | Phone: voice tools, the log screen, last-bought label  waiting on [[06-server\|06]] |
@@ -378,7 +369,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
-| [[.scratch/procedures/map\|procedures]] | 21 | 21 | [[.scratch/procedures/procedures.canvas\|open]] |
+| [[.scratch/procedures/map\|procedures]] | 21 | 12 | [[.scratch/procedures/procedures.canvas\|open]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | 9 | 4 | [[.scratch/purchase-log/purchase-log.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | 14 | 14 | [[.scratch/recruiter-demo/recruiter-demo.canvas\|open]] |

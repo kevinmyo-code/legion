@@ -3,11 +3,11 @@ map: procedures
 ticket: "04"
 title: "How each client reaches run_procedure (phone, head unit, web, recruiter, laptop)"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "resolved 2026-11-03, Kevin: approve all 9 as recommended"
 blockers: ["01"]
 blocked-by: ["[[01-procedure-format-and-storage]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -51,3 +51,13 @@ it go through a sub-agent?
   composition). With a `decide` step: under 4 s p95.
 - Over budget: the run returns what finished, names the steps that did not run, never blocks the
   socket past the client's own tool timeout.
+
+## Answer
+
+**Accepted as recommended.** Kevin, 2026-11-03: *"approve all 9 as recommended"*.
+
+- Phone and head unit declare `run_procedure` DIRECTLY to Live, not behind `ask_engine`; its `name` enum is built at session start from `tools/list`.
+- On the phone a procedure whose computed `writes` is false runs NON_BLOCKING with `WHEN_IDLE`; any writing one is BLOCKING. **This amends ADR 0065's fixed set** (ADR 0070); the disjointness test grows to cover it.
+- Head unit stays all-BLOCKING. Web picks `run_procedure` up from the registry. Laptop calls `/mcp` when its map unparks.
+- Latency budget as proposed (engine side under 1.5 s p95 without `decide`, under 4 s with), to be confirmed or corrected by ticket 10's measurement.
+- Build: tickets 12, 16, 17.

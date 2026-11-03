@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["09", "12"]
 blocked-by: ["[[09-first-procedures]]", "[[12-build-runner-and-tool]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
