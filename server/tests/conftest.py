@@ -511,3 +511,15 @@ def auth_client(household_user):
     (`REST_FRAMEWORK` in `legion/settings.py`), not an opt-in a test should
     have to arrange by hand each time."""
     return _client_for(household_user)
+
+
+@pytest.fixture(autouse=True)
+def _no_nhtsa(monkeypatch):
+    """No test reaches the network: `vehicle_recalls`' one call to NHTSA fails
+    in words unless a test hands it an answer (`tests/test_parity_tools.py`)."""
+    from engine_mcp import recalls
+
+    def _offline(make, model, year):
+        raise recalls.RecallLookupFailed("the network is off in tests")
+
+    monkeypatch.setattr(recalls, "fetch_recalls", _offline)

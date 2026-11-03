@@ -833,6 +833,599 @@ def _last_ticked(request, args) -> ToolResult:
 
 
 # =============================================================================
+# Phone-web parity quick wins (recruiter-demo research 01, 2026-11-02). Each
+# is a phone tool's capability moved to the engine so the web assistant, `/mcp`
+# and a recruiter's visit can use it. Reads go through `scoped()`/`visible()`;
+# writes call the routed REST view, like every write above.
+# =============================================================================
+
+
+def _household_today(request) -> date:
+    """Today in the household's zone when it has one, else UTC."""
+    from household.tenancy import household_of
+    from household.timezones import local_date, zone_named
+
+    zone = zone_named(getattr(household_of(request), "timezone", None))
+    return local_date(zone) if zone is not None else datetime.now(UTC).date()
+
+
+def _household_zone(request):
+    from zoneinfo import ZoneInfo
+
+    from household.tenancy import household_of
+    from household.timezones import zone_named
+
+    return zone_named(getattr(household_of(request), "timezone", None)) or ZoneInfo("UTC")
+
+
+def _long_date(day: date) -> str:
+    return f"{day:%a} {day:%b} {day.day}, {day.year}"
+
+
+def _vehicle_name(vehicle) -> str:
+    return vehicle.name or f"{vehicle.year} {vehicle.make} {vehicle.model}"
+
+
+def _vehicles(request, args, verb: str):
+    """(vehicles, refusal). Every live, unarchived vehicle, or the ones
+    `vehicle` names (an id, or words in its name, make or model)."""
+    from household.tenancy import scoped
+    from legacy.models.fleet import Vehicle
+
+    live = scoped(Vehicle, request).filter(deleted_at__isnull=True, archived=False)
+    asked = (args.get("vehicle") or "").strip()
+    if not asked:
+        found = list(live.order_by("name", "id"))
+        if not found:
+            return [], f"Nothing was {verb}. This household has no vehicle on file."
+        return found, None
+    try:
+        found = list(live.filter(pk=uuid.UUID(asked)))
+    except ValueError:
+        words = asked.lower().split()
+        found = [
+            v
+            for v in live.order_by("name", "id")
+            if all(
+                w in f"{v.name} {v.year} {v.make} {v.model} {v.trim or ''}".lower() for w in words
+            )
+        ]
+    if not found:
+        names = ", ".join(_vehicle_name(v) for v in live.order_by("name", "id")) or "none"
+        return [], (
+            f"Nothing was {verb}. No vehicle on file matches {asked!r}. Vehicles on file: {names}."
+        )
+    return found, None
+
+
+ODOMETER_SOURCE_WORDS = {
+    "vehicle": "the reading entered on the vehicle",
+    "service": "the mileage on a service record",
+    "code": "the mileage stamped on a trouble-code read",
+}
+
+
+def _next_service(request, args) -> ToolResult:
+    from brief.maintenance import latest_odometer, schedule_status
+
+    try:
+        today = _parse_day(args["date"], "date") if args.get("date") else _household_today(request)
+    except BadArgument as exc:
+        return refused(f"Nothing was read. {exc}.")
+    vehicles, refusal = _vehicles(request, args, "read")
+    if refusal:
+        return refused(refusal)
+    paragraphs, out = [], []
+    for vehicle in vehicles:
+        name = _vehicle_name(vehicle)
+        items = schedule_status(request, vehicle)
+        odometer = latest_odometer(request, vehicle)
+        entry = {
+            "vehicle_id": str(vehicle.id),
+            "name": name,
+            "next_by_date": None,
+            "next_by_miles": None,
+            "overdue": [],
+            "never_logged": [i.service_name for i in items if i.never_logged],
+            "odometer": (
+                {
+                    "miles": odometer.miles,
+                    "read_on": odometer.read_on.isoformat(),
+                    "source": odometer.source,
+                }
+                if odometer
+                else None
+            ),
+        }
+        out.append(entry)
+        if not items:
+            paragraphs.append(
+                f"{name}: no maintenance schedule is logged, so nothing can be timed."
+            )
+            continue
+        said = []
+        dated = sorted((i for i in items if i.due_on is not None), key=lambda i: i.due_on)
+        for item in dated:
+            if item.due_on < today:
+                entry["overdue"].append(
+                    {"service_name": item.service_name, "due_on": item.due_on.isoformat()}
+                )
+        upcoming = [i for i in dated if i.due_on >= today]
+        if upcoming:
+            item = upcoming[0]
+            days = (item.due_on - today).days
+            entry["next_by_date"] = {
+                "service_name": item.service_name,
+                "due_on": item.due_on.isoformat(),
+                "days_away": days,
+            }
+            when = "today" if days == 0 else f"in {days} day{'s' if days != 1 else ''}"
+            said.append(
+                f"By date, {item.service_name} is next: due {_long_date(item.due_on)} ({when}; "
+                f"every {item.interval_months} months, last done "
+                f"{_long_date(item.last_done_on)})."
+            )
+        by_miles = [i for i in items if i.due_at_miles is not None]
+        if by_miles and odometer is None:
+            said.append(
+                "Mileage-based items cannot be timed: there is no odometer reading on file."
+            )
+        elif by_miles:
+            for item in by_miles:
+                if item.due_at_miles <= odometer.miles:
+                    entry["overdue"].append(
+                        {"service_name": item.service_name, "due_at_miles": item.due_at_miles}
+                    )
+            ahead = sorted(
+                (i for i in by_miles if i.due_at_miles > odometer.miles),
+                key=lambda i: i.due_at_miles,
+            )
+            if ahead:
+                item = ahead[0]
+                to_go = item.due_at_miles - odometer.miles
+                entry["next_by_miles"] = {
+                    "service_name": item.service_name,
+                    "due_at_miles": item.due_at_miles,
+                    "miles_to_go_estimate": to_go,
+                }
+                said.append(
+                    f"By mileage, {item.service_name} is next: due at {item.due_at_miles:,} mi, "
+                    f"about {to_go:,} mi to go. That distance is an ESTIMATE: it is worked out "
+                    f"from the last odometer reading on file ({odometer.miles:,} mi on "
+                    f"{_long_date(odometer.read_on)}, "
+                    f"{ODOMETER_SOURCE_WORDS[odometer.source]}) and the service mileage on "
+                    f"record, not read off the car today; say it is approximate."
+                )
+        if entry["overdue"]:
+            parts = []
+            for row in entry["overdue"]:
+                if "due_on" in row:
+                    due_on = _long_date(date.fromisoformat(row["due_on"]))
+                    parts.append(f"{row['service_name']} (due {due_on})")
+                else:
+                    parts.append(
+                        f"{row['service_name']} (due at {row['due_at_miles']:,} mi; the last "
+                        f"reading on file is past that)"
+                    )
+            said.append("Already past due by the records on file: " + "; ".join(parts) + ".")
+        if entry["never_logged"]:
+            said.append(
+                "Never logged as done, so not timed: " + ", ".join(entry["never_logged"]) + "."
+            )
+        if not said:
+            said.append("Nothing on the schedule can be timed from the records on file.")
+        paragraphs.append(f"{name}: " + " ".join(said))
+    return ok(
+        f"Maintenance as of {_long_date(today)}, from the records on file (schedules and "
+        f"service history; nothing here was read from the car):\n" + "\n".join(paragraphs),
+        structured={"as_of": today.isoformat(), "vehicles": out},
+    )
+
+
+def _account_balances(request, args) -> ToolResult:
+    from api.ledger_balances import account_balances
+    from brief.compose import money
+
+    found = account_balances(request, args.get("account"))
+    if not found:
+        what = (
+            f"no account matching {args['account']!r}"
+            if args.get("account")
+            else "no accounts: no statement and no transaction on file"
+        )
+        return ok(
+            f"The engine read this household's ledger and found {what}. That is a real empty "
+            f"result, not a failure to read.",
+            structured={"accounts": []},
+        )
+    lines = []
+    for a in found:
+        c = a["currency"]
+        said = [f"{a['label']} (ending {a['account_last4']}, {c}):"]
+        anchored = a["verified_balance_cents"] is not None
+        if anchored:
+            said.append(
+                f"verified balance {money(a['verified_balance_cents'], c)}, from the closing "
+                f"balance printed on the statement ending {_long_date(a['statement_period_end'])}, "
+                f"which passed the reconciliation gate"
+                + (
+                    f", plus {money(a['fact_since_cents'], c)} from the bank's own feed since."
+                    if a["fact_since_count"]
+                    else "."
+                )
+            )
+        else:
+            said.append("no statement on file, so there is NO verified balance; never state one.")
+            if a["fact_since_count"]:
+                said.append(
+                    f"The bank's own feed shows {a['fact_since_count']} transaction(s) netting "
+                    f"{money(a['fact_since_cents'], c)}; that is movement, not a balance."
+                )
+        if a["unverified_since_count"]:
+            since = "Since that statement" if anchored else "On file"
+            said.append(
+                f"{since}, {a['unverified_since_count']} UNVERIFIED transaction(s) net "
+                f"{money(a['unverified_since_cents'], c)}: no gate checked them."
+            )
+        if a["pending_count"]:
+            said.append(
+                f"{a['pending_count']} charge(s) logged by hand as pending, not confirmed by the "
+                f"bank, net {money(a['pending_cents'], c)}."
+            )
+        if anchored and (a["unverified_since_count"] or a["pending_count"]):
+            said.append(
+                f"With those included the figure would be {money(a['with_unverified_cents'], c)}, "
+                f"which is UNVERIFIED; say so whenever you say it."
+            )
+        elif not anchored and (a["unverified_since_count"] or a["pending_count"]):
+            said.append("That unverified activity is movement, not a balance.")
+        lines.append(" ".join(said))
+    return ok(
+        "Balances per account, never added across currencies:\n"
+        + "\n".join(f"- {t}" for t in lines),
+        structured={"accounts": found},
+    )
+
+
+def _grocery_spend(request, args) -> ToolResult:
+    from brief.compose import money
+    from household.tenancy import scoped
+    from legacy.models.pantry import Receipt
+
+    try:
+        start = _parse_day(args["from"], "from") if args.get("from") else None
+        end = _parse_day(args["to"], "to") if args.get("to") else None
+    except BadArgument as exc:
+        return refused(f"Nothing was read. {exc}.")
+    if start and end and end < start:
+        return refused("Nothing was read. `to` must be on or after `from`.")
+    receipts = scoped(Receipt, request)
+    if start:
+        receipts = receipts.filter(purchase_date__gte=start)
+    if end:
+        receipts = receipts.filter(purchase_date__lte=end)
+    window = (
+        f" from {start.isoformat() if start else 'the first receipt'} to "
+        f"{end.isoformat() if end else 'the latest'}"
+        if start or end
+        else " across every receipt on file"
+    )
+    by_currency: dict[str, dict] = {}
+    for r in receipts.values("currency", "total_cents", "provenance", "purchase_date"):
+        row = by_currency.setdefault(
+            r["currency"],
+            {
+                "currency": r["currency"],
+                "total_cents": 0,
+                "receipts": 0,
+                "unverified_cents": 0,
+                "unverified_receipts": 0,
+                "first": r["purchase_date"],
+                "last": r["purchase_date"],
+            },
+        )
+        row["total_cents"] += r["total_cents"]
+        row["receipts"] += 1
+        row["first"] = min(row["first"], r["purchase_date"])
+        row["last"] = max(row["last"], r["purchase_date"])
+        if r["provenance"] == "UNRECONCILED":
+            row["unverified_cents"] += r["total_cents"]
+            row["unverified_receipts"] += 1
+    if not by_currency:
+        return ok(
+            f"The engine read this household's receipts and found none{window}. That is a real "
+            f"empty result, not a failure to read; grocery spend not photographed as a receipt "
+            f"is not on file.",
+            structured={"currencies": []},
+        )
+    rows = sorted(by_currency.values(), key=lambda r: (r["currency"] != "USD", r["currency"]))
+    lines = []
+    for row in rows:
+        c = row["currency"]
+        text = (
+            f"{c}: {money(row['total_cents'], c)} across {row['receipts']} receipt(s), "
+            f"{row['first'].isoformat()} to {row['last'].isoformat()}."
+        )
+        if row["unverified_receipts"]:
+            text += (
+                f" {money(row['unverified_cents'], c)} of that, on {row['unverified_receipts']} "
+                f"receipt(s), is UNVERIFIED: those receipts could not be checked against their "
+                f"own printed numbers. Say the total is not confirmed."
+            )
+        else:
+            text += " Every receipt in it passed the reconciliation gate."
+        lines.append(text)
+        row["first"], row["last"] = row["first"].isoformat(), row["last"].isoformat()
+    return ok(
+        f"Grocery spend from receipts{window}, per currency (never add them together). Receipt "
+        f"totals as printed; a receipt the gate quarantined is not counted:\n"
+        + "\n".join(f"- {t}" for t in lines),
+        structured={"currencies": rows},
+    )
+
+
+RECALLS_SHOWN = 20
+
+
+def _vehicle_recalls(request, args) -> ToolResult:
+    from engine_mcp import recalls
+
+    vehicles, refusal = _vehicles(request, args, "read")
+    if refusal:
+        return refused(refusal)
+    if len(vehicles) > 1:
+        names = ", ".join(_vehicle_name(v) for v in vehicles)
+        return refused(
+            f"Nothing was read. Recalls are looked up for one vehicle at a time, and several are "
+            f"on file: {names}. Say which with `vehicle`."
+        )
+    vehicle = vehicles[0]
+    name = _vehicle_name(vehicle)
+    missing = [
+        label
+        for label, value in (
+            ("year", vehicle.year),
+            ("make", vehicle.make),
+            ("model", vehicle.model),
+        )
+        if not value or (isinstance(value, str) and not value.strip())
+    ]
+    if missing:
+        return refused(
+            f"Nothing was read. {name} has no {' or '.join(missing)} on file, and NHTSA's recall "
+            f"list is looked up by year, make and model. Nothing was guessed."
+        )
+    car = f"{vehicle.year} {vehicle.make} {vehicle.model}"
+    try:
+        found = recalls.fetch_recalls(vehicle.make, vehicle.model, vehicle.year)
+    except recalls.RecallLookupFailed as exc:
+        return failed(
+            f"Nothing was read. The lookup of NHTSA's recall list for the {car} did not complete "
+            f"({exc}), so it is NOT known whether it has recalls. This is not a finding of none; "
+            f"try again later."
+        )
+    scope = (
+        "NHTSA's public list for that model year, make and model, not a check of this car's VIN: "
+        "whether a recall applies to this exact car, or was already repaired, is not known here"
+    )
+    if not found:
+        return ok(
+            f"NHTSA's recall list shows no recalls for the {car} ({name}) as of this lookup. That "
+            f"is {scope}.",
+            structured={"vehicle_id": str(vehicle.id), "vehicle": car, "recalls": []},
+        )
+    shown = found[:RECALLS_SHOWN]
+    lines = "\n".join(
+        f"- {r['campaign'] or 'no campaign number'}: {r['component'] or 'component not stated'}. "
+        f"{r['summary']} Remedy: {r['remedy'] or 'not stated'}"
+        for r in shown
+    )
+    more = f" Only the first {RECALLS_SHOWN} are shown." if len(found) > len(shown) else ""
+    return ok(
+        f"NHTSA lists {len(found)} recall(s) for the {car} ({name}).{more} This is {scope}:\n"
+        f"{lines}",
+        structured={"vehicle_id": str(vehicle.id), "vehicle": car, "recalls": shown},
+    )
+
+
+SCHEDULE_KINDS = {"none": None, "daily": "DAILY", "weekly": "WEEKLY"}
+
+
+def _create_checklist(request, args) -> ToolResult:
+    from api.recurrence import parse_weekdays
+
+    schedule = SCHEDULE_KINDS[args.get("schedule", "none")]
+    days = (args.get("days") or "").strip()
+    if schedule == "WEEKLY" and not days:
+        return refused(
+            "Nothing was written. A weekly checklist needs `days`, e.g. 'MON,WED,FRI'."
+        )
+    if days and schedule != "WEEKLY":
+        return refused("Nothing was written. `days` applies only to a weekly checklist.")
+    if days and not parse_weekdays(days):
+        return refused(
+            f"Nothing was written. {days!r} is not a list of weekdays such as 'MON,WED,FRI'."
+        )
+    body = {
+        "name": args["name"],
+        "schedule_kind": schedule,
+        "schedule_days_of_week": days or None,
+        "visibility": "private" if args.get("private") else "shared",
+    }
+    if args.get("sync_id"):
+        body["sync_id"] = args["sync_id"]
+    response = call_route(request, "POST", "/api/checklists/", body)
+    if response.status_code == 200:
+        return ok(
+            f"Nothing was created: a checklist with sync_id {args.get('sync_id')!r} already "
+            f"exists, and it was left as it was: {_json(response.data)}",
+            structured={"row": response.data},
+        )
+    return _write_result(response, f"the checklist {args['name']!r}", "written")
+
+
+def _checklist_item(request, checklist_id, item_id):
+    from checklists.models import ChecklistItem
+
+    return (
+        visible(ChecklistItem, request)
+        .filter(pk=item_id, checklist_id=checklist_id)
+        .select_related("checklist")
+        .first()
+    )
+
+
+def _untick_checklist_item(request, args) -> ToolResult:
+    from checklists.models import ChecklistTick
+
+    try:
+        on_day = _parse_day(args["date"], "date")
+    except BadArgument as exc:
+        return refused(f"Nothing was written. {exc}.")
+    item = _checklist_item(request, args["checklist_id"], args["item_id"])
+    if item is None:
+        return refused(
+            f"Nothing was written. There is no item {args['item_id']} on checklist "
+            f"{args['checklist_id']} that you can see."
+        )
+    day = (on_day - date(1970, 1, 1)).days
+    ticked = ChecklistTick.objects.filter(item=item, day=day, deleted_at__isnull=True).exists()
+    if not ticked:
+        return ok(
+            f"Nothing was unticked: {item.text!r} on {item.checklist.name!r} had no tick for "
+            f"{on_day.isoformat()}, so nothing changed.",
+            structured={"unticked": False},
+        )
+    path = f"/api/checklists/{item.checklist_id}/items/{item.id}/tick/{day}"
+    response = call_route(request, "DELETE", path)
+    if response.status_code == 204:
+        return ok(
+            f"Unticked {item.text!r} on {item.checklist.name!r} for {on_day.isoformat()}. The "
+            f"engine committed it. On the Groceries list, an untick on the tick's own day also "
+            f"takes back the bought entry that tick logged.",
+            structured={"unticked": True},
+        )
+    return _write_result(response, f"the tick on {item.text!r} for {on_day}", "written")
+
+
+def _remove_checklist_item(request, args) -> ToolResult:
+    item = _checklist_item(request, args["checklist_id"], args["item_id"])
+    if item is None:
+        return refused(
+            f"Nothing was deleted. There is no item {args['item_id']} on checklist "
+            f"{args['checklist_id']} that you can see."
+        )
+    if item.deleted_at is not None:
+        return ok(f"Nothing was deleted: {item.text!r} was already removed.")
+    response = call_route(
+        request, "DELETE", f"/api/checklists/{item.checklist_id}/items/{item.id}"
+    )
+    if response.status_code == 204:
+        return ok(
+            f"Removed {item.text!r} from {item.checklist.name!r}. The engine set its tombstone; "
+            f"its past ticks stay in the history."
+        )
+    return _write_result(response, f"item {item.text!r}", "deleted")
+
+
+def _archive_checklist(request, args) -> ToolResult:
+    archived = args.get("archived", True)
+    try:
+        response = call_route(
+            request, "PATCH", f"/api/checklists/{args['checklist_id']}", {"archived": archived}
+        )
+    except RouteNotFound:
+        return refused(f"Nothing was written. {args['checklist_id']!r} is not a checklist id.")
+    if response.status_code == 200:
+        verb = "Archived" if archived else "Unarchived"
+        tail = (
+            "It is kept with its items and history, and no longer listed unless archived "
+            "lists are asked for."
+            if archived
+            else "It is listed again."
+        )
+        return ok(
+            f"{verb} the checklist {response.data['name']!r}. The engine committed it. {tail}",
+            structured={"row": response.data},
+        )
+    return _write_result(response, f"checklist {args['checklist_id']}", "written")
+
+
+def _rename_place(request, args) -> ToolResult:
+    source, target = args["from"].strip(), args["to"].strip()
+    if not source or not target:
+        return refused("Nothing was renamed. Both the current and the new label are needed.")
+    if "/" in source:
+        return refused(f"Nothing was renamed. There is no saved place called {source!r}.")
+    try:
+        response = call_route(request, "POST", f"/api/places/{source}/rename/", {"to": target})
+    except RouteNotFound:
+        return refused(f"Nothing was renamed. There is no saved place called {source!r}.")
+    status = response.status_code
+    if status == 200:
+        return ok(
+            f"Renamed the place {source!r} to {target!r}. The engine committed it: same location "
+            f"and address, and live reminders on the old name moved with it. "
+            f"{_json(response.data)}",
+            structured=response.data if isinstance(response.data, dict) else None,
+        )
+    detail = _detail(response)
+    if not detail.startswith("Nothing was"):
+        detail = f"Nothing was renamed. The engine refused it (HTTP {status}): {detail}"
+    return refused(detail) if status in (403, 404, 405, 409) else failed(detail)
+
+
+def _skip_event_occurrence(request, args) -> ToolResult:
+    from api.recurrence import end_from_series, occurrences_in_window, rule_from_series
+    from legacy.models.dates import Event, EventSkip
+
+    try:
+        skip_day = _parse_day(args["date"], "date")
+    except BadArgument as exc:
+        return refused(f"Nothing was written. {exc}.")
+    event = visible(Event, request).filter(pk=args["id"], deleted_at__isnull=True).first()
+    if event is None:
+        return refused(f"Nothing was written. There is no event {args['id']} that you can see.")
+    if not event.repeat_kind or event.starts_at is None:
+        return refused(
+            f"Nothing was written. {event.title!r} does not repeat, so it has no occurrence to "
+            f"skip; to remove it, delete the event."
+        )
+    zone = _household_zone(request)
+    skipped = set(
+        EventSkip.objects.filter(event=event, deleted_at__isnull=True).values_list(
+            "skip_date", flat=True
+        )
+    )
+    if skip_day in skipped:
+        return ok(
+            f"Nothing was written: {event.title!r} on {_long_date(skip_day)} was already skipped.",
+            structured={"skipped": True, "changed": False},
+        )
+    window_start = datetime.combine(skip_day, time.min, tzinfo=zone)
+    window_end = datetime.combine(skip_day, time.max, tzinfo=zone)
+    rule = rule_from_series(event)
+    occurs = rule is not None and occurrences_in_window(
+        event.starts_at, rule, end_from_series(event), (), window_start, window_end, zone
+    )
+    if not occurs:
+        return refused(
+            f"Nothing was written. {event.title!r} has no occurrence on {_long_date(skip_day)} "
+            f"(read in {zone.key}), so there is nothing to skip."
+        )
+    response = call_route(
+        request, "POST", f"/api/events/{event.id}/skips", {"skip_date": skip_day.isoformat()}
+    )
+    if response.status_code in (200, 201):
+        return ok(
+            f"Skipped {event.title!r} on {_long_date(skip_day)}. The engine committed it; every "
+            f"other occurrence of the series stays.",
+            structured={"skipped": True, "changed": True, "row": response.data},
+        )
+    return _write_result(response, f"a skip of {event.title!r} on {skip_day}", "written")
+
+
+# =============================================================================
 # The registry
 # =============================================================================
 # Monthly spend (2026-10-24). The head unit's `ask_engine` had no way to answer
@@ -868,12 +1461,39 @@ def _monthly_spend(request, args) -> ToolResult:
         f"Categorised spend for {body['month']} is {_cents_words(total)} {currency}, the same "
         f"figure the Money page shows."
     ]
-    if body["categories"]:
-        top = sorted(body["categories"], key=lambda c: -c["spend_cents"])[:5]
+    # A budgeted category with nothing spent is a line of its own below, not
+    # one of the "largest".
+    spent = [c for c in body["categories"] if c["spend_cents"]]
+    if spent:
+        top = sorted(spent, key=lambda c: -c["spend_cents"])[:5]
         parts.append(
             "Largest categories: "
             + ", ".join(f"{c['category']} {_cents_words(c['spend_cents'])}" for c in top)
             + "."
+        )
+    budgeted = [c for c in body["categories"] if c.get("target_cents")]
+    if budgeted:
+        said = []
+        for c in sorted(budgeted, key=lambda c: c["category"]):
+            gap = c["target_cents"] - c["spend_cents"]
+            state = f"{_cents_words(gap)} left" if gap >= 0 else f"{_cents_words(-gap)} over"
+            said.append(
+                f"{c['category']} {_cents_words(c['spend_cents'])} of "
+                f"{_cents_words(c['target_cents'])} ({state})"
+            )
+        parts.append("Against the household's budget: " + "; ".join(said) + ".")
+    unverified_cents = sum(a["unverified_cents"] for a in body["accounts"])
+    if unverified_cents:
+        parts.append(
+            f"Of the categorised {_cents_words(total)}, {_cents_words(unverified_cents)} is "
+            f"UNVERIFIED (rows no reconciliation gate checked) and "
+            f"{_cents_words(total - unverified_cents)} is verified or from the bank's own feed; "
+            f"say which is which."
+        )
+    elif total:
+        parts.append(
+            "None of the categorised figure is unverified: every row in it is verified or from "
+            "the bank's own feed."
         )
     if body["uncategorised_cents"]:
         parts.append(
@@ -887,8 +1507,10 @@ def _monthly_spend(request, args) -> ToolResult:
             f"{_cents_words(moved)} moved between the household's own accounts or under "
             f"not-spending categories and is left out; say so."
         )
-    if any(a["unverified"] for a in body["accounts"]) or body["uncategorised_unverified"]:
-        parts.append("Part of this figure is UNVERIFIED (no gate checked those rows); say so.")
+    if body["uncategorised_unverified"]:
+        parts.append(
+            "The amount with no category includes UNVERIFIED rows (no gate checked them); say so."
+        )
     if not body["complete"]:
         parts.append(
             "The month is not fully covered by the bank data on file, so the figure may be "
@@ -1046,6 +1668,58 @@ TOOLS: tuple[EngineTool, ...] = (
         handler=_monthly_spend,
     ),
     EngineTool(
+        name="next_service",
+        title="What maintenance is next",
+        description=(
+            "Per vehicle, the next maintenance item due by date and the next due by mileage, "
+            "anything already past due, and items never logged as done, from the schedule and "
+            "service history on file. Miles to go is an ESTIMATE worked out from the last "
+            "odometer reading on file, never a reading of the car today: say it is approximate. "
+            "Optional `vehicle` (an id, or words from its name, make or model) and `date` "
+            "(YYYY-MM-DD, default the household's today)."
+        ),
+        input_schema=_object({"vehicle": {"type": "string"}, "date": {"type": "string"}}),
+        handler=_next_service,
+    ),
+    EngineTool(
+        name="account_balances",
+        title="Account balances",
+        description=(
+            "The balance of each bank account, per currency (never added across currencies): "
+            "the closing balance printed on its latest statement (verified), what the bank's "
+            "own feed added since, and activity since that no gate checked (UNVERIFIED) or "
+            "that a person logged as pending. Say for every figure whether it is verified or "
+            "unverified. An account with no statement has no verified balance: never state "
+            "one. Optional `account` (last four digits or words of its name)."
+        ),
+        input_schema=_object({"account": {"type": "string"}}),
+        handler=_account_balances,
+    ),
+    EngineTool(
+        name="grocery_spend",
+        title="Grocery spend from receipts",
+        description=(
+            "Total grocery spend from the household's receipts, PER CURRENCY (never add USD and "
+            "SGD together), over an optional `from`/`to` (YYYY-MM-DD, inclusive; default every "
+            "receipt). Says how much is on receipts that could not be verified; repeat that."
+        ),
+        input_schema=_object({"from": {"type": "string"}, "to": {"type": "string"}}),
+        handler=_grocery_spend,
+    ),
+    EngineTool(
+        name="vehicle_recalls",
+        title="Recalls for a vehicle",
+        description=(
+            "Looks up NHTSA's public recall list for one vehicle on file, by its model year, "
+            "make and model (not its VIN), live. Optional `vehicle` (an id, or words from its "
+            "name, make or model); needed when more than one is on file. A failed lookup means "
+            "it is not known, never that there are none. Whether a listed recall applies to "
+            "this exact car or was already repaired is not known here: say so."
+        ),
+        input_schema=_object({"vehicle": {"type": "string"}}),
+        handler=_vehicle_recalls,
+    ),
+    EngineTool(
         name="write_record",
         title="Create or update a row",
         description=(
@@ -1161,6 +1835,97 @@ TOOLS: tuple[EngineTool, ...] = (
             ("checklist_id", "item_id", "date"),
         ),
         handler=_tick_checklist_item,
+        writes=True,
+    ),
+    EngineTool(
+        name="create_checklist",
+        title="Create a checklist",
+        description=(
+            "Creates a checklist. `schedule`: none (done once; the default), daily (resets each "
+            "day) or weekly (only on `days`, e.g. 'MON,WED,FRI'). Shared with the household "
+            "unless `private` is true. The Groceries list is built in and always exists: never "
+            "create it. Pass sync_id so a retry cannot create it twice." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "name": {"type": "string", "minLength": 1},
+                "schedule": {"type": "string", "enum": sorted(SCHEDULE_KINDS)},
+                "days": {"type": "string"},
+                "private": {"type": "boolean"},
+                "sync_id": {"type": "string", "minLength": 1, "maxLength": 64},
+            },
+            ("name",),
+        ),
+        handler=_create_checklist,
+        writes=True,
+    ),
+    EngineTool(
+        name="untick_checklist_item",
+        title="Untick a checklist item",
+        description=(
+            "Takes the tick off one checklist item for a date (YYYY-MM-DD, the household's local "
+            "date). Says so when there was no tick to take off." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {"checklist_id": _UUID, "item_id": _UUID, "date": {"type": "string"}},
+            ("checklist_id", "item_id", "date"),
+        ),
+        handler=_untick_checklist_item,
+        writes=True,
+    ),
+    EngineTool(
+        name="remove_checklist_item",
+        title="Remove a checklist item",
+        description=(
+            "Removes one item from a checklist (a tombstone); its past ticks stay in the "
+            "history." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {"checklist_id": _UUID, "item_id": _UUID}, ("checklist_id", "item_id")
+        ),
+        handler=_remove_checklist_item,
+        writes=True,
+        destructive=True,
+    ),
+    EngineTool(
+        name="archive_checklist",
+        title="Archive a checklist",
+        description=(
+            "Archives a checklist (kept with its items and history, no longer listed), or "
+            "brings it back with `archived` false. The built-in Groceries list cannot be "
+            "archived." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {"checklist_id": _UUID, "archived": {"type": "boolean"}}, ("checklist_id",)
+        ),
+        handler=_archive_checklist,
+        writes=True,
+    ),
+    EngineTool(
+        name="rename_place",
+        title="Rename a saved place",
+        description=(
+            "Renames a saved place, keeping its location and address; reminders on the old "
+            "name move with it. Use this for every rename, never a delete and a new place."
+            + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {"from": {"type": "string", "minLength": 1}, "to": {"type": "string", "minLength": 1}},
+            ("from", "to"),
+        ),
+        handler=_rename_place,
+        writes=True,
+    ),
+    EngineTool(
+        name="skip_event_occurrence",
+        title="Skip one occurrence of a repeating event",
+        description=(
+            "Skips one date of a repeating event (YYYY-MM-DD, the occurrence's local date); "
+            "every other occurrence stays. Refused for an event that does not repeat or does "
+            "not fall on that date. To remove the whole series, delete the event." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID, "date": {"type": "string"}}, ("id", "date")),
+        handler=_skip_event_occurrence,
         writes=True,
     ),
     EngineTool(

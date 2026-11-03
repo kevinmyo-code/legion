@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import zoneinfo
 
 import pytest
 from django.core.cache import cache
@@ -377,6 +378,39 @@ def test_the_bought_log_tools_read_only_the_demo(world):
     assert "Hand soap refill" in _allowed(world, "list_purchases", {})
 
 
+def test_the_parity_reads_read_only_the_demo(world, monkeypatch):
+    """next_service, monthly_spend, account_balances, grocery_spend and
+    vehicle_recalls (NHTSA answered here, never reached): every variant reads
+    the visit's own rows, and the demo's own figures come back."""
+    from engine_mcp import recalls
+
+    asked = []
+    monkeypatch.setattr(recalls, "fetch_recalls", lambda *car: asked.append(car) or [])
+    month = f"{TODAY.replace(day=1) - dt.timedelta(days=1):%Y-%m}"
+    for name, args in (
+        ("next_service", {}),
+        ("next_service", {"vehicle": "wagon", "date": str(TODAY)}),
+        ("monthly_spend", {}),
+        ("monthly_spend", {"month": month}),
+        ("account_balances", {}),
+        ("account_balances", {"account": "0917"}),
+        ("grocery_spend", {}),
+        ("grocery_spend", WIDE),
+        ("vehicle_recalls", {}),
+    ):
+        _allowed(world, name, args)
+    assert "Oil change" in _allowed(world, "next_service", {})
+    assert "Against the household's budget" in _allowed(world, "monthly_spend", {"month": month})
+    balances = _allowed(world, "account_balances", {})
+    assert "Demo Everyday Checking" in balances and "Demo Rewards Card" in balances
+    assert "Greenleaf" not in _allowed(world, "grocery_spend", {})  # totals, not stores
+    assert "USD:" in _allowed(world, "grocery_spend", {})
+    assert asked and all(car == ("Subaru", "Outback", 2019) for car in asked)
+    # Kevin's car is not the visit's to name.
+    response = _tool(world["browser"], "next_service", {"vehicle": MARK})
+    assert response.data["is_error"] is True and response.data["text"].startswith("Nothing was")
+
+
 def test_about_kevin_reads_the_profile_and_nothing_of_either_household(world):
     from demo.models import RecruiterContent
     from tests.test_recruiter_content import fake_content
@@ -409,6 +443,18 @@ def test_every_allowed_tool_was_exercised():
         "tick_checklist_item",
         "log_purchase",
         "delete_purchase",
+        # parity quick wins: reads above, writes in section 4
+        "monthly_spend",
+        "next_service",
+        "account_balances",
+        "grocery_spend",
+        "vehicle_recalls",
+        "create_checklist",
+        "untick_checklist_item",
+        "remove_checklist_item",
+        "archive_checklist",
+        "rename_place",
+        "skip_event_occurrence",
     }
     assert set(RECRUITER_TOOLS) == exercised
 
@@ -652,6 +698,21 @@ def _writes(browser, household: Household, tag: str) -> None:
         "tick_checklist_item",
         {"checklist_id": str(checklist.id), "item_id": str(item.id), "date": str(TODAY)},
     )
+    ok(
+        "untick_checklist_item",
+        {"checklist_id": str(checklist.id), "item_id": str(item.id), "date": str(TODAY)},
+    )
+    ok("add_checklist_item", {"checklist_id": str(checklist.id), "text": f"{tag}-item-gone"})
+    gone_item = ChecklistItem.objects.get(household=household, text=f"{tag}-item-gone")
+    ok("remove_checklist_item", {"checklist_id": str(checklist.id), "item_id": str(gone_item.id)})
+    ok("create_checklist", {"name": f"{tag}-list", "schedule": "weekly", "days": "MON"})
+    made = Checklist.objects.get(household=household, name=f"{tag}-list")
+    ok("archive_checklist", {"checklist_id": str(made.id)})
+    ok("rename_place", {"from": f"{tag}-place", "to": f"{tag}-place-renamed"})
+    run = Event.objects.get(household=household, origin_guid="demo-event-run-club")
+    zone = zoneinfo.ZoneInfo(household.timezone or "UTC")
+    next_week = run.starts_at.astimezone(zone).date() + dt.timedelta(days=7)
+    ok("skip_event_occurrence", {"id": str(run.id), "date": str(next_week)})
     ok("log_purchase", {"item": f"{tag} soap", "date": str(TODAY)})
     ok("log_purchase", {"item": f"{tag} gone", "date": str(TODAY)})
     bought = Purchase.objects.get(household=household, item=f"{tag} gone")

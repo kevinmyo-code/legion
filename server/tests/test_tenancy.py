@@ -1295,14 +1295,39 @@ def _feed(client) -> dict:
     return feed
 
 
-def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b, token_a, token_b):
+def test_every_mcp_tool_is_scoped_by_household(
+    settings, household_user, user_b, token_a, token_b, monkeypatch
+):
+    from engine_mcp import recalls
     from engine_mcp.models import McpCall
     from engine_mcp.tools import READABLE, TOOLS_BY_NAME
     from tests.test_engine_mcp import call, client_with
+    from tests.test_spend_api import line, statement
+
+    from engine_mcp.views import McpTokenThrottle
 
     settings.LEGION_MCP = True
+    # This test makes more calls per token than the 60/min budget allows; the
+    # throttle working is not what it is about.
+    monkeypatch.setattr(McpTokenThrottle, "rate", "100000/min", raising=False)
     a = _mcp_seed(token_a, "alpha")
     _mcp_seed(token_b, "bravo")
+    # The parity quick wins read the ledger and the fleet: one of each for A,
+    # and a car for B, so a leak has something to leak.
+    statement(
+        household_user.household,
+        "1111",
+        "alpha checking",
+        [line("2026-09-05", "ALPHA GROCER", -1_000, "Groceries")],
+    )
+    for client, tag in ((token_a, "alpha"), (token_b, "bravo")):
+        car = {"name": f"{tag} car", "make": "BMW", "model": "M3", "year": 2003,
+               "confirmed": True, "archived": False}
+        assert client.put(f"/api/fleet/vehicles/{tag}-car/", car, format="json").status_code == 200
+    asked_nhtsa = []
+    monkeypatch.setattr(
+        recalls, "fetch_recalls", lambda *car: asked_nhtsa.append(car) or []
+    )
     mcp_a = client_with(household_user)
     mcp_b = client_with(user_b)
     a_marks = ("alpha", "ALPHA", *a.values())
@@ -1339,6 +1364,16 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
     assert "alpha-soap" in call(mcp_a, "last_bought", {"item": "soap"})[1]
     assert "alpha-place" in call(mcp_a, "read_records", {"table": "places"})[1]
     assert "alpha-event" in call(mcp_a, "list_events", window)[1]
+    # Parity quick wins.
+    assert "real empty result" in b_reads("account_balances", {})
+    assert "found no USD spend" in b_reads("monthly_spend", {"month": "2026-09"})
+    assert "bravo car" in b_reads("next_service", {})
+    assert "bravo car" in b_reads("vehicle_recalls", {})
+    b_reads("grocery_spend", {})
+    assert call(mcp_b, "next_service", {"vehicle": "alpha"})[0] is True
+    assert "alpha checking" in call(mcp_a, "account_balances", {})[1]
+    assert "10.00 USD" in call(mcp_a, "monthly_spend", {"month": "2026-09"})[1]
+    assert "alpha car" in call(mcp_a, "next_service", {})[1]
 
     # Writes from B that name A's rows: refused or kept inside B, never A's.
     a_before = _feed(token_a)
@@ -1375,6 +1410,20 @@ def test_every_mcp_tool_is_scoped_by_household(settings, household_user, user_b,
     )
     b_writes("delete_purchase", {"id": a["purchase"]}, lands_in_b=False)
     b_writes("log_purchase", {"item": "b-only", "date": "2026-10-04"}, lands_in_b=True)
+    b_writes(
+        "untick_checklist_item",
+        {"checklist_id": a["checklist"], "item_id": a["item"], "date": "2026-10-03"},
+        lands_in_b=False,
+    )
+    b_writes(
+        "remove_checklist_item",
+        {"checklist_id": a["checklist"], "item_id": a["item"]},
+        lands_in_b=False,
+    )
+    b_writes("archive_checklist", {"checklist_id": a["checklist"]}, lands_in_b=False)
+    b_writes("skip_event_occurrence", {"id": a["event"], "date": "2026-10-05"}, lands_in_b=False)
+    b_writes("rename_place", {"from": "bravo-place", "to": "bravo-home"}, lands_in_b=True)
+    b_writes("create_checklist", {"name": "b-only list"}, lands_in_b=True)
     assert _feed(token_a) == a_before
     from purchases.models import Purchase
 

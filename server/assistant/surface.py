@@ -86,6 +86,21 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     "last_bought",
     "list_purchases",
     "delete_purchase",
+    # Parity quick wins (2026-11-02): reads and writes over the visit's own
+    # rows. `vehicle_recalls` reaches NHTSA's public, keyless recall list with
+    # the visit car's year, make and model only: no account, nothing of the
+    # household's beyond those three words, nothing stored.
+    "monthly_spend",
+    "next_service",
+    "account_balances",
+    "grocery_spend",
+    "vehicle_recalls",
+    "create_checklist",
+    "untick_checklist_item",
+    "remove_checklist_item",
+    "archive_checklist",
+    "rename_place",
+    "skip_event_occurrence",
     "about_kevin",
 )
 
