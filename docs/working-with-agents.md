@@ -16,8 +16,8 @@ where they disagree, those files win.
 
 ## The short version
 
-- **Kevin decides, agents build.** Every standing rule in the repo is attributed to a dated ruling
-  by Kevin. Agents turn rulings into specs, code, tests and docs.
+- **Kevin decides, agents build.** Standing rules carry the name and date of whoever decided them,
+  and the decisions are Kevin's. Agents turn rulings into specs, code, tests and docs.
 - **The loop is decide, spec, build in parallel, verify, record.** Large efforts are charted as a
   map of decision tickets; each resolved decision leaves a build ticket; anything ready is built.
 - **Several agents run at once, each in its own git worktree,** so they never share a checkout.
@@ -62,7 +62,7 @@ where they disagree, those files win.
 
 ## How decisions are made and recorded
 
-- **Kevin makes the rulings.** Rules in `CLAUDE.md` and `TEAM.md` carry his name and a date, often
+- **Kevin makes the rulings.** Most rules in `CLAUDE.md` and `TEAM.md` carry his name and a date; the rest are lessons, named by number, often
   with his words quoted. Agents may propose and argue; a fork the plan does not answer means stop
   and surface it, not improvise (`CLAUDE.md` section 8).
 - **Two decision stores with different jobs.** `memory/library/decisions.md` says what happened and
