@@ -39,6 +39,11 @@ Kevin's household, his accounts, his machines, or spend more than $5 a day in to
 9. Resume placement decided after a frontend prototype, later.
 10. Recruiter is a third `HouseholdMember.role` (ADR 0068 amends ADR 0045: the first role that governs
    data, and only to NARROW it). Set on throwaway visitor users in the demo household only.
+11. No rejected or quarantined receipts in anything a recruiter sees: *"we dont do receipt
+   ingestion anymore"*. The seed and gate are unchanged.
+12. A recruiter voice session lasts at most 5 minutes, enforced; each mint reserves 5 minutes.
+13. Text reserve defaults to $0: typed chat shares the Live session, so one cap applies.
+14. Alfred's engine voice is Puck, as on the phone.
 
 ## Shape
 
