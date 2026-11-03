@@ -8,6 +8,7 @@ import {
   daySentence,
   daysLeftInMonth,
   latestBalances,
+  type BankAccount,
   latestOdometer,
   needCategory,
   pickNextUp,
@@ -221,6 +222,42 @@ describe('latestBalances', () => {
 
   test('no balance anywhere is no row, never $0', () => {
     expect(latestBalances([], [txn({})])).toEqual([])
+  })
+
+  const linked = (overrides: Partial<BankAccount>): BankAccount => ({
+    name: 'Adv Plus Banking',
+    mask: '1000',
+    type: 'depository',
+    subtype: 'checking',
+    balance_current_cents: 123456,
+    balance_available_cents: 120010,
+    balance_currency: 'USD',
+    balance_as_of: '2026-11-03T14:14:00Z',
+    ...overrides,
+  })
+
+  test("the bank's own balance is Verified, says its as-of time, and a card's is owed", () => {
+    const balances = latestBalances(
+      [],
+      [],
+      [linked({}), linked({ name: 'Cash Rewards', mask: '7823', type: 'credit', balance_current_cents: 41007 })],
+    )
+    const checking = balances.find((b) => b.account === '1000')!
+    expect(checking).toMatchObject({ cents: 123456, word: 'Verified', label: 'Adv Plus Banking' })
+    expect(checking.detail).toMatch(/^From the bank as of \d{1,2}:14 [AP]M, Nov [23]$/)
+    const card = balances.find((b) => b.account === '7823')!
+    expect(card.cents).toBe(-41007)
+    expect(card.detail).toMatch(/^Owed, from the bank as of /)
+  })
+
+  test('a newer statement keeps its place over an older bank figure; no bank balance is no row', () => {
+    const balances = latestBalances(
+      [statement({ account_last4: '1000', period_end: '2026-11-30' })],
+      [],
+      [linked({}), linked({ mask: '2222', balance_current_cents: null })],
+    )
+    expect(balances).toHaveLength(1)
+    expect(balances[0]).toMatchObject({ account: '1000', detail: 'Statement to Nov 30' })
   })
 })
 

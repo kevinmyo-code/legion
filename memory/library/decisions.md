@@ -7037,3 +7037,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   `private`), `prune_demo_visitors` deletes the visit whole, `household/recruiter_routes.py` route
   classification, recruiter tool surface = member surface less `list_tables`, web app shell with a
   demo banner and refusals in words.
+
+## 2026-11-03 - Plaid's own balances are stored, as fact with their as-of time (Kevin)
+
+- Ruling: asked whether to keep the balance Plaid reports per linked account (the sync had kept
+  none: `account_record` said "Never a balance"), Kevin: *"store them"*.
+- So the bank's balance is fact like its transactions (ADR 0057, amended): `current`, `available`
+  and currency per account in `plaid_items.accounts`, integer cents via `Decimal(str(x))`, with
+  `balance_as_of` (Plaid's `last_updated_datetime`, else the sync's own read time). Said plainly and
+  always with that time, never as the balance "now". A credit account's `current` is what is owed.
+- Used by: the engine tool `account_balances` (bank anchor first, else the latest statement) and
+  the web Home's Balances card through `GET /api/ingest/plaid` (members only; recruiters have no
+  bank link). Ledger rows carry no Plaid account id, so an account's record resolves by its id
+  through `plaid_sync.account_map` and joins the rows on its four-digit mask, the way the sync
+  files them.
+

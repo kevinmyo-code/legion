@@ -112,12 +112,15 @@ class FakePlaid:
             raise self.sync_errors.pop(0)
         return self.pages[cursor]
 
-    def page(self, cursor, next_cursor, *, added=(), modified=(), removed=(), has_more=False):
+    def page(
+        self, cursor, next_cursor, *, added=(), modified=(), removed=(), has_more=False,
+        accounts=None,
+    ):
         self.pages[cursor] = {
             "added": list(added),
             "modified": list(modified),
             "removed": [{"transaction_id": t} for t in removed],
-            "accounts": [CHECKING, CARD],
+            "accounts": list(accounts) if accounts is not None else [CHECKING, CARD],
             "next_cursor": next_cursor,
             "has_more": has_more,
         }
@@ -739,3 +742,99 @@ def test_the_plaid_keys_are_cloud_run_secrets_and_the_environment_defaults_to_pr
     assert "PLAID_CLIENT_ID=PLAID_CLIENT_ID:latest" in module.secrets_flag_value(names)
     assert module.plain_env_from({})["PLAID_ENV"] == "production"
     assert module.plain_env_from({"PLAID_ENV": "sandbox"})["PLAID_ENV"] == "sandbox"
+
+
+# =============================================================================
+# The bank's own balance (Kevin, 2026-11-03: "store them")
+# =============================================================================
+
+CHECKING_WITH_BALANCE = {
+    **CHECKING,
+    "balances": {
+        "current": 1234.56,
+        "available": 1200.1,
+        "iso_currency_code": "USD",
+        "last_updated_datetime": None,
+    },
+}
+CARD_WITH_BALANCE = {
+    **CARD,
+    "balances": {
+        "current": 410.07,
+        "available": 4589.93,
+        "iso_currency_code": "USD",
+        "last_updated_datetime": "2026-11-03T14:14:00+00:00",
+    },
+}
+
+
+def test_a_sync_stores_each_accounts_balance_as_cents_with_its_as_of(fake, item, household_a):
+    fake.page(
+        None,
+        "c1",
+        added=[txn("t1", account="acc-chk", amount=20.0, date="2026-11-02")],
+        accounts=[CHECKING_WITH_BALANCE, CARD_WITH_BALANCE],
+    )
+    assert sync(household_a).outcome == "ok"
+    item.refresh_from_db()
+    by = {a["account_id"]: a for a in item.accounts}
+    checking, card = by["acc-chk"], by["acc-card"]
+    # Decimal(str(x)): 1200.1 is 120010 cents, never 120009.
+    assert (checking["balance_current_cents"], checking["balance_available_cents"]) == (
+        123_456,
+        120_010,
+    )
+    assert checking["balance_currency"] == "USD"
+    # No time from the bank: the moment this sync read it.
+    assert checking["balance_as_of"] == item.last_synced_at.isoformat()
+    assert card["balance_current_cents"] == 41_007
+    assert card["balance_as_of"] == "2026-11-03T14:14:00+00:00"
+
+
+def test_an_account_with_no_balance_stores_none(fake, item, household_a):
+    fake.page(None, "c1", accounts=[CHECKING, {**CARD, "balances": {"current": None}}])
+    assert sync(household_a).outcome == "ok"
+    item.refresh_from_db()
+    for account in item.accounts:
+        assert account["balance_current_cents"] is None
+        assert account["balance_as_of"] is None
+
+
+def test_the_bank_status_route_carries_the_balance(fake, item, household_a, auth_client):
+    fake.page(None, "c1", accounts=[CHECKING_WITH_BALANCE])
+    assert sync(household_a).outcome == "ok"
+    accounts = auth_client.get("/api/ingest/plaid").data["accounts"]
+    checking = next(a for a in accounts if a["mask"] == "1000")
+    assert checking["balance_current_cents"] == 123_456
+    assert checking["balance_available_cents"] == 120_010
+    assert checking["balance_as_of"] is not None
+
+
+def test_account_balances_anchors_on_the_banks_own_balance(
+    fake, item, household_a, settings, household_user
+):
+    from tests.test_engine_mcp import call, client_with
+
+    settings.LEGION_MCP = True
+    fake.page(
+        None,
+        "c1",
+        added=[
+            txn("t1", account="acc-chk", amount=20.0, date="2026-11-02"),
+            txn("t2", account="acc-card", amount=12.5, date="2026-11-02"),
+        ],
+        accounts=[CHECKING_WITH_BALANCE, CARD_WITH_BALANCE],
+    )
+    assert sync(household_a).outcome == "ok"
+    is_error, text, structured = call(client_with(household_user), "account_balances", {})
+    assert not is_error, text
+    by = {a["account_last4"]: a for a in structured["accounts"]}
+    checking, card = by["1000"], by["7823"]
+    assert checking["anchor"] == "bank" and checking["verified_balance_cents"] == 123_456
+    # The feed's own rows are inside the bank's figure, never added again.
+    assert checking["fact_since_count"] == 0
+    # A credit account's balance is what is owed: money out in the ledger's sign.
+    assert card["verified_balance_cents"] == -41_007
+    assert "balance $1,234.56, from the bank as of" in text and "($1,200.10 available)" in text
+    assert "$410.07 owed, from the bank as of 2:14 PM Tue Nov 3, 2026" in text
+    assert "unverified" not in text.lower()

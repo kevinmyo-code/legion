@@ -3585,6 +3585,16 @@ export interface components {
             mask: string | null;
             type: string | null;
             subtype: string | null;
+            /** @description The bank's balance in cents at `balance_as_of`. For a credit account, the amount owed (positive). Null: the bank has not stated one. */
+            balance_current_cents: number | null;
+            /** @description What may be spent (for credit, the credit left), in cents. Null: not stated. */
+            balance_available_cents: number | null;
+            balance_currency: string | null;
+            /**
+             * Format: date-time
+             * @description When the bank stated the balance. Show it beside the figure; it is not 'now'.
+             */
+            balance_as_of: string | null;
         };
         BankStatus: {
             /** @description The server has Plaid keys. False means nothing here can be linked. */

@@ -1022,6 +1022,17 @@ def _next_service(request, args) -> ToolResult:
     )
 
 
+def _bank_as_of_words(request, as_of) -> str:
+    """"as of 9:14 AM Tue Nov 3, 2026" in the household's zone, or that the
+    bank gave no time."""
+    if as_of is None:
+        return "(no as-of time was recorded)"
+    local = as_of.astimezone(_household_zone(request))
+    hour = local.hour % 12 or 12
+    clock = f"{hour}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
+    return f"as of {clock} {_long_date(local.date())}"
+
+
 def _account_balances(request, args) -> ToolResult:
     from api.ledger_balances import account_balances
     from brief.compose import money
@@ -1043,7 +1054,26 @@ def _account_balances(request, args) -> ToolResult:
         c = a["currency"]
         said = [f"{a['label']} (ending {a['account_last4']}, {c}):"]
         anchored = a["verified_balance_cents"] is not None
-        if anchored:
+        if a["anchor"] == "bank":
+            # Kevin, 2026-11-03 ("store them"): the bank's own balance is fact,
+            # said plainly, always with when the bank stated it.
+            bank = a["bank"]
+            when = _bank_as_of_words(request, bank["as_of"])
+            if bank["type"] == "credit":
+                text = f"{money(bank['current_cents'], c)} owed, from the bank {when}"
+                if bank["available_cents"] is not None:
+                    text += f" ({money(bank['available_cents'], c)} of credit available)"
+            else:
+                text = f"balance {money(bank['current_cents'], c)}, from the bank {when}"
+                if bank["available_cents"] is not None:
+                    text += f" ({money(bank['available_cents'], c)} available)"
+            if a["fact_since_count"]:
+                text += (
+                    f", plus {money(a['fact_since_cents'], c)} of statement transactions dated "
+                    f"after it"
+                )
+            said.append(text + ".")
+        elif anchored:
             said.append(
                 f"verified balance {money(a['verified_balance_cents'], c)}: the closing balance "
                 f"printed on the statement ending {_long_date(a['statement_period_end'])}, which "
@@ -1066,7 +1096,10 @@ def _account_balances(request, args) -> ToolResult:
         else:
             said.append("no statement on file, so no balance can be stated; never state one.")
         if a["unverified_since_count"]:
-            since = "Since that statement" if anchored else "On file"
+            since = (
+                "Since then" if a["anchor"] == "bank" else "Since that statement" if anchored
+                else "On file"
+            )
             said.append(
                 f"{since}, {a['unverified_since_count']} UNVERIFIED transaction(s) net "
                 f"{money(a['unverified_since_cents'], c)}: no gate checked them."
@@ -1690,8 +1723,10 @@ TOOLS: tuple[EngineTool, ...] = (
         title="Account balances",
         description=(
             "The balance of each bank account, per currency (never added across currencies): "
-            "the closing balance printed on its latest statement plus transactions since, "
-            "and separately any activity no gate checked (UNVERIFIED) or that a person logged "
+            "the bank's own balance with the time the bank stated it (fact; always say "
+            "\"as of\" that time), else the closing balance printed on its latest statement "
+            "plus transactions since, and separately any activity no gate checked (UNVERIFIED) "
+            "or that a person logged "
             "as pending. Say UNVERIFIED wherever the result does, and nowhere else: the bank's "
             "own feed is fact. An account with no balance on file has none to state: never "
             "make one up from its transactions. Optional `account` (last four digits or words "

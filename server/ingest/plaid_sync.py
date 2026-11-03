@@ -147,8 +147,35 @@ class Account:
     nickname: str
 
 
-def account_record(raw: dict) -> dict:
-    """What `plaid_items.accounts` keeps for one account. Never a balance."""
+def _balance_cents(value: Any) -> int | None:
+    """A balance Plaid sent, as integer cents, or None when it sent none (or
+    something that is not an amount: a balance is never guessed)."""
+    if value is None:
+        return None
+    try:
+        return to_cents(value)
+    except PlaidDataError:
+        return None
+
+
+def account_record(raw: dict, synced_at: datetime.datetime | None = None) -> dict:
+    """What `plaid_items.accounts` keeps for one account, its balance included.
+
+    **Kevin, 2026-11-03: "store them".** This kept no balance until then. The
+    bank's own balance is fact like its transactions (ADR 0057, amended), and
+    is stored as the figure it was AT ITS AS-OF TIME, never as "now":
+    `balance_as_of` is Plaid's own `last_updated_datetime` when it sends one,
+    else the moment this sync read it. Plaid's raw shape is kept: `current` is
+    the balance (for a credit account, the amount owed, a positive number),
+    `available` is what may be spent (for credit, the credit left); either may
+    be absent. Cents through `Decimal(str(x))` (`to_cents`), never a float."""
+    balances = raw.get("balances") or {}
+    stated = balances.get("last_updated_datetime")
+    if isinstance(stated, datetime.datetime):
+        stated = stated.isoformat()
+    current = _balance_cents(balances.get("current"))
+    available = _balance_cents(balances.get("available"))
+    has_balance = current is not None or available is not None
     return {
         "account_id": str(raw.get("account_id") or ""),
         "mask": raw.get("mask"),
@@ -156,6 +183,12 @@ def account_record(raw: dict) -> dict:
         "official_name": raw.get("official_name"),
         "type": raw.get("type"),
         "subtype": raw.get("subtype"),
+        "balance_current_cents": current,
+        "balance_available_cents": available,
+        "balance_currency": balances.get("iso_currency_code") if has_balance else None,
+        "balance_as_of": (
+            (stated or (synced_at.isoformat() if synced_at else None)) if has_balance else None
+        ),
     }
 
 
@@ -177,10 +210,12 @@ def account_map(records: list[dict]) -> dict[str, Account]:
     return out
 
 
-def merge_accounts(stored: list[dict], fresh: list[dict]) -> list[dict]:
+def merge_accounts(
+    stored: list[dict], fresh: list[dict], synced_at: datetime.datetime | None = None
+) -> list[dict]:
     by_id = {r.get("account_id"): r for r in stored if r.get("account_id")}
     for raw in fresh:
-        record = account_record(raw)
+        record = account_record(raw, synced_at)
         if record["account_id"]:
             by_id[record["account_id"]] = record
     return sorted(by_id.values(), key=lambda r: (r.get("name") or "", r["account_id"]))
@@ -727,14 +762,15 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
             raise
 
     with transaction.atomic():
-        merged = merge_accounts(item.accounts or [], accounts)
+        synced_at = timezone.now()
+        merged = merge_accounts(item.accounts or [], accounts, synced_at)
         report = apply_changes(
             household, added=added, modified=modified, removed=removed, accounts=merged
         )
         replace_older_rows(household, report)
         item.accounts = merged
         item.cursor = cursor
-        item.last_synced_at = timezone.now()
+        item.last_synced_at = synced_at
         item.needs_sign_in_since = None
         item.save(update_fields=["accounts", "cursor", "last_synced_at", "needs_sign_in_since"])
     return SyncOutcome(None, report.sentence(), report)

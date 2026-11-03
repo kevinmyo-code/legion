@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { useBankStatus } from '@/api/bank'
 import { statements, useLedgerTransactions, useSpend } from '@/api/ledger'
 import { useRows } from '@/api/synced'
 import { BriefingSection, Card, CardHead, Quiet, TrustChip } from '@/components/briefing/parts'
@@ -10,6 +11,7 @@ import { SpendNotes } from '@/components/workbench/spent-by-account'
 import { daysLeftInMonth, latestBalances, money, runningTotal } from '@/lib/briefing'
 import { parseDay, todayDay } from '@/lib/figures'
 import { monthLabel } from '@/lib/ledger'
+import { useIsRecruiter } from '@/lib/recruiter'
 
 /** "Spent 1 to 2 November" for the current month; "Spent in October 2026" for another. */
 function spentLabel(month: string, today: string): string {
@@ -138,9 +140,15 @@ function SpentCard() {
 function BalancesCard() {
   const rows = useRows(statements)
   const { query: txns } = useLedgerTransactions()
+  // The bank link's own balances, for members only: a demo visit has no bank
+  // link and never asks (ticket 13). A failed or absent read leaves the card
+  // on the statements and rows alone.
+  const recruiter = useIsRecruiter()
+  const bank = useBankStatus(!recruiter)
   const pending = rows.isPending || txns.isPending
   const failed = !pending && (rows.data === undefined || txns.data === undefined)
-  const balances = !pending && !failed ? latestBalances(rows.data!, txns.data!) : []
+  const balances =
+    !pending && !failed ? latestBalances(rows.data!, txns.data!, recruiter ? [] : (bank.data?.accounts ?? [])) : []
 
   return (
     <Card>
@@ -160,7 +168,7 @@ function BalancesCard() {
       ) : failed ? (
         <Quiet>Could not reach the engine, so the balances are not known.</Quiet>
       ) : balances.length === 0 ? (
-        <Quiet>No statement or bank row on file states a balance yet.</Quiet>
+        <Quiet>No statement, bank row or bank link on file states a balance yet.</Quiet>
       ) : (
         <ul aria-label="Balances">
           {balances.map((balance) => (

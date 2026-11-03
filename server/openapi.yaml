@@ -8440,7 +8440,30 @@ components:
         subtype:
           type: string
           nullable: true
+        balance_current_cents:
+          type: integer
+          nullable: true
+          description: 'The bank''s balance in cents at `balance_as_of`. For a credit
+            account, the amount owed (positive). Null: the bank has not stated one.'
+        balance_available_cents:
+          type: integer
+          nullable: true
+          description: 'What may be spent (for credit, the credit left), in cents.
+            Null: not stated.'
+        balance_currency:
+          type: string
+          nullable: true
+        balance_as_of:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the bank stated the balance. Show it beside the figure;
+            it is not 'now'.
       required:
+      - balance_as_of
+      - balance_available_cents
+      - balance_currency
+      - balance_current_cents
       - mask
       - name
       - subtype

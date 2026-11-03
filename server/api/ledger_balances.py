@@ -1,35 +1,86 @@
-"""Balances per account: the last statement's closing balance, plus what
-moved since (parity quick wins, 2026-11-02; the phone's
+"""Balances per account (parity quick wins, 2026-11-02; the phone's
 `LedgerController.accountBalances` and `get_balance`).
 
-Per (account, currency), never summed across currencies:
+Per (account, currency), never summed across currencies, the anchor is the
+newest of:
 
-- **anchor**: the closing balance printed on the latest statement on file
-  (by `period_end`). A statement only exists because it passed the
-  reconciliation gate, so this figure is verified (section 4 rules 2 and 8:
-  the anchor is stored in its own column).
-- **since**: rows dated after the anchor's `period_end` (every row, when there
-  is no statement). Split by provenance: the bank's own feed (`BANK_API`)
-  and gated rows are fact, shown exactly like verified rows with no tag
-  (section 4's 2026-10-09 amendment, ADR 0057); `UNRECONCILED` and `USER`
-  rows are UNVERIFIED (`api.ledger_spend.UNVERIFIED_PROVENANCE`).
-- **pending**: rows a person logged as pending (`pending_logged_at`), which
-  the bank has not confirmed, counted whatever their date, as the phone does.
+- **the bank's own balance** (Kevin, 2026-11-03: "store them"; ADR 0057 as
+  amended): what Plaid reported for the account, stored by
+  `ingest.plaid_sync.account_record` with its as-of time. Fact, said plainly,
+  always with its as-of time ("from the bank as of 9:14 AM"), never as "now".
+  An account is matched to its ledger rows the way the sync files them:
+  Plaid's account id through `plaid_sync.account_map`, whose four-digit mask
+  is the rows' `account_last4`. The ledger keeps no Plaid account id, so the
+  id resolves the record and the mask is the join.
+- **the closing balance printed on the latest statement** (by `period_end`).
+  A statement only exists because it passed the reconciliation gate, so the
+  figure is verified (section 4 rules 2 and 8).
 
-No statement means no balance on file. That is NOT "unverified" for an
-account the bank's own feed supplies: Plaid sync keeps no balance
-(`ingest.plaid_sync.account_record`), so the engine has its transactions as
-fact and simply no balance figure to state. The phone does the same: a
-`BANK_API` row prints no running balance, so `accountBalances` leaves the
-figure "not stated" and still marks the account verified. Activity alone is
-movement, not a balance, and is never presented as one.
+Then what moved since the anchor's date (every row, when there is none):
+gated rows and the bank's feed (`BANK_API`) are fact; `UNRECONCILED` and
+`USER` rows are UNVERIFIED (`api.ledger_spend.UNVERIFIED_PROVENANCE`). With a
+bank anchor, the feed's own rows are already inside the bank's figure and are
+not added again. Rows a person logged as pending (`pending_logged_at`) are
+counted whatever their date, as the phone does.
 
-Every read goes through `household.tenancy.scoped()`.
+No anchor means no balance on file. For an account the feed supplies that is
+NOT "unverified": its transactions are fact and there is simply no figure to
+state yet (the phone: "not stated", verified). Activity alone is movement, not
+a balance, and is never presented as one.
+
+Every read goes through `household.tenancy.scoped()` / `household_of()`.
 """
 
 from __future__ import annotations
 
-from household.tenancy import scoped
+import datetime as dt
+
+from django.utils.dateparse import parse_datetime
+
+from household.tenancy import household_of, scoped
+
+CREDIT_TYPES = frozenset({"credit"})
+
+
+def bank_balances(request) -> dict[tuple[str, str], dict]:
+    """{(last4, currency): the bank's stored balance} for this household's
+    linked accounts that carry one."""
+    from ingest.models import PlaidItem
+    from ingest.plaid_sync import account_map
+
+    out: dict[tuple[str, str], dict] = {}
+    for item in PlaidItem.objects.filter(household=household_of(request)):
+        records = item.accounts or []
+        filed = account_map(records)
+        for record in records:
+            current = record.get("balance_current_cents")
+            available = record.get("balance_available_cents")
+            if current is None and available is None:
+                continue
+            account = filed.get(str(record.get("account_id") or ""))
+            currency = record.get("balance_currency")
+            if account is None or account.last4 is None or not currency:
+                continue
+            as_of = parse_datetime(record.get("balance_as_of") or "")
+            out[(account.last4, currency)] = {
+                "account_id": record.get("account_id"),
+                "name": account.nickname,
+                "type": record.get("type"),
+                "current_cents": current,
+                "available_cents": available,
+                "as_of": as_of,
+                "institution_name": item.institution_name,
+            }
+    return out
+
+
+def _signed(bank: dict) -> int | None:
+    """The bank's balance in the ledger's sign: a credit account's `current`
+    is what is owed, a positive number, so it is money out (negative)."""
+    current = bank["current_cents"]
+    if current is None:
+        return None
+    return -current if bank["type"] in CREDIT_TYPES else current
 
 
 def account_balances(request, account: str | None = None) -> list[dict]:
@@ -59,8 +110,10 @@ def account_balances(request, account: str | None = None) -> list[dict]:
             "created_at",
         )
     )
+    banks = bank_balances(request)
     keys = {(s["account_last4"], s["currency"]) for s in statements}
     keys |= {(r["account_last4"], r["currency"]) for r in rows}
+    keys |= set(banks)
 
     wanted = (account or "").strip().lower()
     out = []
@@ -69,65 +122,98 @@ def account_balances(request, account: str | None = None) -> list[dict]:
             s for s in statements if s["account_last4"] == last4 and s["currency"] == currency
         ]
         own_rows = [r for r in rows if r["account_last4"] == last4 and r["currency"] == currency]
-        label = _label(own_statements + own_rows, last4)
+        bank = banks.get((last4, currency))
+        label = _label(own_statements + own_rows, last4, bank)
         if wanted and wanted not in last4 and wanted not in label.lower():
             continue
-        anchor = (
+        statement = (
             max(own_statements, key=lambda s: (s["period_end"], s["created_at"]))
             if own_statements
             else None
         )
+        bank_day = bank["as_of"].date() if bank and bank["as_of"] else None
+        use_bank = bank is not None and _signed(bank) is not None and (
+            statement is None or bank_day is None or bank_day >= statement["period_end"]
+        )
+        if use_bank:
+            since: dt.date | None = bank_day
+            anchor_cents = _signed(bank)
+            source = "bank"
+        elif statement is not None:
+            since = statement["period_end"]
+            anchor_cents = statement["closing_balance_cents"]
+            source = "statement"
+        else:
+            since, anchor_cents, source = None, None, None
+
         after = [
             r
             for r in own_rows
-            if r["pending_logged_at"] is None
-            and (anchor is None or r["txn_date"] > anchor["period_end"])
+            if r["pending_logged_at"] is None and (since is None or r["txn_date"] > since)
         ]
-        fact = [r for r in after if r["provenance"] not in UNVERIFIED_PROVENANCE]
+        # The bank's figure already holds its own feed's rows.
+        fact = [
+            r
+            for r in after
+            if r["provenance"] not in UNVERIFIED_PROVENANCE
+            and not (source == "bank" and r["provenance"] == "BANK_API")
+        ]
         unverified = [r for r in after if r["provenance"] in UNVERIFIED_PROVENANCE]
         pending = [r for r in own_rows if r["pending_logged_at"] is not None]
         fact_cents = sum(r["amount_cents"] for r in fact)
         unverified_cents = sum(r["amount_cents"] for r in unverified)
         pending_cents = sum(r["amount_cents"] for r in pending)
-        verified_balance = (
-            anchor["closing_balance_cents"] + fact_cents if anchor is not None else None
-        )
+        balance = anchor_cents + fact_cents if anchor_cents is not None else None
         out.append(
             {
                 "account_last4": last4,
                 "label": label,
                 "currency": currency,
-                "statement_closing_cents": anchor["closing_balance_cents"] if anchor else None,
-                "statement_period_end": anchor["period_end"] if anchor else None,
+                "anchor": source,
+                "statement_closing_cents": (
+                    statement["closing_balance_cents"] if statement else None
+                ),
+                "statement_period_end": statement["period_end"] if statement else None,
+                "bank": (
+                    {
+                        "current_cents": bank["current_cents"],
+                        "available_cents": bank["available_cents"],
+                        "type": bank["type"],
+                        "as_of": bank["as_of"],
+                    }
+                    if bank
+                    else None
+                ),
                 "fact_since_cents": fact_cents,
                 "fact_since_count": len(fact),
-                "verified_balance_cents": verified_balance,
+                # The balance in the ledger's sign, from the anchor plus fact
+                # since. None when there is no anchor.
+                "verified_balance_cents": balance,
                 "unverified_since_cents": unverified_cents,
                 "unverified_since_count": len(unverified),
                 "pending_cents": pending_cents,
                 "pending_count": len(pending),
-                # The figure with everything unconfirmed added in. None when
-                # there is no anchor: activity is not a balance.
                 "with_unverified_cents": (
-                    verified_balance + unverified_cents + pending_cents
-                    if verified_balance is not None
-                    else None
+                    balance + unverified_cents + pending_cents if balance is not None else None
                 ),
                 # As the phone's `get_balance`: nothing unconfirmed in the
-                # figure. Whether a balance can be stated at all is
+                # figure. Whether one can be stated at all is
                 # `verified_balance_cents is not None`.
                 "verified": not unverified and not pending,
-                "from_bank_feed": any(r["provenance"] == "BANK_API" for r in own_rows),
+                "from_bank_feed": bank is not None
+                or any(r["provenance"] == "BANK_API" for r in own_rows),
                 "latest_activity_on": max((r["txn_date"] for r in own_rows), default=None),
             }
         )
     return out
 
 
-def _label(rows: list[dict], last4: str) -> str:
-    """The most recent nickname with a letter in it, else "Account ending 1234"
-    (as `api.spend._label`)."""
+def _label(rows: list[dict], last4: str, bank: dict | None) -> str:
+    """The most recent nickname with a letter in it, else the bank's own name
+    for the account, else "Account ending 1234" (as `api.spend._label`)."""
     named = [r for r in rows if any(ch.isalpha() for ch in (r.get("account_nickname") or ""))]
-    if not named:
-        return f"Account ending {last4}"
-    return max(named, key=lambda r: r["created_at"])["account_nickname"]
+    if named:
+        return max(named, key=lambda r: r["created_at"])["account_nickname"]
+    if bank and bank.get("name"):
+        return bank["name"]
+    return f"Account ending {last4}"

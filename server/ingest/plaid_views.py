@@ -63,6 +63,26 @@ class BankAccountSerializer(serializers.Serializer):
     mask = serializers.CharField(allow_null=True)
     type = serializers.CharField(allow_null=True)
     subtype = serializers.CharField(allow_null=True)
+    # Kevin, 2026-11-03 ("store them"): the bank's own balance, fact (ADR 0057),
+    # as the bank stated it at `balance_as_of`. Plaid's shape: for a credit
+    # account `current` is what is owed (positive) and `available` the credit
+    # left. All four are null until a sync has read one.
+    balance_current_cents = serializers.IntegerField(
+        allow_null=True,
+        help_text=(
+            "The bank's balance in cents at `balance_as_of`. For a credit account, the amount "
+            "owed (positive). Null: the bank has not stated one."
+        ),
+    )
+    balance_available_cents = serializers.IntegerField(
+        allow_null=True,
+        help_text="What may be spent (for credit, the credit left), in cents. Null: not stated.",
+    )
+    balance_currency = serializers.CharField(allow_null=True)
+    balance_as_of = serializers.DateTimeField(
+        allow_null=True,
+        help_text="When the bank stated the balance. Show it beside the figure; it is not 'now'.",
+    )
 
 
 class BankStatusSerializer(serializers.Serializer):
@@ -147,6 +167,10 @@ def status_body(request) -> dict:
                 "mask": account.get("mask"),
                 "type": account.get("type"),
                 "subtype": account.get("subtype"),
+                "balance_current_cents": account.get("balance_current_cents"),
+                "balance_available_cents": account.get("balance_available_cents"),
+                "balance_currency": account.get("balance_currency"),
+                "balance_as_of": account.get("balance_as_of"),
             }
             for account in (item.accounts if item else [])
         ],

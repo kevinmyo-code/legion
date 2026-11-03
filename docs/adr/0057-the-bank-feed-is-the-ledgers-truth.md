@@ -54,6 +54,15 @@ to verify. automate both checking and cards, all of it"*. Asked how such rows sh
   ITEM_LOGIN_REQUIRED or kin, `/api/freshness` says "Bank connection needs you to sign in again" with
   the page that fixes it.
 
+- **AMENDED 2026-11-03 (Kevin: "store them"): the bank's own balance is stored too, as fact.**
+  Each sync keeps Plaid's `balances.current` / `balances.available` / `iso_currency_code` per
+  account in `plaid_items.accounts`, as integer cents through `Decimal(str(x))`, with the time it was
+  true (`balance_as_of`: Plaid's `last_updated_datetime`, else the moment the sync read it). It is
+  shown plainly, never as "now": always with its as-of time ("from the bank as of 9:14 AM"). For a
+  credit account `current` is what is owed. It anchors the account's balance on the engine's
+  `account_balances` tool and the web's Balances card (`GET /api/ingest/plaid` carries it).
+  Recruiters have no bank link and never see it.
+
 ## Consequences
 
 - The immutability trigger on `ledger_transactions` moved to `public.ledger_transactions_guard()`:

@@ -1,5 +1,6 @@
 import type { LedgerTransaction, Statement } from '@/api/ledger'
 import type { MaintenanceSchedule, ServiceHistory, Vehicle } from '@/api/aspects'
+import type { components } from '@/api/schema'
 import { isUnverified } from '@/lib/ledger'
 import { formatMoney, localDay, parseDay, plural } from '@/lib/figures'
 
@@ -309,17 +310,31 @@ export interface Balance {
 }
 
 const SHORT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+const CLOCK = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
+
+/** One linked account as `GET /api/ingest/plaid` reports it, balance included. */
+export type BankAccount = components['schemas']['BankAccount']
+
+/** "as of 9:14 AM, Nov 3" in the browser's zone: the bank's figure is never "now". */
+export function bankAsOf(iso: string): string {
+  const at = new Date(iso)
+  return `as of ${CLOCK.format(at)}, ${SHORT.format(at)}`
+}
 
 /**
  * The newest balance on file per account. A gated statement's closing balance is
  * Verified ("Statement to 12 Nov"); a newer ledger row that printed a balance is
  * used instead, Verified when a gate or the bank's own feed stands behind it and
- * Unverified when nothing checked it. An account with neither has no balance and
- * is not listed: no balance is never $0.
+ * Unverified when nothing checked it. The bank's own balance (Kevin, 2026-11-03:
+ * "store them"; ADR 0057) wins when it is as new or newer: fact, with its as-of
+ * time. A credit account's balance is what is owed, shown as money out. An
+ * account with none of these has no balance and is not listed: no balance is
+ * never $0.
  */
 export function latestBalances(
   statements: readonly Statement[],
   txns: readonly LedgerTransaction[],
+  bank: readonly BankAccount[] = [],
 ): Balance[] {
   const accounts = new Map<string, Balance & { asOf: string }>()
   for (const statement of statements) {
@@ -357,6 +372,24 @@ export function latestBalances(
       word: unverified ? 'Unverified' : 'Verified',
       detail: `${from}, ${SHORT.format(parseDay(row.txn_date))}`,
       asOf: row.txn_date,
+    })
+  }
+  for (const account of bank) {
+    if (account.balance_current_cents === null || !account.balance_currency) continue
+    if (!account.mask || !/^\d{4}$/.test(account.mask)) continue
+    const asOf = account.balance_as_of ? localDay(new Date(account.balance_as_of)) : null
+    const seen = accounts.get(account.mask)
+    if (seen && asOf !== null && seen.asOf > asOf) continue
+    const credit = account.type === 'credit'
+    const when = account.balance_as_of ? bankAsOf(account.balance_as_of) : 'with no time given'
+    accounts.set(account.mask, {
+      account: account.mask,
+      label: seen?.label ?? (account.name?.trim() || `Account ending ${account.mask}`),
+      cents: credit ? -account.balance_current_cents : account.balance_current_cents,
+      currency: account.balance_currency,
+      word: 'Verified',
+      detail: `${credit ? 'Owed, from the bank' : 'From the bank'} ${when}`,
+      asOf: asOf ?? '',
     })
   }
   return [...accounts.values()]
