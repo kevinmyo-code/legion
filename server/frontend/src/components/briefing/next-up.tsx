@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Clock } from 'lucide-react'
+import { Clock, Plus } from 'lucide-react'
 
 import { useEventSheet } from '@/components/event-sheet-context'
 import { timeLabel } from '@/components/event-row'
@@ -72,6 +72,18 @@ function LaterRow({ occurrence, when }: { occurrence: Occurrence; when: string }
   )
 }
 
+/** The desk Home's way to add an event: the same sheet Calendar opens. */
+function NewEvent() {
+  const sheet = useEventSheet()
+  if (sheet === null) return null
+  return (
+    <Button size="sm" variant="secondary" className="rounded-full" onClick={() => sheet.open({ kind: 'create' })}>
+      <Plus aria-hidden="true" />
+      New event
+    </Button>
+  )
+}
+
 /**
  * Section 1: the next thing on the calendar as a big card, and the rest of
  * today beside it, then tomorrow's first thing. Three states in words: could
@@ -99,7 +111,7 @@ export function NextUpSection({
   const { next, rest } = pickNextUp(today, now)
   const first = tomorrow[0]
   return (
-    <BriefingSection n={1} id="briefing-next" title="Next up">
+    <BriefingSection n={1} id="briefing-next" title="Next up" aside={<NewEvent />}>
       <div className="grid gap-3 md:grid-cols-[1.25fr_1fr]">
         {next ? (
           <NextUpCard occurrence={next} now={now} />

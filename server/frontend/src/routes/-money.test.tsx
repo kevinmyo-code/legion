@@ -639,22 +639,22 @@ describe('files', () => {
 })
 
 describe('home', () => {
-  test('workbench Home shows what each card spent, "unverified" in words, and what needs a decision', async () => {
+  // Recruiter-demo ticket 14: the desk Home is the Morning briefing. Money this
+  // month carries the engine's figure; Worth a look carries the decisions.
+  test('workbench Home shows the month in the engine figure, unverified in words, and what needs a decision', async () => {
     renderApp('/', engineWith())
 
-    const spent = (await screen.findByRole('heading', { name: 'Spent this month' })).closest('section') as HTMLElement
-    const card = (await within(spent).findByText('BofA card')).closest('li') as HTMLElement
-    expect(within(card).getByText('$642.55')).toBeInTheDocument()
-    expect(within(card).getByText('unverified')).toBeInTheDocument()
-    expect(within(card).getByText(/As of Oct 3, 2026/)).toBeInTheDocument()
-    expect(within(spent).getByRole('link', { name: 'Open Money' })).toBeInTheDocument()
+    const money = await screen.findByRole('region', { name: /Money this month/ })
+    expect(await within(money).findByText('$1,926.65')).toBeInTheDocument()
+    expect(within(money).getByText('Unverified')).toBeInTheDocument()
+    expect(within(money).getByText('card rows no statement has checked yet')).toBeInTheDocument()
 
-    const decision = screen.getByRole('heading', { name: 'Needs a decision' }).closest('section') as HTMLElement
-    expect(await within(decision).findByText('7 transactions need a category')).toBeInTheDocument()
-    expect(within(decision).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/money?need=true')
-    expect(await within(decision).findByText('1 file held for review')).toBeInTheDocument()
-    expect(within(decision).getByText(/BofA_card_Sep\.csv\. Nothing from it was added\./)).toBeInTheDocument()
-    expect(within(decision).getByRole('link', { name: 'See why' })).toHaveAttribute('href', '/money?tab=files')
+    const worth = screen.getByRole('region', { name: /Worth a look/ })
+    const need = (await within(worth).findByText(/^7 charges, .*, need a category$/)).closest('li') as HTMLElement
+    expect(within(need).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/money?need=true')
+    const held = (await within(worth).findByText('1 bank file held for review')).closest('li') as HTMLElement
+    expect(held).toHaveTextContent(/BofA_card_Sep\.csv\. Nothing from it was added\./)
+    expect(within(held).getByRole('link', { name: 'See why' })).toHaveAttribute('href', '/money?tab=files')
   })
 
   test('the count waits while the ledger is partway in, then appears', async () => {
@@ -667,22 +667,24 @@ describe('home', () => {
       pathname === '/api/ledger/transactions/' && search.has('since') ? held : undefined
     renderApp('/', engine)
 
-    const decision = (await screen.findByRole('heading', { name: 'Needs a decision' })).closest('section') as HTMLElement
-    expect(await within(decision).findByText(/Still loading transactions: 5 so far/)).toBeInTheDocument()
-    expect(within(decision).queryByText(/need a category/)).not.toBeInTheDocument()
+    const worth = await screen.findByRole('region', { name: /Worth a look/ })
+    expect(await within(worth).findByText('Still reading the rest.')).toBeInTheDocument()
+    expect(within(worth).queryByText(/need a category/)).not.toBeInTheDocument()
 
     release()
-    expect(await within(decision).findByText('7 transactions need a category')).toBeInTheDocument()
+    expect(await within(worth).findByText(/^7 charges, .*, need a category$/)).toBeInTheDocument()
   })
 
-  test('a Home with nothing to decide says so in words', async () => {
+  test('a Home with nothing to decide lists no charge and no file', async () => {
     const engine = engineWith()
     engine.tables['ledger/transactions'] = []
     engine.tables['ingest/files'] = []
     renderApp('/', engine)
-    const decision = (await screen.findByRole('heading', { name: 'Needs a decision' })).closest('section') as HTMLElement
-    expect(await within(decision).findByText('Every transaction has a category.')).toBeInTheDocument()
-    expect(await within(decision).findByText('No bank file is held for review.')).toBeInTheDocument()
+    const worth = await screen.findByRole('region', { name: /Worth a look/ })
+    await waitFor(() => expect(within(worth).queryByText('Still reading the rest.')).not.toBeInTheDocument())
+    expect(within(worth).queryByText(/need a category/)).not.toBeInTheDocument()
+    expect(within(worth).queryByText(/held for review/)).not.toBeInTheDocument()
+    expect(within(worth).queryByText(/is not known/)).not.toBeInTheDocument()
   })
 
   test('an unreachable ledger on Home says it could not reach the engine, not "nothing to decide"', async () => {
@@ -690,11 +692,9 @@ describe('home', () => {
     engine.failingTables.add('ledger/transactions')
     engine.refusals['GET /api/ledger/spend'] = { status: 503, body: { detail: 'down' } }
     renderApp('/', engine)
-    expect(await screen.findByText(/how many transactions need a category is not known/)).toBeInTheDocument()
-    expect(
-      await screen.findByText(/this is not the real figure for what was spent this month/),
-    ).toBeInTheDocument()
-    expect(screen.queryByText('Every transaction has a category.')).not.toBeInTheDocument()
+    expect(await screen.findByText(/how many charges need a category is not known/)).toBeInTheDocument()
+    expect(await screen.findByText(/what was spent this month is not known\. This is not zero\./)).toBeInTheDocument()
+    expect(screen.queryByText(/^Nothing wants a look/)).not.toBeInTheDocument()
   })
 
   test('family Home has no Needs a decision panel and reads no transactions, only the engine spend', async () => {

@@ -126,7 +126,7 @@ describe('when a refresh fails', () => {
   test('the rows stay on screen and the freshness line says they are old', async () => {
     const engine = createEngine(seedHousehold())
     renderApp(engine, '/', 'workbench')
-    await screen.findAllByText('Soccer pickup')
+    await screen.findAllByText('Hardware store')
     expect(screen.getByText(/Last read just now\./)).toBeInTheDocument()
 
     engine.changesFailing = true
@@ -134,8 +134,8 @@ describe('when a refresh fails', () => {
     await waitFor(() => expect(engine.calls[CHANGES]).toBe(2))
 
     // Still there: a failed refresh must not turn a real day into an error page.
-    expect((await screen.findAllByText('Soccer pickup')).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/Could not reach the engine, so this is not today's real list/)).not.toBeInTheDocument()
+    expect((await screen.findAllByText('Hardware store')).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/what is on the calendar today is not known/)).not.toBeInTheDocument()
     // And honest about it, in words, with the age of what is on screen.
     expect(await screen.findByText(/not what is there now/)).toBeInTheDocument()
 
@@ -146,13 +146,13 @@ describe('when a refresh fails', () => {
     expect(
       await screen.findByText(/This is what was on screen 1 minute ago - not what is there now\./),
     ).toBeInTheDocument()
-    expect(screen.getAllByText('Soccer pickup').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Hardware store').length).toBeGreaterThan(0)
   })
 
   test('the stale line goes away when the next refresh works', async () => {
     const engine = createEngine(seedHousehold())
     renderApp(engine, '/', 'workbench')
-    await screen.findAllByText('Soccer pickup')
+    await screen.findAllByText('Hardware store')
 
     engine.changesFailing = true
     await advance(CHANGES_POLL_MS + 500)
@@ -170,7 +170,7 @@ describe('when a refresh fails', () => {
     renderApp(engine, '/', 'workbench')
 
     expect(
-      await screen.findByText(/Could not reach the engine, so this is not today's real list\./),
+      await screen.findByText(/Could not reach the engine, so what is on the calendar today is not known\./),
     ).toBeInTheDocument()
     expect(screen.queryByText('Nothing on the calendar today.')).not.toBeInTheDocument()
   })

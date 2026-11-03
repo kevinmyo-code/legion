@@ -1,10 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { Car, CreditCard, ListChecks, Link2, SquareCheckBig } from 'lucide-react'
+import { Car, CreditCard, FileWarning, ListChecks, Link2, SquareCheckBig } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { maintenanceSchedules, serviceHistory, vehicles } from '@/api/aspects'
 import { useBankStatus } from '@/api/bank'
-import { useLedgerTransactions } from '@/api/ledger'
+import { ingestedFiles, useLedgerTransactions } from '@/api/ledger'
 import { useRows } from '@/api/synced'
 import { BriefingSection, Quiet, RowIcon, StatusLabel, TrustChip, type Status } from '@/components/briefing/parts'
 import { Button } from '@/components/ui/button'
@@ -90,6 +90,8 @@ export function useWorthALook({
   const history = useRows(serviceHistory)
   const { query: txns } = useLedgerTransactions()
   const bank = useBankStatus(!recruiter)
+  // A demo visit has no ingestion ledger (ticket 13): not asked for.
+  const files = useRows(ingestedFiles, !recruiter)
 
   const items: WorthItem[] = []
   const unreadable: string[] = []
@@ -192,6 +194,31 @@ export function useWorthALook({
         ),
         action: { label: 'Review', to: '/money', search: { need: true } },
       })
+    }
+  }
+
+  // Bank files the gate held back: members only.
+  if (!recruiter) {
+    if (files.isPending) pending = true
+    else if (files.data === undefined) {
+      unreadable.push('Could not reach the engine, so whether any bank file is held for review is not known.')
+    } else {
+      const held = files.data.filter((file) => file.state === 'QUARANTINED')
+      if (held.length > 0) {
+        items.push({
+          key: 'files:held',
+          status: 'To confirm',
+          icon: FileWarning,
+          title: `${held.length} bank ${held.length === 1 ? 'file' : 'files'} held for review`,
+          detail: (
+            <span>
+              {held.map((file) => file.display_name ?? 'Unnamed file').join(', ')}. Nothing from{' '}
+              {held.length === 1 ? 'it was' : 'them was'} added.
+            </span>
+          ),
+          action: { label: 'See why', to: '/money', search: { tab: 'files' } },
+        })
+      }
     }
   }
 

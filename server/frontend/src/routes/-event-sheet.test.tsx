@@ -37,7 +37,8 @@ function agendaHeading(): string {
 
 async function home(engine: Engine, surface: Surface = 'family') {
   const view = renderApp('/', engine, surface)
-  await screen.findByRole('heading', { name: surface === 'family' ? 'On today' : 'Today and the next 7 days' })
+  if (surface === 'family') await screen.findByRole('heading', { name: 'On today' })
+  else await screen.findByRole('region', { name: /Next up/ })
   return view
 }
 

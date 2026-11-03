@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { todayEpochDay } from '@/lib/day'
 import { createEngine, makeEvent, todayAt, type Engine } from '@/test/engine'
@@ -273,31 +273,35 @@ test('the "+" is on the phone calendar too, and a skipped occurrence is not in i
   expect(screen.queryByText('Water the ferns')).not.toBeInTheDocument()
 })
 
-test('the desk Home shows today and the next 7 days, one block a day, and says "Nothing planned"', async () => {
-  const engine = createEngine({
-    events: [
-      makeEvent({ title: 'Dentist', starts_at: todayAt(15, 15) }),
-      makeEvent({ title: 'Farmers market', starts_at: todayAt(9, 0, 3) }),
-      makeEvent({ title: 'Therapy', starts_at: todayAt(16, 0, 3), visibility: 'private' }),
-    ],
-  })
-  renderApp('/', engine, 'workbench')
-  const panel = (await screen.findByRole('heading', { name: 'Today and the next 7 days' })).closest(
-    'section',
-  ) as HTMLElement
-  expect(within(panel).getAllByRole('listitem').length).toBeGreaterThanOrEqual(8)
-  expect(within(panel).getByText('Today')).toBeInTheDocument()
-  expect(within(panel).getByText('Dentist')).toBeInTheDocument()
-  expect(within(panel).getByText('Farmers market')).toBeInTheDocument()
-  expect(within(panel).getByText('Only you')).toBeInTheDocument()
-  expect(within(panel).getAllByText('Nothing planned').length).toBe(6)
-  // The phone's sections are not on the desk.
-  expect(screen.queryByRole('heading', { name: 'On today' })).not.toBeInTheDocument()
+// Recruiter-demo ticket 14: the desk Home is the Morning briefing, so today's
+// plans are in "Next up" and the week lives on Calendar.
+test('the desk Home puts the next plan first and the rest of today beside it, each saying who sees it', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(2026, 10, 2, 8, 0))
+  try {
+    const engine = createEngine({
+      events: [
+        makeEvent({ title: 'Dentist', starts_at: todayAt(15, 15) }),
+        makeEvent({ title: 'Therapy', starts_at: todayAt(16, 0), visibility: 'private' }),
+        makeEvent({ title: 'Farmers market', starts_at: todayAt(9, 0, 3) }),
+      ],
+    })
+    renderApp('/', engine, 'workbench')
+    const next = await screen.findByRole('region', { name: /Next up/ })
+    expect(within(next).getByRole('article', { name: 'Next: Dentist' })).toBeInTheDocument()
+    expect(within(next).getByText('Therapy').closest('li')).toHaveTextContent('Only you')
+    expect(within(next).queryByText('Farmers market')).not.toBeInTheDocument()
+    // The phone's sections are not on the desk.
+    expect(screen.queryByRole('heading', { name: 'On today' })).not.toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
-test('the desk Home agenda says when the whole stretch is empty', async () => {
+test('the desk Home says an empty day in words', async () => {
   renderApp('/', createEngine({}), 'workbench')
-  expect(await screen.findByText('Nothing on the calendar for the next 7 days.')).toBeInTheDocument()
+  const next = await screen.findByRole('region', { name: /Next up/ })
+  expect(within(next).getByText('Nothing on the calendar today.')).toBeInTheDocument()
 })
 
 test('the desk Home has a labelled New event button, and the phone Home a "+"', async () => {

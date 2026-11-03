@@ -79,7 +79,7 @@ describe('a recruiter in the app', () => {
     const engine = visit()
     renderApp('/', engine, 'workbench')
     expect(await screen.findByRole('note', { name: 'Demo visit' })).toBeInTheDocument()
-    await screen.findByText(/Needs a decision/)
+    await screen.findByRole('region', { name: /Worth a look/ })
     expect(engine.calls['GET /api/ingest/files/']).toBeUndefined()
     expect(screen.queryByText(/bank file/)).not.toBeInTheDocument()
   })

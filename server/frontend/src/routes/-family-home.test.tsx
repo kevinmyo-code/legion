@@ -365,10 +365,11 @@ describe('surfaces', () => {
     stubSurface('workbench')
     const engine = household()
     renderApp('/', engine, 'workbench')
-    await screen.findByRole('heading', { name: 'Today and the next 7 days' })
+    // The desk's Home is the Morning briefing (recruiter-demo ticket 14).
+    await screen.findByRole('region', { name: /Next up/ })
     expect(screen.queryByRole('heading', { name: 'Pinned lists' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Lists' })).toBeInTheDocument() // the workbench's own Lists panel
-    expect(screen.queryByText(/^(Good morning|Good afternoon|Good evening|Hello)/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Lists' })).toBeInTheDocument() // the briefing's own Lists section
+    expect(screen.queryByRole('heading', { name: 'On today' })).not.toBeInTheDocument()
     // No pin button anywhere on the workbench Home.
     expect(screen.queryByRole('button', { name: /Pin .* to Home/ })).not.toBeInTheDocument()
   })
