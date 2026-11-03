@@ -1,6 +1,5 @@
 import { useChanges, useHousehold, useMe } from '@/api/queries'
 import { AroundHouseSection } from '@/components/briefing/around-house'
-import { AskBar } from '@/components/briefing/ask-bar'
 import { ListsSection } from '@/components/briefing/lists'
 import { MoneySection } from '@/components/briefing/money-month'
 import { NextUpSection } from '@/components/briefing/next-up'
@@ -75,8 +74,6 @@ export function BriefingHome() {
 
   return (
     <div className="@container mx-auto flex w-full max-w-[54rem] flex-col gap-7 pb-16">
-      <AskBar />
-
       <header>
         <h1 className="text-[1.875rem] leading-tight font-medium tracking-tight @2xl:text-[2.5rem]">
           {greeting(now)}

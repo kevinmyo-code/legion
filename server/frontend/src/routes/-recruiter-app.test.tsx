@@ -95,9 +95,7 @@ describe('a recruiter in the app', () => {
     await screen.findByRole('note', { name: 'Demo visit' })
     // The rail entry the members use (`AssistantRailEntry`), named for the companion.
     await waitFor(() => expect(document.querySelector('[aria-controls="assistant-dock"]')).not.toBeNull())
-    // No chat in the page itself; opening the rail entry gives the one dock.
-    expect(screen.queryByRole('log')).not.toBeInTheDocument()
-    fireEvent.click(document.querySelector('[aria-controls="assistant-dock"]') as HTMLElement)
+    // No chat in the page itself; the one dock is open beside it on load.
     expect(await screen.findByRole('complementary', { name: /^Conversation with/ })).toBeInTheDocument()
     expect(screen.getAllByRole('log')).toHaveLength(1)
   })

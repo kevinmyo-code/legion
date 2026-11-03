@@ -43,21 +43,28 @@ describe('a member with a full household', () => {
     expect(screen.getByText(TRUST_LEGEND)).toBeInTheDocument()
   })
 
-  test('the ask bar is named for the companion and opens its chat', async () => {
+  test('on the desk the dock is the one place to type, open on load, with the first questions', async () => {
     renderApp('/', briefingEngine(), 'workbench')
-    const box = await screen.findByRole('textbox', { name: 'Ask Dorothy a question' })
-    expect(screen.queryByText(/Alfred/)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'What is on this week?' }))
-    expect(await screen.findByRole('complementary', { name: 'Conversation with Dorothy' })).toBeInTheDocument()
-    expect(box).toBeInTheDocument()
-    // One conversation on the page: the dock. The ask bar is a door to it, not a second chat.
+    // Kevin, 2026-11-03: "i still see 2 chat windows that i can type in". No ask bar in the page.
+    const dock = await screen.findByRole('complementary', { name: 'Conversation with Dorothy' })
+    await ready()
+    expect(screen.queryByRole('search')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /^Ask / })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('textbox')).toEqual([within(dock).getByRole('textbox', { name: 'Message Dorothy' })])
     expect(screen.getAllByRole('log')).toHaveLength(1)
+    expect(screen.queryByText(/Alfred/)).not.toBeInTheDocument()
+    // The ask bar's questions live in the dock's empty state now.
+    expect(within(dock).getByRole('button', { name: 'What did we spend on groceries?' })).toBeInTheDocument()
+    expect(within(dock).getByRole('button', { name: 'When is the next car service due?' })).toBeInTheDocument()
   })
 
   test('on a phone Home has no conversation in the page; the orb opens the one sheet', async () => {
     renderApp('/', briefingEngine(), 'family')
     const orb = await screen.findByRole('button', { name: 'Ask Dorothy' })
+    // One entry point and nothing to type into until it opens.
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.click(orb)
     expect(await screen.findByRole('dialog', { name: 'Conversation with Dorothy' })).toBeInTheDocument()
     expect(screen.getAllByRole('log')).toHaveLength(1)
