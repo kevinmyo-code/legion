@@ -628,7 +628,9 @@ def test_the_visitors_run_inspector_shows_its_own_runs_and_nothing_of_kevins(wor
     assert report.status_code == 200 and report.data["runs"] == 1
     assert browser.get("/api/procedures/report?name=kevins_own").status_code == 404
     picker = browser.get("/api/procedures/")
-    assert [v["procedure"] for v in picker.data] == ["visit_read"]
+    # The built-ins (procedures ticket 15) are every household's, so they list too.
+    names = [v["procedure"] for v in picker.data]
+    assert "visit_read" in names and "kevins_own" not in names
     for response in (listing, detail, report, picker):
         assert _leaks(world, json.dumps(response.data, default=str)) == []
 
