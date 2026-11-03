@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.core import checks
 from django.db.models.signals import post_migrate
 
 
@@ -16,6 +17,35 @@ class ProceduresConfig(AppConfig):
     def ready(self) -> None:
         # sender=self: post_migrate fires once per app config; this runs once per migrate.
         post_migrate.connect(_load_builtins_after_migrate, sender=self)
+        checks.register(postgres_is_15_or_newer, checks.Tags.database)
+
+
+# Migration 0001's `UNIQUE NULLS NOT DISTINCT` (one row per built-in name) needs Postgres 15.
+MIN_POSTGRES = 150000
+
+
+def postgres_is_15_or_newer(app_configs=None, databases=None, **kwargs):
+    """A database check: `migrate` runs database checks before any migration, so an older
+    server is refused in words rather than failing inside 0001 with a syntax error."""
+    from django.db import connections
+
+    errors = []
+    for alias in databases or ():
+        connection = connections[alias]
+        if connection.vendor != "postgresql":
+            continue
+        version = connection.pg_version
+        if version is not None and version < MIN_POSTGRES:
+            errors.append(
+                checks.Error(
+                    f"Postgres {version // 10000} is too old for LEGION: procedures migration "
+                    "0001 uses UNIQUE NULLS NOT DISTINCT, which needs Postgres 15 or newer. "
+                    "Nothing was migrated. Upgrade the database server (compose pins "
+                    "postgres:16).",
+                    id="procedures.E001",
+                )
+            )
+    return errors
 
 
 def _load_builtins_after_migrate(sender, using="default", **kwargs):

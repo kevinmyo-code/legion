@@ -583,3 +583,19 @@ def test_deleting_the_visit_household_deletes_its_runs_and_steps(
     # The built-in it ran is untouched.
     assert ProcedureVersion.objects.filter(procedure__name="checklist_check").exists()
 
+
+# =============================================================================
+# The Postgres 15 floor (migration 0001's NULLS NOT DISTINCT)
+# =============================================================================
+
+
+def test_an_older_postgres_is_refused_in_words(monkeypatch):
+    from django.db import connections
+
+    from procedures.apps import postgres_is_15_or_newer
+
+    assert postgres_is_15_or_newer(databases=["default"]) == []
+    monkeypatch.setattr(type(connections["default"]), "pg_version", property(lambda self: 140011))
+    (error,) = postgres_is_15_or_newer(databases=["default"])
+    assert error.id == "procedures.E001"
+    assert "Postgres 14 is too old" in error.msg and "Nothing was migrated" in error.msg
