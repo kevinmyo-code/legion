@@ -1033,6 +1033,66 @@ def _bank_as_of_words(request, as_of) -> str:
     return f"as of {clock} {_long_date(local.date())}"
 
 
+def _since_words(a: dict) -> str:
+    """", plus -$433.93 of bank-feed transactions since", or "" with none."""
+    if not a["fact_since_count"]:
+        return ""
+    from brief.compose import money
+
+    kind = (
+        "bank-feed transactions"
+        if a["fact_since_bank_feed_count"] == a["fact_since_count"]
+        else "verified transactions"
+    )
+    after = "dated after it" if a["anchor"] == "bank" else "since"
+    return f", plus {money(a['fact_since_cents'], a['currency'])} of {kind} {after}"
+
+
+def _now_words(request, a: dict) -> str:
+    """"Now: -$345.43 (statement balance $88.50 on Tue Oct 6, 2026, verified,
+    plus -$433.93 of bank-feed transactions since)". The figure first, the
+    anchor second. A credit account says what is owed."""
+    from brief.compose import money
+
+    c = a["currency"]
+    current = a["current_cents"]
+    credit = a["anchor"] == "bank" and a["bank"]["type"] == "credit"
+    if credit:
+        figure = (
+            f"{money(-current, c)} owed" if current <= 0 else f"{money(current, c)} in credit"
+        )
+    else:
+        figure = money(current, c)
+    # The anchor's own figure is repeated only when something moved since it;
+    # otherwise it IS the Now figure and saying it twice invites a mix-up.
+    moved = bool(a["fact_since_count"])
+    if a["anchor"] == "bank":
+        # Kevin, 2026-11-03 ("store them"): the bank's own balance is fact,
+        # said plainly, always with when the bank stated it.
+        bank = a["bank"]
+        when = _bank_as_of_words(request, bank["as_of"])
+        if credit:
+            source = "the bank's own figure"
+            if moved:
+                source += f" of {money(bank['current_cents'], c)} owed"
+            source += f" {when}"
+            if bank["available_cents"] is not None:
+                source += f", {money(bank['available_cents'], c)} of credit available"
+        else:
+            source = "the bank's own balance"
+            if moved:
+                source += f" of {money(bank['current_cents'], c)}"
+            source += f" {when}"
+            if bank["available_cents"] is not None:
+                source += f", {money(bank['available_cents'], c)} available"
+    else:
+        source = "statement balance"
+        if moved:
+            source += f" {money(a['statement_closing_cents'], c)}"
+        source += f" on {_long_date(a['statement_period_end'])}, verified"
+    return f"Now: {figure} ({source}{_since_words(a)})"
+
+
 def _account_balances(request, args) -> ToolResult:
     from api.ledger_balances import account_balances
     from brief.compose import money
@@ -1053,37 +1113,12 @@ def _account_balances(request, args) -> ToolResult:
     for a in found:
         c = a["currency"]
         said = [f"{a['label']} (ending {a['account_last4']}, {c}):"]
-        anchored = a["verified_balance_cents"] is not None
-        if a["anchor"] == "bank":
-            # Kevin, 2026-11-03 ("store them"): the bank's own balance is fact,
-            # said plainly, always with when the bank stated it.
-            bank = a["bank"]
-            when = _bank_as_of_words(request, bank["as_of"])
-            if bank["type"] == "credit":
-                text = f"{money(bank['current_cents'], c)} owed, from the bank {when}"
-                if bank["available_cents"] is not None:
-                    text += f" ({money(bank['available_cents'], c)} of credit available)"
-            else:
-                text = f"balance {money(bank['current_cents'], c)}, from the bank {when}"
-                if bank["available_cents"] is not None:
-                    text += f" ({money(bank['available_cents'], c)} available)"
-            if a["fact_since_count"]:
-                text += (
-                    f", plus {money(a['fact_since_cents'], c)} of statement transactions dated "
-                    f"after it"
-                )
-            said.append(text + ".")
-        elif anchored:
-            said.append(
-                f"verified balance {money(a['verified_balance_cents'], c)}: the closing balance "
-                f"printed on the statement ending {_long_date(a['statement_period_end'])}, which "
-                f"passed the reconciliation gate"
-                + (
-                    f", plus {money(a['fact_since_cents'], c)} of transactions since."
-                    if a["fact_since_count"]
-                    else "."
-                )
-            )
+        anchored = a["current_cents"] is not None
+        if anchored:
+            # Audit 2026-11-03: the current figure leads, in one phrase, and
+            # the anchor follows as where it came from - never two figures
+            # side by side for the model to pick between.
+            said.append(_now_words(request, a) + ".")
         elif a["from_bank_feed"]:
             # ADR 0057: the bank's feed is fact, said plainly. It brings
             # transactions, and the engine keeps no balance from it.
@@ -1766,15 +1801,17 @@ TOOLS: tuple[EngineTool, ...] = (
         name="account_balances",
         title="Account balances",
         description=(
-            "The balance of each bank account, per currency (never added across currencies): "
-            "the bank's own balance with the time the bank stated it (fact; always say "
-            "\"as of\" that time), else the closing balance printed on its latest statement "
-            "plus transactions since, and separately any activity no gate checked (UNVERIFIED) "
-            "or that a person logged "
-            "as pending. Say UNVERIFIED wherever the result does, and nowhere else: the bank's "
-            "own feed is fact. An account with no balance on file has none to state: never "
-            "make one up from its transactions. Optional `account` (last four digits or words "
-            "of its name)."
+            "The balance of each bank account, per currency (never added across currencies). "
+            "Each account's line LEADS with \"Now: <figure>\": that figure is the balance, so "
+            "say it as the balance; what follows in brackets is where it came from (the bank's "
+            "own balance with the time the bank stated it - always say \"as of\" that time - "
+            "or the closing balance printed on its latest statement, plus transactions since). "
+            "Never give the statement's or the bank's figure as the balance when the Now figure "
+            "differs. Separately it lists any activity no gate checked (UNVERIFIED) or that a "
+            "person logged as pending. Say UNVERIFIED wherever the result does, and nowhere "
+            "else: the bank's own feed is fact. An account with no balance on file has none to "
+            "state: never make one up from its transactions. Optional `account` (last four "
+            "digits or words of its name)."
         ),
         input_schema=_object({"account": {"type": "string"}}),
         handler=_account_balances,
