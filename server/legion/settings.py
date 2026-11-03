@@ -438,6 +438,11 @@ REST_FRAMEWORK = {
             os.environ.get("LEGION_ASSISTANT_SESSION_RATE", "").strip() or "30/hour"
         ),
         "assistant_tool": os.environ.get("LEGION_ASSISTANT_TOOL_RATE", "").strip() or "60/min",
+        # The browser's half of a conversation record (`POST /api/assistant/conversation`):
+        # about one upload per turn and one at the end, per member.
+        "assistant_conversation": (
+            os.environ.get("LEGION_ASSISTANT_CONVERSATION_RATE", "").strip() or "600/hour"
+        ),
         # ai-upgrade ticket 02, per signed-in MEMBER (`brief/views.py`). Each
         # refresh is one grounded Gemini call on the household's key. Same
         # per-process LocMemCache caveat as `mcp` above.

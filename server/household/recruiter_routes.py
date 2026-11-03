@@ -21,7 +21,10 @@ walk is the reminder, the default is still deny.
 - `RECRUITER_DENIED`: refused outright, with the reason given, in words.
 
 `allows_recruiter = True` on a view (the assistant doors, the demo's own
-pages) still opens it, as before.
+pages) still opens it, as before. One of those doors is
+`POST /api/assistant/conversation` (2026-11-03): a visitor uploads its OWN
+conversation record there, matched to the caller and the visit, and reads
+nothing. `/api/device-logs/` stays denied below.
 """
 from __future__ import annotations
 

@@ -6,6 +6,10 @@
   Gemini, through the SAME registry `/mcp` runs (`engine_mcp.tools.run_tool`),
   as that member, under their own `visible()`.
 - `GET /api/assistant/companion` says who the member talks to.
+- `POST /api/assistant/conversation` takes the browser's half of the conversation record (Kevin,
+  2026-11-03: "recorded to improve ... and seeing what tool calls etc went wrong"). The mint opens
+  the record and the tool door writes every tool call into it; this door adds what only the
+  browser hears. `devicelogs/web_conversation.py` owns the format.
 
 **Session authentication only, CSRF enforced** (ticket 02). A browser carries
 the Django session cookie and `X-CSRFToken`; DRF's `SessionAuthentication`
@@ -15,7 +19,9 @@ never reach `/mcp` and a leaked device token can never mint a voice session.
 
 **Throttled per member, audited per call** (`AssistantCall`): who, when, which
 door, which tool, how it ended. Never the prompt, the arguments, a result, the
-key or the token.
+key or the token. The conversation RECORD (`devicelogs/web_conversation.py`) is
+separate and does keep a tool's arguments and trimmed result, the way the
+phone's conversation batches do; never audio, never the key or the token.
 
 **The household's key never leaves this module's process** (ADR 0056): it goes
 from the environment into one header on one request to Google, and every
@@ -24,11 +30,15 @@ answer here is built from Google's reply, never from the key.
 
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import UTC, datetime
 
+from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import exceptions, serializers, status
 from rest_framework.authentication import SessionAuthentication
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
@@ -41,6 +51,7 @@ from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES
 from assistant.session import token_request_for
 from assistant.surface import recruiter_only_tool, refusal_for
 from demo import budget as demo_budget
+from devicelogs import web_conversation
 from engine_mcp.models import Outcome
 from engine_mcp.tools import run_engine_tool, run_tool
 from household.models import is_recruiter
@@ -73,6 +84,23 @@ class AssistantSessionThrottle(_PerMemberThrottle):
 
 class AssistantToolThrottle(_PerMemberThrottle):
     scope = "assistant_tool"
+
+
+class AssistantConversationThrottle(_PerMemberThrottle):
+    scope = "assistant_conversation"
+
+
+def _conversation_id(request) -> uuid.UUID | None:
+    """The body's `conversation_id`, or None when absent or not a uuid. For the paths that record
+    a refusal before (or without) the serializer."""
+    try:
+        raw = request.data.get("conversation_id")
+    except Exception:  # noqa: BLE001 - an unparseable body names no conversation
+        return None
+    try:
+        return uuid.UUID(str(raw)) if raw else None
+    except ValueError:
+        return None
 
 
 def _audit(request, kind: str, outcome: str, tool: str | None = None) -> None:
@@ -130,6 +158,14 @@ class AssistantSessionRequestSerializer(serializers.Serializer):
             "the zone's name never reaches the prompt."
         ),
     )
+    client_now_ms = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text=(
+            "The browser's clock, epoch milliseconds (`Date.now()`), so the conversation record "
+            "can put the browser's lines on the engine's clock. Omit it and they are kept as sent."
+        ),
+    )
 
 
 SessionResponse = inline_serializer(
@@ -162,6 +198,13 @@ SessionResponse = inline_serializer(
         ),
         "output_audio_rate": serializers.IntegerField(
             help_text="Sample rate of the 16-bit PCM Gemini sends back."
+        ),
+        "conversation_id": serializers.UUIDField(
+            help_text=(
+                "This conversation's record on the engine. Send it with every tool call and "
+                "with `POST /api/assistant/conversation`. Conversations may be recorded to "
+                "improve the assistant; no audio is kept."
+            )
         ),
     },
 )
@@ -237,6 +280,9 @@ class AssistantSessionView(_AssistantView):
             _audit(request, AssistantCall.SESSION, Outcome.FAILED)
             return Response({"detail": exc.message}, status=exc.status)
         _audit(request, AssistantCall.SESSION, Outcome.OK)
+        record = web_conversation.start(
+            request, model=live.MODEL, client_now_ms=body.validated_data.get("client_now_ms")
+        )
         return Response(
             {
                 "token": minted.token,
@@ -248,6 +294,7 @@ class AssistantSessionView(_AssistantView):
                 "voice_name": companion.voice_name,
                 "input_audio_mime": live.INPUT_AUDIO_MIME,
                 "output_audio_rate": live.OUTPUT_AUDIO_RATE,
+                "conversation_id": record.batch_id,
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -264,6 +311,22 @@ class AssistantToolRequestSerializer(serializers.Serializer):
         required=False,
         default=dict,
         help_text="`functionCalls[].args`, as Gemini sent it. Omitted means `{}`.",
+    )
+    conversation_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "The mint's `conversation_id`. The engine writes this call, its arguments and its "
+            "result into that conversation's record. One that is not the caller's is ignored."
+        ),
+    )
+    call_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=200,
+        help_text="`functionCalls[].id`, as Gemini sent it, for the record.",
     )
 
 
@@ -310,6 +373,36 @@ class AssistantToolView(_AssistantView):
             return None
         return name if isinstance(name, str) else None
 
+    def _record(self, request, started, *, success: bool, outcome: str, text: str) -> None:
+        """Write this call into the caller's conversation record, if the body named one."""
+        try:
+            args = request.data.get("args", {})
+            call_id = request.data.get("call_id") or ""
+        except Exception:  # noqa: BLE001 - an unparseable body: record what is known
+            args, call_id = {}, ""
+        web_conversation.record_tool(
+            request,
+            _conversation_id(request),
+            call_id=str(call_id),
+            name=self._audit_tool_name(request) or "?",
+            args=args,
+            started=started,
+            ended=datetime.now(UTC),
+            success=success,
+            outcome=outcome,
+            text=text,
+        )
+
+    def throttled(self, request, wait):
+        self._record(
+            request,
+            datetime.now(UTC),
+            success=False,
+            outcome=Outcome.THROTTLED,
+            text="Too many tool calls just now; the engine refused this before running it.",
+        )
+        super().throttled(request, wait)
+
     @extend_schema(
         tags=ASSISTANT_TAGS,
         operation_id="api_assistant_tool_create",
@@ -328,10 +421,12 @@ class AssistantToolView(_AssistantView):
         },
     )
     def post(self, request):
+        started = datetime.now(UTC)
         body = AssistantToolRequestSerializer(data=request.data)
         if not body.is_valid():
             text = f"Nothing was read or written. The tool call did not fit: {body.errors}"
             _audit(request, AssistantCall.TOOL, Outcome.REFUSED, self._audit_tool_name(request))
+            self._record(request, started, success=False, outcome=Outcome.REFUSED, text=text)
             return Response(
                 {"detail": text, "response": _forward(False, text)},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -340,6 +435,7 @@ class AssistantToolView(_AssistantView):
         refusal = refusal_for(name, request.user, body.validated_data["args"])
         if refusal is not None:
             _audit(request, AssistantCall.TOOL, Outcome.REFUSED, name)
+            self._record(request, started, success=False, outcome=Outcome.REFUSED, text=refusal)
             return Response(
                 {"detail": refusal, "response": _forward(False, refusal)},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -350,6 +446,9 @@ class AssistantToolView(_AssistantView):
         else:
             result = run_tool(request, name, body.validated_data["args"])
         _audit(request, AssistantCall.TOOL, result.outcome, name)
+        self._record(
+            request, started, success=not result.is_error, outcome=result.outcome, text=result.text
+        )
         return Response(
             {
                 "name": name,
@@ -360,6 +459,124 @@ class AssistantToolView(_AssistantView):
             },
             headers={"Cache-Control": "no-store"},
         )
+
+
+# =============================================================================
+# POST /api/assistant/conversation
+# =============================================================================
+
+
+class ConversationEventSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=list(web_conversation.EVENT_KINDS))
+    at_ms = serializers.IntegerField(help_text="When, epoch milliseconds on the browser's clock.")
+    text = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=20_000,
+        help_text="`user` and `assistant`: the words (a transcription, or what was typed).",
+    )
+    typed = serializers.BooleanField(required=False, default=False, help_text="`user`: typed.")
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=400,
+        help_text=(
+            "`session_end`, `mic_open`, `mic_closed`: why. `interrupted`: `server` or `barge_in`."
+        ),
+    )
+    id = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    name = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    metric = serializers.ChoiceField(
+        choices=list(web_conversation.LATENCY_METRICS), required=False, allow_null=True
+    )
+    ms = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=3_600_000)
+
+
+class ConversationUploadSerializer(serializers.Serializer):
+    conversation_id = serializers.UUIDField(help_text="The mint's `conversation_id`.")
+    events = serializers.CharField(
+        help_text=(
+            "A JSON array of events: `{kind, at_ms, text?, typed?, reason?, id?, name?, metric?, "
+            "ms?}`, kind one of " + ", ".join(web_conversation.EVENT_KINDS) + ". A form field, so "
+            "that `navigator.sendBeacon` can send it with `csrfmiddlewaretoken` beside it while "
+            "the page closes. Send only events not yet stored; a repeat is stored once."
+        ),
+    )
+
+
+ConversationStored = inline_serializer(
+    name="AssistantConversationStored",
+    fields={"stored_lines": serializers.IntegerField(), "detail": serializers.CharField()},
+)
+
+
+class AssistantConversationView(_AssistantView):
+    """The browser's half of a conversation's record. Write only: there is no read here, for a
+    member or a recruiter; the record is read with `manage.py device_logs` on the engine.
+
+    A recruiter may use this door (`allows_recruiter`, as on the other assistant doors) for its
+    OWN conversation only: `web_conversation.owned` matches the id to the caller, and a visit's
+    record to a visit. `/api/device-logs/` stays denied to a recruiter."""
+
+    throttle_classes = [AssistantConversationThrottle]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def throttled(self, request, wait):
+        # Not audited: `AssistantCall` records mints and tool calls only.
+        raise exceptions.Throttled(
+            wait, detail="Nothing was stored. Too many conversation uploads in a short time."
+        )
+
+    @extend_schema(
+        tags=ASSISTANT_TAGS,
+        operation_id="api_assistant_conversation_create",
+        summary="Add the browser's transcript events to the caller's own conversation record",
+        request={"multipart/form-data": ConversationUploadSerializer},
+        responses={
+            200: ConversationStored,
+            400: OpenApiResponse(DetailSerializer, description="Refused; nothing stored."),
+            404: OpenApiResponse(
+                DetailSerializer, description="No conversation with that id is the caller's."
+            ),
+            413: OpenApiResponse(DetailSerializer, description="Over the cap; nothing stored."),
+            429: OpenApiResponse(DetailSerializer, description="Too many uploads; nothing stored."),
+        },
+    )
+    def post(self, request):
+        body = ConversationUploadSerializer(data=request.data)
+        if not body.is_valid():
+            return _not_stored(f"{body.errors}")
+        try:
+            raw = json.loads(body.validated_data["events"])
+        except ValueError:
+            return _not_stored("`events` is not JSON.")
+        if not isinstance(raw, list) or len(raw) > web_conversation.MAX_EVENTS:
+            return _not_stored(f"`events` must be a list of at most {web_conversation.MAX_EVENTS}.")
+        events = ConversationEventSerializer(data=raw, many=True)
+        if not events.is_valid():
+            return _not_stored(f"{events.errors}")
+        with transaction.atomic():
+            row = web_conversation.owned(request, body.validated_data["conversation_id"])
+            if row is None:
+                return Response(
+                    {"detail": "Nothing was stored. No conversation with that id is yours."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            try:
+                stored = web_conversation.append(
+                    row, web_conversation.browser_lines(row, events.validated_data)
+                )
+            except web_conversation.TooLarge as exc:
+                return Response(
+                    {"detail": str(exc)}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                )
+        return Response(
+            {"stored_lines": stored, "detail": "Stored."}, headers={"Cache-Control": "no-store"}
+        )
+
+
+def _not_stored(why: str) -> Response:
+    return Response({"detail": f"Nothing was stored. {why}"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # =============================================================================

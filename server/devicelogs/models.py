@@ -19,6 +19,19 @@ clock and is what retention and ordering use.
 
 **`batch_id` is the client's idempotency key.** An upload whose 2xx was lost on
 the way back is retried with the same id and answered 200 without a second row.
+
+**The web assistant's conversations are rows here too** (2026-11-03, Kevin: "recorded to
+improve ... and seeing what tool calls etc went wrong"; `devicelogs/web_conversation.py`). One
+row per conversation, `device_label` "web", reason `conversation`, `batch_id` the conversation id
+the engine handed out at the mint, and the body in the phone's LIVE_AUDIT / LIVE_LATENCY format, so
+`manage.py device_logs --reason conversation --render` reads it like a phone's batch.
+
+**A recruiter's visit conversation has NO household** (`demo_visitor`): the visit's household is
+deleted whole when the visit ends (`demo/visit_cleanup.py` deletes every tenant-table row by
+`household_id`), and Kevin wants these kept 30 days for improving the assistant. The visit is named
+by `visit` (SET_NULL: the `DemoVisit` row outlives its household anyway) and `visit_ref`, copied,
+and `manage.py prune_demo_visitors` deletes these rows after `VISIT_RETENTION_DAYS`. A NULL
+household is visible to no household: every tenant read filters on one.
 """
 
 from __future__ import annotations
@@ -52,11 +65,19 @@ REASONS: tuple[str, ...] = (
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 # Rows older than this are deleted when their household next uploads.
 RETENTION_DAYS = 60
+# A recruiter visit's conversation records (`demo_visitor`): deleted by the hourly
+# `manage.py prune_demo_visitors` this long after they arrived, whether or not the visit ended.
+VISIT_RETENTION_DAYS = 30
+# What the web assistant's conversation rows are labelled.
+DEVICE_LABEL_WEB = "web"
 
 
 class DeviceLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    # Null only on a recruiter visit's conversation (`demo_visitor`), never otherwise.
+    household = models.ForeignKey(
+        "household.Household", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
     # The member whose token uploaded it. SET_NULL: a log outlives its account.
     user = models.ForeignKey(
         "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
@@ -73,6 +94,16 @@ class DeviceLog(models.Model):
     raw_bytes = models.IntegerField()
     body_gz = models.BinaryField()
     received_at = models.DateTimeField(db_default=Now())
+    # A recruiter's demo-visit conversation: no household, kept VISIT_RETENTION_DAYS.
+    demo_visitor = models.BooleanField(default=False)
+    visit = models.ForeignKey(
+        "demo.DemoVisit", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    # Copied from the visit (`/try?ref=acme`), so it outlives the visit row's links.
+    visit_ref = models.CharField(max_length=64, blank=True, default="")
+    # Web conversations only: server clock minus the browser's, measured at the mint, so the
+    # browser's transcript lines and the engine's tool lines share one clock.
+    clock_offset_ms = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "device_logs"
@@ -81,7 +112,21 @@ class DeviceLog(models.Model):
             models.UniqueConstraint(
                 fields=("household", "batch_id"), name="device_logs_household_batch_id_uniq"
             ),
+            # Visit rows have no household, and Postgres treats NULLs as distinct.
+            models.UniqueConstraint(
+                fields=("batch_id",),
+                condition=models.Q(household__isnull=True),
+                name="device_logs_visit_batch_id_uniq",
+            ),
             models.CheckConstraint(
                 condition=models.Q(reason__in=REASONS), name="device_logs_reason_valid"
+            ),
+            # A household, or a recruiter visit's conversation: exactly one.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(demo_visitor=False, household__isnull=False)
+                    | models.Q(demo_visitor=True, household__isnull=True)
+                ),
+                name="device_logs_household_or_visit",
             ),
         ]

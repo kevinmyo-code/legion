@@ -28,6 +28,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/AssistantCompanion'
           description: ''
+  /api/assistant/conversation:
+    post:
+      operationId: api_assistant_conversation_create
+      description: |-
+        The browser's half of a conversation's record. Write only: there is no read here, for a
+        member or a recruiter; the record is read with `manage.py device_logs` on the engine.
+
+        A recruiter may use this door (`allows_recruiter`, as on the other assistant doors) for its
+        OWN conversation only: `web_conversation.owned` matches the id to the caller, and a visit's
+        record to a visit. `/api/device-logs/` stays denied to a recruiter.
+      summary: Add the browser's transcript events to the caller's own conversation
+        record
+      tags:
+      - assistant
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConversationUpload'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantConversationStored'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Refused; nothing stored.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No conversation with that id is the caller's.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Over the cap; nothing stored.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many uploads; nothing stored.
   /api/assistant/session:
     post:
       operationId: api_assistant_session_create
@@ -8314,6 +8367,16 @@ components:
       - persona
       - stored
       - voice_name
+    AssistantConversationStored:
+      type: object
+      properties:
+        stored_lines:
+          type: integer
+        detail:
+          type: string
+      required:
+      - detail
+      - stored_lines
     AssistantSession:
       type: object
       properties:
@@ -8348,9 +8411,16 @@ components:
         output_audio_rate:
           type: integer
           description: Sample rate of the 16-bit PCM Gemini sends back.
+        conversation_id:
+          type: string
+          format: uuid
+          description: This conversation's record on the engine. Send it with every
+            tool call and with `POST /api/assistant/conversation`. Conversations may
+            be recorded to improve the assistant; no audio is kept.
       required:
       - companion_name
       - connect_by
+      - conversation_id
       - expires_at
       - input_audio_mime
       - model
@@ -8371,6 +8441,12 @@ components:
             the household''s timezone, as a current offset, when its owner has set
             one; otherwise the assistant is told the offset is unknown. Never an IANA
             zone id: the zone''s name never reaches the prompt.'
+        client_now_ms:
+          type: integer
+          nullable: true
+          description: The browser's clock, epoch milliseconds (`Date.now()`), so
+            the conversation record can put the browser's lines on the engine's clock.
+            Omit it and they are kept as sent.
     AssistantToolForward:
       type: object
       properties:
@@ -8401,6 +8477,18 @@ components:
           type: object
           additionalProperties: {}
           description: '`functionCalls[].args`, as Gemini sent it. Omitted means `{}`.'
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The mint's `conversation_id`. The engine writes this call,
+            its arguments and its result into that conversation's record. One that
+            is not the caller's is ignored.
+        call_id:
+          type: string
+          default: ''
+          description: '`functionCalls[].id`, as Gemini sent it, for the record.'
+          maxLength: 200
       required:
       - name
     AssistantToolResult:
@@ -9828,6 +9916,24 @@ components:
       - text
       - updated_at
       - vehicle_id
+    ConversationUpload:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+          description: The mint's `conversation_id`.
+        events:
+          type: string
+          description: 'A JSON array of events: `{kind, at_ms, text?, typed?, reason?,
+            id?, name?, metric?, ms?}`, kind one of user, assistant, interrupted,
+            turn_complete, tool_cancelled, mic_open, mic_closed, session_end, latency.
+            A form field, so that `navigator.sendBeacon` can send it with `csrfmiddlewaretoken`
+            beside it while the page closes. Send only events not yet stored; a repeat
+            is stored once.'
+      required:
+      - conversation_id
+      - events
     ConvertError:
       type: object
       properties:

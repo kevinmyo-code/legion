@@ -4,6 +4,7 @@
     python manage.py device_logs --last 10 --grep spotify
     python manage.py device_logs --last 1 --reason drive_end --household <uuid>
     python manage.py device_logs --last 3 --reason conversation --render
+    python manage.py device_logs --last 3 --reason conversation --device web --render
 
 Prints the newest N batches (by `received_at`, the server's clock), oldest of
 those first so the text reads in time order, each under a one-line header.
@@ -14,7 +15,9 @@ each tool call and result, reply latency), instead of the raw lines; it pairs wi
 `--reason conversation` and cannot be combined with `--grep`. This is an
 operator command on the engine's own database, so it is not household-scoped
 unless `--household` says so; the HTTP surface (`POST /api/device-logs/`) is
-scoped at `household_of`.
+scoped at `household_of`. `--device web` keeps the web assistant's conversation
+records (`devicelogs/web_conversation.py`); a recruiter visit's record says
+`visit ref=<ref>` in its header and has no household.
 
 Against the deployed engine (Cloud Run Job, see `deploy/cloudrun/README.md`):
 
@@ -41,6 +44,11 @@ class Command(BaseCommand):
         parser.add_argument("--reason", choices=REASONS, default=None)
         parser.add_argument("--household", default=None, help="Household uuid; default is all.")
         parser.add_argument(
+            "--device",
+            default=None,
+            help="Keep only this device label (case-insensitive), e.g. web.",
+        )
+        parser.add_argument(
             "--render",
             action="store_true",
             help="Print each batch as a conversation timeline (LIVE_AUDIT / LIVE_LATENCY lines).",
@@ -60,6 +68,8 @@ class Command(BaseCommand):
             rows = rows.filter(household_id=options["household"])
         if options["reason"]:
             rows = rows.filter(reason=options["reason"])
+        if options["device"]:
+            rows = rows.filter(device_label__iexact=options["device"])
         needle = (options["grep"] or "").lower()
 
         batches = list(rows.order_by("-received_at")[:last])
@@ -88,6 +98,7 @@ class Command(BaseCommand):
                 f"({row.app_version_code if row.app_version_code is not None else '?'}) | "
                 f"{row.reason} | device window {row.window_start} .. {row.window_end} | "
                 f"{len(lines)} lines"
+                + (f" | visit ref={row.visit_ref or '-'}" if row.demo_visitor else "")
             )
             self.stdout.write("\n".join(lines))
         if not shown:
