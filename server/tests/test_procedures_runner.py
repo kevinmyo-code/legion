@@ -226,6 +226,42 @@ def test_a_failing_compute_after_a_good_tool_is_partial_and_keeps_what_ran(membe
     assert last_run().status == RunStatus.PARTIAL
 
 
+def test_an_optional_input_not_sent_is_left_out_of_the_tools_arguments(member_web):
+    """Ticket 15: a `$inputs.x` that was not sent fills to nothing, and the argument is left out
+    (the tool's own default applies) rather than sent as a null its schema would refuse."""
+    definition = three_steps("by_day")
+    definition["inputs"] = {"day": {"description": "A date."}}
+    definition["steps"][0]["args"] = {"date": "$inputs.day"}
+    install(definition)
+    response = run(member_web, "by_day")
+    assert response.data["is_error"] is False, response.data["text"]
+    assert last_run().steps.get(step_id="lists").args == {}
+    response = run(member_web, "by_day", inputs={"day": "2026-11-03"})
+    assert response.data["is_error"] is False, response.data["text"]
+    assert last_run().steps.get(step_id="lists").args == {"date": "2026-11-03"}
+
+
+def test_a_partial_answer_leaves_out_rows_a_compute_already_put_into_words(member_web, monkeypatch):
+    """Ticket 15: when a run stops, a tool whose rows an ok compute step summarised, and which
+    no say repeats, is not dumped back; the compute's sentence is said instead."""
+    monkeypatch.setitem(steps.FUNCTIONS, "words", lambda text="": "summarised in words")
+    definition = {
+        "name": "summarises",
+        "description": "Reads, summarises, then fails.",
+        "steps": [
+            {"id": "lists", "kind": "tool", "tool": "list_checklists", "next": "sum"},
+            {"id": "sum", "kind": "compute", "function": "words",
+             "args": {"text": "$steps.lists.text"}, "next": "boom"},
+            {"id": "boom", "kind": "compute", "function": "explode", "next": "answer"},
+            {"id": "answer", "kind": "say", "template": "{$steps.sum}"},
+        ],
+    }
+    install(definition)
+    text = run(member_web, "summarises").data["text"]
+    assert "What the steps that ran said: sum: summarised in words" in text
+    assert "lists:" not in text
+
+
 def test_a_failing_check_ends_with_its_sentence_and_is_an_answer(member_web):
     install(with_check())
     response = run(member_web, "checked", inputs={"n": 0})

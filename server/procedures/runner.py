@@ -258,7 +258,10 @@ class _Stop:
 def _tool_step(walk: _Walk, step: dict, started, t0):
     request = walk.request
     name = step["tool"]
-    args = _fill(walk, step.get("args", {}))
+    # An argument whose reference resolved to nothing (an optional input not sent, a step on a
+    # branch that did not run) is left out, as if the definition had not named it: the tool's
+    # own default applies, never a null its schema would refuse.
+    args = {k: v for k, v in _fill(walk, step.get("args", {})).items() if v is not None}
     tool = TOOLS_BY_NAME.get(name)
     from assistant.surface import refusal_for
 
@@ -508,6 +511,14 @@ def _summary(walk: _Walk, stop: _Stop) -> tuple[str, dict]:
     return footer, structured
 
 
+_STEP_REF = re.compile(r"\$steps\.([a-z][a-z0-9_]{0,62})")
+
+
+def _refs(texts) -> set[str]:
+    """The step ids named by `$steps.x` anywhere in `texts`."""
+    return {ref for text in texts for ref in _STEP_REF.findall(text)}
+
+
 def _finish(walk: _Walk, stop: _Stop, extra_ms: float) -> ToolResult:
     status = stop.status
     if status == RunStatus.FAILED and any(
@@ -524,13 +535,27 @@ def _finish(walk: _Walk, stop: _Stop, extra_ms: float) -> ToolResult:
             "within two minutes; anything else cancels it.) " + footer
         )
     elif status in (RunStatus.PARTIAL, RunStatus.FAILED):
-        heard = [
-            f"{d['step_id']}: {walk.values[d['step_id']]['text']}"
+        # What the steps that ran said: each ok tool's words, and each ok compute step that
+        # composed a sentence (a built-in's own summary of rows, car_check's trouble codes).
+        # A tool whose rows an ok compute step already put into words, and which no say step
+        # repeats, is left out: its raw rows (read_records' JSON) are not what the answer says.
+        heard = []
+        spoken = _refs(s.get("template", "") for s in walk.by_id.values() if s["kind"] == "say")
+        summarised = _refs(
+            json.dumps(walk.by_id[d["step_id"]].get("args", {}))
             for d in walk.done
-            if d["kind"] == "tool"
-            and d["outcome"] == StepOutcome.OK
-            and isinstance(walk.values.get(d["step_id"]), dict)
-        ]
+            if d["kind"] == "compute" and d["outcome"] == StepOutcome.OK
+        )
+        for d in walk.done:
+            value = walk.values.get(d["step_id"])
+            if d["outcome"] != StepOutcome.OK:
+                continue
+            if d["step_id"] in summarised and d["step_id"] not in spoken:
+                continue
+            if d["kind"] == "tool" and isinstance(value, dict):
+                heard.append(f"{d['step_id']}: {value['text']}")
+            elif d["kind"] == "compute" and isinstance(value, str) and value:
+                heard.append(f"{d['step_id']}: {value}")
         text = f"The procedure {walk.name} did not finish. {stop.text} " + footer
         if heard:
             text += " What the steps that ran said: " + " | ".join(heard)
