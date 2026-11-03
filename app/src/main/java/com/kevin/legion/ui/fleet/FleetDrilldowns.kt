@@ -1172,6 +1172,19 @@ fun FaultsDrilldownScreen(
         Column(Modifier.fillMaxSize()) {
             DeckScreenHeader(title = "Faults", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
+            // The codes card's hands path (2026-11-03, ADR 0035): the same card a code question
+            // brings up by voice, opened through the same controller.
+            if (eventsNewestFirst.isNotEmpty()) {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        com.kevin.legion.service.VoiceModalController.show(
+                            com.kevin.legion.service.VoiceModalTarget.CODES,
+                            vehicleId,
+                        )
+                    },
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                ) { Text("Codes card with freeze frames") }
+            }
             if (eventsNewestFirst.isEmpty()) {
                 Text(
                     "No fault codes recorded yet.",

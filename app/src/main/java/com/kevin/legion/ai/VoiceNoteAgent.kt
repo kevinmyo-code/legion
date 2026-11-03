@@ -191,7 +191,7 @@ object VoiceNoteAgent {
                 Result.Failed("The Gemini key isn't valid for transcription.")
             AgentResult.Overloaded ->
                 Result.Failed("The transcription service is overloaded right now - the recording is still on the phone.")
-            AgentResult.Failed ->
+            AgentResult.Failed, is AgentResult.UnknownTool ->
                 Result.Failed("The transcription call failed.")
         }
     }

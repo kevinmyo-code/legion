@@ -46,11 +46,59 @@ sealed interface BookOutcome {
  * Listen is a request the reader acts on once it is up; this controller never claims the voice is
  * already speaking, only that the reader was opened and asked to read aloud.
  */
+/**
+ * What the last book read is, without opening it (2026-11-03: "What's the last book I read?" went
+ * to memory, which knew only music). [found] is false when there is no answer; [sentence] says
+ * which, in words, and never claims anything was opened.
+ */
+data class BookStatus(val found: Boolean, val sentence: String, val item: BookItem? = null)
+
 class BooksController(
     private val catalog: BookCatalog,
     private val launcher: ReaderLauncher,
     private val tts: TtsAvailability,
 ) {
+    /**
+     * The most recently read book and where the reader left off, READ ONLY: nothing is launched.
+     * The Books sheet's Continue card shows the same book from the same [BookItem.lastReadAtMs].
+     */
+    suspend fun lastRead(nowMs: Long): BookStatus = when (val state = catalog.load()) {
+        is CatalogState.Ready -> {
+            val last = state.items.filter { it.lastReadAtMs != null }.maxByOrNull { it.lastReadAtMs ?: 0L }
+            when {
+                state.items.isEmpty() ->
+                    BookStatus(false, "The Books folder holds no EPUB, PDF or CBZ files, so no book has been read.")
+                last == null ->
+                    BookStatus(false, "No book from the Books folder has been opened yet, so there is no last book.")
+                else -> BookStatus(true, statusSentence(last, nowMs), last)
+            }
+        }
+        CatalogState.NoFolder -> BookStatus(
+            false,
+            "No Books folder is set up, so there is no reading history. Pick one in the Books sheet on HOME.",
+        )
+        is CatalogState.Lost -> BookStatus(
+            false,
+            "LEGION can no longer read ${state.label}, so it cannot say what was read last. " +
+                "Pick the folder again in the Books sheet.",
+        )
+        is CatalogState.Unreadable -> BookStatus(
+            false,
+            "Android would not list ${state.label}, so it cannot say what was read last. " +
+                "Pick the folder again in the Books sheet.",
+        )
+    }
+
+    /** "The last book read was "Dune" by Frank Herbert: Ch. 4, 38% through, last opened 2 h ago. Not opened now." */
+    private fun statusSentence(item: BookItem, nowMs: Long): String {
+        val by = item.author?.takeIf { it.isNotBlank() }?.let { " by $it" }.orEmpty()
+        val ago = item.lastReadAtMs?.let { ", last opened ${agoLabelFor(nowMs, it)}" }.orEmpty()
+        return "The last book read was \"${item.title}\"$by: ${item.positionLabel()}, ${item.percent}% through$ago. " +
+            "It was not opened now; say continue to open it there."
+    }
+
+    private fun agoLabelFor(nowMs: Long, thenMs: Long) = com.kevin.legion.games.agoLabel(nowMs, thenMs)
+
     /** Opens the most recently read book, optionally reading aloud. */
     suspend fun continueReading(listen: Boolean): BookOutcome = withItems { items ->
         val last = items.filter { it.lastReadAtMs != null }.maxByOrNull { it.lastReadAtMs ?: 0L }

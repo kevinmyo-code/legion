@@ -74,10 +74,10 @@ object VoiceGuideData {
             title = "The cars",
             blurb = "Diagnostics, maintenance and history. Most of it needs the OBD dongle plugged in.",
             entries = listOf(
-                Entry(name = "get_codes", say = "Any trouble codes?", does = "Reads fault codes stored in the car right now.", hands = "Fleet tab, trouble-code panel."),
+                Entry(name = "get_codes", say = "Any trouble codes?", does = "Reads fault codes stored in the car right now, with the freeze frame saved for each, and pops up the codes card.", hands = "Fleet tab, trouble-code panel."),
                 Entry(name = "diagnose_codes", say = "What's wrong with the car?", does = "Digs into the stored codes and explains them. Takes a few seconds.", hands = "Fleet tab, code diagnosis drilldown."),
                 Entry(name = "clear_codes", say = "Clear the codes", does = "Clears stored fault codes. Asks you to confirm first.", hands = "Fleet tab, clear-codes action, confirm-gated."),
-                Entry(name = "get_code_history", say = "Has that code come back before?", does = "The history of faults this car has thrown.", hands = "Fleet tab, code history view."),
+                Entry(name = "get_code_history", say = "Show me the freeze frames", does = "The history of faults this car has thrown, each with its freeze frame (engine speed, coolant, speed, load, fuel trims and more, or 'no snapshot was saved'). A codes card pops up on screen; tap a code to see its snapshot.", hands = "Fleet tab, Faults page, 'Codes card with freeze frames'."),
                 Entry(name = "triage_symptom", say = "It's making a whining noise on turns", does = "Describe how the car is behaving and it works from that, not from a code.", hands = "Voice only - a free-text symptom description has no form equivalent."),
                 Entry(name = "check_readiness", say = "Is it ready for emissions?", does = "Whether the car's self-tests have run - the emissions readiness monitors.", hands = "Fleet tab, readiness/emissions panel."),
                 Entry(name = "check_cold_start", say = "Did it do a cold start test?", does = "Whether the cold-start monitor has completed.", hands = "Fleet tab, readiness panel."),
@@ -88,8 +88,8 @@ object VoiceGuideData {
                 Entry(name = "get_trend", say = "Is the voltage getting worse?", does = "How a reading has moved over time.", hands = "Fleet tab, trend drilldown."),
                 Entry(name = "get_specs", say = "What oil does it take?", does = "Factory specs for the car - engine, drivetrain, fluids.", hands = "Fleet > Vehicle specs screen."),
                 Entry(name = "lookup_vin", say = "Look up this VIN", does = "Decodes a VIN into make, model and year.", hands = "Fleet tab, add/register-a-car flow's VIN lookup."),
-                Entry(name = "check_recalls", say = "Any recalls on it?", does = "Open safety recalls, from the NHTSA database.", hands = "Fleet tab, recalls panel."),
-                Entry(name = "get_next_service", say = "What's due next?", does = "The next maintenance item, by miles or by date.", hands = "Fleet tab, next-due panel."),
+                Entry(name = "check_recalls", say = "Any recalls on the Jeep?", does = "Open safety recalls, from the NHTSA database. If the car's year, make or model isn't saved, say them ('it's a 1998 Jeep Cherokee') and it checks anyway, then asks before saving them to the car.", hands = "Fleet tab, recalls panel."),
+                Entry(name = "get_next_service", say = "When's the Jeep due for service?", does = "The next maintenance item, by miles or by date, for the car you name, or the car you're connected to or last picked. With several cars and none named it asks which; a car with no schedule set up is told so.", hands = "Fleet tab, next-due panel."),
                 Entry(name = "ask_maintenance", say = "When did I last do the brakes?", does = "Questions about your service history.", hands = "Fleet > Service history screen."),
                 Entry(name = "log_service", say = "I changed the oil today", does = "Records a service you just did.", hands = "Fleet > Service history screen - marking an item done now writes the service record and its cost."),
                 Entry(name = "log_past_service", say = "I did the plugs back in June", does = "Records a service from the past.", hands = "Fleet > Service history screen, log a past service."),
@@ -204,7 +204,7 @@ object VoiceGuideData {
             title = "Books",
             blurb = "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
             entries = listOf(
-                Entry(name = "books", say = "Read me Moby-Dick", does = "Opens a book from your Books folder in the reader, or carries on with the last one you were reading. Say 'read aloud' to have the phone's own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.", hands = "HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card."),
+                Entry(name = "books", say = "What's the last book I read?", does = "Tells you the last book you were reading and where you left off, without opening it; say 'pull it up' to open it there. Also opens a named book from your Books folder in the reader ('Read me Moby-Dick'). Say 'read aloud' to have the phone's own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.", hands = "HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card."),
             ),
         ),
         Group(

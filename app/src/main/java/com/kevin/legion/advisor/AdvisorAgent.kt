@@ -124,7 +124,7 @@ class AdvisorAgent(
             AgentResult.KeyInvalid -> AdvisorResult.KeyInvalid
             AgentResult.Overloaded -> AdvisorResult.Overloaded
             AgentResult.Offline -> AdvisorResult.Offline
-            AgentResult.Failed -> AdvisorResult.Failed
+            AgentResult.Failed, is AgentResult.UnknownTool -> AdvisorResult.Failed
         }
     }
 

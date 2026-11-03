@@ -59,4 +59,11 @@ sealed class AgentResult {
     object Overloaded : AgentResult()    // 500, 503
     object Offline : AgentResult()       // IOException after one retry
     object Failed : AgentResult()        // parse failure, blocked, other 4xx
+
+    /**
+     * The model was reached, but asked only for tools that do not exist, even after being told
+     * the real names once ([SubAgent.route], 2026-11-03). Nothing ran. Its own case so the caller
+     * can say THAT, instead of "could not reach" (CLAUDE.md section 7: say what did not happen).
+     */
+    data class UnknownTool(val requested: List<String>, val available: List<String>) : AgentResult()
 }

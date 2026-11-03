@@ -60,7 +60,7 @@ internal sealed class ModelPassOutcome {
                 "The Gemini key was rejected. Background memory work has stopped until the key in " +
                     "Setup is changed.",
             )
-            AgentResult.Overloaded, AgentResult.Offline, AgentResult.Failed -> SoftFailure
+            AgentResult.Overloaded, AgentResult.Offline, AgentResult.Failed, is AgentResult.UnknownTool -> SoftFailure
         }
     }
 }

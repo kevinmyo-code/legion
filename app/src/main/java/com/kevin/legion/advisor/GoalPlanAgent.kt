@@ -187,7 +187,7 @@ class GoalPlanAgent(
             AgentResult.KeyInvalid -> GoalPlanResult.KeyInvalid
             AgentResult.Overloaded -> GoalPlanResult.Overloaded
             AgentResult.Offline -> GoalPlanResult.Offline
-            AgentResult.Failed -> GoalPlanResult.Failed
+            AgentResult.Failed, is AgentResult.UnknownTool -> GoalPlanResult.Failed
         }
 
         return outcome

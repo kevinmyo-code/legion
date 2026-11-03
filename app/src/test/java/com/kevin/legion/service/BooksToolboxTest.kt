@@ -172,4 +172,44 @@ class BooksToolboxTest {
         assertFalse(r.getBoolean("success"))
         assertTrue("Nothing was opened" in r.getString("message"))
     }
+
+    @Test fun `status names the last book read and opens nothing`() {
+        val now = 10L * 60 * 60 * 1000
+        val dune = BookItem(
+            Book("id-dune", "dune.epub", BookFormat.EPUB), "Dune", "Frank Herbert", 0.38, "Ch. 4", 0, 0, null,
+            now - 2L * 60 * 60 * 1000,
+        )
+        val launcher = install(CatalogState.Ready("/sdcard/Books", listOf(item("Old", lastReadAtMs = 1), dune)))
+        val r = call(args("status"))
+        assertTrue(r.getBoolean("success"))
+        val msg = r.getString("message")
+        val lead = "The last book read was \"Dune\" by Frank Herbert: Ch. 4, 38% through, last opened"
+        assertTrue(msg, msg.startsWith(lead))
+        assertTrue(msg, "not opened now" in msg)
+        assertEquals("Dune", r.getString("title"))
+        assertEquals("Frank Herbert", r.getString("author"))
+        assertEquals(38, r.getInt("percent"))
+        assertTrue(launcher.launched.isEmpty())
+    }
+
+    @Test fun `status with nothing read yet says so and opens nothing`() {
+        val launcher = install(CatalogState.Ready("/sdcard/Books", listOf(item("Moby"))))
+        val r = call(args("status"))
+        assertFalse(r.getBoolean("success"))
+        assertTrue(r.getString("message"), "has been opened yet" in r.getString("message"))
+        assertFalse(r.has("title"))
+        assertTrue(launcher.launched.isEmpty())
+    }
+
+    @Test fun `status with no folder does not claim an open was attempted`() {
+        install(CatalogState.NoFolder)
+        val r = call(args("status"))
+        assertFalse(r.getBoolean("success"))
+        assertTrue(r.getString("message"), "no reading history" in r.getString("message"))
+    }
+
+    @Test fun `the description routes last-book questions to status and pull it up to continue`() {
+        val d = BooksToolbox.declarations().getJSONObject(0).getString("description")
+        assertTrue(d, "action=status" in d && "last book" in d && "pull it up" in d)
+    }
 }

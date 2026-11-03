@@ -411,8 +411,9 @@ class SubAgent internal constructor(
             Log.d(TAG, "investigate round $postNumber: called ${calls.map { it.name }}")
 
             val results = mutableListOf<AgentProtocol.ToolResult>()
-            for (call in calls) {
-                val run = runTool(toolsByName[call.name], call, "investigate round $postNumber")
+            for (raw in calls) {
+                val call = remapCalls(listOf(raw), toolsByName.keys.toList()).single()
+                val run = runTool(toolsByName[call.name], call, "investigate round $postNumber", toolsByName.keys)
                 // Only recorded on a completed, non-throwing run - a timeout falls into the
                 // "timed out" branch of runTool, never marked as called.
                 if (run.output != null && call.name in mutatingToolNames) mutatingToolsCalled.add(call.name)
@@ -459,6 +460,7 @@ class SubAgent internal constructor(
         withTimeoutOrNull(budgetMs) { runRoute(question, tools, mutatingToolNames) } ?: AgentResult.Failed
     }
 
+    @Suppress("ReturnCount") // one early return per failure shape of two POSTs, as investigate does
     private suspend fun runRoute(
         question: String,
         tools: List<AgentTool>,
@@ -469,25 +471,50 @@ class SubAgent internal constructor(
                 .put("role", "user")
                 .put("parts", JSONArray().put(JSONObject().put("text", question + ROUTE_NOTE))),
         )
-        return when (val o = postRaw(toolCallingBody(contents, AgentProtocol.declarations(tools), false))) {
-            is RestOutcome.Ok -> routeReply(o.json, question, tools, mutatingToolNames)
-            is RestOutcome.HttpError -> classify(o)
-            RestOutcome.Network -> AgentResult.Offline
+        val declarations = AgentProtocol.declarations(tools)
+        val first = when (val o = postRaw(toolCallingBody(contents, declarations, false))) {
+            is RestOutcome.Ok -> o.json
+            is RestOutcome.HttpError -> return classify(o)
+            RestOutcome.Network -> return AgentResult.Offline
         }
+        val names = tools.map { it.name }
+        val firstCalls = remapCalls(AgentProtocol.functionCalls(first), names)
+        // Every call names a tool that does not exist (2026-11-03: "check_recall" for
+        // "check_recalls" on the A25). One more POST tells the model the exact names; the second
+        // answer is taken as it comes, so this can spend at most one extra round.
+        if (firstCalls.isEmpty() || firstCalls.any { it.name in names } || AgentProtocol.blockReason(first) != null) {
+            return routeReply(first, firstCalls, question, tools, mutatingToolNames)
+        }
+        val asked = firstCalls.map { it.name }
+        Log.w(TAG, "route: unknown tool(s) $asked, retrying once with the real names")
+        AgentProtocol.modelContent(first)?.let { contents.put(it) }
+        contents.put(
+            AgentProtocol.functionResponseContent(
+                firstCalls.map { AgentProtocol.ToolResult(it.name, it.id, unknownToolError(it.name, names)) },
+            ),
+        )
+        val second = when (val o = postRaw(toolCallingBody(contents, declarations, false))) {
+            is RestOutcome.Ok -> o.json
+            is RestOutcome.HttpError -> return classify(o)
+            RestOutcome.Network -> return AgentResult.Offline
+        }
+        val secondCalls = remapCalls(AgentProtocol.functionCalls(second), names)
+        if (secondCalls.isNotEmpty() && secondCalls.none { it.name in names }) {
+            return AgentResult.UnknownTool(requested = asked + secondCalls.map { it.name }, available = names)
+        }
+        return routeReply(second, secondCalls, question, tools, mutatingToolNames)
     }
 
     private suspend fun routeReply(
         json: String,
+        calls: List<AgentProtocol.FunctionCall>,
         question: String,
         tools: List<AgentTool>,
         mutatingToolNames: Set<String>,
-    ): AgentResult {
-        val calls = AgentProtocol.functionCalls(json)
-        return when {
-            AgentProtocol.blockReason(json) != null -> AgentResult.Failed
-            calls.isEmpty() -> AgentProtocol.answerText(json)?.let { AgentResult.Success(it) } ?: AgentResult.Failed
-            else -> runRoutedTools(question, calls, tools, mutatingToolNames)
-        }
+    ): AgentResult = when {
+        AgentProtocol.blockReason(json) != null -> AgentResult.Failed
+        calls.isEmpty() -> AgentProtocol.answerText(json)?.let { AgentResult.Success(it) } ?: AgentResult.Failed
+        else -> runRoutedTools(question, calls, tools, mutatingToolNames)
     }
 
     private suspend fun runRoutedTools(
@@ -503,7 +530,9 @@ class SubAgent internal constructor(
         val fanOutAt = System.currentTimeMillis()
         val runs = try {
             coroutineScope {
-                calls.map { call -> async { runTool(toolsByName[call.name], call, "route") } }.awaitAll()
+                calls.map { call ->
+                    async { runTool(toolsByName[call.name], call, "route", toolsByName.keys) }
+                }.awaitAll()
             }
         } finally {
             probe?.toolsMs = System.currentTimeMillis() - fanOutAt
@@ -521,6 +550,21 @@ class SubAgent internal constructor(
         }
     }
 
+    /** [calls] with each near-miss name ([nearMissTool]) rewritten to the real tool, logged. */
+    private fun remapCalls(
+        calls: List<AgentProtocol.FunctionCall>,
+        names: List<String>,
+    ): List<AgentProtocol.FunctionCall> =
+        calls.map { call ->
+            val real = nearMissTool(call.name, names)
+            if (real == null || real == call.name) {
+                call
+            } else {
+                Log.w(TAG, "route: model called ${call.name}, mapped to $real")
+                call.copy(name = real)
+            }
+        }
+
     /** One tool execution: [output] is the tool's raw string on success, null on timeout/throw. */
     private class ToolRun(val output: String?, val response: JSONObject)
 
@@ -529,8 +573,13 @@ class SubAgent internal constructor(
      * by [investigate] and [route] so both report a missing tool, a timeout and a throw the same
      * way. [label] only feeds the log line.
      */
-    private suspend fun runTool(tool: AgentTool?, call: AgentProtocol.FunctionCall, label: String): ToolRun {
-        if (tool == null) return ToolRun(null, JSONObject().put("error", "unknown tool"))
+    private suspend fun runTool(
+        tool: AgentTool?,
+        call: AgentProtocol.FunctionCall,
+        label: String,
+        known: Collection<String> = emptyList(),
+    ): ToolRun {
+        if (tool == null) return ToolRun(null, unknownToolError(call.name, known))
         return try {
             val out = withTimeoutOrNull(tool.timeoutMs) { tool.run(call.args) }
             if (out != null) {
@@ -881,6 +930,29 @@ class SubAgent internal constructor(
 
     companion object {
         private const val TAG = "SubAgent"
+
+        /**
+         * The real tool [asked] meant, when the miss is unambiguous: same name ignoring case,
+         * separators, and one trailing "s" (`check_recall` -> `check_recalls`). Null when nothing
+         * or more than one tool fits; [asked] itself when it is already a real name. Pure and
+         * internal so a test pins it.
+         */
+        @Suppress("ReturnCount")
+        internal fun nearMissTool(asked: String, names: Collection<String>): String? {
+            if (asked in names) return asked
+            fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }.removeSuffix("s")
+            val key = norm(asked)
+            if (key.isEmpty()) return null
+            return names.filter { norm(it) == key }.singleOrNull()
+        }
+
+        /** The functionResponse a call to a tool that does not exist gets: what it asked for and the real names. */
+        internal fun unknownToolError(asked: String, names: Collection<String>): JSONObject =
+            JSONObject().put(
+                "error",
+                if (names.isEmpty()) "No tool named $asked exists; nothing ran."
+                else "No tool named $asked exists; nothing ran. The only tools are: ${names.joinToString(", ")}.",
+            )
 
         /** Appended to a [route] question: the model gets one turn, so it must ask for everything at once. */
         private const val ROUTE_NOTE =

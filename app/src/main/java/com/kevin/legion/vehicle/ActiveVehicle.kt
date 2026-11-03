@@ -30,6 +30,7 @@ import java.util.UUID
 object ActiveVehicle {
     private const val PREFS = "active_vehicle"
     private const val KEY_ID = "vehicle_id"
+    private const val KEY_LAST_CONNECTED = "last_connected_id"
 
     /** Prefix for ids we mint ourselves, as opposed to a dongle MAC. */
     private const val SYNTHETIC_PREFIX = "car:"
@@ -38,6 +39,21 @@ object ActiveVehicle {
     fun selected(context: Context): String? =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_ID, null)?.takeIf { it.isNotBlank() }
+
+    /**
+     * The id of the car the OBD dongle was last plugged into, or null if it never connected
+     * (2026-11-03). [VehicleResolver.pickDefault] falls back to it when nothing is connected or
+     * picked and more than one car is on file. Per device, like the selection.
+     */
+    fun lastConnected(context: Context): String? =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_LAST_CONNECTED, null)?.takeIf { it.isNotBlank() }
+
+    /** Records [address] as the last car the dongle connected to. */
+    fun rememberConnected(context: Context, address: String) {
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_LAST_CONNECTED, address).apply()
+    }
 
     /** Sets the active car, or null to go back to auto (dongle-derived). */
     fun select(context: Context, vehicleId: String?) {
