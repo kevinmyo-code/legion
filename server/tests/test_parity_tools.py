@@ -223,7 +223,7 @@ def test_account_balances_on_the_demo_household(mcp_write, demo):
     assert card["verified_balance_cents"] is None and card["verified"] is False
     assert card["unverified_since_count"] > 0
     assert "Demo Rewards Card (ending 0917, USD): no statement on file" in text
-    assert "NO verified balance" in text and "UNVERIFIED" in text
+    assert "no balance can be stated" in text and "UNVERIFIED" in text
 
 
 def test_activity_after_the_statement_is_unverified_and_said_so(
@@ -249,6 +249,41 @@ def test_activity_after_the_statement_is_unverified_and_said_so(
     assert "verified balance $10,480.00" in text
     assert "Since that statement, 1 UNVERIFIED transaction(s) net -$4.50" in text
     assert "would be $10,475.50, which is UNVERIFIED" in text
+
+
+def test_a_bank_feed_account_is_fact_with_no_stored_balance(mcp_write, household_a):
+    """ADR 0057: the bank's own feed is fact, shown plainly. Plaid sync keeps
+    no balance, so the engine says it has none to state, and never calls the
+    account or its rows unverified (the phone: "not stated", verified)."""
+    from django.db.models.functions import Now
+
+    from legacy.models.ledger import LedgerTransaction
+
+    feed = ((dt.date(2026, 10, 1), -1_250), (dt.date(2026, 10, 3), 90_000))
+    for index, (day, cents) in enumerate(feed):
+        LedgerTransaction.objects.create(
+            id=uuid.uuid4(),
+            household=household_a,
+            account_last4="5555",
+            account_nickname="BofA Checking",
+            currency="USD",
+            txn_date=day,
+            description=f"FEED {index}",
+            amount_cents=cents,
+            line_ref=f"plaid:{index}",
+            category_pending=False,
+            provenance="BANK_API",
+            bank_transaction_id=f"txn-{index}",
+            created_at=Now(),
+        )
+    is_error, text, structured = call(mcp_write, "account_balances", {})
+    assert not is_error, text
+    (account,) = structured["accounts"]
+    assert account["verified"] is True and account["from_bank_feed"] is True
+    assert account["verified_balance_cents"] is None
+    assert "the bank's own feed supplies this account's transactions" in text
+    assert "stores no balance for it" in text
+    assert "unverified" not in text.lower()
 
 
 def test_account_balances_empty_and_unmatched_are_real_empty_results(mcp_write):

@@ -9,14 +9,20 @@ Per (account, currency), never summed across currencies:
   reconciliation gate, so this figure is verified (section 4 rules 2 and 8:
   the anchor is stored in its own column).
 - **since**: rows dated after the anchor's `period_end` (every row, when there
-  is no statement). Split by provenance: the bank's own feed (`BANK_API`,
-  fact, ADR 0057) and gated rows count as fact; `UNRECONCILED` and `USER`
+  is no statement). Split by provenance: the bank's own feed (`BANK_API`)
+  and gated rows are fact, shown exactly like verified rows with no tag
+  (section 4's 2026-10-09 amendment, ADR 0057); `UNRECONCILED` and `USER`
   rows are UNVERIFIED (`api.ledger_spend.UNVERIFIED_PROVENANCE`).
 - **pending**: rows a person logged as pending (`pending_logged_at`), which
   the bank has not confirmed, counted whatever their date, as the phone does.
 
-No statement means no verified balance. Activity alone is movement, not a
-balance, and is never presented as one.
+No statement means no balance on file. That is NOT "unverified" for an
+account the bank's own feed supplies: Plaid sync keeps no balance
+(`ingest.plaid_sync.account_record`), so the engine has its transactions as
+fact and simply no balance figure to state. The phone does the same: a
+`BANK_API` row prints no running balance, so `accountBalances` leaves the
+figure "not stated" and still marks the account verified. Activity alone is
+movement, not a balance, and is never presented as one.
 
 Every read goes through `household.tenancy.scoped()`.
 """
@@ -107,7 +113,11 @@ def account_balances(request, account: str | None = None) -> list[dict]:
                     if verified_balance is not None
                     else None
                 ),
-                "verified": anchor is not None and not unverified and not pending,
+                # As the phone's `get_balance`: nothing unconfirmed in the
+                # figure. Whether a balance can be stated at all is
+                # `verified_balance_cents is not None`.
+                "verified": not unverified and not pending,
+                "from_bank_feed": any(r["provenance"] == "BANK_API" for r in own_rows),
                 "latest_activity_on": max((r["txn_date"] for r in own_rows), default=None),
             }
         )

@@ -1045,22 +1045,26 @@ def _account_balances(request, args) -> ToolResult:
         anchored = a["verified_balance_cents"] is not None
         if anchored:
             said.append(
-                f"verified balance {money(a['verified_balance_cents'], c)}, from the closing "
-                f"balance printed on the statement ending {_long_date(a['statement_period_end'])}, "
-                f"which passed the reconciliation gate"
+                f"verified balance {money(a['verified_balance_cents'], c)}: the closing balance "
+                f"printed on the statement ending {_long_date(a['statement_period_end'])}, which "
+                f"passed the reconciliation gate"
                 + (
-                    f", plus {money(a['fact_since_cents'], c)} from the bank's own feed since."
+                    f", plus {money(a['fact_since_cents'], c)} of transactions since."
                     if a["fact_since_count"]
                     else "."
                 )
             )
+        elif a["from_bank_feed"]:
+            # ADR 0057: the bank's feed is fact, said plainly. It brings
+            # transactions, and the engine keeps no balance from it.
+            latest = a["latest_activity_on"]
+            said.append(
+                f"the bank's own feed supplies this account's transactions (latest "
+                f"{_long_date(latest)}), but the engine stores no balance for it, so no balance "
+                f"can be stated. Check the bank's app for it."
+            )
         else:
-            said.append("no statement on file, so there is NO verified balance; never state one.")
-            if a["fact_since_count"]:
-                said.append(
-                    f"The bank's own feed shows {a['fact_since_count']} transaction(s) netting "
-                    f"{money(a['fact_since_cents'], c)}; that is movement, not a balance."
-                )
+            said.append("no statement on file, so no balance can be stated; never state one.")
         if a["unverified_since_count"]:
             since = "Since that statement" if anchored else "On file"
             said.append(
@@ -1686,11 +1690,12 @@ TOOLS: tuple[EngineTool, ...] = (
         title="Account balances",
         description=(
             "The balance of each bank account, per currency (never added across currencies): "
-            "the closing balance printed on its latest statement (verified), what the bank's "
-            "own feed added since, and activity since that no gate checked (UNVERIFIED) or "
-            "that a person logged as pending. Say for every figure whether it is verified or "
-            "unverified. An account with no statement has no verified balance: never state "
-            "one. Optional `account` (last four digits or words of its name)."
+            "the closing balance printed on its latest statement plus transactions since, "
+            "and separately any activity no gate checked (UNVERIFIED) or that a person logged "
+            "as pending. Say UNVERIFIED wherever the result does, and nowhere else: the bank's "
+            "own feed is fact. An account with no balance on file has none to state: never "
+            "make one up from its transactions. Optional `account` (last four digits or words "
+            "of its name)."
         ),
         input_schema=_object({"account": {"type": "string"}}),
         handler=_account_balances,
