@@ -101,7 +101,7 @@ const ROUTES: Shot[] = [
   {
     name: 'home-stale',
     url: '/',
-    ready: 'Soccer pickup',
+    ready: /Next up|On today/,
     engine: seeded,
     // The page loaded fine, then the next refresh fails. Becoming visible again is
     // what makes the app refetch, so fire exactly that.
