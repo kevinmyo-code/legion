@@ -87,6 +87,17 @@ class DemoVisit(models.Model):
         on_delete=models.SET_NULL,
         related_name="+",
     )
+    # Ticket 13 (ADR 0069): the visit's own copy of the demo household, made
+    # by `/enter` and deleted whole by `prune_demo_visitors`. SET_NULL so this
+    # row outlives it, like `user`. Null on a visit made before ticket 13,
+    # which joined the shared demo household instead.
+    household = models.ForeignKey(
+        "household.Household",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
     code = models.ForeignKey(DemoCode, null=True, on_delete=models.SET_NULL, related_name="visits")
     ref = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

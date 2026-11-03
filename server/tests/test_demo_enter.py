@@ -19,8 +19,8 @@ from assistant.models import AssistantCall
 from demo.models import DemoCode, DemoVisit, hash_demo_code
 from demo.views import (
     DOOR_CLOSED,
-    NO_DEMO_HOUSEHOLD,
     RETIRED_CODE,
+    SEED_FAILED,
     TOO_MANY,
     VISIT_LENGTH,
     WRONG_CODE,
@@ -67,7 +67,7 @@ def _enter(client, ip="203.0.113.7", **body):
 # =============================================================================
 
 
-def test_the_code_makes_one_recruiter_visitor_in_the_demo_household(code, demo_household):
+def test_the_code_makes_one_recruiter_visitor_in_its_own_visit_household(code, demo_household):
     client = _browser()
     before = timezone.now()
     response = _enter(client, code=code, ref="acme")
@@ -80,7 +80,13 @@ def test_the_code_makes_one_recruiter_visitor_in_the_demo_household(code, demo_h
     assert visit.ref == "acme"
     user = visit.user
     member = HouseholdMember.objects.get(user=user)
-    assert (member.household_id, member.role) == (demo_household.id, HouseholdMember.RECRUITER)
+    # Ticket 13: its own household, flagged, never the shared demo one, and
+    # the visitor is its only member.
+    assert member.role == HouseholdMember.RECRUITER
+    assert member.household_id == visit.household_id != demo_household.id
+    assert visit.household.is_demo_visit and not demo_household.is_demo_visit
+    assert visit.household.name.startswith("Demo visit ")
+    assert list(HouseholdMember.objects.filter(household=visit.household)) == [member]
     assert not user.has_usable_password()
     assert not user.is_staff and not user.is_superuser
 
@@ -162,12 +168,28 @@ def test_off_closes_the_door(code):
     _nothing_created()
 
 
-def test_no_demo_household_refuses_in_words(db):
+def test_enter_needs_no_shared_demo_household(db):
+    """Ticket 13: each visit seeds its own copy, so the shared "Demo"
+    household is not needed for a visit at all."""
     _row, raw = DemoCode.rotate()
     response = _enter(_browser(), code=raw)
+    assert response.status_code == 201, response.data
+    assert not Household.objects.filter(name="Demo").exists()
+
+
+def test_a_seed_that_fails_creates_nothing(db, monkeypatch):
+    _row, raw = DemoCode.rotate()
+
+    def _boom(household, **kwargs):
+        raise RuntimeError("seed broke")
+
+    monkeypatch.setattr("demo.views.seed_household", _boom)
+    households = Household.objects.count()
+    response = _enter(_browser(), code=raw)
     assert response.status_code == 503
-    assert response.data["detail"] == NO_DEMO_HOUSEHOLD
+    assert response.data["detail"] == SEED_FAILED
     _nothing_created()
+    assert Household.objects.count() == households
     assert not User.objects.filter(email__endswith="@demo.invalid").exists()
 
 

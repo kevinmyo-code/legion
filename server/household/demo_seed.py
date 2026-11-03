@@ -1,6 +1,8 @@
 """Builds the FAKE demo household recruiters read (recruiter-demo ticket 03).
 
-`manage.py seed_demo_household` is the only caller. Every name, merchant,
+`manage.py seed_demo_household` seeds the shared demo household through
+`seed()`; `POST /api/demo/enter` seeds each visit's own copy through
+`seed_household()` (ticket 13). Every name, merchant,
 amount, place and note below is invented for this file; none is copied from a
 real household.
 
@@ -756,9 +758,29 @@ def reset(household: Household, report: SeedReport) -> None:
 
 
 def seed(*, reset_first: bool = False, today: dt.date | None = None) -> SeedReport:
-    """Builds (or refreshes) the demo household. One transaction for the
-    authored rows; each gated document commits in its own, as it would arriving
-    through the API."""
+    """Builds (or refreshes) the shared demo household, found or made by name
+    (`household.demo`). `manage.py seed_demo_household` is the caller."""
+    with transaction.atomic():
+        household, created = _ensure_household()
+    return seed_household(
+        household, reset_first=reset_first and not created, today=today, created=created
+    )
+
+
+def seed_household(
+    household: Household,
+    *,
+    reset_first: bool = False,
+    today: dt.date | None = None,
+    created: bool = False,
+) -> SeedReport:
+    """Seeds the demo data into `household`, whichever household that is: the
+    shared demo (`seed`) or one recruiter visit's own copy (ticket 13,
+    `demo/views.py`). One transaction for the authored rows; each gated
+    document commits in its own, as it would arriving through the API.
+
+    Every key the seed upserts on is unique per household (ADR 0045 re-keyed
+    them), so two copies never collide."""
     from api.events import EventSerializer
     from api.fleet import (
         MaintenanceScheduleSerializer,
@@ -774,10 +796,9 @@ def seed(*, reset_first: bool = False, today: dt.date | None = None) -> SeedRepo
     from legacy.models.notes import VoiceNote
     from legacy.models.places import Place
 
-    with transaction.atomic():
-        household, created = _ensure_household()
-        report = SeedReport(household=household, created_household=created)
-        if reset_first and not created:
+    report = SeedReport(household=household, created_household=created)
+    if reset_first:
+        with transaction.atomic():
             reset(household, report)
 
     zone = zoneinfo.ZoneInfo(household.timezone or DEMO_TIMEZONE)
@@ -868,4 +889,5 @@ __all__ = [
     "SeedReport",
     "bad_receipt",
     "seed",
+    "seed_household",
 ]

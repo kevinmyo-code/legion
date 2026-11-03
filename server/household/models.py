@@ -79,6 +79,15 @@ class Household(models.Model):
     timezone = models.CharField(
         max_length=64, null=True, blank=True, validators=[validate_zone_name]
     )
+    # recruiter-demo ticket 13 (Kevin, 2026-11-02, ADR 0069): a throwaway copy
+    # of the demo household made for ONE recruiter visit by `POST
+    # /api/demo/enter`, and deleted whole by `manage.py prune_demo_visitors`.
+    # The database lets a gated money row be deleted only when its household
+    # carries this flag (`household/demo_visit_sql.py`), so it is set at
+    # creation by that one door and by nothing else: `editable=False` keeps it
+    # out of every ModelForm and the admin, no serializer names it, and no
+    # view writes it. Kevin's household can never carry it.
+    is_demo_visit = models.BooleanField(default=False, editable=False)
 
     def __str__(self) -> str:
         return self.name

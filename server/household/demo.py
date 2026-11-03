@@ -13,7 +13,12 @@ put into the wrong one of two same-named households is exactly the failure this
 whole map exists to make impossible.
 
 This module creates no users and no members. Recruiter visitor users and their
-role belong to tickets 01 and 02, which import `demo_household()` from here.
+role belong to tickets 01 and 02.
+
+**Visitors no longer join this household (ticket 13, ADR 0069).** Each visit
+gets its own copy, seeded from the same data by `demo_seed.seed_household`
+(`demo/views.py`). The shared household stays for previewing the seed and for
+tests; the lookup below ignores every visit copy.
 """
 from __future__ import annotations
 
@@ -34,7 +39,12 @@ def find_demo_household() -> Household | None:
     """The demo household, or None if it has not been seeded. Raises when the
     name matches more than one household."""
     name = demo_household_name()
-    matches = list(Household.objects.filter(name=name).order_by("created_at")[:2])
+    # A per-visit copy (`is_demo_visit`, ticket 13) is never THE demo
+    # household, whatever it is called: the seed command must never refresh
+    # one, and a visit copy must never make the name look ambiguous.
+    matches = list(
+        Household.objects.filter(name=name, is_demo_visit=False).order_by("created_at")[:2]
+    )
     if len(matches) > 1:
         raise DemoHouseholdError(
             f"More than one household is named {name!r}, so there is no single demo "

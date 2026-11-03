@@ -7,25 +7,29 @@ shared, so the IP is the only thing that tells one guesser from another.
 
 What a successful entry leaves behind:
 
+- a fresh household of its own (ticket 13, Kevin 2026-11-02, ADR 0069),
+  named "Demo visit <id>", flagged `is_demo_visit`, seeded with the demo data
+  by `household.demo_seed.seed_household` through the same gate and
+  serializers the shared demo household uses. Nobody else is a member of it,
+  so what the visitor adds, changes or deletes reaches no one else;
 - a throwaway `User` (unusable password, `visitor-<hex>@demo.invalid`), a
-  `recruiter` member of the demo household and of nothing else;
+  `recruiter` member of that household and of nothing else;
 - a `read`-scoped `DeviceToken` that expires in two hours, returned once;
 - a Django session for the same visitor, expiring with the token and tied to
-  it (`household.permissions.DEMO_TOKEN_SESSION_KEY`), because the assistant
-  doors are session-only (ADR 0056: "token minting is session-authenticated")
-  and stay that way for recruiters too;
-- a `DemoVisit` row carrying the `ref`.
+  it (`household.permissions.DEMO_TOKEN_SESSION_KEY`). The session is what
+  the app and the assistant accept, and the one credential that may write,
+  and only inside the visit's own household (`write_refusal`);
+- a `DemoVisit` row carrying the `ref` and the household.
 
-The demo household is found by name (`settings.LEGION_DEMO_HOUSEHOLD_NAME`,
-default "Demo") through ticket 03's own lookup,
-`household.demo.find_demo_household`, the one the seed uses to find what it
-built. With no such household, or with two households carrying the name, the
-door refuses in words and creates nothing: a visitor put into the wrong one of
-two same-named households is the failure this map exists to make impossible.
+All of it in one transaction: a seed that fails leaves nothing behind, so
+"Nothing was created" stays true. The shared "Demo" household
+(`household.demo`) is no longer joined by anyone; `seed_demo_household`
+keeps building it for previews and tests.
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import timedelta
 
@@ -41,9 +45,11 @@ from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
 from demo.models import DemoCode, DemoVisit
-from household.demo import DemoHouseholdError, find_demo_household
+from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
+
+logger = logging.getLogger(__name__)
 
 DEMO_TAGS = ["demo"]
 VISIT_LENGTH = timedelta(hours=2)
@@ -53,13 +59,8 @@ RETIRED_CODE = (
     "That invite code has been retired. Nothing was created; ask for the current one."
 )
 DOOR_CLOSED = "The demo is closed right now. Nothing was created."
-NO_DEMO_HOUSEHOLD = (
-    "The demo household is not set up on this engine yet. Nothing was created; the "
-    "operator has to seed it first."
-)
-AMBIGUOUS_DEMO_HOUSEHOLD = (
-    "More than one household carries the demo household's name on this engine, so there "
-    "is no single demo to join. Nothing was created; the operator has to fix the name first."
+SEED_FAILED = (
+    "The demo could not be set up just now. Nothing was created; try again in a moment."
 )
 TOO_MANY = (
     "Too many tries from this network in a short time. Nothing was created; wait a while "
@@ -127,10 +128,7 @@ class DemoEnterView(APIView):
             ),
             503: OpenApiResponse(
                 DetailSerializer,
-                description=(
-                    "No demo household on this engine, or more than one household carries "
-                    "its name. Nothing created."
-                ),
+                description="The visit's demo household could not be seeded. Nothing created.",
             ),
         },
     )
@@ -152,19 +150,22 @@ class DemoEnterView(APIView):
         if code.revoked_at is not None:
             return _refuse(RETIRED_CODE, status.HTTP_403_FORBIDDEN)
 
-        try:
-            household = find_demo_household()
-        except DemoHouseholdError:
-            return _refuse(AMBIGUOUS_DEMO_HOUSEHOLD, status.HTTP_503_SERVICE_UNAVAILABLE)
-        if household is None:
-            return _refuse(NO_DEMO_HOUSEHOLD, status.HTTP_503_SERVICE_UNAVAILABLE)
-
         expires_at = timezone.now() + VISIT_LENGTH
-        with transaction.atomic():
-            user, token, raw_key = _make_visitor(household, ref, expires_at)
-            DemoVisit.objects.create(
-                user=user, token=token, code=code, ref=ref, expires_at=expires_at
-            )
+        try:
+            with transaction.atomic():
+                household = _make_visit_household()
+                user, token, raw_key = _make_visitor(household, ref, expires_at)
+                DemoVisit.objects.create(
+                    user=user,
+                    token=token,
+                    code=code,
+                    ref=ref,
+                    expires_at=expires_at,
+                    household=household,
+                )
+        except Exception:  # noqa: BLE001 - any seed failure; the transaction rolled back
+            logger.exception("demo enter: seeding the visit household failed")
+            return _refuse(SEED_FAILED, status.HTTP_503_SERVICE_UNAVAILABLE)
 
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
         request.session.set_expiry(int(VISIT_LENGTH.total_seconds()))
@@ -178,6 +179,17 @@ class DemoEnterView(APIView):
 
 def _refuse(message: str, code: int) -> Response:
     return Response({"detail": message}, status=code)
+
+
+def _make_visit_household() -> Household:
+    """The visit's own household, flagged and seeded. The flag is set here and
+    nowhere else in the engine (ADR 0069)."""
+    tag = uuid.uuid4().hex[:8]
+    household = Household.objects.create(
+        name=f"Demo visit {tag}", timezone=DEMO_TIMEZONE, is_demo_visit=True
+    )
+    seed_household(household, created=True)
+    return household
 
 
 def _make_visitor(household: Household, ref: str, expires_at):

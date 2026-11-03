@@ -12,6 +12,8 @@ says which engine path writes each aspect.
 """
 from __future__ import annotations
 
+import time
+
 from django.core.management.base import BaseCommand, CommandError
 from rest_framework.exceptions import ValidationError
 
@@ -37,6 +39,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        started = time.perf_counter()
         try:
             report = seed(reset_first=options["reset"])
         except (DemoHouseholdError, GateInputError) as exc:
@@ -65,3 +68,6 @@ class Command(BaseCommand):
         self.stdout.write(
             f"The unbalanced receipt: {bad.get('outcome')}. {bad.get('reason', '')}".rstrip()
         )
+        # Ticket 13: every recruiter visit runs this same seed inside
+        # `POST /api/demo/enter`, so this is roughly what a visitor waits for.
+        self.stdout.write(f"Seeded in {time.perf_counter() - started:.2f} s.")
