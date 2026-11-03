@@ -1,0 +1,50 @@
+{
+  "nodes": [
+    {
+      "id": "43dd4385aa30289b",
+      "type": "file",
+      "file": ".scratch/voice-browser/issues/01-browser-screen-and-voice-tool.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6e9939d26edb1754",
+      "type": "file",
+      "file": ".scratch/voice-browser/issues/02-feed-blocker-in-the-browser.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e430242faaf6b16f",
+      "type": "file",
+      "file": ".scratch/voice-browser/issues/03-on-phone-run.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "47e87e2aa865e871",
+      "fromNode": "43dd4385aa30289b",
+      "fromSide": "right",
+      "toNode": "e430242faaf6b16f",
+      "toSide": "left"
+    },
+    {
+      "id": "bce315e411bf3ef5",
+      "fromNode": "6e9939d26edb1754",
+      "fromSide": "right",
+      "toNode": "e430242faaf6b16f",
+      "toSide": "left"
+    }
+  ]
+}

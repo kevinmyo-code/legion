@@ -7122,3 +7122,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   3+ conversations over 2+ days, Kevin approves. First procedures (09): `car_check`,
   `money_check`, `morning_briefing`; the phone's `get_sitrep` stays as is; laptop deferred.
 - ADR 0070. Build tickets 11-21 already exist on the map.
+
+## 2026-11-03 - LEGION gets its own browser, driven by voice (Kevin)
+
+- Kevin: *"can we give the phone ui its own sandbox browser like, if i ask it to find me a picture of
+  a red xj on stock height for example, i want it to be able to pull the search results up. or
+  something else, like a restaurant's menu etc."* Then: *"i want it to have everything chrome has, my
+  logins, passwords etc. save cookies also. basicaly a browser that i can ask alfred to control by
+  voice"*.
+- Options put to him: A Chrome Custom Tabs (Chrome's logins, but LEGION cannot read or drive it),
+  B LEGION's own WebView with a persistent profile and Android Autofill for passwords, C driving
+  Chrome through an accessibility service. **Kevin chose B.** Google is the default search (the
+  orchestrator's pick; Kevin did not object).
+- Built rules: one `browser` voice tool (open/read/click/scroll/type/back/close), ask-first enforced
+  by a 90 s one-use token, passwords never seen or typed by the model, page text read-through, feed
+  sites bounce like feed apps through `BlockPolicy`. ADR 0071; map `.scratch/voice-browser/`.

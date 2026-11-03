@@ -65,6 +65,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[10-about-kevin-profile\|10]] | decision | about_kevin: recruiters ask about Kevin himself |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[12-phone-turn-taking-in-the-browser\|12]] | build | The phone's tuned turn-taking and barge-in, in the browser |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
+| [[.scratch/voice-browser/map\|voice-browser]] | [[01-browser-screen-and-voice-tool\|01]] | build | The browser screen, its persistent profile, and the one `browser` voice tool |
+| [[.scratch/voice-browser/map\|voice-browser]] | [[02-feed-blocker-in-the-browser\|02]] | build | The feed blocker reaches the browser: feed sites bounce like feed apps |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -273,6 +275,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[11-music-in-the-browser\|11]] | build | Music demo: 'play X' by voice, plays in the page via a Spotify embed  waiting on [[01-recruiter-role-and-allowlist\|01]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[13-per-visitor-demo-household\|13]] | build | Each recruiter visit gets its own copy of the demo household, writes allowed  waiting on [[01-recruiter-role-and-allowlist\|01]], [[02-invite-code-to-visitor-token\|02]], [[03-demo-household-seed\|03]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[14-home-dashboard-morning-briefing\|14]] | build | Web Home becomes a household dashboard: the Morning briefing  waiting on [[13-per-visitor-demo-household\|13]] |
+| [[.scratch/voice-browser/map\|voice-browser]] | [[03-on-phone-run\|03]] | test | On the phone: the voice browser end to end  waiting on [[01-browser-screen-and-voice-tool\|01]], [[02-feed-blocker-in-the-browser\|02]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[03-transcribe-and-summarize\|03]] | build | One upload, a transcript and a summary out  waiting on [[01-the-recorder-and-the-mic\|01]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
@@ -376,6 +379,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/retro-games/map\|retro-games]] | 6 | 2 | [[.scratch/retro-games/retro-games.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/two-clients/map\|two-clients]] | 6 | 6 | [[.scratch/two-clients/two-clients.canvas\|open]] |
+| [[.scratch/voice-browser/map\|voice-browser]] | 3 | 3 | [[.scratch/voice-browser/voice-browser.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 20 | 10 | [[.scratch/wake-word/wake-word.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 7 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |

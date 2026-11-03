@@ -75,6 +75,7 @@ Format and the test for whether something deserves an ADR:
 | 0068 | [[0068-recruiter-role-narrows-only\|Recruiter is a third household role, and it only narrows]] | amended | 2026-11-02 | 2026-11-02 |
 | 0069 | [[0069-each-recruiter-visit-gets-its-own-household\|Each recruiter visit gets its own household, and only there may a gated row be deleted]] | accepted | 2026-11-02 | - |
 | 0070 | [[0070-procedures-run-by-the-engine\|Procedures: compiled multi-step answers, run by the engine]] | accepted | 2026-11-03 | - |
+| 0071 | [[0071-voice-browser\|LEGION has its own browser, and Alfred drives it by voice]] | accepted | 2026-11-03 | - |
 
 ## Superseded
 
