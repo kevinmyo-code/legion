@@ -21,8 +21,14 @@ tags: [ticket]
   for read steps only.
 - `run_procedure` in `engine_mcp/tools.py` `TOOLS`: args `name`, optional `inputs`, `resume`,
   `answer`, `conversation_id`. Its schema's `name` enum lists the active procedures visible to the
-  caller. `writes` on the EngineTool is true (some procedures write), so a read-scoped token is
-  refused a writing procedure in words by `run_engine_tool`; a read-only one runs.
+  caller. **`writes=False` on the EngineTool.** `run_engine_tool` checks the write fence on the
+  tool's STATIC flag before the handler, so `writes=True` would refuse every procedure to a
+  read-scoped token, read-only ones included, and a recruiter visitor's token is read-scoped.
+  Instead the runner calls `household.permissions.write_refusal(request)` itself before any step
+  whose tool `writes`, refuses that step in words, and the result names it.
+- The per-caller `name` enum means a per-request schema; `EngineTool` is frozen and validated at
+  import. Use the pattern `assistant/surface.py` `_recruiter_tool` already uses
+  (`dataclasses.replace(tool, input_schema=...)`).
 - Result honesty (CLAUDE.md §7): the result text lists steps that ran, steps that failed or were
   skipped, and says plainly what did NOT happen. Outcome verbs only for write steps whose tool
   returned ok. Estimates labelled as the tools label them.
