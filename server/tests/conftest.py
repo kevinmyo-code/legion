@@ -338,6 +338,13 @@ def django_db_setup(django_db_setup, django_db_blocker):
             assert skipped is None, skipped
             skipped = apply_ledger_bank_rows(cursor)
             assert skipped is None, skipped
+            # `household/migrations/0008` (ADR 0069, the demo-visit delete
+            # exemption), the same way. AFTER 0021's call above: that one
+            # re-creates the ledger guard without the exemption.
+            from household.demo_visit_sql import apply_demo_visit_exemption
+
+            skipped = apply_demo_visit_exemption(cursor)
+            assert skipped is None, skipped
             # `ingest/migrations/0023` (obd_samples arrival-order index), the same way.
             from api.obd_arrival_index import create_arrival_index
 
