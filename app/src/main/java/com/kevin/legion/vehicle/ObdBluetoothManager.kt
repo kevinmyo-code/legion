@@ -478,6 +478,10 @@ object ObdBluetoothManager {
             FfPid("06", 1, "stft_pct") { b -> (b[0] - 128) * 100.0 / 128.0 },
             FfPid("07", 1, "ltft_pct") { b -> (b[0] - 128) * 100.0 / 128.0 },
             FfPid("0F", 1, "iat_c") { b -> b[0] - 40.0 },
+            // 2026-11-03: manifold pressure and fuel system status, so a snapshot answers "was it
+            // in closed loop" - FreezeFrame.fields words both. Fuel system keeps byte A only.
+            FfPid("0B", 1, "map_kpa") { b -> b[0].toDouble() },
+            FfPid("03", 2, "fuel_sys") { b -> b[0].toDouble() },
         )
         val out = mutableMapOf<String, Double>()
         for (p in pids) {
@@ -609,6 +613,7 @@ object ObdBluetoothManager {
         // voice socket, or the UI that the resolved identity changed once it did.
         val wasDisconnected = connectedDeviceAddress == null
         connectedDeviceAddress = address
+        ActiveVehicle.rememberConnected(context, address)
         if (wasDisconnected) ActiveVehicle.notifyResolutionChanged(context.applicationContext)
 
         // Some adapters need a moment after the link comes up before they're

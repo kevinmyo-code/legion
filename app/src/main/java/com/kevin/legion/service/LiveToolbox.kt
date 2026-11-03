@@ -1300,12 +1300,17 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "check_recalls",
-            description = "Look up active manufacturer recalls for this car (live from NHTSA by year/" +
+            description = "Look up active manufacturer recalls for a car (live from NHTSA by year/" +
                 "make/model). Use when the user asks if the car has any recalls or open safety " +
-                "campaigns. The user must have told you their car's year, make, and model first; " +
-                "if they haven't, this returns an error asking you to get those - never guess or " +
-                "assume the car.",
-            params = obj("vehicle" to VEHICLE_PARAM),
+                "campaigns. If the car's record lacks its year, make or model and the user said them " +
+                "(e.g. 'it's a 1998 Jeep Cherokee'), pass year, make and model; otherwise leave them " +
+                "out - never guess the car.",
+            params = obj(
+                "vehicle" to VEHICLE_PARAM,
+                "year" to schema("integer", "Model year the user stated, e.g. 1998."),
+                "make" to schema("string", "Make the user stated, e.g. Jeep."),
+                "model" to schema("string", "Model the user stated, e.g. Cherokee."),
+            ),
             required = listOf(),
         ))
 
@@ -2493,6 +2498,25 @@ object LiveToolbox {
     }
 
     /**
+     * [tools] with `vehicle` filled in as [vehicleId] on any call that takes a `vehicle` argument
+     * and was not given one (2026-11-03): the question named a car, so a tool the router called
+     * without one must not fall back to another car. Unchanged when [vehicleId] is null.
+     */
+    internal fun withDefaultVehicle(tools: List<AgentTool>, vehicleId: String?): List<AgentTool> {
+        if (vehicleId == null) return tools
+        return tools.map { t ->
+            if (!t.params.has("vehicle")) {
+                t
+            } else {
+                AgentTool(t.name, t.description, t.params, t.required, t.timeoutMs) { args ->
+                    if (args.optString("vehicle").isBlank()) args.put("vehicle", vehicleId)
+                    t.run(args)
+                }
+            }
+        }
+    }
+
+    /**
      * Per-tool leash inside a dispatcher's sub-agent (2026-10-27). A plain read gets
      * [AGENT_TOOL_TIMEOUT_MS]. A specialist in [SPECIALIST_TOOLS] runs its own Gemini call or loop
      * (investigate's 30 s budget, or one askTyped POST) and was cut at 8 s, so a slow specialist
@@ -2600,7 +2624,13 @@ object LiveToolbox {
      *
      * Pure so a JVM test pins it; the caller does the three reads `list_vehicles` does.
      */
-    internal fun fleetRouteContext(vehicles: List<Vehicle>, activeId: String?, connectedId: String?): String {
+    @Suppress("CyclomaticComplexMethod")
+    internal fun fleetRouteContext(
+        vehicles: List<Vehicle>,
+        activeId: String?,
+        connectedId: String?,
+        namedId: String? = null,
+    ): String {
         if (vehicles.isEmpty()) {
             return " No car is on file yet, so there is nothing to pass as `vehicle`."
         }
@@ -2620,8 +2650,15 @@ object LiveToolbox {
             else ->
                 "The OBD dongle is plugged into \"${key(connected)}\"; the live tools read only that car."
         }
-        return " Cars on file: ${vehicles.joinToString(", ") { entry(it) }}." +
-            (active?.let { " Currently driving: \"${key(it)}\"." } ?: "") +
+        val named = namedId?.let { id -> vehicles.firstOrNull { it.obdMac == id } }
+        val about = when {
+            named != null -> " The question names \"${key(named)}\": pass that as `vehicle`."
+            active != null -> " Currently driving: \"${key(active)}\"."
+            vehicles.size > 1 && connectedId == null ->
+                " No car is connected or picked; if the question names none, the tools ask which."
+            else -> ""
+        }
+        return " Cars on file: ${vehicles.joinToString(", ") { entry(it) }}." + about +
             " $dongle For a car the dongle is not in, pass its quoted name as `vehicle` to the " +
             "stored-record tools (code history, service, specs, recalls, build log, trends) in this " +
             "same round. Every car is listed here, so call list_vehicles only when the question is " +
@@ -2701,14 +2738,26 @@ object LiveToolbox {
             "read_vehicle_sensor" -> readVehicleSensor(context, args)
             "get_code_history" -> withResolvedVehicle(context, args) { vehicle ->
                 val limit = args.optInt("limit", 5).coerceIn(1, 25)
-                val history = CarToolbelt.codeHistory(context, limit, vehicle.obdMac)
+                // Structured rows with every freeze-frame reading (2026-11-03), not a text blob
+                // that carried three of eight PIDs and said nothing when a frame was missing.
+                val events = CarToolbelt.codeHistoryEvents(context, vehicle.obdMac, limit)
+                // The codes card pops up whenever there is something to show, the same inline
+                // show-on-data pattern get_codes uses for its glance card. Automatic rather than a
+                // show_codes tool: this tool sits behind ask_fleet, so the Live model never sees
+                // it to pair a UI call with, and a new Live declaration costs setup bytes.
+                if (events.length() > 0) VoiceModalController.show(VoiceModalTarget.CODES, vehicle.obdMac)
                 JSONObject()
                     .put("success", true)
                     // Ticket 04's label rule: this "vehicle" field is a single identifier the model
                     // is expected to speak back (unlike list_vehicles' decomposed name/year/make/
                     // model/trim tuple below, which stays raw), so it goes through the one rule too.
                     .put("vehicle", VehicleController.label(vehicle))
-                    .put("history", history)
+                    .put("count", events.length())
+                    .put("events", events)
+                    .apply {
+                        if (events.length() == 0) put("message", "No trouble-code events are recorded for this car.")
+                        else put("shown", "The codes card with each freeze frame is up in the LEGION app.")
+                    }
             }
             "triage_symptom" -> triageSymptom(context, args)
             // Router mode (2026-10-27): each dispatcher makes ONE sub-agent POST that picks
@@ -2729,18 +2778,31 @@ object LiveToolbox {
             "ask_fleet" -> agentResult(
                 "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
+                lookupName = "fleet lookup",
             ) {
                 probedRoute(name) { probe ->
                     // The router gets one round, so it is told which cars exist and where the
                     // dongle is before it picks (ticket 04 run 2): see fleetRouteContext.
+                    // 2026-11-03: the car the question names wins, then pickDefault's order, and the
+                    // named car rides into every tool that takes `vehicle` even if the router omits it.
+                    val roster = com.kevin.legion.vehicle.FleetEngineStore.getAll(context)
+                    val question = args.optString("question")
+                    val named = VehicleResolver.mentionedIn(question, roster)
+                    val pick = VehicleResolver.pickDefault(
+                        roster,
+                        connectedId = ObdBluetoothManager.connectedDeviceAddress,
+                        selectedId = ActiveVehicle.selected(context),
+                        lastConnectedId = ActiveVehicle.lastConnected(context),
+                    )
                     val fleetLine = fleetRouteContext(
-                        com.kevin.legion.vehicle.FleetEngineStore.getAll(context),
-                        ActiveVehicle.current(context),
+                        roster,
+                        (pick as? VehicleMatch.Resolved)?.vehicle?.obdMac,
                         ObdBluetoothManager.connectedDeviceAddress,
+                        namedId = named?.obdMac,
                     )
                     SubAgent(systemInstruction = fleetDispatchGrounding(context) + fleetLine).route(
-                        question = args.optString("question"),
-                        tools = agentToolsFor("fleet", context),
+                        question = question,
+                        tools = withDefaultVehicle(agentToolsFor("fleet", context), named?.obdMac),
                         budgetMs = DISPATCH_ROUTE_BUDGET_MS,
                         mutatingToolNames = mutatingToolsFor("fleet"),
                         probe = probe,
@@ -2750,6 +2812,7 @@ object LiveToolbox {
             "ask_body" -> agentResult(
                 "Could not reach the health specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
+                lookupName = "health lookup",
             ) {
                 probedRoute(name) { probe ->
                     SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
@@ -2764,6 +2827,7 @@ object LiveToolbox {
             "ask_goals" -> agentResult(
                 "Could not reach the goals specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
+                lookupName = "goals lookup",
             ) {
                 probedRoute(name) { probe ->
                     SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
@@ -2778,6 +2842,7 @@ object LiveToolbox {
             "ask_pantry" -> agentResult(
                 "Could not reach the grocery specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
+                lookupName = "grocery lookup",
             ) {
                 probedRoute(name) { probe ->
                     SubAgent(systemInstruction = pantryDispatchGrounding(context)).route(
@@ -2792,6 +2857,7 @@ object LiveToolbox {
             "ask_mail" -> agentResult(
                 "Could not reach your mail. Try again shortly.",
                 requireMutation = wantsWrite(args),
+                lookupName = "mail lookup",
             ) {
                 probedRoute(name) { probe ->
                     SubAgent(systemInstruction = mailDispatchGrounding(context)).route(
@@ -2886,7 +2952,7 @@ object LiveToolbox {
             }
             "lookup_vin" -> lookupVin(context)
             "get_specs" -> withResolvedVehicle(context, args) { getSpecs(context, it.obdMac) }
-            "check_recalls" -> withResolvedVehicle(context, args) { checkRecalls(context, it.obdMac) }
+            "check_recalls" -> withResolvedVehicle(context, args) { checkRecalls(context, it, args) }
             "register_vehicle" -> VehicleController.registerDirect(
                 context, args.optInt("year"), args.optString("make"), args.optString("model")
             ).let { result(it.success, it.message) }
@@ -3864,7 +3930,12 @@ object LiveToolbox {
         args: JSONObject,
         onResolved: suspend (Vehicle) -> JSONObject,
     ): JSONObject = when (val match = VehicleResolver.resolveVehicle(context, args.optString("vehicle").takeIf { it.isNotBlank() })) {
-        is VehicleMatch.Resolved -> onResolved(match.vehicle)
+        // Every stored-record answer names the car it is about (2026-11-03), so a reply about the
+        // wrong car is audible instead of passing as an answer about the right one.
+        is VehicleMatch.Resolved -> onResolved(match.vehicle).also { out ->
+            if (!out.has("vehicle")) out.put("vehicle", VehicleController.label(match.vehicle))
+        }
+        is VehicleMatch.NoneChosen -> noneChosenResult(match)
         is VehicleMatch.Unknown -> JSONObject()
             .put("success", false)
             .put("error", "unknown_vehicle")
@@ -3988,8 +4059,27 @@ object LiveToolbox {
      * at all, so the same car could get recalls announced unprompted and then refused when asked.
      * [VehicleSpecController.recalls] now owns the one gate both paths share.
      */
-    private suspend fun checkRecalls(context: Context, vehicleId: String? = null): JSONObject {
-        return when (val outcome = VehicleSpecController.recalls(context, vehicleId)) {
+    @Suppress("ReturnCount")
+    private suspend fun checkRecalls(context: Context, vehicle: Vehicle, args: JSONObject = JSONObject()): JSONObject {
+        // 2026-11-03: "It's a 1998 Jeep Cherokee" was said and the car record had no identity, so
+        // the check refused. A year/make/model stated in the question fills ONLY the fields the
+        // record lacks, the lookup runs on that, and saving it to the car is offered, never done.
+        val stated = statedIdentity(vehicle, args.optInt("year", 0), args.optString("make"), args.optString("model"))
+        if (stated != null) {
+            val recalls = VinDecoder.fetchRecalls(stated.year, stated.make, stated.model)
+                ?: return result(success = false, message = "Couldn't reach NHTSA to check recalls right now. Try again in a moment.")
+            val label = VehicleController.label(vehicle)
+            return recallsJson(recalls)
+                .put("checkedAs", "${stated.year} ${stated.make} ${stated.model}")
+                .put(
+                    "saveOffer",
+                    "Checked as the ${stated.year} ${stated.make} ${stated.model} the user said. ${theCar(label)
+                        .replaceFirstChar { it.uppercase() }} record is missing its ${stated.filled.joinToString(" and ")}; " +
+                        "nothing was saved. Ask whether to save it to the car, and save only on a yes, " +
+                        "with manage_vehicle action correct.",
+                )
+        }
+        return when (val outcome = VehicleSpecController.recalls(context, vehicle.obdMac)) {
             is RecallCheckResult.IdentityMissing -> result(
                 success = false,
                 message = "I don't know this car's ${outcome.missing.joinToString(" and ")} yet, " +
@@ -3999,18 +4089,42 @@ object LiveToolbox {
                 success = false,
                 message = "Couldn't reach NHTSA to check recalls right now. Try again in a moment.",
             )
-            is RecallCheckResult.Checked -> {
-                val arr = JSONArray()
-                for (r in outcome.recalls) {
-                    arr.put(JSONObject()
-                        .put("campaign", r.campaign)
-                        .put("component", r.component)
-                        .put("summary", r.summary)
-                        .put("remedy", r.remedy))
-                }
-                JSONObject().put("success", true).put("count", outcome.recalls.size).put("recalls", arr)
-            }
+            is RecallCheckResult.Checked -> recallsJson(outcome.recalls)
         }
+    }
+
+    private fun recallsJson(recalls: List<VinDecoder.Recall>): JSONObject {
+        val arr = JSONArray()
+        for (r in recalls) {
+            arr.put(JSONObject()
+                .put("campaign", r.campaign)
+                .put("component", r.component)
+                .put("summary", r.summary)
+                .put("remedy", r.remedy))
+        }
+        return JSONObject().put("success", true).put("count", recalls.size).put("recalls", arr)
+    }
+
+    @Suppress("MagicNumber") // a plausible model year, to drop a misheard number
+    private val MODEL_YEARS = 1900..2100
+
+    /** [statedIdentity]'s answer: the identity to look up, and which fields came from the question. */
+    internal data class StatedIdentity(val year: Int, val make: String, val model: String, val filled: List<String>)
+
+    /**
+     * The year/make/model to check [vehicle]'s recalls as, when its record lacks some of them and
+     * the question supplied every missing one; null when the record is complete (use it) or the
+     * question does not fill the gap (refuse as before). The record's own fields always win.
+     * Pure and internal so a test pins it.
+     */
+    @Suppress("ReturnCount")
+    internal fun statedIdentity(vehicle: Vehicle, year: Int, make: String, model: String): StatedIdentity? {
+        val missing = com.kevin.legion.vehicle.missingIdentityFields(vehicle)
+        if (missing.isEmpty()) return null
+        val y = vehicle.year.takeIf { it > 0 } ?: year.takeIf { it in MODEL_YEARS } ?: return null
+        val mk = vehicle.make.ifBlank { make.trim() }.ifBlank { return null }
+        val md = vehicle.model.ifBlank { model.trim() }.ifBlank { return null }
+        return StatedIdentity(y, mk, md, missing)
     }
 
     /** Searches long-term memory for entries relevant to [query], for Zero to read out. */
@@ -6421,7 +6535,30 @@ object LiveToolbox {
             val name = info[code]?.first
             if (name != null) "$code, $name" else code
         }
-        return result(true, "${codes.size} code(s) stored: $spoken.")
+        // Each live code's freeze frame (2026-11-03): the snapshot saved with the newest stored
+        // event that carries the code. Mode 02 is not re-read here - ten more PID round trips
+        // inside an 8 s tool budget - and the stored frame is the ECU's same latched snapshot.
+        val mac = ObdBluetoothManager.connectedDeviceAddress
+        val stored = mac?.let { m ->
+            withContext(Dispatchers.IO) { CarDatabase.getDatabase(context).codeEventDao().getAll(m) }
+        }.orEmpty().sortedByDescending { it.timestamp }
+        val unit = com.kevin.legion.util.Temp.unit(context)
+        val perCode = JSONArray()
+        for (code in codes) {
+            val o = JSONObject().put("code", code)
+            info[code]?.first?.let { o.put("meaning", it) }
+            val ff = stored.firstOrNull { code in CarToolbelt.codeList(it.codesJson) }
+                ?.let { com.kevin.legion.vehicle.FreezeFrame.fields(it.freezeFrameJson, unit) }
+                .orEmpty()
+            if (ff.isEmpty()) {
+                o.put("freezeFrame", JSONObject.NULL).put("snapshot", com.kevin.legion.vehicle.FreezeFrame.NO_SNAPSHOT)
+            } else {
+                o.put("freezeFrame", com.kevin.legion.vehicle.FreezeFrame.toJson(ff))
+            }
+            perCode.put(o)
+        }
+        if (mac != null && stored.isNotEmpty()) VoiceModalController.show(VoiceModalTarget.CODES, mac)
+        return result(true, "${codes.size} code(s) stored: $spoken.").put("codes", perCode)
     }
 
     private suspend fun diagnoseCodes(context: Context, args: JSONObject): JSONObject {
@@ -6489,6 +6626,7 @@ object LiveToolbox {
     private suspend fun agentResult(
         failMessage: String,
         requireMutation: Boolean = false,
+        lookupName: String = "lookup",
         call: suspend () -> AgentResult,
     ): JSONObject {
         if (!GeminiKeyProvider.hasKey()) {
@@ -6513,8 +6651,18 @@ object LiveToolbox {
             AgentResult.Offline ->
                 result(false, "No network connection. Try again once online.")
             AgentResult.Failed, AgentResult.Overloaded -> result(false, failMessage)
+            is AgentResult.UnknownTool -> result(false, unknownToolMessage(r, lookupName))
         }
     }
+
+    /**
+     * What [agentResult] says when the specialist WAS reached but asked only for tools that do not
+     * exist (2026-11-03: `check_recall` was spoken as "Could not reach the fleet specialist").
+     * Says what happened and that nothing was checked. Pure and internal so a test pins it.
+     */
+    internal fun unknownToolMessage(r: AgentResult.UnknownTool, lookupName: String = "lookup"): String =
+        "The $lookupName asked for a tool that doesn't exist (${r.requested.distinct().joinToString(", ")}), " +
+            "so nothing was checked. Ask again and it will try the real tools."
 
     /**
      * Runs one `ask_<domain>` dispatcher's [SubAgent.route] with a fresh [LookupProbe] named [tool],
@@ -6851,8 +6999,9 @@ object LiveToolbox {
      * "nothing due" branches name no candidate at all, so they carry nothing to caveat.
      */
     private suspend fun getNextService(context: Context, vehicle: Vehicle): JSONObject {
+        val label = VehicleController.label(vehicle)
         val next = VehicleController.nextService(context, vehicle)
-            ?: return result(true, "Nothing on the schedule yet - register the car or log a service and I'll start tracking it.")
+            ?: return result(true, noScheduleMessage(label, com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac).isEmpty()))
 
         val miles = VehicleController.ScheduleUnit.MILES
         val days = VehicleController.ScheduleUnit.DAYS
@@ -6914,8 +7063,37 @@ object LiveToolbox {
             VehicleController.mileageCaveat(vehicle)?.let { " Your mileage is $it." } ?: ""
         } else ""
 
-        return result(true, body + unknownNote + mileageNote)
+        return result(true, "For ${theCar(label)}: " + body + unknownNote + mileageNote)
     }
+
+    /**
+     * [getNextService]'s sentence when nothing can be timed (2026-11-03). A car with NO schedule
+     * rows is told so by name; "register the car" was wrong for a car already on file. Pure and
+     * internal so a test pins it.
+     */
+    internal fun noScheduleMessage(label: String, scheduleEmpty: Boolean): String =
+        if (scheduleEmpty) {
+            "${theCar(label).replaceFirstChar { it.uppercase() }} has no maintenance schedule on file yet, " +
+                "so nothing can be timed. Set one up on the Fleet tab, or log a service and it starts from there."
+        } else {
+            "${theCar(label).replaceFirstChar { it.uppercase() }} has schedule items, but none has a last-done " +
+                "date or mileage yet, so nothing can be timed. Say when one was last done and it starts tracking."
+        }
+
+    /** "the Jeep Cherokee", or the label as-is when it already starts with an article. */
+    internal fun theCar(label: String): String =
+        if (label.startsWith("a ") || label.startsWith("an ")) label else "the $label"
+
+    /** [withResolvedVehicle]'s answer when no car was named and several are on file. Internal for a test. */
+    internal fun noneChosenResult(match: VehicleMatch.NoneChosen): JSONObject = JSONObject()
+        .put("success", false)
+        .put("error", "which_vehicle")
+        .put("candidates", JSONArray(match.candidates))
+        .put(
+            "message",
+            "No car was named and none is connected or picked, so nothing was looked up. On file: " +
+                "${match.candidates.joinToString(", ")}. Which one?",
+        )
 
     /**
      * Backfills a maintenance item from what the driver remembers - never a

@@ -102,7 +102,7 @@ class AskEngine(
                     "No network connection, so the engine question did not complete. " +
                         "Nothing is known to have been read or written.",
                 )
-            AgentResult.Failed, AgentResult.Overloaded ->
+            AgentResult.Failed, AgentResult.Overloaded, is AgentResult.UnknownTool ->
                 AskEngineAnswer(false, failedAfterCalls(tally))
         }
     }

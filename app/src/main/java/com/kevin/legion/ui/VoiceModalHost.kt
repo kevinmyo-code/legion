@@ -47,6 +47,11 @@ fun VoiceModalHost() {
             // (`selectedDayStart`'s own `remember` default), so hosting it bare here shows exactly
             // "today's due items" with no day-filter parameter needed at all.
             VoiceModalTarget.AGENDA -> CalendarScreen()
+            // The codes card (2026-11-03). Hands path: Fleet tab, Faults page, "Codes card" -
+            // the same CodesCardHost, so voice and hands show one composable (ADR 0035).
+            VoiceModalTarget.CODES -> current.vehicleId?.let { id ->
+                com.kevin.legion.ui.fleet.CodesCardHost(id, onClose = { VoiceModalController.dismiss() })
+            }
             // VoiceModalTarget.WHOLE_LIST (the unfiltered persistent-list stream) retired one-today
             // ticket 10 slice C alongside `ui/NotesScreen.kt` and `show_list_modal` - see
             // [VoiceModalTarget]'s own doc comment.

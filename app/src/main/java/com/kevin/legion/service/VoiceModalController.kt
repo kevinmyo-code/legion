@@ -25,7 +25,17 @@ import kotlinx.coroutines.flow.asStateFlow
  * (`ui/NotesScreen.kt`) and `show_list_modal`'s own tool declaration retired with it - see
  * `service/LiveToolbox.kt`'s own retirement comment on that tool.
  */
-enum class VoiceModalTarget { AGENDA }
+enum class VoiceModalTarget {
+    AGENDA,
+
+    /**
+     * The codes card (2026-11-03, Kevin: "i need a visual to pop up when i ask too, codes and
+     * freeze frames etc"): a car's stored trouble codes and each one's freeze frame, for
+     * [VoiceModalPayload.vehicleId]. Shown by `get_code_history`/`get_codes` when there are rows,
+     * and from the Fleet tab's Faults page by hand (ADR 0035).
+     */
+    CODES,
+}
 
 /**
  * [target] plus [shownAt], mirroring [GlanceCardPayload]'s own shape: a bare enum value would
@@ -38,6 +48,8 @@ enum class VoiceModalTarget { AGENDA }
 data class VoiceModalPayload(
     val target: VoiceModalTarget,
     val shownAt: Long = System.currentTimeMillis(),
+    /** Which car, for a per-car target ([VoiceModalTarget.CODES]); null for the others. */
+    val vehicleId: String? = null,
 )
 
 /**
@@ -63,8 +75,8 @@ object VoiceModalController {
     val current: StateFlow<VoiceModalPayload?> = _current.asStateFlow()
 
     /** Shows [target]. A modal already showing is replaced immediately (newest wins). */
-    fun show(target: VoiceModalTarget) {
-        _current.value = VoiceModalPayload(target)
+    fun show(target: VoiceModalTarget, vehicleId: String? = null) {
+        _current.value = VoiceModalPayload(target, vehicleId = vehicleId)
     }
 
     /** Explicit dismiss only - scrim tap, swipe, back. There is no auto-dismiss timer; see class doc. */

@@ -618,7 +618,7 @@ object EngineToolbox {
         AgentResult.RateLimited -> result(false, "The Gemini key hit its rate limit. Try again in a minute.")
         AgentResult.KeyInvalid -> result(false, "The Gemini key was rejected. It can be checked in Setup.")
         AgentResult.Offline -> result(false, "No network connection. Try again once online.")
-        AgentResult.Failed, AgentResult.Overloaded -> result(false, failMessage)
+        AgentResult.Failed, AgentResult.Overloaded, is AgentResult.UnknownTool -> result(false, failMessage)
     }
 
     // ---- create_aspect / update_aspect: Pro-tier generator + confirm handshake -------------------

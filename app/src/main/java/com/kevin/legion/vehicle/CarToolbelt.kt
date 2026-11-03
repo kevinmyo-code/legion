@@ -170,10 +170,69 @@ object CarToolbelt {
                 // Capturing confirmed-ness at write time would be the stronger fix and needs a new
                 // column - out of ticket 10's scope, deliberately not built here.
                 e.mileage?.let { append(" at about ${"%,d".format(it)} mi (estimated)") }
-                val ff = freezeHighlights(context, e.freezeFrameJson)
-                if (ff.isNotBlank()) append(" [").append(ff).append("]")
+                // Every stored PID, or the no-snapshot sentence (2026-11-03): three of eight were
+                // passed before, and a missing frame said nothing at all.
+                val ff = FreezeFrame.fields(e.freezeFrameJson, Temp.unit(context))
+                append(". Freeze frame: ").append(if (ff.isEmpty()) FreezeFrame.NO_SNAPSHOT else FreezeFrame.line(ff))
             }
         }
+    }
+
+    /**
+     * [codeHistory] as structured rows for the `get_code_history` voice tool (2026-11-03, Kevin:
+     * "i asked for freeze frames"): each event's codes with their meaning when known, date,
+     * estimated mileage, whether a clear followed it, and EVERY freeze-frame reading as
+     * `{parameter, value, unit}` - or `freezeFrame: null` plus [FreezeFrame.NO_SNAPSHOT]. Newest
+     * first, at most [limit].
+     */
+    suspend fun codeHistoryEvents(context: Context, vehicleId: String, limit: Int = 5): JSONArray {
+        val db = CarDatabase.getDatabase(context)
+        val events = db.codeEventDao().getAll(vehicleId)
+        if (events.isEmpty()) return JSONArray()
+        val clears = db.codeClearEventDao().getAll(vehicleId)
+        val descriptions = DtcDescriptions.loadSeed(context) + DtcDescriptions.loadLearned(context)
+        val unit = Temp.unit(context)
+        return JSONArray().apply {
+            for (e in events.sortedByDescending { it.timestamp }.take(limit)) {
+                put(codeEventJson(e, descriptions, clears, unit))
+            }
+        }
+    }
+
+    /** One [codeHistoryEvents] row. Pure and internal so a test pins the shape. */
+    internal fun codeEventJson(
+        e: com.kevin.legion.data.local.CodeEvent,
+        descriptions: Map<String, Pair<String, String>>,
+        clears: List<com.kevin.legion.data.local.CodeClearEvent>,
+        unit: com.kevin.legion.util.TempUnit,
+    ): JSONObject {
+        val codes = JSONArray()
+        for (code in codeList(e.codesJson)) {
+            codes.put(JSONObject().put("code", code).apply { descriptions[code]?.first?.let { put("meaning", it) } })
+        }
+        val cleared = clears.any { it.outcome == "CLEARED" && it.timestamp > e.timestamp }
+        val ff = FreezeFrame.fields(e.freezeFrameJson, unit)
+        return JSONObject()
+            .put("date", shortDate(e.timestamp))
+            .put("codes", codes)
+            .put("cleared", cleared)
+            .apply { e.mileage?.let { put("mileage", "about ${"%,d".format(it)} mi (estimated)") } }
+            .apply {
+                if (ff.isEmpty()) {
+                    put("freezeFrame", JSONObject.NULL)
+                    put("snapshot", FreezeFrame.NO_SNAPSHOT)
+                } else {
+                    put("freezeFrame", FreezeFrame.toJson(ff))
+                }
+            }
+    }
+
+    /** A code event's codes as a list; a malformed blob comes back as itself, one entry. */
+    internal fun codeList(codesJson: String): List<String> = try {
+        val a = JSONArray(codesJson)
+        (0 until a.length()).map { a.getString(it) }
+    } catch (e: Exception) {
+        listOf(codesJson)
     }
 
     /**
@@ -420,8 +479,9 @@ object CarToolbelt {
 
     private fun codeHistoryTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_code_history",
-        description = "Past trouble-code events with the sensor snapshot latched when each code set " +
-            "(rpm, coolant, load at trip time). Use to spot patterns like a code that only sets cold.",
+        description = "Past trouble-code events with the full freeze frame latched when each code set " +
+            "(rpm, coolant, speed, load, MAF, fuel trims, intake air, manifold pressure, fuel system). " +
+            "Use to spot patterns like a code that only sets cold.",
         params = props("limit" to prop("integer", "How many recent events. Default 5.")),
         timeoutMs = 5_000,
     ) { args -> codeHistory(context, args.optInt("limit", 5), vehicleId) }
@@ -512,17 +572,4 @@ object CarToolbelt {
         codesJson
     }
 
-    private fun freezeHighlights(context: Context, json: String): String {
-        if (json.isBlank()) return ""
-        return try {
-            val o = JSONObject(json)
-            listOfNotNull(
-                if (o.has("rpm")) "rpm ${o.getDouble("rpm").toInt()}" else null,
-                if (o.has("coolant_c")) "coolant ${Temp.text(context, o.getDouble("coolant_c"))}" else null,
-                if (o.has("load_pct")) "load ${o.getDouble("load_pct").toInt()}%" else null,
-            ).joinToString(" ")
-        } catch (e: Exception) {
-            ""
-        }
-    }
 }
