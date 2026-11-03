@@ -123,7 +123,8 @@ RECRUITER_FRAME = (
     "be edited by anyone. For questions about Kevin, use "
     "about_kevin and answer only from what it returns; anything it does not say, answer "
     "\"Kevin hasn't shared that here; ask him directly.\" "
-    "They may also ask how LEGION is built - its architecture, design decisions and code - and "
+    "They may also ask how LEGION is built - its architecture, design decisions and code, and "
+    "how Kevin builds it with AI coding agents - and "
     "for that use legion_docs, answer only from the passages it returns, and cite them. "
 )
 

@@ -142,6 +142,22 @@ def test_a_question_about_legion_itself_gets_the_readme_overview(query):
     assert [p.heading for p in hits][:2] == ["LEGION", "LEGION > At a glance"]
 
 
+@pytest.mark.parametrize(
+    ("query", "section"),
+    [
+        ("How does Kevin use AI agents to build LEGION?", None),
+        ("How does Kevin stop agents from making the same mistake twice?", "How mistakes"),
+        ("How do parallel agents avoid conflicts?", "How parallel agents"),
+    ],
+)
+def test_questions_about_working_with_agents_find_that_doc_first(query, section):
+    """Kevin, 2026-11-03: a recruiter may ask how he codes with his agents."""
+    hits = search(query)
+    assert hits and hits[0].path == "docs/working-with-agents.md", (query, _top(query, 4))
+    if section:
+        assert section in hits[0].heading, hits[0].heading
+
+
 def test_voice_questions_reach_the_voice_docs():
     hits = [p.path for p in search("how does the voice loop work")]
     assert "docs/architecture/c3-voice-loop.md" in hits
