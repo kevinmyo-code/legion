@@ -7023,3 +7023,17 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   recruiter writes nothing by any credential, `POST /api/demo/enter` (hashed code, per-IP throttle,
   2 h read token plus a session tied to it, `ref` stored), `manage.py demo_code rotate|off`,
   `manage.py prune_demo_visitors`. `DeviceToken.expires_at` added (null = never).
+
+## 2026-11-02 - Each recruiter visit gets its own household; gated rows deletable only there (Kevin)
+
+- Ruling (recruiter-demo ticket 13, option C, then rulings 1-4 after the parity inventory): each
+  recruiter visit gets a private copy of the demo household, writes allowed; recruiters use the
+  normal web app screens on it (outside-account screens hidden/refused); `/try` stays the landing
+  page with a way into the app; body stays excluded; voice notes allowed.
+- Integrity exemption, Kevin "ok": the gated-row triggers allow DELETE only when the row's household
+  has `is_demo_visit`, set by `/api/demo/enter` and by nothing else. Amends ADR 0068. ADR 0069.
+- Built (branch `docs/recruiter-demo`): `Household.is_demo_visit`, `/enter` seeds a fresh household
+  per visit (`demo_seed.seed_household`), `household/migrations/0008` (public guards, nothing in
+  `private`), `prune_demo_visitors` deletes the visit whole, `household/recruiter_routes.py` route
+  classification, recruiter tool surface = member surface less `list_tables`, web app shell with a
+  demo banner and refusals in words.

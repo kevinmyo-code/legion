@@ -302,10 +302,11 @@ class HouseholdMember(models.Model):
     # member see exactly the same rows. **ADR 0068 (Kevin, 2026-11-02) amends
     # that with one role that DOES touch data, and only to narrow it:
     # `recruiter`.** It is set on throwaway visitor users in the demo household
-    # (`demo/`), never on a person in a real one. A recruiter is refused every
-    # route except the ones that opt in (`IsHouseholdMember`), may not write by
-    # any credential (`household.permissions.may_write`), and sees only the
-    # assistant tools in `assistant.surface.RECRUITER_TOOLS`. Nothing reads this
+    # (`demo/`), never on a person in a real one. Since ADR 0069 each visitor
+    # is the only member of its own per-visit household (`is_demo_visit`): it
+    # may use the routes `household.recruiter_routes` opens and the tools in
+    # `assistant.surface.RECRUITER_TOOLS`, and may write only inside that
+    # household (`household.permissions.write_refusal`). Nothing reads this
     # column to WIDEN access; a role that did would be a new ruling, not a
     # refactor. Role follows the USER, so a session and a token for the same
     # visitor are both recruiter.

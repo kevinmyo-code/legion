@@ -1,7 +1,8 @@
 ---
-status: accepted
+status: amended
 decided: 2026-11-02
 decided-by: Kevin
+amended: 2026-11-02
 source: "[[decisions#2026-11-02 - Recruiter is a third household role, and it only narrows (Kevin)]]"
 tags: [adr]
 ---
@@ -9,6 +10,13 @@ tags: [adr]
 # 68. Recruiter is a third household role, and it only narrows
 
 ## Standing
+
+**AMENDED 2026-11-02 by [[0069-each-recruiter-visit-gets-its-own-household]] (ticket 13):
+recruiters write inside their own visit household.** Each visit gets its own throwaway copy of the
+demo household, and the visitor is its only member. The role still only narrows: routes and tools
+are named lists (default deny), outside accounts, devices, body and settings stay closed, and a
+recruiter's writes land only in its own copy. The "default deny on routes" and "no writes by any
+credential" bullets below are the original decision, kept as written; 0069 says what replaced them.
 
 **A `HouseholdMember` may have the role `recruiter`.** It is set only on throwaway visitor users in
 the demo household, made by `POST /api/demo/enter`. It is the first role that governs data, and it

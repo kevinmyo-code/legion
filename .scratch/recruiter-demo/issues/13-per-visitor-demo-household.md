@@ -3,8 +3,8 @@ map: recruiter-demo
 ticket: "13"
 title: "Each recruiter visit gets its own copy of the demo household, writes allowed"
 type: build
-status: open
-status-detail: "after the phone-web parity inventory"
+status: built
+status-detail: "server and web built on docs/recruiter-demo, suites green; owes deploy (Kevin's call) and a visit on the live engine"
 blockers: ["01", "02", "03"]
 blocked-by: ["[[01-recruiter-role-and-allowlist]]", "[[02-invite-code-to-visitor-token]]", "[[03-demo-household-seed]]"]
 open-blockers: 3
@@ -63,3 +63,17 @@ rule's scope, not its meaning).
 - A write tool from a recruiter changes only its own visit household.
 - Prune removes every row of an expired visit, including gated ones, and nothing else.
 - Seeding time per visit measured; target under ~2 s on Cloud Run.
+
+## Built (2026-11-02, branch `docs/recruiter-demo`)
+
+- `/api/demo/enter` makes and seeds `Demo visit <id>` (`is_demo_visit`), the visitor its only
+  member. Seed per visit measured ~0.15-0.2 s on a local Postgres 17 (fsync off).
+- `household/migrations/0008`: DELETE exemption in `public.gated_row_guard()` and
+  `public.ledger_transactions_guard()`, by household flag, checked last (ADR 0069).
+- `prune_demo_visitors` deletes the expired visit's household whole (`demo/visit_cleanup.py`).
+- Route fence: `household/recruiter_routes.py` (allowed / read-only / denied with reasons), route
+  walk in `tests/test_recruiter.py`. Tools: member web surface less `list_tables`.
+- Web: `/try` gains "Explore the app"; the app shell lets a recruiter in, hides denied screens,
+  shows the demo banner, and a denied screen by URL says why in words.
+- Isolation: `tests/test_recruiter_isolation.py` section 4, `tests/test_demo_visit.py`.
+
