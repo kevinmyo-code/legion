@@ -47,7 +47,16 @@ export function recordingNotice(name: string): string {
   return `Conversations with ${name} may be recorded to improve the assistant.`
 }
 
-const SUGGESTIONS = ["What's on today?", 'When did we last buy shampoo?', "What's on the Groceries list?"]
+/**
+ * The household's first questions. The one set: the briefing's ask bar that
+ * carried its own is gone (Kevin, 2026-11-03: one place to type).
+ */
+const SUGGESTIONS = [
+  "What's on today?",
+  'What did we spend on groceries?',
+  'When is the next car service due?',
+  "What's on the Groceries list?",
+]
 
 export function AssistantChat({
   layout,
@@ -173,7 +182,7 @@ export function AssistantChat({
           <div className="pt-4 pb-1">
             <h2 className="text-[1.375rem]">Ask {name}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{intro}</p>
-            <SessionLine layout={layout} />
+            <SessionLine layout={layout} closable={onClose !== undefined} />
             <div className="mt-3 flex flex-wrap gap-2">
               {suggestions.map((text) => (
                 <button
@@ -190,7 +199,7 @@ export function AssistantChat({
           </div>
         ) : (
           <>
-            <SessionLine layout={layout} />
+            <SessionLine layout={layout} closable={onClose !== undefined} />
             {state.lines.map((line) => (
               <Bubble key={line.id} line={line} />
             ))}
@@ -261,13 +270,15 @@ export function AssistantChat({
   )
 }
 
-function SessionLine({ layout }: { layout: 'sheet' | 'panel' }) {
+function SessionLine({ layout, closable }: { layout: 'sheet' | 'panel'; closable: boolean }) {
   return (
     <p className="flex items-center justify-center gap-1.5 py-1 text-center text-[0.8125rem] text-muted-foreground">
       <Lock className="size-3.5 flex-none" aria-hidden="true" />
-      {layout === 'sheet'
-        ? 'Closing this, or a screen lock, ends it and clears it from the screen.'
-        : 'Closing this clears it from the screen.'}
+      {!closable
+        ? 'Leaving this page clears it from the screen.'
+        : layout === 'sheet'
+          ? 'Closing this, or a screen lock, ends it and clears it from the screen.'
+          : 'Closing this clears it from the screen.'}
     </p>
   )
 }

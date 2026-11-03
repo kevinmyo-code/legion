@@ -42,7 +42,12 @@ export function AssistantRailEntry() {
   )
 }
 
-export function AssistantDock() {
+/**
+ * `pinned`: the dock is part of the page and always open, with no close (the
+ * recruiter page, Kevin 2026-11-03: "keep the right panel window open at all
+ * times"). "New conversation" still clears it.
+ */
+export function AssistantDock({ pinned = false }: { pinned?: boolean } = {}) {
   const { client, name, ui } = useAssistant()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -61,10 +66,10 @@ export function AssistantDock() {
 
   // Focus the box whenever something asked for it (the rail entry, "/").
   useEffect(() => {
-    if (ui.open && ui.focusTick > 0) inputRef.current?.focus()
-  }, [ui.open, ui.focusTick])
+    if ((pinned || ui.open) && ui.focusTick > 0) inputRef.current?.focus()
+  }, [pinned, ui.open, ui.focusTick])
 
-  if (!ui.open) return null
+  if (!pinned && !ui.open) return null
   return (
     <aside
       id="assistant-dock"
@@ -74,10 +79,14 @@ export function AssistantDock() {
       <AssistantChat
         layout="panel"
         inputRef={inputRef}
-        onClose={() => {
-          client.reset()
-          ui.setOpen(false)
-        }}
+        onClose={
+          pinned
+            ? undefined
+            : () => {
+                client.reset()
+                ui.setOpen(false)
+              }
+        }
       />
     </aside>
   )

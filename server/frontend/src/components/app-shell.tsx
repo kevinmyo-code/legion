@@ -43,7 +43,7 @@ export function AppShell({
   )
 
   return (
-    <AssistantProvider>
+    <AssistantProvider defaultOpen>
       <EventSheetHost>
         {surface === 'workbench' ? (
           <WorkbenchShell items={items}>{content}</WorkbenchShell>

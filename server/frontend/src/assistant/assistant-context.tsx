@@ -83,6 +83,7 @@ export function AssistantProvider({
   openingTurn,
   sessionLimit,
   copy,
+  defaultOpen = false,
 }: {
   children: ReactNode
   deps?: LiveDeps
@@ -92,6 +93,12 @@ export function AssistantProvider({
   sessionLimit?: string
   /** Opt-in: the chat's subtitle, intro and first questions, wherever it opens (dock or sheet). */
   copy?: ChatCopy
+  /**
+   * Opt-in: the desk's docked chat starts open (Kevin, 2026-11-03: one place to
+   * type, and it is the dock). Desk width only: at phone width "open" is the
+   * full-screen sheet, which must never pop up on its own.
+   */
+  defaultOpen?: boolean
 }) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
@@ -123,7 +130,15 @@ export function AssistantProvider({
     return () => client.dispose()
   }, [client])
 
-  const [open, setOpenState] = useState(false)
+  const [open, setOpenState] = useState(() => defaultOpen && surface === 'workbench')
+  // Crossing 1024 px swaps dock for sheet. The sheet must not open itself on the
+  // way down; on the way back up a default-open dock opens again.
+  const lastSurface = useRef(surface)
+  useEffect(() => {
+    if (lastSurface.current === surface) return
+    lastSurface.current = surface
+    setOpenState(defaultOpen && surface === 'workbench')
+  }, [surface, defaultOpen])
   const [focusTick, setFocusTick] = useState(0)
   const setOpen = useCallback((next: boolean) => {
     setOpenState(next)

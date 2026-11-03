@@ -255,17 +255,24 @@ describe('the family surface', () => {
 describe('the workbench', () => {
   const desk: Surface = 'workbench'
 
-  test('the rail names the companion, opens a docked panel, and the page stays beside it', async () => {
+  test('the dock is open on load beside the page; the rail closes and reopens it', async () => {
     renderApp('/', engineWith({ assistant: { companionName: 'Mabel' } }), desk)
-    const entry = await screen.findByRole('button', { name: 'Mabel' })
-    expect(screen.queryByRole('complementary', { name: 'Conversation with Mabel' })).not.toBeInTheDocument()
-    fireEvent.click(entry)
+    // Kevin, 2026-11-03: one place to type, and on the desk it is the dock, open by default.
     const panel = await screen.findByRole('complementary', { name: 'Conversation with Mabel' })
-    const box = within(panel).getByRole('textbox', { name: 'Message Mabel' })
-    await waitFor(() => expect(document.activeElement).toBe(box))
+    expect(within(panel).getByRole('textbox', { name: 'Message Mabel' })).toBeInTheDocument()
+    // Opening on load does not grab focus (a focused field would hold back a deploy's reload).
+    expect(document.activeElement).toBe(document.body)
     // The page itself is still there.
     expect(screen.getByRole('navigation', { name: 'Sections' })).toBeInTheDocument()
     expect(screen.getByRole('main')).toBeInTheDocument()
+
+    const entry = screen.getByRole('button', { name: 'Mabel' })
+    fireEvent.click(entry)
+    expect(screen.queryByRole('complementary', { name: 'Conversation with Mabel' })).not.toBeInTheDocument()
+    fireEvent.click(entry)
+    const reopened = await screen.findByRole('complementary', { name: 'Conversation with Mabel' })
+    const box = within(reopened).getByRole('textbox', { name: 'Message Mabel' })
+    await waitFor(() => expect(document.activeElement).toBe(box))
   })
 
   test('"/" opens the panel and focuses the box, but does not steal a slash typed in a field', async () => {
@@ -282,7 +289,6 @@ describe('the workbench', () => {
 
   test('a desk conversation survives the tab being hidden', async () => {
     renderApp('/', engineWith(), desk)
-    fireEvent.click(await screen.findByRole('button', { name: 'Dorothy' }))
     const panel = await screen.findByRole('complementary', { name: 'Conversation with Dorothy' })
     typeAndSend(within(panel).getByRole('textbox', { name: 'Message Dorothy' }), 'hi')
     await connect()
