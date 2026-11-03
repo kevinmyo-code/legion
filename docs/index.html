@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>284 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 46 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 64 are waiting on another ticket first. <b>149 are already built</b> and owe nothing but a run on the phone. 17 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 46 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 63 are waiting on another ticket first. <b>150 are already built</b> and owe nothing but a run on the phone. 17 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">284</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">54</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">149</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">64</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">150</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">63</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">11</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">107</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">106</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">17</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -278,15 +278,15 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>procedures</h2>
-<span class="counts"><span class="k">11</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">3</span> built<span class="sep">&middot;</span><span class="k amber">8</span> blocked<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
-<span class="bar"><i style="flex:3"></i><b style="flex:8"></b></span>
+<span class="counts"><span class="k">11</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">7</span> blocked<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
+<span class="bar"><i style="flex:4"></i><b style="flex:7"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-built" data-type="built" data-state="built"><span class="num">10</span><span class="body"><span class="tt">Baseline: measure round trips, latency and tool errors from recorded conversations</span><span class="det">measuring command built and tested on fixtures; owes Kevin&#x27;s run on the deployed worker and the table in research/</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">12</span><span class="body"><span class="tt">Build: engine runner and the run_procedure MCP tool</span><span class="det">built 2026-11-03 on feat/procedures-runner, suite green bar the known dev failures; owes deploy and a real MCP client running car_check (ticket 15 ships it)</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">13</span><span class="body"><span class="tt">Build: run traces, linked to conversation records, with retention</span><span class="det">built 2026-11-03 on feat/procedures-runner, suite green bar the known dev failures; owes deploy</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">15</span><span class="body"><span class="tt">Build: car_check, money_check, morning_briefing as built-ins</span><span class="det">built 2026-11-03 on feat/procedures-builtins, targeted suites green; owes deploy and a real MCP client (Claude Code) running car_check against the deployed engine</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Build: branch report and run inspector on the web desk</span></span><span class="chip c-build">build</span><span class="state">waiting on #07, #13</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">15</span><span class="body"><span class="tt">Build: car_check, money_check, morning_briefing as built-ins</span></span><span class="chip c-build">build</span><span class="state">waiting on #09, #12</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">16</span><span class="body"><span class="tt">Build: phone declares run_procedure (direct, non-blocking when read-only)</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05, #12, #15</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">17</span><span class="body"><span class="tt">Build: head unit declares run_procedure directly</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #12, #15</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">18</span><span class="body"><span class="tt">Build: web assistant and recruiter visit use run_procedure</span></span><span class="chip c-build">build</span><span class="state">waiting on #07, #12, #15</span></li>
