@@ -80,7 +80,9 @@ Raise it the day a text-model route exists and `charge_text_call` is wired.
   tool call inside a conversation the voice cap already admitted, and
   refusing it on the voice cap would end a paid-for session's usefulness
   before the budget is spent. A search Google refused (HTTP error) is
-  released; one that timed out is kept, since it may have been billed.
+  released; one that timed out is kept, since it may have been billed, and
+  so is one whose handler raised something unexpected (`run_engine_tool`
+  turns that into a failed result): a cent or two under-used, never over.
 """
 
 from __future__ import annotations
