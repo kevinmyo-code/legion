@@ -35,6 +35,19 @@ reach an outside account; it gains writes only on rows nobody else can see.
 - Expiry: `prune_demo_visitors` deletes the whole visit household with its rows.
 - Budget (04) unchanged: still one global $5/day.
 
+## Rulings (Kevin, 2026-11-02, after the parity inventory, research/01)
+
+1. Recruiters use the NORMAL web app screens on their own visit household (Money, Fleet, Lists,
+   Calendar, Places, Notes...), not only the assistant. Outside-account screens stay hidden/refused:
+   bank link (Plaid), mail, Spotify account, Drive, calendar sync, Claude sessions, device logs,
+   household settings/members/invites.
+2. The landing page stays: after the code, the visitor lands on `/try` (about Kevin, Quanex, Alfred)
+   with a way into the app; the app shows a demo banner linking back to it.
+3. Body aspect stays EXCLUDED for recruiters (no seed, no screens, no tools).
+4. Voice notes ALLOWED for recruiters (seeded, fake; read via tools and the Notes screen).
+5. Build order: this ticket first, then the quick-win engine tools (members and recruiters), then the
+   bigger ports, then the aspect engine.
+
 ## Integrity exemption (Kevin approved, 2026-11-02: "ok")
 
 The database refuses to delete verified money rows (`forbid_mutation_of_facts`). Per-visit
