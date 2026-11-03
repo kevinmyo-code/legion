@@ -248,6 +248,40 @@ def record_tool(request, conversation_id, **call) -> None:
         log.warning("conversation record: could not write a tool call", exc_info=True)
 
 
+def record_procedure_run(
+    request,
+    conversation_id,
+    *,
+    run_id: str,
+    name: str,
+    version: int,
+    status: str,
+    steps: int,
+    ms: int,
+    branches: list[str],
+) -> None:
+    """One `procedure_run` line in the caller's conversation (procedures ticket 13, ruling 06),
+    beside the `tool_call` / `tool_result` lines the tool door writes for the same call. Names
+    the run, so the record leads to its trace. Silent when the conversation is not the caller's
+    web record: the phone and head unit log their own lines."""
+    now = timezone.now()
+    taken = ",".join(word(b, 60) for b in branches) or "-"
+    msg = (
+        f"procedure_run run={word(run_id)} name={word(name)} version={int(version)} "
+        f"status={word(status)} steps={int(steps)} ms={int(ms)} branches={taken}"
+    )
+    try:
+        with transaction.atomic():
+            row = owned(request, conversation_id)
+            if row is None:
+                return
+            append(row, [(now, line(now, TID_ENGINE, AUDIT, msg))])
+    except TooLarge:
+        return
+    except DatabaseError:
+        log.warning("conversation record: could not write a procedure run", exc_info=True)
+
+
 # ---- the browser's events -----------------------------------------------------
 
 EVENT_KINDS: tuple[str, ...] = (

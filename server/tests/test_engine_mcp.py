@@ -161,7 +161,10 @@ def test_tools_list_is_the_registry_with_its_hints(mcp_read):
     for name, listed in tools.items():
         tool = TOOLS_BY_NAME[name]
         hints = listed["annotations"]
-        assert hints["readOnlyHint"] is (not tool.writes), name
+        # run_procedure is writes=False so a read token may run a read-only procedure, but a
+        # procedure may write after asking, so it is never hinted read-only (ADR 0070).
+        may_write = tool.writes or name == "run_procedure"
+        assert hints["readOnlyHint"] is (not may_write), name
         assert hints["destructiveHint"] is tool.destructive, name
         assert listed["inputSchema"] == tool.input_schema
 

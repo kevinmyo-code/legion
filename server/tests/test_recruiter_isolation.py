@@ -459,6 +459,139 @@ def test_web_search_sends_the_question_and_nothing_of_either_household(world, mo
     assert after == before
 
 
+# -----------------------------------------------------------------------------
+# run_procedure (procedures ticket 12, ruling 07): a visitor runs only a
+# procedure built entirely from RECRUITER_TOOLS, every step still goes through
+# the visit's fence, and nothing of Kevin's household comes back.
+# -----------------------------------------------------------------------------
+
+
+def _procedure(definition, household=None):
+    from django.utils import timezone
+
+    from procedures.definition import validate
+    from procedures.models import Procedure, ProcedureVersion, Source
+
+    checked = validate(definition)
+    procedure = Procedure.objects.create(household=household, name=definition["name"])
+    ProcedureVersion.objects.create(
+        procedure=procedure, household=household, version=1, definition=definition,
+        source=Source.HAND if household else Source.BUILTIN, content_sha256="0" * 64,
+        writes=checked.writes, is_active=True, approved_at=timezone.now(),
+    )
+
+
+def _visit_read(name="visit_read"):
+    return {
+        "name": name,
+        "description": "The visit's places, events and checklists.",
+        "steps": [
+            {"id": "places", "kind": "tool", "tool": "read_records",
+             "args": {"table": "places", "active_only": False}, "next": "events"},
+            {"id": "events", "kind": "tool", "tool": "list_events", "args": WIDE,
+             "next": "lists"},
+            {"id": "lists", "kind": "tool", "tool": "list_checklists", "next": "answer"},
+            {"id": "answer", "kind": "say",
+             "template": "{$steps.places} {$steps.events} {$steps.lists}"},
+        ],
+    }
+
+
+def _table_from_input(name="by_table"):
+    return {
+        "name": name,
+        "description": "Reads the table the caller names.",
+        "inputs": {"table": {"description": "A table.", "required": True}},
+        "steps": [
+            {"id": "rows", "kind": "tool", "tool": "read_records",
+             "args": {"table": "$inputs.table", "active_only": False}, "next": "answer"},
+            {"id": "answer", "kind": "say", "template": "{$steps.rows}"},
+        ],
+    }
+
+
+def _run(world, name, **args):
+    return _tool(world["browser"], "run_procedure", {"name": name, **args})
+
+
+def test_run_procedure_reads_only_the_demo(world):
+    from procedures.models import ProcedureRun
+
+    _procedure(_visit_read())
+    before = _row_counts()
+    text = _allowed(world, "run_procedure", {"name": "visit_read"})
+    assert "Home" in text  # the demo's own place
+    (run,) = ProcedureRun.objects.all()
+    assert run.household_id == world["demo"].id and run.caller_kind == "recruiter"
+    assert run.status == "ok" and run.steps.count() == 4
+    assert not run.steps.exclude(household=world["demo"]).exists()
+    after = _row_counts()
+    assert after.pop("public.procedure_runs") == before.pop("public.procedure_runs") + 1
+    assert after.pop("public.procedure_steps") == before.pop("public.procedure_steps") + 4
+    assert after == before
+
+
+def test_a_recruiter_naming_a_member_only_procedure_runs_nothing(world):
+    """Kevin's household's own procedure is invisible; a built-in that uses a
+    tool outside the visit's list is refused before any step."""
+    from procedures.models import ProcedureRun
+
+    _procedure(_visit_read("kevins_own"), household=world["kevin"])
+    member_only = _visit_read("member_only")
+    member_only["steps"][0] = {"id": "places", "kind": "tool", "tool": "list_tables",
+                               "next": "events"}
+    _procedure(member_only)
+    before = _row_counts()
+    own = _run(world, "kevins_own").data
+    assert own["is_error"] is True and "no procedure called 'kevins_own'" in own["text"]
+    builtin = _run(world, "member_only").data
+    assert builtin["is_error"] is True
+    assert "not available on this demo visit" in builtin["text"]
+    assert "list_tables" in builtin["text"]
+    for text in (own["text"], builtin["text"]):
+        assert text.startswith("Nothing ran.") and _leaks(world, text) == []
+    assert not ProcedureRun.objects.exists()
+    assert _row_counts() == before
+
+
+def test_the_visit_fence_applies_to_every_step_with_injected_inputs(world):
+    """The prompt-injection shape through a procedure: the model may fill an
+    input with anything; the step's call still meets `refusal_for` with the
+    filled-in arguments, so a table outside the visit refuses in words."""
+    from procedures.models import ProcedureStep
+
+    _procedure(_table_from_input())
+    outside = sorted(set(READABLE) - set(RECRUITER_TABLES))
+    before = _row_counts()
+    for table in (*outside, "../read_records", f"places; drop table {MARK}"):
+        data = _run(world, "by_table", inputs={"table": table}).data
+        assert data["is_error"] is True, (table, data["text"])
+        assert "Nothing was written." in data["text"]
+        assert _leaks(world, data["text"].replace(table, "")) == [], (table, data["text"])
+    refused = ProcedureStep.objects.filter(step_id="rows")
+    assert refused.count() == len(outside) + 2
+    assert set(refused.values_list("outcome", flat=True)) == {"refused"}
+    # Only the traces were written: no row anywhere else moved.
+    after = _row_counts()
+    for table in ("public.procedure_runs", "public.procedure_steps"):
+        after.pop(table), before.pop(table)
+    assert after == before
+
+
+def test_the_visitors_declaration_lists_only_procedures_it_may_run(world):
+    from assistant.surface import tools_for
+
+    _procedure(_visit_read())
+    member_only = _visit_read("member_only")
+    member_only["steps"][0] = {"id": "places", "kind": "tool", "tool": "list_tables",
+                               "next": "events"}
+    _procedure(member_only)
+    _procedure(_visit_read("kevins_own"), household=world["kevin"])
+    (tool,) = [t for t in tools_for(world["visitor"]) if t.name == "run_procedure"]
+    assert tool.input_schema["properties"]["name"]["enum"] == ["visit_read"]
+    assert "member_only" not in tool.description and "kevins_own" not in tool.description
+
+
 def test_every_allowed_tool_was_exercised():
     """The tests above and in section 4 name each tool by hand; a tool added
     to `RECRUITER_TOOLS` fails here until it gets an isolation test."""
@@ -494,6 +627,8 @@ def test_every_allowed_tool_was_exercised():
         "archive_checklist",
         "rename_place",
         "skip_event_occurrence",
+        # procedures (ADR 0070, ruling 07): the run_procedure tests below
+        "run_procedure",
     }
     assert set(RECRUITER_TOOLS) == exercised
 

@@ -189,9 +189,7 @@ class ProcedureRun(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # Always the caller's household, a built-in's run included. CASCADE (ruling 06): a recruiter
     # visit's runs are deleted with the visit household.
-    household = models.ForeignKey(
-        "household.Household", on_delete=models.CASCADE, related_name="+"
-    )
+    household = models.ForeignKey("household.Household", on_delete=models.CASCADE, related_name="+")
     # SET_NULL: a trace outlives its account, as a conversation record does.
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -251,9 +249,7 @@ class ProcedureStep(models.Model):
     id = models.BigAutoField(primary_key=True)
     run = models.ForeignKey(ProcedureRun, on_delete=models.CASCADE, related_name="steps")
     # Always its run's household; carried so the table is tenant-scoped on its own.
-    household = models.ForeignKey(
-        "household.Household", on_delete=models.CASCADE, related_name="+"
-    )
+    household = models.ForeignKey("household.Household", on_delete=models.CASCADE, related_name="+")
     # Order within the run.
     seq = models.PositiveIntegerField()
     step_id = models.TextField()

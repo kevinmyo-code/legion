@@ -54,6 +54,9 @@ INSTRUCTIONS = (
 
 
 def _as_mcp_tool(tool) -> types.Tool:
+    # `run_procedure` is `writes=False` so a read-scoped token may run a read-only procedure,
+    # but a procedure may write (after asking): it is not hinted read-only or idempotent.
+    may_write = tool.writes or tool.name == "run_procedure"
     return types.Tool(
         name=tool.name,
         title=tool.title,
@@ -61,16 +64,33 @@ def _as_mcp_tool(tool) -> types.Tool:
         input_schema=tool.input_schema,
         annotations=types.ToolAnnotations(
             title=tool.title,
-            read_only_hint=not tool.writes,
+            read_only_hint=not may_write,
             destructive_hint=tool.destructive,
-            idempotent_hint=True if not tool.writes else None,
+            idempotent_hint=True if not may_write else None,
             open_world_hint=False,
         ),
     )
 
 
+def _tools_for_request(request):
+    """The registry, with `run_procedure`'s `name` enum narrowed to the procedures this caller
+    may run (procedures ticket 12). Reads the ORM, so it runs on the request's thread."""
+    from household.tenancy import household_of
+    from procedures.listing import tool_for
+
+    household = household_of(request) if request is not None else None
+    return [
+        tool_for(tool, getattr(request, "user", None), household)
+        if tool.name == "run_procedure"
+        else tool
+        for tool in TOOLS
+    ]
+
+
 async def _list_tools(ctx, params) -> types.ListToolsResult:
-    return types.ListToolsResult(tools=[_as_mcp_tool(tool) for tool in TOOLS])
+    request = CURRENT_REQUEST.get(None)
+    tools = await sync_to_async(_tools_for_request, thread_sensitive=True)(request)
+    return types.ListToolsResult(tools=[_as_mcp_tool(tool) for tool in tools])
 
 
 async def _call_tool(ctx, params) -> types.CallToolResult:

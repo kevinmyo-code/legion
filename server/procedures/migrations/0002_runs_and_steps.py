@@ -28,7 +28,6 @@ _RESTORE_SEARCH_PATH_TO_DJANGO_FIRST = migrations.RunSQL(
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("household", "0008_demo_visit_delete_exemption"),
         ("procedures", "0001_initial"),
@@ -182,15 +181,11 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="procedurerun",
-            index=models.Index(
-                fields=["started_at"], name="procedure_runs_started_idx"
-            ),
+            index=models.Index(fields=["started_at"], name="procedure_runs_started_idx"),
         ),
         migrations.AddIndex(
             model_name="procedurerun",
-            index=models.Index(
-                fields=["conversation_id"], name="procedure_runs_convo_idx"
-            ),
+            index=models.Index(fields=["conversation_id"], name="procedure_runs_convo_idx"),
         ),
         migrations.AddConstraint(
             model_name="procedurerun",
@@ -233,9 +228,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="procedurestep",
             constraint=models.CheckConstraint(
-                condition=models.Q(
-                    ("outcome__in", ["ok", "refused", "failed", "asked"])
-                ),
+                condition=models.Q(("outcome__in", ["ok", "refused", "failed", "asked"])),
                 name="procedure_steps_outcome_valid",
             ),
         ),

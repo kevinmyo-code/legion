@@ -19,6 +19,7 @@ the free-text field always last, JSON-quoted, capped at 400 characters with a ".
     tool_result id=<id> name=<name> success=<bool> ms=<n> scheduling=<WHEN_IDLE|none> sent=<bool>
         response=<json>
     tool_cancelled id=<id> name=<name>
+    procedure_run run=<id> name=<name> version=<n> status=<status> steps=<n> ms=<n> branches=<step:branch,..|->
     turn_complete | interrupted source=<server|barge_in> | activity_start | activity_end
     mic_open reason=<first_open|turn_handback> | mic_closed reason=<half_duplex|park|session_end|superseded>
     nudge reason=<still_checking|late_holding_line|empty_holding_line> tool=<name|none> [after_ms=<n>]
@@ -474,6 +475,12 @@ def _items(events, verbose):
                 flags += " [redacted]"
             items.append((time, "result", f"TOOL <- {fields.get('name')} {ok} {fields.get('ms')}ms{flags}",
                           (fields.get("id"), None if response == REDACTED else response)))
+        elif event == "procedure_run":
+            branches = fields.get("branches", "-")
+            taken = f" branches {branches}" if branches != "-" else ""
+            items.append((time, "event", f"PROCEDURE {fields.get('name')} v{fields.get('version')} "
+                          f"{fields.get('status')}, {fields.get('steps')} steps, "
+                          f"{fields.get('ms')}ms{taken} (run {fields.get('run')})", None))
         elif event == "tool_cancelled":
             items.append((time, "event", f"TOOL x {fields.get('name')} cancelled", None))
         elif event == "turn_complete":

@@ -526,6 +526,18 @@ def _no_nhtsa(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_decide_model(monkeypatch):
+    """No test reaches Google from a procedure's `decide` step: its one call fails as
+    unreachable unless a test hands it a transport (`tests/test_procedures_runner.py`)."""
+    from procedures import decide
+
+    def _offline(method, url, headers, body):
+        raise OSError("tests do not reach Google")
+
+    monkeypatch.setattr(decide, "_transport", _offline)
+
+
+@pytest.fixture(autouse=True)
 def _no_web_search(monkeypatch):
     """No test reaches Google: `web_search`'s one call fails as unreachable
     unless a test hands it a transport (`tests/test_web_search.py`)."""

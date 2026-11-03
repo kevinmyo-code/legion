@@ -111,6 +111,12 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     # nothing of the household; each call is charged against the demo's daily
     # budget before Google is asked (`demo.budget.charge_web_search`).
     "web_search",
+    # Procedures (ADR 0070, ruling 07): only procedures whose EVERY tool step
+    # is in this tuple, checked when the declaration is built
+    # (`procedures.listing.tool_for`) and again before the run starts; each
+    # step still goes through `refusal_for` below as it runs
+    # (`procedures/runner.py`), so a procedure never reaches past this list.
+    "run_procedure",
     "about_kevin",
 )
 
@@ -181,8 +187,16 @@ def recruiter_only_tool(name: str, user):
 
 def tools_for(user):
     """The tools `user`'s web assistant is declared, in order. A recruiter
-    gets `RECRUITER_TOOLS`; everyone else the whole web surface, unchanged."""
-    return recruiter_tools() if is_recruiter(user) else web_tools()
+    gets `RECRUITER_TOOLS`; everyone else the whole web surface, unchanged,
+    but for `run_procedure`, whose `name` enum lists what THIS user may run
+    (`procedures.listing.tool_for`)."""
+    from procedures.listing import tool_for
+
+    tools = recruiter_tools() if is_recruiter(user) else web_tools()
+    return [
+        tool_for(tool, user, user.household) if tool.name == "run_procedure" else tool
+        for tool in tools
+    ]
 
 
 def web_description(tool) -> str:

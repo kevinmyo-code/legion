@@ -1685,6 +1685,19 @@ def _web_search(request, args) -> ToolResult:
 
 
 # =============================================================================
+# run_procedure: one call runs a whole procedure (procedures ticket 12, ADR 0070).
+# The runner is `procedures/runner.py`; it applies the caller's surface fence and
+# the write fence to EVERY step itself, which is why this tool is `writes=False`.
+# =============================================================================
+
+
+def _run_procedure(request, args) -> ToolResult:
+    from procedures.runner import run_procedure
+
+    return run_procedure(request, args)
+
+
+# =============================================================================
 
 
 @dataclass(frozen=True)
@@ -2214,6 +2227,38 @@ TOOLS: tuple[EngineTool, ...] = (
             {"query": {"type": "string", "minLength": 1, "maxLength": 300}}, ("query",)
         ),
         handler=_web_search,
+    ),
+    # procedures ticket 12 (ADR 0070). `writes=False` ON PURPOSE: `run_engine_tool`
+    # checks the write fence on this STATIC flag before the handler, so `True`
+    # would refuse every procedure to a read-scoped token, read-only ones
+    # included, and a recruiter's visitor token is read-scoped. The runner calls
+    # `write_refusal` itself before any step whose tool writes. The `name` enum
+    # is per caller (`procedures.listing.tool_for`); this static schema is what
+    # `run_engine_tool` validates against.
+    EngineTool(
+        name="run_procedure",
+        title="Run a procedure",
+        description=(
+            "Runs one of the household's procedures: a fixed set of steps the engine runs in "
+            "one call (\"how's the car\", \"money\", the morning briefing) and answers with "
+            "every caveat its tools gave. Repeat the answer's words; never report a write unless "
+            "the result says it was written. When the result's status is needs_answer it asks "
+            "a question: say it, and call this again with the same name, the resume_token and "
+            "the person's answer (one of the answers it lists) on the very next thing they say, "
+            "within two minutes; anything else cancels it. A procedure that writes asks before "
+            "it writes."
+        ),
+        input_schema=_object(
+            {
+                "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,62}$"},
+                "inputs": {"type": "object"},
+                "resume_token": {"type": "string", "minLength": 1, "maxLength": 200},
+                "answer": {"type": "string", "maxLength": 200},
+                "conversation_id": _UUID,
+            },
+            ("name",),
+        ),
+        handler=_run_procedure,
     ),
 )
 

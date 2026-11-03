@@ -20,6 +20,11 @@ delete and deletes nothing.
 "to improve" the assistant). Those rows have no household, so the visit's
 household going does not take them; this step is what does, 30 days after each
 arrived, whether or not its visit has ended.
+
+**And procedure run traces past retention** (`procedures.retention.prune`,
+procedures ticket 13): a visit's runs go with its household above; this is
+the 30-day backstop for recruiter runs and the 60-day sweep for members'
+(also run inline at each new run).
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from demo.visit_cleanup import delete_visit_household
 from devicelogs.models import VISIT_RETENTION_DAYS, DeviceLog
 from devicelogs.web_conversation import prune_visit_records
 from household.models import Household, HouseholdMember, User
+from procedures.retention import prune as prune_runs
 
 
 class Command(BaseCommand):
@@ -84,8 +90,10 @@ class Command(BaseCommand):
         with transaction.atomic():
             legacy_users.delete()
         records = prune_visit_records()
+        runs = prune_runs()
         self.stdout.write(
             f"Deleted {n_households} expired demo visit household(s) ({rows} rows, visitors "
             f"included) and {n_legacy} older visitor(s) with their tokens, and {records} visit "
-            f"conversation record(s) older than {VISIT_RETENTION_DAYS} days."
+            f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, and {runs} procedure "
+            f"run(s) past retention."
         )
