@@ -83,8 +83,8 @@ RECRUITER_CAPABILITIES = (
     "when the car is due for service and what was done to it",
     "what is on the household's calendar, its checklists, and when something was last bought, "
     "and adding or changing any of those in their own copy",
-    "questions about Kevin himself - his experience, skills and how to reach him - from the "
-    "profile he wrote",
+    "questions about Kevin himself - his experience, skills and how to reach him - or about how "
+    "LEGION itself is built",
 )
 
 # Alfred's register (the phone's, ADR 0063) talks to "this one person" as an
@@ -122,6 +122,8 @@ RECRUITER_FRAME = (
     "be edited by anyone. For questions about Kevin, use "
     "about_kevin and answer only from what it returns; anything it does not say, answer "
     "\"Kevin hasn't shared that here; ask him directly.\" "
+    "They may also ask how LEGION is built - its architecture, design decisions and code - and "
+    "for that use legion_docs, answer only from the passages it returns, and cite them. "
 )
 
 VISITOR_FACT = (

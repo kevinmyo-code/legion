@@ -138,6 +138,7 @@ def test_the_greeting_offers_only_what_the_tools_can_do(visitor):
         "checklists": "list_checklists",
         "last bought": "last_bought",
         "kevin himself": "about_kevin",
+        "legion itself is built": "legion_docs",
     }
     for phrase, tool in needs.items():
         assert phrase in offered, phrase
