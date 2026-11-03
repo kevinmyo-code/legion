@@ -69,11 +69,14 @@ export function AssistantProvider({
   children,
   deps,
   openingTurn,
+  sessionLimit,
 }: {
   children: ReactNode
   deps?: LiveDeps
   /** Opt-in: a hidden first turn so the assistant speaks first (`LiveOptions.openingTurn`). */
   openingTurn?: string
+  /** Opt-in: end each conversation when its token expires, with this sentence (`LiveOptions.sessionLimit`). */
+  sessionLimit?: string
 }) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
@@ -88,11 +91,16 @@ export function AssistantProvider({
   useEffect(() => {
     openingRef.current = openingTurn
   }, [openingTurn])
+  const limitRef = useRef(sessionLimit)
+  useEffect(() => {
+    limitRef.current = sessionLimit
+  }, [sessionLimit])
   const [client] = useState(
     () =>
       new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',
         openingTurn: () => openingRef.current ?? null,
+        sessionLimit: () => limitRef.current ?? null,
       }),
   )
   useEffect(() => {

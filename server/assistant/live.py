@@ -59,7 +59,11 @@ OUTPUT_AUDIO_RATE = 24000
 
 # One conversation per mint; resuming is not a new use (and is not used, see
 # the module doc). `expireTime` mirrors the phone's 30-minute conversation
-# backstop; `newSessionExpireTime` is how long the browser has to connect.
+# backstop for a member; a recruiter's token is shorter
+# (`LEGION_DEMO_MAX_SESSION_MINUTES`, `assistant/session.py`). After it Google
+# rejects the session's messages and "may" close it (API reference
+# `AuthToken.expireTime`), so the browser ends a capped conversation itself too.
+# `newSessionExpireTime` is how long the browser has to connect.
 USES = 1
 TOKEN_LIFETIME = timedelta(minutes=30)
 CONNECT_WINDOW = timedelta(seconds=60)
@@ -151,11 +155,17 @@ def _rfc3339(when: datetime) -> str:
     return when.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def build_token_request(setup: dict, now: datetime) -> dict:
-    """The body of `POST v1beta/auth_tokens`. The key is a header, never here."""
+def build_token_request(
+    setup: dict, now: datetime, *, lifetime: timedelta = TOKEN_LIFETIME
+) -> dict:
+    """The body of `POST v1beta/auth_tokens`. The key is a header, never here.
+    `lifetime` is how long the conversation may last; shorter than the connect
+    window is refused, since a token that dies before it connects is no token."""
+    if lifetime < CONNECT_WINDOW:
+        raise ValueError(f"lifetime {lifetime} is shorter than the connect window")
     body = {
         "uses": USES,
-        "expireTime": _rfc3339(now + TOKEN_LIFETIME),
+        "expireTime": _rfc3339(now + lifetime),
         "newSessionExpireTime": _rfc3339(now + CONNECT_WINDOW),
         "bidiGenerateContentSetup": setup,
     }

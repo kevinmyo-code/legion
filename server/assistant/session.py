@@ -6,12 +6,13 @@ so the operator's manual mint sends exactly what a browser's would.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from assistant import live
 from assistant.companions import ResolvedCompanion, companion_for
 from assistant.prompt import build_system_prompt
 from assistant.surface import tools_for, web_description
+from demo.budget import max_session_minutes
 from household.models import is_recruiter
 from household.timezones import utc_offset_minutes as zone_offset_minutes
 
@@ -27,6 +28,7 @@ def token_request_for(
     enters the prompt (CLAUDE.md section 1: it made the assistant talk about
     Chicago to a man in Houston)."""
     companion = companion_for(user)
+    recruiter = is_recruiter(user)
     from_household = False
     if utc_offset_minutes is None:
         household = user.household
@@ -41,9 +43,15 @@ def token_request_for(
             now=now,
             utc_offset_minutes=utc_offset_minutes,
             offset_from_household=from_household,
-            recruiter=is_recruiter(user),
+            recruiter=recruiter,
         ),
         voice_name=companion.voice_name,
         declarations=live.function_declarations(tools_for(user), web_description),
     )
-    return live.build_token_request(setup, now), companion
+    # A recruiter's conversation is capped (Kevin, 2026-11-02): the token dies
+    # at the cap, and the mint reserved exactly that many minutes
+    # (`demo/budget.py`). A member keeps the 30-minute backstop.
+    lifetime = (
+        timedelta(minutes=max_session_minutes()) if recruiter else live.TOKEN_LIFETIME
+    )
+    return live.build_token_request(setup, now, lifetime=lifetime), companion

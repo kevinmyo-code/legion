@@ -30,11 +30,16 @@ def _fresh_throttle():
     cache.clear()
 
 
-def _limits(settings, *, budget_usd="5", reserve="1", minute="0.10", text="0.01"):
+def _limits(
+    settings, *, budget_usd="5", reserve="1", minute="0.20", text="0.01", minutes="5"
+):
+    """$1.00 a mint unless told otherwise (5 minutes at 20 cents), so the
+    counting tests below read in whole dollars."""
     settings.LEGION_DEMO_DAILY_BUDGET_USD = budget_usd
     settings.LEGION_DEMO_TEXT_RESERVE_USD = reserve
     settings.LEGION_DEMO_COST_PER_VOICE_MINUTE_USD = minute
     settings.LEGION_DEMO_COST_PER_TEXT_CALL_USD = text
+    settings.LEGION_DEMO_MAX_SESSION_MINUTES = minutes
 
 
 def _reserved(day=None) -> int:
@@ -52,9 +57,25 @@ def test_defaults_are_the_rulings_and_round_up_to_the_cent(settings):
     assert lim.budget_cents == 500
     assert lim.text_reserve_cents == 0
     assert lim.voice_cap_cents == 500
-    assert lim.voice_mint_cents == budget.VOICE_MINT_MINUTES * 10 == 100
+    # Kevin, 2026-11-02: five minutes a conversation, and a mint reserves five.
+    assert budget.max_session_minutes() == lim.session_minutes == 5
+    assert lim.voice_mint_cents == 5 * 10 == 50
     _limits(settings, minute="0.001")
     assert budget.limits().voice_minute_cents == 1  # never rounds down to free
+
+
+def test_the_reservation_follows_the_session_cap(settings):
+    _limits(settings, minute="0.10", minutes="7")
+    assert budget.limits().voice_mint_cents == 70
+
+
+@pytest.mark.parametrize("bad", ["0", "-5", "five", "2.5", "31", ""])
+def test_a_bad_session_cap_refuses_in_words(settings, bad):
+    from django.core.exceptions import ImproperlyConfigured
+
+    _limits(settings, minutes=bad)
+    with pytest.raises(ImproperlyConfigured, match="LEGION_DEMO_MAX_SESSION_MINUTES"):
+        budget.limits()
 
 
 def test_a_bad_setting_refuses_in_words(settings):
@@ -195,6 +216,23 @@ def test_a_recruiter_mint_reserves_and_the_cap_refuses_in_words(
 
     refusals = AssistantCall.objects.filter(kind=AssistantCall.SESSION, outcome=Outcome.REFUSED)
     assert refusals.exists()
+
+
+def test_a_recruiter_token_dies_at_the_session_cap(recruiter, google, settings):  # noqa: F811
+    """Kevin, 2026-11-02: five minutes, enforced by the token Google is asked
+    for, not only by the page. A member's stays 30 (`test_assistant.py`)."""
+    _limits(settings)
+    before = datetime.now(UTC).replace(microsecond=0)
+    response = recruiter.post("/api/assistant/session", {}, format="json")
+    after = datetime.now(UTC) + timedelta(seconds=1)
+    assert response.status_code == 200, response.data
+    expire = datetime.fromisoformat(google.sent[0]["body"]["expireTime"])
+    assert before + timedelta(minutes=5) <= expire <= after + timedelta(minutes=5)
+    assert datetime.fromisoformat(response.data["expires_at"].replace("Z", "+00:00")) == expire
+    settings.LEGION_DEMO_MAX_SESSION_MINUTES = "3"
+    assert recruiter.post("/api/assistant/session", {}, format="json").status_code == 200
+    third = datetime.fromisoformat(google.sent[1]["body"]["expireTime"])
+    assert third <= datetime.now(UTC) + timedelta(minutes=3, seconds=1)
 
 
 def test_a_mint_google_refuses_gives_its_reservation_back(recruiter, google, settings):  # noqa: F811

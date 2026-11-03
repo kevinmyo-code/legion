@@ -61,6 +61,7 @@ async function startSession(utcOffsetMinutes: number): Promise<SessionResult> {
           model: data.model,
           wsUrl: data.ws_url,
           connectBy: Date.parse(data.connect_by),
+          expiresAt: Date.parse(data.expires_at),
           companionName: data.companion_name,
           inputAudioMime: data.input_audio_mime,
           outputAudioRate: data.output_audio_rate,

@@ -21,6 +21,7 @@ const SESSION: SessionResult = {
     model: 'gemini-3.8-live',
     wsUrl: 'wss://live.example.test/ws',
     connectBy: Date.now() + 60_000,
+    expiresAt: Date.now() + 30 * 60_000,
     companionName: 'Dorothy',
     inputAudioMime: 'audio/pcm;rate=16000',
     outputAudioRate: 24000,
@@ -538,5 +539,106 @@ describe('an opening turn (opt-in, for a page that wants the assistant to speak 
     const { client } = buildWithOpening(null)
     const socket = await liveVoice(client)
     expect(socket.sentOf('clientContent')).toEqual([])
+  })
+})
+
+describe('a session limit (opt-in, for a page whose sessions are capped short)', () => {
+  const LIMIT = 'Demo sessions last 5 minutes. Start another any time.'
+  const FIVE_MINUTES = 5 * 60_000
+
+  function buildWithLimit(limit: string | null) {
+    const audio = new FakeAudio()
+    const startSession = vi.fn(
+      async (): Promise<SessionResult> => ({
+        ok: true,
+        session: { ...(SESSION as Extract<SessionResult, { ok: true }>).session, expiresAt: Date.now() + FIVE_MINUTES },
+      }),
+    )
+    const deps: LiveDeps = {
+      startSession,
+      runTool: async () => ({ success: true, text: '', forward: { success: true, message: '' } }),
+      openSocket: (url) => new FakeLiveSocket(url),
+      audio: () => audio,
+      now: () => Date.now(),
+      utcOffsetMinutes: () => -300,
+    }
+    const client = new LiveClient(deps, { endOnHidden: () => false, sessionLimit: () => limit })
+    client.attach()
+    return { client, audio, startSession }
+  }
+
+  async function liveFake(client: LiveClient) {
+    client.send('hello')
+    await vi.advanceTimersByTimeAsync(0)
+    FakeLiveSocket.last.open()
+    FakeLiveSocket.last.serve({ setupComplete: {} })
+    await vi.advanceTimersByTimeAsync(0)
+    return FakeLiveSocket.last
+  }
+
+  it('ends the conversation when the token expires, in its sentence, mic released and socket closed', async () => {
+    vi.useFakeTimers()
+    try {
+      const { client, audio } = buildWithLimit(LIMIT)
+      const socket = await liveFake(client)
+      await client.startVoice()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(client.getState().mic).toBe('on')
+      await vi.advanceTimersByTimeAsync(FIVE_MINUTES - 1_000)
+      expect(client.getState().phase).toBe('live')
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(client.getState()).toMatchObject({ phase: 'ended', mic: 'off', ended: LIMIT })
+      expect(audio.micOpen).toBe(false)
+      expect(socket.closed).toBe(true)
+      expect(client.send('one more?')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a new conversation after the limit gets its own five minutes', async () => {
+    vi.useFakeTimers()
+    try {
+      const { client, startSession } = buildWithLimit(LIMIT)
+      await liveFake(client)
+      await vi.advanceTimersByTimeAsync(FIVE_MINUTES)
+      expect(client.getState().ended).toBe(LIMIT)
+      client.reset()
+      await liveFake(client)
+      expect(startSession).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(FIVE_MINUTES - 1_000)
+      expect(client.getState().phase).toBe('live')
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(client.getState().ended).toBe(LIMIT)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a conversation reset before the limit is not ended by the old timer', async () => {
+    vi.useFakeTimers()
+    try {
+      const { client } = buildWithLimit(LIMIT)
+      await liveFake(client)
+      await vi.advanceTimersByTimeAsync(FIVE_MINUTES - 60_000)
+      client.reset()
+      await liveFake(client)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(client.getState().phase).toBe('live')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('without one, nothing ends the conversation at the token time (the member app)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { client } = buildWithLimit(null)
+      await liveFake(client)
+      await vi.advanceTimersByTimeAsync(FIVE_MINUTES + 60_000)
+      expect(client.getState().phase).toBe('live')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

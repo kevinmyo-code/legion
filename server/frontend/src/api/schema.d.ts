@@ -3536,7 +3536,7 @@ export interface components {
             ws_url: string;
             /**
              * Format: date-time
-             * @description The conversation cannot outlive this (about 30 minutes).
+             * @description The conversation cannot outlive this: about 30 minutes for a member, `LEGION_DEMO_MAX_SESSION_MINUTES` (5) for a recruiter's demo visit.
              */
             expires_at: string;
             /**

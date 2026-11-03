@@ -147,7 +147,10 @@ SessionResponse = inline_serializer(
             help_text="Append `?access_token=<token, URL-encoded>` and open a WebSocket."
         ),
         "expires_at": serializers.DateTimeField(
-            help_text="The conversation cannot outlive this (about 30 minutes)."
+            help_text=(
+                "The conversation cannot outlive this: about 30 minutes for a member, "
+                "`LEGION_DEMO_MAX_SESSION_MINUTES` (5) for a recruiter's demo visit."
+            )
         ),
         "connect_by": serializers.DateTimeField(
             help_text="The WebSocket must be opened before this (about 60 seconds)."

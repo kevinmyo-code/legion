@@ -31,10 +31,20 @@ export interface AssistantState {
   mintBodies: unknown[]
   /** Every tool call the engine was asked to run, in order. */
   toolCalls: { name: string; args: unknown }[]
+  /** How long a minted token lives: 30 minutes for a member; a recruiter's is capped (5 minutes on the engine). */
+  sessionMs: number
 }
 
 export function defaultAssistant(): AssistantState {
-  return { companionName: 'Dorothy', mint: null, tools: {}, minted: 0, mintBodies: [], toolCalls: [] }
+  return {
+    companionName: 'Dorothy',
+    mint: null,
+    tools: {},
+    minted: 0,
+    mintBodies: [],
+    toolCalls: [],
+    sessionMs: 30 * 60_000,
+  }
 }
 
 export const FAKE_WS_URL = 'wss://live.example.test/ws/BidiGenerateContentConstrained'
@@ -68,7 +78,7 @@ export function handleAssistant(
         token: FAKE_TOKEN,
         model: 'gemini-3.8-live',
         ws_url: FAKE_WS_URL,
-        expires_at: new Date(now + 30 * 60_000).toISOString(),
+        expires_at: new Date(now + a.sessionMs).toISOString(),
         connect_by: new Date(now + 60_000).toISOString(),
         companion_name: a.companionName,
         voice_name: 'Kore',

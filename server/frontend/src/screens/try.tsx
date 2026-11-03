@@ -37,6 +37,14 @@ export const VISITOR_SUGGESTIONS = [
   "What's Kevin's experience with Power BI?",
 ] as const
 
+/**
+ * What a visitor's conversation ends with (Kevin, 2026-11-02: five minutes a
+ * demo session). The engine's recruiter token expires then
+ * (`LEGION_DEMO_MAX_SESSION_MINUTES`); the client ends the conversation at that
+ * moment too, because Google only "may" close the socket when a token expires.
+ */
+export const VISITOR_SESSION_ENDED = 'Demo sessions last 5 minutes. Start another any time.'
+
 export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -399,7 +407,10 @@ function TryAssistant({ mode }: { mode: 'visitor' | 'preview' }) {
     void preloadAudio().catch(() => {})
   }, [])
   return (
-    <AssistantProvider openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}>
+    <AssistantProvider
+      openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}
+      sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
+    >
       <div className="h-[min(36rem,78dvh)] overflow-hidden rounded-card border border-outline-variant bg-card">
         <AssistantChat
           layout="panel"

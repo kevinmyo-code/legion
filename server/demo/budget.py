@@ -9,7 +9,7 @@ midnight. Members are never counted and never blocked: every caller checks
 The browser talks to Google directly with the token it was minted, so the
 engine never sees what a conversation actually cost. It counts in units it
 controls instead, and RESERVES the worst case before acting: a Live mint
-reserves its full `VOICE_MINT_MINUTES` at `cost_per_voice_minute`, and if
+reserves its full `max_session_minutes()` at `cost_per_voice_minute`, and if
 that would cross the cap no token is minted. Nothing is settled afterwards
 (there is nothing to settle against), so the cap cannot be overshot; it can
 only be under-used. A reservation is released only when Google refused the
@@ -48,15 +48,23 @@ Raise it the day a text-model route exists and `charge_text_call` is wired.
   here by the 32,000-token compression trigger (`assistant/live.py`), which
   for a chatty session with tool results can add several cents a minute.
   Ten cents is the top of that range, rounded up.
-- `VOICE_MINT_MINUTES` = 10, the per-CONNECTION limit, not `TOKEN_LIFETIME`
-  (30). A token is single-use (`live.USES = 1`) and the setup is locked, so
-  there is no session resumption: Google ends the one connection at its
-  per-connection limit (about ten minutes, announced by `goAway`, per
-  `assistant/live.py`'s module doc) and the browser must mint again, which
-  reserves again. Reserving 30 would cost $3.00 a mint and allow ONE voice
-  conversation a day at the defaults; 10 costs $1.00 and allows four.
-  If Google's limit turns out longer, raise this constant: the number is
-  `reasoned` from the docs, never measured.
+- `LEGION_DEMO_MAX_SESSION_MINUTES` = 5 (Kevin, 2026-11-02: a recruiter's
+  conversation lasts at most five minutes). It is both what a mint reserves
+  and how long the recruiter's token lives (`assistant/session.py` sets the
+  token's `expireTime` to mint + this). A token is single-use
+  (`live.USES = 1`) and the setup is locked, so there is no resumption: a
+  longer conversation is a new mint, which reserves again. Five minutes at
+  ten cents is $0.50 a mint, ten conversations a day at the defaults.
+
+  **What `expireTime` does and does not do** (API reference
+  `AuthToken.expireTime`, quoted in `.scratch/web-assistant/research/
+  01-live-from-an-iphone-pwa.md` section 1, `sourced`): after it, "messages
+  in BidiGenerateContent sessions will be rejected (Gemini may preemptively
+  close the session after this time)". So Google stops serving the session at
+  five minutes, which is what bounds the cost; closing the socket is only a
+  "may". The browser therefore also ends a recruiter's conversation itself at
+  the token's `expires_at` and says why (`frontend/src/assistant/
+  live-client.ts`, `sessionLimit`). Not tested against the live service.
 - `LEGION_DEMO_COST_PER_TEXT_CALL_USD` = 0.01. A text-model call carrying
   this prompt and tool declarations is of the order of ten thousand tokens in
   and a few hundred out, a fraction of a cent at flash-class prices; one cent
@@ -77,9 +85,26 @@ from django.db.models import F
 
 from demo.models import DemoBudgetDay
 
-VOICE_MINT_MINUTES = 10
-
 BUDGET_USED_UP = "Today's demo budget is used up. Try again tomorrow."
+
+
+MAX_SESSION_MINUTES_CEILING = 30  # a member's token lifetime (`live.TOKEN_LIFETIME`)
+
+
+def max_session_minutes() -> int:
+    """How long one recruiter conversation may last, in whole minutes: the
+    token's lifetime and what each mint reserves."""
+    raw = settings.LEGION_DEMO_MAX_SESSION_MINUTES
+    try:
+        minutes = int(str(raw).strip())
+    except ValueError:
+        minutes = 0
+    if not 1 <= minutes <= MAX_SESSION_MINUTES_CEILING:
+        raise ImproperlyConfigured(
+            "LEGION_DEMO_MAX_SESSION_MINUTES must be a whole number of minutes from 1 to "
+            f"{MAX_SESSION_MINUTES_CEILING}; got {raw!r}."
+        )
+    return minutes
 
 
 def _cents(setting: str) -> int:
@@ -103,6 +128,7 @@ class Limits:
     text_reserve_cents: int
     voice_minute_cents: int
     text_call_cents: int
+    session_minutes: int
 
     @property
     def voice_cap_cents(self) -> int:
@@ -110,7 +136,7 @@ class Limits:
 
     @property
     def voice_mint_cents(self) -> int:
-        return VOICE_MINT_MINUTES * self.voice_minute_cents
+        return self.session_minutes * self.voice_minute_cents
 
 
 def limits() -> Limits:
@@ -119,6 +145,7 @@ def limits() -> Limits:
         text_reserve_cents=_cents("LEGION_DEMO_TEXT_RESERVE_USD"),
         voice_minute_cents=_cents("LEGION_DEMO_COST_PER_VOICE_MINUTE_USD"),
         text_call_cents=_cents("LEGION_DEMO_COST_PER_TEXT_CALL_USD"),
+        session_minutes=max_session_minutes(),
     )
 
 

@@ -18,7 +18,8 @@ import { base64ToPcm16, pcm16ToBase64 } from './pcm'
  *    the engine answered `success: true`; every other result says `Did not run:`
  *    and the engine's own words (CLAUDE.md section 7, outcome verbs).
  *  - **Keep a conversation across a lock.** A screen lock, an app switch (when
- *    told to), Google's ~10 minute `goAway` or a close ENDS it, in words. The
+ *    told to), Google's ~10 minute `goAway`, the page's own session limit (when
+ *    it sets one) or a close ENDS it, in words. The
  *    token's setup is fully locked, so there is no resumption; a new
  *    conversation mints a new token.
  *  - **Persist anything.** Lines live in memory and die with the page.
@@ -68,6 +69,8 @@ export interface SessionInfo {
   wsUrl: string
   /** Epoch ms: the socket must be open before this. */
   connectBy: number
+  /** Epoch ms: the token's `expireTime`. Google rejects the conversation's messages after it. */
+  expiresAt: number
   companionName: string
   inputAudioMime: string
   outputAudioRate: number
@@ -117,6 +120,15 @@ export interface LiveOptions {
    * is already the first turn. Null or absent sends nothing (the member app).
    */
   openingTurn?: () => string | null
+  /**
+   * Opt-in: the sentence a conversation ends with when its token's `expiresAt`
+   * arrives. After `expireTime` Google rejects the session's messages but only
+   * "may" close the socket (API reference `AuthToken.expireTime`), so a page
+   * whose sessions are capped short (a recruiter's demo, five minutes) ends the
+   * conversation itself, on time and in words. Null or absent arms nothing (the
+   * member app: its 30-minute token outlasts Google's ~10 minute `goAway`).
+   */
+  sessionLimit?: () => string | null
 }
 
 export const ENDED_LOCKED = 'Conversation ended when the screen locked.'
@@ -172,6 +184,7 @@ export class LiveClient {
   private typedTurn = false
   private readonly cancelled = new Set<string>()
   private setupTimer: ReturnType<typeof setTimeout> | null = null
+  private limitTimer: ReturnType<typeof setTimeout> | null = null
   private inbox: Promise<void> = Promise.resolve()
   private readonly onVisibility = () => {
     if (
@@ -375,6 +388,14 @@ export class LiveClient {
     }
     this.session = result.session
     this.set({ companion: result.session.companionName })
+    const limit = this.options.sessionLimit?.()?.trim()
+    if (limit) {
+      // Armed at the mint's answer: the token's clock started when it was minted.
+      const left = Math.max(result.session.expiresAt - this.deps.now(), 0)
+      this.limitTimer = setTimeout(() => {
+        if (generation === this.generation) this.end(limit)
+      }, left)
+    }
 
     const sep = result.session.wsUrl.includes('?') ? '&' : '?'
     const url = `${result.session.wsUrl}${sep}access_token=${encodeURIComponent(result.session.token)}`
@@ -471,6 +492,8 @@ export class LiveClient {
   private teardown() {
     if (this.setupTimer) clearTimeout(this.setupTimer)
     this.setupTimer = null
+    if (this.limitTimer) clearTimeout(this.limitTimer)
+    this.limitTimer = null
     const socket = this.socket
     this.socket = null
     if (socket) {

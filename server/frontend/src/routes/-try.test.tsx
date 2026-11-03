@@ -6,7 +6,7 @@ import { createEngine, type EngineOptions } from '@/test/engine'
 import { NO_DEMO_HOUSEHOLD, SAMPLE_SVG, TOO_MANY, WRONG_CODE, sampleContent } from '@/test/engine-demo'
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
 import { renderApp } from '@/test/render-app'
-import { OPENING_TURN } from '@/screens/try'
+import { OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
 
 /**
  * The recruiter section (recruiter-demo ticket 07): the code box on `/login`,
@@ -184,6 +184,33 @@ describe('/try', () => {
     expect(screen.queryByText(OPENING_TURN)).not.toBeInTheDocument()
     // Named by the mint now.
     expect(await screen.findByRole('log', { name: 'Conversation with Dorothy' })).toBeInTheDocument()
+  })
+
+  test("a visitor's conversation ends when its token does, with the demo's sentence", async () => {
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    // The engine caps a recruiter's token at 5 minutes; a short one stands in here.
+    const engine = visitor({ assistant: { sessionMs: 1_500 } })
+    renderApp('/try', engine, 'family')
+    fireEvent.click(await screen.findByRole('button', { name: 'Talk to Assistant' }))
+    await connect()
+    expect(VISITOR_SESSION_ENDED).toBe('Demo sessions last 5 minutes. Start another any time.')
+    expect(await screen.findByText(VISITOR_SESSION_ENDED, {}, { timeout: 4_000 })).toBeInTheDocument()
+    expect(audio.micOpen).toBe(false)
+    expect(FakeLiveSocket.last.closed).toBe(true)
+    expect(screen.getByRole('textbox', { name: /Message/ })).toBeDisabled()
+  })
+
+  test("a member's preview is not cut off at its token time", async () => {
+    const engine = createEngine({ assistant: { companionName: 'Mabel', sessionMs: 1_500 } })
+    renderApp('/try', engine, 'family')
+    const box = await screen.findByRole('textbox', { name: 'Message Mabel' })
+    fireEvent.change(box, { target: { value: 'hello' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await connect()
+    await act(() => new Promise((resolve) => setTimeout(resolve, 2_000)))
+    expect(screen.queryByText(VISITOR_SESSION_ENDED)).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message Mabel' })).not.toBeDisabled()
   })
 
   test('a spent demo budget is shown in the engine words', async () => {

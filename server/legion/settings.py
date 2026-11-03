@@ -176,6 +176,11 @@ LEGION_DEMO_COST_PER_VOICE_MINUTE_USD = (
 LEGION_DEMO_COST_PER_TEXT_CALL_USD = (
     os.environ.get("LEGION_DEMO_COST_PER_TEXT_CALL_USD", "").strip() or "0.01"
 )
+# Kevin, 2026-11-02: a recruiter conversation lasts at most this many minutes.
+# The recruiter token's lifetime and what each mint reserves (`demo/budget.py`).
+LEGION_DEMO_MAX_SESSION_MINUTES = (
+    os.environ.get("LEGION_DEMO_MAX_SESSION_MINUTES", "").strip() or "5"
+)
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
