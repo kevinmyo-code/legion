@@ -37,6 +37,7 @@ export type TransactionCategory = Schemas['LedgerTransactionCategory']
 export type IngestedFile = Schemas['IngestedFile']
 export type Spend = Schemas['Spend']
 export type SpendAccount = Schemas['SpendAccount']
+export type Statement = Schemas['Statement']
 
 const live = '1' as const
 
@@ -80,6 +81,13 @@ export const budgetTargets: Table<BudgetTarget> = {
 export const ingestedFiles: Table<IngestedFile> = {
   name: 'ingest/files',
   page: ({ since, after }) => api.GET('/api/ingest/files/', { params: { query: { since, after } } }),
+}
+
+/** Read only: a gated statement's header and its three anchors (CLAUDE.md
+ * section 4 rule 8). Home reads its closing balance as a Verified balance. */
+export const statements: Table<Statement> = {
+  name: 'ledger/statements',
+  page: ({ since, after }) => api.GET('/api/ledger/statements/', { params: { query: { since, after } } }),
 }
 
 // ---- Transactions ---------------------------------------------------------
