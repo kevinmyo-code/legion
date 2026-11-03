@@ -1,0 +1,461 @@
+{
+  "nodes": [
+    {
+      "id": "57f203daf65694df",
+      "type": "file",
+      "file": ".scratch/procedures/issues/01-procedure-format-and-storage.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "6e2c8afb3bc08ef5",
+      "type": "file",
+      "file": ".scratch/procedures/issues/02-decision-step-small-model.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "3135b5bb5a6ffbad",
+      "type": "file",
+      "file": ".scratch/procedures/issues/03-ask-step-by-voice.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "3a0c8fac43ab8323",
+      "type": "file",
+      "file": ".scratch/procedures/issues/10-baseline-round-trips.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ae03c015f8d0ac71",
+      "type": "file",
+      "file": ".scratch/procedures/issues/04-how-clients-reach-run-procedure.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "a5f36e2de530b0d7",
+      "type": "file",
+      "file": ".scratch/procedures/issues/06-trace-content-and-retention.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "3dc7045e22f98484",
+      "type": "file",
+      "file": ".scratch/procedures/issues/09-first-procedures.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "d272b84033564574",
+      "type": "file",
+      "file": ".scratch/procedures/issues/05-engine-down-and-two-implementations.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "5a138246d2c8194b",
+      "type": "file",
+      "file": ".scratch/procedures/issues/07-recruiter-visits.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "e919b9125a3e6a0e",
+      "type": "file",
+      "file": ".scratch/procedures/issues/08-distillation-policy.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "3664fb5fe2692a42",
+      "type": "file",
+      "file": ".scratch/procedures/issues/11-build-format-and-tables.md",
+      "x": 1040,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "57544cdbdf5cbee6",
+      "type": "file",
+      "file": ".scratch/procedures/issues/12-build-runner-and-tool.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "854635646ec1cb94",
+      "type": "file",
+      "file": ".scratch/procedures/issues/13-build-run-traces.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5106e14a33a247d0",
+      "type": "file",
+      "file": ".scratch/procedures/issues/14-build-branch-report-and-inspector.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0879733b96299ab2",
+      "type": "file",
+      "file": ".scratch/procedures/issues/15-build-first-procedures.md",
+      "x": 2080,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "65095b1784269b34",
+      "type": "file",
+      "file": ".scratch/procedures/issues/19-laptop-worker.md",
+      "x": 2080,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "953b8b582686133c",
+      "type": "file",
+      "file": ".scratch/procedures/issues/16-build-phone.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1d31e2573f4c17a1",
+      "type": "file",
+      "file": ".scratch/procedures/issues/17-build-head-unit.md",
+      "x": 2600,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f89e62d1e6bebae6",
+      "type": "file",
+      "file": ".scratch/procedures/issues/18-build-web-and-recruiter.md",
+      "x": 2600,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e122c3d63b38c76e",
+      "type": "file",
+      "file": ".scratch/procedures/issues/20-build-distillation.md",
+      "x": 2600,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "61137160739f1bff",
+      "type": "file",
+      "file": ".scratch/procedures/issues/21-build-evaluation-replay.md",
+      "x": 2600,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "b6e69102d0c79ae2",
+      "fromNode": "57f203daf65694df",
+      "fromSide": "right",
+      "toNode": "ae03c015f8d0ac71",
+      "toSide": "left"
+    },
+    {
+      "id": "f2c3776f504ec226",
+      "fromNode": "ae03c015f8d0ac71",
+      "fromSide": "right",
+      "toNode": "d272b84033564574",
+      "toSide": "left"
+    },
+    {
+      "id": "8f38b4b00ab7f3ad",
+      "fromNode": "57f203daf65694df",
+      "fromSide": "right",
+      "toNode": "a5f36e2de530b0d7",
+      "toSide": "left"
+    },
+    {
+      "id": "6b3f1885bd5ef3eb",
+      "fromNode": "a5f36e2de530b0d7",
+      "fromSide": "right",
+      "toNode": "5a138246d2c8194b",
+      "toSide": "left"
+    },
+    {
+      "id": "410e43139c8da1df",
+      "fromNode": "a5f36e2de530b0d7",
+      "fromSide": "right",
+      "toNode": "e919b9125a3e6a0e",
+      "toSide": "left"
+    },
+    {
+      "id": "bb0cc4354e4ccd78",
+      "fromNode": "57f203daf65694df",
+      "fromSide": "right",
+      "toNode": "3dc7045e22f98484",
+      "toSide": "left"
+    },
+    {
+      "id": "06dbf0ba0f38151d",
+      "fromNode": "57f203daf65694df",
+      "fromSide": "right",
+      "toNode": "3664fb5fe2692a42",
+      "toSide": "left"
+    },
+    {
+      "id": "a1e0df41f98bb0d0",
+      "fromNode": "6e2c8afb3bc08ef5",
+      "fromSide": "right",
+      "toNode": "3664fb5fe2692a42",
+      "toSide": "left"
+    },
+    {
+      "id": "02b298e6bda95a36",
+      "fromNode": "3135b5bb5a6ffbad",
+      "fromSide": "right",
+      "toNode": "3664fb5fe2692a42",
+      "toSide": "left"
+    },
+    {
+      "id": "716981e1f481c6c5",
+      "fromNode": "a5f36e2de530b0d7",
+      "fromSide": "right",
+      "toNode": "3664fb5fe2692a42",
+      "toSide": "left"
+    },
+    {
+      "id": "ed5f7cf987f4acfe",
+      "fromNode": "ae03c015f8d0ac71",
+      "fromSide": "right",
+      "toNode": "57544cdbdf5cbee6",
+      "toSide": "left"
+    },
+    {
+      "id": "ac0c0bae99013dc4",
+      "fromNode": "5a138246d2c8194b",
+      "fromSide": "right",
+      "toNode": "57544cdbdf5cbee6",
+      "toSide": "left"
+    },
+    {
+      "id": "33925c8867c72f85",
+      "fromNode": "3664fb5fe2692a42",
+      "fromSide": "right",
+      "toNode": "57544cdbdf5cbee6",
+      "toSide": "left"
+    },
+    {
+      "id": "2c314b2b9385586c",
+      "fromNode": "a5f36e2de530b0d7",
+      "fromSide": "right",
+      "toNode": "854635646ec1cb94",
+      "toSide": "left"
+    },
+    {
+      "id": "95c613e7abea3c65",
+      "fromNode": "3664fb5fe2692a42",
+      "fromSide": "right",
+      "toNode": "854635646ec1cb94",
+      "toSide": "left"
+    },
+    {
+      "id": "a21eeb2374c42ffd",
+      "fromNode": "5a138246d2c8194b",
+      "fromSide": "right",
+      "toNode": "5106e14a33a247d0",
+      "toSide": "left"
+    },
+    {
+      "id": "3b3bd2eecb688f7a",
+      "fromNode": "854635646ec1cb94",
+      "fromSide": "right",
+      "toNode": "5106e14a33a247d0",
+      "toSide": "left"
+    },
+    {
+      "id": "34aa5c62aa30d122",
+      "fromNode": "3dc7045e22f98484",
+      "fromSide": "right",
+      "toNode": "0879733b96299ab2",
+      "toSide": "left"
+    },
+    {
+      "id": "3b3bfcde8e5642f4",
+      "fromNode": "57544cdbdf5cbee6",
+      "fromSide": "right",
+      "toNode": "0879733b96299ab2",
+      "toSide": "left"
+    },
+    {
+      "id": "88c734b82cd49ebe",
+      "fromNode": "ae03c015f8d0ac71",
+      "fromSide": "right",
+      "toNode": "953b8b582686133c",
+      "toSide": "left"
+    },
+    {
+      "id": "20a3940eefd1641e",
+      "fromNode": "d272b84033564574",
+      "fromSide": "right",
+      "toNode": "953b8b582686133c",
+      "toSide": "left"
+    },
+    {
+      "id": "8aef24101e6a155c",
+      "fromNode": "57544cdbdf5cbee6",
+      "fromSide": "right",
+      "toNode": "953b8b582686133c",
+      "toSide": "left"
+    },
+    {
+      "id": "c3b5c6ed5c255430",
+      "fromNode": "0879733b96299ab2",
+      "fromSide": "right",
+      "toNode": "953b8b582686133c",
+      "toSide": "left"
+    },
+    {
+      "id": "4dbdb16b671dc27d",
+      "fromNode": "ae03c015f8d0ac71",
+      "fromSide": "right",
+      "toNode": "1d31e2573f4c17a1",
+      "toSide": "left"
+    },
+    {
+      "id": "20b78d1cac9b0525",
+      "fromNode": "57544cdbdf5cbee6",
+      "fromSide": "right",
+      "toNode": "1d31e2573f4c17a1",
+      "toSide": "left"
+    },
+    {
+      "id": "d0afce09a88ddeed",
+      "fromNode": "0879733b96299ab2",
+      "fromSide": "right",
+      "toNode": "1d31e2573f4c17a1",
+      "toSide": "left"
+    },
+    {
+      "id": "4e938efd86112784",
+      "fromNode": "5a138246d2c8194b",
+      "fromSide": "right",
+      "toNode": "f89e62d1e6bebae6",
+      "toSide": "left"
+    },
+    {
+      "id": "e8e346e2e78424c3",
+      "fromNode": "57544cdbdf5cbee6",
+      "fromSide": "right",
+      "toNode": "f89e62d1e6bebae6",
+      "toSide": "left"
+    },
+    {
+      "id": "c53511e3cf1168c0",
+      "fromNode": "0879733b96299ab2",
+      "fromSide": "right",
+      "toNode": "f89e62d1e6bebae6",
+      "toSide": "left"
+    },
+    {
+      "id": "c24dcf0bd598b38a",
+      "fromNode": "57544cdbdf5cbee6",
+      "fromSide": "right",
+      "toNode": "65095b1784269b34",
+      "toSide": "left"
+    },
+    {
+      "id": "2c9857c15ca84b88",
+      "fromNode": "e919b9125a3e6a0e",
+      "fromSide": "right",
+      "toNode": "e122c3d63b38c76e",
+      "toSide": "left"
+    },
+    {
+      "id": "74e22f774a8a2f66",
+      "fromNode": "854635646ec1cb94",
+      "fromSide": "right",
+      "toNode": "e122c3d63b38c76e",
+      "toSide": "left"
+    },
+    {
+      "id": "98c931e213a3c673",
+      "fromNode": "5106e14a33a247d0",
+      "fromSide": "right",
+      "toNode": "e122c3d63b38c76e",
+      "toSide": "left"
+    },
+    {
+      "id": "54f2c75094dde54a",
+      "fromNode": "3a0c8fac43ab8323",
+      "fromSide": "right",
+      "toNode": "61137160739f1bff",
+      "toSide": "left"
+    },
+    {
+      "id": "d7b1a60e87acff6e",
+      "fromNode": "0879733b96299ab2",
+      "fromSide": "right",
+      "toNode": "61137160739f1bff",
+      "toSide": "left"
+    }
+  ]
+}
