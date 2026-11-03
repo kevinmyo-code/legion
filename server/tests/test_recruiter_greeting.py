@@ -148,3 +148,31 @@ def test_the_greeting_offers_only_what_the_tools_can_do(visitor):
         assert phrase in offered, phrase
         assert tool in declared, tool
     assert 3 <= len(RECRUITER_CAPABILITIES) <= 4
+
+
+# =============================================================================
+# English, for members and visitors (audit 2026-11-03: "money" heard as
+# "monnaie", answered in French)
+# =============================================================================
+
+
+@pytest.mark.parametrize("who", ["visitor", "household_user"])
+def test_the_setup_says_english_in_the_prompt_and_sends_no_language_code(who, request):
+    """The rule is the prompt's: native-audio Live models "don't support
+    explicitly setting the language code" (capabilities page), and a locked
+    setup with an unsupported field could fail every mint. So the setup's
+    speechConfig carries the voice alone and no transcription config carries
+    a language; the prompt carries the rule, for members and recruiters."""
+    from assistant.prompt import LANGUAGE_RULE
+
+    user = request.getfixturevalue(who)
+    body, _ = token_request_for(user, now=NOW, utc_offset_minutes=-360)
+    setup = body["bidiGenerateContentSetup"]
+    assert set(setup["generationConfig"]["speechConfig"]) == {"voiceConfig"}
+    assert setup["inputAudioTranscription"] == {}
+    assert "languageCode" not in str(setup) and "language_code" not in str(setup)
+    text = setup["systemInstruction"]["parts"][0]["text"]
+    assert LANGUAGE_RULE.strip() in text
+    assert "Speak and answer in English" in text
+    assert '"money" heard as "monnaie"' in text
+    assert "whole sentence in another language and asks you to answer in it" in text

@@ -127,6 +127,18 @@ RECRUITER_FRAME = (
     "for that use legion_docs, answer only from the passages it returns, and cite them. "
 )
 
+# Audit 2026-11-03: "money" was transcribed as "monnaie" and the answer came
+# in French. Live's native-audio models take no language code (capabilities
+# page: they "don't support explicitly setting the language code"; restrict the
+# language "in the system instructions"), so the rule lives here. Members and
+# recruiters both get it (`build_system_prompt`).
+LANGUAGE_RULE = (
+    "Speak and answer in English. Speech recognition sometimes hears an English word as a word "
+    'of another language ("money" heard as "monnaie"): take it as the English word and answer '
+    "in English. Switch language only when the person says a whole sentence in another language "
+    "and asks you to answer in it. "
+)
+
 VISITOR_FACT = (
     "You are speaking with a visitor to Kevin's demo, not a member of this household. You do not "
     "know their name; do not invent one or ask for it."
@@ -200,7 +212,7 @@ def build_system_prompt(
         who += " " + companion.delivery
     if recruiter:
         who += "\n\n" + RECRUITER_REGISTER
-    frame = WEB_FRAME + (RECRUITER_FRAME if recruiter else "")
+    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else "")
     body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
     clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
     speaker = VISITOR_FACT if recruiter else member_fact(first_name)
