@@ -8,7 +8,6 @@ import { useMe } from '@/api/queries'
 import { AssistantProvider, type ChatCopy } from '@/assistant/assistant-context'
 import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
-import { AskBar } from '@/components/briefing/ask-bar'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { useSurface } from '@/lib/surface'
 
@@ -27,10 +26,12 @@ import { useSurface } from '@/lib/surface'
  * assistant, same code. What a recruiter gets differently is the engine's call
  * by role, never this page's.
  *
- * ONE chat on the page (Kevin, 2026-11-03: "keep only the right pop up"): the
- * "Talk to my assistant" section is an ask bar, and the conversation opens where
- * the members' does, the docked panel on the right at desk width and the sheet
- * on a phone. One `AssistantProvider` for the whole page, so one live client.
+ * ONE chat on the page and ONE place to type (Kevin, 2026-11-03: "keep the
+ * right panel window open at all times and remove the talk to my assistant chat
+ * window in the middle"). At desk width the members' docked panel is pinned
+ * open beside the page, with no close; on a phone a single "Ask" bar pinned to
+ * the bottom opens the members' sheet. There is no chat or ask bar in the page
+ * itself. One `AssistantProvider` for the whole page, so one live client.
  */
 
 /** The hidden first turn that makes the assistant speak first to a visitor (ticket 05). */
@@ -55,7 +56,8 @@ export const VISITOR_SESSION_ENDED = 'Demo sessions last 5 minutes. Start anothe
 /** What the chat says to a visitor, wherever it opens. Module constants: the provider's value stays stable. */
 const VISITOR_COPY: ChatCopy = {
   subtitle: 'Demo assistant, made-up data',
-  intro: 'Ask about the demo household, or about Kevin. Type, or tap the mic to talk.',
+  intro:
+    "Ask about the demo household, or about Kevin. It runs on LEGION's real engine, against a made-up household. Type, or tap the mic to talk. A demo conversation lasts up to 5 minutes.",
   suggestions: VISITOR_SUGGESTIONS,
 }
 const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)' }
@@ -131,21 +133,22 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   )
 }
 
-/** The page column, and beside it (`aside`) the assistant's dock when it is open at desk width. */
-function Shell({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
+/**
+ * The page column and, when `assistant` is set, the chat: at desk width the
+ * pinned dock beside the column (so nothing is laid out under it), on a phone
+ * the Ask bar pinned to the bottom of the column.
+ */
+function Shell({ children, assistant = false }: { children: ReactNode; assistant?: boolean }) {
+  const desk = useSurface() === 'workbench'
   return (
     <div className="recruiter flex min-h-screen overflow-x-clip">
-      <div className="min-w-0 flex-1">
-        <div className="mx-auto max-w-[880px] px-4 sm:px-6">{children}</div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="mx-auto w-full max-w-[880px] flex-1 px-4 sm:px-6">{children}</div>
+        {assistant && !desk && <FamilyAssistant launcher="bar" />}
       </div>
-      {aside}
+      {assistant && desk && <AssistantDock pinned />}
     </div>
   )
-}
-
-/** The members' own chat surface for this width: the right-hand dock, or the phone sheet. */
-function TryAssistantSurface() {
-  return useSurface() === 'workbench' ? <AssistantDock /> : <FamilyAssistant />
 }
 
 function Gate({
@@ -216,7 +219,7 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
       </div>
     )
   } else {
-    body = <Sections content={content.data.content} mode={mode} />
+    body = <Sections content={content.data.content} />
   }
 
   return (
@@ -225,7 +228,7 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
       sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
       copy={mode === 'visitor' ? VISITOR_COPY : PREVIEW_COPY}
     >
-      <Shell aside={<TryAssistantSurface />}>
+      <Shell assistant>
         {mode === 'preview' && (
           <p
             role="note"
@@ -282,14 +285,13 @@ function ExploreTheApp() {
   )
 }
 
-function Sections({ content, mode }: { content: DemoContent; mode: 'visitor' | 'preview' }) {
+function Sections({ content }: { content: DemoContent }) {
   const { hero, look_for: lookFor, work, experience, links, assets } = content
   return (
     <>
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-4 text-[0.875rem]">
         <span className="font-semibold">LEGION</span>
         <nav aria-label="On this page" className="flex flex-wrap gap-x-4">
-          <a href="#talk" className="inline-flex min-h-11 items-center text-primary">Talk</a>
           <a href="#work" className="inline-flex min-h-11 items-center text-primary">Work</a>
           <a href="#experience" className="inline-flex min-h-11 items-center text-primary">Experience</a>
         </nav>
@@ -311,14 +313,6 @@ function Sections({ content, mode }: { content: DemoContent; mode: 'visitor' | '
             </ul>
           )}
         </section>
-
-        <Section id="talk" title="Talk to my assistant">
-          <p className="mb-5 text-muted-foreground">
-            It runs on LEGION's real engine, against a made-up household. Ask, and the conversation opens; tap
-            the mic there to talk.{mode === 'visitor' && ' A demo conversation lasts up to 5 minutes.'}
-          </p>
-          <AskBar suggestions={mode === 'visitor' ? VISITOR_SUGGESTIONS : undefined} />
-        </Section>
 
         {lookFor.length > 0 && (
           <Section id="look-for" title="What to look for">

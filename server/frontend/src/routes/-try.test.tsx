@@ -43,14 +43,13 @@ function expiryLine(iso: string) {
 }
 
 /**
- * The page's Ask button, with nothing typed: opens the one conversation (the
- * sheet at family width). Any companion name by default: the fake engine answers
- * the companion read for a visit, which the real one refuses (ADR 0068).
+ * The phone's one entry point, the Ask bar pinned to the bottom: opens the
+ * members' sheet. Any companion name by default: the fake engine answers the
+ * companion read for a visit, which the real one refuses (ADR 0068).
  */
 async function openTryChat(name: string | RegExp = /\w+/) {
   const named = (prefix: string) => (typeof name === 'string' ? `${prefix} ${name}` : new RegExp(`^${prefix} ${name.source}$`))
-  const bar = await screen.findByRole('search', { name: named('Ask') })
-  fireEvent.click(within(bar).getByRole('button', { name: 'Ask' }))
+  fireEvent.click(await screen.findByRole('button', { name: named('Ask') }))
   return screen.findByRole('dialog', { name: named('Conversation with') })
 }
 
@@ -125,14 +124,14 @@ describe('/try', () => {
     renderApp('/try?ref=acme', engine, 'family')
     fireEvent.change(await screen.findByLabelText('Access code'), { target: { value: 'OPEN-SESAME' } })
     fireEvent.click(screen.getByRole('button', { name: 'Open the demo' }))
-    expect(await screen.findByRole('heading', { name: 'Talk to my assistant' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
   })
 
   test('a direct link enters once, and the code leaves the address bar; ref stays', async () => {
     const engine = createEngine({ signedIn: false })
     const { router } = renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
-    expect(await screen.findByRole('heading', { name: 'Talk to my assistant' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
     expect(router.state.location.search).toEqual({ ref: 'acme' })
     expect(router.state.location.href).not.toContain('OPEN-SESAME')
@@ -185,31 +184,66 @@ describe('/try', () => {
     expect(screen.queryByRole('link', { name: 'Download resume (PDF)' })).not.toBeInTheDocument()
   })
 
-  test('one chat: the page has an ask bar, and Ask opens the members sheet, nothing in the page', async () => {
+  test('phone: no chat in the page, one Ask bar at the bottom, no orb; it opens the sheet', async () => {
     renderApp('/try', visitor(), 'family')
-    const talk = await screen.findByRole('region', { name: 'Talk to my assistant' })
-    // Kevin, 2026-11-03: "keep only the right pop up". No conversation is drawn in the page.
+    await screen.findByRole('heading', { name: 'What to look for' })
+    // Kevin, 2026-11-03: "remove the talk to my assistant chat window in the middle".
+    expect(screen.queryByRole('region', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Talk' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('search')).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
-    expect(within(talk).getByRole('search', { name: /^Ask \w+$/ })).toBeInTheDocument()
-    expect(within(talk).getByText(/A demo conversation lasts up to 5 minutes\./)).toBeInTheDocument()
-    expect(within(talk).getByRole('button', { name: "What's Kevin's experience with Power BI?" })).toBeInTheDocument()
+    // Exactly one entry point: the bar, never also the members' floating orb.
+    const entries = screen.getAllByRole('button', { name: /^(Ask|Open the conversation with) / })
+    expect(entries).toHaveLength(1)
+    expect(entries[0].className).not.toMatch(/fixed/)
 
     const sheet = await openTryChat()
     expect(screen.getAllByRole('log')).toHaveLength(1)
     expect(within(sheet).getByRole('log', { name: /^Conversation with/ })).toBeInTheDocument()
     expect(within(sheet).getByText('Demo assistant, made-up data')).toBeInTheDocument()
+    // The old section's copy lives in the chat now.
+    expect(within(sheet).getByText(/A demo conversation lasts up to 5 minutes\./)).toBeInTheDocument()
+    expect(within(sheet).getByRole('button', { name: "What's Kevin's experience with Power BI?" })).toBeInTheDocument()
+    expect(within(sheet).getByText(/may be recorded to improve/)).toBeInTheDocument()
+    // While the sheet is up the bar is gone: still one way in.
+    expect(screen.queryByRole('button', { name: /^Ask \w+$/ })).not.toBeInTheDocument()
   })
 
-  test('at desk width the conversation docks on the right, and it is the only one', async () => {
-    renderApp('/try', visitor(), 'workbench')
-    const talk = await screen.findByRole('region', { name: 'Talk to my assistant' })
-    expect(screen.queryByRole('log')).not.toBeInTheDocument()
-    expect(screen.queryByRole('complementary', { name: /Conversation with/ })).not.toBeInTheDocument()
-    fireEvent.click(within(talk).getByRole('button', { name: 'Ask' }))
+  test('desk: the dock is open on load beside the page, with no close and no chat in the middle', async () => {
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    const engine = visitor()
+    renderApp('/try', engine, 'workbench')
+    // Kevin, 2026-11-03: "keep the right panel window open at all times".
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
     expect(dock).toHaveAttribute('id', 'assistant-dock')
+    await screen.findByRole('heading', { name: 'What to look for' })
+    expect(screen.queryByRole('region', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('search')).not.toBeInTheDocument()
     expect(screen.getAllByRole('log')).toHaveLength(1)
+    expect(screen.getAllByRole('textbox')).toEqual([within(dock).getByRole('textbox', { name: /^Message / })])
+    // No close, and no floating orb or Ask bar beside it.
+    expect(within(dock).queryByRole('button', { name: /^Close/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Ask \w+$/ })).not.toBeInTheDocument()
+    // The page column is beside the dock, not under it.
+    expect(dock.parentElement?.firstElementChild).toContainElement(screen.getByRole('heading', { level: 1 }))
+    // Its copy: the 5-minute line, the chips, the recording notice.
+    expect(within(dock).getByText(/A demo conversation lasts up to 5 minutes\./)).toBeInTheDocument()
     expect(within(dock).getByRole('button', { name: 'Which card charges are unverified?' })).toBeInTheDocument()
+    expect(within(dock).getByText(/may be recorded to improve/)).toBeInTheDocument()
+
+    // A voice start from the dock still sends the hidden opening turn, once.
+    fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
+    const socket = await connect()
+    expect(socket.sentOf('clientContent')).toEqual([
+      { clientContent: { turns: [{ role: 'user', parts: [{ text: OPENING_TURN }] }], turnComplete: true } },
+    ])
+    socket.serve({ serverContent: { outputTranscription: { text: 'Good afternoon.' } } })
+    socket.serve({ serverContent: { turnComplete: true } })
+    await act(settle)
+    expect(socket.sentOf('clientContent')).toHaveLength(1)
+    expect(screen.getByRole('complementary', { name: /^Conversation with/ })).toBe(dock)
   })
 
   test('the assistant is the member app chat; a voice start sends the hidden opening turn', async () => {
@@ -269,11 +303,10 @@ describe('/try', () => {
   test("a member's preview is not cut off at its token time", async () => {
     const engine = createEngine({ assistant: { companionName: 'Mabel', sessionMs: 1_500 } })
     renderApp('/try', engine, 'family')
-    // The page's ask bar sends the question into the one conversation and opens it.
-    const bar = await screen.findByRole('search', { name: 'Ask Mabel' })
-    fireEvent.change(within(bar).getByRole('textbox'), { target: { value: 'hello' } })
-    fireEvent.click(within(bar).getByRole('button', { name: 'Ask' }))
-    const sheet = await screen.findByRole('dialog', { name: 'Conversation with Mabel' })
+    const sheet = await openTryChat('Mabel')
+    const box = within(sheet).getByRole('textbox', { name: 'Message Mabel' })
+    fireEvent.change(box, { target: { value: 'hello' } })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send' }))
     await connect()
     expect(within(sheet).getByText('hello')).toBeInTheDocument()
     await act(() => new Promise((resolve) => setTimeout(resolve, 2_000)))
@@ -298,6 +331,16 @@ describe('/try', () => {
     engine.demo.content = null
     renderApp('/try', engine, 'family')
     expect(await screen.findByRole('heading', { name: "This page isn't set up yet" })).toBeInTheDocument()
+  })
+
+  test('a member preview at desk width gets the same pinned dock', async () => {
+    renderApp('/try', createEngine({ assistant: { companionName: 'Mabel' } }), 'workbench')
+    expect(await screen.findByText(/Preview\. This is what a visitor/)).toBeInTheDocument()
+    const dock = await screen.findByRole('complementary', { name: 'Conversation with Mabel' })
+    expect(within(dock).getByText('Your assistant (preview)')).toBeInTheDocument()
+    expect(within(dock).queryByRole('button', { name: /^Close/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(screen.queryByRole('search')).not.toBeInTheDocument()
   })
 
   test('a signed-in member sees a preview, and the assistant is still theirs', async () => {

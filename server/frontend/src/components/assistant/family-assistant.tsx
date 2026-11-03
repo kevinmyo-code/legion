@@ -16,8 +16,13 @@ import { AssistantChat, statusWords } from '@/components/assistant/chat'
  * `AssistantProvider`, and the orb wears a status in words ("Dorothy is
  * listening. Tap to see.") so a conversation in progress is never invisible.
  * Closing with the X is the one thing that clears it.
+ *
+ * `launcher="bar"` (the recruiter page, which has no tab bar): in place of the
+ * orb, one full-width "Ask" bar pinned to the bottom of the page. It is a
+ * button, not a text field, so the sheet's message box stays the one place to
+ * type (Kevin, 2026-11-03).
  */
-export function FamilyAssistant() {
+export function FamilyAssistant({ launcher = 'orb' }: { launcher?: 'orb' | 'bar' } = {}) {
   const { client, state, name, ui } = useAssistant()
   const inputRef = useRef<HTMLInputElement>(null)
   const frame = useVisualViewport(ui.open)
@@ -34,7 +39,28 @@ export function FamilyAssistant() {
 
   return (
     <DialogPrimitive.Root open={ui.open} onOpenChange={ui.setOpen}>
-      {!ui.open && (
+      {!ui.open && launcher === 'bar' && (
+        <div className="sticky bottom-0 z-30 bg-background/95 px-4 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
+          <button
+            type="button"
+            onClick={() => ui.setOpen(true)}
+            aria-label={live ? `Open the conversation with ${name}` : `Ask ${name}`}
+            className="mx-auto flex min-h-12 w-full max-w-[880px] items-center gap-2.5 rounded-full bg-card py-1.5 pr-1.5 pl-2 text-left shadow-md outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <span
+              aria-hidden="true"
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-container text-primary-container-foreground"
+            >
+              <Icon className="size-[18px]" />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[0.9375rem] text-muted-foreground">{tag ?? `Ask ${name}…`}</span>
+            <span aria-hidden="true" className="grid h-10 place-items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground">
+              Ask
+            </span>
+          </button>
+        </div>
+      )}
+      {!ui.open && launcher === 'orb' && (
         <>
           <button
             type="button"
