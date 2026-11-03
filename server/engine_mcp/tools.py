@@ -2350,7 +2350,10 @@ TOOLS: tuple[EngineTool, ...] = (
             "a question: say it, and call this again with the same name, the resume_token and "
             "the person's answer (one of the answers it lists) on the very next thing they say, "
             "within two minutes; anything else cancels it. A procedure that writes asks before "
-            "it writes."
+            "it writes. Pass what the person named as inputs: for car_check, the car they named "
+            "as inputs.vehicle. With several cars on file and none named, car_check still says "
+            "service and codes for every car but skips recalls; ask which car, then run it again "
+            "with that car."
         ),
         input_schema=_object(
             {
