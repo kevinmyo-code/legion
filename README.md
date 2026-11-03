@@ -46,9 +46,9 @@ model rather than to sell the feature.
 |---|---|---|
 | Getting started | 8 | &ldquo;Give me my brief&rdquo; |
 | Your day | 14 | &ldquo;Remind me to renew my registration next month&rdquo; |
-| The cars | 28 | &ldquo;Any trouble codes?&rdquo; |
+| The cars | 29 | &ldquo;Any trouble codes?&rdquo; |
 | Driving | 6 | &ldquo;Take me to the hardware store&rdquo; |
-| Money | 11 | &ldquo;What's my balance?&rdquo; |
+| Money | 10 | &ldquo;What's my balance?&rdquo; |
 | Food and shopping | 9 | &ldquo;When did we last buy shampoo?&rdquo; |
 | Training and sleep | 10 | &ldquo;Squats, five at a hundred kilos&rdquo; |
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |
