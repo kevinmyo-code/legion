@@ -55,9 +55,21 @@ tags: [ticket]
 - **`compute brief_latest` is a `tool`**: a compute step gets no request, so no tenancy and no
   recruiter fence; a tool step goes through both. This is what refuses it to a visit.
 - **Recalls are one car, not "per vehicle, parallel"**: the v1 runner has no fan-out and
-  `vehicle_recalls` takes one car. With several cars and no `vehicle` input the run stops at
-  recalls, partial, every household read said, and recalls "were refused: ... several are on
-  file". Fan-out is a runner ruling, not this ticket.
+  `vehicle_recalls` takes one car. **RESOLVED (Kevin, 2026-11-03: "agreed on all 3", option a)**,
+  built on `fix/procedures-privacy-multicar`: a `check` step `which_car` (function `one_car`:
+  at most one car read by `next_service`) sits before recalls. With several cars and no `vehicle`
+  input it fails, and the run ends **ok** (not partial) with the service and codes for every car
+  and "Recalls are looked up for one car at a time: say which car."; recalls and answer are
+  "not on this path". With a `vehicle` input `next_service` reads only that car, so recalls run
+  for it. To carry the earlier reads, the runner now renders a check's `fail_sentence` like a
+  `say` template (`definition.validate` already checked its `$steps` refs); no new step kind, no
+  new field. The car_check and `run_procedure` descriptions tell the voice model to pass the car
+  the person named and to ask which car when several are on file and none was named. Tests:
+  `test_several_cars_and_none_named_skips_recalls_and_asks_which_car`,
+  `test_several_cars_and_one_named_looks_up_that_cars_recalls`,
+  `test_one_car_passes_with_one_or_none_and_fails_with_several`,
+  `test_a_fail_sentence_says_what_the_steps_before_it_read`. On deploy the changed file loads as
+  car_check v2. Fan-out stays a runner ruling.
 - **A failed recall lookup ends the run** (partial): the step is last, so service and codes are
   already said, and the tool's own "NOT known whether it has recalls ... not a finding of none"
   leads the answer. No `on_fail` edge was added to the format.

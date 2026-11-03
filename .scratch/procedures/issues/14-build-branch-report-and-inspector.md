@@ -66,8 +66,17 @@ tags: [ticket]
 - **"Run this procedure" button** (ADR 0035 hands path, ask steps as buttons): **deferred to
   ticket 18** (web assistant and recruiter use `run_procedure`), which wires the web door's
   call; this ticket stayed read-only.
-- **Open question for Kevin (privacy)**: a member sees every run in the household, as a
-  conversation record would show it to its owner. A step's trimmed result can carry a row that
-  was private to the member who ran it (ADR 0052). Narrow other members' runs to structure only
-  (no args or results), or keep household-wide?
+- **Privacy, RESOLVED (Kevin, 2026-11-03: "agreed on all 3", on narrowing other members' runs
+  to structure only)**: built on `fix/procedures-privacy-multicar`. `GET /api/procedures/runs/<id>`
+  gives args, results and inputs only for runs the caller started. Another member's run (or a
+  removed account's) keeps procedure, version, status, caller kind, timings and each step's
+  kind, tool, outcome, branch and who chose it; `inputs` is null, every step's `args` null and
+  `result` empty, and the run's `result` is "Started by another member: details are private to
+  them." The list never carried content; the report's counts stay household-wide with no
+  content. Recruiters unchanged (own visit only). No new field: openapi.yaml and schema.d.ts
+  changed only in descriptions. Tests: `test_another_members_run_is_structure_only`,
+  `test_a_removed_accounts_run_is_structure_only`,
+  `test_the_report_counts_every_members_runs_with_no_content`. **Owed**: the web desk's run page
+  shows the sentence as the answer and empty step results as they come; a look at it with a
+  second member is owed with the deploy.
 - On the deployed engine with real built-ins: **owed** (ticket 15 ships them).
