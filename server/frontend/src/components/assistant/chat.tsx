@@ -54,9 +54,9 @@ export function AssistantChat({
   inputRef,
   onMinimise,
   onClose,
-  subtitle = 'Household assistant',
-  intro = 'About the calendar, the lists, or what was bought. Type, or tap the mic to talk.',
-  suggestions = SUGGESTIONS,
+  subtitle: subtitleProp,
+  intro: introProp,
+  suggestions: suggestionsProp,
 }: {
   layout: 'sheet' | 'panel'
   inputRef: RefObject<HTMLInputElement | null>
@@ -71,7 +71,12 @@ export function AssistantChat({
   /** The tappable first questions. */
   suggestions?: readonly string[]
 }) {
-  const { client, state, name } = useAssistant()
+  const { client, state, name, copy } = useAssistant()
+  // A prop wins, then the page's copy (`AssistantProvider copy`), then the household's.
+  const subtitle = subtitleProp ?? copy?.subtitle ?? 'Household assistant'
+  const intro =
+    introProp ?? copy?.intro ?? 'About the calendar, the lists, or what was bought. Type, or tap the mic to talk.'
+  const suggestions = suggestionsProp ?? copy?.suggestions ?? SUGGESTIONS
   const [draft, setDraft] = useState('')
   const scroller = useRef<HTMLDivElement>(null)
 

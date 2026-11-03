@@ -43,9 +43,21 @@ interface AssistantUi {
   focusBox(): void
 }
 
+/** What a page may say in the chat in place of the household defaults (the recruiter page). */
+export interface ChatCopy {
+  /** The line under the companion's name. */
+  subtitle?: string
+  /** What the empty conversation says it can be asked about. */
+  intro?: string
+  /** The tappable first questions. */
+  suggestions?: readonly string[]
+}
+
 interface AssistantContextValue {
   client: LiveClient
   ui: AssistantUi
+  /** The page's chat copy, if it set any; `AssistantChat` falls back to its own. */
+  copy?: ChatCopy
   /** The member's companion name: the session's if one has been minted, else the engine's read. */
   name: string
 }
@@ -70,6 +82,7 @@ export function AssistantProvider({
   deps,
   openingTurn,
   sessionLimit,
+  copy,
 }: {
   children: ReactNode
   deps?: LiveDeps
@@ -77,6 +90,8 @@ export function AssistantProvider({
   openingTurn?: string
   /** Opt-in: end each conversation when its token expires, with this sentence (`LiveOptions.sessionLimit`). */
   sessionLimit?: string
+  /** Opt-in: the chat's subtitle, intro and first questions, wherever it opens (dock or sheet). */
+  copy?: ChatCopy
 }) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
@@ -124,8 +139,8 @@ export function AssistantProvider({
   const name = state.companion ?? read.data?.name ?? UNNAMED
 
   const value = useMemo<AssistantContextValue>(
-    () => ({ client, ui: { open, setOpen, focusTick, focusBox }, name }),
-    [client, open, setOpen, focusTick, focusBox, name],
+    () => ({ client, ui: { open, setOpen, focusTick, focusBox }, name, copy }),
+    [client, open, setOpen, focusTick, focusBox, name, copy],
   )
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>
 }

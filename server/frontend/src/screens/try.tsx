@@ -5,10 +5,12 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { DEMO_SESSION_KEY, enterDemo, useDemoContent, useDemoSession, type DemoContent } from '@/api/demo'
 import { useMe } from '@/api/queries'
-import { AssistantProvider } from '@/assistant/assistant-context'
-import { preloadAudio } from '@/assistant/deps'
-import { AssistantChat } from '@/components/assistant/chat'
+import { AssistantProvider, type ChatCopy } from '@/assistant/assistant-context'
+import { FamilyAssistant } from '@/components/assistant/family-assistant'
+import { AssistantDock } from '@/components/assistant/workbench-assistant'
+import { AskBar } from '@/components/briefing/ask-bar'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
+import { useSurface } from '@/lib/surface'
 
 /**
  * The recruiter section (recruiter-demo ticket 07, layout = prototype B
@@ -24,6 +26,11 @@ import { AccessCodeForm } from '@/components/demo/access-code-form'
  * the same live client, audio and `/api/assistant/*` doors). Kevin's ruling: one
  * assistant, same code. What a recruiter gets differently is the engine's call
  * by role, never this page's.
+ *
+ * ONE chat on the page (Kevin, 2026-11-03: "keep only the right pop up"): the
+ * "Talk to my assistant" section is an ask bar, and the conversation opens where
+ * the members' does, the docked panel on the right at desk width and the sheet
+ * on a phone. One `AssistantProvider` for the whole page, so one live client.
  */
 
 /** The hidden first turn that makes the assistant speak first to a visitor (ticket 05). */
@@ -44,6 +51,14 @@ export const VISITOR_SUGGESTIONS = [
  * moment too, because Google only "may" close the socket when a token expires.
  */
 export const VISITOR_SESSION_ENDED = 'Demo sessions last 5 minutes. Start another any time.'
+
+/** What the chat says to a visitor, wherever it opens. Module constants: the provider's value stays stable. */
+const VISITOR_COPY: ChatCopy = {
+  subtitle: 'Demo assistant, made-up data',
+  intro: 'Ask about the demo household, or about Kevin. Type, or tap the mic to talk.',
+  suggestions: VISITOR_SUGGESTIONS,
+}
+const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)' }
 
 export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) {
   const navigate = useNavigate()
@@ -116,12 +131,21 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   )
 }
 
-function Shell({ children }: { children: ReactNode }) {
+/** The page column, and beside it (`aside`) the assistant's dock when it is open at desk width. */
+function Shell({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <div className="recruiter min-h-screen overflow-x-clip">
-      <div className="mx-auto max-w-[880px] px-4 sm:px-6">{children}</div>
+    <div className="recruiter flex min-h-screen overflow-x-clip">
+      <div className="min-w-0 flex-1">
+        <div className="mx-auto max-w-[880px] px-4 sm:px-6">{children}</div>
+      </div>
+      {aside}
     </div>
   )
+}
+
+/** The members' own chat surface for this width: the right-hand dock, or the phone sheet. */
+function TryAssistantSurface() {
+  return useSurface() === 'workbench' ? <AssistantDock /> : <FamilyAssistant />
 }
 
 function Gate({
@@ -196,29 +220,35 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
   }
 
   return (
-    <Shell>
-      {mode === 'preview' && (
-        <p
-          role="note"
-          className="mt-4 flex items-center gap-2 rounded-control bg-primary-container px-4 py-3 text-[0.9375rem] text-primary-container-foreground"
-        >
-          <Eye className="size-4 flex-none" aria-hidden="true" />
-          <span>
-            Preview. This is what a visitor with the access code sees; the assistant here is still yours.{' '}
-            <Link to="/" className="font-medium underline underline-offset-4">
-              Back to your app
-            </Link>
-          </span>
-        </p>
-      )}
-      {expiry && (
-        <p role="note" className="mt-4 text-[0.875rem] text-muted-foreground">
-          {expiry}
-        </p>
-      )}
-      {mode === 'visitor' && <ExploreTheApp />}
-      {body}
-    </Shell>
+    <AssistantProvider
+      openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}
+      sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
+      copy={mode === 'visitor' ? VISITOR_COPY : PREVIEW_COPY}
+    >
+      <Shell aside={<TryAssistantSurface />}>
+        {mode === 'preview' && (
+          <p
+            role="note"
+            className="mt-4 flex items-center gap-2 rounded-control bg-primary-container px-4 py-3 text-[0.9375rem] text-primary-container-foreground"
+          >
+            <Eye className="size-4 flex-none" aria-hidden="true" />
+            <span>
+              Preview. This is what a visitor with the access code sees; the assistant here is still yours.{' '}
+              <Link to="/" className="font-medium underline underline-offset-4">
+                Back to your app
+              </Link>
+            </span>
+          </p>
+        )}
+        {expiry && (
+          <p role="note" className="mt-4 text-[0.875rem] text-muted-foreground">
+            {expiry}
+          </p>
+        )}
+        {mode === 'visitor' && <ExploreTheApp />}
+        {body}
+      </Shell>
+    </AssistantProvider>
   )
 }
 
@@ -284,9 +314,10 @@ function Sections({ content, mode }: { content: DemoContent; mode: 'visitor' | '
 
         <Section id="talk" title="Talk to my assistant">
           <p className="mb-5 text-muted-foreground">
-            It runs on LEGION's real engine, against a made-up household. Type, or tap the mic to talk.
+            It runs on LEGION's real engine, against a made-up household. Ask, and the conversation opens; tap
+            the mic there to talk.{mode === 'visitor' && ' A demo conversation lasts up to 5 minutes.'}
           </p>
-          <TryAssistant mode={mode} />
+          <AskBar suggestions={mode === 'visitor' ? VISITOR_SUGGESTIONS : undefined} />
         </Section>
 
         {lookFor.length > 0 && (
@@ -421,40 +452,5 @@ function Diagram({ svg, caption }: { svg: string; caption: string }) {
       </div>
       {caption && <figcaption className="mt-2 text-[0.8125rem] text-muted-foreground">{caption}</figcaption>}
     </figure>
-  )
-}
-
-/**
- * The member app's assistant, mounted in the page. A visitor's conversation
- * starts with the hidden opening turn so the assistant greets them; a member's
- * preview sends none, as in their own app.
- */
-function TryAssistant({ mode }: { mode: 'visitor' | 'preview' }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  // The mic tap needs the audio code loaded before it (the tap is the only
-  // moment a phone allows the microphone); the member app loads it when the
-  // chat opens, and here the chat is open from the start.
-  useEffect(() => {
-    void preloadAudio().catch(() => {})
-  }, [])
-  return (
-    <AssistantProvider
-      openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}
-      sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
-    >
-      <div className="h-[min(36rem,78dvh)] overflow-hidden rounded-card border border-outline-variant bg-card">
-        <AssistantChat
-          layout="panel"
-          inputRef={inputRef}
-          subtitle={mode === 'visitor' ? 'Demo assistant, made-up data' : 'Your assistant (preview)'}
-          intro={
-            mode === 'visitor'
-              ? 'Ask about the demo household, or about Kevin. Type, or tap the mic to talk.'
-              : undefined
-          }
-          suggestions={mode === 'visitor' ? VISITOR_SUGGESTIONS : undefined}
-        />
-      </div>
-    </AssistantProvider>
   )
 }
