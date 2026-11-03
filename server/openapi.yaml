@@ -7687,6 +7687,148 @@ paths:
                 $ref: '#/components/schemas/Detail'
           description: A live place already has the new label, or the two labels are
             the same. Nothing was renamed.
+  /api/procedures/:
+    get:
+      operationId: api_procedures_list
+      tags:
+      - procedures
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProcedureVersion'
+          description: Versions this household can see that are active or ran here.
+  /api/procedures/report:
+    get:
+      operationId: api_procedures_report_retrieve
+      parameters:
+      - in: query
+        name: name
+        schema:
+          type: string
+        description: The procedure's name.
+        required: true
+      - in: query
+        name: version
+        schema:
+          type: integer
+        description: Defaults to the active version, else the newest.
+      tags:
+      - procedures
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchReport'
+          description: The report.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A filter was refused.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such procedure.
+  /api/procedures/runs:
+    get:
+      operationId: api_procedures_runs_list
+      parameters:
+      - in: query
+        name: caller_kind
+        schema:
+          type: string
+          enum:
+          - headunit
+          - mcp
+          - phone
+          - recruiter
+          - web
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: 1 to 200; 50.
+      - in: query
+        name: procedure
+        schema:
+          type: string
+        description: Only runs of this procedure name.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: Started at or after.
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - failed
+          - ok
+          - partial
+          - waiting
+      tags:
+      - procedures
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunList'
+          description: Newest first.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A filter was refused.
+  /api/procedures/runs/{run_id}:
+    get:
+      operationId: api_procedures_runs_retrieve
+      parameters:
+      - in: path
+        name: run_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - procedures
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunDetail'
+          description: One run, its steps.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such run here.
   /api/purchases/:
     get:
       operationId: api_purchases_list
@@ -8921,6 +9063,47 @@ components:
       description: |-
         * `original` - original
         * `resizable` - resizable
+    BranchReport:
+      type: object
+      properties:
+        procedure:
+          type: string
+        version:
+          type: integer
+        writes:
+          type: boolean
+        window_days:
+          type: integer
+          description: Runs older than this are pruned.
+        runs:
+          type: integer
+          description: This household's runs of this version.
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportStep'
+        never_taken:
+          type: array
+          items:
+            type: string
+          description: '"step:branch" for every branch no run took.'
+        summary:
+          type: string
+          description: The report in one sentence.
+      required:
+      - last_run_at
+      - never_taken
+      - procedure
+      - runs
+      - steps
+      - summary
+      - version
+      - window_days
+      - writes
     Brief:
       type: object
       properties:
@@ -13354,6 +13537,88 @@ components:
       - list_changes
       - morning_time
       - task_due_morning
+    ProcedureCallerKindEnum:
+      enum:
+      - phone
+      - headunit
+      - web
+      - recruiter
+      - mcp
+      type: string
+      description: |-
+        * `phone` - Phone
+        * `headunit` - Head unit
+        * `web` - Web assistant
+        * `recruiter` - Recruiter visit
+        * `mcp` - MCP client
+    ProcedureChosenByEnum:
+      enum:
+      - code
+      - model
+      - user
+      type: string
+      description: |-
+        * `code` - Code
+        * `model` - A model
+        * `user` - The user
+    ProcedureRunStatusEnum:
+      enum:
+      - ok
+      - partial
+      - failed
+      - waiting
+      - cancelled
+      type: string
+      description: |-
+        * `ok` - OK
+        * `partial` - Partial
+        * `failed` - Failed
+        * `waiting` - Waiting for an answer
+        * `cancelled` - Cancelled
+    ProcedureStepOutcomeEnum:
+      enum:
+      - ok
+      - refused
+      - failed
+      - asked
+      type: string
+      description: |-
+        * `ok` - OK
+        * `refused` - Refused
+        * `failed` - Failed
+        * `asked` - Asked
+    ProcedureVersion:
+      type: object
+      properties:
+        procedure:
+          type: string
+        version:
+          type: integer
+        description:
+          type: string
+        writes:
+          type: boolean
+        is_active:
+          type: boolean
+        source:
+          type: string
+          description: builtin, distilled or hand.
+        runs:
+          type: integer
+          description: This household's runs of this version.
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - description
+      - is_active
+      - last_run_at
+      - procedure
+      - runs
+      - source
+      - version
+      - writes
     ProgressRequest:
       type: object
       properties:
@@ -13953,6 +14218,75 @@ components:
       - intro
       - stats
       - title
+    ReportBranch:
+      type: object
+      properties:
+        branch:
+          type: string
+        target:
+          type: string
+          nullable: true
+          description: The step it leads to; null when it ends the run.
+        taken:
+          type: integer
+          description: Runs that took it.
+        by_model:
+          type: integer
+          description: Of those, runs where a model chose it.
+        last_taken_at:
+          type: string
+          format: date-time
+          nullable: true
+        never_taken:
+          type: boolean
+      required:
+      - branch
+      - by_model
+      - last_taken_at
+      - never_taken
+      - taken
+      - target
+    ReportStep:
+      type: object
+      properties:
+        step_id:
+          type: string
+        kind:
+          type: string
+        tool:
+          type: string
+        reached:
+          type: integer
+          description: Runs in which the step ran.
+        failed:
+          type: integer
+          description: Runs in which the step failed.
+        refused:
+          type: integer
+          description: Runs in which the step was refused.
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_failed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last failure or refusal.
+        branches:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportBranch'
+      required:
+      - branches
+      - failed
+      - kind
+      - last_failed_at
+      - last_seen_at
+      - reached
+      - refused
+      - step_id
+      - tool
     ResultEnum:
       enum:
       - won
@@ -13971,6 +14305,226 @@ components:
       description: |-
         * `inviter` - inviter
         * `invitee` - invitee
+    RunDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        procedure:
+          type: string
+          description: The procedure's name.
+        version:
+          type: integer
+        caller_kind:
+          $ref: '#/components/schemas/ProcedureCallerKindEnum'
+        caller:
+          type: string
+          description: Which client asked, in words ("Phone").
+        who:
+          type: string
+          description: '"You", the member''s first name, "Another member", or "An
+            account since removed".'
+        status:
+          $ref: '#/components/schemas/ProcedureRunStatusEnum'
+        status_label:
+          type: string
+          description: The status in words ("Partial").
+        started_at:
+          type: string
+          format: date-time
+        ms:
+          type: integer
+          description: Engine-side time across every call of the run.
+        step_count:
+          type: integer
+          description: Step rows recorded for the run.
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The caller's conversation record, when it named one.
+        writes:
+          type: boolean
+          description: True when the version has a writing step.
+        inputs:
+          type: string
+          nullable: true
+          description: The caller's inputs, as JSON.
+        result:
+          type: string
+          description: The answer as returned, trimmed.
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunStep'
+        not_run:
+          type: array
+          items:
+            type: string
+          description: Step ids in the definition that did not run.
+        not_run_sentence:
+          type: string
+          description: The steps that did not run, in words.
+      required:
+      - caller
+      - caller_kind
+      - conversation_id
+      - id
+      - inputs
+      - ms
+      - not_run
+      - not_run_sentence
+      - procedure
+      - result
+      - started_at
+      - status
+      - status_label
+      - step_count
+      - steps
+      - version
+      - who
+      - writes
+    RunList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunSummary'
+        more:
+          type: boolean
+          description: True when more runs match than `limit`; the list holds the
+            newest.
+        retention_days:
+          type: integer
+          description: Runs older than this are pruned, so nothing older is listed.
+      required:
+      - more
+      - results
+      - retention_days
+    RunStep:
+      type: object
+      properties:
+        seq:
+          type: integer
+        step_id:
+          type: string
+        kind:
+          type: string
+          description: tool, compute, decide, ask, check or say.
+        tool:
+          type: string
+          description: The engine tool, for a `tool` step; else empty.
+        args:
+          type: string
+          nullable: true
+          description: The arguments as sent, as JSON, trimmed; null when none.
+        result:
+          type: string
+          description: What the step said, trimmed.
+        outcome:
+          $ref: '#/components/schemas/ProcedureStepOutcomeEnum'
+        outcome_label:
+          type: string
+        branch:
+          type: string
+          description: The way out the step took; empty when the run stopped here.
+        chosen_by:
+          $ref: '#/components/schemas/ProcedureChosenByEnum'
+        chosen_by_label:
+          type: string
+          description: '"Code chose", "A model chose" (a decide step, ruling 02) or
+            "The user chose".'
+        started_at:
+          type: string
+          format: date-time
+        ms:
+          type: integer
+        model:
+          type: string
+          description: A decide step's model; else empty.
+        prompt_tokens:
+          type: integer
+          nullable: true
+        output_tokens:
+          type: integer
+          nullable: true
+        cost_estimate_micro_usd:
+          type: integer
+          nullable: true
+          description: An ESTIMATE in micro-dollars from named rate constants, never
+            a billed figure.
+      required:
+      - args
+      - branch
+      - chosen_by
+      - chosen_by_label
+      - cost_estimate_micro_usd
+      - kind
+      - model
+      - ms
+      - outcome
+      - outcome_label
+      - output_tokens
+      - prompt_tokens
+      - result
+      - seq
+      - started_at
+      - step_id
+      - tool
+    RunSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        procedure:
+          type: string
+          description: The procedure's name.
+        version:
+          type: integer
+        caller_kind:
+          $ref: '#/components/schemas/ProcedureCallerKindEnum'
+        caller:
+          type: string
+          description: Which client asked, in words ("Phone").
+        who:
+          type: string
+          description: '"You", the member''s first name, "Another member", or "An
+            account since removed".'
+        status:
+          $ref: '#/components/schemas/ProcedureRunStatusEnum'
+        status_label:
+          type: string
+          description: The status in words ("Partial").
+        started_at:
+          type: string
+          format: date-time
+        ms:
+          type: integer
+          description: Engine-side time across every call of the run.
+        step_count:
+          type: integer
+          description: Step rows recorded for the run.
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The caller's conversation record, when it named one.
+      required:
+      - caller
+      - caller_kind
+      - conversation_id
+      - id
+      - ms
+      - procedure
+      - started_at
+      - status
+      - status_label
+      - step_count
+      - version
+      - who
     ServiceHistory:
       type: object
       description: |-
