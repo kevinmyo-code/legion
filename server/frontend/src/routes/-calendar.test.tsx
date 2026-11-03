@@ -171,7 +171,7 @@ test('pressing an event opens it for editing', async () => {
 
 test('the week steps back and forward, and Today comes home', async () => {
   await open(createEngine({}), 'workbench')
-  const label = () => screen.getByRole('heading', { level: 2 }).textContent
+  const label = () => within(screen.getByRole('main')).getByRole('heading', { level: 2 }).textContent
   const thisWeek = label()
   fireEvent.click(screen.getByRole('button', { name: 'Next week' }))
   expect(label()).not.toBe(thisWeek)
