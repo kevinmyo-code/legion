@@ -24,7 +24,8 @@ One budget across ALL recruiter traffic (ruling 4: $5/day).
   token is minted. The cap cannot be overshot.
 - Cap hit: `/try` and the assistant say "Today's demo budget is used up. Try again tomorrow, or watch
   the videos below." Text outlives voice (Kevin, 2026-11-02): voice stops at $5 minus a text reserve
-  (setting, default $1); text runs until the full $5.
+  (setting `LEGION_DEMO_TEXT_RESERVE_USD`, default $0, Kevin 2026-11-02: typed chat shares the Live
+  session, so one cap applies); text runs until the full $5.
 - Optional: a separate Gemini key for demo traffic, so Google's side has a ceiling too.
 
 ## Verify

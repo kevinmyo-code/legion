@@ -35,8 +35,9 @@ client renders audio and its transcription only, and the token would still
 accept microphone audio, so "text only" would not be enforced. So every
 recruiter Live mint, voice or typed, is checked against the VOICE cap, and
 `charge_text_call` - built and tested - is wired to nothing until a text
-route exists. Set `LEGION_DEMO_TEXT_RESERVE_USD=0` to let Live mints use the
-whole budget meanwhile.
+route exists. Hence `LEGION_DEMO_TEXT_RESERVE_USD` defaults to 0 (Kevin,
+2026-11-02): typed chat shares the Live session, so one cap applies to both.
+Raise it the day a text-model route exists and `charge_text_call` is wired.
 
 ## The defaults, and why (`reasoned`, not a quoted price)
 

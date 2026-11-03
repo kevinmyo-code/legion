@@ -50,8 +50,8 @@ def _reserved(day=None) -> int:
 def test_defaults_are_the_rulings_and_round_up_to_the_cent(settings):
     lim = budget.limits()
     assert lim.budget_cents == 500
-    assert lim.text_reserve_cents == 100
-    assert lim.voice_cap_cents == 400
+    assert lim.text_reserve_cents == 0
+    assert lim.voice_cap_cents == 500
     assert lim.voice_mint_cents == budget.VOICE_MINT_MINUTES * 10 == 100
     _limits(settings, minute="0.001")
     assert budget.limits().voice_minute_cents == 1  # never rounds down to free
