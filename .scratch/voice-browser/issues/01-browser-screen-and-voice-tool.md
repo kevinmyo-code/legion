@@ -3,12 +3,12 @@ map: voice-browser
 ticket: "01"
 title: "The browser screen, its persistent profile, and the one `browser` voice tool"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "suite green 2026-11-03; owes ticket 03 on the phone"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

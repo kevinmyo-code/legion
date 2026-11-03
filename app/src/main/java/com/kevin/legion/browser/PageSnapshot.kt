@@ -52,6 +52,7 @@ data class PageSnapshot(
      * The element [words] names: an exact label first, then a label that contains the words. Null when
      * nothing matches or two different elements match equally well (the caller asks which).
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun match(words: String): MatchResult {
         val want = words.trim().lowercase()
         if (want.isEmpty()) return MatchResult.None

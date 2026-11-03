@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName") // the screen is the file; BrowserActions is its callbacks
+
 package com.kevin.legion.ui.browser
 
 import androidx.annotation.DrawableRes
@@ -65,7 +67,7 @@ fun BrowserScreen(
             AddressBar(state, actions)
             if (state.loading) {
                 LinearProgressIndicator(
-                    progress = { state.progress.coerceIn(0, 100) / 100f },
+                    progress = { state.progress.coerceIn(0, FULL) / FULL.toFloat() },
                     modifier = Modifier.fillMaxWidth().testTag(TAG_PROGRESS),
                 )
             }
@@ -156,3 +158,4 @@ const val TAG_ADDRESS = "browser_address"
 const val TAG_PROGRESS = "browser_progress"
 const val TAG_NOTICE = "browser_notice"
 private const val DISABLED_ALPHA = 0.38f
+private const val FULL = 100

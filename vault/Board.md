@@ -65,8 +65,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[10-about-kevin-profile\|10]] | decision | about_kevin: recruiters ask about Kevin himself |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[12-phone-turn-taking-in-the-browser\|12]] | build | The phone's tuned turn-taking and barge-in, in the browser |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
-| [[.scratch/voice-browser/map\|voice-browser]] | [[01-browser-screen-and-voice-tool\|01]] | build | The browser screen, its persistent profile, and the one `browser` voice tool |
-| [[.scratch/voice-browser/map\|voice-browser]] | [[02-feed-blocker-in-the-browser\|02]] | build | The feed blocker reaches the browser: feed sites bounce like feed apps |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -181,6 +179,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 | [[.scratch/retro-games/map\|retro-games]] | [[05-build-race-engine-pwa\|05]] | build | Build: engine match API + game_invite push, PWA Tetris solo and race |
 | [[.scratch/retro-games/map\|retro-games]] | [[06-build-race-phone\|06]] | build | Build: phone Tetris solo and race, background invite poll, local notification |
+| [[.scratch/voice-browser/map\|voice-browser]] | [[01-browser-screen-and-voice-tool\|01]] | build | The browser screen, its persistent profile, and the one `browser` voice tool |
+| [[.scratch/voice-browser/map\|voice-browser]] | [[02-feed-blocker-in-the-browser\|02]] | build | The feed blocker reaches the browser: feed sites bounce like feed apps |
 | [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it |
 | [[.scratch/wake-word/map\|wake-word]] | [[15-see-a-deaf-mic\|15]] | build | Make a deaf microphone visible |
 | [[.scratch/wake-word/map\|wake-word]] | [[17-follow-up-window\|17]] | build | An 8 second follow-up window closes a conversation nobody continues |

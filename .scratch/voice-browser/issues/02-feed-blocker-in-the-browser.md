@@ -3,12 +3,12 @@ map: voice-browser
 ticket: "02"
 title: "The feed blocker reaches the browser: feed sites bounce like feed apps"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "suite green 2026-11-03; owes ticket 03 on the phone"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

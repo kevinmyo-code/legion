@@ -71,6 +71,7 @@ class BrowserTool(
         return loaded(port.open(url), verb = "Opened")
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private suspend fun read(): JSONObject {
         if (port.currentUrl == null) return notOpen("Nothing was read")
         val page = freshSnapshot() ?: return fail("Nothing was read: this page would not let the browser read it.")
@@ -83,6 +84,7 @@ class BrowserTool(
             .put("more_elements_below", page.moreElements)
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private suspend fun click(args: JSONObject): JSONObject {
         if (port.currentUrl == null) return notOpen("Nothing was tapped")
         val (page, element) = when (val found = resolve(args)) {
@@ -93,6 +95,7 @@ class BrowserTool(
         return doClick(element)
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private suspend fun type(args: JSONObject): JSONObject {
         if (port.currentUrl == null) return notOpen("Nothing was typed")
         val text = args.optString("text")
@@ -164,7 +167,7 @@ class BrowserTool(
             held == null || held.token != token ->
                 fail("$nothing: that confirmation is not the one just asked for, or it was already used. Ask again.")
             clock() - held.atMs !in 0..CONFIRM_TTL_MS ->
-                fail("$nothing: the yes came too late (more than ${CONFIRM_TTL_MS / 1000} seconds). Ask again.")
+                fail("$nothing: the yes came too late (over ${CONFIRM_TTL_MS / MS_PER_SECOND} seconds). Ask again.")
             action.isNotEmpty() && action != held.action ->
                 fail("$nothing: that confirmation was for ${held.action}, not $action.")
             port.currentUrl != held.url ->
@@ -243,6 +246,7 @@ class BrowserTool(
     }
 
     /** A number from the last read on this same page, or words matched against a fresh read. */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private suspend fun resolve(args: JSONObject): Resolved {
         if (args.has("number")) {
             val n = args.optInt("number", -1)
@@ -288,5 +292,6 @@ class BrowserTool(
         private const val TOKEN_LENGTH = 8
         private const val HTTP_ERROR = 400
         private const val MAX_LISTED = 5
+        private const val MS_PER_SECOND = 1000L
     }
 }

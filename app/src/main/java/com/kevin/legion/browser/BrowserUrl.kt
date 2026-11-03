@@ -19,6 +19,7 @@ object BrowserUrl {
         "^(localhost|([a-z0-9-]+\\.)+[a-z][a-z0-9-]*|\\d{1,3}(\\.\\d{1,3}){3})(:\\d+)?([/?#].*)?$",
     )
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun target(input: String, kind: SearchKind = SearchKind.WEB): String? {
         val text = input.trim()
         if (text.isEmpty()) return null

@@ -131,6 +131,7 @@ class BrowserController(
     }
 
     /** A 15 minute pass was granted on the block screen: load what was blocked. The gate re-checks it. */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun openAfterPass(): Boolean {
         val block = _state.value.blocked ?: return false
         val view = web ?: return false
@@ -237,6 +238,7 @@ class BrowserController(
      * Runs a click or type, then watches briefly for the page load it may have started: none within
      * [NAV_START_MS] means it stayed on this page.
      */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     private suspend fun actThenWatch(act: suspend () -> String?): Pair<String?, LoadOutcome?> {
         val waiter = CompletableDeferred<LoadOutcome>()
         val started = CompletableDeferred<Unit>()
@@ -302,6 +304,7 @@ class BrowserController(
     }
 
     private inner class Client : WebViewClient() {
+        @Suppress("ReturnCount") // guard clauses, one worded exit each
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             if (!request.isForMainFrame) return false
             val url = request.url.toString()

@@ -14,6 +14,7 @@ data class FeedBlock(val site: FeedSite, val url: String, val matrix: Boolean)
  * asks about a sub-frame.
  */
 object FeedSiteGate {
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun check(url: String, bounceActive: Boolean, matrixOn: Boolean, isBlocked: (String) -> Boolean): FeedBlock? {
         if (!bounceActive) return null
         val site = FeedDomains.siteFor(BrowserUrl.host(url)) ?: return null

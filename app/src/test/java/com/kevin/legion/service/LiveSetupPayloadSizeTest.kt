@@ -158,6 +158,13 @@ class LiveSetupPayloadSizeTest {
      * deleted, `MarcusPayloadTest` with them, and Dorothy, Kratos and `switch_companion` with
      * them. Every figure above for another persona is history; this test's subject was always
      * Alfred, and the ceiling is left where it is.
+     *
+     * **NOT raised on 2026-11-03 (voice-browser ticket 01, the `browser` tool, ADR 0071).** Measured
+     * on `feat/voice-browser` merged with dev that day: 93 declarations, 86,086 chars of tools JSON
+     * plus 9,774 chars of system instruction = 95,860 chars, ~23,965 estimated tokens. `browser` is
+     * ONE action-dispatched declaration (seven actions) at 1,135 chars, ~283 tokens; its description
+     * keeps only the outcome-verb rule, the password refusal, the ask-first instruction and the
+     * "answer in words goes to ask_engine" routing. Headroom is now ~285 tokens.
      */
     private val ceilingTokens = 24_250
 

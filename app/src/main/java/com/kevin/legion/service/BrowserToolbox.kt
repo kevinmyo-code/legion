@@ -68,6 +68,7 @@ object BrowserToolbox {
             .apply { if (enum != null) put("enum", JSONArray(enum)) }
 
     /** Null when [name] is not this tool, so [LiveToolbox.dispatch] can fall through. */
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     suspend fun dispatch(context: Context, name: String, args: JSONObject): JSONObject? {
         if (name != TOOL_NAME) return null
         val app = context.applicationContext as? MidnightApplication

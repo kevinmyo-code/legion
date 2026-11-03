@@ -51,6 +51,7 @@ object AskFirst {
         return WORD.findAll(lower).any { it.value in RISKY_WORDS }
     }
 
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
     fun isPaymentPage(page: PageSnapshot): Boolean {
         if (page.paymentFields) return true
         val uri = runCatching { java.net.URI(page.url) }.getOrNull() ?: return false

@@ -43,7 +43,9 @@ class BrowserUrlTest {
     }
 
     @Test fun `other schemes are never loaded, only searched for`() {
-        val schemes = listOf("javascript:alert(1)", "file:///sdcard/x", "content://contacts", "intent://scan#Intent;end")
+        val schemes = listOf(
+            "javascript:alert(1)", "file:///sdcard/x", "content://contacts", "intent://scan#Intent;end",
+        )
         for (bad in schemes) {
             val target = BrowserUrl.target(bad)!!
             assertTrue("$bad became $target", target.startsWith("https://www.google.com/search?q="))
