@@ -181,6 +181,11 @@ LEGION_DEMO_COST_PER_TEXT_CALL_USD = (
 )
 # Kevin, 2026-11-02: a recruiter conversation lasts at most this many minutes.
 # The recruiter token's lifetime and what each mint reserves (`demo/budget.py`).
+# One recruiter `web_search` (Gemini flash-class call with Google Search
+# grounding), reserved before the call. `demo/budget.py` says why 0.02.
+LEGION_DEMO_COST_PER_SEARCH_USD = (
+    os.environ.get("LEGION_DEMO_COST_PER_SEARCH_USD", "").strip() or "0.02"
+)
 LEGION_DEMO_MAX_SESSION_MINUTES = (
     os.environ.get("LEGION_DEMO_MAX_SESSION_MINUTES", "").strip() or "5"
 )

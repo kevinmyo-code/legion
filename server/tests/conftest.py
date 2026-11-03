@@ -523,3 +523,15 @@ def _no_nhtsa(monkeypatch):
         raise recalls.RecallLookupFailed("the network is off in tests")
 
     monkeypatch.setattr(recalls, "fetch_recalls", _offline)
+
+
+@pytest.fixture(autouse=True)
+def _no_web_search(monkeypatch):
+    """No test reaches Google: `web_search`'s one call fails as unreachable
+    unless a test hands it a transport (`tests/test_web_search.py`)."""
+    from engine_mcp import web_search
+
+    def _offline(method, url, headers, body):
+        raise OSError("the network is off in tests")
+
+    monkeypatch.setattr(web_search, "_transport", _offline)

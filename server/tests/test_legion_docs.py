@@ -142,6 +142,62 @@ def test_a_question_about_legion_itself_gets_the_readme_overview(query):
     assert [p.heading for p in hits][:2] == ["LEGION", "LEGION > At a glance"]
 
 
+@pytest.mark.parametrize(
+    ("query", "section"),
+    [
+        ("How does Kevin use AI agents to build LEGION?", None),
+        ("How does Kevin stop agents from making the same mistake twice?", "How mistakes"),
+        ("How do parallel agents avoid conflicts?", "How parallel agents"),
+    ],
+)
+def test_questions_about_working_with_agents_find_that_doc_first(query, section):
+    """Kevin, 2026-11-03: a recruiter may ask how he codes with his agents."""
+    hits = search(query)
+    assert hits and hits[0].path == "docs/working-with-agents.md", (query, _top(query, 4))
+    if section:
+        assert section in hits[0].heading, hits[0].heading
+
+
+# Audit 2026-11-03: the exact queries the model sent, and "Explain to me the
+# codebase" got only ADR 0040's web-vs-Android split.
+BROAD = ["codebase", "Explain to me the codebase", "how does it work", "How does it work?",
+         "architecture", "What is the architecture of LEGION?"]  # fmt: skip
+
+
+@pytest.mark.parametrize("query", BROAD)
+def test_a_broad_question_gets_the_overview_first(query):
+    hits = search(query)
+    assert [(p.path, p.heading) for p in hits[:4]] == list(docs_search.OVERVIEW_PICKS)
+    text = " ".join(p.text for p in hits)
+    # The whole system: every client, the Django engine and the head unit.
+    assert "Django" in text and "head unit" in text.lower() and "Android" in text
+
+
+@pytest.mark.parametrize("query", BROAD)
+def test_a_broad_question_is_answered_by_the_tool_not_refused(query):
+    result = _run({"query": query})
+    assert not result.is_error, result.text
+    assert result.structured["passages"][0]["path"] == "README.md"
+    assert "docs/architecture/c1-context.md" in result.text
+
+
+def test_every_overview_pick_is_in_the_corpus():
+    have = {(c["path"], c["heading"]) for c in _corpus()["chunks"]}
+    assert set(docs_search.OVERVIEW_PICKS) <= have
+
+
+@pytest.mark.parametrize(
+    "query", ["voice", "coding agents", "how does the voice loop work", "reconciliation gate"]
+)
+def test_a_specific_question_is_not_an_overview(query):
+    assert not docs_search.is_overview(query)
+
+
+def test_the_description_asks_for_the_whole_question():
+    description = TOOLS_BY_NAME["legion_docs"].description
+    assert "WHOLE question" in description and "never a single word" in description
+
+
 def test_voice_questions_reach_the_voice_docs():
     hits = [p.path for p in search("how does the voice loop work")]
     assert "docs/architecture/c3-voice-loop.md" in hits
@@ -192,7 +248,7 @@ def _run(args: dict):
     return run_tool(None, "legion_docs", args)
 
 
-@pytest.mark.parametrize("query", ["", "   ", "how does it work?", "?!"])
+@pytest.mark.parametrize("query", ["", "   ", "?!", "what is it?"])
 def test_an_empty_question_is_refused_in_words(query):
     result = _run({"query": query})
     assert result.is_error

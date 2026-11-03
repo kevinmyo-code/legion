@@ -106,6 +106,11 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     # public repo's docs (`assistant/docs_corpus.json`): no household row, no
     # private file.
     "legion_docs",
+    # The web, through Gemini with Google Search grounding (audit 2026-11-03:
+    # "What is the H1B1?" had no answer). Sends the visitor's question and
+    # nothing of the household; each call is charged against the demo's daily
+    # budget before Google is asked (`demo.budget.charge_web_search`).
+    "web_search",
     "about_kevin",
 )
 

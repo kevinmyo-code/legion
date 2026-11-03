@@ -1033,6 +1033,66 @@ def _bank_as_of_words(request, as_of) -> str:
     return f"as of {clock} {_long_date(local.date())}"
 
 
+def _since_words(a: dict) -> str:
+    """", plus -$433.93 of bank-feed transactions since", or "" with none."""
+    if not a["fact_since_count"]:
+        return ""
+    from brief.compose import money
+
+    kind = (
+        "bank-feed transactions"
+        if a["fact_since_bank_feed_count"] == a["fact_since_count"]
+        else "verified transactions"
+    )
+    after = "dated after it" if a["anchor"] == "bank" else "since"
+    return f", plus {money(a['fact_since_cents'], a['currency'])} of {kind} {after}"
+
+
+def _now_words(request, a: dict) -> str:
+    """"Now: -$345.43 (statement balance $88.50 on Tue Oct 6, 2026, verified,
+    plus -$433.93 of bank-feed transactions since)". The figure first, the
+    anchor second. A credit account says what is owed."""
+    from brief.compose import money
+
+    c = a["currency"]
+    current = a["current_cents"]
+    credit = a["anchor"] == "bank" and a["bank"]["type"] == "credit"
+    if credit:
+        figure = (
+            f"{money(-current, c)} owed" if current <= 0 else f"{money(current, c)} in credit"
+        )
+    else:
+        figure = money(current, c)
+    # The anchor's own figure is repeated only when something moved since it;
+    # otherwise it IS the Now figure and saying it twice invites a mix-up.
+    moved = bool(a["fact_since_count"])
+    if a["anchor"] == "bank":
+        # Kevin, 2026-11-03 ("store them"): the bank's own balance is fact,
+        # said plainly, always with when the bank stated it.
+        bank = a["bank"]
+        when = _bank_as_of_words(request, bank["as_of"])
+        if credit:
+            source = "the bank's own figure"
+            if moved:
+                source += f" of {money(bank['current_cents'], c)} owed"
+            source += f" {when}"
+            if bank["available_cents"] is not None:
+                source += f", {money(bank['available_cents'], c)} of credit available"
+        else:
+            source = "the bank's own balance"
+            if moved:
+                source += f" of {money(bank['current_cents'], c)}"
+            source += f" {when}"
+            if bank["available_cents"] is not None:
+                source += f", {money(bank['available_cents'], c)} available"
+    else:
+        source = "statement balance"
+        if moved:
+            source += f" {money(a['statement_closing_cents'], c)}"
+        source += f" on {_long_date(a['statement_period_end'])}, verified"
+    return f"Now: {figure} ({source}{_since_words(a)})"
+
+
 def _account_balances(request, args) -> ToolResult:
     from api.ledger_balances import account_balances
     from brief.compose import money
@@ -1053,37 +1113,12 @@ def _account_balances(request, args) -> ToolResult:
     for a in found:
         c = a["currency"]
         said = [f"{a['label']} (ending {a['account_last4']}, {c}):"]
-        anchored = a["verified_balance_cents"] is not None
-        if a["anchor"] == "bank":
-            # Kevin, 2026-11-03 ("store them"): the bank's own balance is fact,
-            # said plainly, always with when the bank stated it.
-            bank = a["bank"]
-            when = _bank_as_of_words(request, bank["as_of"])
-            if bank["type"] == "credit":
-                text = f"{money(bank['current_cents'], c)} owed, from the bank {when}"
-                if bank["available_cents"] is not None:
-                    text += f" ({money(bank['available_cents'], c)} of credit available)"
-            else:
-                text = f"balance {money(bank['current_cents'], c)}, from the bank {when}"
-                if bank["available_cents"] is not None:
-                    text += f" ({money(bank['available_cents'], c)} available)"
-            if a["fact_since_count"]:
-                text += (
-                    f", plus {money(a['fact_since_cents'], c)} of statement transactions dated "
-                    f"after it"
-                )
-            said.append(text + ".")
-        elif anchored:
-            said.append(
-                f"verified balance {money(a['verified_balance_cents'], c)}: the closing balance "
-                f"printed on the statement ending {_long_date(a['statement_period_end'])}, which "
-                f"passed the reconciliation gate"
-                + (
-                    f", plus {money(a['fact_since_cents'], c)} of transactions since."
-                    if a["fact_since_count"]
-                    else "."
-                )
-            )
+        anchored = a["current_cents"] is not None
+        if anchored:
+            # Audit 2026-11-03: the current figure leads, in one phrase, and
+            # the anchor follows as where it came from - never two figures
+            # side by side for the model to pick between.
+            said.append(_now_words(request, a) + ".")
         elif a["from_bank_feed"]:
             # ADR 0057: the bank's feed is fact, said plainly. It brings
             # transactions, and the engine keeps no balance from it.
@@ -1575,10 +1610,10 @@ DOCS_CONTRACT = (
 
 
 def _legion_docs(request, args) -> ToolResult:
-    from assistant.docs_search import LIMIT_DEFAULT, search, tokens
+    from assistant.docs_search import LIMIT_DEFAULT, is_overview, search, tokens
 
     query = args["query"].strip()
-    if not tokens(query):
+    if not tokens(query) and not is_overview(query):
         return refused(
             "Nothing was searched. The question has no words to look up in LEGION's docs "
             f"({query!r}); ask it with the subject named, for example \"how does the "
@@ -1597,6 +1632,55 @@ def _legion_docs(request, args) -> ToolResult:
         f"{len(passages)} passage(s) from LEGION's design docs for {query!r}. {DOCS_CONTRACT}"
         f"\n\n{body}",
         {"query": query, "passages": [p.as_dict() for p in passages]},
+    )
+
+
+# =============================================================================
+# web_search: the web, through Gemini with Google Search grounding (Kevin,
+# 2026-11-03: "it needs a websearch tool"). `engine_mcp/web_search.py`.
+# =============================================================================
+
+
+def _web_search(request, args) -> ToolResult:
+    from demo import budget
+    from engine_mcp import web_search
+    from household.models import is_recruiter
+
+    query = " ".join(args["query"].split())
+    if not query:
+        return refused("Nothing was searched. The search had no words in it.")
+    user = getattr(request, "user", None)
+    reservation = None
+    if user is not None and is_recruiter(user):
+        # Reserved before Google is asked (`demo/budget.py`).
+        reservation = budget.charge_web_search()
+        if reservation is None:
+            return refused(f"Nothing was searched. {budget.BUDGET_USED_UP}")
+    try:
+        found = web_search.search(query)
+    except web_search.SearchFailed as exc:
+        if reservation is not None and exc.refused:
+            budget.release(reservation)
+        return failed(exc.message)
+    structured = {
+        "query": query,
+        "answer": found.answer,
+        "sources": found.sources,
+        "search_queries": found.search_queries,
+        "model": found.model,
+    }
+    if not found.sources:
+        return ok(
+            f"Web search for {query!r} (Gemini with Google Search) returned an answer but NO web "
+            f"source, so it is unconfirmed: say you could not confirm it. Answer: {found.answer}",
+            structured,
+        )
+    sources = "; ".join(f"[{i}] {s['title']} {s['url']}" for i, s in enumerate(found.sources, 1))
+    return ok(
+        f"Web search for {query!r} (Gemini with Google Search). This is from the web, not "
+        f"LEGION's data: say so, and name the sources you use by their names. Answer: "
+        f"{found.answer}\nSources: {sources}",
+        structured,
     )
 
 
@@ -1766,15 +1850,17 @@ TOOLS: tuple[EngineTool, ...] = (
         name="account_balances",
         title="Account balances",
         description=(
-            "The balance of each bank account, per currency (never added across currencies): "
-            "the bank's own balance with the time the bank stated it (fact; always say "
-            "\"as of\" that time), else the closing balance printed on its latest statement "
-            "plus transactions since, and separately any activity no gate checked (UNVERIFIED) "
-            "or that a person logged "
-            "as pending. Say UNVERIFIED wherever the result does, and nowhere else: the bank's "
-            "own feed is fact. An account with no balance on file has none to state: never "
-            "make one up from its transactions. Optional `account` (last four digits or words "
-            "of its name)."
+            "The balance of each bank account, per currency (never added across currencies). "
+            "Each account's line LEADS with \"Now: <figure>\": that figure is the balance, so "
+            "say it as the balance; what follows in brackets is where it came from (the bank's "
+            "own balance with the time the bank stated it - always say \"as of\" that time - "
+            "or the closing balance printed on its latest statement, plus transactions since). "
+            "Never give the statement's or the bank's figure as the balance when the Now figure "
+            "differs. Separately it lists any activity no gate checked (UNVERIFIED) or that a "
+            "person logged as pending. Say UNVERIFIED wherever the result does, and nowhere "
+            "else: the bank's own feed is fact. An account with no balance on file has none to "
+            "state: never make one up from its transactions. Optional `account` (last four "
+            "digits or words of its name)."
         ),
         input_schema=_object({"account": {"type": "string"}}),
         handler=_account_balances,
@@ -2093,7 +2179,11 @@ TOOLS: tuple[EngineTool, ...] = (
             "Searches LEGION's own design docs - the README, the architecture notes, the "
             "architecture decision records (ADRs) and the glossary - for passages about how "
             "LEGION is built and why: the engine, tenancy, the reconciliation gate, voice, roles. "
-            "Pass the question's subject as `query`. Answer only from the passages returned and "
+            "Pass the person's WHOLE question as `query`, in their own words (\"Explain to me "
+            "the codebase\", \"how does the voice loop handle interruptions\"), never a single "
+            "word or a topic label: the full question is what finds the right passages. A broad "
+            "question (the codebase, how it works, the architecture) returns the overview: the "
+            "clients, the engine and the head unit. Answer only from the passages returned and "
             "cite each source (\"ADR 0057\", or the file and heading). An ADR marked superseded "
             "must be described as superseded, never as the current design. When the passages do "
             "not answer it, say the docs do not cover it; never invent an implementation detail."
@@ -2106,6 +2196,24 @@ TOOLS: tuple[EngineTool, ...] = (
             ("query",),
         ),
         handler=_legion_docs,
+    ),
+    EngineTool(
+        name="web_search",
+        title="Search the web",
+        description=(
+            "Searches the web (Gemini with Google Search) and returns a short answer with the "
+            "names and links of its sources. Use it for current events and news, weather, "
+            "prices, scores, and general facts - what a visa, a law or a term is - anything not "
+            "in LEGION's own data; never for the household's records, which the other tools "
+            "read. Pass the question as `query`, in plain words. When you answer from it, say it "
+            "is from the web and name the sources (\"according to Reuters\"). If it fails or "
+            "returns no source, say you could not confirm it; never guess. Nothing searched is "
+            "stored."
+        ),
+        input_schema=_object(
+            {"query": {"type": "string", "minLength": 1, "maxLength": 300}}, ("query",)
+        ),
+        handler=_web_search,
     ),
 )
 

@@ -835,6 +835,8 @@ def test_account_balances_anchors_on_the_banks_own_balance(
     assert checking["fact_since_count"] == 0
     # A credit account's balance is what is owed: money out in the ledger's sign.
     assert card["verified_balance_cents"] == -41_007
-    assert "balance $1,234.56, from the bank as of" in text and "($1,200.10 available)" in text
-    assert "$410.07 owed, from the bank as of 2:14 PM Tue Nov 3, 2026" in text
+    assert checking["current_cents"] == 123_456 and card["current_cents"] == -41_007
+    assert "Now: $1,234.56 (the bank's own balance as of" in text
+    assert ", $1,200.10 available)." in text
+    assert "Now: $410.07 owed (the bank's own figure as of 2:14 PM Tue Nov 3, 2026" in text
     assert "unverified" not in text.lower()

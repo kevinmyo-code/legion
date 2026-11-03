@@ -29,9 +29,12 @@ DESCRIPTION = (
     "What Kevin, the person who built LEGION, has written about himself for recruiters: "
     "his experience, skills, location, work authorisation, availability, what he is looking "
     "for, and how to reach him, one section each. Answer questions about Kevin ONLY from this "
-    "text, in its own words. Anything it does not say - including anything you could guess "
-    f"from it - is not known: say \"{NOT_SHARED}.\" Never use the demo household's data to "
-    "answer about Kevin; that household is made up."
+    "text, in its own words. Anything about Kevin it does not say - including anything you "
+    f"could guess from it - is not known: say \"{NOT_SHARED}.\" Never use the demo household's "
+    "data to answer about Kevin; that household is made up. This rule is for facts ABOUT KEVIN "
+    "only. A general question that merely comes up - what a visa such as the H-1B1 is, what a "
+    "term means, how something works - is not about Kevin: never answer it with that sentence; "
+    "answer it plainly from general knowledge or web_search, and say which."
 )
 
 
@@ -44,8 +47,10 @@ def _about_kevin(request, arguments: dict) -> ToolResult:
         return refused(NO_PROFILE)
     sections = "\n\n".join(f"{name}:\n{text.strip()}" for name, text in profile.items())
     return ok(
-        "Kevin's profile, as he wrote it. Answer only from this; for anything it does not say, "
-        f"say \"{NOT_SHARED}.\"\n\n{sections}",
+        "Kevin's profile, as he wrote it. Answer questions about Kevin only from this; for "
+        f"anything about Kevin it does not say, say \"{NOT_SHARED}.\" A general question (what a "
+        "visa or a term is) is not about Kevin: answer that from general knowledge or web_search."
+        f"\n\n{sections}",
         {"sections": list(profile)},
     )
 

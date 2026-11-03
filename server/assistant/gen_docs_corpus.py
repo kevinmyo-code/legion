@@ -35,6 +35,7 @@ SOURCES: tuple[str, ...] = (
     "README.md",
     "server/README.md",
     "docs/glossary.md",
+    "docs/working-with-agents.md",
     "docs/architecture/*.md",
     "docs/adr/[0-9]*.md",
 )
@@ -42,6 +43,7 @@ ALLOWED_PREFIXES: tuple[str, ...] = (
     "README.md",
     "server/README.md",
     "docs/glossary.md",
+    "docs/working-with-agents.md",
     "docs/architecture/",
     "docs/adr/",
 )

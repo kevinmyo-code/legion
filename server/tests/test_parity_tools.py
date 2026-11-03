@@ -219,7 +219,8 @@ def test_account_balances_on_the_demo_household(mcp_write, demo):
     checking, card = by[demo_seed.CHECKING_LAST4], by[demo_seed.CARD_LAST4]
     assert checking["verified_balance_cents"] == last["closing_balance_cents"]
     assert checking["verified"] is True
-    assert f"verified balance {money(last['closing_balance_cents'])}" in text
+    assert checking["current_cents"] == last["closing_balance_cents"]
+    assert f"Now: {money(last['closing_balance_cents'])} (statement balance on " in text
     assert card["verified_balance_cents"] is None and card["verified"] is False
     assert card["unverified_since_count"] > 0
     assert "Demo Rewards Card (ending 0917, USD): no statement on file" in text
@@ -246,9 +247,75 @@ def test_activity_after_the_statement_is_unverified_and_said_so(
     assert account["verified_balance_cents"] == 1_048_000
     assert account["unverified_since_cents"] == -450
     assert account["with_unverified_cents"] == 1_047_550
-    assert "verified balance $10,480.00" in text
+    assert account["current_cents"] == 1_048_000
+    assert "Now: $10,480.00 (statement balance on Fri Jul 31, 2026, verified)." in text
     assert "Since that statement, 1 UNVERIFIED transaction(s) net -$4.50" in text
     assert "would be $10,475.50, which is UNVERIFIED" in text
+
+
+def _feed(household, last4, rows):
+    from django.db.models.functions import Now
+
+    from legacy.models.ledger import LedgerTransaction
+
+    for index, (day, cents) in enumerate(rows):
+        LedgerTransaction.objects.create(
+            id=uuid.uuid4(),
+            household=household,
+            account_last4=last4,
+            account_nickname="Adv SafeBalance Banking",
+            currency="USD",
+            txn_date=day,
+            description=f"FEED {index}",
+            amount_cents=cents,
+            line_ref=f"plaid:{last4}:{index}",
+            category_pending=False,
+            provenance="BANK_API",
+            bank_transaction_id=f"txn-{last4}-{index}",
+            created_at=Now(),
+        )
+
+
+def test_the_now_figure_leads_and_is_the_statement_plus_the_feed_since(
+    mcp_write, household_a
+):
+    """Audit of a live conversation, 2026-11-03: asked "money", the assistant
+    said the statement-anchored figure without being sure which of two
+    figures was the balance. The line now LEADS with the current figure, the
+    statement balance and the movement since in brackets after it."""
+    # Closing balance $88.50 on Tue Oct 6, 2026 (the helper opens at $10,000).
+    statement(
+        household_a,
+        "3119",
+        "Adv SafeBalance Banking",
+        [line("2026-10-02", "RENT", 8_850 - 1_000_000)],
+        start="2026-09-07",
+        end="2026-10-06",
+    )
+    _feed(household_a, "3119", ((dt.date(2026, 10, 9), -40_000), (dt.date(2026, 10, 20), -3_393)))
+    is_error, text, structured = call(mcp_write, "account_balances", {"account": "3119"})
+    assert not is_error, text
+    (account,) = structured["accounts"]
+    assert account["statement_closing_cents"] == 8_850
+    assert account["current_cents"] == 8_850 - 43_393 == -34_543
+    assert account["verified_balance_cents"] == account["current_cents"]
+    assert account["fact_since_bank_feed_count"] == 2
+    assert (
+        "Adv SafeBalance Banking (ending 3119, USD): Now: -$345.43 (statement balance $88.50 on "
+        "Tue Oct 6, 2026, verified, plus -$433.93 of bank-feed transactions since)."
+    ) in text
+    # The current figure comes first; the statement's figure only after it.
+    assert text.index("-$345.43") < text.index("$88.50")
+    # The bank's feed is fact: never called unverified.
+    assert "unverified" not in text.lower()
+
+
+def test_the_tool_tells_the_model_to_say_the_now_figure():
+    from engine_mcp.tools import TOOLS_BY_NAME
+
+    description = TOOLS_BY_NAME["account_balances"].description
+    assert "LEADS with \"Now: <figure>\"" in description
+    assert "say it as the balance" in description
 
 
 def test_a_bank_feed_account_is_fact_with_no_stored_balance(mcp_write, household_a):
