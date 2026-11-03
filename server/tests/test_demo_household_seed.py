@@ -134,7 +134,12 @@ def test_the_seed_builds_every_aspect_with_invented_data():
     assert Place.objects.filter(household=demo).count() == 4
     assert VoiceNote.objects.filter(household=demo).count() == 3
     events = Event.objects.filter(household=demo)
-    assert events.count() == 5
+    assert events.count() == 6
+    # Ledger categories and budgets (parity quick wins), Transfer not spending.
+    from legacy.models.ledger import BudgetTarget, Category
+
+    assert Category.objects.filter(household=demo).count() == 8
+    assert BudgetTarget.objects.filter(household=demo).count() == 6
     # No user was created; a seeded event is shared and attributed to nobody.
     assert set(events.values_list("owner_user_id", flat=True)) == {None}
     assert set(events.values_list("created_by_id", flat=True)) == {None}
@@ -221,7 +226,9 @@ def test_reset_deletes_what_it_may_keeps_what_is_gated_and_reseeds_the_same_rows
     assert report.household.id == demo.id
     # Authored and provisional rows were really deleted, not merely kept...
     assert report.reset_deleted["vehicles"] == 1
-    assert report.reset_deleted["events"] == 5
+    assert report.reset_deleted["events"] == 6
+    assert report.reset_deleted["categories"] == 8
+    assert report.reset_deleted["budget_targets"] == 6
     assert report.reset_deleted["ledger_transactions (UNRECONCILED)"] > 0
     # ...the bad receipt's file row went too, and the gate refused it again.
     assert report.reset_deleted["ingested_files (not behind a gated row)"] >= 2

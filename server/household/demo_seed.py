@@ -20,7 +20,8 @@ real household.
   Line items carry macro ESTIMATES (section 4 rule 5). One receipt's items do
   not add up to its printed subtotal, and the engine quarantines it - the seed
   never writes a quarantined row itself.
-- **Fleet, places, notes:** the `api/` serializers (`VehicleSerializer`,
+- **Fleet, places, notes, ledger categories and budgets:** the `api/`
+  serializers (`CategorySerializer`, `BudgetTargetSerializer`, `VehicleSerializer`,
   `ServiceHistorySerializer`, `MaintenanceScheduleSerializer`,
   `PlaceSerializer`, `VoiceNoteSerializer`) with the household in their
   context, exactly as `SyncedModelViewSet` builds them.
@@ -477,6 +478,58 @@ SCHEDULES = (
     },
 )
 
+# The ledger's categories, by the names the statement lines carry, and a
+# monthly budget per spending category from BALANCE_EPOCH (parity quick wins,
+# 2026-11-02: `monthly_spend` shows spent against budget, and a seed with no
+# targets has nothing to show). `Transfer` is not spending: the card payment
+# moves money between the household's own accounts, and every spend figure
+# leaves it out and says so.
+CATEGORIES = (
+    ("Income", False, False),
+    ("Housing", False, False),
+    ("Utilities", False, False),
+    ("Groceries", True, False),
+    ("Dining", True, False),
+    ("Transport", False, False),
+    ("Shopping", False, False),
+    ("Transfer", False, True),
+)
+
+BUDGET_TARGETS = (
+    ("Housing", 172_500),
+    ("Utilities", 22_000),
+    ("Groceries", 45_000),
+    ("Dining", 30_000),
+    ("Transport", 15_000),
+    ("Shopping", 8_000),
+)
+
+
+def category_rows() -> list[dict]:
+    return [
+        {
+            "origin_guid": f"demo-category-{name.lower()}",
+            "name": name,
+            "is_food_category": food,
+            "excluded_from_spend": not_spending,
+        }
+        for name, food, not_spending in CATEGORIES
+    ]
+
+
+def budget_target_rows() -> list[dict]:
+    return [
+        {
+            "origin_guid": f"demo-budget-{category.lower()}",
+            "category": category,
+            "currency": CURRENCY,
+            "amount_cents": cents,
+            "effective_from_month": BALANCE_EPOCH.isoformat(),
+        }
+        for category, cents in BUDGET_TARGETS
+    ]
+
+
 PLACES = (
     {"label": "Home", "latitude": 39.9851, "longitude": -83.0062,
      "address": "18 Willow Court, Maple Hollow"},
@@ -537,6 +590,9 @@ def voice_notes(now: dt.datetime) -> list[dict]:
     return rows
 
 
+_WEEKDAYS = ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY")
+
+
 def events(today: dt.date, zone) -> list[dict]:
     def at(days: int, hour: int, minute: int = 0) -> str:
         return dt.datetime.combine(
@@ -573,6 +629,20 @@ def events(today: dt.date, zone) -> list[dict]:
             "starts_at": at(17, 19),
             "ends_at": at(17, 21),
             "location": "Paper Crane Books",
+        },
+        {
+            # Weekly, so a repeating event's occurrence can be skipped
+            # (`skip_event_occurrence`) on the demo.
+            "origin_guid": "demo-event-run-club",
+            "title": "Run club",
+            "kind": "event",
+            "starts_at": at(2, 7),
+            "ends_at": at(2, 8),
+            "location": "Maple Hollow riverside trail",
+            "repeat_kind": "WEEKLY",
+            "repeat_every": 1,
+            "repeat_days_of_week": _WEEKDAYS[(today + dt.timedelta(days=2)).weekday()],
+            "repeat_end_kind": "NEVER",
         },
         {
             "origin_guid": "demo-event-market",
@@ -707,7 +777,7 @@ def reset(household: Household, report: SeedReport) -> None:
     from legacy.models.dates import Event
     from legacy.models.fleet import MaintenanceSchedule, ServiceHistory, Vehicle
     from legacy.models.ingest import IngestedFile
-    from legacy.models.ledger import LedgerTransaction, Statement
+    from legacy.models.ledger import BudgetTarget, Category, LedgerTransaction, Statement
     from legacy.models.notes import VoiceNote
     from legacy.models.pantry import Receipt, ReceiptLineItem
     from legacy.models.places import Place
@@ -722,6 +792,8 @@ def reset(household: Household, report: SeedReport) -> None:
     wipe("events", Event.objects.filter(household=household))
     wipe("places", Place.objects.filter(household=household))
     wipe("voice_notes", VoiceNote.objects.filter(household=household))
+    wipe("budget_targets", BudgetTarget.objects.filter(household=household))
+    wipe("categories", Category.objects.filter(household=household))
     # Purchases before ticks: `Purchase.tick` is SET_NULL, so a tick deleted
     # first would leave its bought entry behind. The built-in Groceries list
     # itself is kept (only its items go): nothing but household creation makes
@@ -787,12 +859,14 @@ def seed_household(
         ServiceHistorySerializer,
         VehicleSerializer,
     )
+    from api.ledger import BudgetTargetSerializer, CategorySerializer
     from api.places import PlaceSerializer
     from api.voice_notes import VoiceNoteSerializer
     from ingest.provisional import commit_provisional
     from ingest.views import commit_receipt, commit_statement
     from legacy.models.dates import Event
     from legacy.models.fleet import MaintenanceSchedule, ServiceHistory, Vehicle
+    from legacy.models.ledger import BudgetTarget, Category
     from legacy.models.notes import VoiceNote
     from legacy.models.places import Place
 
@@ -854,6 +928,20 @@ def seed_household(
             }
             _save(MaintenanceScheduleSerializer, context, data, existing)
         report.upserts["maintenance_schedules"] = len(SCHEDULES)
+
+        for row in category_rows():
+            existing = Category.objects.filter(
+                household=household, origin_guid=row["origin_guid"]
+            ).first()
+            _save(CategorySerializer, context, row, existing)
+        report.upserts["categories"] = len(CATEGORIES)
+
+        for row in budget_target_rows():
+            existing = BudgetTarget.objects.filter(
+                household=household, origin_guid=row["origin_guid"]
+            ).first()
+            _save(BudgetTargetSerializer, context, row, existing)
+        report.upserts["budget_targets"] = len(BUDGET_TARGETS)
 
         place_context = {**context, "revive_tombstone": True}
         for row in PLACES:
