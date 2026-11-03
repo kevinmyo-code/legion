@@ -1443,9 +1443,16 @@ class LiveSessionController(context: Context) {
             // is what `remember`'s dispatch branch gates on - see that accessor's doc
             // for why the flag is read here, off the live session, rather than dispatch
             // reaching back into GeminiLiveSession itself.
-            else -> LiveToolbox.dispatch(
-                appContext, name, args, readThrough,
-            ) ?: JSONObject().put("success", true)
+            else -> {
+                val startedAt = System.currentTimeMillis()
+                val out = LiveToolbox.dispatch(appContext, name, args, readThrough)
+                    ?: JSONObject().put("success", true)
+                // A tool inside a dispatcher can put up the codes card (2026-11-03); bring the
+                // app forward for it the way show_agenda_modal does, or it only "pops up" the
+                // next time the app is opened.
+                if (modalShownSince(VoiceModalController.current.value, startedAt)) openVoiceModal()
+                out
+            }
         }
 
     /**
@@ -1797,3 +1804,7 @@ class LiveSessionController(context: Context) {
         ): Boolean = nowMs - lastInteractionMs < idleWindowMs
     }
 }
+
+/** True when [payload] is a per-car card ([VoiceModalTarget.CODES]) put up at or after [sinceMs]. */
+internal fun modalShownSince(payload: VoiceModalPayload?, sinceMs: Long): Boolean =
+    payload != null && payload.target == VoiceModalTarget.CODES && payload.shownAt >= sinceMs
