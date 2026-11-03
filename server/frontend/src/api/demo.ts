@@ -125,7 +125,7 @@ export async function enterDemo(code: string, ref?: string): Promise<EnterResult
       case 429:
         return { ok: false, message: 'Too many tries from this network. Wait a while and try again.' }
       case 503:
-        return { ok: false, message: 'The demo is not set up on this engine yet. Nothing was created.' }
+        return { ok: false, message: 'The demo could not be set up just now. Nothing was created; try again in a moment.' }
       default:
         return { ok: false, message: `The engine could not start the demo (it answered ${response.status}).` }
     }

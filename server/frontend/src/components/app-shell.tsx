@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 
 import { AssistantProvider } from '@/assistant/assistant-context'
+import { DemoBanner } from '@/components/demo/demo-banner'
 import { EventSheetHost } from '@/components/event-sheet-host'
 import { FamilyShell } from '@/components/family-shell'
 import { WorkbenchShell } from '@/components/workbench-shell'
 import { NAV, visibleNav, type NavItem } from '@/lib/nav'
+import { shownToRecruiter, useIsRecruiter } from '@/lib/recruiter'
 import { useSurface } from '@/lib/surface'
 
 /**
@@ -16,6 +18,10 @@ import { useSurface } from '@/lib/surface'
  *
  * `nav` is a seam for tests (an unbuilt item must never render); in the app it
  * is always the one `NAV` table.
+ *
+ * A recruiter's demo visit (ticket 13, ADR 0069) gets the same shell, less the
+ * screens it may not use (`lib/recruiter`), with the demo banner above every
+ * screen. The assistant is the members' own component either way.
  */
 export function AppShell({
   children,
@@ -25,15 +31,24 @@ export function AppShell({
   nav?: readonly NavItem[]
 }) {
   const surface = useSurface()
-  const items = visibleNav(nav, surface)
+  const recruiter = useIsRecruiter()
+  const items = visibleNav(nav, surface).filter((item) => !recruiter || shownToRecruiter(item.to))
+  const content = recruiter ? (
+    <>
+      <DemoBanner />
+      {children}
+    </>
+  ) : (
+    children
+  )
 
   return (
     <AssistantProvider>
       <EventSheetHost>
         {surface === 'workbench' ? (
-          <WorkbenchShell items={items}>{children}</WorkbenchShell>
+          <WorkbenchShell items={items}>{content}</WorkbenchShell>
         ) : (
-          <FamilyShell items={items}>{children}</FamilyShell>
+          <FamilyShell items={items}>{content}</FamilyShell>
         )}
       </EventSheetHost>
     </AssistantProvider>

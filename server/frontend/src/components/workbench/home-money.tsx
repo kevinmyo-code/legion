@@ -9,6 +9,7 @@ import { SpendNotes, SpentByAccount } from '@/components/workbench/spent-by-acco
 import { Skeleton } from '@/components/ui/skeleton'
 import { plural } from '@/lib/figures'
 import { monthLabel } from '@/lib/ledger'
+import { useIsRecruiter } from '@/lib/recruiter'
 import { useSurface } from '@/lib/surface'
 
 /**
@@ -83,10 +84,11 @@ function Quiet({ children }: { children: ReactNode }) {
 
 export function NeedsDecisionPanel() {
   const { query: transactions, loaded } = useLedgerTransactions()
-  const files = useRows(ingestedFiles)
+  // A recruiter's visit has no ingestion ledger to read (ticket 13; the
+  // engine refuses it), so the "held for review" line is not shown at all.
+  const recruiter = useIsRecruiter()
 
   const needCategory = transactions.data?.filter((row) => row.category === null).length
-  const held = files.data?.filter((file) => file.state === 'QUARANTINED')
 
   return (
     <Section title="Needs a decision">
@@ -116,35 +118,48 @@ export function NeedsDecisionPanel() {
           <Quiet>Every transaction has a category.</Quiet>
         )}
 
-        {files.isPending ? (
-          <Quiet>Still loading the bank files.</Quiet>
-        ) : held === undefined ? (
-          <Quiet>
-            Could not reach the engine, so whether any bank file is held for review is not known.
-          </Quiet>
-        ) : held.length > 0 ? (
-          <Decision
-            title={`${plural(held.length, 'file')} held for review`}
-            detail={`${held.map((file) => file.display_name ?? 'Unnamed file').join(', ')}. Nothing from ${held.length === 1 ? 'it was' : 'them was'} added.`}
-            action={
-              <Button asChild variant="secondary" size="sm">
-                <Link to="/money" search={{ tab: 'files' }}>
-                  See why
-                </Link>
-              </Button>
-            }
-          />
-        ) : (
-          <Quiet>No bank file is held for review.</Quiet>
-        )}
+        {!recruiter && <HeldFiles />}
       </ul>
-      {(transactions.isError && transactions.data !== undefined) ||
-      (files.isError && files.data !== undefined) ? (
+      {transactions.isError && transactions.data !== undefined ? (
         <div className="mt-2">
-          <StaleNote updatedAt={Math.min(transactions.dataUpdatedAt, files.dataUpdatedAt)} />
+          <StaleNote updatedAt={transactions.dataUpdatedAt} />
         </div>
       ) : null}
     </Section>
+  )
+}
+
+/** Bank files the gate held back, the second line of "Needs a decision". */
+function HeldFiles() {
+  const files = useRows(ingestedFiles)
+  const held = files.data?.filter((file) => file.state === 'QUARANTINED')
+  if (files.isPending) return <Quiet>Still loading the bank files.</Quiet>
+  if (held === undefined) {
+    return <Quiet>Could not reach the engine, so whether any bank file is held for review is not known.</Quiet>
+  }
+  return (
+    <>
+      {held.length > 0 ? (
+        <Decision
+          title={`${plural(held.length, 'file')} held for review`}
+          detail={`${held.map((file) => file.display_name ?? 'Unnamed file').join(', ')}. Nothing from ${held.length === 1 ? 'it was' : 'them was'} added.`}
+          action={
+            <Button asChild variant="secondary" size="sm">
+              <Link to="/money" search={{ tab: 'files' }}>
+                See why
+              </Link>
+            </Button>
+          }
+        />
+      ) : (
+        <Quiet>No bank file is held for review.</Quiet>
+      )}
+      {files.isError && files.data !== undefined ? (
+        <li className="list-none">
+          <StaleNote updatedAt={files.dataUpdatedAt} />
+        </li>
+      ) : null}
+    </>
   )
 }
 

@@ -1,9 +1,11 @@
-import { Outlet, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Outlet, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
 import { useDemoSession } from '@/api/demo'
 import { useMe } from '@/api/queries'
 import { AppShell } from '@/components/app-shell'
+import { RecruiterRefusal } from '@/components/demo/demo-banner'
+import { recruiterRefusal } from '@/lib/recruiter'
 
 /**
  * A pathless layout route (the leading underscore keeps it out of the URL -
@@ -27,11 +29,13 @@ export const Route = createFileRoute('/_authed')({
 function AuthedLayout() {
   const me = useMe()
   const navigate = useNavigate()
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
 
-  // A 403 from `auth/me` may be a recruiter's demo visit, which may use the
-  // assistant and nothing else (ADR 0068). Ask the demo door before choosing
-  // where to send them, so a recruiter lands on `/try` instead of a sign-in
-  // form that cannot help them. A plain 401 never asks.
+  // A recruiter's live visit is signed in here like a member (ticket 13,
+  // ADR 0069: its own copy of the demo household). A 403 from `auth/me` is a
+  // visit that ended, or one the engine refuses: ask the demo door before
+  // choosing where to send them, so a recruiter lands on `/try` instead of a
+  // sign-in form that cannot help them. A plain 401 never asks.
   const refused = me.data?.signedIn === false && me.data.refused
   const demo = useDemoSession(refused)
 
@@ -39,6 +43,10 @@ function AuthedLayout() {
     if (me.data?.signedIn !== false) return
     if (!me.data.refused) {
       void navigate({ to: '/login' })
+      return
+    }
+    if (me.data.visitEnded) {
+      void navigate({ to: '/try' })
       return
     }
     if (demo.isPending) return
@@ -70,9 +78,11 @@ function AuthedLayout() {
     return null
   }
 
+  // A screen a visit may not use answers in words, not with a page of
+  // refusals (the engine refuses its routes either way).
+  const denied = me.data.me.role === 'recruiter' ? recruiterRefusal(pathname) : null
+
   return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <AppShell>{denied ? <RecruiterRefusal reason={denied} /> : <Outlet />}</AppShell>
   )
 }

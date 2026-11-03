@@ -10,21 +10,42 @@ import type { Reply } from './engine'
  * `{role, expires_at, ref}` or 403; content answers the page or 404, and allows
  * a recruiter's visit and a signed-in member (the owner's preview).
  *
- * A recruiter's visit is refused by every other route, as ADR 0068 has it:
- * `auth/me` and the companion read answer 403 with the engine's words.
+ * Since ticket 13 (ADR 0069) a live visit is signed in on its own copy of the
+ * demo household: `auth/me` answers with role `recruiter`, the app's routes
+ * answer as for a member, and the routes `household/recruiter_routes.py`
+ * denies answer 403 with a sentence (`recruiterDenied`). `ended: true` is a
+ * visit that has run out: `auth/me` answers 403 with `demo_visit_ended`.
  */
 
 export const WRONG_CODE = 'That invite code is not right. Nothing was created; check the code and try again.'
 export const TOO_MANY =
   'Too many tries from this network in a short time. Nothing was created; wait a while and try again.'
-export const NO_DEMO_HOUSEHOLD =
-  'The demo household is not set up on this engine yet. Nothing was created; the operator has to seed it first.'
-export const RECRUITER_ROUTE_REFUSAL =
-  'Nothing was read or written. This is a recruiter\'s demo visit: it may use the assistant and nothing else on this engine.'
+export const SEED_FAILED =
+  'The demo could not be set up just now. Nothing was created; try again in a moment.'
+export const VISIT_OVER =
+  'Nothing was read or written. This demo visit has ended or was closed. Enter the invite code again to start a new one.'
+
+/** A few of the engine's deny-list prefixes, enough for the screens under test. */
+const DENIED_PREFIXES = [
+  '/api/body/',
+  '/api/memory/',
+  '/api/ingest/',
+  '/api/games/',
+  '/api/books/',
+  '/api/push/',
+  '/api/brief/',
+  '/api/auth/devices',
+  '/api/households/me/',
+]
+
+export const RECRUITER_DENIED_REFUSAL =
+  "Nothing was read or written. This is a recruiter's demo visit, and it reaches a device or an account outside the household's own rows."
 
 export interface DemoState {
   /** The one live invite code. */
   code: string
+  /** The visit ran out: `auth/me` answers 403 `demo_visit_ended`. */
+  ended?: boolean
   /** A forced reply for enter (throttled, no demo household). */
   enterReply: Reply | null
   /** Bodies enter was sent, in order. */
@@ -41,6 +62,18 @@ export function defaultDemo(): DemoState {
 
 export function isRecruiter(host: { demo: DemoState; signedIn: boolean }): boolean {
   return !host.signedIn && host.demo.session?.role === 'recruiter'
+}
+
+/** A deny-list route asked for by a live visit: 403 in words, as the engine does. */
+export function recruiterDenied(
+  host: { demo: DemoState; signedIn: boolean },
+  pathname: string,
+): Reply | undefined {
+  if (!isRecruiter(host)) return undefined
+  if (DENIED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return { status: 403, body: { detail: RECRUITER_DENIED_REFUSAL } }
+  }
+  return undefined
 }
 
 export function handleDemo(
@@ -74,10 +107,6 @@ export function handleDemo(
     }
     if (!d.content) return { status: 404, body: { detail: 'Not found.' } }
     return { status: 200, body: d.content }
-  }
-
-  if (isRecruiter(host) && method === 'GET' && pathname === '/api/assistant/companion') {
-    return { status: 403, body: { detail: RECRUITER_ROUTE_REFUSAL } }
   }
 
   return undefined

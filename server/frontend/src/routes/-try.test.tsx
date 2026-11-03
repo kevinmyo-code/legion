@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { setAudioFactory } from '@/assistant/deps'
 import { createEngine, type EngineOptions } from '@/test/engine'
-import { NO_DEMO_HOUSEHOLD, SAMPLE_SVG, TOO_MANY, WRONG_CODE, sampleContent } from '@/test/engine-demo'
+import { SEED_FAILED, SAMPLE_SVG, TOO_MANY, WRONG_CODE, sampleContent } from '@/test/engine-demo'
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
 import { renderApp } from '@/test/render-app'
 import { OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
@@ -76,7 +76,7 @@ describe('the access code on /login', () => {
 
   test.each([
     [429, TOO_MANY],
-    [503, NO_DEMO_HOUSEHOLD],
+    [503, SEED_FAILED],
   ])('a %i says what happened in words', async (status, detail) => {
     const engine = createEngine({ signedIn: false })
     engine.demo.enterReply = { status, body: { detail } }
@@ -249,9 +249,19 @@ describe('/try', () => {
     expect(socket.sentOf('clientContent')).toEqual([])
   })
 
-  test('a recruiter who wanders into the app lands back on /try, not on a broken page', async () => {
-    const { router } = renderApp('/', visitor(), 'family')
-    expect(await screen.findByRole('heading', { name: 'Talk to my assistant' })).toBeInTheDocument()
+  test('the visitor page has a clear way into the app (ticket 13)', async () => {
+    const { router } = renderApp('/try', visitor(), 'family')
+    const explore = await screen.findByRole('region', { name: 'Explore the app' })
+    fireEvent.click(within(explore).getByRole('link', { name: 'Explore the app' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(await screen.findByRole('note', { name: 'Demo visit' })).toBeInTheDocument()
+  })
+
+  test('a recruiter whose visit ended lands back on /try, not on a broken page', async () => {
+    const engine = createEngine({ signedIn: false })
+    engine.demo.ended = true
+    const { router } = renderApp('/', engine, 'family')
+    expect(await screen.findByRole('heading', { name: 'Try LEGION' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/try')
   })
 

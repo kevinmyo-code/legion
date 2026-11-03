@@ -1,5 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PageHeader } from '@/components/workbench/page'
+import { useIsRecruiter } from '@/lib/recruiter'
 import { BudgetsTab } from '@/screens/money-budgets'
 import { CategoriesTab, FilesTab, RulesTab } from '@/screens/money-config'
 import { TransactionsTab } from '@/screens/money-transactions'
@@ -33,6 +34,8 @@ export function MoneyScreen({
   need: boolean
   onTab: (tab: MoneyTab) => void
 }) {
+  // A recruiter's visit (ticket 13) has no ingestion ledger: no Files tab.
+  const recruiter = useIsRecruiter()
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -45,7 +48,7 @@ export function MoneyScreen({
           <TabsTrigger value="budgets">Budgets</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="rules">Rules</TabsTrigger>
-          <TabsTrigger value="files">Files</TabsTrigger>
+          {!recruiter && <TabsTrigger value="files">Files</TabsTrigger>}
         </TabsList>
         <TabsContent value="transactions">
           <TransactionsTab need={need} />
@@ -59,9 +62,11 @@ export function MoneyScreen({
         <TabsContent value="rules">
           <RulesTab />
         </TabsContent>
-        <TabsContent value="files">
-          <FilesTab />
-        </TabsContent>
+        {!recruiter && (
+          <TabsContent value="files">
+            <FilesTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

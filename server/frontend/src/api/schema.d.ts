@@ -4903,6 +4903,8 @@ export interface components {
             email: string;
             device_name: string;
             name: string;
+            /** @description This user's role in their household: `owner`, `member`, or `recruiter` for a demo visit. Empty for a user in no household. */
+            role: string;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -8478,6 +8480,15 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
+            /** @description A recruiter's demo visit asked by name for an aspect it may not read (body, memory, ingest). Nothing was read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
         };
     };
     api_checklists_list: {
@@ -9094,7 +9105,7 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
-            /** @description No demo household on this engine, or more than one household carries its name. Nothing created. */
+            /** @description The visit's demo household could not be seeded. Nothing created. */
             503: {
                 headers: {
                     [name: string]: unknown;

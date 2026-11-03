@@ -5,6 +5,7 @@ import { useHousehold, useChanges, useMe } from '@/api/queries'
 import { DueItemRow } from '@/components/due-item-row'
 import { EventRow, timeLabel } from '@/components/event-row'
 import { GamesPill } from '@/components/games-pill'
+import { useIsRecruiter } from '@/lib/recruiter'
 import { PinnedListCard } from '@/components/family/pinned-list-card'
 import { SpendCard } from '@/components/family/spend-card'
 import { relativeTime } from '@/components/freshness'
@@ -130,6 +131,7 @@ function SectionSkeleton({ label }: { label: string }) {
 export function FamilyHome() {
   const changes = useChanges(true)
   const me = useMe()
+  const recruiter = useIsRecruiter()
   const household = useHousehold(true)
   const pins = usePins()
 
@@ -157,7 +159,8 @@ export function FamilyHome() {
         </div>
       </header>
       <BoughtPill />
-      <GamesPill />
+      {/* Games are between household members; a demo visit has none (ticket 13). */}
+      {!recruiter && <GamesPill />}
     </>
   )
 

@@ -216,8 +216,39 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
           {expiry}
         </p>
       )}
+      {mode === 'visitor' && <ExploreTheApp />}
       {body}
     </Shell>
+  )
+}
+
+/**
+ * The way from this page into the normal app (ticket 13, rulings 1 and 2): the
+ * same screens a member uses, on the visitor's own copy of the made-up
+ * household. The app's demo banner links back here.
+ */
+function ExploreTheApp() {
+  return (
+    <section
+      aria-labelledby="explore-the-app"
+      className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-card border border-outline-variant bg-card px-5 py-4"
+    >
+      <div className="max-w-xl">
+        <h2 id="explore-the-app" className="font-semibold">
+          Explore the app
+        </h2>
+        <p className="text-[0.9375rem] text-muted-foreground">
+          Money, Fleet, Lists, Calendar, Places and Notes, on your own copy of the made-up household.
+          Add or change anything; it stays in your copy and is deleted when your visit ends.
+        </p>
+      </div>
+      <Link
+        to="/"
+        className="inline-flex min-h-11 items-center rounded-full bg-primary px-5 font-medium text-primary-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        Explore the app
+      </Link>
+    </section>
   )
 }
 

@@ -3,7 +3,14 @@ import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip, Purchase } from '../api/types'
 import { defaultAssistant, handleAssistant, type AssistantState } from './engine-assistant'
 import { defaultBooks, handleBooks, type BooksState } from './engine-books'
-import { defaultDemo, handleDemo, isRecruiter, RECRUITER_ROUTE_REFUSAL, type DemoState } from './engine-demo'
+import {
+  defaultDemo,
+  handleDemo,
+  isRecruiter,
+  recruiterDenied,
+  VISIT_OVER,
+  type DemoState,
+} from './engine-demo'
 import { defaultGames, handleGames, type GamesState } from './engine-games'
 import { handleSettings, defaultSettings, type SettingsState } from './engine-settings'
 import { handleTables, type Row } from './engine-tables'
@@ -35,6 +42,16 @@ export const ME = {
   email: 'mia@example.test',
   device_name: '',
   name: 'Mia',
+  role: 'owner',
+}
+
+/** A recruiter's demo visit as `auth/me` answers it (ticket 13). */
+export const VISITOR_ME = {
+  user_id: '9a1e0000-0000-4000-8000-00000000beef',
+  email: 'visitor-0123456789abcdef@demo.invalid',
+  device_name: '',
+  name: '',
+  role: 'recruiter',
 }
 
 export interface EngineOptions {
@@ -385,9 +402,16 @@ export function createEngine(options: EngineOptions = {}): Engine {
         if (pattern === key || (pattern.endsWith('*') && key.startsWith(pattern.slice(0, -1)))) return reply
       }
 
+      const deniedForVisit = recruiterDenied(engine, pathname)
+      if (deniedForVisit) return deniedForVisit
+
       if (method === 'GET' && pathname === '/api/auth/me') {
-        // ADR 0068: a recruiter's visit is a session the engine knows and refuses here.
-        if (isRecruiter(engine)) return { status: 403, body: { detail: RECRUITER_ROUTE_REFUSAL } }
+        // Ticket 13 (ADR 0069): a live visit is signed in, on its own copy of
+        // the demo household; an ended one is refused with the engine's code.
+        if (isRecruiter(engine)) return { status: 200, body: VISITOR_ME }
+        if (engine.demo.ended) {
+          return { status: 403, body: { detail: VISIT_OVER, code: 'demo_visit_ended' } }
+        }
         return engine.signedIn
           ? { status: 200, body: { ...ME, name: engine.settings.name } }
           : { status: 401, body: { detail: 'Not signed in.' } }
