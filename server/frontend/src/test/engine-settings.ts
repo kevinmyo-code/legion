@@ -174,7 +174,7 @@ export function handleSettings(
         ...s.bank,
         connected: true,
         institution_name: 'Bank of America',
-        accounts: [{ name: 'Checking', mask: '1234', type: 'depository', subtype: 'checking' }],
+        accounts: [{ name: 'Checking', mask: '1234', type: 'depository', subtype: 'checking', balance_current_cents: null, balance_available_cents: null, balance_currency: null, balance_as_of: null }],
         sentence: 'Connected. Not synced yet.',
       }
       return { status: 201, body: { ...s.bank, is_owner: isOwner } }

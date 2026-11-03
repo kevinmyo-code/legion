@@ -20,7 +20,7 @@ afterEach(() => {
 const CONNECTED = {
   connected: true,
   institution_name: 'Bank of America',
-  accounts: [{ name: 'Checking', mask: '1234', type: 'depository', subtype: 'checking' }],
+  accounts: [{ name: 'Checking', mask: '1234', type: 'depository', subtype: 'checking', balance_current_cents: null, balance_available_cents: null, balance_currency: null, balance_as_of: null }],
   last_synced_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
   consent_expires_at: '2027-03-01T00:00:00Z',
   sentence: 'Last synced fine.',
