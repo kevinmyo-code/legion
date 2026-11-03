@@ -3,8 +3,8 @@ map: claude-session
 ticket: "04"
 title: "Build: the laptop worker (main session, helpers, report.py, install)"
 type: build
-status: kiv
-status-detail: "Parked with the map (Kevin 2026-10-29: dont build it yet)."
+status: built
+status-detail: "Built 2026-11-01 on feat/claude-session-worker: suite green against a fake engine and fake claude. Owes: install.ps1 run by Kevin, a live run against the real CLI and the ticket 03 engine (ticket 07)."
 blockers: ["02"]
 blocked-by: ["[[02-spike-main-session]]"]
 open-blockers: 1
@@ -49,3 +49,30 @@ tags: [ticket]
 - Scope: Alienware `--add-dir` every fixed drive; work laptop only its configured repos root.
 - Logs never contain request, summary or file paths.
 - The main session rotates daily (new session id), and on restart resumes the last one.
+
+## Addition (Kevin 2026-11-01: "yes to status extras")
+
+- Heartbeat carries `progress: {task_id: "<latest task_progress description>"}` for running tasks,
+  from the stream's `system/task_progress` events (mapped to the task via the Agent `tool_use_id`).
+  Description text only, capped at 120 chars; never logged locally.
+
+## Built (2026-11-01)
+
+`tools/claude_session/`, see its README. Contract, reconciled with ticket 03 (2026-11-01):
+
+- **Cancel:** the worker posts `finish` with `status: cancelled`, summary "Cancelled before it
+  finished, as asked."
+- **Confirmation yes:** a claimed follow-up with `parent` and `confirms: true` gets a one-task
+  token (ask list and one send). Without `confirms` it is a plain follow-up, no token.
+- **Ruling 18:** the work laptop may take `deliver: email_self`; `send_mail.py` there sends only
+  text to Kevin's own address, no attachments.
+- **Claim payload read:** `id`, `request`, `parent`, `confirms`, `deliver`. A dict
+  `{tasks: [...]}` is also accepted. Tasks assigned via `POST tasks/{id}/assign/` arrive the same
+  way.
+- **Heartbeat body adds** `progress: {"<task id>": "<step>"}`.
+- **Upload:** multipart fields `file_id` and `file`. Refused (logged only, nothing told to the
+  engine) when the path is not one that task listed, the file is gone, over 25 MB, or the machine
+  is `listed`. Accepted as logged-only for now.
+- **Work laptop:** `found` always sent empty; no WebFetch/WebSearch; shell limited to read-only
+  git, listing/reading commands, report.py and send_mail.py by the hook.
+- Tasks running when the worker restarts finish `failed` ("restarted"); not re-sent.

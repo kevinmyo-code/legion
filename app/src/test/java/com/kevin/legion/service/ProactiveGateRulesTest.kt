@@ -73,8 +73,9 @@ class ProactiveGateRulesTest {
     }
 
     @Test
-    fun `safety is the uncapped category and there is exactly one`() {
-        assertEquals(ProactiveCategory.SAFETY, ProactiveBus.UNCAPPED_CATEGORY)
+    fun `safety and claude tasks are the uncapped categories, and only they are`() {
+        // Claude tasks joined 2026-11-01 (Kevin): each result answers a task he sent.
+        assertEquals(setOf(ProactiveCategory.SAFETY, ProactiveCategory.CLAUDE_TASKS), ProactiveBus.UNCAPPED_CATEGORIES)
         assertEquals(3, ProactiveBus.DAILY_SPOKEN_CAP)
     }
 
@@ -230,6 +231,26 @@ class ProactiveGateRulesTest {
                 raise(ProactiveCategory.SAFETY), 1_000L, null, ProactiveBus.DAILY_SPOKEN_CAP * 10, noon,
             ),
         )
+    }
+
+    @Test
+    fun `a claude task result speaks past the cap, but not at night`() {
+        assertNull(
+            ProactiveBus.decideOnHistory(
+                raise(ProactiveCategory.CLAUDE_TASKS), 1_000L, null, ProactiveBus.DAILY_SPOKEN_CAP * 10, noon,
+            ),
+        )
+        assertEquals(
+            ProactiveBus.RaiseOutcome.QuietHours,
+            ProactiveBus.decideOnHistory(
+                raise(ProactiveCategory.CLAUDE_TASKS), 1_000L, null, 0, LocalTime.of(3, 0),
+            ),
+        )
+    }
+
+    @Test
+    fun `claude tasks is the one category on by default`() {
+        assertEquals(setOf(ProactiveCategory.CLAUDE_TASKS), ProactiveCategory.DEFAULT_ON)
     }
 
     @Test

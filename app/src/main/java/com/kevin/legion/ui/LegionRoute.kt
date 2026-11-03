@@ -182,6 +182,13 @@ object LegionRoute {
     const val BOUGHT = "bought"
 
     /**
+     * The Claude session screen (claude-session ticket 05, ADR 0067): machines, sending a task,
+     * results, questions, found files and the interactive sessions. The hands path for the
+     * `claude_session` voice tool (ADR 0035), reached from a row in HOME's More sheet.
+     */
+    const val CLAUDE_SESSION = "claude-session"
+
+    /**
      * The `show_generated_view` hands path (ADR 0035), given its own route (one-home ticket 01/02,
      * 2026-09-10, `.scratch/one-home/issues/02-rehome-the-orphans.md`) - see
      * [com.kevin.legion.ui.ask.AskScreen]. Previously a `DeckPane` welded inside `ui/MetersScreen.kt`

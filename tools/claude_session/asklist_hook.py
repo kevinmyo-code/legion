@@ -1,0 +1,283 @@
+"""PreToolUse hook for the worker's own Claude session: the ask list (ruling 6) and scope (ruling 5).
+
+Installed only into the worker's settings file (`worker-settings.json`, passed with `--settings`),
+never into Kevin's interactive `~/.claude/settings.json`. Ticket 02 measured that it fires inside
+background helpers too, with the helper's `agent_id` in the hook input.
+
+Decisions:
+- Ask list (deleting or overwriting Kevin's files, sending, booking or paying, installing software,
+  changing system settings): deny with a reason telling the helper to stop and report
+  `needs_confirmation` with `--question`. Anything inside the worker's own work folder is not
+  Kevin's file, so deletes and overwrites there run.
+- A task Kevin said yes to (a `kind: yes` confirmation token the worker issued,
+  `tokens/<task>.json`) lets that task's helper through the ask list until the token expires.
+  A `kind: email_self` token (ruling 17) unlocks nothing here; it only lets `send_mail.py` send to
+  Kevin. `send_mail.py` checks its token itself, so the hook lets it run.
+- Work laptop (`scope: listed`): file tools only inside the repos root (reads) or the work folder
+  (writes); shell only for read-only git, simple listing/reading commands, and report.py. Those are
+  hard denials, not questions.
+- Anything unexpected inside this hook denies (fails closed).
+
+The hook log records tool, decision, rule and agent id. Never the command, a path, or any text.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import Paths, is_under, load_config, read_json  # noqa: E402
+
+SHELL_TOOLS = ("Bash", "PowerShell")
+WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+READ_TOOLS = ("Read", "Glob", "Grep")
+
+# Each rule: (spoken label, kind, regex). kind "path" rules only ask when a target is outside the
+# work folder; kind "always" rules ask wherever they run.
+RULES = [
+    ("delete a file", "path",
+     r"\brm\b|\brmdir\b|\brd\b|\bdel\b|\berase\b|Remove-Item|\bri\s|os\.remove|os\.unlink|os\.rmdir"
+     r"|shutil\.rmtree|\.unlink\(|\.rmdir\(|Clear-Content|Clear-RecycleBin"),
+    ("overwrite or move a file", "path",
+     r"Move-Item|\bmv\b|\bmove\b|\bren(ame)?\b|Rename-Item|Copy-Item\b.*-Force|\bcp\b\s+-\w*f"
+     r"|\bcopy\b.*/y|Set-Content|Out-File|Add-Content|shutil\.move|os\.replace|os\.rename"
+     r"|\.write_(text|bytes)\(|open\([^)]*['\"][wa]b?\+?['\"]"
+     r"|(?<![0-9&=-])>{1,2}\s*(?!&|\$null\b|nul\b|/dev/null)\S"),
+    ("install software", "always",
+     r"\bpip3?\s+install|-m\s+pip\s+install|\buv\s+(pip\s+)?(install|add)\b|\bwinget\b|\bchoco\b"
+     r"|\bscoop\s+install|\bnpm\s+(i|install|add)\b.*(-g|--global)|\bmsiexec\b|Install-Module"
+     r"|Install-Package|Add-AppxPackage|\bsetup\.exe\b|\.msi\b|-Verb\s+RunAs|\bsudo\b"),
+    ("change a system setting", "always",
+     r"\breg(\.exe)?\s+(add|delete|import|copy|restore)\b|(Set|New|Remove)-ItemProperty|"
+     r"\bpowercfg\s+[-/](change|x|setactive|s\b|setacvalueindex|setdcvalueindex|h\b|hibernate|delete)"
+     r"|\bbcdedit\b|\bnetsh\b.*\b(set|add|delete|reset)\b|(Set|Stop|Start|Restart|New|Remove)-Service"
+     r"|\bsc(\.exe)?\s+(config|stop|start|delete|create)\b|\bschtasks\b.*/(create|delete|change)"
+     r"|(Register|Unregister|Set|Disable|Enable)-ScheduledTask|Set-ExecutionPolicy|(Set|Add)-MpPreference"
+     r"|\bshutdown\b|Restart-Computer|Stop-Computer|\bsetx\b|SetEnvironmentVariable"
+     r"|\b(Enable|Disable)-[A-Z]\w+|Set-(Date|TimeZone|NetFirewall\w*)|New-NetFirewallRule|\bwmic\b"
+     r"|\btaskkill\b|Stop-Process"),
+    ("send something", "always",
+     r"smtplib|Send-MailMessage|System\.Net\.Mail|Outlook\.Application|\bgit\s+push\b"
+     r"|\bgh\s+(pr|issue|release|gist)\s+(create|comment|merge|edit)"
+     r"|\bcurl\b.*(-X\s*(POST|PUT|PATCH|DELETE)|\s-d\s|--data|-F\s|--form)"
+     r"|Invoke-(WebRequest|RestMethod)\b.*-Method\s+(Post|Put|Patch|Delete)"
+     r"|requests\.(post|put|patch|delete)|urlopen\(.*data="),
+]
+
+SEND_MAIL_RE = re.compile(r"send_mail\.py\b", re.I)
+REPORT_RE = re.compile(r"report\.py\b", re.I)
+
+# Things that look like a path inside a command.
+ABS_PATH_RE = re.compile(r"""(?:"([^"]+)"|'([^']+)'|([^\s"'|;&<>(),]+))""")
+DRIVE_RE = re.compile(r"^(?:[A-Za-z]:[\\/]|/[a-zA-Z]/|\\\\|/)")
+REDIRECT_RE = re.compile(r"(?<![0-9&])(?:[0-9])?>{1,2}\s*([^\s|;&]+)")
+EMBEDDED_PATH_RE = re.compile(r"(?<![\w/\\])[A-Za-z]:[\\/][^\s\"'|;&<>()]*")
+REDIRECT_SAFE ={"&1", "&2", "$null", "nul", "/dev/null", "NUL"}
+
+LISTED_SHELL_OK = re.compile(
+    r"^\s*(?:"
+    r"git(\s+-C\s+\S+)?\s+(log|status|diff|show|branch|blame|grep|ls-files|rev-parse|shortlog|describe"
+    r"|tag|remote\s+-v)\b"
+    r"|cd\b|Set-Location\b|pwd\b|Get-Location\b|ls\b|dir\b|Get-ChildItem\b|gci\b|cat\b|type\b"
+    r"|Get-Content\b|gc\b|head\b|tail\b|wc\b|find\b|grep\b|rg\b|findstr\b|Select-String\b"
+    r"|Measure-Object\b|Select-Object\b|Sort-Object\b|Where-Object\b|echo\b|Write-Output\b"
+    r")",
+    re.I,
+)
+
+
+def _is_lone_script(command: str, script: str) -> bool:
+    """`python .../<script> ...` and nothing chained to it. Its free text (a summary, a mail body)
+    must not trip the ask list, so it is judged with quoted strings removed."""
+    bare = re.sub(r'"(?:\\.|[^"\\])*"' + r"|'[^']*'", '""', command)
+    pat = r"^\s*&?\s*\S*python(?:\.exe)?\S*\s+\S*" + re.escape(script) + r"\b"
+    if not re.match(pat, bare, re.I):
+        return False
+    return not re.search(r"[;&|`<>]|\$\(", bare.split(script, 1)[1])
+
+
+def _is_lone_report(command: str) -> bool:
+    return _is_lone_script(command, "report.py")
+
+
+def _deny(reason: str) -> dict:
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                   "permissionDecisionReason": reason}}
+
+
+def _ask_reason(label: str) -> str:
+    return (f"ASK LIST: this would {label}. Kevin has not said yes to that. Do not retry it or work "
+            "around it. Stop and report: report.py --task N --status needs_confirmation "
+            "--question \"<one short question for Kevin>\" (the question goes in --question).")
+
+
+def _path_tokens(command: str) -> list[str]:
+    out = []
+    for m in ABS_PATH_RE.finditer(command):
+        tok = next(g for g in m.groups() if g is not None)
+        if DRIVE_RE.match(tok) or tok.startswith("~") or ".." in tok or "$env:" in tok.lower() \
+                or "%" in tok or "$HOME" in tok or tok.startswith("$"):
+            out.append(tok)
+    # Paths inside larger quoted text, e.g. python -c "os.remove('C:/Users/kevin/x')".
+    for m in EMBEDDED_PATH_RE.finditer(command):
+        tok = m.group(0).rstrip(".,")
+        if tok not in out:
+            out.append(tok)
+    return out
+
+
+def _to_os_path(tok: str) -> str:
+    m = re.match(r"^/([a-zA-Z])/(.*)$", tok)  # Git Bash /c/Users/...
+    if m and os.name == "nt":
+        return f"{m.group(1)}:/{m.group(2)}"
+    return tok
+
+
+def _targets_outside(command: str, cwd: str, work_root: Path) -> bool:
+    """True if any path the command names, or its cwd when it names none, is outside the work folder."""
+    toks = _path_tokens(command)
+    for m in REDIRECT_RE.finditer(command):
+        t = m.group(1).strip("\"'")
+        if t not in REDIRECT_SAFE:
+            toks.append(t if DRIVE_RE.match(t) else os.path.join(cwd or ".", t))
+    if not toks:
+        return not (cwd and is_under(cwd, work_root))
+    for tok in toks:
+        if tok.startswith(("~", "$", "%")) or ".." in tok:
+            return True
+        if not is_under(_to_os_path(tok), work_root):
+            return True
+    return False
+
+
+def _agent_task(paths: Paths, agent_id: str | None) -> int | None:
+    if not agent_id:
+        return None
+    agents = read_json(paths.agents, {}) or {}
+    t = agents.get(agent_id)
+    return int(t) if t is not None else None
+
+
+def _confirmed(paths: Paths, task: int | None, now: float) -> bool:
+    if task is None:
+        return False
+    for f in paths.tokens.glob("*.json"):
+        tok = read_json(f, None)
+        if not tok or tok.get("expires_at", 0) < now:
+            continue
+        if tok.get("kind") != "yes":  # an email_self token covers one mail to Kevin, nothing else
+            continue
+        if task in (tok.get("task"), tok.get("parent")):
+            return True
+    return False
+
+
+def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> dict | None:
+    repos = cfg.get("repos_root")
+    work = paths.work
+    no = ("WORK LAPTOP: only reading inside the repos folder is allowed here. This cannot be "
+          "confirmed from this machine. Report what you could do with --status failed or "
+          "needs_confirmation.")
+    if tool in READ_TOOLS:
+        target = inp.get("file_path") or inp.get("path") or cwd
+        if not target or not (is_under(target, work) or (repos and is_under(target, repos))):
+            return _deny(no)
+        return None
+    if tool in WRITE_TOOLS:
+        target = inp.get("file_path") or inp.get("notebook_path") or ""
+        if not target or not is_under(target, work):
+            return _deny(no)
+        return None
+    if tool in SHELL_TOOLS:
+        command = inp.get("command", "") or ""
+        if _is_lone_report(command):
+            return None
+        if _is_lone_script(command, "send_mail.py"):
+            return None  # ruling 18: send_mail.py itself allows only text to Kevin from here
+        for seg in re.split(r"&&|\|\||;|\|", command):
+            if not seg.strip():
+                continue
+            if not LISTED_SHELL_OK.match(seg) or REDIRECT_RE.search(seg):
+                return _deny(no)
+            for tok in _path_tokens(seg):
+                p = _to_os_path(tok)
+                if tok.startswith(("~", "$", "%")) or ".." in tok or not (
+                        is_under(p, work) or (repos and is_under(p, repos))):
+                    return _deny(no)
+        return None
+    if tool in ("WebFetch", "WebSearch"):
+        return _deny(no)
+    return None
+
+
+def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tuple[dict | None, str]:
+    """Returns (hook output or None to let normal permissions decide, rule label for the log)."""
+    now = time.time() if now is None else now
+    tool = event.get("tool_name", "")
+    inp = event.get("tool_input") or {}
+    cwd = event.get("cwd") or ""
+    task = _agent_task(paths, event.get("agent_id"))
+
+    if cfg.get("scope") == "listed":
+        out = _listed_scope(tool, inp, cwd, cfg, paths)
+        if out:
+            return out, "scope"
+
+    if tool in WRITE_TOOLS:
+        target = inp.get("file_path") or inp.get("notebook_path") or ""
+        if target and Path(target).exists() and not is_under(target, paths.work):
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason("overwrite one of Kevin's existing files")), "overwrite"
+        return None, ""
+
+    if tool in SHELL_TOOLS:
+        command = inp.get("command", "") or ""
+        if _is_lone_report(command):
+            return None, ""
+        for label, kind, pat in RULES:
+            if not re.search(pat, command, re.I):
+                continue
+            if label == "send something" and SEND_MAIL_RE.search(command) and not re.search(
+                    r"smtplib|Send-MailMessage|System\.Net\.Mail", command, re.I):
+                continue  # send_mail.py refuses without the worker's confirmation token
+            if kind == "path" and not _targets_outside(command, cwd, paths.work):
+                continue
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason(label)), label
+    return None, ""
+
+
+def _log(paths: Paths, tool: str, decision: str, rule: str, agent: str | None) -> None:
+    try:
+        paths.logs.mkdir(parents=True, exist_ok=True)
+        with open(paths.logs / "hook.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"at": round(time.time()), "tool": tool, "decision": decision,
+                                "rule": rule, "agent": agent}) + "\n")
+    except OSError:
+        pass
+
+
+def main() -> int:
+    paths = Paths()
+    tool, agent = "?", None
+    try:
+        event = json.load(sys.stdin)
+        tool, agent = event.get("tool_name", "?"), event.get("agent_id")
+        out, rule = decide(event, paths, load_config(paths))
+    except Exception:  # fail closed
+        out, rule = _deny("The ask-list check failed. Stop and report needs_confirmation with "
+                          "--question."), "hook-error"
+    _log(paths, tool, "deny" if out else "pass", rule, agent)
+    if out:
+        print(json.dumps(out))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

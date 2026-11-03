@@ -4,7 +4,7 @@ title: "Claude session: Alfred talks to Claude Code on Kevin's laptops"
 charted: 2026-10-29
 charted-by: "Kevin + Fable"
 effort: "`.scratch/claude-session/`"
-tickets: 7
+tickets: 8
 open: 6
 status: open
 tags: [map]
@@ -31,7 +31,9 @@ machine. The same is reachable by hand on the Claude session screen.
 
 1. **The subscription, not the API.** Headless Claude Code on a machine logged into Kevin's
    claude.ai account. No `ANTHROPIC_API_KEY`, no Agent SDK. *"i was hoping more of using my monthly
-   sub and not the api"*; *"i like A more."*
+   sub and not the api"*; *"i like A more."* Whichever account the machine's CLI is logged into is used (Kevin
+   2026-11-01: *"whatever is logged in on the laptop, thats ok"*); the Alienware is a personal
+   Max plan, limits shared with Kevin's own sessions.
 2. **Nothing is sent unless Kevin named it or said yes.** *"anything that goes to the claude session
    should be named or asked right."* Named ("use Claude on my Alienware to..."): sent. Not named:
    Alfred offers only after his own tools cannot do it, with a one-line version of the task (*"one
@@ -77,24 +79,50 @@ machine. The same is reachable by hand on the Claude session screen.
     ("every Monday, send Dad the rates sheet") as well as by hand, and what still needs a yes per
     run is decided then.
 
+16. **WhatsApp dropped, Gmail instead** (Kevin 2026-11-01: *"whatsapp is abit hard then, gmail is
+    much easier yeah, lets keep gmail then"*). Use case kept: *"ask alfred to open a claude
+    session, use it to find something on the internet, summarize it in a file format i want, and
+    then get that claude session to send it to my whatsapp number"*, delivered by mail from
+    Alfred's Gmail (ruling 14) instead. WhatsApp Cloud API was chosen then dropped the same day for
+    its setup (Meta business account, spare number, 24 h window, templates).
+17. **Naming your own email in the request is the yes** for that one task ("...and email it to
+    me"). Only Kevin's own address; mail to anyone else stays on the ask list (ruling 6). The phone
+    sets `deliver: "email_self"` on the task when Kevin names it. The worker's `send_mail.py`
+    sends it to Kevin (no cc needed), file attached.
+18. **The work laptop may email Kevin a summary, never a file** (Kevin 2026-11-01). A `listed`
+    machine takes `deliver: "email_self"`; the mail carries the summary text only, no attachment.
+    The engine still refuses every file path for it (send-file, upload, found rows); the worker
+    sends no attachment from it (ticket 04).
+
 ## Shape on each laptop
 
 ```
 Task Scheduler "LEGION Claude session" (at logon, runs through lock)
-  worker.py
-    heartbeat to engine every 20 s, claims messages, keeps the PC awake on mains
-    one main session:  claude -p --input-format stream-json --output-format stream-json
-                       --resume <main session id>  (long-lived; rotated daily)
-      receives "[task 41] find the AW4 wiring PDF in Downloads"
-      starts a background helper subagent per task, stays free for the next message
-      helpers report through:  python report.py --task 41 --status done --summary "..." [--file PATH]
+  worker.py   (env: CLAUDECODE and CLAUDE_CODE_* stripped)
+    heartbeat to engine every 20 s, claims messages, SetThreadExecutionState while on AC
+    one main session:
+      claude -p --input-format stream-json --output-format stream-json --verbose
+        --session-id <uuid> (first start) | --resume <uuid> (restart); rotated daily
+        --permission-mode dontAsk --permission-prompts none   (tested; work laptop + --add-dir repos)
+        Alienware full access (ruling 5): bypassPermissions + hook, UNTESTED (see ticket 02)
+        --allowedTools "Bash(python *)" "PowerShell(python *)" Agent Read Glob Grep ...
+        --settings <worker settings: PreToolUse ask-list hook> --setting-sources <explicit>
+        --append-system-prompt <main window rules>
+      stdin  {"type":"user","message":{"role":"user","content":"[task 41] ..."}}
+      main turn starts a background helper (Agent, run_in_background), replies one line, ends
+      stdout system/task_started, task_progress (live step), task_notification (done),
+             then an unprompted main turn + result per finished helper
+      helpers report through:  python report.py --task 41 --status done --summary "..."
+                               [--question "..."] [--file PATH]
     worker forwards report.py results to the engine
+    30 min cap: worker-side (no CLI turn cap flag)
+  ask list (ruling 6): PreToolUse hook denies with a reason; helper returns needs_confirmation
   hooks in ~/.claude/settings.json post interactive session status (ticket 06)
 ```
 
-Whether background helpers in a headless stream-json session run concurrently and report back
-reliably is ticket 02's question. Its fallback is one `claude -p` process per task with
-`--resume` for follow-ups, which still runs several tasks at once.
+Ticket 02 (2026-11-01) confirmed this shape on the Alienware: background helpers run concurrently
+in one headless stream-json session and their completions arrive unprompted. The per-task process
+fallback is not needed.
 
 ## The API
 
@@ -104,10 +132,11 @@ with `household.tenancy.scoped`. Tables `claude_tasks`, `claude_task_files`, `cl
 
 | Method and path | Who | Body and result |
 |---|---|---|
-| `POST tasks/` | phone, web | `{request, machine: name or null, parent: id or null, origin: "named" or "offered"}` returns `{id, status, machine: {name, state, last_seen_at} or null}`; `status` is `queued`, or `needs_machine` when unnamed and more than one machine is online |
+| `POST tasks/` | phone, web | `{request, machine: name or null, parent: id or null, origin: "named" or "offered", deliver: null or "email_self", confirms: bool}` (`confirms` true only with a `parent` in `needs_confirmation`, else 400: Kevin's yes, and the only thing that unlocks the asked ask-list step on the worker) returns `{id, status, machine: {name, state, last_seen_at} or null}`; `status` is `queued`, or `needs_machine` when unnamed and more than one machine is online |
 | `GET tasks/?limit=&status=&machine=` | phone, web | newest first: `{id, request, machine, status, summary, question, created_at, finished_at, files: [{id, name, size, uploaded}]}` |
 | `GET tasks/{id}/` | all | same shape |
 | `POST tasks/{id}/cancel/` | phone, web | queued becomes `cancelled`; running becomes `cancel_requested` |
+| `POST tasks/{id}/assign/` | phone, web | `{machine}`: Kevin answered "which machine?" for a `needs_machine` task; it becomes `queued` on that machine and returns the create shape; 409 if the task is not `needs_machine`, 404 for an unknown task or machine (Kevin 2026-11-01) |
 | `POST tasks/{id}/send-file/` | phone, web | `{file_id}`: Kevin said yes to "want it on your phone?"; marks the file requested; the worker uploads it on its next heartbeat |
 | `GET status/` | phone | `{machines: [{name, scope, state: "idle", "busy" or "offline", last_seen_at, running: [task ids]}], sessions: [{machine, project, state, last_prompt_summary, last_seen_at}]}`; offline is no heartbeat for 90 s |
 | `POST machines/heartbeat/` | worker | `{name, hostname, scope, state, running, claude_version}` every 20 s; returns `{cancel_requested: [ids], files_requested: [{task, file_id, path}]}` |
@@ -121,12 +150,28 @@ States: `queued`, `running`, then `done`, `failed`, `needs_confirmation` or `can
 30 min, or with the machine silent for 10 min, becomes `failed` with the reason in words. Computed
 at read time.
 
+**As built (ticket 03, 2026-11-01), where the table was silent.** Task ids are integers. Task rows
+also carry `parent`, `origin`, `deliver` (null or `email_self`), `confirms`, and each file `requested`; in rows
+`machine` is the name string, on create it is the object. `finish` also accepts `status:
+"cancelled"`, only for a task in `cancel_requested` (the worker's exit after TaskStop). A computed
+failure puts its reason in `summary`; `finish` on it is refused 409. `needs_machine` is resolved by
+`assign/`. A follow-up with no machine named goes to its parent's machine.
+Claim needs a prior heartbeat (404 otherwise). `GET status/` shows sessions seen in the last 24 h
+and not `ended`. A `listed` machine: `found` not kept, send-file and upload 403, `deliver:
+email_self` allowed for the summary only (ruling 18), `last_prompt_summary` dropped. A sessions post for an unknown machine creates it as
+`listed` until a heartbeat says otherwise. Status extras: heartbeat `progress: {"41": "reading
+Downloads"}` (120 chars) lands on that machine's in-flight tasks as `progress`/`progress_at`, shown
+in task rows and as `machines[].progress: [{task, progress, progress_at}]` in `GET status/`,
+cleared on finish; `waiting` sessions sort first. Every caller is an ordinary household device
+token in v1 (Kevin 2026-11-01); later, worker endpoints restricted to machine tokens.
+
 ## Tickets (all build tickets KIV until Kevin says build)
 
 - 01 decision (resolved 2026-10-29): rulings 1 to 13
-- 02 spike (KIV): long-lived headless main session with background helpers; lock and keep-awake
-- 03 build (KIV): engine `claude` app, ADR 0066
-- 04 build (KIV): the worker `tools/claude_session/`
-- 05 build (KIV): phone tools, the offer rule, results, the Claude session screen
-- 06 build (KIV): interactive sessions reporter hooks
+- 02 spike (in progress 2026-11-01): shape confirmed; lock-screen run (Q7) pending
+- 03 build (built 2026-11-01, `feat/claude-session-engine`, not deployed): engine `claude_session` app, ADR 0067
+- 04 built (2026-11-01, branch feat/claude-session-worker): the worker `tools/claude_session/`; owes install and a live run (ticket 07)
+- 05 built (2026-11-01, branch feat/claude-session-phone): one `claude_session` voice tool (seven actions incl. unquiet), the offer clause, result announcements (own Claude tasks category), the Claude session screen; owes an A25 run (ticket 07)
+- 06 built (2026-11-01, branch feat/claude-session-hooks): `session_hook.py` + install/uninstall settings merge; owes a run against the real CLI (ticket 07)
+- 08 (dropped 2026-11-01): WhatsApp delivery; replaced by `deliver: email_self` in tickets 03/04
 - 07 test (KIV): on the Alienware: the Downloads find, the offer, locked screen, powered off, an ask-list stop, two tasks at once, a session check

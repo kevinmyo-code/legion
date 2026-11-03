@@ -943,6 +943,9 @@ private fun LegionShell(
                             homeListPick = checklistId
                             navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true }
                         },
+                        onOpenClaudeSession = {
+                            navController.navigate(LegionRoute.CLAUDE_SESSION) { launchSingleTop = true }
+                        },
                         onPlayTetris = { userId ->
                             navController.navigate(
                                 if (userId == null) LegionRoute.TETRIS else LegionRoute.tetrisInvite(userId),
@@ -1286,6 +1289,10 @@ private fun LegionShell(
             // purchase-log ticket 08: the bought log, reached from the Lists page's top bar.
             composable(LegionRoute.BOUGHT) {
                 BoughtScreen(onBack = { navController.popBackStack() })
+            }
+            // claude-session ticket 05: the Claude session screen, reached from HOME's More sheet.
+            composable(LegionRoute.CLAUDE_SESSION) {
+                com.kevin.legion.ui.claudesession.ClaudeSessionScreen(onBack = { navController.popBackStack() })
             }
             // authOk/authNonce carry the browser round trip's outcome down from the exchange
             // effect above - see its own comment for why the exchange cannot live in this screen.

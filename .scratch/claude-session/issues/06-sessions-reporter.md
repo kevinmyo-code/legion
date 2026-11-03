@@ -3,8 +3,8 @@ map: claude-session
 ticket: "06"
 title: "Build: interactive Claude Code sessions reporter hooks"
 type: build
-status: kiv
-status-detail: "Parked with the map (Kevin 2026-10-29: dont build it yet). In v1 per ruling 11."
+status: built
+status-detail: "Built 2026-11-01 on feat/claude-session-hooks: session_hook.py (5 events incl. Notification=waiting), install.ps1 settings merge, uninstall removes only ours; fake-engine tests green. Owes a run against the real Claude Code CLI and engine (ticket 07)."
 blockers: ["03"]
 blocked-by: ["[[03-engine-app]]"]
 open-blockers: 1
@@ -28,3 +28,9 @@ my work laptop as well."* Read-only.
 - The worker's own main session is excluded (it reports through the worker).
 - `check_claude` and the screen read these rows (ticket 05). A session with no event for 30 min
   shows as idle; `SessionEnd` removes it from the list.
+
+## Addition (Kevin 2026-11-01: "yes to status extras")
+
+- A `Notification` hook also runs `session_hook.py`: state `waiting` (permission prompt or a
+  question for Kevin). The next `UserPromptSubmit` or tool activity returns it to `working`.
+  The phone shows "<project> session: waiting on you".

@@ -585,6 +585,12 @@ class MidnightApplication : Application() {
                 com.kevin.legion.games.race.GameInvitePolling.bindForeground(this@MidnightApplication, appScope)
             }.onFailure { MidnightEvents.appStartWorkFailed("bind_game_invite_poll", it) }
 
+            // Claude session results (claude-session ticket 05): the same two loops as the invites,
+            // and it asks the engine nothing while no task this phone sent is still out.
+            runCatching {
+                com.kevin.legion.claude.ClaudeResultPolling.bindForeground(this@MidnightApplication, appScope)
+            }.onFailure { MidnightEvents.appStartWorkFailed("bind_claude_result_poll", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

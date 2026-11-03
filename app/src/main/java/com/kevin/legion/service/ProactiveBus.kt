@@ -69,6 +69,8 @@ object ProactiveBus {
         /** See [ProactiveRaise.carriesReadThroughContent] - the turn this opens must not be
          * written to episodic memory. */
         val carriesReadThroughContent: Boolean = false,
+        /** See [ProactiveRaise.listenHoldMs]. */
+        val listenHoldMs: Long = 0L,
     )
 
     private val _requestSpeak = MutableSharedFlow<SpeakRequest>(extraBufferCapacity = 4)
@@ -116,8 +118,10 @@ object ProactiveBus {
     const val DAILY_SPOKEN_CAP = 3
 
     /** [ProactiveCategory.SAFETY] does not spend from the cap. A real warning must never lose its
-     * slot to a rest nudge, and a budget that can silence one is worse than no budget. */
-    val UNCAPPED_CATEGORY = ProactiveCategory.SAFETY
+     * slot to a rest nudge, and a budget that can silence one is worse than no budget.
+     * [ProactiveCategory.CLAUDE_TASKS] does not either (Kevin 2026-11-01): each one answers a task he
+     * sent, so it is not the kind of line the cap rations. Neither counts toward the others' cap. */
+    val UNCAPPED_CATEGORIES = setOf(ProactiveCategory.SAFETY, ProactiveCategory.CLAUDE_TASKS)
 
     /** How long a brushed-off rule stays quiet. When it returns, **the tone is identical** - it
      * never mentions there was a first time (ticket 08 call 3), which is enforceable precisely
@@ -207,8 +211,9 @@ object ProactiveBus {
         prompt: String,
         listensForReply: Boolean = false,
         carriesReadThroughContent: Boolean = false,
+        listenHoldMs: Long = 0L,
     ) {
-        _requestSpeak.tryEmit(SpeakRequest(prompt, listensForReply, carriesReadThroughContent))
+        _requestSpeak.tryEmit(SpeakRequest(prompt, listensForReply, carriesReadThroughContent, listenHoldMs))
     }
 
     /**
@@ -251,8 +256,8 @@ object ProactiveBus {
         val now = System.currentTimeMillis()
         val last = dao.lastForRule(raise.ruleId)
         val spokenToday =
-            if (raise.category == UNCAPPED_CATEGORY) 0
-            else dao.spokenCountSince(startOfToday(now), UNCAPPED_CATEGORY.key)
+            if (raise.category in UNCAPPED_CATEGORIES) 0
+            else dao.spokenCountSince(startOfToday(now), UNCAPPED_CATEGORIES.map { it.key })
 
         val refusal = decideOnHistory(raise, now, last, spokenToday, LocalTime.now())
 
@@ -287,7 +292,7 @@ object ProactiveBus {
             // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
             // Arm decline detection BEFORE the line goes out, so a fast reply cannot beat it.
             awaitingReplyFor = raise.ruleId
-            emit(raise.prompt, raise.listensForReply, raise.carriesReadThroughContent)
+            emit(raise.prompt, raise.listensForReply, raise.carriesReadThroughContent, raise.listenHoldMs)
             return RaiseOutcome.Raised(rowId)
         }
 
@@ -329,7 +334,7 @@ object ProactiveBus {
         if (isQuietHour(time) && raise.category !in QUIET_HOURS_EXEMPT) {
             return RaiseOutcome.QuietHours
         }
-        if (raise.category != UNCAPPED_CATEGORY && spokenToday >= DAILY_SPOKEN_CAP) {
+        if (raise.category !in UNCAPPED_CATEGORIES && spokenToday >= DAILY_SPOKEN_CAP) {
             return RaiseOutcome.OverDailyCap
         }
         return null

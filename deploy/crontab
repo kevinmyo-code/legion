@@ -45,3 +45,7 @@
 # household; delete the copies (and their visitors and tokens) whose visit has
 # ended. Hourly at :20, clear of push_dispatch's and morning_brief's minutes.
 20 * * * * python manage.py prune_demo_visitors
+
+# claude-session ticket 03 (ADR 0067): Claude session tasks, their files and
+# session rows older than 30 days deleted. Daily, 03:30 UTC (after the backup).
+30 3 * * * python manage.py claude_session_prune

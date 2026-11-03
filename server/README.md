@@ -120,6 +120,13 @@ A `conversation` batch holds only a device's `LIVE_AUDIT` and `LIVE_LATENCY` lin
 `tools/voice_audit.py` prints for a phone capture; `devicelogs/voice_audit.py` is a byte-for-byte
 copy of that tool (see `devicelogs/render.py`), and a test fails while the two differ.
 
+## Claude session: deploy note
+
+`claude_session/` (ADR 0067) keeps tasks, files and session rows 30 days; `manage.py
+claude_session_prune` deletes older ones and is a line in `deploy/crontab`. **After deploying,
+run `python deploy/cloudrun/install_schedule.py --job legion-worker`** so Cloud Scheduler picks up
+that line; without it nothing is ever pruned.
+
 ## The OpenAPI contract: `server/openapi.yaml`
 
 **A client generates from this file. It does not hand-write what it thinks

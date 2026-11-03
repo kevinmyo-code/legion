@@ -2435,6 +2435,9 @@ object LiveToolbox {
         // voice-browser ticket 01 (ADR 0071): LEGION's own browser, one action-dispatched declaration.
         val browserDecls = BrowserToolbox.declarations()
         for (i in 0 until browserDecls.length()) fns.put(browserDecls.getJSONObject(i))
+        // claude-session ticket 05: Kevin's Claude session on his laptops, one action-dispatched declaration.
+        val claudeDecls = ClaudeSessionToolbox.declarations()
+        for (i in 0 until claudeDecls.length()) fns.put(claudeDecls.getJSONObject(i))
 
         return fns
     }
@@ -2744,6 +2747,7 @@ object LiveToolbox {
         PurchaseToolbox.dispatch(context, name, args)?.let { return it }
         BooksToolbox.dispatch(context, name, args)?.let { return it }
         BrowserToolbox.dispatch(context, name, args)?.let { return it }
+        ClaudeSessionToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
@@ -3149,6 +3153,8 @@ object LiveToolbox {
         "complete_task",
         // purchase-log ticket 08: action=log writes a bought entry on the engine.
         "bought_log",
+        // claude-session ticket 05: send/answer/assign/send_file create or change a task on the engine.
+        "claude_session",
     )
 
     /**

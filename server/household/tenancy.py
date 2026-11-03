@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Sixty-three names (count it with len(); this line was stale three times before).
+# Sixty-nine names (count it with len(); this line was stale three times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -146,6 +146,14 @@ TENANT_TABLES: tuple[str, ...] = (
     # a built-in's run included; a visit's go with the visit household.
     "procedure_runs",
     "procedure_steps",
+    # claude-session ticket 03 (ADR 0067): Alfred's tasks for Claude Code on
+    # Kevin's laptops, their files, the machines and their interactive
+    # sessions. Django-managed and born tenanted like `device_logs`
+    # (`claude_session/models.py`).
+    "claude_machines",
+    "claude_tasks",
+    "claude_task_files",
+    "claude_code_sessions",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -199,6 +207,10 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "procedure_versions",
         "procedure_runs",
         "procedure_steps",
+        "claude_machines",
+        "claude_tasks",
+        "claude_task_files",
+        "claude_code_sessions",
     }
 )
 

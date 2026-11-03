@@ -66,6 +66,9 @@ urlpatterns = [
     # retro-games ticket 05 (ADR 0060): a Tetris race between two household
     # members, held only while it lives (`games/views.py`).
     path("api/games/", include("games.urls")),
+    # claude-session ticket 03 (ADR 0067): Alfred's tasks for Claude Code on
+    # Kevin's laptops (`claude_session/views.py`).
+    path("api/claude/", include("claude_session.urls")),
     # ai-upgrade ticket 02: the daily brief, built at 05:00 household-local
     # time and on Refresh (`brief/views.py`).
     path("api/brief/", include("brief.urls")),

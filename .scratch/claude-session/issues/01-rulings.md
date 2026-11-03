@@ -46,6 +46,6 @@ by voice when they come (ruling 15).
 
 ## Records
 
-- ADR `docs/adr/0066-claude-session-on-the-laptops.md`, written by ticket 03: references ADR 0031
+- ADR `docs/adr/0067-claude-session-on-the-laptops.md`, written by ticket 03: references ADR 0031
   (outcome verbs), ADR 0035 (hands path), ADR 0044 (engine is the record).
 - `memory/library/decisions.md` entry dated 2026-10-29, same ticket.

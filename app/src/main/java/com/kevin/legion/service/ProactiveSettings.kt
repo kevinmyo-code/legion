@@ -75,7 +75,8 @@ object ProactiveSettings {
     internal fun seedFrom(context: Context): List<ProactiveSetting> {
         val upgrading = ProactivePreferences.hasStoredValue(context)
         val muted = upgrading && ProactivePreferences.isMuted(context)
-        val on = if (upgrading && !muted) ProactiveCategory.CARRIED_OVER_ON_UPGRADE else emptySet()
+        val on = (if (upgrading && !muted) ProactiveCategory.CARRIED_OVER_ON_UPGRADE else emptySet()) +
+            ProactiveCategory.DEFAULT_ON
         return buildList {
             add(ProactiveSetting(ProactiveSetting.MASTER_KEY, !muted))
             ProactiveCategory.entries.forEach { add(ProactiveSetting(it.key, it in on)) }
@@ -85,7 +86,10 @@ object ProactiveSettings {
     private fun applyRows(rows: List<ProactiveSetting>) {
         val byKey = rows.associateBy { it.key }
         _master.value = byKey[ProactiveSetting.MASTER_KEY]?.enabled ?: true
-        _categories.value = ProactiveCategory.entries.associateWith { byKey[it.key]?.enabled == true }
+        // A category with no stored row (added after this install seeded) takes its default.
+        _categories.value = ProactiveCategory.entries.associateWith {
+            byKey[it.key]?.enabled ?: (it in ProactiveCategory.DEFAULT_ON)
+        }
     }
 
     suspend fun setMaster(context: Context, on: Boolean) {

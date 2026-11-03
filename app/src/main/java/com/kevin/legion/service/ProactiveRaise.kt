@@ -127,6 +127,14 @@ data class ProactiveRaise(
      * reliance on him staying quiet.
      */
     val carriesReadThroughContent: Boolean = false,
+    /**
+     * With [listensForReply]: how long the reply window stays open after the line, at least, before
+     * the follow-up window may close it (claude-session ticket 05, Kevin 2026-11-01: a spoken Claude
+     * result that asks "want it on your phone?" listens about 20 s for the yes). The follow-up
+     * window itself is what closes it, so it cannot stay open; the user speaking ends the hold.
+     * 0 means the ordinary follow-up window, which is what `incoming_call` keeps.
+     */
+    val listenHoldMs: Long = 0L,
 ) {
     init {
         require(ruleId.isNotBlank()) { "a raise must name the rule that fired it" }

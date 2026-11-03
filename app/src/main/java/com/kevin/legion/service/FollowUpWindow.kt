@@ -125,6 +125,12 @@ object FollowUpWindow {
             val toolsInFlight: Int,
             val msSinceLocalSpeech: Long? = null,
             val msSinceHold: Long? = null,
+            /**
+             * What is left of a listen hold (a spoken Claude result asking "want it on your
+             * phone?", [com.kevin.legion.service.ProactiveRaise.listenHoldMs]); 0 means none. While
+             * above 0 an expiry re-arms instead of closing.
+             */
+            val listenHoldLeftMs: Long = 0L,
         ) : Event
     }
 
@@ -180,6 +186,8 @@ object FollowUpWindow {
                 State(armed = true, extensions = state.extensions + 1, heldForAnswer = state.heldForAnswer),
                 Action.ARM,
             )
+        // A spoken line asked a question and is listening for the answer: keep listening.
+        event.listenHoldLeftMs > 0L -> Decision(state, Action.ARM, "listen_hold")
         // An answer is still owed (a sent result, or a bare holding line): keep listening.
         state.heldForAnswer && event.msSinceHold != null && event.msSinceHold < ANSWER_HOLD_CAP_MS ->
             Decision(state, Action.ARM, "held_for_answer")

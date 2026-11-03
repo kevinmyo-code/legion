@@ -7137,3 +7137,24 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - Built rules: one `browser` voice tool (open/read/click/scroll/type/back/close), ask-first enforced
   by a 90 s one-use token, passwords never seen or typed by the model, page text read-through, feed
   sites bounce like feed apps through `BlockPolicy`. ADR 0071; map `.scratch/voice-browser/`.
+
+## 2026-10-29 - Claude session: Alfred hands tasks to Claude Code on Kevin's laptops (Kevin)
+
+- **Ruled by interview, 2026-10-29** (`.scratch/claude-session/`, ticket 01): headless Claude Code
+  on Kevin's own subscription, never the API; a task is sent only when Kevin named it or said yes
+  to a one-line offer as the very next thing he said; machines "Alienware" (full access, every
+  fixed drive, not elevated) and "work laptop" (repos only, summaries only); the default ask list;
+  locked is on, powered off is off; files only on request; 30 min cap, 30 days kept; several tasks
+  at once through one orchestrating main session; interactive sessions readable; phone screen
+  first. Alfred gets his own Gmail (ruling 14); recurring tasks later (ruling 15).
+- **2026-11-01 (Kevin):** build. Ticket 02's spike confirmed the one-main-session shape. Alienware
+  mode: `dontAsk` + broad allowlist + a `PreToolUse` ask-list hook. WhatsApp delivery chosen, then
+  dropped the same day for Gmail: naming his own email in the request is the yes for that task
+  (`deliver: "email_self"`, rulings 16 and 17), sent from the laptop.
+- **Built, ticket 03:** engine app `server/claude_session/` at `/api/claude/`, tables
+  `claude_tasks`, `claude_task_files`, `claude_machines`, `claude_code_sessions`, born tenanted.
+  ADR 0067 (0066 went to the feed-block branch).
+- **2026-11-01, Kevin's answers to ticket 03's open questions:** the work laptop may email Kevin a
+  summary, never a file (ruling 18); a `needs_machine` task is resolved by `POST
+  tasks/{id}/assign/`; any household device token may act as the worker for v1 (later, machine
+  tokens); `install_schedule.py` runs on deploy so the prune is scheduled.
