@@ -22,6 +22,8 @@ Ranking adjustments, each stated so it can be argued with:
   first when both match. Neither is hidden; a result says which it is.
 - At most `PER_FILE` passages come from one file, so one long document
   cannot crowd out the others.
+- A broad question about the whole system (`is_overview`) gets
+  `OVERVIEW_PICKS` first: a curated boost, stated here because it is one.
 """
 
 from __future__ import annotations
@@ -64,6 +66,34 @@ STOPWORDS = frozenset(
 OVERVIEW_WORDS = frozenset({"legion"})
 OVERVIEW_PATH = "README.md"
 
+# A broad question about the whole system - "Explain to me the codebase",
+# "how does it work", "architecture" - gets the overview passages first, in
+# this order: the README's at-a-glance table and architecture sketch (every
+# client, the Django engine, the head unit), then C1 and C2. Audit 2026-11-03:
+# BM25 alone ranked ADR 0040's web-vs-Android split first for "codebase",
+# which left out the engine and the head unit. (path, heading) of each;
+# a pick the corpus no longer has is skipped.
+OVERVIEW_PICKS = (
+    ("README.md", "LEGION > At a glance"),
+    ("README.md", "LEGION > Architecture"),
+    ("docs/architecture/c1-context.md", "C1: System context"),
+    ("docs/architecture/c2-containers.md", "C2: Containers"),
+)
+# Words (after stemming) that name the system as a whole and nothing in it. A
+# question made only of these, with at least one that is not "legion", is a
+# broad one.
+BROAD_WORDS = frozenset(
+    _w
+    for _w in """
+    legion codebase code base architecture architectural overview system structure built build
+    design whole overall big picture high level project repo repository stack tech technical
+    app application fit together put piece part component components main
+    """.split()
+)
+# "How does it work?" is all stopwords; asked of LEGION, it is the broadest
+# question there is.
+BROAD_PHRASE = re.compile(r"\bhow\b.*\b(work|works|built|fits?)\b")
+
 _WORD = re.compile(r"[a-z0-9]+")
 # A light suffix strip, so "tenancy" meets "tenants" and "gated" meets "gate".
 SUFFIXES = (
@@ -88,6 +118,15 @@ def _stem(word: str) -> str:
 
 def tokens(text: str) -> list[str]:
     return [_stem(w) for w in _WORD.findall(text.lower()) if w not in STOPWORDS]
+
+
+def is_overview(query: str) -> bool:
+    """True for a broad question about the whole system (see `OVERVIEW_PICKS`)."""
+    words = set(tokens(query))
+    if not words:
+        return bool(BROAD_PHRASE.search(query.lower()))
+    broad = {_stem(w) for w in BROAD_WORDS}
+    return words <= broad and not words <= OVERVIEW_WORDS
 
 
 @dataclass(frozen=True)
@@ -199,6 +238,23 @@ def search(query: str, limit: int = LIMIT_DEFAULT) -> list[Passage]:
             (1.0 - i / n, i) for i, c in enumerate(index.chunks) if c["path"] == OVERVIEW_PATH
         ]
     scored.sort(key=lambda s: (-s[0], index.chunks[s[1]]["id"]))
+    if is_overview(query):
+        # The curated overview first, then whatever BM25 found, without repeats.
+        picks: list[int] = []
+        for path, heading in OVERVIEW_PICKS:
+            found = next(
+                (
+                    i
+                    for i, c in enumerate(index.chunks)
+                    if c["path"] == path and c["heading"] == heading
+                ),
+                None,
+            )
+            if found is not None:
+                picks.append(found)
+        rest = [(score, i) for score, i in scored if i not in picks]
+        top = rest[0][0] if rest else 0.0
+        scored = [(top + len(picks) - k, i) for k, i in enumerate(picks)] + rest
 
     out: list[Passage] = []
     per_file: Counter = Counter()

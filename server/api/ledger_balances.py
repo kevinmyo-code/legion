@@ -23,6 +23,11 @@ bank anchor, the feed's own rows are already inside the bank's figure and are
 not added again. Rows a person logged as pending (`pending_logged_at`) are
 counted whatever their date, as the phone does.
 
+**The current figure leads** (audit of a live conversation, 2026-11-03: a
+statement's closing balance and the movement since it were read as two
+figures). `current_cents` is anchor plus fact since; the tool's words say it
+first, as "Now: ...", and the anchor second, as where it came from.
+
 No anchor means no balance on file. For an account the feed supplies that is
 NOT "unverified": its transactions are fact and there is simply no figure to
 state yet (the phone: "not stated", verified). Activity alone is movement, not
@@ -186,6 +191,15 @@ def account_balances(request, account: str | None = None) -> list[dict]:
                 ),
                 "fact_since_cents": fact_cents,
                 "fact_since_count": len(fact),
+                # How many of those came from the bank's own feed (fact too).
+                "fact_since_bank_feed_count": sum(
+                    1 for r in fact if r["provenance"] == "BANK_API"
+                ),
+                # The figure to say: the anchor plus fact since it, in the
+                # ledger's sign (audit 2026-11-03: the anchor was said as the
+                # balance). Same value as `verified_balance_cents`; None when
+                # there is no anchor.
+                "current_cents": balance,
                 # The balance in the ledger's sign, from the anchor plus fact
                 # since. None when there is no anchor.
                 "verified_balance_cents": balance,

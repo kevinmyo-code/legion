@@ -69,6 +69,20 @@ Raise it the day a text-model route exists and `charge_text_call` is wired.
   this prompt and tool declarations is of the order of ten thousand tokens in
   and a few hundred out, a fraction of a cent at flash-class prices; one cent
   allows for a tool round trip or two.
+- `LEGION_DEMO_COST_PER_SEARCH_USD` = 0.02 (audit 2026-11-03, `web_search`).
+  Google Search grounding on Gemini 3 is listed at $14 per 1,000 search
+  requests after 5,000 free a month shared across Gemini 3 and newer
+  (`brief/news.py` quotes the pricing page), so $0.014 a search once the free
+  tier is spent; the flash-lite call around it (a few hundred tokens in and
+  out, plus the grounding tool's own prompt tokens) is a fraction of a cent.
+  Two cents covers both, rounded up, and counts every search at the paid
+  rate. Charged against the FULL budget, like a text call: a search is a
+  tool call inside a conversation the voice cap already admitted, and
+  refusing it on the voice cap would end a paid-for session's usefulness
+  before the budget is spent. A search Google refused (HTTP error) is
+  released; one that timed out is kept, since it may have been billed, and
+  so is one whose handler raised something unexpected (`run_engine_tool`
+  turns that into a failed result): a cent or two under-used, never over.
 """
 
 from __future__ import annotations
@@ -129,6 +143,7 @@ class Limits:
     voice_minute_cents: int
     text_call_cents: int
     session_minutes: int
+    search_cents: int = 0
 
     @property
     def voice_cap_cents(self) -> int:
@@ -146,6 +161,7 @@ def limits() -> Limits:
         voice_minute_cents=_cents("LEGION_DEMO_COST_PER_VOICE_MINUTE_USD"),
         text_call_cents=_cents("LEGION_DEMO_COST_PER_TEXT_CALL_USD"),
         session_minutes=max_session_minutes(),
+        search_cents=_cents("LEGION_DEMO_COST_PER_SEARCH_USD"),
     )
 
 
@@ -195,6 +211,13 @@ def charge_text_call(now: datetime | None = None) -> Reservation | None:
     Not wired: the web has no text-model route yet (see the module doc)."""
     lim = limits()
     return _reserve(lim.text_call_cents, lim.budget_cents, "text_calls", now)
+
+
+def charge_web_search(now: datetime | None = None) -> Reservation | None:
+    """Reserve one recruiter `web_search` against the FULL budget, before
+    Google is asked. None: refuse it (`BUDGET_USED_UP`)."""
+    lim = limits()
+    return _reserve(lim.search_cents, lim.budget_cents, "web_searches", now)
 
 
 def release(reservation: Reservation) -> None:

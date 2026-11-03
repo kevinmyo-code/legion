@@ -33,8 +33,23 @@ and sensitivities, and `behavior: BLOCKING` on every declaration (CLAUDE.md
 section 7: an outcome verb may follow only a tool result the model has SEEN,
 and Live 3.8 defaults to NON_BLOCKING). Output transcription is ON here, always:
 the web shows the assistant's words as text (ticket 05). No `googleSearch`:
-ticket 04's web surface is the engine's tools, and the prompt says there is
-no search here.
+ticket 04's web surface is the engine's tools, and web search is one of them
+(`web_search`, `engine_mcp/web_search.py`): an engine tool reaches every
+client over MCP, lands in the conversation record, and sidesteps a reported
+Live issue where `google_search` came back as a function call.
+
+## No language field, on purpose
+
+Audit 2026-11-03: "money" was transcribed as "monnaie" and the answer came in
+French. The Live capabilities page (fetched 2026-11-03) says native-audio
+output models "automatically choose the appropriate language and don't
+support explicitly setting the language code", and that the languages can be
+restricted "by specifying it in the system instructions"; the input
+transcription config takes no language hint (only `custom_vocabulary`; the
+google-genai SDK's `AudioTranscriptionConfig` has no fields). With the setup
+fully locked, an unsupported field risks Google refusing the mint and every
+conversation failing to start. So `speechConfig` carries the voice only, and
+English is the prompt's rule (`assistant.prompt.LANGUAGE_RULE`).
 """
 
 from __future__ import annotations

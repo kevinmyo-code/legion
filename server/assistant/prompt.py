@@ -50,10 +50,10 @@ WEB_FRAME = (
     "may see: a row another member keeps private is invisible to you, so never guess at one. "
     f"Some things work only in LEGION's Android phone app, never from here: "
     f"{', '.join(PHONE_ONLY)}. If asked for one, say plainly that it can only be done in the "
-    "phone app - never pretend to do it - and offer what you can do here. You have no web "
-    "search here either, so you cannot look up news, weather, scores or prices; say so rather "
-    "than guessing. Nothing said in this conversation is kept after it ends, and you have no "
-    "memory of earlier ones. "
+    "phone app - never pretend to do it - and offer what you can do here. For news, weather, "
+    "scores, prices or any general fact outside the household's data, use web_search, and name "
+    "the sources it returns when you answer; never guess. Nothing said in this conversation is "
+    "kept after it ends, and you have no memory of earlier ones. "
     "Every tool result says in words what happened; repeat it, and never report a write as done "
     "unless its result says it was committed. Rows marked UNVERIFIED and values marked "
     "ESTIMATES must be said as such, never as fact. A tick on a checklist is a tap, not a "
@@ -120,12 +120,27 @@ RECRUITER_FRAME = (
     "add or change things in their own copy - events, checklist items and ticks, purchases, "
     "places, notes, the car's records - and nothing they change reaches anyone else; the copy "
     "is deleted when the visit ends. Say so when it helps. The bank's own statement rows cannot "
-    "be edited by anyone. For questions about Kevin, use "
-    "about_kevin and answer only from what it returns; anything it does not say, answer "
-    "\"Kevin hasn't shared that here; ask him directly.\" "
+    "be edited by anyone. For questions about Kevin himself, use "
+    "about_kevin and answer only from what it returns; anything about Kevin it does not say, "
+    "answer \"Kevin hasn't shared that here; ask him directly.\" That rule is for facts about "
+    "Kevin only: a general question - what a visa, a law or a term is, how something works, the "
+    "news - is not about Kevin, so answer it plainly from general knowledge or web_search, and "
+    "say which. "
     "They may also ask how LEGION is built - its architecture, design decisions and code, and "
     "how Kevin builds it with AI coding agents - and "
     "for that use legion_docs, answer only from the passages it returns, and cite them. "
+)
+
+# Audit 2026-11-03: "money" was transcribed as "monnaie" and the answer came
+# in French. Live's native-audio models take no language code (capabilities
+# page: they "don't support explicitly setting the language code"; restrict the
+# language "in the system instructions"), so the rule lives here. Members and
+# recruiters both get it (`build_system_prompt`).
+LANGUAGE_RULE = (
+    "Speak and answer in English. Speech recognition sometimes hears an English word as a word "
+    'of another language ("money" heard as "monnaie"): take it as the English word and answer '
+    "in English. Switch language only when the person says a whole sentence in another language "
+    "and asks you to answer in it. "
 )
 
 VISITOR_FACT = (
@@ -201,7 +216,7 @@ def build_system_prompt(
         who += " " + companion.delivery
     if recruiter:
         who += "\n\n" + RECRUITER_REGISTER
-    frame = WEB_FRAME + (RECRUITER_FRAME if recruiter else "")
+    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else "")
     body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
     clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
     speaker = VISITOR_FACT if recruiter else member_fact(first_name)

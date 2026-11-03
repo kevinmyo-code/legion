@@ -1373,6 +1373,10 @@ def test_every_mcp_tool_is_scoped_by_household(
     # legion_docs reads the committed docs corpus, never a household row: every
     # household sees the same docs.
     assert "ADR 0045" in b_reads("legion_docs", {"query": "households are tenants"})
+    # web_search reads no row at all; offline here, it fails in words.
+    covered.add("web_search")
+    is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})
+    assert is_error and text.startswith("Nothing was"), text
     assert call(mcp_b, "next_service", {"vehicle": "alpha"})[0] is True
     assert "alpha checking" in call(mcp_a, "account_balances", {})[1]
     assert "10.00 USD" in call(mcp_a, "monthly_spend", {"month": "2026-09"})[1]

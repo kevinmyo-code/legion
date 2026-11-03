@@ -50,6 +50,17 @@ describe('a member with a full household', () => {
     fireEvent.click(screen.getByRole('button', { name: 'What is on this week?' }))
     expect(await screen.findByRole('complementary', { name: 'Conversation with Dorothy' })).toBeInTheDocument()
     expect(box).toBeInTheDocument()
+    // One conversation on the page: the dock. The ask bar is a door to it, not a second chat.
+    expect(screen.getAllByRole('log')).toHaveLength(1)
+  })
+
+  test('on a phone Home has no conversation in the page; the orb opens the one sheet', async () => {
+    renderApp('/', briefingEngine(), 'family')
+    const orb = await screen.findByRole('button', { name: 'Ask Dorothy' })
+    expect(screen.queryByRole('log')).not.toBeInTheDocument()
+    fireEvent.click(orb)
+    expect(await screen.findByRole('dialog', { name: 'Conversation with Dorothy' })).toBeInTheDocument()
+    expect(screen.getAllByRole('log')).toHaveLength(1)
   })
 
   test('1 Next up: the next thing big, the rest of today and tomorrow beside it', async () => {

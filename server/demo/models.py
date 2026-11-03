@@ -165,6 +165,8 @@ class DemoBudgetDay(models.Model):
     reserved_cents = models.BigIntegerField(default=0)
     voice_mints = models.IntegerField(default=0)
     text_calls = models.IntegerField(default=0)
+    # `web_search` calls a recruiter's assistant made (audit 2026-11-03).
+    web_searches = models.IntegerField(default=0)
 
     class Meta:
         constraints = [

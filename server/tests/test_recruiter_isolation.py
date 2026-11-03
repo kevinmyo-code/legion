@@ -36,6 +36,7 @@ take at the door.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import zoneinfo
 
@@ -435,6 +436,29 @@ def test_legion_docs_reads_the_docs_and_nothing_of_either_household(world):
     assert _row_counts() == before
 
 
+def test_web_search_sends_the_question_and_nothing_of_either_household(world, monkeypatch):
+    """The visitor's question goes to Google and nothing else: no row of the
+    visit's household, none of Kevin's. Google is faked here."""
+    from engine_mcp import web_search
+    from ingest import statements
+    from tests.test_web_search import FakeGoogle
+
+    monkeypatch.setenv(statements.GEMINI_KEY_ENV, "k")
+    google = FakeGoogle()
+    monkeypatch.setattr(web_search, "_transport", google)
+    before = _row_counts()
+    _allowed(world, "web_search", {"query": "What is the H1B1?"})
+    [sent] = google.sent
+    body = json.dumps(sent["body"])
+    assert "What is the H1B1?" in body
+    for mark in (MARK, "Greenleaf", "Demo Everyday Checking", "Wagon"):
+        assert mark not in body, mark
+    # The one row written is the demo budget's day, charged for the search.
+    after = _row_counts()
+    assert after.pop("django.demo_demobudgetday") == before.pop("django.demo_demobudgetday") + 1
+    assert after == before
+
+
 def test_every_allowed_tool_was_exercised():
     """The tests above and in section 4 name each tool by hand; a tool added
     to `RECRUITER_TOOLS` fails here until it gets an isolation test."""
@@ -447,6 +471,7 @@ def test_every_allowed_tool_was_exercised():
         "list_purchases",
         "about_kevin",
         "legion_docs",
+        "web_search",
         # section 4, the writes
         "write_record",
         "delete_record",

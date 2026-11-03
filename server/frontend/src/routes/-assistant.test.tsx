@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { AudioError } from '@/assistant/audio'
 import { setAudioFactory } from '@/assistant/deps'
+import { TOOL_FAILED } from '@/components/assistant/chat'
 import { createEngine, seedHousehold, type EngineOptions } from '@/test/engine'
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
 import { renderApp } from '@/test/render-app'
@@ -78,8 +79,10 @@ describe('the family surface', () => {
     expect(socket.sentOf('clientContent')).toHaveLength(1)
 
     socket.serve({ toolCall: { functionCalls: [{ id: 't1', name: 'search_purchases', args: { query: 'shampoo' } }] } })
-    expect(await within(sheet).findByText('Done: Shampoo: 3 matches, last bought Sep 28.')).toBeInTheDocument()
-    expect(engine.assistant.toolCalls).toEqual([{ name: 'search_purchases', args: { query: 'shampoo' } }])
+    await waitFor(() => expect(engine.assistant.toolCalls).toEqual([{ name: 'search_purchases', args: { query: 'shampoo' } }]))
+    await waitFor(() => expect(socket.sentOf('toolResponse')).toHaveLength(1))
+    // The tool's name, its arguments and the engine's text for the model are never on screen.
+    expect(within(sheet).queryByText(/search_purchases|shampoo"|Shampoo: 3 matches|Done:/)).not.toBeInTheDocument()
     // The tool call names the conversation, so the engine writes it into the record.
     expect(engine.assistant.toolRecordIds[0]).toEqual({
       conversation_id: '00000000-0000-4000-8000-00000000c0de',
@@ -92,16 +95,35 @@ describe('the family surface', () => {
     expect(within(sheet).getByText('When did we last buy shampoo?')).toBeInTheDocument()
   })
 
-  test('a refused tool says "Did not run" in the engine words, and Done appears nowhere', async () => {
+  test('a tool result in JSON never reaches the screen, and the conversation shows no code', async () => {
+    const json = '{"rows": [{"merchant": "Costco", "amount": "84.12"}], "count": 1}'
+    const engine = engineWith({ assistant: { tools: { query_rows: { text: json } } } })
+    renderApp('/', engine, 'family')
+    const sheet = await openFamilyChat()
+    typeAndSend(within(sheet).getByRole('textbox', { name: 'Message Dorothy' }), 'Groceries last month?')
+    const socket = await connect()
+    socket.serve({ toolCall: { functionCalls: [{ id: 'q1', name: 'query_rows', args: { table: 'transactions' } }] } })
+    await waitFor(() => expect(socket.sentOf('toolResponse')).toHaveLength(1))
+    socket.serve({ serverContent: { outputTranscription: { text: 'One trip, $84 at Costco.' }, turnComplete: true } })
+    await within(sheet).findByText('One trip, $84 at Costco.')
+    const log = within(sheet).getByRole('log')
+    expect(log.textContent).not.toMatch(/query_rows|transactions|\{|"rows"|Done:/)
+    expect(within(log).queryByText(TOOL_FAILED)).not.toBeInTheDocument()
+    // The member's own side holds only what they typed.
+    const mine = within(log).getByText('Groceries last month?')
+    expect(mine.className).toContain('self-end')
+  })
+
+  test('a refused tool shows one plain sentence: no tool name, no engine words', async () => {
     const engine = engineWith()
     renderApp('/', engine, 'family')
     const sheet = await openFamilyChat()
     typeAndSend(within(sheet).getByRole('textbox', { name: 'Message Dorothy' }), 'Play some music')
     const socket = await connect()
     socket.serve({ toolCall: { functionCalls: [{ id: 'm1', name: 'play_music', args: {} }] } })
-    const refusal = 'Nothing was read or written. play_music is not a tool the web assistant has.'
-    expect(await within(sheet).findByText(`Did not run: ${refusal}`)).toBeInTheDocument()
-    expect(within(sheet).queryByText(/Done:/)).not.toBeInTheDocument()
+    // The engine's refusal names the tool; the screen says one plain sentence instead.
+    expect(await within(sheet).findByText(TOOL_FAILED)).toBeInTheDocument()
+    expect(within(sheet).queryByText(/play_music|Did not run|Nothing was read|Done:/)).not.toBeInTheDocument()
   })
 
   test('a server with no key says so in words and the message is marked not delivered', async () => {

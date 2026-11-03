@@ -26,4 +26,42 @@ export const briefingShots: Shot[] = [
     },
   },
   { name: 'home-briefing-recruiter', url: '/', ready: /Worth a look|On today/, engine: briefingVisit, labels: ['14'] },
+  // One chat (Kevin, 2026-11-03): the conversation opens only in the dock (desk)
+  // or the sheet (phone), from Home and from /try alike.
+  {
+    name: 'home-one-chat-open',
+    url: '/',
+    ready: /Worth a look|On today|Today/,
+    engine: briefingEngine,
+    labels: ['one-chat'],
+    viewportOnly: true,
+    after: async (page) => {
+      const desk = (page.viewportSize()?.width ?? 0) >= 1024
+      if (desk) await page.getByRole('search', { name: /^Ask / }).getByRole('button', { name: 'Ask' }).click()
+      else await page.getByRole('button', { name: /^Ask / }).last().click()
+      await expect(page.getByRole('log')).toHaveCount(1)
+    },
+  },
+  {
+    name: 'try-one-chat-open',
+    url: '/try',
+    ready: 'Talk to my assistant',
+    engine: briefingVisit,
+    labels: ['one-chat'],
+    viewportOnly: true,
+    after: async (page) => {
+      await page.getByRole('search', { name: /^Ask / }).getByRole('button', { name: 'Ask' }).click()
+      await expect(page.getByRole('log')).toHaveCount(1)
+    },
+  },
+  {
+    name: 'try-one-chat-closed',
+    url: '/try',
+    ready: 'Talk to my assistant',
+    engine: briefingVisit,
+    labels: ['one-chat'],
+    after: async (page) => {
+      await expect(page.getByRole('log')).toHaveCount(0)
+    },
+  },
 ]

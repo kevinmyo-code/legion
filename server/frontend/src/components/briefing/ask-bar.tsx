@@ -20,7 +20,7 @@ export const ASK_SUGGESTIONS = [
  * answer arrives. The name is the companion's own, read from the engine, never
  * written into copy (CLAUDE.md section 1).
  */
-export function AskBar() {
+export function AskBar({ suggestions = ASK_SUGGESTIONS }: { suggestions?: readonly string[] } = {}) {
   const { client, name, ui } = useAssistant()
   const [text, setText] = useState('')
 
@@ -62,7 +62,7 @@ export function AskBar() {
         </Button>
       </form>
       <ul aria-label="Questions to ask" className="mt-2.5 flex gap-2 overflow-x-auto pl-1 [scrollbar-width:none] @2xl:flex-wrap">
-        {ASK_SUGGESTIONS.map((question) => (
+        {suggestions.map((question) => (
           <li key={question} className="shrink-0">
             <button
               type="button"
