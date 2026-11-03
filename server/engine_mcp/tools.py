@@ -1636,6 +1636,55 @@ def _legion_docs(request, args) -> ToolResult:
 
 
 # =============================================================================
+# web_search: the web, through Gemini with Google Search grounding (Kevin,
+# 2026-11-03: "it needs a websearch tool"). `engine_mcp/web_search.py`.
+# =============================================================================
+
+
+def _web_search(request, args) -> ToolResult:
+    from demo import budget
+    from engine_mcp import web_search
+    from household.models import is_recruiter
+
+    query = " ".join(args["query"].split())
+    if not query:
+        return refused("Nothing was searched. The search had no words in it.")
+    user = getattr(request, "user", None)
+    reservation = None
+    if user is not None and is_recruiter(user):
+        # Reserved before Google is asked (`demo/budget.py`).
+        reservation = budget.charge_web_search()
+        if reservation is None:
+            return refused(f"Nothing was searched. {budget.BUDGET_USED_UP}")
+    try:
+        found = web_search.search(query)
+    except web_search.SearchFailed as exc:
+        if reservation is not None and exc.refused:
+            budget.release(reservation)
+        return failed(exc.message)
+    structured = {
+        "query": query,
+        "answer": found.answer,
+        "sources": found.sources,
+        "search_queries": found.search_queries,
+        "model": found.model,
+    }
+    if not found.sources:
+        return ok(
+            f"Web search for {query!r} (Gemini with Google Search) returned an answer but NO web "
+            f"source, so it is unconfirmed: say you could not confirm it. Answer: {found.answer}",
+            structured,
+        )
+    sources = "; ".join(f"[{i}] {s['title']} {s['url']}" for i, s in enumerate(found.sources, 1))
+    return ok(
+        f"Web search for {query!r} (Gemini with Google Search). This is from the web, not "
+        f"LEGION's data: say so, and name the sources you use by their names. Answer: "
+        f"{found.answer}\nSources: {sources}",
+        structured,
+    )
+
+
+# =============================================================================
 
 
 @dataclass(frozen=True)
@@ -2147,6 +2196,24 @@ TOOLS: tuple[EngineTool, ...] = (
             ("query",),
         ),
         handler=_legion_docs,
+    ),
+    EngineTool(
+        name="web_search",
+        title="Search the web",
+        description=(
+            "Searches the web (Gemini with Google Search) and returns a short answer with the "
+            "names and links of its sources. Use it for current events and news, weather, "
+            "prices, scores, and general facts - what a visa, a law or a term is - anything not "
+            "in LEGION's own data; never for the household's records, which the other tools "
+            "read. Pass the question as `query`, in plain words. When you answer from it, say it "
+            "is from the web and name the sources (\"according to Reuters\"). If it fails or "
+            "returns no source, say you could not confirm it; never guess. Nothing searched is "
+            "stored."
+        ),
+        input_schema=_object(
+            {"query": {"type": "string", "minLength": 1, "maxLength": 300}}, ("query",)
+        ),
+        handler=_web_search,
     ),
 )
 

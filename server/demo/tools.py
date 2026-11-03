@@ -34,7 +34,7 @@ DESCRIPTION = (
     "data to answer about Kevin; that household is made up. This rule is for facts ABOUT KEVIN "
     "only. A general question that merely comes up - what a visa such as the H-1B1 is, what a "
     "term means, how something works - is not about Kevin: never answer it with that sentence; "
-    "answer it plainly from general knowledge, and say so."
+    "answer it plainly from general knowledge or web_search, and say which."
 )
 
 
@@ -49,7 +49,7 @@ def _about_kevin(request, arguments: dict) -> ToolResult:
     return ok(
         "Kevin's profile, as he wrote it. Answer questions about Kevin only from this; for "
         f"anything about Kevin it does not say, say \"{NOT_SHARED}.\" A general question (what a "
-        "visa or a term is) is not about Kevin: answer that from general knowledge, and say so."
+        "visa or a term is) is not about Kevin: answer that from general knowledge or web_search."
         f"\n\n{sections}",
         {"sections": list(profile)},
     )
