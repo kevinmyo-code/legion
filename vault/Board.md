@@ -58,8 +58,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
-| [[.scratch/procedures/map\|procedures]] | [[10-baseline-round-trips\|10]] | task | Baseline: measure round trips, latency and tool errors from recorded conversations |
-| [[.scratch/procedures/map\|procedures]] | [[11-build-format-and-tables\|11]] | build | Build: procedures app, definition schema, built-in loader |
+| [[.scratch/procedures/map\|procedures]] | [[12-build-runner-and-tool\|12]] | build | Build: engine runner and the run_procedure MCP tool |
+| [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[01-recruiter-role-and-allowlist\|01]] | build | Recruiter role and tool allowlist (default deny) |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[03-demo-household-seed\|03]] | build | Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, receipt scan |
@@ -173,6 +173,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[13-silent-after-focus-loss\|13]] | bug | It speaks and you hear nothing, once Spotify takes audio focus |
+| [[.scratch/procedures/map\|procedures]] | [[10-baseline-round-trips\|10]] | task | Baseline: measure round trips, latency and tool errors from recorded conversations |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[06-server\|06]] | build | Server: table, API, tenancy, the Groceries hook, /mcp tools |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 | [[.scratch/retro-games/map\|retro-games]] | [[05-build-race-engine-pwa\|05]] | build | Build: engine match API + game_invite push, PWA Tetris solo and race |
@@ -252,8 +253,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[07-legion-only-extras\|07]] | decision | Decision: LEGION-only extras (ETA to Mia, leave-by, fuel-aware stops)  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[02-all-apps\|02]] | build | Build: All apps on Matrix HOME  waiting on [[01-block-model\|01]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
-| [[.scratch/procedures/map\|procedures]] | [[12-build-runner-and-tool\|12]] | build | Build: engine runner and the run_procedure MCP tool  waiting on [[11-build-format-and-tables\|11]] |
-| [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention  waiting on [[11-build-format-and-tables\|11]] |
 | [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[13-build-run-traces\|13]] |
 | [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[12-build-runner-and-tool\|12]] |
 | [[.scratch/procedures/map\|procedures]] | [[16-build-phone\|16]] | build | Build: phone declares run_procedure (direct, non-blocking when read-only)  waiting on [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
@@ -369,7 +368,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
-| [[.scratch/procedures/map\|procedures]] | 21 | 12 | [[.scratch/procedures/procedures.canvas\|open]] |
+| [[.scratch/procedures/map\|procedures]] | 21 | 11 | [[.scratch/procedures/procedures.canvas\|open]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | 9 | 4 | [[.scratch/purchase-log/purchase-log.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | 14 | 14 | [[.scratch/recruiter-demo/recruiter-demo.canvas\|open]] |

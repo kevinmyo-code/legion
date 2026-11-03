@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["06", "11"]
 blocked-by: ["[[06-trace-content-and-retention]]", "[[11-build-format-and-tables]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Build: run traces, linked to conversation records, with retention

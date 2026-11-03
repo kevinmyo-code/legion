@@ -3,12 +3,12 @@ map: procedures
 ticket: "10"
 title: "Baseline: measure round trips, latency and tool errors from recorded conversations"
 type: task
-status: open
-status-detail: ""
+status: built
+status-detail: "measuring command built and tested on fixtures; owes Kevin's run on the deployed worker and the table in research/"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Baseline: measure round trips, latency and tool errors from recorded conversations
@@ -36,3 +36,30 @@ The table exists with sample sizes stated, and the latency budget in ticket "How
 reaches run_procedure" is confirmed or corrected.
 
 AFK. Needs engine access to read the records.
+
+## Built (2026-11-03, branch `feat/procedures-foundation`)
+
+- `manage.py conversation_baseline` (`server/devicelogs/baseline.py`, the column definitions in
+  its docstring; tests `tests/test_conversation_baseline.py` on fixtures in each writer's line
+  format). Prints Markdown: asks by device and class (round trips, first audio, answer, errors),
+  tool errors by kind, per-tool latency, and the engine-side budget estimate from web records.
+  No transcript text, arguments or results are printed (a test pins it).
+- Device rows are `device_label` (phone and head unit both report `MANUFACTURER MODEL`), `web`,
+  and with `--include-visits` `web (recruiter visit)`.
+- Known gaps, stated in the output's definitions: the head unit logs no sub-agent line, so its
+  `ask_engine` POSTs are counted as unlogged, and an `ask_engine` ask is classed by its question's
+  words, not its tools.
+
+Kevin runs (prod reads are his):
+
+```
+gcloud run jobs execute legion-worker --region us-south1 --wait --args=manage.py,conversation_baseline,--days,60,--numbered
+```
+
+then reads the execution's stdout from Cloud Logging, sorted by the 4-digit prefix, and pastes it
+into `research/baseline-<date>.md`.
+
+## Done when, accounted for
+
+- Table in `research/`, sample sizes stated: **owed**, Kevin's run (the command prints `n`).
+- Ticket 04's latency budget confirmed or corrected: **owed**, from the budget section of that run.

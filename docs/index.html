@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>285 tickets open</h1>
+<h1>284 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 46 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 66 are waiting on another ticket first. <b>146 are already built</b> and owe nothing but a run on the phone. 17 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 46 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 64 are waiting on another ticket first. <b>147 are already built</b> and owe nothing but a run on the phone. 17 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">285</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">284</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">56</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">146</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">66</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">147</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">64</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">11</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">111</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">109</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">17</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -235,28 +235,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
-<h2>procedures</h2>
-<span class="counts"><span class="k">12</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">10</span> blocked<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
-<span class="bar"><i style="flex:2"></i><b style="flex:10"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">10</span><span class="body"><span class="tt">Baseline: measure round trips, latency and tool errors from recorded conversations</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">11</span><span class="body"><span class="tt">Build: procedures app, definition schema, built-in loader</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">Build: engine runner and the run_procedure MCP tool</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #07, #11</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">13</span><span class="body"><span class="tt">Build: run traces, linked to conversation records, with retention</span></span><span class="chip c-build">build</span><span class="state">waiting on #06, #11</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Build: branch report and run inspector on the web desk</span></span><span class="chip c-build">build</span><span class="state">waiting on #07, #13</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">15</span><span class="body"><span class="tt">Build: car_check, money_check, morning_briefing as built-ins</span></span><span class="chip c-build">build</span><span class="state">waiting on #09, #12</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">16</span><span class="body"><span class="tt">Build: phone declares run_procedure (direct, non-blocking when read-only)</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05, #12, #15</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">17</span><span class="body"><span class="tt">Build: head unit declares run_procedure directly</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #12, #15</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">18</span><span class="body"><span class="tt">Build: web assistant and recruiter visit use run_procedure</span></span><span class="chip c-build">build</span><span class="state">waiting on #07, #12, #15</span></li>
-<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">19</span><span class="body"><span class="tt">Laptop worker: procedures for the Claude session</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #12</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">20</span><span class="body"><span class="tt">Build: distillation proposals and approval in the inspector</span></span><span class="chip c-build">build</span><span class="state">waiting on #08, #13, #14</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">21</span><span class="body"><span class="tt">Build: replay recorded asks against procedures vs free routing</span></span><span class="chip c-build">build</span><span class="state">waiting on #10, #15</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
 <h2>django-engine</h2>
 <span class="counts"><span class="k">11</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 16 tickets</span></span>
 <span class="bar"><i style="flex:7"></i><b style="flex:4"></b></span>
@@ -294,6 +272,27 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-built" data-type="built" data-state="built"><span class="num">32</span><span class="body"><span class="tt">Sitreps happen when asked, never on a schedule</span><span class="det">Built: scheduler and alarm deleted, not defaulted off. DIGEST.hasContent back to false since its only raise is gone. Wellbeing digest untouched.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">03</span><span class="body"><span class="tt">Home control: what does LEGION actually get to touch?</span><span class="det">KIV 2026-08-21, Kevin - parked, not queued</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
 <li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">29</span><span class="body"><span class="tt">Service history and the maintenance clock become one fact</span><span class="det">KIV 2026-08-23: superseded by the aspect engine (.scratch/aspect-engine/map.md, charter decision 3)</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>procedures</h2>
+<span class="counts"><span class="k">11</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="k amber">8</span> blocked<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
+<span class="bar"><i style="flex:3"></i><b style="flex:8"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">12</span><span class="body"><span class="tt">Build: engine runner and the run_procedure MCP tool</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">13</span><span class="body"><span class="tt">Build: run traces, linked to conversation records, with retention</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">10</span><span class="body"><span class="tt">Baseline: measure round trips, latency and tool errors from recorded conversations</span><span class="det">measuring command built and tested on fixtures; owes Kevin&#x27;s run on the deployed worker and the table in research/</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Build: branch report and run inspector on the web desk</span></span><span class="chip c-build">build</span><span class="state">waiting on #07, #13</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">15</span><span class="body"><span class="tt">Build: car_check, money_check, morning_briefing as built-ins</span></span><span class="chip c-build">build</span><span class="state">waiting on #09, #12</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">16</span><span class="body"><span class="tt">Build: phone declares run_procedure (direct, non-blocking when read-only)</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05, #12, #15</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">17</span><span class="body"><span class="tt">Build: head unit declares run_procedure directly</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #12, #15</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">18</span><span class="body"><span class="tt">Build: web assistant and recruiter visit use run_procedure</span></span><span class="chip c-build">build</span><span class="state">waiting on #07, #12, #15</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">19</span><span class="body"><span class="tt">Laptop worker: procedures for the Claude session</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #12</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">20</span><span class="body"><span class="tt">Build: distillation proposals and approval in the inspector</span></span><span class="chip c-build">build</span><span class="state">waiting on #08, #13, #14</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">21</span><span class="body"><span class="tt">Build: replay recorded asks against procedures vs free routing</span></span><span class="chip c-build">build</span><span class="state">waiting on #10, #15</span></li>
 </ul>
 </section>
 <section class="map">

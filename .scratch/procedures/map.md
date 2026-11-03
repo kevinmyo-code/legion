@@ -5,7 +5,7 @@ charted: 2026-11-03
 charted-by: "Kevin + Opus"
 effort: "`.scratch/procedures/`"
 tickets: 21
-open: 12
+open: 11
 status: open
 tags: [map]
 ---

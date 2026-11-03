@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["04", "07", "11"]
 blocked-by: ["[[04-how-clients-reach-run-procedure]]", "[[07-recruiter-visits]]", "[[11-build-format-and-tables]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Build: engine runner and the run_procedure MCP tool
