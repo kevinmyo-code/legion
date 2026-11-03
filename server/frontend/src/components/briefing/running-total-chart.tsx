@@ -22,6 +22,16 @@ function axisMoney(cents: number): string {
   return dollars >= 1000 ? `$${Math.round(dollars / 100) / 10}k` : `$${Math.round(dollars)}`
 }
 
+/** Four or five round ticks from $0 that reach past `top` (cents). */
+export function niceTicks(top: number): number[] {
+  const raw = Math.max(top, 100) / 4
+  const power = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * power).find((candidate) => candidate >= raw)!
+  const ticks = [0]
+  while (ticks[ticks.length - 1] < top) ticks.push(ticks.length * step)
+  return ticks
+}
+
 export function RunningTotalChart({
   points,
   budgetCents,
@@ -32,6 +42,7 @@ export function RunningTotalChart({
   currency: string
 }) {
   const top = Math.max(points.at(-1)?.cents ?? 0, budgetCents ?? 0)
+  const ticks = niceTicks(top * 1.05)
   const last = points.at(-1)
   const description =
     `Running total of categorised spending by day, from ${money(points[0].cents, currency)} on day 1 ` +
@@ -70,7 +81,8 @@ export function RunningTotalChart({
               width={40}
               tickLine={false}
               axisLine={false}
-              domain={[0, Math.max(100, Math.ceil(top * 1.12))]}
+              domain={[0, ticks[ticks.length - 1]]}
+              ticks={ticks}
               tickFormatter={axisMoney}
               tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
             />

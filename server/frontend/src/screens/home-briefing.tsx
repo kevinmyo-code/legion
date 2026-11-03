@@ -74,18 +74,18 @@ export function BriefingHome() {
     : null
 
   return (
-    <div className="mx-auto flex w-full max-w-[54rem] flex-col gap-7 pb-16">
+    <div className="@container mx-auto flex w-full max-w-[54rem] flex-col gap-7 pb-16">
       <AskBar />
 
       <header>
-        <h1 className="text-[1.875rem] leading-tight font-medium tracking-tight md:text-[2.5rem]">
+        <h1 className="text-[1.875rem] leading-tight font-medium tracking-tight @2xl:text-[2.5rem]">
           {greeting(now)}
           {myName ? `, ${myName}` : ''}.
         </h1>
         {changes.isPending ? (
-          <p className="mt-2.5 text-base text-muted-foreground md:text-lg">Reading the day…</p>
+          <p className="mt-2.5 text-base text-muted-foreground @2xl:text-lg">Reading the day…</p>
         ) : (
-          <p className="mt-2.5 max-w-[40rem] text-base leading-relaxed text-muted-foreground md:text-lg">{sentence}</p>
+          <p className="mt-2.5 max-w-[40rem] text-base leading-relaxed text-muted-foreground @2xl:text-lg">{sentence}</p>
         )}
         <div className="mt-2">
           {readable ? (

@@ -283,3 +283,12 @@ describe('pickNextUp', () => {
     expect(untilWords(at(8), now)).toBe('now')
   })
 })
+
+describe('niceTicks', () => {
+  test('round steps from zero that reach past the top', async () => {
+    const { niceTicks } = await import('@/components/briefing/running-total-chart')
+    expect(niceTicks(252000)).toEqual([0, 100000, 200000, 300000])
+    expect(niceTicks(340000)).toEqual([0, 100000, 200000, 300000, 400000])
+    expect(niceTicks(0)).toEqual([0])
+  })
+})

@@ -102,7 +102,7 @@ export function ListsSection({
 
   return (
     <BriefingSection n={4} id="briefing-lists" title="Lists">
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 @2xl:grid-cols-2">
         <Card>
           <CardHead
             title={

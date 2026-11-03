@@ -186,7 +186,7 @@ function BalancesCard() {
 export function MoneySection() {
   return (
     <BriefingSection n={3} id="briefing-money" title="Money this month">
-      <div className="grid gap-3 md:grid-cols-[1.4fr_1fr]">
+      <div className="grid gap-3 @2xl:grid-cols-[1.4fr_1fr]">
         <SpentCard />
         <BalancesCard />
       </div>

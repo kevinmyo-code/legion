@@ -1,3 +1,5 @@
+import { expect } from '@playwright/test'
+
 import type { Shot } from './shots.spec'
 import { briefingEngine, briefingVisit } from '../src/test/briefing-seed'
 
@@ -10,5 +12,18 @@ import { briefingEngine, briefingVisit } from '../src/test/briefing-seed'
  */
 export const briefingShots: Shot[] = [
   { name: 'home-briefing', url: '/', ready: /Worth a look|On today/, engine: briefingEngine, labels: ['14'] },
+  {
+    // The docked assistant open beside it: the column narrows to one card per row.
+    name: 'home-briefing-assistant-open',
+    url: '/',
+    ready: /Worth a look|On today/,
+    engine: briefingEngine,
+    labels: ['14'],
+    after: async (page) => {
+      if ((page.viewportSize()?.width ?? 0) < 1024) return
+      await page.getByRole('button', { name: 'Dorothy' }).click()
+      await expect(page.getByRole('complementary', { name: 'Conversation with Dorothy' })).toBeVisible()
+    },
+  },
   { name: 'home-briefing-recruiter', url: '/', ready: /Worth a look|On today/, engine: briefingVisit, labels: ['14'] },
 ]

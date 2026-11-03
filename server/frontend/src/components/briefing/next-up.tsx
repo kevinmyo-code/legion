@@ -33,7 +33,7 @@ export function NextUpCard({ occurrence, now }: { occurrence: Occurrence; now: D
   return (
     <article
       aria-label={`Next: ${label}`}
-      className="flex flex-col gap-1.5 rounded-sheet bg-primary-container px-5 py-5 text-primary-container-foreground md:px-6"
+      className="flex flex-col gap-1.5 rounded-sheet bg-primary-container px-5 py-5 text-primary-container-foreground @2xl:px-6"
     >
       <p className="flex items-center gap-2 text-[0.875rem] font-semibold">
         <Clock aria-hidden="true" className="size-4" />
@@ -112,7 +112,7 @@ export function NextUpSection({
   const first = tomorrow[0]
   return (
     <BriefingSection n={1} id="briefing-next" title="Next up" aside={<NewEvent />}>
-      <div className="grid gap-3 md:grid-cols-[1.25fr_1fr]">
+      <div className="grid gap-3 @2xl:grid-cols-[1.25fr_1fr]">
         {next ? (
           <NextUpCard occurrence={next} now={now} />
         ) : (

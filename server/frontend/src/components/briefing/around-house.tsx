@@ -226,7 +226,7 @@ function Body() {
 export function AroundHouseSection({ recruiter }: { recruiter: boolean }) {
   return (
     <BriefingSection n={5} id="briefing-house" title="Around the house">
-      <div className="rounded-sheet bg-card px-4 py-1.5 md:px-5">
+      <div className="rounded-sheet bg-card px-4 py-1.5 @2xl:px-5">
         <ul aria-label="Around the house">
           <Groceries />
           <VoiceNotes />

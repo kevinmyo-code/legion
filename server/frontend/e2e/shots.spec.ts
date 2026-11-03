@@ -84,7 +84,7 @@ const ROUTES: Shot[] = [
     ready: 'Sign in',
     engine: () => createEngine({ signedIn: false }),
   },
-  { name: 'home', url: '/', ready: 'Soccer pickup', engine: seeded },
+  { name: 'home', url: '/', ready: /Next up|On today/, engine: seeded },
   { name: 'lists', url: '/lists', ready: 'Oat milk', engine: seeded },
   // The states a screenshot of the happy path never shows (ticket 04).
   {

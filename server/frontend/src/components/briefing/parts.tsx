@@ -52,7 +52,7 @@ export function BriefingSection({
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn('rounded-sheet bg-card px-4 py-3.5 md:px-5', className)}>{children}</div>
+  return <div className={cn('rounded-sheet bg-card px-4 py-3.5 @2xl:px-5', className)}>{children}</div>
 }
 
 /** A card's own heading line: name on the left, a quiet link or note on the right. */

@@ -245,8 +245,8 @@ export function useWorthALook({
 function WorthRow({ item }: { item: WorthItem }) {
   const Icon = item.icon
   return (
-    <li className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-3.5 py-3 not-first:border-t not-first:border-outline-variant md:flex-nowrap">
-      <span className="basis-full md:w-[7.5rem] md:shrink-0 md:basis-auto">
+    <li className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-3.5 py-3 not-first:border-t not-first:border-outline-variant @2xl:flex-nowrap">
+      <span className="basis-full @2xl:w-[7.5rem] @2xl:shrink-0 @2xl:basis-auto">
         <StatusLabel status={item.status} />
       </span>
       <RowIcon icon={Icon} />

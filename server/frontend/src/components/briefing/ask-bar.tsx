@@ -61,7 +61,7 @@ export function AskBar() {
           Ask
         </Button>
       </form>
-      <ul aria-label="Questions to ask" className="mt-2.5 flex gap-2 overflow-x-auto pl-1 [scrollbar-width:none] md:flex-wrap">
+      <ul aria-label="Questions to ask" className="mt-2.5 flex gap-2 overflow-x-auto pl-1 [scrollbar-width:none] @2xl:flex-wrap">
         {ASK_SUGGESTIONS.map((question) => (
           <li key={question} className="shrink-0">
             <button
