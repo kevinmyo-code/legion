@@ -6417,9 +6417,9 @@ export interface components {
             conversation_id: string | null;
             /** @description True when the version has a writing step. */
             writes: boolean;
-            /** @description The caller's inputs, as JSON. */
+            /** @description The caller's inputs, as JSON; null when none or private. */
             inputs: string | null;
-            /** @description The answer as returned, trimmed. */
+            /** @description The answer as returned, trimmed; for another member's run, "Started by another member: details are private to them." */
             result: string;
             steps: components["schemas"]["RunStep"][];
             /** @description Step ids in the definition that did not run. */
@@ -6441,9 +6441,9 @@ export interface components {
             kind: string;
             /** @description The engine tool, for a `tool` step; else empty. */
             tool: string;
-            /** @description The arguments as sent, as JSON, trimmed; null when none. */
+            /** @description The arguments as sent, as JSON, trimmed; null when none or when another member started the run. */
             args: string | null;
-            /** @description What the step said, trimmed. */
+            /** @description What the step said, trimmed; empty when another member started the run. */
             result: string;
             outcome: components["schemas"]["ProcedureStepOutcomeEnum"];
             outcome_label: string;

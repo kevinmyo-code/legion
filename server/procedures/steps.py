@@ -102,6 +102,15 @@ def car_lead(vehicles=None) -> str:
     return f"{lead} Nothing is past due by the records on file."
 
 
+@step_function("one_car")
+def one_car(vehicles=None) -> bool:
+    """True when `next_service` read at most one car, so recalls know which car to look up:
+    either one is on file or the caller named one (`next_service` then reads only that car).
+    False with several cars and none named: `vehicle_recalls` takes one car, and the runner has
+    no fan-out (Kevin, 2026-11-03, ticket 15's open item)."""
+    return len(vehicles or []) <= 1
+
+
 def _freeze_words(frame) -> str:
     # Null and an empty object are different facts (`api/fleet.py` CodeEventSerializer).
     if frame is None:

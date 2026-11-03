@@ -14350,10 +14350,11 @@ components:
         inputs:
           type: string
           nullable: true
-          description: The caller's inputs, as JSON.
+          description: The caller's inputs, as JSON; null when none or private.
         result:
           type: string
-          description: The answer as returned, trimmed.
+          description: 'The answer as returned, trimmed; for another member''s run,
+            "Started by another member: details are private to them."'
         steps:
           type: array
           items:
@@ -14419,10 +14420,12 @@ components:
         args:
           type: string
           nullable: true
-          description: The arguments as sent, as JSON, trimmed; null when none.
+          description: The arguments as sent, as JSON, trimmed; null when none or
+            when another member started the run.
         result:
           type: string
-          description: What the step said, trimmed.
+          description: What the step said, trimmed; empty when another member started
+            the run.
         outcome:
           $ref: '#/components/schemas/ProcedureStepOutcomeEnum'
         outcome_label:

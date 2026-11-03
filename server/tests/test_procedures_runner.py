@@ -274,6 +274,18 @@ def test_a_failing_check_ends_with_its_sentence_and_is_an_answer(member_web):
     assert run(member_web, "checked", inputs={"n": 2}).data["text"].startswith("It was 2.")
 
 
+def test_a_fail_sentence_says_what_the_steps_before_it_read(member_web):
+    """A fail sentence is rendered like a say template (car_check's which-car check)."""
+    definition = with_check("checked_words")
+    definition["steps"][0]["fail_sentence"] = "Asked about {$inputs.n}; nothing to report."
+    install(definition)
+    response = run(member_web, "checked_words", inputs={"n": -3})
+    assert response.data["is_error"] is False
+    assert response.data["text"].startswith("Asked about -3; nothing to report.")
+    (row,) = last_run().steps.all()
+    assert row.branch == "fail" and row.result == "Asked about -3; nothing to report."
+
+
 def test_unknown_procedure_input_and_answer_without_token_are_refused(member_web):
     install(with_check())
     assert "no procedure called 'nope'" in run(member_web, "nope").data["text"]

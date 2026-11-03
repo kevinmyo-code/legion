@@ -11,12 +11,22 @@ Four GET routes under `/api/procedures/`, all scoped through `household.tenancy`
   and every way out of it, with how many of THIS household's runs took it, failed in it or
   never took it, and when each was last seen.
 
-**Who sees what.** A member sees their household's runs (ADR 0045: a member sees everything in
-their household). A recruiter's visit is its own household with the visitor as its only member
+**Who sees what.** A member sees their household's runs (ADR 0045), in full only for the runs
+they started (below). A recruiter's visit is its own household with the visitor as its only member
 (ADR 0069), so tenancy alone already gives "their own visit's runs only" (ruling 07); the views
 also narrow a recruiter to their own user, so that holds even if a visit ever had two members.
 The report counts only `scoped` rows: a built-in version is shared by every household, and its
 runs elsewhere are never counted here.
+
+**Another member's run is structure only** (Kevin, 2026-11-03, ticket 14's open item, in the
+spirit of ADR 0052): a step's args and trimmed result can carry a row private to the member who
+ran it, so a member sees a run's args, results and inputs only for runs THEY started. Another
+member's run (or one whose account was removed) still lists, opens and counts in the report,
+with its procedure, version, status, caller kind, timings, and each step's kind, tool, outcome,
+branch and who chose it; its inputs, its answer and every step's args and result are withheld,
+and `result` says "Started by another member: details are private to them." The report never
+carried content, so its counts stay household-wide. A recruiter is already narrowed to their own
+runs, so nothing changes for a visit.
 
 **Branches** are enumerated the way the runner RECORDS them, not from `definition.validate`'s
 edges: a `tool` / `compute` step leaves on `next`, a `check` on `pass` or `fail` (a fail ends the
@@ -62,6 +72,7 @@ NO_RUN = (
     "There is no such run in this household. Nothing was read. It may have been pruned after "
     f"{RETENTION_DAYS} days, or it belongs to another household."
 )
+PRIVATE_RUN = "Started by another member: details are private to them."
 CHOSEN_BY_WORDS = {
     ChosenBy.CODE: "Code chose",
     ChosenBy.MODEL: "A model chose",
@@ -137,9 +148,14 @@ class RunStepSerializer(serializers.Serializer):
     kind = serializers.CharField(help_text="tool, compute, decide, ask, check or say.")
     tool = serializers.CharField(help_text="The engine tool, for a `tool` step; else empty.")
     args = serializers.CharField(
-        allow_null=True, help_text="The arguments as sent, as JSON, trimmed; null when none."
+        allow_null=True,
+        help_text="The arguments as sent, as JSON, trimmed; null when none or when another "
+        "member started the run.",
     )
-    result = serializers.CharField(help_text="What the step said, trimmed.")
+    result = serializers.CharField(
+        allow_blank=True,
+        help_text="What the step said, trimmed; empty when another member started the run.",
+    )
     outcome = serializers.ChoiceField(choices=StepOutcome.choices)
     outcome_label = serializers.CharField()
     branch = serializers.CharField(
@@ -162,8 +178,13 @@ class RunStepSerializer(serializers.Serializer):
 
 class RunDetailSerializer(RunSummarySerializer):
     writes = serializers.BooleanField(help_text="True when the version has a writing step.")
-    inputs = serializers.CharField(allow_null=True, help_text="The caller's inputs, as JSON.")
-    result = serializers.CharField(help_text="The answer as returned, trimmed.")
+    inputs = serializers.CharField(
+        allow_null=True, help_text="The caller's inputs, as JSON; null when none or private."
+    )
+    result = serializers.CharField(
+        help_text="The answer as returned, trimmed; for another member's run, \"Started by "
+        'another member: details are private to them."'
+    )
     steps = RunStepSerializer(many=True)
     not_run = serializers.ListField(
         child=serializers.CharField(), help_text="Step ids in the definition that did not run."
@@ -266,14 +287,14 @@ def _summary(run: ProcedureRun, user) -> dict:
     }
 
 
-def _step(row: ProcedureStep) -> dict:
+def _step(row: ProcedureStep, private: bool = False) -> dict:
     return {
         "seq": row.seq,
         "step_id": row.step_id,
         "kind": row.kind,
         "tool": row.tool,
-        "args": _json_text(row.args),
-        "result": _trim(row.result),
+        "args": None if private else _json_text(row.args),
+        "result": "" if private else _trim(row.result),
         "outcome": row.outcome,
         "outcome_label": StepOutcome(row.outcome).label,
         "branch": row.branch,
@@ -511,12 +532,15 @@ class RunDetailView(APIView):
         rows = list(run.steps.order_by("seq"))
         ran = {r.step_id for r in rows}
         not_run = [s["id"] for s in run.version.definition.get("steps", []) if s["id"] not in ran]
+        # Full detail only for the caller's own run (module doc); a removed account's run is
+        # nobody's to read in full.
+        private = run.user_id is None or run.user_id != request.user.id
         body = {
             **_summary(run, request.user),
             "writes": run.version.writes,
-            "inputs": _json_text(run.inputs),
-            "result": _trim(run.result),
-            "steps": [_step(r) for r in rows],
+            "inputs": None if private else _json_text(run.inputs),
+            "result": PRIVATE_RUN if private else _trim(run.result),
+            "steps": [_step(r, private) for r in rows],
             "not_run": not_run,
             "not_run_sentence": _not_run_sentence(run, not_run),
         }
