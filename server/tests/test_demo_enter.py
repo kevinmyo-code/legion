@@ -241,7 +241,7 @@ def test_prune_deletes_expired_visitors_and_keeps_the_visit(code, household_user
 
     out = StringIO()
     call_command("prune_demo_visitors", "--dry-run", stdout=out)
-    assert "Would delete 1" in out.getvalue()
+    assert "Would delete 1 expired demo visit household" in out.getvalue()
     assert DemoVisit.objects.filter(user__isnull=False).count() == 2
 
     call_command("prune_demo_visitors", stdout=StringIO())

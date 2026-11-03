@@ -215,3 +215,114 @@ def test_seed_time_per_visit_and_every_copy_is_whole(capsys):
     with capsys.disabled():
         print(f"\nseed time per visit: {', '.join(f'{t:.2f} s' for t in timings)}")
     assert max(timings) < 30
+
+
+# =============================================================================
+# 4. Prune deletes the expired visit's household whole, and nothing else
+# =============================================================================
+
+
+def _all_counts(household_id) -> dict[str, int]:
+    """Rows per tenant table for one household id, every table this database has."""
+    from demo.visit_cleanup import _tenant_tables
+
+    with connection.cursor() as cursor:
+        tables = _tenant_tables(cursor)
+        counts = {}
+        for table, schema in sorted(tables.items()):
+            cursor.execute(
+                f'select count(*) from "{schema}"."{table}" where household_id = %s',
+                [household_id],
+            )
+            counts[table] = cursor.fetchone()[0]
+    return counts
+
+
+@pytest.fixture
+def code(db):
+    from django.core.cache import cache
+
+    from demo.models import DemoCode
+
+    cache.clear()
+    _row, raw = DemoCode.rotate()
+    return raw
+
+
+def _visit(code: str, ref: str):
+    """A visit made the way a recruiter makes one: `/enter` with the code."""
+    from rest_framework.test import APIClient
+
+    from demo.models import DemoVisit
+
+    browser = APIClient(enforce_csrf_checks=True)
+    browser.get("/api/auth/csrf")
+    response = browser.post("/api/demo/enter", {"code": code, "ref": ref}, format="json")
+    assert response.status_code == 201, response.data
+    browser.credentials(HTTP_X_CSRFTOKEN=browser.cookies["csrftoken"].value)
+    return browser, DemoVisit.objects.get(ref=ref)
+
+
+def test_prune_deletes_the_expired_visit_whole_and_nothing_else(household_user, code):
+    from datetime import timedelta
+    from io import StringIO
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    from demo.models import DemoVisit
+    from household.models import DeviceToken, HouseholdMember, User
+
+    kevin = household_user.household
+    seed_household(kevin)  # a Kevin-like household with every gated kind of row
+    _gone_browser, gone = _visit(code, "gone")
+    _live_browser, live = _visit(code, "live")
+    gone_household, gone_user = gone.household_id, gone.user_id
+    assert sum(_all_counts(gone_household).values()) > 50
+
+    kevin_before = _all_counts(kevin.id)
+    live_before = _all_counts(live.household_id)
+    DemoVisit.objects.filter(pk=gone.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+
+    out = StringIO()
+    call_command("prune_demo_visitors", "--dry-run", stdout=out)
+    assert "Would delete 1 expired demo visit household" in out.getvalue()
+    assert Household.objects.filter(pk=gone_household).exists()
+
+    call_command("prune_demo_visitors", stdout=out)
+    assert set(_all_counts(gone_household).values()) == {0}
+    assert not Household.objects.filter(pk=gone_household).exists()
+    assert not User.objects.filter(pk=gone_user).exists()
+    assert not DeviceToken.objects.filter(user_id=gone_user).exists()
+    gone.refresh_from_db()
+    assert (gone.user_id, gone.token_id, gone.household_id) == (None, None, None)
+    assert gone.ref == "gone"
+
+    assert _all_counts(kevin.id) == kevin_before
+    assert _all_counts(live.household_id) == live_before
+    assert HouseholdMember.objects.filter(user=household_user).exists()
+    live.refresh_from_db()
+    assert live.user_id is not None and live.household_id is not None
+
+
+def test_the_cleanup_refuses_a_household_without_the_flag(household_user):
+    from demo.visit_cleanup import NotADemoVisit, delete_visit_household
+
+    kevin = household_user.household
+    seed_household(kevin)
+    before = _all_counts(kevin.id)
+    with pytest.raises(NotADemoVisit, match="Nothing was deleted"):
+        delete_visit_household(kevin)
+    assert _all_counts(kevin.id) == before
+
+
+def test_the_deletion_order_covers_every_tenant_table():
+    from demo.visit_cleanup import _tenant_tables, deletion_order
+
+    with connection.cursor() as cursor:
+        order, _self_refs, _schemas = deletion_order(cursor)
+        assert sorted(order) == sorted(_tenant_tables(cursor))
+    # Children before parents for the gate's own chain.
+    assert order.index("receipt_line_items") < order.index("receipts")
+    assert order.index("receipts") < order.index("ingested_files")
+    assert order.index("ledger_transactions") < order.index("statements")
