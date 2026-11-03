@@ -25,6 +25,7 @@ import datetime as dt
 from collections import defaultdict
 from dataclasses import dataclass
 
+from brief.maintenance import add_months
 from household.tenancy import scoped, visible
 from ingest.category_overrides import with_effective_category
 from ingest.freshness import freshness_for
@@ -91,15 +92,6 @@ def money(cents: int, currency: str = "USD") -> str:
     whole, part = divmod(abs(cents), 100)
     symbol = "$" if currency == "USD" else f"{currency} "
     return f"{sign}{symbol}{whole:,}.{part:02d}"
-
-
-def add_months(day: dt.date, months: int) -> dt.date:
-    import calendar
-
-    total = day.year * 12 + day.month - 1 + months
-    year, month = divmod(total, 12)
-    month += 1
-    return dt.date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
 
 
 # =============================================================================
@@ -310,76 +302,43 @@ def money_section(viewer: Viewer, today: dt.date) -> dict:
 # =============================================================================
 
 
-def _latest_odometer(viewer: Viewer, vehicle) -> tuple[int, dt.date] | None:
-    """The highest mileage any fleet record carries for this vehicle, with
-    the date it was recorded. A fact on file, never an estimate."""
-    from legacy.models.fleet import CodeClearEvent, CodeEvent, ServiceHistory
-
-    readings: list[tuple[int, dt.date]] = []
-    for row in scoped(ServiceHistory, viewer).filter(
-        vehicle=vehicle, deleted_at__isnull=True, mileage__isnull=False
-    ):
-        readings.append((row.mileage, row.service_date or row.created_at.date()))
-    for model in (CodeEvent, CodeClearEvent):
-        for row in scoped(model, viewer).filter(
-            vehicle=vehicle, deleted_at__isnull=True, mileage__isnull=False
-        ):
-            readings.append((row.mileage, row.occurred_at.date()))
-    return max(readings) if readings else None
-
-
 def _maintenance_lines(viewer: Viewer, vehicle, today: dt.date) -> list[str]:
-    from legacy.models.fleet import MaintenanceSchedule, ServiceHistory
+    """The brief's maintenance sentences, rendered from
+    `brief.maintenance.schedule_status`, the computation `next_service`
+    shares, so the brief and the tool never disagree."""
+    from brief.maintenance import latest_odometer, schedule_status
 
-    schedules = list(
-        scoped(MaintenanceSchedule, viewer)
-        .filter(vehicle=vehicle, deleted_at__isnull=True)
-        .order_by("service_name")
-    )
-    if not schedules:
+    items = schedule_status(viewer, vehicle)
+    if not items:
         return ["Maintenance: no schedule logged."]
-    history = list(scoped(ServiceHistory, viewer).filter(vehicle=vehicle, deleted_at__isnull=True))
-    odometer = _latest_odometer(viewer, vehicle)
+    odometer = latest_odometer(viewer, vehicle)
     due: list[str] = []
     never: list[str] = []
     unchecked_miles = False
     horizon = today + dt.timedelta(days=MAINTENANCE_DAYS)
-    for schedule in schedules:
-        done = [
-            h
-            for h in history
-            if h.service_name.strip().lower() == schedule.service_name.strip().lower()
-        ]
-        if not done:
-            never.append(schedule.service_name)
+    for item in items:
+        if item.never_logged:
+            never.append(item.service_name)
             continue
-        if schedule.interval_months:
-            dated = [h.service_date for h in done if h.service_date]
-            if dated:
-                last = max(dated)
-                when = add_months(last, schedule.interval_months)
-                if when <= horizon:
-                    verb = "overdue since" if when < today else "due"
-                    due.append(
-                        f"{schedule.service_name} {verb} {short_date(when)} (every "
-                        f"{schedule.interval_months} months, last done {short_date(last)})."
-                    )
-                    continue
-        if schedule.interval_miles:
-            miles = [h.mileage for h in done if h.mileage is not None]
-            if not miles:
-                continue
-            at = max(miles) + schedule.interval_miles
-            if odometer is None:
-                unchecked_miles = True
-                continue
-            reading, read_on = odometer
-            if at - reading <= MAINTENANCE_MILES:
-                verb = "overdue at" if reading >= at else "due at"
-                due.append(
-                    f"{schedule.service_name} {verb} {at:,} mi (last recorded odometer "
-                    f"{reading:,} mi on {short_date(read_on)})."
-                )
+        if item.due_on is not None and item.due_on <= horizon:
+            verb = "overdue since" if item.due_on < today else "due"
+            due.append(
+                f"{item.service_name} {verb} {short_date(item.due_on)} (every "
+                f"{item.interval_months} months, last done {short_date(item.last_done_on)})."
+            )
+            continue
+        if item.due_at_miles is None:
+            continue
+        if odometer is None:
+            unchecked_miles = True
+            continue
+        at = item.due_at_miles
+        if at - odometer.miles <= MAINTENANCE_MILES:
+            verb = "overdue at" if odometer.miles >= at else "due at"
+            due.append(
+                f"{item.service_name} {verb} {at:,} mi (last recorded odometer "
+                f"{odometer.miles:,} mi on {short_date(odometer.read_on)})."
+            )
     lines = due or [
         f"Maintenance: nothing comes due in the next {MAINTENANCE_DAYS} days by the records "
         f"on file."
