@@ -1,6 +1,11 @@
 package com.kevin.legion.vehicle
 
 import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
@@ -28,7 +33,12 @@ object DtcDescriptions {
         val loaded = runCatching {
             val text = context.assets.open("dtc_descriptions_seed.json").bufferedReader().use { it.readText() }
             parse(JSONObject(text))
-        }.getOrDefault(emptyMap())
+        }.getOrElse {
+            // Never silent again (2026-11-03): this asset was missing from the phone app for
+            // months and every code read "Not yet described". DtcSeedAssetTest guards the file.
+            Log.w(TAG, "trouble-code seed failed to load: $it")
+            emptyMap()
+        }
         seedCache = loaded
         return loaded
     }
@@ -47,6 +57,22 @@ object DtcDescriptions {
             file(context).writeText(root.toString())
         }
     }
+
+    private val learnLock = Mutex()
+
+    /**
+     * Merges [entries] into the learned cache and saves it. Read-merge-write under one lock, so the
+     * codes card's background lookup and the Faults page's IDENTIFY cannot drop each other's codes.
+     * Everything in the learned cache came from the AI sub-agent, never from the code standard.
+     */
+    suspend fun learn(context: Context, entries: Map<String, Pair<String, String>>) {
+        if (entries.isEmpty()) return
+        learnLock.withLock {
+            withContext(Dispatchers.IO) { save(context, loadLearned(context) + entries) }
+        }
+    }
+
+    private const val TAG = "DtcDescriptions"
 
     private fun parse(root: JSONObject): Map<String, Pair<String, String>> = buildMap {
         for (code in root.keys()) {

@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,10 @@ import com.kevin.legion.util.Temp
 import com.kevin.legion.util.TempUnit
 import com.kevin.legion.vehicle.CarToolbelt
 import com.kevin.legion.vehicle.DtcDescriptions
+import com.kevin.legion.vehicle.DtcLookup
+import com.kevin.legion.vehicle.DtcLookupState
+import com.kevin.legion.vehicle.DtcMeaning
+import com.kevin.legion.vehicle.DtcMeanings
 import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.FreezeFrame
 import com.kevin.legion.vehicle.FreezeFrameField
@@ -55,8 +60,8 @@ import java.time.format.DateTimeFormatter
 /** One code event on the codes card. [fields] empty means no freeze frame was saved. */
 data class CodeCardRow(
     val eventId: Long,
-    /** Each code with its plain-English meaning, null when the app has none for it. */
-    val codes: List<Pair<String, String?>>,
+    /** Each code with what the card shows for it, source included (standard, AI, or not yet known). */
+    val codes: List<Pair<String, DtcMeaning>>,
     val whenText: String,
     /** "About 187,400 mi (estimated)", or null when no mileage was recorded. */
     val mileageText: String?,
@@ -78,15 +83,17 @@ internal fun codesCardState(
     vehicleLabel: String,
     events: List<CodeEvent>,
     clears: List<CodeClearEvent>,
-    descriptions: Map<String, Pair<String, String>>,
+    seed: Map<String, Pair<String, String>>,
+    learned: Map<String, Pair<String, String>>,
     tempUnit: TempUnit,
     zone: ZoneId = ZoneId.systemDefault(),
+    failed: Set<String> = emptySet(),
 ): CodesCardState = CodesCardState(
     vehicleLabel,
     events.sortedByDescending { it.timestamp }.map { e ->
         CodeCardRow(
             eventId = e.id,
-            codes = CarToolbelt.codeList(e.codesJson).map { it to descriptions[it]?.first },
+            codes = CarToolbelt.codeList(e.codesJson).map { it to DtcMeanings.resolve(it, seed, learned, failed) },
             whenText = Instant.ofEpochMilli(e.timestamp).atZone(zone).format(WHEN_FORMAT),
             mileageText = e.mileage?.let { "About ${"%,d".format(it)} mi (estimated)" },
             cleared = clearedMarkerFor(e, clears) != null,
@@ -175,11 +182,17 @@ private fun CodeEventChip(row: CodeCardRow, isSelected: Boolean, onClick: () -> 
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    meaning ?: "Not yet described",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (meaning == null) sem.faint else MaterialTheme.colorScheme.onSurface,
-                )
+                Column(Modifier.weight(1f)) {
+                    val known = meaning is DtcMeaning.Standard || meaning is DtcMeaning.AiExplanation
+                    Text(
+                        DtcMeanings.headline(meaning),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (known) MaterialTheme.colorScheme.onSurface else sem.faint,
+                    )
+                    for (note in DtcMeanings.notes(code, meaning)) {
+                        Text(note, style = MaterialTheme.typography.bodySmall, color = sem.faint)
+                    }
+                }
             }
         }
         Text(
@@ -231,15 +244,40 @@ private fun FreezeFrameTable(fields: List<FreezeFrameField>) {
     }
 }
 
-/** Reads one car's code events and builds the card's state. The only Room touch for the card. */
-internal suspend fun loadCodesCard(context: Context, vehicleId: String): CodesCardState = withContext(Dispatchers.IO) {
+/** What the card is built from, read once from Room and assets. [vehicleName] is blank when unknown. */
+internal data class CodesCardInputs(
+    val vehicleName: String,
+    val events: List<CodeEvent>,
+    val clears: List<CodeClearEvent>,
+    val seed: Map<String, Pair<String, String>>,
+    val learned: Map<String, Pair<String, String>>,
+    val tempUnit: TempUnit,
+) {
+    /** Codes on the card that neither the seed nor the learned cache describes. */
+    fun unknownCodes(): Set<String> =
+        events.flatMap { CarToolbelt.codeList(it.codesJson) }.filter { it !in seed && it !in learned }.toSet()
+
+    fun state(lookup: DtcLookupState): CodesCardState = codesCardState(
+        vehicleLabel = vehicleName.ifBlank { "This car" },
+        events = events,
+        clears = clears,
+        seed = seed,
+        learned = learned + lookup.learned,
+        tempUnit = tempUnit,
+        failed = lookup.failed,
+    )
+}
+
+/** Reads one car's code events and the dictionaries. The only Room touch for the card. */
+internal suspend fun loadCodesCard(context: Context, vehicleId: String): CodesCardInputs = withContext(Dispatchers.IO) {
     val db = CarDatabase.getDatabase(context)
     val vehicle = FleetEngineStore.getByMac(context, vehicleId)
-    codesCardState(
-        vehicleLabel = vehicle?.let { VehicleController.label(it) } ?: "This car",
+    CodesCardInputs(
+        vehicleName = vehicle?.let { VehicleController.label(it) }.orEmpty(),
         events = db.codeEventDao().getAll(vehicleId),
         clears = db.codeClearEventDao().getAll(vehicleId),
-        descriptions = DtcDescriptions.loadSeed(context) + DtcDescriptions.loadLearned(context),
+        seed = DtcDescriptions.loadSeed(context),
+        learned = DtcDescriptions.loadLearned(context),
         tempUnit = Temp.unit(context),
     )
 }
@@ -247,15 +285,26 @@ internal suspend fun loadCodesCard(context: Context, vehicleId: String): CodesCa
 /**
  * The codes card with its loader, as [com.kevin.legion.ui.VoiceModalHost] and the Fleet tab's
  * Faults page both host it: the same composable on the voice path and the hands path (ADR 0035).
+ *
+ * A code neither dictionary knows shows "Looking this up..." while [DtcLookup] asks the diagnostics
+ * sub-agent in the background (2026-11-03); the answer is saved to the learned cache and shown with
+ * the AI label, and a failed lookup reads "No description yet". [lookup] is a parameter so a test
+ * can hand in a fake.
  */
 @Composable
-fun CodesCardHost(vehicleId: String, onClose: () -> Unit) {
+fun CodesCardHost(vehicleId: String, onClose: () -> Unit, lookup: DtcLookup? = null) {
     val context = LocalContext.current
-    var state by remember(vehicleId) { mutableStateOf<CodesCardState?>(null) }
+    val dtcLookup = lookup ?: remember { DtcLookup.get(context) }
+    var inputs by remember(vehicleId) { mutableStateOf<CodesCardInputs?>(null) }
     var selectedId by remember(vehicleId) { mutableStateOf<Long?>(null) }
-    LaunchedEffect(vehicleId) { state = loadCodesCard(context, vehicleId) }
+    val lookupState by dtcLookup.state.collectAsState()
+    LaunchedEffect(vehicleId) {
+        val loaded = loadCodesCard(context, vehicleId)
+        inputs = loaded
+        dtcLookup.request(loaded.vehicleName, loaded.unknownCodes())
+    }
     SoftTheme {
-        val s = state
+        val s = inputs?.let { remember(it, lookupState) { it.state(lookupState) } }
         if (s == null) {
             Text(
                 "Loading codes...",

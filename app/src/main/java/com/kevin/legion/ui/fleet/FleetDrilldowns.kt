@@ -1151,10 +1151,7 @@ fun FaultsDrilldownScreen(
             when (val result = DiagnosticAgent.diagnose(context, vehicleLabel, listOf(code), "What does $code mean?")) {
                 is AgentResult.Success -> {
                     val (title, detail) = splitIdentifyResult(result.text)
-                    withContext(Dispatchers.IO) {
-                        val merged = DtcDescriptions.loadLearned(context) + (code to (title to detail))
-                        DtcDescriptions.save(context, merged)
-                    }
+                    DtcDescriptions.learn(context, mapOf(code to (title to detail)))
                     learnedThisSession = learnedThisSession + (code to (title to detail))
                 }
                 // Every other AgentResult branch (RateLimited/KeyInvalid/Overloaded/Offline/Failed)

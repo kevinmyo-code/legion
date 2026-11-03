@@ -3,6 +3,7 @@ package com.kevin.legion.service
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /** How a [GlanceCardPayload]'s body renders - see `.scratch/glance-cards/`. */
 enum class GlanceShape { NUMBER, LIST, STATUS_GRID, HEADLINE_LIST }
@@ -51,8 +52,32 @@ object GlanceCardController {
         _current.value = payload
     }
 
+    /**
+     * Replaces the card with [transform] of itself, only if the card showing is still the one
+     * identified by [shownAt] and [sourceTool]; a newer card or a dismissed one is left alone.
+     */
+    fun replace(shownAt: Long, sourceTool: String, transform: (GlanceCardPayload) -> GlanceCardPayload) {
+        _current.update { cur ->
+            if (cur != null && cur.shownAt == shownAt && cur.sourceTool == sourceTool) transform(cur) else cur
+        }
+    }
+
     /** Explicit dismiss - the 5s auto-dismiss timeout, or a driver's tap. */
     fun dismiss() {
         _current.value = null
     }
+}
+
+/**
+ * The get_codes glance rows: each code with its meaning on one line, an AI-written meaning
+ * labelled as such, an unknown code "Looking this up..." until its lookup fails.
+ */
+internal fun codeGlanceRows(
+    codes: List<String>,
+    seed: Map<String, Pair<String, String>>,
+    learned: Map<String, Pair<String, String>>,
+    lookup: com.kevin.legion.vehicle.DtcLookupState,
+): List<GlanceRow> = codes.map { code ->
+    val meaning = com.kevin.legion.vehicle.DtcMeanings.resolve(code, seed, learned + lookup.learned, lookup.failed)
+    GlanceRow(code, com.kevin.legion.vehicle.DtcMeanings.glanceValue(meaning))
 }
