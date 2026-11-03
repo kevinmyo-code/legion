@@ -150,6 +150,69 @@ def test_a_member_sees_another_members_run_by_name(member_web, household_a):
     assert row["who"] == "Mia"
 
 
+def _mia(household):
+    mia = _member_of(household, "mia@example.com")
+    mia.first_name = "Mia"
+    mia.save()
+    return mia
+
+
+def test_another_members_run_is_structure_only(member_web, household_a, household_user):
+    """Kevin, 2026-11-03 (ticket 14's open item): full detail only for runs you started."""
+    install(with_check())
+    run(member_web, "checked", inputs={"n": 7})
+    mia_web = runner_tests.browser(_mia(household_a))
+
+    (row,) = mia_web.get("/api/procedures/runs").data["results"]
+    assert row["who"] != "You"
+    detail = mia_web.get(f"/api/procedures/runs/{row['id']}")
+    assert detail.status_code == 200, detail.data
+    body = detail.data
+    assert body["result"] == "Started by another member: details are private to them."
+    assert body["inputs"] is None
+    # Structure stays: procedure, version, status, caller, timings, steps and their branches.
+    assert body["procedure"] == "checked" and body["version"] == 1
+    assert body["status"] == "ok" and body["caller_kind"] == "web"
+    assert body["started_at"] and body["ms"] >= 0
+    positive, answer = body["steps"]
+    assert positive["step_id"] == "positive" and positive["kind"] == "check"
+    assert positive["branch"] == "pass"
+    assert positive["outcome"] == "ok" and positive["chosen_by_label"] == "Code chose"
+    assert answer["kind"] == "say"
+    assert all(s["args"] is None and s["result"] == "" for s in body["steps"])
+    assert "7" not in str(body["inputs"]) and "positive" not in body["result"]
+
+    # The member who started it still reads it in full.
+    own = member_web.get(f"/api/procedures/runs/{row['id']}").data
+    assert own["inputs"] == '{"n": 7}'
+    assert own["steps"][0]["args"] == '{"n": 7}' and own["steps"][0]["result"] == "passed"
+    assert own["result"] != body["result"]
+
+
+def test_a_removed_accounts_run_is_structure_only(member_web, household_a):
+    version = install(three_steps())
+    trace = _direct_run(version, household_a, None, steps=[("lists", "tool", "ok", "next", "code")])
+    body = member_web.get(f"/api/procedures/runs/{trace.id}").data
+    assert body["who"] == "An account since removed" and body["inputs"] is None
+    assert body["result"] == "Started by another member: details are private to them."
+
+
+def test_the_report_counts_every_members_runs_with_no_content(member_web, household_a):
+    install(with_check())
+    run(member_web, "checked", inputs={"n": 1})
+    mia_web = runner_tests.browser(_mia(household_a))
+    run(mia_web, "checked", inputs={"n": 0})
+    for client in (member_web, mia_web):
+        body = client.get("/api/procedures/report?name=checked").data
+        assert body["runs"] == 2
+        positive = body["steps"][0]
+        assert positive["reached"] == 2
+        assert {b["branch"]: b["taken"] for b in positive["branches"]} == {"pass": 1, "fail": 1}
+        # Counts and branch names only: no inputs, args or results anywhere in the report.
+        text = str(body)
+        assert "Nothing to report." not in text and "inputs" not in text and "args" not in text
+
+
 def test_a_recruiter_sees_only_their_own_visits_runs(
     recruiter_web, visitor, demo_household, household_a, household_user
 ):
@@ -247,6 +310,8 @@ def test_another_households_own_procedure_has_no_report_here(member_web, househo
 def test_the_procedure_list_carries_this_households_run_counts(member_web):
     install(three_steps())
     run(member_web, "checklist_check")
-    (row,) = member_web.get("/api/procedures/").data
-    assert row["procedure"] == "checklist_check" and row["runs"] == 1
+    # The built-ins (ticket 15) are listed too; this one is the procedure under test.
+    listed = member_web.get("/api/procedures/").data
+    (row,) = [v for v in listed if v["procedure"] == "checklist_check"]
+    assert row["runs"] == 1
     assert row["is_active"] is True and row["last_run_at"]
