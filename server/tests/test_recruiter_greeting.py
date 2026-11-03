@@ -10,6 +10,7 @@ rule, guarded for presence, never obedience).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -83,6 +84,38 @@ def test_the_recruiter_prompt_addresses_a_stranger_and_greets(visitor):
     # The visitor's own first name never reaches the prompt.
     assert "Pat" not in text
     assert member_fact("Pat") not in text
+
+
+def test_the_visitor_register_overrides_alfreds_old_friend_terms(visitor):
+    """Alfred's register (the phone's, ADR 0063) is on first-name terms with
+    "this one person". A visitor is not that person: the visitor register comes
+    after it and says the familiarity does not apply."""
+    text, _ = _prompt(visitor)
+    assert "first-name terms" in personas.ALFRED.clause
+    register_at = text.index(RECRUITER_REGISTER)
+    assert register_at > text.index(personas.ALFRED.clause)
+    for phrase in (
+        "they are not Kevin",
+        "This overrides what your register above says",
+        "first-name terms are not for this visitor",
+        "never by a first name",
+        '"Mr"',
+        "no teasing",
+    ):
+        assert phrase in RECRUITER_REGISTER, phrase
+
+
+def test_the_recruiter_prompt_names_no_one_in_kevins_household_but_kevin(visitor):
+    """The only real person a visitor's prompt may name is Kevin. Alfred's
+    register is generic ("this one person"); this holds it there."""
+    text, _ = _prompt(visitor)
+    assert not re.search(r"\bMia\b", text)
+    allowed = {
+        "You", "Alfred", "How", "Lead", "Short", "One", "No", "Vary", "When", "If",
+        "Honesty", "A", "Never", "I", "Mr", "Very", "Right", "Shall",
+    }  # fmt: skip
+    names = set(re.findall(r"\b[A-Z][a-z]*\b", personas.ALFRED.clause))
+    assert names <= allowed, names - allowed
 
 
 def test_a_members_prompt_is_unchanged(household_user):

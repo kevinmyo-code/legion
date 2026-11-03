@@ -210,7 +210,7 @@ def test_mia_is_seeded_dorothy_and_everyone_else_alfred():
 
 def test_a_renamed_companion_speaks_its_own_name():
     renamed = _alfred("Jeeves")
-    assert "You are Jeeves, the household's butler" in renamed.clause
+    assert "You are Jeeves, and you look after this one person" in renamed.clause
     assert "Alfred" not in renamed.clause
 
 
