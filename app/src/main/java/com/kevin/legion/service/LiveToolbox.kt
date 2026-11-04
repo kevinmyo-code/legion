@@ -70,7 +70,6 @@ import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.assistant.cards.ChecklistLine
-import com.kevin.legion.assistant.cards.EngineCards
 import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.assistant.cards.ToolCards
 import com.kevin.legion.vehicle.ActiveVehicle
@@ -4095,7 +4094,7 @@ object LiveToolbox {
             val recalls = VinDecoder.fetchRecalls(stated.year, stated.make, stated.model)
                 ?: return result(success = false, message = "Couldn't reach NHTSA to check recalls right now. Try again in a moment.")
             val label = VehicleController.label(vehicle)
-            ToolCards.recalls(vehicle, recalls.map { it.summary })
+            ToolCards.recalls(vehicle, recalls)
             return recallsJson(recalls)
                 .put("checkedAs", "${stated.year} ${stated.make} ${stated.model}")
                 .put(
@@ -4116,7 +4115,8 @@ object LiveToolbox {
                 success = false,
                 message = "Couldn't reach NHTSA to check recalls right now. Try again in a moment.",
             )
-            is RecallCheckResult.Checked -> recallsJson(outcome.recalls).also { ToolCards.recalls(vehicle, outcome.recalls.map { it.summary }) }
+            is RecallCheckResult.Checked ->
+                recallsJson(outcome.recalls).also { ToolCards.recalls(vehicle, outcome.recalls) }
         }
     }
 
@@ -6828,7 +6828,7 @@ object LiveToolbox {
                     else -> Unit
                 }
             },
-            onToolResult = { tool, _, structured, ms -> EngineCards.fromTool(tool, structured, ms)?.let(ToolCards::publish) },
+            onToolResult = { tool, _, structured, ms -> ToolCards.engineResult(tool, structured, ms) },
         ).ask(args.optString("question"), wantsWrite(args), touchedReadThroughTool).toJson()
     }
 

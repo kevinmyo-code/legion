@@ -126,9 +126,6 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
     val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
     val caption by CompanionPhase.caption.collectAsStateWithLifecycle()
     val toolRunning by CompanionPhase.toolRunning.collectAsStateWithLifecycle()
-    // The voice conversation's latest card (generative UI, 2026-11-04): built from a tool's own
-    // result, cleared when the conversation ends, dismissable by hand.
-    val cards by ConversationCards.state.collectAsStateWithLifecycle()
 
     // Ticket 15's signal, finally reaching the driver. It used to stop at
     // CarProbeLog and the Settings diagnostic page, which meant the one state
@@ -216,14 +213,23 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
     }
 
     CompositionLocalProvider(LocalTypedChat provides typedChat) {
-        AssistantStripContent(
+        AssistantStripWithCard(
             state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced, toolRunning),
             onTap = talk,
-            card = cards.latest,
-            onDismissCard = ConversationCards::dismiss,
         )
     }
     if (panel.open) ChatPanelSheet(typedChat, onTalk = talk, onClose = panel::hide)
+}
+
+/**
+ * [AssistantStripContent] with the voice conversation's latest card (generative UI, 2026-11-04):
+ * built from a tool's own result, cleared when the conversation ends, dismissable by hand. Its own
+ * function so the strip's state holder above stays one screen long.
+ */
+@Composable
+private fun AssistantStripWithCard(state: AssistantStripResolver.State, onTap: () -> Unit) {
+    val cards by ConversationCards.state.collectAsStateWithLifecycle()
+    AssistantStripContent(state, onTap, card = cards.latest, onDismissCard = ConversationCards::dismiss)
 }
 
 /**

@@ -26,29 +26,9 @@ object EngineCards {
 
     internal fun procedureSteps(s: JSONObject, roundTripMs: Long): ConversationCard.Steps? {
         val procedure = s.optString("procedure").ifBlank { return null }
-        val ran = s.optJSONArray("steps") ?: JSONArray()
-        val items = buildList {
-            for (i in 0 until ran.length()) {
-                val step = ran.optJSONObject(i) ?: continue
-                val status = when (step.optString("outcome")) {
-                    "ok" -> StepStatus.OK
-                    "failed", "refused" -> StepStatus.FAILED
-                    else -> StepStatus.SKIPPED
-                }
-                val ms = if (step.has("ms") && !step.isNull("ms")) step.optLong("ms") else null
-                add(StepItem(stepLabel(step.optString("step_id"), step.optString("tool")), status, ms))
-            }
-            val notRun = s.optJSONArray("not_run") ?: JSONArray()
-            for (i in 0 until notRun.length()) add(StepItem(stepLabel(notRun.optString(i), ""), StepStatus.SKIPPED, null))
-        }
-        val statusWords = when (s.optString("status")) {
-            "needs_answer" -> "Waiting for an answer."
-            "partial" -> "Did not finish; some steps ran."
-            "failed" -> "Did not finish."
-            else -> null
-        }
+        val items = ranSteps(s.optJSONArray("steps") ?: JSONArray()) + notRun(s.optJSONArray("not_run") ?: JSONArray())
         val note = listOfNotNull(
-            statusWords,
+            statusWords(s.optString("status")),
             "Total is the phone's round trip for the whole run; the engine did not report step times."
                 .takeIf { items.all { it.ms == null } },
         ).joinToString(" ").ifBlank { null }
@@ -59,6 +39,27 @@ object EngineCards {
             totalMs = roundTripMs.takeIf { it >= 0 },
             note = note,
         )
+    }
+
+    private fun ranSteps(ran: JSONArray): List<StepItem> = (0 until ran.length()).mapNotNull { i ->
+        val step = ran.optJSONObject(i) ?: return@mapNotNull null
+        val status = when (step.optString("outcome")) {
+            "ok" -> StepStatus.OK
+            "failed", "refused" -> StepStatus.FAILED
+            else -> StepStatus.SKIPPED
+        }
+        val ms = if (step.has("ms") && !step.isNull("ms")) step.optLong("ms") else null
+        StepItem(stepLabel(step.optString("step_id"), step.optString("tool")), status, ms)
+    }
+
+    private fun notRun(ids: JSONArray): List<StepItem> =
+        (0 until ids.length()).map { StepItem(stepLabel(ids.optString(it), ""), StepStatus.SKIPPED, null) }
+
+    private fun statusWords(status: String): String? = when (status) {
+        "needs_answer" -> "Waiting for an answer."
+        "partial" -> "Did not finish; some steps ran."
+        "failed" -> "Did not finish."
+        else -> null
     }
 
     /** "recalls_lookup" -> "Recalls lookup", with the tool it called in brackets when it called one. */

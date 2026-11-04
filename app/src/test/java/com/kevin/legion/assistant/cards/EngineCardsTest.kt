@@ -41,7 +41,10 @@ class EngineCardsTest {
     fun `a failed step and the steps that never ran are shown, and the status is said`() {
         val card = EngineCards.fromTool(
             "run_procedure",
-            summary("partial", step("service", "next_service", "ok", ms = 40), step("recalls", "vehicle_recalls", "failed", ms = 3_000),
+            summary(
+                "partial",
+                step("service", "next_service", "ok", ms = 40),
+                step("recalls", "vehicle_recalls", "failed", ms = 3_000),
                 notRun = listOf("say")),
             3_500L,
         ) as ConversationCard.Steps
@@ -68,7 +71,9 @@ class EngineCardsTest {
         assertEquals(5L, steps.getLong("totalMs"))
 
         val bars = CardJson.write(
-            ConversationCard.Bars("Spending", "usd", listOf(BarPoint("Gas", 1_999L, CardFlag.UNVERIFIED), BarPoint("Food", 5L))),
+            ConversationCard.Bars(
+                "Spending", "usd", listOf(BarPoint("Gas", 1_999L, CardFlag.UNVERIFIED), BarPoint("Food", 5L)),
+            ),
         )
         val points = bars.getJSONArray("points")
         assertEquals(1_999L, points.getJSONObject(0).getLong("value"))
@@ -84,7 +89,10 @@ class EngineCardsTest {
         assertEquals(9, car.getJSONObject("nextService").getInt("dueMiles"))
 
         val timeline = CardJson.write(
-            ConversationCard.Timeline("Calendar", "2026-11-04", "UTC-06:00", listOf(TimelineItem(null, null, true, "Holiday", TimelineKind.EVENT))),
+            ConversationCard.Timeline(
+                "Calendar", "2026-11-04", "UTC-06:00",
+                listOf(TimelineItem(null, null, true, "Holiday", TimelineKind.EVENT)),
+            ),
         )
         assertEquals("UTC-06:00", timeline.getString("zone"))
         assertTrue(timeline.getJSONArray("items").getJSONObject(0).getBoolean("allDay"))

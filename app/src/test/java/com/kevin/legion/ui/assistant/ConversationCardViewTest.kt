@@ -140,7 +140,9 @@ class ConversationCardViewTest {
     @Test
     fun `close dismisses`() {
         var dismissed = 0
-        show(ConversationCard.Checklist("Groceries", "Groceries", emptyList(), note = "Nothing on this list.")) { dismissed++ }
+        show(ConversationCard.Checklist("Groceries", "Groceries", emptyList(), note = "Nothing on this list.")) {
+            dismissed++
+        }
         rule.onNodeWithContentDescription("Close card").performClick()
         assertEquals(1, dismissed)
     }
@@ -150,9 +152,13 @@ class ConversationCardViewTest {
         rule.setContent {
             SoftTheme {
                 AssistantStripContent(
-                    AssistantStripResolver.resolve(Phase.LISTENING, "go ahead", null, micGranted = true, silenced = false),
+                    AssistantStripResolver.resolve(
+                        Phase.LISTENING, "go ahead", null, micGranted = true, silenced = false,
+                    ),
                     onTap = {},
-                    card = ConversationCard.Checklist("Packing", "Packing", emptyList(), note = "Nothing on this list."),
+                    card = ConversationCard.Checklist(
+                        "Packing", "Packing", emptyList(), note = "Nothing on this list.",
+                    ),
                 )
             }
         }

@@ -3,8 +3,10 @@ package com.kevin.legion.assistant.cards
 import android.content.Context
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.vehicle.FleetEngineStore
+import com.kevin.legion.vehicle.VinDecoder
 import com.kevin.legion.vehicle.VehicleController
 import java.time.ZoneId
+import org.json.JSONObject
 
 /**
  * The one-line calls `LiveToolbox`'s tools make to publish a card from their own result data. Kept
@@ -17,10 +19,19 @@ object ToolCards {
     fun publish(card: ConversationCard) = ConversationCards.publish(card)
 
     fun nextService(vehicle: Vehicle, next: VehicleController.NextService?) =
-        publish(PhoneCards.carService(VehicleController.label(vehicle), vehicle, next, ZoneId.systemDefault()))
+        publish(CarCards.service(VehicleController.label(vehicle), vehicle, next, ZoneId.systemDefault()))
 
-    fun recalls(vehicle: Vehicle, summaries: List<String>) =
-        publish(PhoneCards.carRecalls(VehicleController.label(vehicle), vehicle, summaries, ZoneId.systemDefault()))
+    fun recalls(vehicle: Vehicle, recalls: List<VinDecoder.Recall>) =
+        publish(
+            CarCards.recalls(
+                VehicleController.label(vehicle), vehicle, recalls.map { it.summary }, ZoneId.systemDefault(),
+            ),
+        )
+
+    /** An `ask_engine` tool result ([com.kevin.legion.service.AskEngine]'s card hook). */
+    fun engineResult(tool: String, structured: JSONObject?, roundTripMs: Long) {
+        EngineCards.fromTool(tool, structured, roundTripMs)?.let(::publish)
+    }
 
     /** [codes] as read off the port; [meanings] the same dictionary the tool's text used. The car
      * is the one the dongle is in ([connectedMac]), the selected car only when that is unknown. */
@@ -34,7 +45,7 @@ object ToolCards {
         val vehicle = connectedMac?.let { mac -> FleetEngineStore.getAll(context).firstOrNull { it.obdMac == mac } }
             ?: VehicleController.currentVehicle(context)
         publish(
-            PhoneCards.carCodes(
+            CarCards.codes(
                 VehicleController.label(vehicle),
                 vehicle,
                 codes.map { it to meanings[it]?.first },

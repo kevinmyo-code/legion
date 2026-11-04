@@ -48,7 +48,13 @@ class PhoneCardsTest {
     @Test
     fun `spend bars are Long cents per category, biggest first, with flags`() {
         val card = PhoneCards.monthlySpend(
-            budget(listOf(line("Food", 12_345L), line("Gas", 99_999L, provisional = true), line("Fun", 500L, guessed = true))),
+            budget(
+                listOf(
+                    line("Food", 12_345L),
+                    line("Gas", 99_999L, provisional = true),
+                    line("Fun", 500L, guessed = true),
+                ),
+            ),
             month,
         )
         assertEquals("usd", card.unit)
@@ -62,7 +68,10 @@ class PhoneCardsTest {
 
     @Test
     fun `uncategorised spend and missing coverage are said in the note`() {
-        val card = PhoneCards.monthlySpend(budget(listOf(line("Food", 100L)), uncategorizedCents = 4_200L, complete = false), month)
+        val card = PhoneCards.monthlySpend(
+            budget(listOf(line("Food", 100L)), uncategorizedCents = 4_200L, complete = false),
+            month,
+        )
         val note = card.note!!
         assertTrue(note, note.contains("unverified"))
         assertTrue(note, note.contains("USD 42.00 is not assigned to a category"))
@@ -90,8 +99,18 @@ class PhoneCardsTest {
         assertEquals("UTC+00:00", PhoneCards.zoneLabel(ZoneOffset.UTC))
     }
 
-    private fun event(title: String, start: Long?, end: Long? = null, allDay: Boolean = false, kind: String = EventKind.EVENT) =
-        Event(serverId = null, title = title, startsAt = start, endsAt = end, allDay = allDay, source = "test", updatedAtMs = 0L, kind = kind)
+    private fun event(
+        title: String,
+        start: Long?,
+        end: Long? = null,
+        allDay: Boolean = false,
+        kind: String = EventKind.EVENT,
+    ) = Event(
+        serverId = null, title = title, startsAt = start, endsAt = end, allDay = allDay,
+        source = "test", updatedAtMs = 0L, kind = kind,
+    )
+
+    private fun utcMidnight(day: LocalDate) = day.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
     private fun at(y: Int, mo: Int, d: Int, h: Int, mi: Int) =
         LocalDateTime.of(y, mo, d, h, mi).atZone(chicago).toInstant().toEpochMilli()
@@ -101,7 +120,7 @@ class PhoneCardsTest {
         val events = listOf(
             event("Class", at(2026, 11, 4, 9, 30), at(2026, 11, 4, 10, 45)),
             event("Quiz due", at(2026, 11, 4, 23, 59), kind = EventKind.TASK),
-            event("Holiday", LocalDate.of(2026, 11, 4).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(), allDay = true),
+            event("Holiday", utcMidnight(LocalDate.of(2026, 11, 4)), allDay = true),
             event("Dentist", at(2026, 11, 6, 8, 0)),
         )
         val card = PhoneCards.calendar(events, chicago, at(2026, 11, 4, 0, 0))
@@ -141,10 +160,13 @@ class PhoneCardsTest {
             byTime = VehicleController.ServiceCandidate("Oil change", 30L, VehicleController.ScheduleUnit.DAYS),
             unknownCount = 0, unknownNames = emptyList(), odometerUnset = false, allDue = false,
         )
-        val card = PhoneCards.carService("Jeep", jeep(trip = 50.4), next, chicago, now)
+        val card = CarCards.service("Jeep", jeep(trip = 50.4), next, chicago, now)
         assertEquals(200_050, card.mileage)
         assertEquals("2026-11-01", card.mileageAsOf)
-        assertEquals(NextServiceDue("Oil change", dueMiles = 201_250, dueDate = "2026-12-04", estimate = true), card.nextService)
+        assertEquals(
+            NextServiceDue("Oil change", dueMiles = 201_250, dueDate = "2026-12-04", estimate = true),
+            card.nextService,
+        )
         assertNull(card.recalls)
         assertNull(card.codes)
         assertTrue(card.note!!, card.note!!.contains("estimate"))
@@ -154,14 +176,14 @@ class PhoneCardsTest {
 
     @Test
     fun `no schedule is said in words, not shown as a due item`() {
-        val card = PhoneCards.carService("Jeep", jeep(), null, chicago, now)
+        val card = CarCards.service("Jeep", jeep(), null, chicago, now)
         assertNull(card.nextService)
         assertTrue(card.note!!.contains("No maintenance schedule"))
     }
 
     @Test
     fun `recalls checked and none found is an empty list, said in words`() {
-        val card = PhoneCards.carRecalls("Jeep", jeep(), emptyList(), chicago)
+        val card = CarCards.recalls("Jeep", jeep(), emptyList(), chicago)
         assertEquals(emptyList<Recall>(), card.recalls)
         assertNull(card.codes)
         assertTrue(card.note!!.contains("no recalls"))
@@ -169,7 +191,7 @@ class PhoneCardsTest {
 
     @Test
     fun `codes carry their meaning, null when unknown`() {
-        val card = PhoneCards.carCodes("Jeep", jeep(), listOf("P0420" to "Catalyst efficiency", "P1234" to null), chicago)
+        val card = CarCards.codes("Jeep", jeep(), listOf("P0420" to "Catalyst efficiency", "P1234" to null), chicago)
         assertEquals(listOf(TroubleCode("P0420", "Catalyst efficiency"), TroubleCode("P1234", null)), card.codes)
         assertNull(card.recalls)
     }
