@@ -63,14 +63,21 @@ object ConversationCards {
         _state.value = ConversationCardsState()
     }
 
-    /** [newer]'s readings win; a field [newer] did not look up keeps what [older] had. */
-    internal fun mergeCar(older: ConversationCard.Car, newer: ConversationCard.Car): ConversationCard.Car =
-        newer.copy(
+    /**
+     * Merged by part ([CarPart]): a part [newer] read replaces [older]'s, a part it did not read
+     * keeps [older]'s, so a card never shows a part as empty because the later call skipped it.
+     */
+    internal fun mergeCar(older: ConversationCard.Car, newer: ConversationCard.Car): ConversationCard.Car {
+        fun <T> pick(part: CarPart, value: (ConversationCard.Car) -> T): T =
+            if (newer.read(part) || !older.read(part)) value(newer) else value(older)
+        return newer.copy(
             mileage = newer.mileage ?: older.mileage,
             mileageAsOf = newer.mileageAsOf ?: older.mileageAsOf,
-            nextService = newer.nextService ?: older.nextService,
-            recalls = newer.recalls ?: older.recalls,
-            codes = newer.codes ?: older.codes,
-            note = listOfNotNull(older.note, newer.note).distinct().joinToString(" ").ifBlank { null },
+            nextService = pick(CarPart.SERVICE) { it.nextService },
+            recalls = pick(CarPart.RECALLS) { it.recalls },
+            codes = pick(CarPart.CODES) { it.codes },
+            parts = older.parts + newer.parts,
+            extraNote = newer.extraNote ?: older.extraNote,
         )
+    }
 }

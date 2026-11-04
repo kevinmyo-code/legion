@@ -82,11 +82,16 @@ class EngineCardsTest {
         assertEquals(0, bars.getInt("more"))
 
         val car = CardJson.write(
-            ConversationCard.Car("Jeep", "Jeep", 1, null, NextServiceDue("Oil", dueMiles = 9), null, null),
+            ConversationCard.Car(
+                "Jeep", "Jeep", 1, null, NextServiceDue("Oil", dueMiles = 9), emptyList(), emptyList(),
+                parts = mapOf(CarPart.SERVICE to "estimate"),
+            ),
         )
         assertEquals(0, car.getJSONArray("recalls").length())
         assertTrue(car.getJSONObject("nextService").getBoolean("estimate"))
         assertEquals(9, car.getJSONObject("nextService").getInt("dueMiles"))
+        assertEquals("estimate", car.getJSONObject("parts").getString("service"))
+        assertTrue(!car.getJSONObject("parts").has("recalls"))
 
         val timeline = CardJson.write(
             ConversationCard.Timeline(

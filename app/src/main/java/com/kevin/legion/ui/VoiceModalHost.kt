@@ -1,13 +1,21 @@
 package com.kevin.legion.ui
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kevin.legion.assistant.cards.CarPart
+import com.kevin.legion.assistant.cards.ConversationCard
+import com.kevin.legion.assistant.cards.ConversationCards
 import com.kevin.legion.service.VoiceModalController
 import com.kevin.legion.service.VoiceModalTarget
+import com.kevin.legion.ui.assistant.ConversationCardView
+import com.kevin.legion.ui.theme.soft.SoftTheme
 
 /**
  * The collector for [VoiceModalController] - a voice-called modal made real (ADR 0040's corrected
@@ -38,6 +46,15 @@ fun VoiceModalHost() {
         onDismissRequest = { VoiceModalController.dismiss() },
         sheetState = sheetState,
     ) {
+        // The conversation's latest card rides at the top of the sheet (2026-11-04 phone test: a
+        // sheet opened by "what's on today" covered the strip, so every car card after it was
+        // drawn underneath). Not when the sheet already draws the same thing.
+        val cards by ConversationCards.state.collectAsStateWithLifecycle()
+        cards.latest?.takeIf { cardOverModal(current.target, it) }?.let { card ->
+            SoftTheme {
+                ConversationCardView(card, ConversationCards::dismiss, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+        }
         when (current.target) {
             // Today's due items. **REPOINTED one-today ticket 10 slice C, 2026-09-05: this used to
             // host `ui/notes/InboxScreen.kt` with a day filter set to today** (the same screen
@@ -60,4 +77,11 @@ fun VoiceModalHost() {
             // [VoiceModalTarget]'s own doc comment.
         }
     }
+}
+
+/** Whether the conversation's [card] goes at the top of the sheet showing [target]: not a timeline
+ * over the agenda, and not a codes-only car over the codes card, which draw the same rows. */
+internal fun cardOverModal(target: VoiceModalTarget, card: ConversationCard): Boolean = when (target) {
+    VoiceModalTarget.AGENDA -> card !is ConversationCard.Timeline
+    VoiceModalTarget.CODES -> !(card is ConversationCard.Car && card.parts.keys == setOf(CarPart.CODES))
 }

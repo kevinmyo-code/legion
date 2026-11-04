@@ -121,21 +121,35 @@ class PhoneCardsTest {
             event("Class", at(2026, 11, 4, 9, 30), at(2026, 11, 4, 10, 45)),
             event("Quiz due", at(2026, 11, 4, 23, 59), kind = EventKind.TASK),
             event("Holiday", utcMidnight(LocalDate.of(2026, 11, 4)), allDay = true),
-            event("Dentist", at(2026, 11, 6, 8, 0)),
         )
         val card = PhoneCards.calendar(events, chicago, at(2026, 11, 4, 0, 0))
         assertEquals("2026-11-04", card.date)
         assertEquals("UTC-06:00", card.zone)
         assertFalse(card.zone.contains("/"))
-        assertEquals(listOf("Class", "Quiz due", "Holiday"), card.items.map { it.title })
-        assertEquals("09:30", card.items[0].start)
-        assertEquals("10:45", card.items[0].end)
-        assertEquals(TimelineKind.TODO, card.items[1].kind)
-        assertTrue(card.items[2].allDay)
-        assertNull(card.items[2].start)
-        assertEquals(1, card.more)
-        assertTrue(card.note!!, card.note!!.contains("1 more on later days"))
+        assertEquals(listOf("Holiday", "Class", "Quiz due"), card.items.map { it.title })
+        assertTrue(card.items[0].allDay)
+        assertNull(card.items[0].start)
+        assertEquals("09:30", card.items[1].start)
+        assertEquals("10:45", card.items[1].end)
+        assertEquals(TimelineKind.TODO, card.items[2].kind)
+        assertEquals(listOf(null, null, null), card.items.map { it.date })
+        assertEquals(0, card.more)
         assertEquals("Wednesday, November 4", card.period)
+    }
+
+    @Test
+    fun `a window over several days dates each item and caps at twelve`() {
+        val events = (0 until 14).map { i -> event("Item $i", at(2026, 11, 2 + i / 2, 8 + i % 2, 0)) } +
+            event("Holiday", utcMidnight(LocalDate.of(2026, 11, 3)), allDay = true)
+        val card = PhoneCards.calendar(events, chicago, at(2026, 11, 2, 0, 0))
+        assertEquals("2026-11-02", card.date)
+        assertEquals(12, card.items.size)
+        assertEquals(3, card.more)
+        assertEquals("2026-11-02", card.items.first().date)
+        assertEquals("Holiday", card.items[2].title)
+        assertEquals("2026-11-03", card.items[2].date)
+        assertEquals("Mon Nov 2 to Sun Nov 8", card.period)
+        assertTrue(card.note!!, card.note!!.contains("3 more not shown"))
     }
 
     @Test
@@ -167,11 +181,9 @@ class PhoneCardsTest {
             NextServiceDue("Oil change", dueMiles = 201_250, dueDate = "2026-12-04", estimate = true),
             card.nextService,
         )
-        assertNull(card.recalls)
-        assertNull(card.codes)
+        assertEquals(setOf(CarPart.SERVICE), card.parts.keys)
         assertTrue(card.note!!, card.note!!.contains("estimate"))
         assertTrue(card.note!!, card.note!!.contains("Mileage is estimated"))
-        assertTrue(card.note!!, card.note!!.contains("not checked"))
     }
 
     @Test
@@ -185,7 +197,7 @@ class PhoneCardsTest {
     fun `recalls checked and none found is an empty list, said in words`() {
         val card = CarCards.recalls("Jeep", jeep(), emptyList(), chicago)
         assertEquals(emptyList<Recall>(), card.recalls)
-        assertNull(card.codes)
+        assertEquals(setOf(CarPart.RECALLS), card.parts.keys)
         assertTrue(card.note!!.contains("no recalls"))
     }
 
@@ -193,7 +205,37 @@ class PhoneCardsTest {
     fun `codes carry their meaning, null when unknown`() {
         val card = CarCards.codes("Jeep", jeep(), listOf("P0420" to "Catalyst efficiency", "P1234" to null), chicago)
         assertEquals(listOf(TroubleCode("P0420", "Catalyst efficiency"), TroubleCode("P1234", null)), card.codes)
-        assertNull(card.recalls)
+        assertEquals(setOf(CarPart.CODES), card.parts.keys)
+    }
+
+    private fun codeEvent(date: String, cleared: Boolean, vararg codes: Pair<String, String?>) =
+        org.json.JSONObject().put("date", date).put("cleared", cleared).put(
+            "codes",
+            org.json.JSONArray(codes.map { (c, m) -> org.json.JSONObject().put("code", c).apply { m?.let { put("meaning", it) } } }),
+        )
+
+    @Test
+    fun `code history shows codes not cleared since, each once, and counts cleared events`() {
+        val events = org.json.JSONArray(
+            listOf(
+                codeEvent("Aug 25, 2026", false, "P1282" to null, "P0700" to "Transmission control system"),
+                codeEvent("Aug 20, 2026", false, "P0700" to "Transmission control system"),
+                codeEvent("Jul 1, 2026", true, "P0420" to "Catalyst efficiency"),
+            ),
+        )
+        val card = CarCards.codeHistory("1998 Jeep Cherokee", jeep(), events, chicago)
+        assertEquals(listOf(TroubleCode("P1282", null), TroubleCode("P0700", "Transmission control system")), card.codes)
+        assertEquals(setOf(CarPart.CODES), card.parts.keys)
+        val note = card.parts.getValue(CarPart.CODES)
+        assertTrue(note, note.contains("newest Aug 25, 2026"))
+        assertTrue(note, note.contains("1 logged event was cleared since"))
+    }
+
+    @Test
+    fun `no code events is a codes part that says none are recorded`() {
+        val card = CarCards.codeHistory("Jeep", jeep(), org.json.JSONArray(), chicago)
+        assertTrue(card.codes.isEmpty())
+        assertTrue(card.parts.getValue(CarPart.CODES).contains("No trouble-code events"))
     }
 
     @Test

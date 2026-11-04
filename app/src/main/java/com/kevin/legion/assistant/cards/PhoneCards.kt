@@ -23,6 +23,7 @@ object PhoneCards {
 
     private val HH_MM = DateTimeFormatter.ofPattern("HH:mm")
     private val DAY_WORDS = DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US)
+    private val SHORT_DAY = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
     private val MONTH_WORDS = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US)
 
     /** "UTC-06:00", "UTC+05:30", "UTC+00:00". Never an IANA id (CLAUDE.md section 1). */
@@ -77,30 +78,35 @@ object PhoneCards {
     // --- timeline: read_calendar ---------------------------------------------------------------
 
     /**
-     * One local day of [events]: the first day in the window that has anything, else the window's
-     * own first day. An all-day row's `startsAt` is UTC midnight of its date (see
-     * `activeByKindInLocalWindow`), so its date is read in UTC; a timed row's in [zone]. Rows on
-     * later days become `more`, said in words.
+     * [events] over the window. One day's items carry no date; a window whose rows fall on several
+     * days gives each item its `date` (the shared format's multi-day field) and the view groups
+     * them under day headings. An all-day row's `startsAt` is UTC midnight of its date (see
+     * `activeByKindInLocalWindow`), so its date is read in UTC; a timed row's in [zone]. At most
+     * [ConversationCard.MAX_TIMELINE] items; the rest are `more`, said in words.
      */
     fun calendar(events: List<Event>, zone: ZoneId, windowStartMs: Long): ConversationCard.Timeline {
         val dated = events.mapNotNull { e -> e.startsAt?.let { e to localDate(e, it, zone) } }
-        val day = dated.minOfOrNull { it.second }
-            ?: Instant.ofEpochMilli(windowStartMs).atZone(zone).toLocalDate()
-        val onDay = dated.filter { it.second == day }.map { it.first }
-        val shown = onDay.take(ConversationCard.MAX_POINTS)
-        val laterDays = dated.size - onDay.size
-        val more = (onDay.size - shown.size) + laterDays
+            .sortedWith(compareBy({ it.second }, { !it.first.allDay }, { it.first.startsAt }))
+        val days = dated.map { it.second }.distinct()
+        val first = days.firstOrNull() ?: Instant.ofEpochMilli(windowStartMs).atZone(zone).toLocalDate()
+        val several = days.size > 1
+        val shown = dated.take(ConversationCard.MAX_TIMELINE)
+        val more = dated.size - shown.size
         val note = buildList {
             if (dated.isEmpty()) add("Nothing on the calendar and nothing due in that window.")
-            if (laterDays > 0) add("$laterDays more on later days in this window.")
+            if (more > 0) add("$more more not shown.")
         }.joinToString(" ").ifBlank { null }
         return ConversationCard.Timeline(
             title = "Calendar",
-            date = day.toString(),
-            zone = zoneLabel(zone.rules.getOffset(day.atStartOfDay(zone).toInstant())),
-            items = shown.map { timelineItem(it, zone) },
+            date = first.toString(),
+            zone = zoneLabel(zone.rules.getOffset(first.atStartOfDay(zone).toInstant())),
+            items = shown.map { (e, day) -> timelineItem(e, zone).copy(date = day.toString().takeIf { several }) },
             more = more,
-            period = day.format(DAY_WORDS),
+            period = if (several) {
+                "${first.format(SHORT_DAY)} to ${days.last().format(SHORT_DAY)}"
+            } else {
+                first.format(DAY_WORDS)
+            },
             note = note,
         )
     }

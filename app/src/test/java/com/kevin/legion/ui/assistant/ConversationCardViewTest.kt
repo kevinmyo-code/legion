@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.kevin.legion.assistant.cards.BarPoint
+import com.kevin.legion.assistant.cards.CarPart
 import com.kevin.legion.assistant.cards.CardFlag
 import com.kevin.legion.assistant.cards.ChecklistLine
 import com.kevin.legion.assistant.cards.ConversationCard
@@ -80,12 +81,31 @@ class ConversationCardViewTest {
     }
 
     @Test
+    fun `a multi-day timeline groups its items under day headings`() {
+        show(
+            ConversationCard.Timeline(
+                "Calendar", "2026-11-02", "UTC-06:00",
+                listOf(
+                    TimelineItem("09:30", null, false, "Class", TimelineKind.EVENT, date = "2026-11-02"),
+                    TimelineItem(null, null, true, "Election Day", TimelineKind.EVENT, date = "2026-11-03"),
+                ),
+                period = "Mon Nov 2 to Sun Nov 8",
+            ),
+        )
+        expand()
+        rule.onNodeWithText("Mon Nov 2").assertExists()
+        rule.onNodeWithText("Tue Nov 3").assertExists()
+        rule.onNodeWithText("All day: Election Day").assertExists()
+    }
+
+    @Test
     fun `car says what was not checked, and the service is an estimate`() {
         show(
             ConversationCard.Car(
                 "Jeep", "Jeep", 200_050, "2026-11-01",
                 NextServiceDue("Oil change", dueMiles = 201_250, dueDate = "2026-12-04"),
-                recalls = listOf(Recall("Airbag inflator may rupture")), codes = null,
+                recalls = listOf(Recall("Airbag inflator may rupture")), codes = emptyList(),
+                parts = mapOf(CarPart.SERVICE to "", CarPart.RECALLS to ""),
             ),
         )
         rule.onNodeWithText("Recalls (1): Airbag inflator may rupture").assertExists()
@@ -97,7 +117,12 @@ class ConversationCardViewTest {
 
     @Test
     fun `car codes with an unknown meaning say so`() {
-        show(ConversationCard.Car("Jeep", "Jeep", null, null, null, null, listOf(TroubleCode("P1234", null))))
+        show(
+            ConversationCard.Car(
+                "Jeep", "Jeep", null, null, null, emptyList(), listOf(TroubleCode("P1234", null)),
+                parts = mapOf(CarPart.CODES to ""),
+            ),
+        )
         rule.onNodeWithText("Trouble codes: P1234, meaning unknown").assertExists()
     }
 

@@ -1,9 +1,9 @@
 package com.kevin.legion.ui.assistant
 
 import com.kevin.legion.assistant.cards.BarPoint
+import com.kevin.legion.assistant.cards.CarPart
 import com.kevin.legion.assistant.cards.ChecklistLine
 import com.kevin.legion.assistant.cards.ConversationCard
-import com.kevin.legion.assistant.cards.NextServiceDue
 import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.assistant.cards.StepItem
 import com.kevin.legion.assistant.cards.StepStatus
@@ -45,33 +45,40 @@ internal object CardWords {
             ?.let { m -> "Mileage: ${"%,d".format(m)} mi" + (card.mileageAsOf?.let { " (last reading $it)" } ?: "") }
             ?: "Mileage: none on file"
 
-    fun service(n: NextServiceDue?): String {
-        if (n == null) return "Next service: nothing to time"
+    fun service(card: ConversationCard.Car): String {
+        if (!card.read(CarPart.SERVICE)) return "Next service: not checked"
+        val n = card.nextService ?: return "Next service: nothing to time"
         val at = listOfNotNull(n.dueMiles?.let { "at ${"%,d".format(it)} mi" }, n.dueDate?.let { "by $it" })
             .joinToString(" or ")
         return "Next service: ${n.label}" + (if (at.isBlank()) "" else " $at") + if (n.estimate) " (estimate)" else ""
     }
 
     fun recalls(card: ConversationCard.Car): String = when {
-        card.recalls == null -> "Recalls: not checked"
+        !card.read(CarPart.RECALLS) -> "Recalls: not checked"
         card.recalls.isEmpty() -> "Recalls: none on file"
         else -> "Recalls (${card.recalls.size}): " + card.recalls.joinToString("; ") { it.summary }
     }
 
     fun codes(card: ConversationCard.Car): String = when {
-        card.codes == null -> "Trouble codes: not checked"
+        !card.read(CarPart.CODES) -> "Trouble codes: not checked"
         card.codes.isEmpty() -> "Trouble codes: none stored"
         else -> "Trouble codes: " +
             card.codes.joinToString("; ") { c -> c.code + (c.meaning?.let { " $it" } ?: ", meaning unknown") }
     }
 
     fun car(card: ConversationCard.Car): List<String> =
-        listOf(mileage(card), service(card.nextService), recalls(card), codes(card))
+        listOf(mileage(card), service(card), recalls(card), codes(card))
 
     fun step(s: StepItem): String {
         val time = s.ms?.let { ", ${seconds(it)}" } ?: if (s.status == StepStatus.SKIPPED) "" else ", time not reported"
         return "${s.status.words}: ${s.label}$time"
     }
+
+    /** "Wed Nov 4" from a timeline item's `yyyy-MM-dd`; the raw text if it does not parse. */
+    fun dayHeading(date: String): String =
+        runCatching { java.time.LocalDate.parse(date).format(DAY_HEADING) }.getOrDefault(date)
+
+    private val DAY_HEADING = java.time.format.DateTimeFormatter.ofPattern("EEE MMM d", java.util.Locale.US)
 
     fun check(l: ChecklistLine): String = (if (l.done) "Done: " else "To do: ") + l.text
 
@@ -95,11 +102,11 @@ internal fun collapsedLine(card: ConversationCard): String = when (card) {
 
 /** Codes, then recalls, then the service, then whatever was checked and came back empty. */
 private fun collapsedCar(card: ConversationCard.Car): String = when {
-    !card.codes.isNullOrEmpty() -> CardWords.codes(card)
-    !card.recalls.isNullOrEmpty() -> CardWords.recalls(card)
-    card.nextService != null -> CardWords.service(card.nextService)
-    card.recalls != null -> CardWords.recalls(card)
-    card.codes != null -> CardWords.codes(card)
+    card.codes.isNotEmpty() -> CardWords.codes(card)
+    card.recalls.isNotEmpty() -> CardWords.recalls(card)
+    card.nextService != null -> CardWords.service(card)
+    card.read(CarPart.RECALLS) -> CardWords.recalls(card)
+    card.read(CarPart.CODES) -> CardWords.codes(card)
     else -> CardWords.mileage(card)
 }
 

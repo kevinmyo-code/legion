@@ -13,14 +13,19 @@ class ConversationCardsTest {
 
     private fun list(name: String) = PhoneCards.checklist(name, listOf(ChecklistLine("milk", false)))
 
+    /** A car card that read only the parts given a value. */
     private fun car(
         recalls: List<Recall>? = null,
         codes: List<TroubleCode>? = null,
         due: NextServiceDue? = null,
-        note: String? = null,
     ) = ConversationCard.Car(
         title = "Jeep", name = "Jeep", mileage = 1000, mileageAsOf = null,
-        nextService = due, recalls = recalls, codes = codes, note = note,
+        nextService = due, recalls = recalls.orEmpty(), codes = codes.orEmpty(),
+        parts = buildMap {
+            if (due != null) put(CarPart.SERVICE, "service note")
+            if (recalls != null) put(CarPart.RECALLS, "recalls note")
+            if (codes != null) put(CarPart.CODES, "codes note")
+        },
     )
 
     @Before
@@ -86,14 +91,28 @@ class ConversationCardsTest {
     fun `car cards for the same car merge, keeping what each tool looked up`() {
         ConversationCards.begin()
         val due = NextServiceDue("Oil change", dueMiles = 3000)
-        ConversationCards.publish(car(due = due, note = "Recalls and trouble codes were not checked in this answer."))
+        ConversationCards.publish(car(due = due))
         ConversationCards.publish(car(recalls = emptyList()))
         ConversationCards.publish(car(codes = listOf(TroubleCode("P0420", "Catalyst efficiency"))))
         val merged = ConversationCards.state.value.latest as ConversationCard.Car
         assertEquals(1, ConversationCards.state.value.cards.size)
         assertEquals(due, merged.nextService)
         assertEquals(emptyList<Recall>(), merged.recalls)
-        assertEquals("P0420", merged.codes!!.single().code)
+        assertEquals("P0420", merged.codes.single().code)
+        assertEquals(setOf(CarPart.SERVICE, CarPart.RECALLS, CarPart.CODES), merged.parts.keys)
+        assertEquals("service note codes note recalls note", merged.note)
+    }
+
+    @Test
+    fun `a later call that did not read a part keeps the earlier part, a later read replaces it`() {
+        ConversationCards.begin()
+        ConversationCards.publish(car(recalls = listOf(Recall("Fuel hose"))))
+        ConversationCards.publish(car(codes = emptyList()))
+        ConversationCards.publish(car(recalls = emptyList()))
+        val merged = ConversationCards.state.value.latest as ConversationCard.Car
+        assertEquals(emptyList<Recall>(), merged.recalls)
+        assertEquals(setOf(CarPart.RECALLS, CarPart.CODES), merged.parts.keys)
+        assertFalse(merged.read(CarPart.SERVICE))
     }
 
     @Test
@@ -102,6 +121,6 @@ class ConversationCardsTest {
         ConversationCards.publish(car(recalls = emptyList()))
         ConversationCards.publish(car().copy(name = "BMW", title = "BMW"))
         assertEquals(2, ConversationCards.state.value.cards.size)
-        assertNull((ConversationCards.state.value.latest as ConversationCard.Car).recalls)
+        assertFalse((ConversationCards.state.value.latest as ConversationCard.Car).read(CarPart.RECALLS))
     }
 }

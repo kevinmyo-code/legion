@@ -43,6 +43,7 @@ object CardJson {
         .put("items", JSONArray(card.items.map { i ->
             JSONObject().put("start", orNull(i.start)).put("end", orNull(i.end))
                 .put("allDay", i.allDay).put("title", i.title).put("kind", i.kind.wire)
+                .apply { i.date?.let { put("date", it) } }
         }))
         .put("more", card.more)
 
@@ -56,10 +57,11 @@ object CardJson {
                 n.dueDate?.let { put("dueDate", it) }
             }
         }))
-        .put("recalls", JSONArray(card.recalls.orEmpty().map { JSONObject().put("summary", it.summary) }))
-        .put("codes", JSONArray(card.codes.orEmpty().map { c ->
+        .put("recalls", JSONArray(card.recalls.map { JSONObject().put("summary", it.summary) }))
+        .put("codes", JSONArray(card.codes.map { c ->
             JSONObject().put("code", c.code).put("meaning", orNull(c.meaning))
         }))
+        .put("parts", JSONObject().apply { card.parts.forEach { (part, note) -> put(part.wire, note) } })
 
     private fun steps(out: JSONObject, card: ConversationCard.Steps) = out
         .put("name", card.name)

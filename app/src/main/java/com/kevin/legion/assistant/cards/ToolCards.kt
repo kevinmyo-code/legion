@@ -6,6 +6,7 @@ import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.VinDecoder
 import com.kevin.legion.vehicle.VehicleController
 import java.time.ZoneId
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -27,6 +28,10 @@ object ToolCards {
                 VehicleController.label(vehicle), vehicle, recalls.map { it.summary }, ZoneId.systemDefault(),
             ),
         )
+
+    /** get_code_history's events for [vehicle], as the tool returns them. */
+    fun codeHistory(vehicle: Vehicle, events: JSONArray) =
+        publish(CarCards.codeHistory(VehicleController.label(vehicle), vehicle, events, ZoneId.systemDefault()))
 
     /** An `ask_engine` tool result ([com.kevin.legion.service.AskEngine]'s card hook). */
     fun engineResult(tool: String, structured: JSONObject?, roundTripMs: Long) {

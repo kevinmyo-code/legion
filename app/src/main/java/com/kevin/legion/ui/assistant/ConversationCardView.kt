@@ -134,7 +134,10 @@ private fun CardBody(card: ConversationCard) {
     when (card) {
         is ConversationCard.Bars -> BarsBody(card)
         is ConversationCard.Timeline -> {
-            card.items.forEach { Line(CardWords.timeline(it)) }
+            card.items.groupBy { it.date }.forEach { (date, items) ->
+                if (date != null) DayHeading(CardWords.dayHeading(date))
+                items.forEach { Line(CardWords.timeline(it)) }
+            }
             MoreLine(card.more)
         }
         is ConversationCard.Car -> CardWords.car(card).forEach { Line(it) }
@@ -152,6 +155,11 @@ private fun CardBody(card: ConversationCard) {
 @Composable
 private fun MoreLine(count: Int) {
     if (count > 0) Line("And $count more.")
+}
+
+@Composable
+private fun DayHeading(text: String) {
+    Text(text, style = MaterialTheme.typography.labelLarge, color = SoftColors.text2, modifier = Modifier.padding(top = 4.dp))
 }
 
 @Composable

@@ -2762,6 +2762,7 @@ object LiveToolbox {
                 // Structured rows with every freeze-frame reading (2026-11-03), not a text blob
                 // that carried three of eight PIDs and said nothing when a frame was missing.
                 val events = CarToolbelt.codeHistoryEvents(context, vehicle.obdMac, limit)
+                ToolCards.codeHistory(vehicle, events)
                 // The codes card pops up whenever there is something to show, the same inline
                 // show-on-data pattern get_codes uses for its glance card. Automatic rather than a
                 // show_codes tool: this tool sits behind ask_fleet, so the Live model never sees
