@@ -1,0 +1,381 @@
+"""Cards: what a tool result shows on a screen, built here from the tool's own rows.
+
+Generative UI (Kevin, 2026-11-04: "go for it"). A tool result may carry `card`, a small JSON
+object the web chat (members' and the recruiter demo's) and the phone draw beside the
+transcript. The format is shared with the phone, so its field names are fixed:
+
+- common: `card` ("bars" | "timeline" | "car" | "steps" | "checklist"), `title`, optional
+  `scope`, `period`, `note` (plain words, e.g. "Includes $12.40 unverified").
+- bars: `unit` ("usd", values in integer cents, or "" for counts), `points: [{label, value,
+  flag?}]` (flag "unverified" or "estimate"), at most 8, and `more` (rows not shown).
+- timeline: `date` (YYYY-MM-DD in the household's zone), `zone` ("UTC-06:00", never an IANA
+  id), `items: [{start, end, all_day, title, kind}]`, `more`.
+- car: `name`, `mileage`, `mileage_as_of`, `next_service`, `recalls: [{summary}]`,
+  `codes: [{code, meaning}]`.
+- steps: `name`, `items: [{label, status, ms}]`, `total_ms`.
+- checklist: `list_name`, `items: [{text, done}]`, `more`.
+
+Rules every builder keeps:
+
+- **Built from rows, never from model text.** The model never sees a card: the tool door puts
+  it in the HTTP response beside `response`, which is what goes to Gemini, unchanged.
+- **Money is integer cents** (CLAUDE.md section 4), and what no gate checked says so in words
+  (`flag`, `note`); an estimate says it is one.
+- **Nothing unobserved is drawn as a finding** (section 7): a recall lookup that did not run is
+  a note saying so, never an empty list that reads as "no recalls".
+- **A card is a garnish.** `safe()` turns any builder error into no card, so a bug here can
+  never turn a good read into a failed one.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+from datetime import UTC, date, datetime, timedelta
+from functools import cache
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+BARS_MAX = 8
+TIMELINE_MAX = 12
+CHECKLIST_MAX = 12
+RECALLS_MAX = 5
+CODES_MAX = 8
+
+KIND_WORDS = {"event": "event", "reminder": "event", "task": "todo", "suggestion": "suggestion"}
+
+
+def safe(builder, *args, **kwargs) -> dict | None:
+    """`builder(*args, **kwargs)`, or None when it raises. Logged, never re-raised."""
+    try:
+        return builder(*args, **kwargs)
+    except Exception:  # noqa: BLE001 - a card must never fail the tool it decorates
+        log.exception("card builder %s failed; the result goes out without a card", builder)
+        return None
+
+
+def money_words(cents: int) -> str:
+    """$1,234.56 from integer cents. Display words only; nothing adds these back up."""
+    sign = "-" if cents < 0 else ""
+    cents = abs(int(cents))
+    return f"{sign}${cents // 100:,}.{cents % 100:02d}"
+
+
+def zone_words(offset: timedelta | None) -> str:
+    """"UTC-06:00" from a UTC offset. Never an IANA id (CLAUDE.md section 1)."""
+    minutes = int((offset or timedelta()).total_seconds() // 60)
+    sign = "+" if minutes >= 0 else "-"
+    minutes = abs(minutes)
+    return f"UTC{sign}{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def humanize(identifier: str) -> str:
+    """`car_check` -> "Car check". For step ids and procedure names, never tool names."""
+    words = re.sub(r"[_\s]+", " ", str(identifier or "")).strip()
+    return words[:1].upper() + words[1:] if words else "Step"
+
+
+def _month_words(month: str) -> str:
+    try:
+        return datetime.strptime(month, "%Y-%m").strftime("%B %Y")
+    except (TypeError, ValueError):
+        return str(month or "")
+
+
+# =============================================================================
+# bars: monthly_spend
+# =============================================================================
+
+
+def spend_bars(body: dict, currency: str) -> dict | None:
+    """Spending by category for one month, from `api.ledger_spend.spend_for`'s body. A
+    category with any row no gate checked is flagged "unverified". USD only: the card's unit
+    is "usd", so another currency gets no card rather than a mislabelled one."""
+    if currency.upper() != "USD":
+        return None
+    spent = sorted(
+        (c for c in body.get("categories") or [] if c.get("spend_cents")),
+        key=lambda c: (-c["spend_cents"], c["category"]),
+    )
+    if not spent:
+        return None
+    points = []
+    for c in spent[:BARS_MAX]:
+        point = {"label": c["category"], "value": int(c["spend_cents"])}
+        if c.get("unverified"):
+            point["flag"] = "unverified"
+        points.append(point)
+    total = sum(int(a["spend_cents"]) for a in body.get("accounts") or [])
+    unverified = sum(int(a.get("unverified_cents") or 0) for a in body.get("accounts") or [])
+    notes = [f"Total {money_words(total)}."]
+    if unverified:
+        notes.append(f"Includes {money_words(unverified)} unverified.")
+    if body.get("uncategorised_cents"):
+        notes.append(
+            f"{money_words(body['uncategorised_cents'])} has no category yet and is not in the "
+            f"total."
+        )
+    if not body.get("complete", True):
+        notes.append("The bank data on file does not cover the whole month.")
+    return {
+        "card": "bars",
+        "title": "Spending by category",
+        "period": _month_words(body.get("month")),
+        "unit": "usd",
+        "points": points,
+        "more": max(len(spent) - BARS_MAX, 0),
+        "note": " ".join(notes),
+    }
+
+
+# =============================================================================
+# timeline: list_events
+# =============================================================================
+
+
+def _clock(moment: datetime | None) -> str | None:
+    return f"{moment.hour:02d}:{moment.minute:02d}" if moment is not None else None
+
+
+def _field(row, name):
+    return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
+
+
+def events_timeline(
+    events, skips: dict, window_start: datetime, window_end: datetime, zone, day: date
+) -> dict:
+    """One day's events and tasks, in the household's clock, from the rows `list_events` read
+    (one-offs, repeating series and suggestions; done ones only if the tool kept them).
+
+    Repeating series are expanded with `api.recurrence.series_occurrences`, the engine's one
+    expansion (push reminders use it), skips subtracted. An ALL-DAY row's `starts_at` is UTC
+    midnight of the date it names, so its date is the UTC date, never converted to the zone
+    (the "advanced by one day" bug `frontend/src/lib/day.ts` documents). `more` counts the
+    occurrences in the tool's window on other days."""
+    from api.recurrence import series_occurrences
+
+    day_start = datetime.combine(day, datetime.min.time(), tzinfo=zone)
+    day_end = day_start + timedelta(days=1)
+    on_day, other = [], 0
+    for row in events:
+        all_day = bool(_field(row, "all_day"))
+        occurrences = series_occurrences(
+            row, skips.get(_field(row, "id"), ()), window_start, window_end, UTC if all_day else zone
+        )
+        for start in occurrences:
+            if all_day:
+                hit = start.astimezone(UTC).date() == day
+            else:
+                hit = day_start <= start < day_end
+            if not hit:
+                other += 1
+                continue
+            end = None
+            ends_at = _field(row, "ends_at")
+            starts_at = _field(row, "starts_at")
+            if not all_day and ends_at is not None and starts_at is not None:
+                local_end = (start + (ends_at - starts_at)).astimezone(zone)
+                if local_end.date() == day:
+                    end = local_end
+            on_day.append(
+                {
+                    "start": None if all_day else _clock(start.astimezone(zone)),
+                    "end": _clock(end),
+                    "all_day": all_day,
+                    "title": (_field(row, "title") or "Untitled").strip() or "Untitled",
+                    "kind": KIND_WORDS.get(_field(row, "kind"), "event"),
+                    "_sort": (not all_day, start),
+                }
+            )
+    on_day.sort(key=lambda i: i["_sort"])
+    shown = on_day[:TIMELINE_MAX]
+    for item in shown:
+        del item["_sort"]
+    card = {
+        "card": "timeline",
+        "title": "What's on",
+        "date": day.isoformat(),
+        "zone": zone_words(day_start.utcoffset()),
+        "items": shown,
+        "more": (len(on_day) - len(shown)) + other,
+    }
+    if any(i["kind"] == "suggestion" for i in shown):
+        card["note"] = "Suggestions are ideas, not plans."
+    return card
+
+
+# =============================================================================
+# checklist: list_checklists
+# =============================================================================
+
+
+def checklist_card(checklists: list[dict], on_day: date | None) -> dict | None:
+    """The first live checklist (the household's own order) with its items and whether each
+    is ticked on `on_day`. Only with a day: without one the tool has no tick state, and a
+    "not done" box would be a claim nobody observed."""
+    if on_day is None or not checklists:
+        return None
+    first = checklists[0]
+    items = first.get("items") or []
+    shown = [
+        {"text": i.get("text") or "", "done": bool(i.get("ticked_on_date"))}
+        for i in items[:CHECKLIST_MAX]
+    ]
+    card = {
+        "card": "checklist",
+        "title": first.get("name") or "Checklist",
+        "period": on_day.isoformat(),
+        "list_name": first.get("name") or "Checklist",
+        "items": shown,
+        "more": max(len(items) - len(shown), 0),
+    }
+    if len(checklists) > 1:
+        others = len(checklists) - 1
+        card["note"] = f"{others} other list{'s' if others != 1 else ''} not shown."
+    return card
+
+
+# =============================================================================
+# car and steps: run_procedure
+# =============================================================================
+
+_DTC_FILE = Path(__file__).with_name("dtc_titles.json")
+
+
+@cache
+def dtc_titles() -> dict[str, str]:
+    """Code -> title, trimmed from the phone's `dtc_descriptions_seed.json` (titles only).
+    `tests/test_cards.py` holds the two together."""
+    return json.loads(_DTC_FILE.read_text(encoding="utf-8"))
+
+
+def _value(values: dict, step: str) -> dict:
+    value = values.get(step)
+    return value if isinstance(value, dict) else {}
+
+
+def _ok(value: dict) -> bool:
+    return value.get("outcome") == "ok" and isinstance(value.get("structured"), dict)
+
+
+def car_card(values: dict) -> dict | None:
+    """car_check's one car, from its step values (`next_service`, `read_records` of the code
+    tables, `vehicle_recalls`). Several cars, or a service read that did not come back, is no
+    car card (the caller draws the steps instead)."""
+    from procedures.steps import codes_since_clear
+
+    service = _value(values, "service")
+    if not _ok(service):
+        return None
+    vehicles = service["structured"].get("vehicles") or []
+    if len(vehicles) != 1:
+        return None
+    v = vehicles[0]
+    odometer = v.get("odometer") or None
+    next_service = None
+    overdue = v.get("overdue") or []
+    by_date, by_miles = v.get("next_by_date"), v.get("next_by_miles")
+    if overdue:
+        row = overdue[0]
+        next_service = {"label": f"{row['service_name']}, past due", "estimate": True}
+        if row.get("due_on"):
+            next_service["due_date"] = row["due_on"]
+        if row.get("due_at_miles") is not None:
+            next_service["due_miles"] = int(row["due_at_miles"])
+    elif by_date or by_miles:
+        lead = by_date or by_miles
+        next_service = {"label": lead["service_name"], "estimate": True}
+        if by_date:
+            next_service["due_date"] = by_date["due_on"]
+        if by_miles and by_miles["service_name"] == lead["service_name"]:
+            next_service["due_miles"] = int(by_miles["due_at_miles"])
+
+    codes_value, clears_value = _value(values, "codes"), _value(values, "clears")
+    notes = []
+    codes = []
+    if _ok(codes_value) and _ok(clears_value):
+        found = codes_since_clear(
+            v.get("vehicle_id"),
+            codes_value["structured"].get("rows"),
+            clears_value["structured"].get("rows"),
+        )
+        titles = dtc_titles()
+        codes = [{"code": c, "meaning": titles.get(c, "")} for c in found[:CODES_MAX]]
+        if len(found) > CODES_MAX:
+            notes.append(f"{len(found) - CODES_MAX} more trouble codes not shown.")
+        if codes:
+            notes.append("Codes are what the OBD dongle logged when it last connected.")
+    else:
+        notes.append("Trouble codes were not read.")
+
+    recalls_value = _value(values, "recalls")
+    recalls = []
+    if _ok(recalls_value):
+        found = recalls_value["structured"].get("recalls") or []
+        recalls = [{"summary": _recall_words(r)} for r in found[:RECALLS_MAX]]
+        if len(found) > RECALLS_MAX:
+            notes.append(f"{len(found) - RECALLS_MAX} more recalls not shown.")
+        notes.append("Recalls are NHTSA's list for the model, not a check of this car's VIN.")
+    else:
+        notes.append("Recalls were not looked up, so whether there are any is not known.")
+    if next_service is not None:
+        notes.append("Next service is an estimate from the records on file.")
+    return {
+        "card": "car",
+        "title": v.get("name") or "The car",
+        "name": v.get("name") or "The car",
+        "mileage": int(odometer["miles"]) if odometer else None,
+        "mileage_as_of": odometer["read_on"] if odometer else None,
+        "next_service": next_service,
+        "recalls": recalls,
+        "codes": codes,
+        "note": " ".join(notes),
+    }
+
+
+def _recall_words(recall: dict) -> str:
+    """"Air bags: The passenger air bag may not deploy." NHTSA's own words, trimmed."""
+    component = (recall.get("component") or "").strip().capitalize()
+    summary = (recall.get("summary") or "").strip()
+    if component and summary:
+        return f"{component}: {summary}"
+    return component or summary or "A recall with no summary"
+
+
+STEP_STATUS = {"ok": "ok", "failed": "failed", "refused": "failed"}
+
+
+def steps_card(procedure: str, done: list[dict], not_run: list[str], status: str) -> dict:
+    """What a procedure run did, step by step: status in words, time in ms. `done` rows are
+    the runner's own (`step_id`, `outcome`, `ms`); the label is the step id in words, never
+    the tool it called. An ask's question row is left out; its answer row counts."""
+    items = []
+    for d in done:
+        if d.get("outcome") == "asked":
+            continue
+        items.append(
+            {
+                "label": humanize(d["step_id"]),
+                "status": STEP_STATUS.get(d.get("outcome"), "failed"),
+                "ms": int(d.get("ms") or 0),
+            }
+        )
+    items += [{"label": humanize(s), "status": "skipped", "ms": 0} for s in not_run]
+    card = {
+        "card": "steps",
+        "title": humanize(procedure),
+        "name": humanize(procedure),
+        "items": items,
+        "total_ms": sum(i["ms"] for i in items),
+    }
+    words = {
+        "partial": "Stopped part way.",
+        "failed": "Did not finish.",
+        "cancelled": "Cancelled.",
+        "needs_answer": "Waiting for an answer.",
+    }
+    if status in words:
+        card["note"] = words[status]
+    return card

@@ -57,6 +57,7 @@ from jsonschema import Draft202012Validator
 
 from api.event_columns import KIND_SUGGESTION
 from api.registry import SYNCED_VIEWSETS
+from engine_mcp import cards
 from engine_mcp.dispatch import RouteNotFound, call_route
 from engine_mcp.models import Outcome
 from household.permissions import write_refusal
@@ -73,10 +74,13 @@ class ToolResult:
     is_error: bool = False
     outcome: str = Outcome.OK
     structured: dict | None = None
+    # What a screen draws beside the transcript (`engine_mcp/cards.py`), built from the tool's
+    # own rows. Only the web tool door returns it, beside `response`; it never goes to a model.
+    card: dict | None = None
 
 
-def ok(text: str, structured: dict | None = None) -> ToolResult:
-    return ToolResult(text=text, structured=structured)
+def ok(text: str, structured: dict | None = None, card: dict | None = None) -> ToolResult:
+    return ToolResult(text=text, structured=structured, card=card)
 
 
 def refused(text: str) -> ToolResult:
@@ -421,6 +425,9 @@ def _list_events(request, args) -> ToolResult:
             "suggestions": EventSerializer(suggested, many=True).data,
         }
     window = f"{start.astimezone(zone).isoformat()} to {end.astimezone(zone).isoformat()}"
+    card = cards.safe(
+        _events_card, request, args, [*one_off, *repeating, *suggested], start, end, zone
+    )
     if not any(sections.values()):
         return ok(
             f"The engine read this household's events and found none in {window}, no "
@@ -428,6 +435,7 @@ def _list_events(request, args) -> ToolResult:
             f"{'' if args.get('include_done') else ' that are not done'}. That is a real "
             f"empty result, not a failure to read.",
             structured=sections,
+            card=card,
         )
     return ok(
         f"Events for {window}. Every time is the household's local time, with its UTC "
@@ -442,7 +450,27 @@ def _list_events(request, args) -> ToolResult:
         f"`pinned_by` names the members who want to go to one: a wish, still not a plan.\n"
         f"{_json(sections)}",
         structured=sections,
+        card=card,
     )
+
+
+def _events_card(request, args, events, start, end, zone):
+    """The timeline card for `_list_events`'s rows: the day `from` names (a date-only `from`
+    is that date, not its UTC midnight read in the zone), else the window start's local day."""
+    from legacy.models.dates import EventSkip
+
+    raw = (args.get("from") or "").strip()
+    # A bare YYYY-MM-DD names a day. (`parse_datetime` accepts one too, as UTC midnight,
+    # which read in a zone west of UTC is the day before.)
+    day = parse_date(raw) if len(raw) == 10 else None
+    if day is None:
+        day = start.astimezone(zone).date()
+    skips: dict = {}
+    for event_id, skip_day in EventSkip.objects.filter(
+        event_id__in=[e.pk for e in events if e.repeat_kind], deleted_at__isnull=True
+    ).values_list("event_id", "skip_date"):
+        skips.setdefault(event_id, set()).add(skip_day)
+    return cards.events_timeline(events, skips, start, end, zone, day)
 
 
 def _list_checklists(request, args) -> ToolResult:
@@ -497,6 +525,7 @@ def _list_checklists(request, args) -> ToolResult:
     return ok(
         f"{len(out)} checklists with their live items.{tick_note}\n{_json(out)}",
         structured={"checklists": out},
+        card=cards.safe(cards.checklist_card, out, on_day),
     )
 
 
@@ -1603,7 +1632,7 @@ def _monthly_spend(request, args) -> ToolResult:
             "The month is not fully covered by the bank data on file, so the figure may be "
             "incomplete; say so."
         )
-    return ok(" ".join(parts), structured=body)
+    return ok(" ".join(parts), structured=body, card=cards.safe(cards.spend_bars, body, currency))
 
 
 def _local_day_window(request) -> dict:

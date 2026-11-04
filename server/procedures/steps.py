@@ -120,6 +120,44 @@ def _freeze_words(frame) -> str:
     return "a freeze frame was stored with it"
 
 
+def _since_clear(vehicle_id, events, clears):
+    """(codes, latest read with codes, last clear instant) for one vehicle, or None when no
+    code read is on file for it. Codes are those logged after the last clear on file (every
+    read, with no clear), sorted. The one computation `trouble_codes`' sentence and the car
+    card (`engine_mcp.cards.car_card`) both use, so they cannot disagree."""
+    events = [e for e in (events or []) if not e.get("deleted_at")]
+    clears = [c for c in (clears or []) if not c.get("deleted_at")]
+    mine = sorted(
+        (
+            e
+            for e in events
+            if str(e.get("vehicle_id")) == str(vehicle_id) and _instant(e.get("occurred_at"))
+        ),
+        key=lambda e: _instant(e["occurred_at"]),
+    )
+    if not mine:
+        return None
+    cleared = max(
+        (
+            _instant(c.get("occurred_at"))
+            for c in clears
+            if str(c.get("vehicle_id")) == str(vehicle_id) and _instant(c.get("occurred_at"))
+        ),
+        default=None,
+    )
+    if cleared is not None:
+        mine = [e for e in mine if _instant(e["occurred_at"]) > cleared]
+    codes = sorted({str(c) for e in mine for c in (e.get("codes") or []) if c})
+    with_codes = [e for e in mine if e.get("codes")]
+    return codes, (with_codes[-1] if with_codes else None), cleared
+
+
+def codes_since_clear(vehicle_id, events, clears) -> list[str]:
+    """The trouble codes logged for one vehicle since the last clear on file, sorted."""
+    found = _since_clear(vehicle_id, events, clears)
+    return found[0] if found else []
+
+
 @step_function("trouble_codes")
 def trouble_codes(vehicles=None, events=None, clears=None, utc_offset_minutes=0, limit=None):
     """Per vehicle, the trouble codes the OBD dongle has logged since the last clear on file (or
@@ -132,38 +170,20 @@ def trouble_codes(vehicles=None, events=None, clears=None, utc_offset_minutes=0,
     clears = [c for c in (clears or []) if not c.get("deleted_at")]
     lines = []
     for v in vehicles:
-        vid, name = v.get("vehicle_id"), v.get("name")
-        mine = sorted(
-            (
-                e
-                for e in events
-                if str(e.get("vehicle_id")) == str(vid) and _instant(e.get("occurred_at"))
-            ),
-            key=lambda e: _instant(e["occurred_at"]),
-        )
-        if not mine:
+        name = v.get("name")
+        found = _since_clear(v.get("vehicle_id"), events, clears)
+        if found is None:
             lines.append(f"{name}: no trouble-code reads are on file.")
             continue
-        cleared = max(
-            (
-                _instant(c.get("occurred_at"))
-                for c in clears
-                if str(c.get("vehicle_id")) == str(vid) and _instant(c.get("occurred_at"))
-            ),
-            default=None,
+        codes, latest, cleared = found
+        since = (
+            f"since the last clear ({_long_date(_local(cleared, utc_offset_minutes).date())})"
+            if cleared is not None
+            else "on record"
         )
-        if cleared is not None:
-            mine = [e for e in mine if _instant(e["occurred_at"]) > cleared]
-            since = (
-                f"since the last clear ({_long_date(_local(cleared, utc_offset_minutes).date())})"
-            )
-        else:
-            since = "on record"
-        codes = sorted({str(c) for e in mine for c in (e.get("codes") or []) if c})
         if not codes:
             lines.append(f"{name}: no trouble codes {since}.")
             continue
-        latest = [e for e in mine if e.get("codes")][-1]
         read_on = _long_date(_local(_instant(latest["occurred_at"]), utc_offset_minutes).date())
         lines.append(
             f"{name}: trouble codes {since}: {', '.join(codes)}. The latest read with codes was "

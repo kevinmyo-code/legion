@@ -107,7 +107,8 @@ def _tool(client, name, args=None):
 
 def _text(response) -> str:
     assert response.status_code == 200, (response.status_code, response.data)
-    assert set(response.data) == {"name", "is_error", "outcome", "text", "response"}
+    # `card` is optional and for the screen only (`engine_mcp/cards.py`); `response` is unchanged.
+    assert set(response.data) - {"card"} == {"name", "is_error", "outcome", "text", "response"}
     assert response.data["response"] == {
         "success": not response.data["is_error"],
         "message": response.data["text"],

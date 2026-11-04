@@ -69,6 +69,7 @@ from django.utils import timezone
 
 from devicelogs.web_conversation import CAP_TOOL
 from engine_mcp.models import Outcome
+from engine_mcp import cards
 from engine_mcp.tools import TOOLS_BY_NAME, ToolResult, ok, refused, run_engine_tool
 from household.models import is_recruiter
 from household.permissions import write_refusal
@@ -216,6 +217,7 @@ def _record(
     usage=None,
 ) -> None:
     walk.seq += 1
+    ms = max(int((_clock() - t0) * 1000), 0)
     row = {
         "step_id": step["id"],
         "kind": step["kind"],
@@ -245,11 +247,12 @@ def _record(
         seq=walk.seq,
         args=_jsonable(args) if args is not None else None,
         started_at=started,
-        ms=max(int((_clock() - t0) * 1000), 0),
+        ms=ms,
         **row,
         **model_fields,
     )
-    walk.done.append(row)
+    # `ms` rides on the in-memory row only, for the steps card; the model's row is unchanged.
+    walk.done.append({**row, "ms": ms})
 
 
 @dataclass
@@ -585,9 +588,21 @@ def _finish(walk: _Walk, stop: _Stop, extra_ms: float) -> ToolResult:
         run.resume_state = _jsonable(run.resume_state)
     run.save()
     _note_in_conversation(walk, status)
+    card = cards.safe(_card, walk, structured)
     if status in (RunStatus.PARTIAL, RunStatus.FAILED):
-        return ToolResult(text=text, is_error=True, outcome=stop.outcome, structured=structured)
-    return ok(text, structured)
+        return ToolResult(
+            text=text, is_error=True, outcome=stop.outcome, structured=structured, card=card
+        )
+    return ok(text, structured, card=card)
+
+
+def _card(walk: _Walk, structured: dict) -> dict:
+    """car_check's car when it read one car; otherwise what each step did."""
+    if walk.name == "car_check":
+        car = cards.car_card(walk.values)
+        if car is not None:
+            return car
+    return cards.steps_card(walk.name, walk.done, structured["not_run"], structured["status"])
 
 
 def _note_in_conversation(walk: _Walk, status: str) -> None:
@@ -763,6 +778,7 @@ def _resume(request, household, args: dict, began: float) -> ToolResult:
                 "branch": s.branch,
                 "chosen_by": s.chosen_by,
                 "result": s.result,
+                "ms": s.ms,
             }
             for s in run.steps.order_by("seq")
         ],

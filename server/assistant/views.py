@@ -348,6 +348,16 @@ ToolResponse = inline_serializer(
         "outcome": serializers.ChoiceField(choices=Outcome.choices),
         "text": serializers.CharField(help_text="The result in words, for the model."),
         "response": ForwardSerializer,
+        "card": serializers.JSONField(
+            required=False,
+            allow_null=True,
+            help_text=(
+                "What the screen draws beside the transcript, built by the engine from the "
+                "tool's own rows (`engine_mcp/cards.py`): `card` is bars, timeline, car, steps "
+                "or checklist. Absent when the tool has none. Never sent to Gemini: `response` "
+                "is the whole of what the browser forwards."
+            ),
+        ),
     },
 )
 
@@ -449,14 +459,18 @@ class AssistantToolView(_AssistantView):
         self._record(
             request, started, success=not result.is_error, outcome=result.outcome, text=result.text
         )
+        payload = {
+            "name": name,
+            "is_error": result.is_error,
+            "outcome": result.outcome,
+            "text": result.text,
+            "response": _forward(not result.is_error, result.text),
+        }
+        # Beside `response`, never inside it: the card is for the screen, not the model.
+        if result.card is not None:
+            payload["card"] = result.card
         return Response(
-            {
-                "name": name,
-                "is_error": result.is_error,
-                "outcome": result.outcome,
-                "text": result.text,
-                "response": _forward(not result.is_error, result.text),
-            },
+            payload,
             headers={"Cache-Control": "no-store"},
         )
 
