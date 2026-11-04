@@ -52,7 +52,11 @@ fun VoiceModalHost() {
         val cards by ConversationCards.state.collectAsStateWithLifecycle()
         cards.latest?.takeIf { cardOverModal(current.target, it) }?.let { card ->
             SoftTheme {
-                ConversationCardView(card, ConversationCards::dismiss, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                ConversationCardView(
+                    card,
+                    ConversationCards::dismiss,
+                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
         }
         when (current.target) {

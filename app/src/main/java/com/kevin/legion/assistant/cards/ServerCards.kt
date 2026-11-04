@@ -37,7 +37,8 @@ object ServerCards {
         title = c.getString("title"),
         unit = c.optString("unit"),
         points = c.list("points").map { p ->
-            BarPoint(p.getString("label"), p.getLong("value"), CardFlag.entries.firstOrNull { it.wire == p.str("flag") })
+            val flag = CardFlag.entries.firstOrNull { it.wire == p.str("flag") }
+            BarPoint(p.getString("label"), p.getLong("value"), flag)
         },
         more = c.optInt("more"),
         scope = c.str("scope"),

@@ -93,7 +93,10 @@ class ServerCardsTest {
         assertEquals(listOf(CardFlag.UNVERIFIED, null), bars.points.map { it.flag })
         assertEquals(2, bars.more)
         val list = ServerCards.parse(
-            json("""{"card":"checklist","title":"gym","list_name":"gym","items":[{"text":"bench","done":true}],"more":0}"""),
+            json(
+                """{"card":"checklist","title":"gym","list_name":"gym",
+                "items":[{"text":"bench","done":true}],"more":0}""",
+            ),
         ) as ConversationCard.Checklist
         assertEquals("gym", list.listName)
         assertTrue(list.items.single().done)
@@ -107,7 +110,9 @@ class ServerCardsTest {
         val fallback = EngineCards.fromAnswer(EngineToolAnswer("run_procedure", false, structured, null, 12L))
         assertTrue(fallback is ConversationCard.Steps)
         val fromEngine = EngineCards.fromAnswer(
-            EngineToolAnswer("next_service", false, null, json("""{"card":"checklist","title":"gym","items":[]}"""), 5L),
+            EngineToolAnswer(
+                "next_service", false, null, json("""{"card":"checklist","title":"gym","items":[]}"""), 5L,
+            ),
         )
         assertTrue(fromEngine is ConversationCard.Checklist)
     }

@@ -46,11 +46,16 @@ internal object CardWords {
             ?: "Mileage: none on file"
 
     fun service(card: ConversationCard.Car): String {
-        if (!card.read(CarPart.SERVICE)) return "Next service: not checked"
-        val n = card.nextService ?: return "Next service: nothing to time"
-        val at = listOfNotNull(n.dueMiles?.let { "at ${"%,d".format(it)} mi" }, n.dueDate?.let { "by $it" })
-            .joinToString(" or ")
-        return "Next service: ${n.label}" + (if (at.isBlank()) "" else " $at") + if (n.estimate) " (estimate)" else ""
+        val n = card.nextService
+        return when {
+            !card.read(CarPart.SERVICE) -> "Next service: not checked"
+            n == null -> "Next service: nothing to time"
+            else -> {
+                val at = listOfNotNull(n.dueMiles?.let { "at ${"%,d".format(it)} mi" }, n.dueDate?.let { "by $it" })
+                    .joinToString(" or ")
+                "Next service: ${n.label}" + (if (at.isBlank()) "" else " $at") + if (n.estimate) " (estimate)" else ""
+            }
+        }
     }
 
     fun recalls(card: ConversationCard.Car): String = when {
@@ -73,12 +78,6 @@ internal object CardWords {
         val time = s.ms?.let { ", ${seconds(it)}" } ?: if (s.status == StepStatus.SKIPPED) "" else ", time not reported"
         return "${s.status.words}: ${s.label}$time"
     }
-
-    /** "Wed Nov 4" from a timeline item's `yyyy-MM-dd`; the raw text if it does not parse. */
-    fun dayHeading(date: String): String =
-        runCatching { java.time.LocalDate.parse(date).format(DAY_HEADING) }.getOrDefault(date)
-
-    private val DAY_HEADING = java.time.format.DateTimeFormatter.ofPattern("EEE MMM d", java.util.Locale.US)
 
     fun check(l: ChecklistLine): String = (if (l.done) "Done: " else "To do: ") + l.text
 
@@ -115,3 +114,9 @@ private fun collapsedSteps(card: ConversationCard.Steps): String {
     return "${card.items.count { it.status == StepStatus.OK }} of ${card.items.size} steps done" +
         if (failed > 0) ", $failed failed" else ""
 }
+
+private val DAY_HEADING = java.time.format.DateTimeFormatter.ofPattern("EEE MMM d", java.util.Locale.US)
+
+/** "Wed Nov 4" from a timeline item's `yyyy-MM-dd`; the raw text if it does not parse. */
+internal fun dayHeading(date: String): String =
+    runCatching { java.time.LocalDate.parse(date).format(DAY_HEADING) }.getOrDefault(date)

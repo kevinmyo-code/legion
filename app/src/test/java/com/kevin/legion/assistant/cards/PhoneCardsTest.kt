@@ -211,7 +211,9 @@ class PhoneCardsTest {
     private fun codeEvent(date: String, cleared: Boolean, vararg codes: Pair<String, String?>) =
         org.json.JSONObject().put("date", date).put("cleared", cleared).put(
             "codes",
-            org.json.JSONArray(codes.map { (c, m) -> org.json.JSONObject().put("code", c).apply { m?.let { put("meaning", it) } } }),
+            org.json.JSONArray(
+                codes.map { (c, m) -> org.json.JSONObject().put("code", c).apply { m?.let { put("meaning", it) } } },
+            ),
         )
 
     @Test
@@ -224,7 +226,10 @@ class PhoneCardsTest {
             ),
         )
         val card = CarCards.codeHistory("1998 Jeep Cherokee", jeep(), events, chicago)
-        assertEquals(listOf(TroubleCode("P1282", null), TroubleCode("P0700", "Transmission control system")), card.codes)
+        assertEquals(
+            listOf(TroubleCode("P1282", null), TroubleCode("P0700", "Transmission control system")),
+            card.codes,
+        )
         assertEquals(setOf(CarPart.CODES), card.parts.keys)
         val note = card.parts.getValue(CarPart.CODES)
         assertTrue(note, note.contains("newest Aug 25, 2026"))

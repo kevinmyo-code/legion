@@ -135,7 +135,7 @@ private fun CardBody(card: ConversationCard) {
         is ConversationCard.Bars -> BarsBody(card)
         is ConversationCard.Timeline -> {
             card.items.groupBy { it.date }.forEach { (date, items) ->
-                if (date != null) DayHeading(CardWords.dayHeading(date))
+                if (date != null) DayHeading(dayHeading(date))
                 items.forEach { Line(CardWords.timeline(it)) }
             }
             MoreLine(card.more)
@@ -159,7 +159,12 @@ private fun MoreLine(count: Int) {
 
 @Composable
 private fun DayHeading(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = SoftColors.text2, modifier = Modifier.padding(top = 4.dp))
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = SoftColors.text2,
+        modifier = Modifier.padding(top = 4.dp),
+    )
 }
 
 @Composable

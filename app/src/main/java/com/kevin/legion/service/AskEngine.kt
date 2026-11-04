@@ -198,7 +198,8 @@ class AskEngine(
                 if (tool.writes) {
                     if (result.isError) tally.failed += result.text else tally.committed += tool.name
                 }
-                onToolResult(EngineToolAnswer(tool.name, result.isError, result.structured, result.card, clockMs() - startedAt))
+                val roundTrip = clockMs() - startedAt
+                onToolResult(EngineToolAnswer(tool.name, result.isError, result.structured, result.card, roundTrip))
                 // An error is handed back marked, so the sub-agent cannot read it as data.
                 val body = capped(result.text)
                 if (result.isError) "FAILED, not done: $body" else body
