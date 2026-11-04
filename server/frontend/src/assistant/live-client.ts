@@ -1,4 +1,4 @@
-import { AudioError, type AudioIO } from './audio'
+import { AudioError, type AudioIO, type AudioLevels } from './audio'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { base64ToPcm16, pcm16ToBase64 } from './pcm'
 
@@ -386,6 +386,11 @@ export class LiveClient {
     )
   }
 
+  /** How loud the mic and the reply are now (0 to 1 each); zero before the mic has ever opened. */
+  levels(): AudioLevels {
+    return this.audioIO?.levels?.() ?? { input: 0, output: 0 }
+  }
+
   /** Stop talking; the conversation stays open for typing. */
   stopVoice() {
     if (this.state.mic === 'on') this.rec({ kind: 'mic_closed', reason: 'stopped' })
@@ -708,6 +713,11 @@ export class LiveClient {
     if ((said || sound) && !this.replyStarted) {
       this.replyStarted = true
       this.markReply()
+      // The reply has begun, so the wait is over: the activity is now what the
+      // reply is doing (speaking, or a typed answer arriving), not "checking".
+      // Holding `awaiting` to turnComplete showed a spoken greeting as thinking
+      // for its whole length (the voice orb, 2026-11-04).
+      this.awaiting = false
     }
     if (said) this.appendAi(said)
     const audible = this.state.mic === 'on' && !this.typedTurn

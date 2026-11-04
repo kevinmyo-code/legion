@@ -516,6 +516,17 @@ describe('an opening turn (opt-in, for a page that wants the assistant to speak 
     await settle()
     expect(audio.played).toHaveLength(1)
     expect(text(client)).toEqual(['ai:Welcome.'])
+    // The greeting has begun: speaking, not still "checking" until turnComplete (the voice orb).
+    expect(client.getState().activity).toBe('speaking')
+  })
+
+  it('a typed question is thinking until its answer starts, not until the turn completes', async () => {
+    const { client } = build()
+    const socket = await live(client, 'What is on today?')
+    expect(client.getState().activity).toBe('thinking')
+    socket.serve({ serverContent: { outputTranscription: { text: 'Two things' } } })
+    await settle()
+    expect(client.getState().activity).toBe('idle')
   })
 
   it('a start from a typed message skips it: the message is the first turn', async () => {
