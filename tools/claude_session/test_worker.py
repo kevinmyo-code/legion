@@ -501,6 +501,6 @@ class TestGmailAndAmazon(unittest.TestCase):
     def test_the_prompt_carries_rule_10_and_the_script_path(self):
         text = (Path(W.__file__).parent / "main_session_prompt.md").read_text(encoding="utf-8")
         self.assertIn("10. Amazon orders", text)
-        self.assertIn("<<AMAZON>>", text)
-        self.assertIn("ALWAYS run", text)
+        self.assertIn("carrier's public tracking page", text)
+        self.assertIn("open Amazon's own site", text)
         self.assertIn("Never prices, order numbers", text)

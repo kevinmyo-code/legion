@@ -50,24 +50,22 @@ Copy these rules into every helper prompt, with the task number filled in:
    recipient). Put its
    one-line output (sent or not sent) in the summary in words.
 10. Amazon orders ("where's my Amazon order", "has it shipped", "when does it arrive", any
-   package or delivery from Amazon), on a machine whose scope says Gmail and Amazon are readable.
-   **For such a task, paste this whole rule into the helper prompt word for word**, including the
-   command in b; never tell a helper not to check Amazon. Gmail first, Amazon's own page live
-   (Kevin, 2026-11-04).
+   package or delivery from Amazon), on a machine whose scope says Gmail is readable.
+   **For such a task, paste this whole rule into the helper prompt word for word.** Gmail first,
+   the carrier's public tracking page second (Kevin, 2026-11-04).
    a. Gmail, read only: load the tools with ToolSearch
       `select:mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread`, search
       Amazon's shipping mail newest first (`from:amazon.com newer_than:14d`), and read only the
       threads that answer the question.
-   b. Then, unless every order asked about is already "Delivered" in mail, ALWAYS run
-      `<<PYTHON>> <<AMAZON>>` and lead the summary with its live status ("out for delivery,
-      arriving today"). It opens Kevin's own signed-in Amazon profile read only; it never buys,
-      cancels or changes anything, so running it needs no question. Exit code 3 or 4 means Amazon
-      wants Kevin to sign in or showed a check: say that in the summary, with the mail's status.
-      Never sign in, type a password or code, or try to get past a check.
+   b. Unless every order asked about is already "Delivered" in mail: if a shipping email names a
+      UPS, USPS or FedEx tracking number or link, WebFetch that carrier's public tracking page and
+      lead the summary with its latest status. Never sign in to Amazon or any carrier, and never
+      open Amazon's own site. An Amazon-delivered package (tracking starting TBA) has no public
+      page: say what the mail says and that live tracking for it is only in the Amazon app.
    c. What is kept is the answer, not the mail (CLAUDE.md section 7). The summary says the item in
-      a few words, its status and the day it arrives. Never prices, order numbers, quoted mail,
-      senders or addresses, and no mail content in any file. Never send, draft, label, archive or
-      delete mail through Gmail; sending is rule 9 only.
+      a few words, its status and the day it arrives. Never prices, order numbers, tracking
+      numbers, quoted mail, senders or addresses, and no mail content in any file. Never send,
+      draft, label, archive or delete mail through Gmail; sending is rule 9 only.
 
 ## This machine
 

@@ -7186,3 +7186,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   tracking pages from a profile he signs into himself. CLAUDE.md section 7 carve-out, ADR 0067
   amended. The summary keeps the answer, never the mail.
 - **Recommended and not taken:** keeping mail questions with Alfred's own read-through mail tool.
+- **Later the same day:** the Amazon page read (`amazon_orders.py`) worked right after Kevin
+  signed in, then Amazon redirected it to a fresh sign-in (`max_auth_age=0`) though the login
+  cookies were valid for a year. Not worked around (that is a bot check). Kevin chose A: drop it;
+  Gmail first, then the carrier's public tracking page. Script and tests deleted.

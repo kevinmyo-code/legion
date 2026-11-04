@@ -57,12 +57,13 @@ can take several messages, start a background helper per task, stay free, and re
   the flag and never sends mail. Mail to anyone else still asks. WhatsApp delivery was chosen and
   dropped the same day.
 - **Gmail and Amazon orders (amended 2026-11-04, Kevin).** On the Alienware a helper may read
-  Kevin's Gmail, read only (search and read thread; `session.py` `GMAIL_READ`), and his Amazon
-  orders through `amazon_orders.py`, a headless browser on his own signed-in profile that opens
-  only the order list and tracking pages and never clicks. Amazon mail first, the live page when
-  mail has no status or an old one. The summary keeps only the answer (CLAUDE.md section 7,
-  carve-out 2026-11-04). The script never signs in or passes a check: Kevin signs in himself
-  with `--sign-in`. The work laptop gets neither.
+  Kevin's Gmail, read only (search and read thread; `session.py` `GMAIL_READ`). For Amazon orders,
+  mail first, then the carrier's public tracking page (UPS, USPS, FedEx) when the mail names one;
+  never Amazon's own site. A headless read of his Amazon orders page was built and dropped the same
+  day: Amazon sent the unattended browser to a fresh sign-in (`max_auth_age=0`) hours after Kevin
+  signed in, and getting past that would be getting past a bot check (Kevin chose option A). The
+  summary keeps only the answer (CLAUDE.md section 7, carve-out 2026-11-04). The work laptop has
+  no Gmail.
 - **Availability.** A locked laptop is on; powered off is off. A machine with no heartbeat for
   90 s is offline. A running task is failed after 30 minutes, or after its machine is silent for
   10. All three are computed when read, never written by a job.
