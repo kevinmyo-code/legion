@@ -30,7 +30,7 @@ describe('tool cards', () => {
     expect(rows.map((row) => row.textContent)).toEqual([
       'All dayBin day',
       '9:00 amFarmers market (suggestion, not a plan)',
-      '3:30 pm to 4:15 pmDentist',
+      '3:30 pmto 4:15 pmDentist',
       '6:00 pmCall the plumber (to do)',
     ])
     expect(within(card).getByText('3 more not shown.')).toBeInTheDocument()
