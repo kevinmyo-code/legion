@@ -33,6 +33,10 @@ Rulings this file enforces, by number in the map:
   files are requested at once (asking was the yes), the worker uploads them
   (HTML only, 5 MB), and every task row lists them under `artifacts` with a
   10 minute signed link to `PageView`, which serves the page sandboxed.
+- Step history (Kevin 2026-11-03): the heartbeat's `progress` line is also
+  appended to the task's `steps` when it changes, last 20 kept, and served
+  newest first on every task row. It outlives the finish (the current line
+  does not). A `listed` machine keeps none (ruling 5).
 """
 
 from __future__ import annotations
@@ -47,6 +51,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from rest_framework import serializers as drf
 from rest_framework import status as http
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -71,6 +76,7 @@ from claude_session.models import (
     RUNNING,
     SCOPE_LISTED,
     SESSION_WAITING,
+    STEPS_MAX,
     TERMINAL,
     TITLE_MAX_CHARS,
     ClaudeCodeSession,
@@ -98,6 +104,8 @@ PAGE_SALT = "claude-session-page"
 # Served exactly like the recruiter report (`demo.content_views`): scripts run
 # in an opaque origin, so the page cannot read a cookie or call the engine.
 PAGE_CSP = "sandbox allow-scripts"
+# A step's time in the same shape DRF writes every other datetime.
+_STEP_TIME = drf.DateTimeField()
 _TITLE_RE = re.compile(rb"<title[^>]*>(.*?)</title>", re.I | re.S)
 
 
@@ -197,6 +205,7 @@ def task_row(task: ClaudeTask, now) -> dict:
         "confirms": task.confirms,
         "progress": task.progress,
         "progress_at": task.progress_at,
+        "steps": _steps(task),
     }
 
 
@@ -555,17 +564,45 @@ def _touch_machine(request, data: dict, now) -> ClaudeMachine:
     return machine
 
 
-def _store_progress(tasks, progress: dict, now) -> None:
+def _store_progress(tasks, progress: dict, now, keep_steps: bool) -> None:
     """Each running task's current step, as the worker reported it. Only tasks
-    in flight on THIS machine take it; an unknown or finished id is ignored."""
+    in flight on THIS machine take it; an unknown or finished id is ignored.
+
+    With [keep_steps] (a `full` machine) a step that differs from the newest
+    one kept is appended to the task's history, oldest dropped past
+    STEPS_MAX. A `listed` machine keeps the current line only, never a
+    history (ruling 5's summaries-only posture)."""
     for key, text in progress.items():
         try:
             task_id = int(key)
         except (TypeError, ValueError):
             continue
-        tasks.filter(pk=task_id, status__in=IN_FLIGHT).update(
-            progress=text or None, progress_at=now
-        )
+        live = tasks.filter(pk=task_id, status__in=IN_FLIGHT)
+        live.update(progress=text or None, progress_at=now)
+        if not keep_steps or not text:
+            continue
+        with transaction.atomic():
+            task = live.select_for_update().only("id", "steps").first()
+            if task is None:
+                continue
+            steps = list(task.steps or [])
+            if steps and steps[-1].get("text") == text:
+                continue
+            steps.append({"at": _STEP_TIME.to_representation(now), "text": text})
+            task.steps = steps[-STEPS_MAX:]
+            task.save(update_fields=["steps"])
+
+
+def _steps(task: ClaudeTask) -> list[dict]:
+    """The history newest first. Empty for a `listed` machine whatever is
+    stored, so a machine whose scope narrowed never shows an older history."""
+    if task.machine is not None and task.machine.scope == SCOPE_LISTED:
+        return []
+    return [
+        {"at": step.get("at"), "text": step.get("text", "")}
+        for step in reversed(task.steps or [])
+        if isinstance(step, dict)
+    ]
 
 
 class HeartbeatView(APIView):
@@ -584,7 +621,10 @@ class HeartbeatView(APIView):
         now = timezone.now()
         machine = _touch_machine(request, serializer.validated_data, now)
         tasks = scoped(ClaudeTask, request).filter(machine=machine)
-        _store_progress(tasks, serializer.validated_data["progress"], now)
+        _store_progress(
+            tasks, serializer.validated_data["progress"], now,
+            keep_steps=machine.scope != SCOPE_LISTED,
+        )
         cancel = list(
             tasks.filter(status=CANCEL_REQUESTED).order_by("id").values_list("id", flat=True)
         )

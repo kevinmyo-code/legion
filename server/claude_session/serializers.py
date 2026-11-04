@@ -174,6 +174,11 @@ class ClaudeArtifactSerializer(serializers.Serializer):
     expires_in = serializers.IntegerField(help_text="Seconds the link stays valid.")
 
 
+class ClaudeTaskStepSerializer(serializers.Serializer):
+    at = serializers.DateTimeField(help_text="When the engine first heard this step.")
+    text = serializers.CharField()
+
+
 class ClaudeTaskRowSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     request = serializers.CharField()
@@ -191,6 +196,11 @@ class ClaudeTaskRowSerializer(serializers.Serializer):
     confirms = serializers.BooleanField()
     progress = serializers.CharField(allow_null=True, help_text="The current step while running.")
     progress_at = serializers.DateTimeField(allow_null=True)
+    steps = ClaudeTaskStepSerializer(
+        many=True,
+        help_text="The last 20 distinct steps, newest first; kept after the task finishes. "
+        "Always empty for a summaries-only (listed) machine.",
+    )
 
 
 class ClaudeCancelledSerializer(serializers.Serializer):

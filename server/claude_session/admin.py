@@ -24,7 +24,7 @@ class ClaudeMachineAdmin(_ReadOnly):
 class ClaudeTaskAdmin(_ReadOnly):
     list_display = ("id", "household", "machine", "status", "created_at", "finished_at")
     list_filter = ("status",)
-    exclude = ("request", "summary", "question")
+    exclude = ("request", "summary", "question", "progress", "steps")
 
 
 @admin.register(ClaudeTaskFile)

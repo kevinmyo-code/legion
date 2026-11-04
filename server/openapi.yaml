@@ -10951,6 +10951,12 @@ components:
           type: string
           format: date-time
           nullable: true
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeTaskStep'
+          description: The last 20 distinct steps, newest first; kept after the task
+            finishes. Always empty for a summaries-only (listed) machine.
       required:
       - artifacts
       - confirms
@@ -10967,6 +10973,7 @@ components:
       - question
       - request
       - status
+      - steps
       - summary
     ClaudeTaskStatusEnum:
       enum:
@@ -10988,6 +10995,18 @@ components:
         * `failed` - failed
         * `needs_confirmation` - needs_confirmation
         * `cancelled` - cancelled
+    ClaudeTaskStep:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: When the engine first heard this step.
+        text:
+          type: string
+      required:
+      - at
+      - text
     ClaudeUploadResult:
       type: object
       properties:

@@ -96,6 +96,9 @@ FINISH_STATUSES: tuple[str, ...] = (DONE, FAILED, NEEDS_CONFIRMATION, CANCELLED)
 REQUEST_MAX_BYTES = 4 * 1024
 SUMMARY_MAX_BYTES = 16 * 1024
 PROGRESS_MAX_CHARS = 120
+# Step history (Kevin 2026-11-03, "see how many sessions are running etc."):
+# the last 20 distinct progress lines per task, each with when it arrived.
+STEPS_MAX = 20
 FILE_MAX_BYTES = 25 * 1024 * 1024
 RETENTION_DAYS = 30
 # A delivered page (ticket 09): HTML only, at most 5 MB, opened through a
@@ -171,6 +174,15 @@ class ClaudeTask(models.Model):
     # heartbeat (Kevin 2026-11-01, "yes to status extras"). Cleared on finish.
     progress = models.TextField(null=True, blank=True)
     progress_at = models.DateTimeField(null=True, blank=True)
+    # The step history: `[{"at": iso8601, "text": "..."}]`, oldest first, at
+    # most STEPS_MAX, appended from the same heartbeat field as `progress`
+    # when the text changes (`views._store_progress`). Unlike `progress` it is
+    # KEPT when the task finishes, so the screen can show how it got there.
+    # Never kept for a `listed` machine (ruling 5's posture, the same as
+    # `last_prompt_summary`): the work laptop sends summaries only. A column on
+    # the task rather than its own table, so it is tenanted, pruned and
+    # deleted exactly with the row it belongs to.
+    steps = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(db_default=Now())
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
