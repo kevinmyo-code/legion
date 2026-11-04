@@ -502,4 +502,5 @@ class TestGmailAndAmazon(unittest.TestCase):
         text = (Path(W.__file__).parent / "main_session_prompt.md").read_text(encoding="utf-8")
         self.assertIn("10. Amazon orders", text)
         self.assertIn("<<AMAZON>>", text)
-        self.assertIn("The summary holds only the", text)
+        self.assertIn("ALWAYS run", text)
+        self.assertIn("Never prices, order numbers", text)

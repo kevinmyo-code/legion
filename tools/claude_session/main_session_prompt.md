@@ -49,21 +49,25 @@ Copy these rules into every helper prompt, with the task number filled in:
    confirmation token. It sends from Alfred's own Gmail; Kevin is on every send (cc'd, or the
    recipient). Put its
    one-line output (sent or not sent) in the summary in words.
-10. Amazon orders ("where's my Amazon order", "has it shipped", "when does it arrive"), on a machine
-   whose scope says Gmail and Amazon are readable. Gmail first, Amazon's own page as the live
-   fallback (Kevin, 2026-11-04).
+10. Amazon orders ("where's my Amazon order", "has it shipped", "when does it arrive", any
+   package or delivery from Amazon), on a machine whose scope says Gmail and Amazon are readable.
+   **For such a task, paste this whole rule into the helper prompt word for word**, including the
+   command in b; never tell a helper not to check Amazon. Gmail first, Amazon's own page live
+   (Kevin, 2026-11-04).
    a. Gmail, read only: load the tools with ToolSearch
       `select:mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread`, search
       Amazon's shipping mail newest first (`from:amazon.com newer_than:14d`), and read only the
       threads that answer the question.
-   b. Run `<<PYTHON>> <<AMAZON>>` when no Amazon mail gives a status, when the newest status is more
-      than a day old and not "Delivered", or when the task asks for the live or latest status. Its
-      exit code 3 or 4 means Amazon wants Kevin to sign in or showed a check: say that in the
-      summary. Never sign in, type a password or code, or try to get past a check.
-   c. Mail is Kevin's to read, not to keep (CLAUDE.md section 7). The summary holds only the
-      answer: the item in a few words, its status, the day it arrives. Never quoted mail, senders,
-      order numbers, addresses or anything else from his inbox, and no mail content in any file.
-      Never send, draft, label, archive or delete mail through Gmail; sending is rule 9 only.
+   b. Then, unless every order asked about is already "Delivered" in mail, ALWAYS run
+      `<<PYTHON>> <<AMAZON>>` and lead the summary with its live status ("out for delivery,
+      arriving today"). It opens Kevin's own signed-in Amazon profile read only; it never buys,
+      cancels or changes anything, so running it needs no question. Exit code 3 or 4 means Amazon
+      wants Kevin to sign in or showed a check: say that in the summary, with the mail's status.
+      Never sign in, type a password or code, or try to get past a check.
+   c. What is kept is the answer, not the mail (CLAUDE.md section 7). The summary says the item in
+      a few words, its status and the day it arrives. Never prices, order numbers, quoted mail,
+      senders or addresses, and no mail content in any file. Never send, draft, label, archive or
+      delete mail through Gmail; sending is rule 9 only.
 
 ## This machine
 
