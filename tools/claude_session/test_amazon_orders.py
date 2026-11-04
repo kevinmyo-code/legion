@@ -43,7 +43,7 @@ class TestParsing(unittest.TestCase):
 
     def test_tracking_keeps_the_status_lines_only(self):
         self.assertEqual(A.parse_tracking(TRACKING),
-                         "Arriving Thursday; Out for delivery; Latest update: Departed Amazon facility, Houston TX")
+                         "Arriving Thursday; Latest update: Departed Amazon facility, Houston TX")
 
     def test_delivered_orders_are_not_tracked(self):
         self.assertTrue(A.delivered("Delivered November 2"))

@@ -85,15 +85,19 @@ def parse_card(text: str) -> Order:
 
 
 def parse_tracking(text: str) -> str:
-    """A tracking page's visible text, cut to its status lines: the headline and the latest event."""
-    picked: list[str] = []
+    """A tracking page's visible text, cut to its headline status and latest update.
+
+    The page also draws a progress bar whose step labels ("Ordered", "Shipped", "Out for
+    delivery") look like statuses; only the first status line is the package's own.
+    """
+    headline = ""
+    latest = ""
     for line in lines_of(text):
-        if STATUS.match(line) or line.lower().startswith(("latest update", "shipped with", "carrier")):
-            if line not in picked:
-                picked.append(line)
-        if len(picked) == 3:
-            break
-    return "; ".join(picked)
+        if not headline and STATUS.match(line):
+            headline = line
+        elif not latest and line.lower().startswith("latest update"):
+            latest = line
+    return "; ".join(part for part in (headline, latest) if part)
 
 
 def delivered(status: str) -> bool:
@@ -172,6 +176,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--track", type=int, default=TRACK_LIMIT)
     args = parser.parse_args(argv)
+    # Item titles carry any character (full-width commas, emoji); a Windows console is cp1252.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
