@@ -552,6 +552,9 @@ private fun LegionShell(
     // The header's QUIET toggle. Re-read on every resume, because the Quick Settings tile can flip
     // Quiet while LEGION is in the background, and a header that disagrees with the phone is a lie.
     var quietOn by remember { mutableStateOf(com.kevin.legion.quiet.QuietMode.isOn(context)) }
+    // The header's Claude sessions button and its sheet (Kevin 2026-11-04); the badge is the last read's count.
+    var claudeSheetOpen by remember { mutableStateOf(false) }
+    val claudeSummary by com.kevin.legion.claude.ClaudeLiveWatch.get(context).summary.collectAsStateWithLifecycle()
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
         quietOn = com.kevin.legion.quiet.QuietMode.isOn(context)
     }
@@ -826,6 +829,8 @@ private fun LegionShell(
                             // and moved the day view (and its alarm-tag rendering) onto its own
                             // route again.
                             onOpenAlarm = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
+                            onOpenClaude = { claudeSheetOpen = true },
+                            claudeRunning = claudeSummary?.running ?: 0,
                         )
                     }
                     // [LegionTabRow] DELETED 2026-09-10 (one-home ticket 03b, on ticket 01's
@@ -1337,6 +1342,17 @@ private fun LegionShell(
         // - a third SIBLING beside the two above, for the same reason: its own dismiss policy
         // (explicit only, no timer - see GeneratedViewController's own doc comment).
         GeneratedViewHost()
+
+        // The Claude task dialog and the header's Claude sheet (Kevin 2026-11-04), over any route.
+        // The dialog waits out driving mode and appears after it (see ClaudeTaskModalHost).
+        val openClaudeScreen = { navController.navigate(LegionRoute.CLAUDE_SESSION) { launchSingleTop = true } }
+        if (claudeSheetOpen) {
+            com.kevin.legion.ui.claudesession.ClaudeSessionsSheetHost(
+                onDismiss = { claudeSheetOpen = false },
+                onOpenAll = openClaudeScreen,
+            )
+        }
+        com.kevin.legion.ui.claudesession.ClaudeTaskModalHost(onOpenAll = openClaudeScreen, suppressed = isDrivingMode)
     }
 }
 

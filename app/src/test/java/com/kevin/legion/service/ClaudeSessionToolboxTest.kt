@@ -1,6 +1,8 @@
 package com.kevin.legion.service
 
 import com.kevin.legion.claude.ClaudeCreated
+import com.kevin.legion.claude.ClaudeModalHolder
+import com.kevin.legion.claude.InMemoryClaudeModalMemory
 import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.claude.ClaudeTask
@@ -30,16 +32,44 @@ import org.robolectric.RuntimeEnvironment
 class ClaudeSessionToolboxTest {
     private val context = RuntimeEnvironment.getApplication()
     private lateinit var backend: FakeClaudeBackend
+    private lateinit var modal: ClaudeModalHolder
 
     @Before
     fun setUp() {
         backend = FakeClaudeBackend()
+        modal = ClaudeModalHolder(InMemoryClaudeModalMemory())
         ClaudeSessionToolbox.controllerFactory = { ClaudeSessionController(backend) }
+        ClaudeSessionToolbox.modalFactory = { modal }
     }
 
     @After
     fun tearDown() {
         ClaudeSessionToolbox.controllerFactory = ClaudeSessionController::forContext
+        ClaudeSessionToolbox.modalFactory = ClaudeModalHolder::get
+    }
+
+    @Test
+    fun `a send the engine accepted opens the task dialog on that task`() {
+        backend.machines(machine("Alienware"))
+        call("action" to "send", "request" to "check my Amazon orders")
+        assertEquals(41, modal.pending.value?.taskId)
+        assertFalse(modal.pending.value!!.seen)
+    }
+
+    @Test
+    fun `a send that was not sent opens nothing, and a check opens nothing`() {
+        backend.statusOut = ClaudeOutcome.Unreachable("down")
+        call("action" to "send", "request" to "check my Amazon orders")
+        call("action" to "check")
+        assertEquals(null, modal.pending.value)
+    }
+
+    @Test
+    fun `a task waiting for a machine opens the dialog too`() {
+        backend.machines(machine("Alienware"), machine("Spare"))
+        backend.createOut = { ClaudeOutcome.Ok(ClaudeCreated(52, ClaudeTask.NEEDS_MACHINE, null)) }
+        call("action" to "send", "request" to "list my repos")
+        assertEquals(52, modal.pending.value?.taskId)
     }
 
     private fun call(vararg args: Pair<String, Any>): JSONObject = runBlocking {

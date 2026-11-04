@@ -1,5 +1,6 @@
 package com.kevin.legion.claude
 
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -30,6 +31,18 @@ class ClaudeWording(
             today -> time
             today.minusDays(1) -> "yesterday $time"
             else -> then.format(DAY) + ", " + time
+        }
+    }
+
+    /** "just now", "12 min ago", "3 h ago", then the clock ("yesterday 9:05 PM"), or "time unknown". */
+    fun age(at: Instant?): String {
+        at ?: return "time unknown"
+        val minutes = Duration.between(at, now()).toMinutes()
+        return when {
+            minutes < 1 -> "just now"
+            minutes < MINUTES_PER_HOUR -> "$minutes min ago"
+            minutes < MINUTES_PER_DAY -> "${minutes / MINUTES_PER_HOUR} h ago"
+            else -> clock(at)
         }
     }
 
@@ -151,6 +164,8 @@ class ClaudeWording(
         private val TIME = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
         private val DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
         private const val REQUEST_SHOWN = 80
+        private const val MINUTES_PER_HOUR = 60L
+        private const val MINUTES_PER_DAY = 24L * MINUTES_PER_HOUR
         private const val KB = 1024L
         private const val MB = KB * KB
 

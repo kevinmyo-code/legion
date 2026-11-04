@@ -849,7 +849,8 @@ fun DeckSectionRule(label: String, modifier: Modifier = Modifier) {
  * the OBD state in words, [keyLabel] if there is one to show (null means the key is armed - nothing
  * to disclose, matching CLAUDE.md §7's "estimates/failures are labelled, a healthy state need not
  * shout"), then the alarm pill once [alarmCount] is positive. Right: the clock, then an APPS icon
- * button if [onOpenApps] is given, then the settings icon button - the only way into `settings/`,
+ * button if [onOpenApps] is given, the Claude sessions button if [onOpenClaude] is given, then the
+ * settings icon button - the only way into `settings/`,
  * unchanged in that respect from the mission-control version (2026-08-12: the sole
  * `navigate(LegionRoute.SETTINGS)` call site elsewhere in the app is
  * [com.kevin.legion.ui.assistant.AssistantStrip]'s mic-blocked branch, which itself requires the
@@ -858,6 +859,8 @@ fun DeckSectionRule(label: String, modifier: Modifier = Modifier) {
  * **States are worded, never colour alone** (CLAUDE.md §4/§7): "Sync off" / "OBD off" / [keyLabel]'s
  * own "Key not set" text carry the meaning; colour (`good`/`text3`, `caution`) reinforces it.
  */
+// One Row of optional header clauses and buttons; split, the left-to-right order would hide.
+@Suppress("LongMethod")
 @Composable
 fun StatusLine(
     synced: Boolean,
@@ -895,6 +898,9 @@ fun StatusLine(
     quietOn: Boolean = false,
     alarmCount: Int = 0,
     onOpenAlarm: (() -> Unit)? = null,
+    /** The Claude sessions sheet, left of the gear (Kevin 2026-11-04); [claudeRunning] is its badge. */
+    onOpenClaude: (() -> Unit)? = null,
+    claudeRunning: Int = 0,
 ) {
     Row(
         modifier
@@ -976,6 +982,7 @@ fun StatusLine(
                     MsIcon(res = R.drawable.ms_apps, contentDescription = "Apps", tint = SoftColors.text2)
                 }
             }
+            if (onOpenClaude != null) ClaudeHeaderButton(running = claudeRunning, onClick = onOpenClaude)
             if (onOpenSettings != null) {
                 if (onOpenPhoneSettings != null) {
                     SettingsGearMenu(onOpenLegionSettings = onOpenSettings, onOpenPhoneSettings = onOpenPhoneSettings)

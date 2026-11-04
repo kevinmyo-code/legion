@@ -1,6 +1,7 @@
 package com.kevin.legion.service
 
 import android.content.Context
+import com.kevin.legion.claude.ClaudeModalHolder
 import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudePageOpener
 import com.kevin.legion.claude.ClaudeSendResult
@@ -35,6 +36,9 @@ object ClaudeSessionToolbox {
 
     /** Test seam for `quiet`/`unquiet`: production flips the proactive "Claude tasks" switch. */
     internal var watchFactory: (Context) -> ClaudeWatch = ::ClaudeWatchStore
+
+    /** Test seam: the process-wide holder the task dialog over the app follows (Kevin 2026-11-04). */
+    internal var modalFactory: (Context) -> ClaudeModalHolder = ClaudeModalHolder::get
 
     private const val DESCRIPTION =
         "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check reads " +
@@ -90,8 +94,9 @@ object ClaudeSessionToolbox {
         if (name != TOOL_NAME) return null
         val c = controllerFactory(context)
         val taskId = args.optInt("task_id", 0)
+        val shown = { out: ClaudeSendResult -> sendResult(showDialog(context, out)) }
         return when (args.optString("action")) {
-            "send" -> sendResult(
+            "send" -> shown(
                 c.send(
                     request = args.optString("request"),
                     machine = args.optString("machine").ifBlank { null },
@@ -105,10 +110,10 @@ object ClaudeSessionToolbox {
                 ),
             )
             "check" -> check(c, args.optString("machine").ifBlank { null })
-            "answer" -> needsTask(taskId) ?: sendResult(
+            "answer" -> needsTask(taskId) ?: shown(
                 c.answer(taskId, args.optString("request"), args.optBoolean("yes", false), args.optBoolean("email_me")),
             )
-            "assign" -> needsTask(taskId) ?: sendResult(c.assign(taskId, args.optString("machine")))
+            "assign" -> needsTask(taskId) ?: shown(c.assign(taskId, args.optString("machine")))
             "send_file" -> needsTask(taskId) ?: sendResult(c.sendFile(taskId, args.optInt("file_id", 0)))
             "open_page" -> needsTask(taskId) ?: ClaudePageOpener.open(context, c, taskId).let {
                 result(it.opened, it.sentence)
@@ -123,6 +128,20 @@ object ClaudeSessionToolbox {
             }
             else -> result(false, "Say whether to send, check, answer, assign or send a file. Nothing was sent.")
         }
+    }
+
+    /**
+     * A task the engine now holds (sent, queued, or waiting for a machine) opens the task dialog
+     * over the app. Nothing that was not created opens anything.
+     */
+    private fun showDialog(context: Context, out: ClaudeSendResult): ClaudeSendResult {
+        val id = when (out) {
+            is ClaudeSendResult.Sent -> out.created.id
+            is ClaudeSendResult.NeedsMachine -> out.taskId
+            is ClaudeSendResult.NotSent -> null
+        }
+        if (id != null && id > 0) modalFactory(context).show(id)
+        return out
     }
 
     private fun needsTask(taskId: Int): JSONObject? =
