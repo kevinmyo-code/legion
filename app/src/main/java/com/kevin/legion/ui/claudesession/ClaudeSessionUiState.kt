@@ -3,10 +3,15 @@ package com.kevin.legion.ui.claudesession
 import com.kevin.legion.claude.ClaudeCodeSession
 import com.kevin.legion.claude.ClaudeMachine
 import com.kevin.legion.claude.ClaudeOverview
+import com.kevin.legion.claude.ClaudeStep
+import com.kevin.legion.claude.ClaudeSteps
 import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.claude.ClaudeWording
 
 data class MachineRowUi(val name: String, val stateText: String, val online: Boolean, val summariesOnly: Boolean)
+
+/** One kept step under a task: "3:40 PM" and "reading Downloads". */
+data class StepRowUi(val time: String, val text: String)
 
 data class FileRowUi(val id: Int, val name: String, val sizeText: String, val uploaded: Boolean, val requested: Boolean)
 
@@ -28,6 +33,8 @@ data class TaskRowUi(
     val pageTitle: String? = null,
     /** Asked for as a page, and the page has not arrived (yet). */
     val pageWaiting: Boolean = false,
+    /** The task's kept steps, newest first, shown under its detail (finished tasks keep theirs). */
+    val steps: List<StepRowUi> = emptyList(),
 )
 
 data class SessionRowUi(
@@ -68,7 +75,10 @@ object ClaudeSessionRows {
     fun machines(list: List<ClaudeMachine>, wording: ClaudeWording): List<MachineRowUi> =
         list.map { MachineRowUi(it.name, wording.machineState(it.state, it.lastSeenAt), it.isOnline, it.summariesOnly) }
 
-    fun tasks(overview: ClaudeOverview): List<TaskRowUi> = overview.tasks.map { t ->
+    fun tasks(
+        overview: ClaudeOverview,
+        wording: ClaudeWording = ClaudeWording(),
+    ): List<TaskRowUi> = overview.tasks.map { t ->
         TaskRowUi(
             id = t.id,
             request = t.request,
@@ -85,8 +95,13 @@ object ClaudeSessionRows {
             needsMachine = t.status == ClaudeTask.NEEDS_MACHINE,
             pageTitle = t.pages.firstOrNull()?.title,
             pageWaiting = t.wantsPage && t.pages.isEmpty() && t.status == ClaudeTask.DONE,
+            steps = steps(t.steps, wording),
         )
     }
+
+    /** Newest first, each with its time in the phone's zone ("3:40 PM", "yesterday 9:05 PM"). */
+    fun steps(list: List<ClaudeStep>, wording: ClaudeWording): List<StepRowUi> =
+        ClaudeSteps.newestFirst(list).map { StepRowUi(it.at?.let(wording::clock) ?: "", it.text) }
 
     /** Waiting on Kevin first (the engine sorts them so too; kept here so the screen cannot drift). */
     fun sessions(list: List<ClaudeCodeSession>): List<SessionRowUi> =

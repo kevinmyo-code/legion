@@ -9,6 +9,7 @@ import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudePage
 import com.kevin.legion.claude.ClaudeSessionBackend
 import com.kevin.legion.claude.ClaudeStatus
+import com.kevin.legion.claude.ClaudeStep
 import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.claude.ClaudeTaskDraft
 import com.kevin.legion.claude.ClaudeTaskFile
@@ -44,6 +45,9 @@ private data class ArtifactRow(
 )
 
 @Serializable
+private data class StepRow(val at: String? = null, val text: String = "")
+
+@Serializable
 private data class TaskRow(
     val id: Int,
     val request: String,
@@ -61,6 +65,7 @@ private data class TaskRow(
     val progress: String? = null,
     @SerialName("progress_at") val progressAt: String? = null,
     val artifacts: List<ArtifactRow> = emptyList(),
+    val steps: List<StepRow> = emptyList(),
 ) {
     /** [resolve] turns the engine's relative page link into one the browser can open. */
     fun toTask(resolve: (String) -> String = { it }) = ClaudeTask(
@@ -82,6 +87,7 @@ private data class TaskRow(
         pages = artifacts.map {
             ClaudePage(it.id, it.filename, it.title.ifBlank { it.filename }, it.size, resolve(it.url))
         },
+        steps = steps.filter { it.text.isNotBlank() }.map { ClaudeStep(instant(it.at), it.text) },
     )
 }
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -227,6 +228,30 @@ private fun TaskDetail(task: TaskRowUi, state: ClaudeSessionUiState, callbacks: 
         enabled = state.answer.isNotBlank() && !state.sending,
     ) { Text("Send answer") }
     task.files.forEach { f -> FileRow(task, f, callbacks) }
+    StepList(task.steps)
+}
+
+/** The task's kept steps, newest first: the time, then what the helper was doing. */
+@Composable
+private fun StepList(steps: List<StepRowUi>) {
+    if (steps.isEmpty()) return
+    Text(
+        "Steps",
+        style = MaterialTheme.typography.labelLarge,
+        color = SoftColors.text,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+    )
+    steps.forEach { step ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp).testTag(STEP_TAG)) {
+            Text(
+                step.time,
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftColors.text.copy(alpha = 0.7f),
+                modifier = Modifier.width(STEP_TIME_WIDTH),
+            )
+            Text(step.text, style = MaterialTheme.typography.bodySmall, color = SoftColors.text)
+        }
+    }
 }
 
 @Composable
@@ -261,6 +286,10 @@ private fun AnnouncementsRow(on: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 private const val EXPANDED_LINES = 8
+private val STEP_TIME_WIDTH = 112.dp
+
+/** Each step row's test tag, so a test can read them in order. */
+const val STEP_TAG = "claude-session-step"
 
 /** The list's test tag, so a test can scroll to a row below the fold. */
 const val LIST_TAG = "claude-session-list"

@@ -115,6 +115,28 @@ class ClaudeSessionToolboxTest {
     }
 
     @Test
+    fun `check names one step per running task, never the kept history`() {
+        backend.machines(machine("Alienware", state = "busy", running = listOf(41)))
+        val history = listOf(
+            com.kevin.legion.claude.ClaudeStep(FakeClaudeBackend.NOW, "opening wiring.pdf"),
+            com.kevin.legion.claude.ClaudeStep(FakeClaudeBackend.NOW.minusSeconds(60), "reading Downloads"),
+        )
+        backend.tasksOut = ClaudeOutcome.Ok(
+            listOf(
+                task(41, ClaudeTask.RUNNING, progress = "writing the summary").copy(steps = history),
+                task(42, ClaudeTask.RUNNING).copy(steps = history),
+                task(40, ClaudeTask.DONE, summary = "Found it.").copy(steps = history),
+            ),
+        )
+        val m = call("action" to "check").getString("message")
+        assertTrue(m, m.contains("is running: writing the summary. Not done yet."))
+        // No current line: the newest kept step stands in, one line only.
+        assertTrue(m, m.contains("in my downloads\") is running: opening wiring.pdf. Not done yet."))
+        assertFalse(m, m.contains("reading Downloads"))
+        assertEquals(1, Regex("opening wiring.pdf").findAll(m).count())
+    }
+
+    @Test
     fun `a yes needs a task id`() {
         val r = call("action" to "answer", "yes" to true)
         assertFalse(r.getBoolean("success"))

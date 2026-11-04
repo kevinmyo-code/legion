@@ -49,6 +49,12 @@ object ClaudeResultPolling {
         watch = ClaudeWatchStore(app),
         announce = { id, text, hint -> announce(app, id, text, hint) },
         saveFile = { name, bytes -> saveToDownloads(app, name, bytes) },
+        // The ongoing "Claude: N running" notification rides this poll (no loop of its own).
+        liveActive = { ClaudeLiveWatch.get(app).active() },
+        onOverview = { overview ->
+            val live = ClaudeLiveWatch.get(app)
+            if (overview != null) live.seen(overview) else live.unreadable()
+        },
     )
 
     /** Polls while the app is in front; call once from `Application.onCreate` (main thread). */

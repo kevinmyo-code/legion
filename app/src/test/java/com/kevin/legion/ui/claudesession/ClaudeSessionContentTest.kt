@@ -7,8 +7,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.assert
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -64,6 +68,28 @@ class ClaudeSessionContentTest {
         at("on, busy").assertExists()
         at("off since 3:40 PM").assertExists()
         at("Summaries only, never files.").assertExists()
+    }
+
+    @Test
+    fun `an opened task lists its kept steps newest first`() {
+        val steps = listOf(StepRowUi("7:52 PM", "found it"), StepRowUi("7:40 PM", "reading Downloads"))
+        val done = task(40, "Done").copy(steps = steps)
+        show(ClaudeSessionUiState(loading = false, machines = machines, tasks = listOf(done), expandedTask = 40))
+        at("found it").assertExists()
+        at("7:40 PM").assertExists()
+        val drawn = rule.onAllNodesWithTag(STEP_TAG, useUnmergedTree = true).fetchSemanticsNodes()
+        assertEquals(2, drawn.size)
+        assertTrue(drawn[0].positionInRoot.y < drawn[1].positionInRoot.y)
+        rule.onAllNodesWithTag(STEP_TAG, useUnmergedTree = true)[0]
+            .assert(hasAnyDescendant(hasText("found it")))
+    }
+
+    @Test
+    fun `a closed task does not list its steps`() {
+        val done = task(40, "Done").copy(steps = listOf(StepRowUi("7:40 PM", "reading Downloads")))
+        show(ClaudeSessionUiState(loading = false, machines = machines, tasks = listOf(done)))
+        at("Task 40 on the Alienware: Done").assertExists()
+        rule.onNodeWithText("reading Downloads").assertDoesNotExist()
     }
 
     @Test

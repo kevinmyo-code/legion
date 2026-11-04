@@ -125,7 +125,8 @@ class ClaudeWording(
             ClaudeTask.FAILED -> "$head did not finish. ${summary ?: "No reason was given."}"
             ClaudeTask.CANCELLED -> "$head was cancelled. ${summary ?: ""}".trim()
             ClaudeTask.RUNNING, ClaudeTask.CANCEL_REQUESTED ->
-                "$head is running" + (task.progress?.let { ": $it" } ?: "") + ". Not done yet."
+                // The current step, or the newest one kept: one line, never the history.
+                "$head is running" + ((task.progress ?: task.latestStep)?.let { ": $it" } ?: "") + ". Not done yet."
             ClaudeTask.NEEDS_MACHINE -> "$head is waiting for you to pick a machine. Nothing has run."
             else -> "$head is queued. Nothing has run yet."
         }

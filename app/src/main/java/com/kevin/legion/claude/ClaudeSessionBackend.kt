@@ -62,6 +62,12 @@ data class ClaudeTaskFile(
  */
 data class ClaudePage(val id: Int, val filename: String, val title: String, val size: Long?, val url: String)
 
+/**
+ * One step a task's helper reported while it ran ("reading Downloads"), with when the engine
+ * first heard it. The engine keeps the last 20 per task and none for a summaries-only machine.
+ */
+data class ClaudeStep(val at: Instant?, val text: String)
+
 /** One task as `GET tasks/` and `GET tasks/{id}/` serve it. [machine] is the machine's name. */
 data class ClaudeTask(
     val id: Int,
@@ -81,8 +87,13 @@ data class ClaudeTask(
     val progressAt: Instant?,
     /** Delivered pages already on the engine (ticket 09), each with a fresh signed link. */
     val pages: List<ClaudePage> = emptyList(),
+    /** The last steps, kept after the task finishes (the engine serves them newest first). */
+    val steps: List<ClaudeStep> = emptyList(),
 ) {
     val isFinished: Boolean get() = status in FINISHED
+
+    /** The newest step the history holds, or null. Never the whole list: that is the screen's. */
+    val latestStep: String? get() = ClaudeSteps.newestFirst(steps).firstOrNull()?.text
     val needsConfirmation: Boolean get() = status == NEEDS_CONFIRMATION
 
     /** Kevin asked for the result as a page on his phone. */

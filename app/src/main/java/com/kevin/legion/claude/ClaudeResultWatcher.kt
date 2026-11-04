@@ -18,7 +18,9 @@ enum class ClaudeDelivery { DELIVERED, RETRY }
  *
  * **The trigger is a poll, not a push.** `server/push/` is Web Push for browsers; nothing reaches
  * the phone, so this runs on the two loops the Tetris invites already use (`ClaudeResultPolling`).
- * It asks the engine nothing while no task or file is watched, so an idle phone costs nothing.
+ * It asks the engine nothing while no task or file is watched and the ongoing "Claude: N running"
+ * notification is down ([ClaudeLiveWatch]), so an idle phone costs nothing. Each read it makes also
+ * feeds that notification, which is how it follows a running task without a loop of its own.
  *
  * **Compulsion test (CLAUDE.md section 7):** (a) every line is anchored to a task Kevin sent from
  * this phone and quotes the engine's own row; (b) it is actionable (a result, a question waiting
@@ -33,6 +35,14 @@ class ClaudeResultWatcher(
     private val announce: suspend (taskId: Int, text: String, hint: String) -> ClaudeDelivery,
     private val saveFile: suspend (name: String, bytes: ByteArray) -> Boolean,
     private val now: () -> Instant = Instant::now,
+    /**
+     * True while the ongoing "Claude: N running" notification is up ([ClaudeLiveWatch.active]): the
+     * poll then keeps reading even with nothing of this phone's watched, until a read shows nothing
+     * running and the notification comes down.
+     */
+    private val liveActive: () -> Boolean = { false },
+    /** Every read this poll makes, for [ClaudeLiveWatch]; null when the read failed. */
+    private val onOverview: (ClaudeOverview?) -> Unit = {},
 ) {
     private val lock = Mutex()
 
@@ -43,9 +53,11 @@ class ClaudeResultWatcher(
     private suspend fun poll(): Int {
         val tasks = watch.watchedTasks()
         val files = watch.watchedFiles()
-        if (tasks.isEmpty() && files.isEmpty()) return 0
+        if (tasks.isEmpty() && files.isEmpty() && !liveActive()) return 0
         val c = controller() ?: return 0
-        val overview = (c.overview(LIMIT) as? ClaudeOutcome.Ok)?.value ?: return 0
+        val overview = (c.overview(LIMIT) as? ClaudeOutcome.Ok)?.value
+        onOverview(overview)
+        if (overview == null) return 0
         val byId = overview.tasks.associateBy { it.id }.toMutableMap()
         var said = 0
         for (id in tasks) {

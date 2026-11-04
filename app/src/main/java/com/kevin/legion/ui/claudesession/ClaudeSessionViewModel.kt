@@ -3,7 +3,9 @@ package com.kevin.legion.ui.claudesession
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.kevin.legion.claude.ClaudeLiveWatch
 import com.kevin.legion.claude.ClaudeOutcome
+import com.kevin.legion.claude.ClaudeOverview
 import com.kevin.legion.claude.ClaudeSendResult
 import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.claude.ClaudeTaskDraft
@@ -27,10 +29,21 @@ class ClaudeSessionViewModel(
     application: Application,
     private val controller: ClaudeSessionController,
     private val watch: ClaudeWatch,
+    /** Each read, for the ongoing "Claude: N running" notification; null when it failed. */
+    private val onOverview: (ClaudeOverview?) -> Unit = {},
 ) : AndroidViewModel(application) {
 
     constructor(application: Application) :
-        this(application, ClaudeSessionController.forContext(application), ClaudeWatchStore(application))
+        this(
+            application,
+            ClaudeSessionController.forContext(application),
+            ClaudeWatchStore(application),
+            onOverview = { overview ->
+                // A running task seen here (started from the web desk, say) gets the notification too.
+                val live = ClaudeLiveWatch.get(application)
+                if (overview != null) live.seen(overview) else live.unreadable()
+            },
+        )
 
     private val _state = MutableStateFlow(ClaudeSessionUiState())
     val state: StateFlow<ClaudeSessionUiState> = _state.asStateFlow()
@@ -43,13 +56,15 @@ class ClaudeSessionViewModel(
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
-            when (val out = controller.overview()) {
+            val out = controller.overview()
+            onOverview((out as? ClaudeOutcome.Ok)?.value)
+            when (out) {
                 is ClaudeOutcome.Ok -> _state.update {
                     it.copy(
                         loading = false,
                         unavailable = null,
                         machines = ClaudeSessionRows.machines(out.value.status.machines, controller.wording),
-                        tasks = ClaudeSessionRows.tasks(out.value),
+                        tasks = ClaudeSessionRows.tasks(out.value, controller.wording),
                         sessions = ClaudeSessionRows.sessions(out.value.status.sessions),
                     )
                 }

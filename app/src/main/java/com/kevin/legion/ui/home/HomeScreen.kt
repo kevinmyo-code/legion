@@ -189,6 +189,8 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { NowPlayingController.init(context) }
     val nowPlaying by NowPlayingController.state.collectAsStateWithLifecycle()
+    // "Claude: 2 running, 1 needs you" (ClaudeWatchLine.kt), polled only while HOME is started.
+    val claudeLine = rememberClaudeWatchLine()
 
     // One launch path for the dock and the category buttons: the drawer's own `launchDrawerApp` and
     // its failure sentence, with a missing app or an unreadable snapshot said in words.
@@ -324,6 +326,7 @@ fun HomeScreen(
             },
         ),
         onBrief = { briefOpen = true },
+        claudeLine = claudeLine,
     )
     SoftTheme { com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false }) }
 }
@@ -355,6 +358,8 @@ fun HomeContent(
     books: BooksHome = BooksHome(),
     /** The Brief chip. The modal itself is drawn by [HomeScreen], which owns its ViewModel. */
     onBrief: () -> Unit = {},
+    /** The quiet Claude session line, or null for none; a tap opens the Claude session screen. */
+    claudeLine: String? = null,
 ) {
     var moreOpen by remember { mutableStateOf(false) }
     var gamesOpen by remember { mutableStateOf(false) }
@@ -389,6 +394,7 @@ fun HomeContent(
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 )
             }
+            ClaudeWatchLine(claudeLine, tileCallbacks.onOpenClaudeSession)
             NowPlayingRow(nowPlaying = nowPlaying, onOpenMedia = onOpenMedia)
         }
         HomePanelSheet(calendar, calendarCallbacks)
