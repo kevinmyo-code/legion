@@ -273,4 +273,32 @@ class AskEngineTest {
     fun `ask_engine is not episodic excluded because engine data is first party`() {
         assertFalse("ask_engine" in LiveToolbox.EPISODIC_EXCLUDED_TOOLS)
     }
+
+    @Test
+    fun `each engine tool result reaches the card hook with its structured content and round trip`() = runBlocking {
+        val structured = JSONObject().put("procedure", "car_check").put("steps", JSONArray())
+        val reply = JSONObject().put("jsonrpc", "2.0").put("id", 1).put(
+            "result",
+            JSONObject()
+                .put("content", JSONArray().put(JSONObject().put("type", "text").put("text", "Ran car_check.")))
+                .put("structuredContent", structured)
+                .put("isError", false),
+        ).toString()
+        val rec = engine(callAnswer = reply)
+        val seen = mutableListOf<Triple<String, String?, Long>>()
+        var tick = 1_000L
+        val answer = AskEngine(
+            client(rec),
+            agent("read_records" to JSONObject().put("table", "places")),
+            identityClause = { "You are a helper." },
+            nowText = { "2026-10-02T09:00:00-05:00" },
+            onToolResult = { name, isError, s, ms ->
+                assertFalse(isError)
+                seen += Triple(name, s?.optString("procedure"), ms)
+            },
+            clockMs = { tick.also { tick += 250L } },
+        ).ask("what is in places", false, false)
+        assertTrue(answer.success)
+        assertEquals(listOf(Triple("read_records", "car_check", 250L)), seen)
+    }
 }

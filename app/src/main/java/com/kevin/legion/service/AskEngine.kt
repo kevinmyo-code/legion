@@ -53,6 +53,12 @@ class AskEngine(
     private val identityClause: () -> String,
     private val nowText: () -> String,
     private val onAgentResult: (AgentResult) -> Unit = {},
+    /** Every engine tool call that answered: its name, the server's own error flag, its
+     * `structuredContent` (null when the server sent none) and the phone's measured round trip.
+     * Feeds the conversation cards; nothing here changes what the sub-agent or Live is told. */
+    private val onToolResult: (name: String, isError: Boolean, structured: JSONObject?, roundTripMs: Long) -> Unit =
+        { _, _, _, _ -> },
+    private val clockMs: () -> Long = System::currentTimeMillis,
 ) {
 
     /** Writes tracked by [ask]: what committed, and what the server refused or failed. */
@@ -173,6 +179,7 @@ class AskEngine(
             return "Nothing was ${if (tool.writes) "written" else "read"}. $table is internal sync " +
                 "plumbing the app has no screen for, so it is not available by voice."
         }
+        val startedAt = clockMs()
         return when (val outcome = client.callTool(tool.name, args, writes = tool.writes)) {
             is McpCallOutcome.Failed -> {
                 if (tool.writes) tally.failed += outcome.failure.sentence
@@ -183,6 +190,7 @@ class AskEngine(
                 if (tool.writes) {
                     if (result.isError) tally.failed += result.text else tally.committed += tool.name
                 }
+                onToolResult(tool.name, result.isError, result.structured, clockMs() - startedAt)
                 // An error is handed back marked, so the sub-agent cannot read it as data.
                 val body = capped(result.text)
                 if (result.isError) "FAILED, not done: $body" else body
