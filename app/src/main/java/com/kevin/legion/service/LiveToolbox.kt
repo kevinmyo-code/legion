@@ -3044,7 +3044,7 @@ object LiveToolbox {
                 ).let { result(it.success, it.message) }
             "set_budget" -> setBudget(context, args)
             "list_budget_categories" -> listBudgetCategories(context)
-            "get_monthly_spend" -> getMonthlySpend(context)
+            "get_monthly_spend" -> getMonthlySpend(context, args.optString("month"))
             "get_meal_gap" -> getMealGap(context)
             "list_recent_meals" -> listRecentMeals(context, args.optInt("count", 10))
             "log_sleep" -> logSleep(context, args)
@@ -4836,9 +4836,9 @@ object LiveToolbox {
      * the numbers rather than only a pre-baked sentence - see this tool's own description for why
      * the model is told to always say both.
      */
-    private suspend fun getMonthlySpend(context: Context): JSONObject {
+    private suspend fun getMonthlySpend(context: Context, monthArg: String = ""): JSONObject {
         // "This month" is the driver's month, not UTC's - matches setBudget's own reasoning above.
-        val month = YearMonth.now(java.time.ZoneId.systemDefault())
+        val (month, monthNote) = SpendMonth.resolve(monthArg, YearMonth.now(java.time.ZoneId.systemDefault()))
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, month)
         ToolCards.publish(PhoneCards.monthlySpend(budget, month))
         val totalCents = budget.spentCents
@@ -4855,6 +4855,9 @@ object LiveToolbox {
             .put("success", true)
             .put("currency", budget.entity.currency.name)
             .put("month", month.toString())
+            .put("month_words", SpendMonth.words(month))
+            .put("other_months", SpendMonth.otherMonths(month))
+            .apply { monthNote?.let { put("month_note", it) } }
             .put("total_spent_cents", totalCents)
             .put("verified", !unverified)
             .put("excluded_own_account_movements_count", excluded.count)
