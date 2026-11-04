@@ -22,7 +22,10 @@ object BrowserToolbox {
     const val TOOL_NAME = "browser"
 
     private const val DESCRIPTION =
-        "LEGION's on-screen web browser, to SHOW pages (pictures, menus, sites). open: text is a web " +
+        "LEGION's on-screen web browser, to SHOW pages (pictures, menus, sites). Open it ONLY when the " +
+            "user asks to see something: show, pull up, open, picture, photo, look at, go to a site. " +
+            "NEVER open it to answer a question (news, facts, what/why/how/who): answer that out loud " +
+            "from your own Google Search. open: text is a web " +
             "address or a Google search (kind=images for pictures). read: page text plus numbered " +
             "links, buttons and fields. click: by number or text. type: text into a numbered field, " +
             "submit=true to submit; never passwords (autofill fills them). To ANSWER a question in " +

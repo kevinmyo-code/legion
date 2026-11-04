@@ -514,13 +514,17 @@
         <!-- LEGION's browser (ADR 0071). Its own task so the page survives between voice commands and
              whatever MainActivity shows meanwhile. Not exported and reads no extras: the voice tool
              hands it pages in-process. The alias below is the "Browser" entry every app drawer lists
-             (ADR 0035's hands path); it carries nothing in from another app. -->
+             (ADR 0035's hands path); it carries nothing in from another app. Kept out of Recents
+             (2026-11-03 audit): its card sat beside LEGION's, so an app-switch swipe brought back the
+             last page unasked. Voice and the Browser icon still reach it. -->
         <activity
             android:name=".ui.browser.BrowserActivity"
             android:exported="false"
             android:label="Browser"
             android:launchMode="singleTask"
             android:taskAffinity="com.kevin.legion.browser"
+            android:excludeFromRecents="true"
+            android:autoRemoveFromRecents="true"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|navigation|uiMode"
             android:theme="@style/Theme.Legion" />
