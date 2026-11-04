@@ -16,7 +16,13 @@ data class McpTool(
 /** What `tools/call` answered. [isError] is the server's own flag; [text] is its sentence.
  * [structured] is the result's `structuredContent`, when the server sent one: the data the
  * sentence was written from, read by the conversation cards (`assistant/cards/EngineCards`). */
-data class McpCallResult(val text: String, val isError: Boolean, val structured: JSONObject? = null)
+data class McpCallResult(
+    val text: String,
+    val isError: Boolean,
+    val structured: JSONObject? = null,
+    /** The engine's own card for this result (`_meta.card`, `server/engine_mcp/cards.py`). */
+    val card: JSONObject? = null,
+)
 
 /**
  * Why a call to `/mcp` produced no result, in the words a person hears. Every branch states what
@@ -243,7 +249,12 @@ class EngineMcpClient(
                     isError = true,
                 )
             } else {
-                McpCallResult(text, isError, result.optJSONObject("structuredContent"))
+                McpCallResult(
+                    text,
+                    isError,
+                    result.optJSONObject("structuredContent"),
+                    result.optJSONObject("_meta")?.optJSONObject("card"),
+                )
             }
         }
 

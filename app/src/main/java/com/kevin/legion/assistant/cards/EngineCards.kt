@@ -1,5 +1,6 @@
 package com.kevin.legion.assistant.cards
 
+import com.kevin.legion.service.EngineToolAnswer
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -16,8 +17,14 @@ import org.json.JSONObject
  */
 object EngineCards {
 
-    /** A run that stopped part way is still a card, error flag or not: its failed step is the
-     * point of showing it, and its status is said in words. No other tool makes one yet. */
+    /**
+     * The engine's own card ([ServerCards], from `_meta.card`) when it sent one; otherwise, for
+     * `run_procedure` only, a steps card from its structured summary (an engine from before
+     * `_meta.card`). A run that stopped part way is still a card, error flag or not.
+     */
+    fun fromAnswer(answer: EngineToolAnswer): ConversationCard? =
+        answer.card?.let(ServerCards::parse) ?: fromTool(answer.tool, answer.structured, answer.roundTripMs)
+
     fun fromTool(name: String, structured: JSONObject?, roundTripMs: Long): ConversationCard? =
         when (name) {
             "run_procedure" -> structured?.let { procedureSteps(it, roundTripMs) }

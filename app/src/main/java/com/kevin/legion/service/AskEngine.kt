@@ -9,6 +9,16 @@ import com.kevin.legion.backend.engine.McpTool
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** One engine tool's answer as the card hook sees it: the server's error flag, its
+ * `structuredContent` and `_meta.card` (each null when not sent), and the phone's round trip. */
+data class EngineToolAnswer(
+    val tool: String,
+    val isError: Boolean,
+    val structured: JSONObject?,
+    val card: JSONObject?,
+    val roundTripMs: Long,
+)
+
 /** What `ask_engine` hands back to the Live session: the same `{success, message}` shape every
  * other tool returns. */
 data class AskEngineAnswer(val success: Boolean, val message: String) {
@@ -53,11 +63,9 @@ class AskEngine(
     private val identityClause: () -> String,
     private val nowText: () -> String,
     private val onAgentResult: (AgentResult) -> Unit = {},
-    /** Every engine tool call that answered: its name, the server's own error flag, its
-     * `structuredContent` (null when the server sent none) and the phone's measured round trip.
-     * Feeds the conversation cards; nothing here changes what the sub-agent or Live is told. */
-    private val onToolResult: (name: String, isError: Boolean, structured: JSONObject?, roundTripMs: Long) -> Unit =
-        { _, _, _, _ -> },
+    /** Every engine tool call that answered ([EngineToolAnswer]). Feeds the conversation cards;
+     * nothing here changes what the sub-agent or Live is told. */
+    private val onToolResult: (EngineToolAnswer) -> Unit = {},
     private val clockMs: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -190,7 +198,7 @@ class AskEngine(
                 if (tool.writes) {
                     if (result.isError) tally.failed += result.text else tally.committed += tool.name
                 }
-                onToolResult(tool.name, result.isError, result.structured, clockMs() - startedAt)
+                onToolResult(EngineToolAnswer(tool.name, result.isError, result.structured, result.card, clockMs() - startedAt))
                 // An error is handed back marked, so the sub-agent cannot read it as data.
                 val body = capped(result.text)
                 if (result.isError) "FAILED, not done: $body" else body

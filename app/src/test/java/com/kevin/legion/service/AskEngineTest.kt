@@ -275,30 +275,34 @@ class AskEngineTest {
     }
 
     @Test
-    fun `each engine tool result reaches the card hook with its structured content and round trip`() = runBlocking {
+    fun `each engine tool result reaches the card hook with its structured content, card and round trip`() =
+        runBlocking {
         val structured = JSONObject().put("procedure", "car_check").put("steps", JSONArray())
         val reply = JSONObject().put("jsonrpc", "2.0").put("id", 1).put(
             "result",
             JSONObject()
                 .put("content", JSONArray().put(JSONObject().put("type", "text").put("text", "Ran car_check.")))
                 .put("structuredContent", structured)
+                .put("_meta", JSONObject().put("card", JSONObject().put("card", "checklist")))
                 .put("isError", false),
         ).toString()
         val rec = engine(callAnswer = reply)
-        val seen = mutableListOf<Triple<String, String?, Long>>()
+        val seen = mutableListOf<EngineToolAnswer>()
         var tick = 1_000L
         val answer = AskEngine(
             client(rec),
             agent("read_records" to JSONObject().put("table", "places")),
             identityClause = { "You are a helper." },
             nowText = { "2026-10-02T09:00:00-05:00" },
-            onToolResult = { name, isError, s, ms ->
-                assertFalse(isError)
-                seen += Triple(name, s?.optString("procedure"), ms)
-            },
+            onToolResult = { seen += it },
             clockMs = { tick.also { tick += 250L } },
         ).ask("what is in places", false, false)
         assertTrue(answer.success)
-        assertEquals(listOf(Triple("read_records", "car_check", 250L)), seen)
+        val only = seen.single()
+        assertEquals("read_records", only.tool)
+        assertFalse(only.isError)
+        assertEquals("car_check", only.structured?.optString("procedure"))
+        assertEquals("checklist", only.card?.optString("card"))
+        assertEquals(250L, only.roundTripMs)
     }
 }

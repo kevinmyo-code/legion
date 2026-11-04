@@ -101,10 +101,14 @@ async def _call_tool(ctx, params) -> types.CallToolResult:
     state = CALL_STATE.get(None)
     if state is not None:
         state["outcome"] = result.outcome
+    # The tool's card (`engine_mcp/cards.py`) rides in `_meta`, beside the result and never in its
+    # text or structuredContent, so the phone can draw it from ask_engine without the sub-agent
+    # model ever reading it.
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=result.text)],
         structured_content=result.structured,
         is_error=result.is_error,
+        meta={"card": result.card} if result.card is not None else None,
     )
 
 

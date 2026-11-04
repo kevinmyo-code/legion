@@ -6832,7 +6832,7 @@ object LiveToolbox {
                     else -> Unit
                 }
             },
-            onToolResult = { tool, _, structured, ms -> ToolCards.engineResult(tool, structured, ms) },
+            onToolResult = ToolCards::engineResult,
         ).ask(args.optString("question"), wantsWrite(args), touchedReadThroughTool).toJson()
     }
 

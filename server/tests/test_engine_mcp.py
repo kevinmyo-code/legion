@@ -426,6 +426,19 @@ def test_checklists_round_trip(mcp_write, seeded):
     assert items == {"bench": False, "squats": True}
 
 
+def test_a_tool_card_rides_in_meta_never_in_text_or_structured(mcp_write, seeded):
+    """The phone draws engine cards from ask_engine (2026-11-04): the card goes out in the
+    result's `_meta`, and the text and structuredContent a model may read are unchanged."""
+    response = rpc(
+        mcp_write, "tools/call", {"name": "list_checklists", "arguments": {"date": "2026-10-02"}}
+    )
+    result = json.loads(response.content)["result"]
+    card = result["_meta"]["card"]
+    assert card["card"] == "checklist"
+    assert "card" not in result["structuredContent"]
+    assert '"card"' not in "".join(block["text"] for block in result["content"])
+
+
 # =============================================================================
 # The honesty contract over the registry
 # =============================================================================

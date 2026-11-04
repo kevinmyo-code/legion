@@ -7,7 +7,7 @@ import com.kevin.legion.vehicle.VinDecoder
 import com.kevin.legion.vehicle.VehicleController
 import java.time.ZoneId
 import org.json.JSONArray
-import org.json.JSONObject
+import com.kevin.legion.service.EngineToolAnswer
 
 /**
  * The one-line calls `LiveToolbox`'s tools make to publish a card from their own result data. Kept
@@ -34,8 +34,8 @@ object ToolCards {
         publish(CarCards.codeHistory(VehicleController.label(vehicle), vehicle, events, ZoneId.systemDefault()))
 
     /** An `ask_engine` tool result ([com.kevin.legion.service.AskEngine]'s card hook). */
-    fun engineResult(tool: String, structured: JSONObject?, roundTripMs: Long) {
-        EngineCards.fromTool(tool, structured, roundTripMs)?.let(::publish)
+    fun engineResult(answer: EngineToolAnswer) {
+        EngineCards.fromAnswer(answer)?.let(::publish)
     }
 
     /** [codes] as read off the port; [meanings] the same dictionary the tool's text used. The car
