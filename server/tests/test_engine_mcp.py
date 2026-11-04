@@ -391,7 +391,7 @@ def test_events_round_trip(mcp_write):
     )
     assert not is_error, text
     assert [row["id"] for row in sections["in_window"]] == [event_id]
-    assert "NOT expanded" in text
+    assert "occurrences: 0 occurrences" in text
 
     is_error, text, _ = call(mcp_write, "update_event", {"id": event_id, "fields": {"done": True}})
     assert not is_error, text

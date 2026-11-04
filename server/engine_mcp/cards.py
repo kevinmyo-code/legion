@@ -143,28 +143,61 @@ def _field(row, name):
     return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
 
 
+def _expand(row, skips: dict, window_start: datetime, window_end: datetime, zone):
+    """(start, end) for each occurrence of one stored event in the window, skips removed.
+    `api.recurrence.series_occurrences` is the engine's one expansion (push reminders use it).
+    An ALL-DAY row's `starts_at` is UTC midnight of the date it names, so it is expanded in UTC
+    and its date is the UTC date, never converted to the zone (the "advanced by one day" bug
+    `frontend/src/lib/day.ts` documents). `end` carries the row's own length, or None."""
+    from api.recurrence import series_occurrences
+
+    all_day = bool(_field(row, "all_day"))
+    starts_at, ends_at = _field(row, "starts_at"), _field(row, "ends_at")
+    length = ends_at - starts_at if starts_at is not None and ends_at is not None else None
+    for start in series_occurrences(
+        row, skips.get(_field(row, "id"), ()), window_start, window_end, UTC if all_day else zone
+    ):
+        yield start, (start + length if length is not None else None)
+
+
+def occurrences(events, skips: dict, window_start: datetime, window_end: datetime, zone) -> list:
+    """The occurrences of repeating series in the window, in the household's clock, for the
+    tool's own result: the same expansion `events_timeline` draws, so text and card agree."""
+    out = []
+    for row in events:
+        all_day = bool(_field(row, "all_day"))
+        for start, end in _expand(row, skips, window_start, window_end, zone):
+            out.append(
+                {
+                    "event_id": str(_field(row, "id")),
+                    "title": (_field(row, "title") or "Untitled").strip() or "Untitled",
+                    "kind": _field(row, "kind"),
+                    "all_day": all_day,
+                    "date": (start.astimezone(UTC) if all_day else start.astimezone(zone))
+                    .date()
+                    .isoformat(),
+                    "starts_at": None if all_day else start.astimezone(zone).isoformat(),
+                    "ends_at": None if all_day or end is None else end.astimezone(zone).isoformat(),
+                }
+            )
+    out.sort(key=lambda o: (o["date"], o["starts_at"] or ""))
+    return out
+
+
 def events_timeline(
     events, skips: dict, window_start: datetime, window_end: datetime, zone, day: date
 ) -> dict:
     """One day's events and tasks, in the household's clock, from the rows `list_events` read
     (one-offs, repeating series and suggestions; done ones only if the tool kept them).
 
-    Repeating series are expanded with `api.recurrence.series_occurrences`, the engine's one
-    expansion (push reminders use it), skips subtracted. An ALL-DAY row's `starts_at` is UTC
-    midnight of the date it names, so its date is the UTC date, never converted to the zone
-    (the "advanced by one day" bug `frontend/src/lib/day.ts` documents). `more` counts the
+    Repeating series are expanded by `_expand`, skips subtracted. `more` counts the
     occurrences in the tool's window on other days."""
-    from api.recurrence import series_occurrences
-
     day_start = datetime.combine(day, datetime.min.time(), tzinfo=zone)
     day_end = day_start + timedelta(days=1)
     on_day, other = [], 0
     for row in events:
         all_day = bool(_field(row, "all_day"))
-        occurrences = series_occurrences(
-            row, skips.get(_field(row, "id"), ()), window_start, window_end, UTC if all_day else zone
-        )
-        for start in occurrences:
+        for start, ends in _expand(row, skips, window_start, window_end, zone):
             if all_day:
                 hit = start.astimezone(UTC).date() == day
             else:
@@ -173,12 +206,8 @@ def events_timeline(
                 other += 1
                 continue
             end = None
-            ends_at = _field(row, "ends_at")
-            starts_at = _field(row, "starts_at")
-            if not all_day and ends_at is not None and starts_at is not None:
-                local_end = (start + (ends_at - starts_at)).astimezone(zone)
-                if local_end.date() == day:
-                    end = local_end
+            if not all_day and ends is not None and ends.astimezone(zone).date() == day:
+                end = ends.astimezone(zone)
             on_day.append(
                 {
                     "start": None if all_day else _clock(start.astimezone(zone)),
@@ -212,25 +241,27 @@ def events_timeline(
 
 
 def checklist_card(checklists: list[dict], on_day: date | None) -> dict | None:
-    """The first live checklist (the household's own order) with its items and whether each
-    is ticked on `on_day`. Only with a day: without one the tool has no tick state, and a
-    "not done" box would be a claim nobody observed."""
-    if on_day is None or not checklists:
+    """The first checklist the tool read (the one asked for by name, or the first in the
+    household's order) with its items: ticked on `on_day` when the tool was given a day, else
+    ticked now (`ticked_now`, the Lists screen's own rule). An item with neither is not drawn
+    as unticked: the card is skipped rather than claim something nobody read."""
+    if not checklists:
         return None
     first = checklists[0]
+    key = "ticked_on_date" if on_day is not None else "ticked_now"
     items = first.get("items") or []
-    shown = [
-        {"text": i.get("text") or "", "done": bool(i.get("ticked_on_date"))}
-        for i in items[:CHECKLIST_MAX]
-    ]
+    if any(key not in i for i in items):
+        return None
+    shown = [{"text": i.get("text") or "", "done": bool(i[key])} for i in items[:CHECKLIST_MAX]]
     card = {
         "card": "checklist",
         "title": first.get("name") or "Checklist",
-        "period": on_day.isoformat(),
         "list_name": first.get("name") or "Checklist",
         "items": shown,
         "more": max(len(items) - len(shown), 0),
     }
+    if on_day is not None:
+        card["period"] = on_day.isoformat()
     if len(checklists) > 1:
         others = len(checklists) - 1
         card["note"] = f"{others} other list{'s' if others != 1 else ''} not shown."

@@ -250,7 +250,16 @@ class BadArgument(Exception):
     pass
 
 
-def _parse_instant(raw: str, name: str, *, end_of_day: bool = False) -> datetime:
+def _parse_instant(raw: str, name: str, *, end_of_day: bool = False, zone=UTC) -> datetime:
+    """An aware instant. A bare YYYY-MM-DD is that day in `zone` (its first instant, or its
+    last with `end_of_day`); `parse_datetime` would read it as UTC midnight, which west of UTC
+    is the evening before. A date-time with no offset is read as UTC."""
+    raw = raw.strip()
+    if len(raw) == 10 and (day := parse_date(raw)) is not None:
+        if end_of_day:
+            nxt = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone)
+            return nxt.astimezone(UTC) - timedelta(microseconds=1)
+        return datetime.combine(day, time.min, tzinfo=zone).astimezone(UTC)
     parsed = parse_datetime(raw)
     if parsed is None:
         day = parse_date(raw)
@@ -381,10 +390,17 @@ def _list_events(request, args) -> ToolResult:
     from api.events import EventSerializer
     from legacy.models.dates import Event
 
+    # A date names the household's own day (audit 2026-11-04: "today" in Chicago was read as
+    # 18:00 the day before to 17:59, so an evening event on the day was missed).
+    zone = _household_zone(request)
     try:
-        start = _parse_instant(args["from"], "from") if args.get("from") else datetime.now(UTC)
+        start = (
+            _parse_instant(args["from"], "from", zone=zone)
+            if args.get("from")
+            else datetime.now(UTC)
+        )
         end = (
-            _parse_instant(args["to"], "to", end_of_day=True)
+            _parse_instant(args["to"], "to", end_of_day=True, zone=zone)
             if args.get("to")
             else start + timedelta(days=14)
         )
@@ -416,7 +432,6 @@ def _list_events(request, args) -> ToolResult:
     # included, so the clock time in the row is the one to say.
     from django.utils import timezone as dj_timezone
 
-    zone = _household_zone(request)
     with dj_timezone.override(zone):
         sections = {
             "in_window": EventSerializer(one_off, many=True).data,
@@ -424,9 +439,21 @@ def _list_events(request, args) -> ToolResult:
             "undated": EventSerializer(undated, many=True).data,
             "suggestions": EventSerializer(suggested, many=True).data,
         }
+    skips = _event_skips([e.pk for e in repeating])
+    # The repeating series worked out into their occurrences in the window, skips removed:
+    # the same expansion the card draws (`cards.events_timeline`), so the two agree.
+    sections["occurrences"] = cards.occurrences(repeating, skips, start, end, zone)[
+        :READ_LIMIT_MAX
+    ]
     window = f"{start.astimezone(zone).isoformat()} to {end.astimezone(zone).isoformat()}"
     card = cards.safe(
-        _events_card, request, args, [*one_off, *repeating, *suggested], start, end, zone
+        cards.events_timeline,
+        [*one_off, *repeating, *suggested],
+        skips,
+        start,
+        end,
+        zone,
+        start.astimezone(zone).date(),
     )
     if not any(sections.values()):
         return ok(
@@ -441,9 +468,10 @@ def _list_events(request, args) -> ToolResult:
         f"Events for {window}. Every time is the household's local time, with its UTC "
         f"offset: say the clock time as written, never convert it:\n"
         f"- in_window: {len(sections['in_window'])} one-off events starting in the window.\n"
-        f"- repeating: {len(sections['repeating'])} repeating events whose FIRST occurrence is "
-        f"on or before the window's end. They are NOT expanded into occurrences: read each "
-        f"one's repeat_* fields before saying whether it falls in the window.\n"
+        f"- repeating: {len(sections['repeating'])} repeating series whose first occurrence is "
+        f"on or before the window's end.\n"
+        f"- occurrences: {len(sections['occurrences'])} occurrences of those series in the "
+        f"window, skipped dates removed: the days and times each one falls on.\n"
         f"- undated: {len(sections['undated'])} tasks with no date.\n"
         f"- suggestions: {len(sections['suggestions'])} things the household could do in the "
         f"window. NOT plans: never say they have one on, are going, or are busy then. "
@@ -454,23 +482,16 @@ def _list_events(request, args) -> ToolResult:
     )
 
 
-def _events_card(request, args, events, start, end, zone):
-    """The timeline card for `_list_events`'s rows: the day `from` names (a date-only `from`
-    is that date, not its UTC midnight read in the zone), else the window start's local day."""
+def _event_skips(event_ids) -> dict:
+    """Each repeating event's skipped LOCAL dates, by event id."""
     from legacy.models.dates import EventSkip
 
-    raw = (args.get("from") or "").strip()
-    # A bare YYYY-MM-DD names a day. (`parse_datetime` accepts one too, as UTC midnight,
-    # which read in a zone west of UTC is the day before.)
-    day = parse_date(raw) if len(raw) == 10 else None
-    if day is None:
-        day = start.astimezone(zone).date()
     skips: dict = {}
     for event_id, skip_day in EventSkip.objects.filter(
-        event_id__in=[e.pk for e in events if e.repeat_kind], deleted_at__isnull=True
+        event_id__in=event_ids, deleted_at__isnull=True
     ).values_list("event_id", "skip_date"):
         skips.setdefault(event_id, set()).add(skip_day)
-    return cards.events_timeline(events, skips, start, end, zone, day)
+    return skips
 
 
 def _list_checklists(request, args) -> ToolResult:
@@ -486,6 +507,18 @@ def _list_checklists(request, args) -> ToolResult:
     checklists = visible(Checklist, request).filter(deleted_at__isnull=True)
     if not args.get("include_archived", False):
         checklists = checklists.filter(archived=False)
+    asked = " ".join(str(args.get("name") or "").split())
+    if asked:
+        named = checklists.filter(name__iexact=asked)
+        if not named.exists():
+            names = ", ".join(
+                checklists.order_by("sort_order", "name").values_list("name", flat=True)
+            )
+            return refused(
+                f"Nothing was read. No checklist is called {asked!r}. Checklists: "
+                f"{names or 'none'}."
+            )
+        checklists = named
     checklists = list(checklists.order_by("sort_order", "name")[:READ_LIMIT_MAX])
     if not checklists:
         return ok(
@@ -498,19 +531,26 @@ def _list_checklists(request, args) -> ToolResult:
         .filter(deleted_at__isnull=True, checklist__in=checklists)
         .order_by("sort_order", "created_at")
     )
+    ticks = visible(ChecklistTick, request).filter(deleted_at__isnull=True, item__in=items)
     ticked = set()
     if on_day is not None:
         epoch_day = (on_day - date(1970, 1, 1)).days
-        ticked = set(
-            visible(ChecklistTick, request)
-            .filter(deleted_at__isnull=True, day=epoch_day, item__in=items)
-            .values_list("item_id", flat=True)
-        )
+        ticked = set(ticks.filter(day=epoch_day).values_list("item_id", flat=True))
+    else:
+        # No date: each item's state as the Lists screen shows it now
+        # (`frontend/src/lib/checklist.ts` tickState): a scheduled list counts only today's
+        # tick, in the household's zone; a plain list is ticked once any live tick exists.
+        today = (_household_today(request) - date(1970, 1, 1)).days
+        scheduled = {c.id for c in checklists if c.schedule_kind is not None}
+        ticked = {
+            item_id
+            for item_id, list_id, day in ticks.values_list("item_id", "item__checklist_id", "day")
+            if list_id not in scheduled or day == today
+        }
     by_list: dict = {}
     for item in items:
         row = ChecklistItemSerializer(item).data
-        if on_day is not None:
-            row["ticked_on_date"] = item.id in ticked
+        row["ticked_on_date" if on_day is not None else "ticked_now"] = item.id in ticked
         by_list.setdefault(item.checklist_id, []).append(row)
     out = []
     for checklist in checklists:
@@ -520,7 +560,10 @@ def _list_checklists(request, args) -> ToolResult:
     tick_note = (
         f" Each item carries ticked_on_date for {on_day.isoformat()}."
         if on_day
-        else " No date was given, so no tick state is shown; pass `date` to see it."
+        else (
+            " Each item carries ticked_now: for a scheduled list, ticked today; for a plain "
+            "list, ticked on any day. A tick is a tap, never proof it was done."
+        )
     )
     return ok(
         f"{len(out)} checklists with their live items.{tick_note}\n{_json(out)}",
@@ -1916,9 +1959,9 @@ TOOLS: tuple[EngineTool, ...] = (
         name="list_events",
         title="What is due",
         description=(
-            "Events and tasks in a window (default: now to 14 days ahead), plus repeating "
-            "events and undated tasks. Repeating events are NOT expanded into occurrences. "
-            "Suggestions come in their own list and are not plans."
+            "Events and tasks in a window (default: now to 14 days ahead; a date is the "
+            "household's own day), repeating events with their occurrences in the window, and "
+            "undated tasks. Suggestions come in their own list and are not plans."
         ),
         input_schema=_object(
             {
@@ -1933,10 +1976,16 @@ TOOLS: tuple[EngineTool, ...] = (
         name="list_checklists",
         title="Checklists",
         description=(
-            "The household's checklists with their items. Pass `date` (YYYY-MM-DD, the "
-            "household's local date) to see which items are ticked that day."
+            "The household's checklists with their items, or one list by `name`. Pass `date` "
+            "(YYYY-MM-DD, the household's local date) to see which items are ticked that day."
         ),
-        input_schema=_object({"date": {"type": "string"}, "include_archived": {"type": "boolean"}}),
+        input_schema=_object(
+            {
+                "name": {"type": "string", "minLength": 1},
+                "date": {"type": "string"},
+                "include_archived": {"type": "boolean"},
+            }
+        ),
         handler=_list_checklists,
     ),
     EngineTool(

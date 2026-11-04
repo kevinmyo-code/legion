@@ -369,3 +369,142 @@ def test_a_recruiter_visit_gets_cards_from_its_own_demo(world, monkeypatch):  # 
 
 
 from tests.test_recruiter_isolation import world  # noqa: E402, F401 - fixture
+
+
+# =============================================================================
+# Follow-ups (Kevin, 2026-11-04: "go with ur recommendations")
+# =============================================================================
+
+
+def _door(user):
+    from tests.test_assistant import browser
+
+    client = browser(user)
+
+    def call(name, args):
+        response = client.post("/api/assistant/tool", {"name": name, "args": args}, format="json")
+        assert response.status_code == 200, response.data
+        return response.data
+
+    return call
+
+
+@pytest.fixture
+def chicago(household_user, household_a):
+    household_a.timezone = "America/Chicago"
+    household_a.save(update_fields=["timezone"])
+    return _door(household_user)
+
+
+def _add(call, title, starts_at, **fields):
+    made = call("add_event", {"fields": {"title": title, "starts_at": starts_at, **fields}})
+    assert made["is_error"] is False, made["text"]
+    return made
+
+
+@pytest.mark.django_db
+def test_a_date_is_the_households_own_day_evening_included(chicago):
+    # 19:30 CDT on Oct 6 is 00:30Z on Oct 7: UTC-midnight windows missed it.
+    _add(chicago, "Late dinner", "2026-10-07T00:30Z")
+    # 00:30 CDT on Oct 6 is 05:30Z on Oct 6, and 23:30 CDT on Oct 5 is 04:30Z on Oct 6: the
+    # first is on the day, the second is the evening before.
+    _add(chicago, "Night shift", "2026-10-06T05:30Z")
+    _add(chicago, "Day before", "2026-10-06T04:30Z")
+    listed = chicago("list_events", {"from": "2026-10-06", "to": "2026-10-06"})
+    assert "Late dinner" in listed["text"] and "Night shift" in listed["text"]
+    assert "Day before" not in listed["text"]
+    card = listed["card"]
+    assert card["date"] == "2026-10-06"
+    assert [(i["start"], i["title"]) for i in card["items"]] == [
+        ("00:30", "Night shift"),
+        ("19:30", "Late dinner"),
+    ]
+    assert card["more"] == 0
+
+
+@pytest.mark.django_db
+def test_the_day_the_clocks_go_back_is_25_hours_long(chicago):
+    # Nov 1 2026, Chicago falls back at 02:00: the day runs 05:00Z to 06:00Z on Nov 2.
+    _add(chicago, "Last thing", "2026-11-02T05:30Z")  # 23:30 CST Nov 1
+    _add(chicago, "Next day", "2026-11-02T06:30Z")  # 00:30 CST Nov 2
+    listed = chicago("list_events", {"from": "2026-11-01", "to": "2026-11-01"})
+    assert "Last thing" in listed["text"] and "Next day" not in listed["text"]
+    assert listed["card"]["zone"] == "UTC-05:00"  # the offset at the day's start (CDT)
+    assert [i["title"] for i in listed["card"]["items"]] == ["Last thing"]
+
+
+@pytest.mark.django_db
+def test_repeating_events_come_with_their_occurrences_the_same_ones_the_card_shows(chicago):
+    _add(
+        chicago,
+        "Gym",
+        "2026-10-01T12:00Z",  # 07:00 CDT
+        repeat_kind="DAILY",
+        repeat_every=1,
+        repeat_end_kind="NEVER",
+    )
+    skipped = chicago("skip_event_occurrence", {"id": _event_id(chicago), "date": "2026-10-07"})
+    assert skipped["is_error"] is False, skipped["text"]
+    listed = chicago("list_events", {"from": "2026-10-06", "to": "2026-10-08"})
+    assert "occurrences: 2 occurrences" in listed["text"]
+    assert "NOT expanded" not in listed["text"]
+    text = listed["text"]
+    occurrences = json.loads(text[text.index("{") :])["occurrences"]
+    assert [(o["date"], o["starts_at"]) for o in occurrences] == [
+        ("2026-10-06", "2026-10-06T07:00:00-05:00"),
+        ("2026-10-08", "2026-10-08T07:00:00-05:00"),
+    ]
+    card = listed["card"]
+    assert card["date"] == "2026-10-06"
+    assert [(i["start"], i["title"]) for i in card["items"]] == [("07:00", "Gym")]
+    assert card["more"] == 1  # Oct 8; Oct 7 is skipped
+
+
+def _event_id(call):
+    listed = call("list_events", {"from": "2026-10-01", "to": "2026-10-01"})
+    text = listed["text"]
+    sections = json.loads(text[text.index("{") :])
+    return (sections["in_window"] + sections["repeating"])[0]["id"]
+
+
+@pytest.mark.django_db
+def test_list_checklists_by_name_with_its_current_state_and_card(chicago):
+    # Groceries is every household's built-in list (`checklists.builtin`).
+    routine = chicago("create_checklist", {"name": "Morning", "schedule": "daily"})
+    assert routine["is_error"] is False, routine["text"]
+    lists = chicago("list_checklists", {})["text"]
+    rows = {c["name"]: c["id"] for c in json.loads(lists[lists.index("[") :])}
+    ids = {}
+    for list_name, text in (("Groceries", "Milk"), ("Groceries", "Eggs"), ("Morning", "Meds")):
+        added = chicago("add_checklist_item", {"checklist_id": rows[list_name], "text": text})
+        assert added["is_error"] is False, added["text"]
+        ids[text] = json.loads(added["text"][added["text"].index("{") :])["id"]
+    # A plain list keeps a tick from any day; a scheduled one counts only today's.
+    for text, list_name, day in (("Milk", "Groceries", "2026-10-01"), ("Meds", "Morning", "2026-10-01")):
+        ticked = chicago(
+            "tick_checklist_item",
+            {"checklist_id": rows[list_name], "item_id": ids[text], "date": day},
+        )
+        assert ticked["is_error"] is False, ticked["text"]
+
+    named = chicago("list_checklists", {"name": "groceries"})
+    assert named["is_error"] is False, named["text"]
+    assert "ticked_now" in named["text"] and "Morning" not in named["text"]
+    assert named["card"] == {
+        "card": "checklist",
+        "title": "Groceries",
+        "list_name": "Groceries",
+        "items": [{"text": "Milk", "done": True}, {"text": "Eggs", "done": False}],
+        "more": 0,
+    }
+    morning = chicago("list_checklists", {"name": "MORNING"})
+    assert morning["card"]["items"] == [{"text": "Meds", "done": False}]
+    dated = chicago("list_checklists", {"name": "Morning", "date": "2026-10-01"})
+    assert dated["card"]["items"] == [{"text": "Meds", "done": True}]
+    assert dated["card"]["period"] == "2026-10-01"
+
+    missing = chicago("list_checklists", {"name": "Hardware"})
+    assert missing["is_error"] is True
+    assert missing["text"].startswith("Nothing was read. No checklist is called 'Hardware'.")
+    assert "Groceries" in missing["text"] and "Morning" in missing["text"]
+    assert "card" not in missing
