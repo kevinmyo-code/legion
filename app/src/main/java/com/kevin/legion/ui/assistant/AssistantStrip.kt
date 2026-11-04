@@ -48,6 +48,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kevin.legion.R
+import com.kevin.legion.assistant.cards.ConversationCard
+import com.kevin.legion.assistant.cards.ConversationCards
 import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.CompanionPhase
@@ -124,6 +126,9 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
     val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
     val caption by CompanionPhase.caption.collectAsStateWithLifecycle()
     val toolRunning by CompanionPhase.toolRunning.collectAsStateWithLifecycle()
+    // The voice conversation's latest card (generative UI, 2026-11-04): built from a tool's own
+    // result, cleared when the conversation ends, dismissable by hand.
+    val cards by ConversationCards.state.collectAsStateWithLifecycle()
 
     // Ticket 15's signal, finally reaching the driver. It used to stop at
     // CarProbeLog and the Settings diagnostic page, which meant the one state
@@ -214,6 +219,8 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
         AssistantStripContent(
             state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced, toolRunning),
             onTap = talk,
+            card = cards.latest,
+            onDismissCard = ConversationCards::dismiss,
         )
     }
     if (panel.open) ChatPanelSheet(typedChat, onTalk = talk, onClose = panel::hide)
@@ -320,12 +327,19 @@ private val MicBlockedContainer = Color(0xFF3A2E12)
  * renders this one too).
  */
 @Composable
-internal fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -> Unit) {
+internal fun AssistantStripContent(
+    state: AssistantStripResolver.State,
+    onTap: () -> Unit,
+    card: ConversationCard? = null,
+    onDismissCard: () -> Unit = {},
+) {
     // The chat button (web-assistant ticket 09) arrives on [LocalTypedChat]; null is the strip
     // exactly as it was. The pill stays the main control at full width, the button sits at the end.
     // Nothing on this strip is a text field, so nothing here can take focus or raise the keyboard.
     val typed = LocalTypedChat.current
     AssistantStripBar {
+        // Above the pill and the caption beneath it, so the caption stays next to the mic it belongs to.
+        if (card != null) ConversationCardView(card, onDismissCard, Modifier.padding(bottom = 8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
