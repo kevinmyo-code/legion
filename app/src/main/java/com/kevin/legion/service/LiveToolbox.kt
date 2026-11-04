@@ -69,6 +69,10 @@ import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
+import com.kevin.legion.assistant.cards.ChecklistLine
+import com.kevin.legion.assistant.cards.EngineCards
+import com.kevin.legion.assistant.cards.PhoneCards
+import com.kevin.legion.assistant.cards.ToolCards
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.BuildSheetController
 import com.kevin.legion.vehicle.CarToolbelt
@@ -3896,6 +3900,7 @@ object LiveToolbox {
             dao.activeByKindInLocalWindow(EventKind.EVENT, startMs, endMs, zone) +
                 dao.activeByKindInLocalWindow(EventKind.TASK, startMs, endMs, zone)
             ).sortedBy { it.startsAt ?: Long.MAX_VALUE }
+        ToolCards.publish(PhoneCards.calendar(events, zone, startMs))
         val arr = JSONArray()
         for (event in events) {
             val eventStart = event.startsAt ?: continue
@@ -4090,6 +4095,7 @@ object LiveToolbox {
             val recalls = VinDecoder.fetchRecalls(stated.year, stated.make, stated.model)
                 ?: return result(success = false, message = "Couldn't reach NHTSA to check recalls right now. Try again in a moment.")
             val label = VehicleController.label(vehicle)
+            ToolCards.recalls(vehicle, recalls.map { it.summary })
             return recallsJson(recalls)
                 .put("checkedAs", "${stated.year} ${stated.make} ${stated.model}")
                 .put(
@@ -4110,7 +4116,7 @@ object LiveToolbox {
                 success = false,
                 message = "Couldn't reach NHTSA to check recalls right now. Try again in a moment.",
             )
-            is RecallCheckResult.Checked -> recallsJson(outcome.recalls)
+            is RecallCheckResult.Checked -> recallsJson(outcome.recalls).also { ToolCards.recalls(vehicle, outcome.recalls.map { it.summary }) }
         }
     }
 
@@ -4833,6 +4839,7 @@ object LiveToolbox {
         // "This month" is the driver's month, not UTC's - matches setBudget's own reasoning above.
         val month = YearMonth.now(java.time.ZoneId.systemDefault())
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, month)
+        ToolCards.publish(PhoneCards.monthlySpend(budget, month))
         val totalCents = budget.spentCents
         val unverified = budget.uncategorized.hasProvisionalRows ||
             budget.lines.any { it.hasProvisionalRows || it.hasPendingCategoryGuesses } ||
@@ -6340,6 +6347,7 @@ object LiveToolbox {
                     is ChecklistController.ChecklistItemsResult.Failed ->
                         result(false, "Could not read \"${checklist.name}\". Try again shortly.")
                     is ChecklistController.ChecklistItemsResult.Loaded -> {
+                        ToolCards.checklist(checklist.name, loaded.items.map { ChecklistLine(it.item.text, it.ticked) })
                         if (loaded.items.isEmpty()) {
                             return result(true, "\"${checklist.name}\" has no items yet.")
                         }
@@ -6480,6 +6488,7 @@ object LiveToolbox {
     private suspend fun readList(context: Context): JSONObject {
         val items = NotesController.allItems(context)
         val rows = buildInboxRows(items, System.currentTimeMillis())
+        ToolCards.checklist(PhoneCards.TODO_LIST_NAME, rows.map { ChecklistLine(it.text, it.done) })
         val arr = JSONArray()
         for (row in rows) {
             val o = JSONObject()
@@ -6601,12 +6610,14 @@ object LiveToolbox {
         }
         val codes = ObdBluetoothManager.getDtcCodes()
         if (codes.isEmpty()) {
+            ToolCards.codes(context, ObdBluetoothManager.connectedDeviceAddress, codes, emptyMap())
             return result(true, "No codes stored - everything's clear.")
         }
 
         val seed = withContext(Dispatchers.IO) { DtcDescriptions.loadSeed(context) }
         val learned = withContext(Dispatchers.IO) { DtcDescriptions.loadLearned(context) }
         val info = seed + learned
+        ToolCards.codes(context, ObdBluetoothManager.connectedDeviceAddress, codes, info)
         val glance = GlanceCardPayload(
             shape = GlanceShape.LIST,
             title = "Codes",
@@ -6817,6 +6828,7 @@ object LiveToolbox {
                     else -> Unit
                 }
             },
+            onToolResult = { tool, _, structured, ms -> EngineCards.fromTool(tool, structured, ms)?.let(ToolCards::publish) },
         ).ask(args.optString("question"), wantsWrite(args), touchedReadThroughTool).toJson()
     }
 
@@ -7083,7 +7095,7 @@ object LiveToolbox {
      */
     private suspend fun getNextService(context: Context, vehicle: Vehicle): JSONObject {
         val label = VehicleController.label(vehicle)
-        val next = VehicleController.nextService(context, vehicle)
+        val next = VehicleController.nextService(context, vehicle).also { ToolCards.nextService(vehicle, it) }
             ?: return result(true, noScheduleMessage(label, com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac).isEmpty()))
 
         val miles = VehicleController.ScheduleUnit.MILES

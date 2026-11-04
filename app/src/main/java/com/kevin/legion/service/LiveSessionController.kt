@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.core.content.ContextCompat
+import com.kevin.legion.assistant.cards.ConversationCards
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CrisisDetector
@@ -492,6 +493,7 @@ class LiveSessionController(context: Context) {
             pendingAction = Pending.NONE
             pendingPrompt = null
             conversationMode = false
+            ConversationCards.end()
             connectedThisSession = false
             set(Phase.IDLE, IDLE_STATUS)
             prewarm()
@@ -693,6 +695,7 @@ class LiveSessionController(context: Context) {
      */
     private fun resumeWarm(s: GeminiLiveSession, fromWakeWord: Boolean = false) {
         conversationMode = true
+        ConversationCards.begin()
         val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
         // Ticket 02: a warm socket that resumes here is either a genuinely warm-parked
         // conversation (the common case - no loss, nothing to say) or a FRESH prewarmed
@@ -761,6 +764,7 @@ class LiveSessionController(context: Context) {
         session = s
         pendingAction = Pending.CONVERSATION
         conversationMode = true
+        ConversationCards.begin()
         connectedThisSession = false
         coldRetry = { startConversation(fromWakeWord, listenOnly) }
         set(Phase.CONNECTING, "Connecting...")
@@ -858,6 +862,7 @@ class LiveSessionController(context: Context) {
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = prompt
         conversationMode = true
+        ConversationCards.begin()
         connectedThisSession = false
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
@@ -993,6 +998,7 @@ class LiveSessionController(context: Context) {
                 session?.silentDestroy()
                 session = null
                 conversationMode = false
+                ConversationCards.end()
                 // Ticket 02: a crisis teardown must not silently resume the very
                 // conversation the crisis path exists to stop performing - the next chat
                 // should start clean, not carry the interrupted turn's context forward.
@@ -1075,6 +1081,7 @@ class LiveSessionController(context: Context) {
                 // of the TurnComplete pause above - pause() is a no-op if the
                 // segment is already closed).
                 conversationMode = false
+                ConversationCards.end()
                 set(Phase.IDLE, IDLE_STATUS)
                 // The thirty-minute forgotten-conversation cap is the ONE way a chat
                 // ends that the driver did not ask for, so it is the one that has to
@@ -1112,6 +1119,7 @@ class LiveSessionController(context: Context) {
                     return
                 }
                 closeOutTypedChat()
+                ConversationCards.end()
                 val userInitiated = conversationMode
                 val everConnected = connectedThisSession
                 // Ticket 02: a real conversation just ended for a reason the driver did not
