@@ -41,9 +41,9 @@ object ClaudeSessionToolbox {
     internal var modalFactory: (Context) -> ClaudeModalHolder = ClaudeModalHolder::get
 
     private const val DESCRIPTION =
-        "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check reads " +
-            "machines, tasks and open sessions; answer follows up a task (yes=true only for his yes to its " +
-            "question); assign picks the machine it asked for; send_file only after he says yes to having " +
+        "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check only " +
+            "reads results already in; \"ask Claude to...\" is always a new send; answer follows up a " +
+            "task (yes=true only for his yes to its question); assign picks the machine it asked for; send_file only after he says yes to having " +
             "a file on his phone; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
             "result announcements. A sent task is not done."
 
