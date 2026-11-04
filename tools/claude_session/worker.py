@@ -278,15 +278,18 @@ class Worker:
             scope = ("Full access (Kevin's ruling): every fixed drive (" + ", ".join(self.add_dirs())
                      + "), read and write, as Kevin's Windows user, not elevated. Reading anything is "
                      "fine. Kevin's files outside the work folder are his: deleting or overwriting "
-                     "them is on the ask list.")
+                     "them is on the ask list. Kevin's Gmail is readable here, read only, and his "
+                     "Amazon orders: rule 10.")
         else:
             scope = (f"Work laptop. Only the repos folder {self.cfg.get('repos_root', '(not set)')}, "
                      "read only, plus the task's work folder for scratch files. Return summaries "
                      "only: never --found, never upload, no web. Mail only as text to Kevin himself, and only "
-                     "when the task message gives a token.")
+                     "when the task message gives a token. No Gmail and no Amazon here: rule 10 does "
+                     "not apply on this machine.")
         for k, v in {"<<MACHINE>>": self.name, "<<PYTHON>>": cmd_path(helper_python()),
                      "<<REPORT>>": cmd_path(HERE / "report.py"),
-                     "<<SEND_MAIL>>": cmd_path(HERE / "send_mail.py"), "<<SCOPE>>": scope}.items():
+                     "<<SEND_MAIL>>": cmd_path(HERE / "send_mail.py"),
+                     "<<AMAZON>>": cmd_path(HERE / "amazon_orders.py"), "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
 

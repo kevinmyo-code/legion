@@ -49,6 +49,21 @@ Copy these rules into every helper prompt, with the task number filled in:
    confirmation token. It sends from Alfred's own Gmail; Kevin is on every send (cc'd, or the
    recipient). Put its
    one-line output (sent or not sent) in the summary in words.
+10. Amazon orders ("where's my Amazon order", "has it shipped", "when does it arrive"), on a machine
+   whose scope says Gmail and Amazon are readable. Gmail first, Amazon's own page as the live
+   fallback (Kevin, 2026-11-04).
+   a. Gmail, read only: load the tools with ToolSearch
+      `select:mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread`, search
+      Amazon's shipping mail newest first (`from:amazon.com newer_than:14d`), and read only the
+      threads that answer the question.
+   b. Run `<<PYTHON>> <<AMAZON>>` when no Amazon mail gives a status, when the newest status is more
+      than a day old and not "Delivered", or when the task asks for the live or latest status. Its
+      exit code 3 or 4 means Amazon wants Kevin to sign in or showed a check: say that in the
+      summary. Never sign in, type a password or code, or try to get past a check.
+   c. Mail is Kevin's to read, not to keep (CLAUDE.md section 7). The summary holds only the
+      answer: the item in a few words, its status, the day it arrives. Never quoted mail, senders,
+      order numbers, addresses or anything else from his inbox, and no mail content in any file.
+      Never send, draft, label, archive or delete mail through Gmail; sending is rule 9 only.
 
 ## This machine
 

@@ -16,8 +16,13 @@ import sys
 import threading
 from pathlib import Path
 
+# Kevin's Gmail, READ ONLY (Kevin, 2026-11-04: "gmail first and amazon as a real time fallback").
+# Search and read; nothing that sends, drafts, labels, archives or deletes. Rule 10 of the prompt
+# holds what a helper may keep from mail: the answer only (CLAUDE.md section 7, the carve-out).
+GMAIL_READ = ["mcp__claude_ai_Gmail__search_threads", "mcp__claude_ai_Gmail__get_thread",
+              "mcp__claude_ai_Gmail__get_message"]
 ALLOWED_FULL = ["Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep", "Agent", "TaskStop",
-                "WebFetch", "WebSearch"]
+                "WebFetch", "WebSearch", "ToolSearch", *GMAIL_READ]
 # The work laptop: the hook confines these to the repos root (reads) and the work folder (writes).
 ALLOWED_LISTED = ["Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep", "Agent", "TaskStop"]
 

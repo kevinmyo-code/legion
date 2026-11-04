@@ -7175,3 +7175,14 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - Live setup payload ceiling raised 24,250 to 24,500 (measured ~24,407 with `claude_session` and
   its clause), justified in `LiveSetupPayloadSizeTest`.
 - ADR 0067 amended (2026-11-03).
+
+## 2026-11-04 - Claude session reads Gmail and Amazon orders (Kevin)
+
+- **Found:** "check my Amazon order status" through a Claude session failed: the helper went to
+  Gmail, and the worker's `dontAsk` allowlist had no Gmail tools, so the first search was denied.
+- **Ruling** (Kevin: *"can we have both? gmail first and amazon as a real time fallback"*, after
+  being told the task result is kept 30 days and that this is an exception to read-through):
+  Gmail read only on the Alienware; `amazon_orders.py` reads his own Amazon orders page and
+  tracking pages from a profile he signs into himself. CLAUDE.md section 7 carve-out, ADR 0067
+  amended. The summary keeps the answer, never the mail.
+- **Recommended and not taken:** keeping mail questions with Alfred's own read-through mail tool.

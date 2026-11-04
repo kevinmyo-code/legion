@@ -412,6 +412,15 @@ here.
   Room. Consent in the room is Kevin's to handle and he handles it out of band (*"they will know,
   i'll tell tem"*): no in-app indicator, no spoken announcement, recorded as a decision made with
   open eyes rather than left unasked. `docs/adr/0041-a-recording-kevin-starts-is-first-party.md`.
+  **CARVE-OUT 2026-11-04 (Kevin): a Claude session task on the Alienware may read Kevin's Gmail
+  to answer the task he gave it.** *"can we have both? gmail first and amazon as a real time
+  fallback"* (for "where's my Amazon order"), knowing the task's result is kept 30 days (ADR 0067).
+  Read only: search and read thread are the only Gmail tools on its allowlist, nothing that sends,
+  drafts, labels or deletes, and never on the work laptop. **What is kept is the answer, not the
+  mail:** the task summary says the item, the status and the day, never quoted mail, senders or
+  order numbers, and no mail content goes in a file (`tools/claude_session/main_session_prompt.md`
+  rule 10). This is a prompt rule, the only lever there is for what a helper writes; the phone's
+  own mail path is untouched and still never reaches Room.
   **A transcript states no total, so §4's numeric gate has no purchase - what stands in for it is §4
   rule 8: keep the evidence.** Summary anchored by the transcript beside it, transcript anchored by
   the audio beside it, all three deleted together. Nothing numeric heard in a recording may be

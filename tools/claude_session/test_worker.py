@@ -438,6 +438,8 @@ class TestListed(WorkerCase):
         argv = self.starts()[0]["argv"]
         self.assertEqual([argv[i + 1] for i, a in enumerate(argv) if a == "--add-dir"], [str(self.repos)])
         self.assertNotIn("WebFetch", argv)
+        # No Gmail on the work laptop (Kevin's inbox stays on the Alienware).
+        self.assertFalse([a for a in argv if a.startswith("mcp__claude_ai_Gmail")])
         msg = [m for m in self.msgs() if m.startswith("[task 110]")][0]
         self.assertIn("no attachments from this laptop", msg)
         tok = read_json(self.paths.tokens / "110-email_self.json")
@@ -481,3 +483,23 @@ class TestLogs(WorkerCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGmailAndAmazon(unittest.TestCase):
+    """Kevin, 2026-11-04: Gmail first, Amazon's page as the live fallback, Alienware only."""
+
+    def test_gmail_is_read_only_and_full_scope_only(self):
+        import session as S
+
+        self.assertTrue(set(S.GMAIL_READ) <= set(S.ALLOWED_FULL))
+        self.assertFalse([t for t in S.ALLOWED_LISTED if "Gmail" in t])
+        for tool in S.GMAIL_READ:
+            self.assertRegex(tool, r"__(search_threads|get_thread|get_message)$")
+        for verb in ("send", "draft", "label", "trash", "spam", "forward", "reply", "delete"):
+            self.assertFalse([t for t in S.ALLOWED_FULL if verb in t.lower()], verb)
+
+    def test_the_prompt_carries_rule_10_and_the_script_path(self):
+        text = (Path(W.__file__).parent / "main_session_prompt.md").read_text(encoding="utf-8")
+        self.assertIn("10. Amazon orders", text)
+        self.assertIn("<<AMAZON>>", text)
+        self.assertIn("The summary holds only the", text)
