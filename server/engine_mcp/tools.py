@@ -407,13 +407,20 @@ def _list_events(request, args) -> ToolResult:
     undated = live.filter(starts_at__isnull=True).order_by("sort_order", "created_at")[
         :READ_LIMIT_MAX
     ]
-    sections = {
-        "in_window": EventSerializer(one_off, many=True).data,
-        "repeating": EventSerializer(repeating, many=True).data,
-        "undated": EventSerializer(undated, many=True).data,
-        "suggestions": EventSerializer(suggested, many=True).data,
-    }
-    window = f"{start.isoformat()} to {end.isoformat()}"
+    # Audit 2026-11-03: rows came out in UTC and the model read 22:30Z as "ten thirty at
+    # night" for a 5:30 pm reminder. Every time is now in the household's own zone, offset
+    # included, so the clock time in the row is the one to say.
+    from django.utils import timezone as dj_timezone
+
+    zone = _household_zone(request)
+    with dj_timezone.override(zone):
+        sections = {
+            "in_window": EventSerializer(one_off, many=True).data,
+            "repeating": EventSerializer(repeating, many=True).data,
+            "undated": EventSerializer(undated, many=True).data,
+            "suggestions": EventSerializer(suggested, many=True).data,
+        }
+    window = f"{start.astimezone(zone).isoformat()} to {end.astimezone(zone).isoformat()}"
     if not any(sections.values()):
         return ok(
             f"The engine read this household's events and found none in {window}, no "
@@ -423,7 +430,8 @@ def _list_events(request, args) -> ToolResult:
             structured=sections,
         )
     return ok(
-        f"Events for {window} (UTC unless the row says otherwise):\n"
+        f"Events for {window}. Every time is the household's local time, with its UTC "
+        f"offset: say the clock time as written, never convert it:\n"
         f"- in_window: {len(sections['in_window'])} one-off events starting in the window.\n"
         f"- repeating: {len(sections['repeating'])} repeating events whose FIRST occurrence is "
         f"on or before the window's end. They are NOT expanded into occurrences: read each "
@@ -1763,7 +1771,8 @@ def _web_search(request, args) -> ToolResult:
     if not found.sources:
         return ok(
             f"Web search for {query!r} (Gemini with Google Search) returned an answer but NO web "
-            f"source, so it is unconfirmed: say you could not confirm it. Answer: {found.answer}",
+            f"source, so it is unconfirmed. Give the answer, and say in the same sentence that the "
+            f"search named no source, so you could not confirm it. Answer: {found.answer}",
             structured,
         )
     sources = "; ".join(f"[{i}] {s['title']} {s['url']}" for i, s in enumerate(found.sources, 1))
@@ -2323,8 +2332,9 @@ TOOLS: tuple[EngineTool, ...] = (
             "prices, scores, and general facts - what a visa, a law or a term is - anything not "
             "in LEGION's own data; never for the household's records, which the other tools "
             "read. Pass the question as `query`, in plain words. When you answer from it, say it "
-            "is from the web and name the sources (\"according to Reuters\"). If it fails or "
-            "returns no source, say you could not confirm it; never guess. Nothing searched is "
+            "is from the web and name the sources (\"according to Reuters\"). If it fails, say "
+            "you could not find out; never guess. If it returns an answer with no source, give "
+            "the answer and say you could not confirm it. Nothing searched is "
             "stored."
         ),
         input_schema=_object(

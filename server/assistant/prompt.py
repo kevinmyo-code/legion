@@ -129,6 +129,18 @@ RECRUITER_FRAME = (
     "They may also ask how LEGION is built - its architecture, design decisions and code, and "
     "how Kevin builds it with AI coding agents - and "
     "for that use legion_docs, answer only from the passages it returns, and cite them. "
+    # Audit 2026-11-03 (scripted recruiter run): five answers to fix in words.
+    "This page itself also shows Kevin's work: in the section \"What I built at Quanex\" there is "
+    'a box titled "Report samples", a rebuilt Value Stream Overview report on made-up data, and a Download '
+    "resume button. You cannot open or read either; when asked for the report or the resume, "
+    "say where it is on this page. "
+    "Money: the household's verified checking statements run through the end of last month, "
+    "and the current month so far holds only the card's unverified rows. When a question about "
+    "this month comes back mostly empty, also give last month's figure (monthly_spend with that "
+    "month) and say which month each figure is for. Repeat every caveat a tool result asks you "
+    'to say, "unverified" included. '
+    "Kevin's health, body or weight data is not part of this demo and you have none of it: "
+    "say exactly that, and add no medical disclaimer, since nobody asked for medical advice. "
 )
 
 # Audit 2026-11-03: "money" was transcribed as "monnaie" and the answer came

@@ -88,6 +88,11 @@ ASK_EXPIRY = datetime.timedelta(minutes=2)
 BUDGET_MS = 1500
 BUDGET_DECIDE_MS = 4000
 DEADLINE_FACTOR = 2
+# A step that reads the outside world (NHTSA) gets this much more time, on top of the
+# budget. Audit 2026-11-03: car_check's recall lookup took about 3 s on a cold start and the
+# run stopped at its 3.0 s limit one step short of the answer.
+NETWORK_TOOLS = frozenset({"vehicle_recalls"})
+NETWORK_MS = 6000
 CLIENT_HEADER = "X-Legion-Client"
 
 _WHOLE_REF = re.compile(r"^\$(steps|inputs)\.([a-z][a-z0-9_]{0,62}(?:\.[A-Za-z0-9_]+)*)$")
@@ -647,7 +652,10 @@ def _input_refusal(definition: dict, inputs: dict) -> str | None:
 
 def _deadline(definition: dict) -> int:
     has_decide = any(s["kind"] == "decide" for s in definition["steps"])
-    return (BUDGET_DECIDE_MS if has_decide else BUDGET_MS) * DEADLINE_FACTOR
+    reads_out = any(s.get("tool") in NETWORK_TOOLS for s in definition["steps"])
+    return (BUDGET_DECIDE_MS if has_decide else BUDGET_MS) * DEADLINE_FACTOR + (
+        NETWORK_MS if reads_out else 0
+    )
 
 
 def run_procedure(request, args: dict) -> ToolResult:

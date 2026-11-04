@@ -88,11 +88,53 @@ BROAD_WORDS = frozenset(
     legion codebase code base architecture architectural overview system structure built build
     design whole overall big picture high level project repo repository stack tech technical
     app application fit together put piece part component components main
+    walk through me us give quick tour rundown summary summarize run down high-level s its
     """.split()
 )
 # "How does it work?" is all stopwords; asked of LEGION, it is the broadest
 # question there is.
 BROAD_PHRASE = re.compile(r"\bhow\b.*\b(work|works|built|fits?)\b")
+
+# Two questions recruiters ask that BM25 ranks badly (audit 2026-11-03): "how
+# does the voice pipeline work" hit a dated carve snapshot, and "how does he
+# keep the AI from making up numbers" hit nothing about the gate, which is the
+# answer. Each topic is (pattern on the lowercased query, picks). The first
+# topic that matches puts its picks first, as `OVERVIEW_PICKS` does.
+TOPIC_PICKS: tuple[tuple[re.Pattern, tuple[tuple[str, str], ...]], ...] = (
+    (
+        re.compile(
+            r"\bvoice\b.*\b(pipeline|loop|work|works|flow|architecture|stack|built|latency)\b"
+            r"|\bgemini live\b|\bspeech pipeline\b"
+        ),
+        (
+            ("docs/architecture/c3-voice-loop.md", "C3: The voice loop"),
+            ("docs/architecture/c3-voice-loop.md", "C3: The voice loop > Where each named piece actually sits"),
+            ("docs/architecture/c3-voice-loop.md", "C3: The voice loop > Two constraints that bite"),
+        ),
+    ),
+    (
+        re.compile(
+            r"\b(hallucinat\w*|fabricat\w*|making up|make up|made up|makes up)\b"
+            r"|\b(accura\w*|trust\w*|reliab\w*|correct\w*|verif\w*)\b.*\b(numbers?|figures?|data|money|amounts?)\b"
+        ),
+        (
+            ("docs/architecture/c3-ingestion.md", "C3: Ingestion and the gate"),
+            (
+                "docs/architecture/c3-ingestion.md",
+                "C3: Ingestion and the gate > The gate, stated exactly (still binding, pantry included)",
+            ),
+            ("docs/adr/0006-reconciliation-gate.md", "6. LLM extraction, allowed only behind a deterministic gate > Decision"),
+            ("docs/adr/0031-speech-honesty-clause.md", "31. The assistant may not assert an outcome it did not observe > Decision"),
+        ),
+    ),
+)
+
+
+def topic_picks(query: str) -> tuple[tuple[str, str], ...]:
+    """The curated picks for the first topic `query` names, or none."""
+    q = query.lower()
+    return next((picks for pattern, picks in TOPIC_PICKS if pattern.search(q)), ())
+
 
 _WORD = re.compile(r"[a-z0-9]+")
 # A light suffix strip, so "tenancy" meets "tenants" and "gated" meets "gate".
@@ -238,10 +280,11 @@ def search(query: str, limit: int = LIMIT_DEFAULT) -> list[Passage]:
             (1.0 - i / n, i) for i, c in enumerate(index.chunks) if c["path"] == OVERVIEW_PATH
         ]
     scored.sort(key=lambda s: (-s[0], index.chunks[s[1]]["id"]))
-    if is_overview(query):
-        # The curated overview first, then whatever BM25 found, without repeats.
+    curated = OVERVIEW_PICKS if is_overview(query) else topic_picks(query)
+    if curated:
+        # The curated picks first, then whatever BM25 found, without repeats.
         picks: list[int] = []
-        for path, heading in OVERVIEW_PICKS:
+        for path, heading in curated:
             found = next(
                 (
                     i
