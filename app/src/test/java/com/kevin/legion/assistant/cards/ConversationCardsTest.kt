@@ -1,0 +1,107 @@
+package com.kevin.legion.assistant.cards
+
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/** The holder's lifecycle: open with a conversation, newest wins, dismiss, cleared at the end. */
+class ConversationCardsTest {
+
+    private fun list(name: String) = PhoneCards.checklist(name, listOf(ChecklistLine("milk", false)))
+
+    private fun car(
+        recalls: List<Recall>? = null,
+        codes: List<TroubleCode>? = null,
+        due: NextServiceDue? = null,
+        note: String? = null,
+    ) = ConversationCard.Car(
+        title = "Jeep", name = "Jeep", mileage = 1000, mileageAsOf = null,
+        nextService = due, recalls = recalls, codes = codes, note = note,
+    )
+
+    @Before
+    fun setUp() = ConversationCards.end()
+
+    @After
+    fun tearDown() = ConversationCards.end()
+
+    @Test
+    fun `a card published with no conversation open is dropped`() {
+        ConversationCards.publish(list("Groceries"))
+        assertNull(ConversationCards.state.value.latest)
+        assertFalse(ConversationCards.state.value.open)
+    }
+
+    @Test
+    fun `during a conversation the newest card is the one shown`() {
+        ConversationCards.begin()
+        ConversationCards.publish(list("Groceries"))
+        ConversationCards.publish(list("Packing"))
+        assertEquals("Packing", (ConversationCards.state.value.latest as ConversationCard.Checklist).listName)
+        assertEquals(2, ConversationCards.state.value.cards.size)
+    }
+
+    @Test
+    fun `begin while open keeps the conversation's cards`() {
+        ConversationCards.begin()
+        ConversationCards.publish(list("Groceries"))
+        ConversationCards.begin()
+        assertEquals(1, ConversationCards.state.value.cards.size)
+    }
+
+    @Test
+    fun `dismiss hides the card until the next one arrives`() {
+        ConversationCards.begin()
+        ConversationCards.publish(list("Groceries"))
+        ConversationCards.dismiss()
+        assertNull(ConversationCards.state.value.latest)
+        ConversationCards.publish(list("Packing"))
+        assertEquals("Packing", (ConversationCards.state.value.latest as ConversationCard.Checklist).listName)
+    }
+
+    @Test
+    fun `the end of the conversation clears every card and closes the holder`() {
+        ConversationCards.begin()
+        ConversationCards.publish(list("Groceries"))
+        ConversationCards.end()
+        assertTrue(ConversationCards.state.value.cards.isEmpty())
+        assertFalse(ConversationCards.state.value.open)
+        ConversationCards.publish(list("Packing"))
+        assertNull(ConversationCards.state.value.latest)
+    }
+
+    @Test
+    fun `at most eight cards are kept`() {
+        ConversationCards.begin()
+        repeat(10) { ConversationCards.publish(list("L$it")) }
+        assertEquals(8, ConversationCards.state.value.cards.size)
+        assertEquals("L2", (ConversationCards.state.value.cards.first() as ConversationCard.Checklist).listName)
+    }
+
+    @Test
+    fun `car cards for the same car merge, keeping what each tool looked up`() {
+        ConversationCards.begin()
+        val due = NextServiceDue("Oil change", dueMiles = 3000)
+        ConversationCards.publish(car(due = due, note = "Recalls and trouble codes were not checked in this answer."))
+        ConversationCards.publish(car(recalls = emptyList()))
+        ConversationCards.publish(car(codes = listOf(TroubleCode("P0420", "Catalyst efficiency"))))
+        val merged = ConversationCards.state.value.latest as ConversationCard.Car
+        assertEquals(1, ConversationCards.state.value.cards.size)
+        assertEquals(due, merged.nextService)
+        assertEquals(emptyList<Recall>(), merged.recalls)
+        assertEquals("P0420", merged.codes!!.single().code)
+    }
+
+    @Test
+    fun `a car card for a different car does not merge`() {
+        ConversationCards.begin()
+        ConversationCards.publish(car(recalls = emptyList()))
+        ConversationCards.publish(car().copy(name = "BMW", title = "BMW"))
+        assertEquals(2, ConversationCards.state.value.cards.size)
+        assertNull((ConversationCards.state.value.latest as ConversationCard.Car).recalls)
+    }
+}
