@@ -249,3 +249,51 @@ def test_members_are_never_counted_or_blocked(household_user, google, settings):
     for _ in range(3):
         assert web.post("/api/assistant/session", {}, format="json").status_code == 200
     assert not DemoBudgetDay.objects.exists()
+
+
+# =============================================================================
+# Kevin's tester code (Kevin, 2026-11-04: "a code that has no budget limit")
+# =============================================================================
+
+
+@pytest.fixture
+def tester(db):
+    Household.objects.create(name="Demo")
+    DemoCode.rotate()  # the shared code, live beside it
+    _row, code = DemoCode.rotate(unmetered=True)
+    browser = APIClient()
+    assert browser.post("/api/demo/enter", {"code": code}, format="json").status_code == 201
+    return browser
+
+
+def test_a_tester_visitor_is_never_counted_or_blocked(tester, google, settings):  # noqa: F811
+    _limits(settings, budget_usd="0", reserve="0")
+    for _ in range(3):
+        response = tester.post("/api/assistant/session", {}, format="json")
+        assert response.status_code == 200, response.data
+    assert not DemoBudgetDay.objects.exists()
+    # Still a visitor: the five-minute token, not a member's thirty.
+    expire = datetime.fromisoformat(google.sent[0]["body"]["expireTime"])
+    assert expire <= datetime.now(UTC) + timedelta(minutes=5, seconds=1)
+
+
+def test_a_shared_code_visitor_is_still_counted_beside_a_tester(
+    tester, recruiter, google, settings  # noqa: F811
+):
+    _limits(settings, budget_usd="0", reserve="0")
+    assert recruiter.post("/api/assistant/session", {}, format="json").status_code == 429
+    assert tester.post("/api/assistant/session", {}, format="json").status_code == 200
+
+
+def test_the_two_codes_rotate_and_close_apart(db):
+    shared, _ = DemoCode.rotate()
+    test_code, _ = DemoCode.rotate(unmetered=True)
+    DemoCode.rotate()
+    test_code.refresh_from_db()
+    assert test_code.revoked_at is None
+    DemoCode.close_all(unmetered=True)
+    test_code.refresh_from_db()
+    assert test_code.revoked_at is not None
+    assert DemoCode.live().filter(unmetered=False).count() == 1
+    shared.refresh_from_db()
+    assert shared.revoked_at is not None  # replaced by the second rotate

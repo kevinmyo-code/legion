@@ -37,27 +37,37 @@ class DemoCode(models.Model):
     code_hash = models.CharField(max_length=64, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    # Kevin's own tester code (Kevin, 2026-11-04: "a code that has no budget
+    # limit so i can test myself"). Its visitors are the same throwaway
+    # recruiters on the same demo household, with the same five-minute
+    # conversations, but nothing they do counts against the daily budget
+    # (`demo.budget.counts`). It is a separate generation from the shared code:
+    # rotating or closing one never touches the other. Never put it on a resume.
+    unmetered = models.BooleanField(default=False)
 
     def __str__(self) -> str:
         # Never the code, and never the hash either: neither belongs in a log line.
         state = "revoked" if self.revoked_at else "live"
-        return f"Demo code from {self.created_at:%Y-%m-%d %H:%M} ({state})"
+        kind = "tester " if self.unmetered else ""
+        return f"Demo {kind}code from {self.created_at:%Y-%m-%d %H:%M} ({state})"
 
     @classmethod
     def live(cls):
         return cls.objects.filter(revoked_at__isnull=True)
 
     @classmethod
-    def close_all(cls) -> int:
-        return cls.live().update(revoked_at=timezone.now())
+    def close_all(cls, unmetered: bool = False) -> int:
+        """Revoke the live codes of one kind: the shared code by default, the
+        tester code with `unmetered`."""
+        return cls.live().filter(unmetered=unmetered).update(revoked_at=timezone.now())
 
     @classmethod
-    def rotate(cls) -> tuple[DemoCode, str]:
-        """Revoke whatever is live and mint a new code. Returns the row and the
-        raw code, which is never stored and cannot be fetched again."""
-        cls.close_all()
+    def rotate(cls, unmetered: bool = False) -> tuple[DemoCode, str]:
+        """Revoke the live code of this kind and mint a new one. Returns the row
+        and the raw code, which is never stored and cannot be fetched again."""
+        cls.close_all(unmetered=unmetered)
         code = secrets.token_urlsafe(DEMO_CODE_BYTES)
-        return cls.objects.create(code_hash=hash_demo_code(code)), code
+        return cls.objects.create(code_hash=hash_demo_code(code), unmetered=unmetered), code
 
     @classmethod
     def match(cls, code: str) -> DemoCode | None:

@@ -1743,14 +1743,13 @@ def _legion_docs(request, args) -> ToolResult:
 def _web_search(request, args) -> ToolResult:
     from demo import budget
     from engine_mcp import web_search
-    from household.models import is_recruiter
 
     query = " ".join(args["query"].split())
     if not query:
         return refused("Nothing was searched. The search had no words in it.")
     user = getattr(request, "user", None)
     reservation = None
-    if user is not None and is_recruiter(user):
+    if budget.counts(user):
         # Reserved before Google is asked (`demo/budget.py`).
         reservation = budget.charge_web_search()
         if reservation is None:

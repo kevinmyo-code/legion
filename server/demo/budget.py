@@ -1,8 +1,9 @@
 """The recruiter demo's daily Gemini budget (recruiter-demo ticket 04, map ruling 4).
 
 One budget across ALL recruiter traffic, $5 a day by default, reset at UTC
-midnight. Members are never counted and never blocked: every caller checks
-`household.models.is_recruiter` first and touches nothing here otherwise.
+midnight. Members are never counted and never blocked, and neither is a
+visitor who came in on Kevin's tester code (`DemoCode.unmetered`): every
+caller asks `counts(user)` first and touches nothing here otherwise.
 
 ## Reserve before acting
 
@@ -103,6 +104,17 @@ BUDGET_USED_UP = "Today's demo budget is used up. Try again tomorrow."
 
 
 MAX_SESSION_MINUTES_CEILING = 30  # a member's token lifetime (`live.TOKEN_LIFETIME`)
+
+
+def counts(user) -> bool:
+    """Whether this caller's Gemini use is charged to the demo budget: a
+    recruiter visitor, unless their visit came in on the tester code."""
+    from demo.models import DemoVisit
+    from household.models import is_recruiter
+
+    if user is None or not is_recruiter(user):
+        return False
+    return not DemoVisit.objects.filter(user=user, code__unmetered=True).exists()
 
 
 def max_session_minutes() -> int:

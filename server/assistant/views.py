@@ -54,7 +54,6 @@ from demo import budget as demo_budget
 from devicelogs import web_conversation
 from engine_mcp.models import Outcome
 from engine_mcp.tools import run_engine_tool, run_tool
-from household.models import is_recruiter
 from household.permissions import IsHouseholdMember
 from household.tenancy import household_of
 from ingest.statements import gemini_key
@@ -256,9 +255,10 @@ class AssistantSessionView(_AssistantView):
 
         # recruiter-demo ticket 04: a recruiter's mint reserves its worst case
         # against the global daily demo budget first, and no token is minted
-        # when it does not fit. Members never reach the budget.
+        # when it does not fit. Members, and visitors on the tester code, never
+        # reach the budget (`demo_budget.counts`).
         reservation = None
-        if is_recruiter(request.user):
+        if demo_budget.counts(request.user):
             reservation = demo_budget.reserve_voice_mint()
             if reservation is None:
                 _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
