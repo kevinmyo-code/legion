@@ -129,6 +129,13 @@ export function AssistantProvider({
     client.attach()
     return () => client.dispose()
   }, [client])
+  // The mic tap must open the audio synchronously (iPhone rule, `LiveClient.startVoice`), so the
+  // audio chunk has to be loaded before the tap. Opening the chat loaded it, but a pinned dock
+  // (the recruiter page) is never "opened", and the mic failed with "couldn't be opened"
+  // (Kevin, 2026-11-03). Load it as soon as an assistant is on the page.
+  useEffect(() => {
+    void preloadAudio().catch(() => {})
+  }, [])
 
   const [open, setOpenState] = useState(() => defaultOpen && surface === 'workbench')
   // Crossing 1024 px swaps dock for sheet. The sheet must not open itself on the
