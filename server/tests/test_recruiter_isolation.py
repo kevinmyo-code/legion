@@ -588,11 +588,13 @@ def test_the_visitors_declaration_lists_only_procedures_it_may_run(world):
     _procedure(member_only)
     _procedure(_visit_read("kevins_own"), household=world["kevin"])
     (tool,) = [t for t in tools_for(world["visitor"]) if t.name == "run_procedure"]
-    # car_check and money_check are built-ins made only of RECRUITER_TOOLS (ticket 15);
-    # morning_briefing reads the brief, which a visit may not, so it is not offered.
+    # car_check and money_check are built-ins made only of RECRUITER_TOOLS (ticket 15). The
+    # built-in morning_briefing reads the brief, which a visit may not; the one offered is the
+    # visit's own, made only of RECRUITER_TOOLS (`demo/procedures/morning_briefing.yaml`).
     assert tool.input_schema["properties"]["name"]["enum"] == [
         "car_check",
         "money_check",
+        "morning_briefing",
         "visit_read",
     ]
     assert "member_only" not in tool.description and "kevins_own" not in tool.description

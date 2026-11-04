@@ -800,16 +800,26 @@ def test_a_visit_runs_car_check_and_money_check_on_its_own_copy(world, monkeypat
     assert "shows no recalls for the 2019 Subaru Outback (The Wagon)" in car
 
 
-def test_a_visit_may_not_run_morning_briefing_and_hears_why(world):  # noqa: F811
-    before = ProcedureRun.objects.count()
-    data = _run(world, "morning_briefing").data
-    assert data["is_error"] is True
-    assert data["text"] == (
+def test_a_visit_may_not_run_the_built_in_morning_briefing_and_runs_its_own(world):  # noqa: F811
+    """The built-in reads the daily brief (brief_latest), closed to a visit, and stays refused.
+    A visit runs its own `morning_briefing` instead, seeded into its household from
+    `demo/procedures/` and made only of RECRUITER_TOOLS (audit of conversation 512699a2)."""
+    from procedures.listing import recruiter_refusal
+    from procedures.models import ProcedureVersion
+
+    builtin = ProcedureVersion.objects.get(
+        procedure__household__isnull=True, procedure__name="morning_briefing", is_active=True
+    )
+    assert recruiter_refusal(builtin.definition) == (
         "Nothing ran. The procedure 'morning_briefing' is not available on this demo visit: it "
         "uses brief_latest (the daily brief is built from outside feeds on the household's own "
         "key), which a visit cannot use."
     )
-    assert ProcedureRun.objects.count() == before
+    data = _run(world, "morning_briefing").data
+    assert data["is_error"] is False, data["text"]
+    (run,) = ProcedureRun.objects.filter(household=world["demo"])
+    assert run.version.procedure.household_id == world["demo"].id
+    assert "brief_latest" not in [s.tool for s in run.steps.all()]
 
 
 # =============================================================================

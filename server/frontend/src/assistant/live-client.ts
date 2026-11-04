@@ -1,4 +1,4 @@
-import type { Card } from '@/components/assistant/cards/types'
+import { mergeCar, type Card } from '@/components/assistant/cards/types'
 
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
@@ -806,6 +806,24 @@ export class LiveClient {
 
   // ---- tools -------------------------------------------------------------
 
+  /**
+   * A car card for the same car as the conversation's newest card takes that
+   * card's other parts (next_service then vehicle_recalls make one car), and the
+   * older line gives its card up, so the screen shows the car once.
+   */
+  private mergedCard(card: Card): Card {
+    if (card.card !== 'car') return card
+    const lines = this.state.lines
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i]
+      if (line.kind !== 'tool' || !line.card) continue
+      if (line.card.card !== 'car' || line.card.name !== card.name) return card
+      this.update(line.id, { card: undefined } as Partial<Line>)
+      return mergeCar(line.card, card)
+    }
+    return card
+  }
+
   private async onToolCall(calls: FunctionCall[]) {
     this.closeAi(false)
     this.closeMe()
@@ -831,7 +849,7 @@ export class LiveClient {
           kind: 'tool',
           ok: result.success,
           text: result.success ? `Done: ${result.text || call.name}` : `Did not run: ${result.text}`,
-          ...(result.card ? { card: result.card } : {}),
+          ...(result.card ? { card: this.mergedCard(result.card) } : {}),
         })
         return { id: call.id, name: call.name, response: result.forward }
       }),

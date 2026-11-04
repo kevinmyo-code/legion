@@ -1111,3 +1111,10 @@
     padding-right: calc(1.6 * var(--u));
     max-width: calc(30 * var(--u));
 }
+.recruiter [data-card="dayhead"] {
+    font-size: calc(0.72 * var(--u));
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--rc-meta);
+}

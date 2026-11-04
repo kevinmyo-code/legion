@@ -25,6 +25,8 @@ export interface BarsCard extends Common {
 }
 
 export interface TimelineItem {
+  /** YYYY-MM-DD: on a card over several days, the day this item falls on. Additive. */
+  date?: string
   start: string | null
   end: string | null
   all_day: boolean
@@ -50,6 +52,46 @@ export interface CarCard extends Common {
   next_service: { label: string; due_miles?: number; due_date?: string; estimate: true } | null
   recalls: { summary: string }[]
   codes: { code: string; meaning: string }[]
+  /**
+   * Additive: the parts this card's call read, each with its note. A card from
+   * next_service alone has only `service`; one from vehicle_recalls only
+   * `recalls`. Absent means every part (an older engine, or car_check).
+   */
+  parts?: Partial<Record<CarPart, string>>
+}
+
+export type CarPart = 'service' | 'codes' | 'recalls'
+export const CAR_PARTS: readonly CarPart[] = ['service', 'codes', 'recalls']
+
+/** Whether `card` read `part` (every part when the engine did not say). */
+export function hasPart(card: CarCard, part: CarPart): boolean {
+  return card.parts === undefined || part in card.parts
+}
+
+/**
+ * Two cards for the same car from one conversation (next_service, then
+ * vehicle_recalls) as one: each part from the newer card when it read that part,
+ * else from the older. The phone does the same (`ConversationCards.mergeCar`).
+ */
+export function mergeCar(older: CarCard, newer: CarCard): CarCard {
+  if (newer.parts === undefined) return newer
+  const pick = (part: CarPart) => (part in newer.parts! || !hasPart(older, part) ? newer : older)
+  const service = pick('service')
+  const parts: Partial<Record<CarPart, string>> = {}
+  for (const part of CAR_PARTS) {
+    const from = pick(part)
+    if (hasPart(from, part)) parts[part] = from.parts?.[part] ?? ''
+  }
+  return {
+    ...newer,
+    mileage: service.mileage,
+    mileage_as_of: service.mileage_as_of,
+    next_service: service.next_service,
+    codes: pick('codes').codes,
+    recalls: pick('recalls').recalls,
+    parts,
+    note: Object.values(parts).filter(Boolean).join(' ') || undefined,
+  }
 }
 
 export interface StepsCard extends Common {

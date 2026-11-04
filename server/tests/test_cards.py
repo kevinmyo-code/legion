@@ -105,7 +105,9 @@ def test_timeline_is_one_local_day_all_day_first_with_an_offset_zone():
     late = _event("Bins out", dt.datetime(2026, 11, 5, 4, 30, tzinfo=dt.UTC), kind="task")
     # All-day rows are UTC midnight of the date they name; never read in the zone.
     holiday = _event("Holiday", dt.datetime(2026, 11, 4, 0, 0, tzinfo=dt.UTC), all_day=True)
-    idea = _event("Farmers market", dt.datetime(2026, 11, 4, 15, 0, tzinfo=dt.UTC), kind="suggestion")
+    idea = _event(
+        "Farmers market", dt.datetime(2026, 11, 4, 15, 0, tzinfo=dt.UTC), kind="suggestion"
+    )
     later = _event("Next week", dt.datetime(2026, 11, 10, 15, 0, tzinfo=dt.UTC))
     card = cards.events_timeline(
         [later, dentist, late, idea, holiday], {}, window_start, window_end, CHICAGO, day
@@ -115,7 +117,13 @@ def test_timeline_is_one_local_day_all_day_first_with_an_offset_zone():
     assert card["zone"] == "UTC-06:00"
     assert card["items"] == [
         {"start": None, "end": None, "all_day": True, "title": "Holiday", "kind": "event"},
-        {"start": "09:00", "end": None, "all_day": False, "title": "Farmers market", "kind": "suggestion"},
+        {
+            "start": "09:00",
+            "end": None,
+            "all_day": False,
+            "title": "Farmers market",
+            "kind": "suggestion",
+        },
         {"start": "15:30", "end": "16:15", "all_day": False, "title": "Dentist", "kind": "event"},
         {"start": "22:30", "end": None, "all_day": False, "title": "Bins out", "kind": "todo"},
     ]
@@ -137,7 +145,11 @@ def test_timeline_expands_a_repeating_event_and_honours_a_skip():
     # A local wall-clock time, kept across the DST change on Nov 1.
     assert [i["start"] for i in on["items"]] == ["07:00"]
     skipped = cards.events_timeline(
-        [gym], {gym["id"]: {dt.date(2026, 11, 3)}}, window_start, window_end, CHICAGO,
+        [gym],
+        {gym["id"]: {dt.date(2026, 11, 3)}},
+        window_start,
+        window_end,
+        CHICAGO,
         dt.date(2026, 11, 3),
     )
     assert skipped["items"] == []
@@ -150,10 +162,13 @@ def test_timeline_expands_a_repeating_event_and_honours_a_skip():
 
 def test_checklist_needs_a_day_and_says_how_many_lists_are_not_shown():
     lists = [
-        {"name": "Groceries", "items": [
-            {"text": "Milk", "ticked_on_date": True},
-            {"text": "Eggs", "ticked_on_date": False},
-        ]},
+        {
+            "name": "Groceries",
+            "items": [
+                {"text": "Milk", "ticked_on_date": True},
+                {"text": "Eggs", "ticked_on_date": False},
+            ],
+        },
         {"name": "Packing", "items": []},
     ]
     assert cards.checklist_card(lists, None) is None
@@ -193,7 +208,11 @@ def _car_values(*, recalls_ok=True):
             "structured": {
                 "rows": [
                     {"vehicle_id": VID, "occurred_at": "2026-09-01T10:00:00Z", "codes": ["P0300"]},
-                    {"vehicle_id": VID, "occurred_at": "2026-10-20T10:00:00Z", "codes": ["P0420", "ZZ999"]},
+                    {
+                        "vehicle_id": VID,
+                        "occurred_at": "2026-10-20T10:00:00Z",
+                        "codes": ["P0420", "ZZ999"],
+                    },
                 ]
             },
         },
@@ -224,7 +243,10 @@ def test_car_card_codes_since_the_clear_with_meanings_and_an_estimate():
     }
     # P0300 was before the clear; an unknown code keeps an empty meaning, never a guess.
     meaning = cards.dtc_titles()["P0420"]
-    assert card["codes"] == [{"code": "P0420", "meaning": meaning}, {"code": "ZZ999", "meaning": ""}]
+    assert card["codes"] == [
+        {"code": "P0420", "meaning": meaning},
+        {"code": "ZZ999", "meaning": ""},
+    ]
     assert card["recalls"] == [{"summary": "Air bags: May not deploy."}]
     assert "estimate" in card["note"]
 
@@ -294,7 +316,9 @@ def test_the_card_is_beside_response_and_never_in_what_is_forwarded(household_us
     demo_seed.seed_household(household_a, today=dt.date.today())
     client = browser(household_user)
     response = client.post(
-        "/api/assistant/tool", {"name": "monthly_spend", "args": {"month": _last_month()}}, format="json"
+        "/api/assistant/tool",
+        {"name": "monthly_spend", "args": {"month": _last_month()}},
+        format="json",
     )
     assert response.status_code == 200, response.data
     assert "card" in response.data, response.data["text"]
@@ -319,7 +343,9 @@ def test_a_card_builder_bug_never_fails_the_read(household_user, household_a, mo
 
     monkeypatch.setattr(cards, "spend_bars", boom)
     response = browser(household_user).post(
-        "/api/assistant/tool", {"name": "monthly_spend", "args": {"month": _last_month()}}, format="json"
+        "/api/assistant/tool",
+        {"name": "monthly_spend", "args": {"month": _last_month()}},
+        format="json",
     )
     assert response.status_code == 200
     assert response.data["is_error"] is False
@@ -335,7 +361,10 @@ def test_list_events_returns_a_timeline_in_the_households_zone(household_user, h
     client = browser(household_user)
     made = client.post(
         "/api/assistant/tool",
-        {"name": "add_event", "args": {"fields": {"title": "Dentist", "starts_at": "2026-10-06T20:00Z"}}},
+        {
+            "name": "add_event",
+            "args": {"fields": {"title": "Dentist", "starts_at": "2026-10-06T20:00Z"}},
+        },
         format="json",
     )
     assert made.data["is_error"] is False, made.data
@@ -369,7 +398,6 @@ def test_a_recruiter_visit_gets_cards_from_its_own_demo(world, monkeypatch):  # 
 
 
 from tests.test_recruiter_isolation import world  # noqa: E402, F401 - fixture
-
 
 # =============================================================================
 # Follow-ups (Kevin, 2026-11-04: "go with ur recommendations")
@@ -456,8 +484,12 @@ def test_repeating_events_come_with_their_occurrences_the_same_ones_the_card_sho
     ]
     card = listed["card"]
     assert card["date"] == "2026-10-06"
-    assert [(i["start"], i["title"]) for i in card["items"]] == [("07:00", "Gym")]
-    assert card["more"] == 1  # Oct 8; Oct 7 is skipped
+    # Three days asked: each occurrence under its day; Oct 7 is skipped.
+    assert [(i["date"], i["start"], i["title"]) for i in card["items"]] == [
+        ("2026-10-06", "07:00", "Gym"),
+        ("2026-10-08", "07:00", "Gym"),
+    ]
+    assert card["more"] == 0
 
 
 def _event_id(call):
@@ -480,7 +512,10 @@ def test_list_checklists_by_name_with_its_current_state_and_card(chicago):
         assert added["is_error"] is False, added["text"]
         ids[text] = json.loads(added["text"][added["text"].index("{") :])["id"]
     # A plain list keeps a tick from any day; a scheduled one counts only today's.
-    for text, list_name, day in (("Milk", "Groceries", "2026-10-01"), ("Meds", "Morning", "2026-10-01")):
+    for text, list_name, day in (
+        ("Milk", "Groceries", "2026-10-01"),
+        ("Meds", "Morning", "2026-10-01"),
+    ):
         ticked = chicago(
             "tick_checklist_item",
             {"checklist_id": rows[list_name], "item_id": ids[text], "date": day},
@@ -508,3 +543,109 @@ def test_list_checklists_by_name_with_its_current_state_and_card(chicago):
     assert missing["text"].startswith("Nothing was read. No checklist is called 'Hardware'.")
     assert "Groceries" in missing["text"] and "Morning" in missing["text"]
     assert "card" not in missing
+
+
+# =============================================================================
+# Demo fixes (audit of conversation 512699a2, 2026-11-04)
+# =============================================================================
+
+
+def test_next_service_and_vehicle_recalls_each_make_a_car_card_with_only_their_part():
+    service = cards.service_car(_car_values()["service"]["structured"])
+    assert service["name"] == "Cherokee" and service["mileage"] == 120_400
+    assert set(service["parts"]) == {"service"}
+    assert service["codes"] == [] and service["recalls"] == []
+    assert "Recalls" not in service["note"] and "codes" not in service["note"]
+    recalls = cards.recalls_car(
+        "Cherokee", {"recalls": [{"component": "AIR BAGS", "summary": "May not deploy."}]}
+    )
+    assert set(recalls["parts"]) == {"recalls"}
+    assert recalls["mileage"] is None and recalls["next_service"] is None
+    assert recalls["recalls"] == [{"summary": "Air bags: May not deploy."}]
+    full = cards.car_card(_car_values())
+    assert set(full["parts"]) == {"service", "codes", "recalls"}
+    two = _car_values()["service"]["structured"]
+    two["vehicles"] = two["vehicles"] * 2
+    assert cards.service_car(two) is None
+
+
+def test_a_window_of_days_carries_each_items_date():
+    window_start = dt.datetime(2026, 11, 4, 5, 0, tzinfo=dt.UTC)  # 00:00 EST
+    window_end = dt.datetime(2026, 11, 12, 4, 59, 59, tzinfo=dt.UTC)
+    zone = ZoneInfo("America/New_York")
+    rows = [
+        _event("Dinner", dt.datetime(2026, 11, 5, 0, 0, tzinfo=dt.UTC)),  # 19:00 Nov 4
+        _event(
+            "Books due", dt.datetime(2026, 11, 4, 0, 0, tzinfo=dt.UTC), all_day=True, kind="task"
+        ),
+        _event("Conference", dt.datetime(2026, 11, 7, 21, 0, tzinfo=dt.UTC)),
+    ]
+    card = cards.events_timeline(
+        rows, {}, window_start, window_end, zone, dt.date(2026, 11, 4), dt.date(2026, 11, 11)
+    )
+    assert card["date"] == "2026-11-04"
+    assert card["period"] == "Wed Nov 4 to Wed Nov 11"
+    assert [(i["date"], i["start"], i["title"]) for i in card["items"]] == [
+        ("2026-11-04", None, "Books due"),
+        ("2026-11-04", "19:00", "Dinner"),
+        ("2026-11-07", "16:00", "Conference"),
+    ]
+    one_day = cards.events_timeline(rows, {}, window_start, window_end, zone, dt.date(2026, 11, 4))
+    assert all("date" not in i for i in one_day["items"]) and "period" not in one_day
+
+
+@pytest.mark.django_db
+def test_a_recruiter_sees_today_and_this_week_and_service_then_recalls_cards(world, monkeypatch):  # noqa: F811
+    from tests.test_procedures_builtins import fake_recalls
+    from tests.test_recruiter_isolation import _leaks, _tool
+
+    fake_recalls(monkeypatch)
+    zone = ZoneInfo(world["demo"].timezone)
+    today = dt.datetime.now(zone).date()
+    day = _tool(
+        world["browser"], "list_events", {"from": today.isoformat(), "to": today.isoformat()}
+    )
+    titles = [i["title"] for i in day.data["card"]["items"]]
+    assert {
+        "Library books due",
+        "Call the plumber about the kitchen tap",
+        "Dinner with the Okafors",
+    } <= set(titles)
+    week_end = (today + dt.timedelta(days=7)).isoformat()
+    week = _tool(world["browser"], "list_events", {"from": today.isoformat(), "to": week_end})
+    days = {i["date"] for i in week.data["card"]["items"]}
+    assert today.isoformat() in days and len(days) >= 3
+
+    service = _tool(world["browser"], "next_service", {})
+    assert set(service.data["card"]["parts"]) == {"service"}
+    recalls = _tool(world["browser"], "vehicle_recalls", {})
+    assert recalls.data["card"]["name"] == service.data["card"]["name"]
+    assert set(recalls.data["card"]["parts"]) == {"recalls"}
+    for body in (day.data["card"], week.data["card"], service.data["card"], recalls.data["card"]):
+        assert _leaks(world, json.dumps(body)) == []
+
+
+@pytest.mark.django_db
+def test_a_visit_runs_its_own_morning_briefing_from_allowed_tools_and_is_deleted_whole(world):  # noqa: F811
+    from assistant.surface import RECRUITER_TOOLS
+    from demo.visit_cleanup import delete_visit_household
+    from procedures.listing import find, tool_names
+    from procedures.models import ProcedureRun, ProcedureVersion
+    from tests.test_recruiter_isolation import _tool
+
+    version = find(world["demo"], "morning_briefing")
+    assert version.procedure.household_id == world["demo"].id
+    assert set(tool_names(version.definition)) <= set(RECRUITER_TOOLS)
+    # Kevin's household, and members everywhere, still get the built-in.
+    assert find(world["kevin"], "morning_briefing").procedure.household_id is None
+
+    ran = _tool(world["browser"], "run_procedure", {"name": "morning_briefing"})
+    assert ran.data["is_error"] is False, ran.data["text"]
+    assert "Dinner with the Okafors" in ran.data["text"]
+    assert "Checklists: " in ran.data["text"] and "The car: " in ran.data["text"]
+    assert ran.data["card"]["card"] == "steps"
+    assert [i["status"] for i in ran.data["card"]["items"]] == ["ok"] * 7
+
+    delete_visit_household(world["demo"])
+    assert not ProcedureRun.objects.filter(household=world["demo"]).exists()
+    assert not ProcedureVersion.objects.filter(household=world["demo"]).exists()

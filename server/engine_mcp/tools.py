@@ -414,13 +414,22 @@ def _list_events(request, args) -> ToolResult:
         live = live.filter(done=False)
     # Suggestions (Kevin, 2026-10-09) are things the household COULD do, never
     # their plans: their own section, never mixed into the three below.
-    suggested = live.filter(
-        kind=KIND_SUGGESTION, starts_at__gte=start, starts_at__lte=end
-    ).order_by("starts_at")[:READ_LIMIT_MAX]
+    # An all-day row's `starts_at` is UTC midnight of the date it names, so it is in the
+    # window when that DATE is one of the window's local days, whatever the zone (west of
+    # UTC its midnight is the evening before the window's first instant).
+    from django.db.models import Q
+
+    first_day, last_day = cards.all_day_bounds(start, end, zone)
+    in_window = Q(all_day=False, starts_at__gte=start, starts_at__lte=end) | Q(
+        all_day=True, starts_at__gte=first_day, starts_at__lte=last_day
+    )
+    suggested = (
+        live.filter(in_window, kind=KIND_SUGGESTION).order_by("starts_at")[:READ_LIMIT_MAX]
+    )
     live = live.exclude(kind=KIND_SUGGESTION)
-    one_off = live.filter(
-        repeat_kind__isnull=True, starts_at__gte=start, starts_at__lte=end
-    ).order_by("starts_at")[:READ_LIMIT_MAX]
+    one_off = live.filter(in_window, repeat_kind__isnull=True).order_by("starts_at")[
+        :READ_LIMIT_MAX
+    ]
     repeating = live.filter(repeat_kind__isnull=False, starts_at__lte=end).order_by("starts_at")[
         :READ_LIMIT_MAX
     ]
@@ -454,6 +463,8 @@ def _list_events(request, args) -> ToolResult:
         end,
         zone,
         start.astimezone(zone).date(),
+        # The window's last local day; `end` is the inclusive last instant.
+        end.astimezone(zone).date(),
     )
     if not any(sections.values()):
         return ok(
@@ -1106,6 +1117,7 @@ def _next_service(request, args) -> ToolResult:
             "utc_offset_minutes": int(offset.total_seconds() // 60),
             "vehicles": out,
         },
+        card=cards.safe(cards.service_car, {"vehicles": out}),
     )
 
 
@@ -1372,6 +1384,7 @@ def _vehicle_recalls(request, args) -> ToolResult:
             f"NHTSA's recall list shows no recalls for the {car} ({name}) as of this lookup. That "
             f"is {scope}.",
             structured={"vehicle_id": str(vehicle.id), "vehicle": car, "recalls": []},
+            card=cards.safe(cards.recalls_car, name, {"recalls": []}),
         )
     shown = found[:RECALLS_SHOWN]
     lines = "\n".join(
@@ -1384,6 +1397,7 @@ def _vehicle_recalls(request, args) -> ToolResult:
         f"NHTSA lists {len(found)} recall(s) for the {car} ({name}).{more} This is {scope}:\n"
         f"{lines}",
         structured={"vehicle_id": str(vehicle.id), "vehicle": car, "recalls": shown},
+        card=cards.safe(cards.recalls_car, name, {"recalls": found}),
     )
 
 

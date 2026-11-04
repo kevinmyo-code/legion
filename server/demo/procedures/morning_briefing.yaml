@@ -1,0 +1,58 @@
+# The demo visit's morning briefing (audit of conversation 512699a2, 2026-11-04: "Run the
+# morning briefing" got "I can't do that"). The built-in reads the member's daily brief with
+# brief_latest, which a visit may not use (RECRUITER_EXCLUDED), so a visit could never run it.
+# This one is built only from tools already in RECRUITER_TOOLS and is seeded into each visit's
+# own household (`demo/briefing.py`), where a household's own procedure wins over the built-in
+# of the same name (`procedures/listing.py`). Members and the shared demo keep the built-in.
+# The household's today comes from next_service (`as_of`, in the household's zone), so no
+# step reads the brief.
+name: morning_briefing
+description: >-
+  The morning briefing on this demo visit: today's events, today's checklists, and the car.
+  There is no daily brief on a visit.
+steps:
+  - id: service
+    kind: tool
+    tool: next_service
+    next: events
+  - id: events
+    kind: tool
+    tool: list_events
+    args:
+      from: $steps.service.structured.as_of
+      to: $steps.service.structured.as_of
+    next: lists
+  - id: lists
+    kind: tool
+    tool: list_checklists
+    args:
+      date: $steps.service.structured.as_of
+    next: today
+  - id: today
+    kind: compute
+    function: day_events
+    args:
+      events: $steps.events.structured
+      utc_offset_minutes: $steps.service.structured.utc_offset_minutes
+    next: ticks
+  - id: ticks
+    kind: compute
+    function: checklist_day
+    args:
+      checklists: $steps.lists.structured.checklists
+      day: $steps.service.structured.as_of
+    next: lead
+  - id: lead
+    kind: compute
+    function: car_lead
+    args:
+      vehicles: $steps.service.structured.vehicles
+    next: answer
+  - id: answer
+    kind: say
+    template: |-
+      {$steps.today}
+
+      {$steps.ticks}
+
+      {$steps.lead}

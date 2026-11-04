@@ -44,6 +44,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from demo.briefing import seed_visit_procedures
 from demo.models import DemoCode, DemoVisit
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
@@ -189,6 +190,8 @@ def _make_visit_household() -> Household:
         name=f"Demo visit {tag}", timezone=DEMO_TIMEZONE, is_demo_visit=True
     )
     seed_household(household, created=True)
+    # The visit's own morning briefing, built only from the visit's tools (`demo/briefing.py`).
+    seed_visit_procedures(household)
     return household
 
 

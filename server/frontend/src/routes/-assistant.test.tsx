@@ -6,7 +6,7 @@ import { setAudioFactory } from '@/assistant/deps'
 import { TOOL_FAILED } from '@/components/assistant/chat'
 import { createEngine, seedHousehold, type EngineOptions } from '@/test/engine'
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
-import { SPEND_CARD } from '@/test/cards-seed'
+import { RECALLS_HALF, SERVICE_HALF, SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
 import type { Surface } from '@/lib/surface'
 
@@ -140,6 +140,34 @@ describe('the family surface', () => {
       },
     })
     expect(log.textContent).not.toMatch(/monthly_spend|2026-10"|Categorised spend|Done:/)
+  })
+
+  test('next_service then vehicle_recalls for the same car show one car card with both', async () => {
+    const engine = engineWith({
+      assistant: {
+        tools: {
+          next_service: { text: 'Service.', card: SERVICE_HALF },
+          vehicle_recalls: { text: 'Recalls.', card: RECALLS_HALF },
+        },
+      },
+    })
+    renderApp('/', engine, 'family')
+    const sheet = await openFamilyChat()
+    typeAndSend(within(sheet).getByRole('textbox', { name: 'Message Dorothy' }), 'Service and recalls?')
+    const socket = await connect()
+    socket.serve({ toolCall: { functionCalls: [{ id: 'n1', name: 'next_service', args: {} }] } })
+    await waitFor(() => expect(socket.sentOf('toolResponse')).toHaveLength(1))
+    socket.serve({ toolCall: { functionCalls: [{ id: 'r1', name: 'vehicle_recalls', args: {} }] } })
+    await waitFor(() => expect(socket.sentOf('toolResponse')).toHaveLength(2))
+    const log = within(sheet).getByRole('log')
+    const cars = within(log).getAllByRole('region', { name: 'Wagon' })
+    expect(cars).toHaveLength(1)
+    expect(cars[0]).toHaveTextContent('48,210 mi')
+    expect(cars[0]).toHaveTextContent('Air bags: The passenger air bag may not deploy.')
+    // What went back to Gemini is each tool's own response, untouched.
+    expect(socket.sentOf('toolResponse')[1]).toEqual({
+      toolResponse: { functionResponses: [{ id: 'r1', name: 'vehicle_recalls', response: { success: true, message: 'Recalls.' } }] },
+    })
   })
 
   test('a refused tool shows one plain sentence: no tool name, no engine words', async () => {

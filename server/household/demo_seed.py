@@ -599,7 +599,43 @@ def events(today: dt.date, zone) -> list[dict]:
             today + dt.timedelta(days=days), dt.time(hour, minute), tzinfo=zone
         ).isoformat()
 
+    # An all-day row's `starts_at` is UTC midnight of the date it names (`api.events`).
+    all_day_today = dt.datetime.combine(today, dt.time(0, 0), tzinfo=dt.UTC).isoformat()
+
     return [
+        # Today, every visit (audit of conversation 512699a2, 2026-11-04: "What's on today?"
+        # found nothing). Relative to the visit's own local date, late enough in the day that
+        # most visits still see them ahead.
+        {
+            "origin_guid": "demo-event-library",
+            "title": "Library books due",
+            "kind": "task",
+            "all_day": True,
+            "starts_at": all_day_today,
+            "notes": "Three picture books, Maple Hollow branch.",
+        },
+        {
+            "origin_guid": "demo-event-plumber",
+            "title": "Call the plumber about the kitchen tap",
+            "kind": "task",
+            "starts_at": at(0, 17, 45),
+        },
+        {
+            "origin_guid": "demo-event-dinner",
+            "title": "Dinner with the Okafors",
+            "kind": "event",
+            "starts_at": at(0, 19),
+            "ends_at": at(0, 21),
+            "location": "Lantern Noodle House",
+        },
+        {
+            "origin_guid": "demo-event-school",
+            "title": "Parent-teacher conference",
+            "kind": "event",
+            "starts_at": at(3, 16),
+            "ends_at": at(3, 16, 30),
+            "location": "Maple Hollow Elementary",
+        },
         {
             "origin_guid": "demo-event-dentist",
             "title": "Dentist cleaning",

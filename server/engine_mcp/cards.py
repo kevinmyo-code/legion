@@ -143,6 +143,18 @@ def _field(row, name):
     return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
 
 
+def all_day_bounds(window_start: datetime, window_end: datetime, zone) -> tuple[datetime, datetime]:
+    """The instants an all-day row's `starts_at` (UTC midnight of its date) may take to fall on
+    one of the window's local days: UTC midnight of the first, to the last instant of the last."""
+    first = window_start.astimezone(zone).date()
+    last = window_end.astimezone(zone).date()
+    return (
+        datetime.combine(first, datetime.min.time(), tzinfo=UTC),
+        datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
+        - timedelta(microseconds=1),
+    )
+
+
 def _expand(row, skips: dict, window_start: datetime, window_end: datetime, zone):
     """(start, end) for each occurrence of one stored event in the window, skips removed.
     `api.recurrence.series_occurrences` is the engine's one expansion (push reminders use it).
@@ -154,6 +166,8 @@ def _expand(row, skips: dict, window_start: datetime, window_end: datetime, zone
     all_day = bool(_field(row, "all_day"))
     starts_at, ends_at = _field(row, "starts_at"), _field(row, "ends_at")
     length = ends_at - starts_at if starts_at is not None and ends_at is not None else None
+    if all_day:
+        window_start, window_end = all_day_bounds(window_start, window_end, zone)
     for start in series_occurrences(
         row, skips.get(_field(row, "id"), ()), window_start, window_end, UTC if all_day else zone
     ):
@@ -185,54 +199,74 @@ def occurrences(events, skips: dict, window_start: datetime, window_end: datetim
 
 
 def events_timeline(
-    events, skips: dict, window_start: datetime, window_end: datetime, zone, day: date
+    events,
+    skips: dict,
+    window_start: datetime,
+    window_end: datetime,
+    zone,
+    day: date,
+    last_day: date | None = None,
 ) -> dict:
-    """One day's events and tasks, in the household's clock, from the rows `list_events` read
-    (one-offs, repeating series and suggestions; done ones only if the tool kept them).
+    """The events and tasks of `day` (through `last_day` for a window of several days), in the
+    household's clock, from the rows `list_events` read (one-offs, repeating series and
+    suggestions; done ones only if the tool kept them).
 
-    Repeating series are expanded by `_expand`, skips subtracted. `more` counts the
-    occurrences in the tool's window on other days."""
-    day_start = datetime.combine(day, datetime.min.time(), tzinfo=zone)
-    day_end = day_start + timedelta(days=1)
-    on_day, other = [], 0
+    Repeating series are expanded by `_expand`, skips subtracted. Over several days each item
+    carries its own `date` (additive to the shared format: the phone may ignore it) and the
+    top-level `date` is the first day. `more` counts the occurrences in the tool's window that
+    are not shown, on days outside the range or past the cap."""
+    last_day = last_day if last_day is not None and last_day > day else day
+    several = last_day > day
+    range_start = datetime.combine(day, datetime.min.time(), tzinfo=zone)
+    range_end = datetime.combine(last_day + timedelta(days=1), datetime.min.time(), tzinfo=zone)
+    found, other = [], 0
     for row in events:
         all_day = bool(_field(row, "all_day"))
         for start, ends in _expand(row, skips, window_start, window_end, zone):
             if all_day:
-                hit = start.astimezone(UTC).date() == day
+                on = start.astimezone(UTC).date()
+                hit = day <= on <= last_day
             else:
-                hit = day_start <= start < day_end
+                on = start.astimezone(zone).date()
+                hit = range_start <= start < range_end
             if not hit:
                 other += 1
                 continue
             end = None
-            if not all_day and ends is not None and ends.astimezone(zone).date() == day:
+            if not all_day and ends is not None and ends.astimezone(zone).date() == on:
                 end = ends.astimezone(zone)
-            on_day.append(
-                {
-                    "start": None if all_day else _clock(start.astimezone(zone)),
-                    "end": _clock(end),
-                    "all_day": all_day,
-                    "title": (_field(row, "title") or "Untitled").strip() or "Untitled",
-                    "kind": KIND_WORDS.get(_field(row, "kind"), "event"),
-                    "_sort": (not all_day, start),
-                }
-            )
-    on_day.sort(key=lambda i: i["_sort"])
-    shown = on_day[:TIMELINE_MAX]
+            item = {
+                "start": None if all_day else _clock(start.astimezone(zone)),
+                "end": _clock(end),
+                "all_day": all_day,
+                "title": (_field(row, "title") or "Untitled").strip() or "Untitled",
+                "kind": KIND_WORDS.get(_field(row, "kind"), "event"),
+                "_sort": (on, not all_day, start),
+            }
+            if several:
+                item["date"] = on.isoformat()
+            found.append(item)
+    found.sort(key=lambda i: i["_sort"])
+    shown = found[:TIMELINE_MAX]
     for item in shown:
         del item["_sort"]
     card = {
         "card": "timeline",
         "title": "What's on",
         "date": day.isoformat(),
-        "zone": zone_words(day_start.utcoffset()),
+        "zone": zone_words(range_start.utcoffset()),
         "items": shown,
-        "more": (len(on_day) - len(shown)) + other,
+        "more": (len(found) - len(shown)) + other,
     }
+    if several:
+        card["period"] = f"{_short_day(day)} to {_short_day(last_day)}"
     if any(i["kind"] == "suggestion" for i in shown):
         card["note"] = "Suggestions are ideas, not plans."
     return card
+
+
+def _short_day(day: date) -> str:
+    return f"{day:%a} {day:%b} {day.day}"
 
 
 # =============================================================================
@@ -291,19 +325,8 @@ def _ok(value: dict) -> bool:
     return value.get("outcome") == "ok" and isinstance(value.get("structured"), dict)
 
 
-def car_card(values: dict) -> dict | None:
-    """car_check's one car, from its step values (`next_service`, `read_records` of the code
-    tables, `vehicle_recalls`). Several cars, or a service read that did not come back, is no
-    car card (the caller draws the steps instead)."""
-    from procedures.steps import codes_since_clear
-
-    service = _value(values, "service")
-    if not _ok(service):
-        return None
-    vehicles = service["structured"].get("vehicles") or []
-    if len(vehicles) != 1:
-        return None
-    v = vehicles[0]
+def _service_part(v: dict) -> tuple[dict, str]:
+    """Mileage on file and the next service, from one `next_service` vehicle."""
     odometer = v.get("odometer") or None
     next_service = None
     overdue = v.get("overdue") or []
@@ -322,48 +345,111 @@ def car_card(values: dict) -> dict | None:
             next_service["due_date"] = by_date["due_on"]
         if by_miles and by_miles["service_name"] == lead["service_name"]:
             next_service["due_miles"] = int(by_miles["due_at_miles"])
+    fields = {
+        "mileage": int(odometer["miles"]) if odometer else None,
+        "mileage_as_of": odometer["read_on"] if odometer else None,
+        "next_service": next_service,
+    }
+    note = "Next service is an estimate from the records on file." if next_service else ""
+    return fields, note
 
-    codes_value, clears_value = _value(values, "codes"), _value(values, "clears")
+
+def _codes_part(found: list[str] | None) -> tuple[list, str]:
+    if found is None:
+        return [], "Trouble codes were not read."
+    titles = dtc_titles()
+    codes = [{"code": c, "meaning": titles.get(c, "")} for c in found[:CODES_MAX]]
     notes = []
-    codes = []
+    if len(found) > CODES_MAX:
+        notes.append(f"{len(found) - CODES_MAX} more trouble codes not shown.")
+    if codes:
+        notes.append("Codes are what the OBD dongle logged when it last connected.")
+    return codes, " ".join(notes)
+
+
+def _recalls_part(found: list[dict] | None) -> tuple[list, str]:
+    if found is None:
+        return [], "Recalls were not looked up, so whether there are any is not known."
+    recalls = [{"summary": _recall_words(r)} for r in found[:RECALLS_MAX]]
+    notes = []
+    if len(found) > RECALLS_MAX:
+        notes.append(f"{len(found) - RECALLS_MAX} more recalls not shown.")
+    notes.append("Recalls are NHTSA's list for the model, not a check of this car's VIN.")
+    return recalls, " ".join(notes)
+
+
+CAR_PARTS = ("service", "codes", "recalls")
+
+
+def _car(name: str, *, service=None, codes=None, recalls=None, read=CAR_PARTS) -> dict:
+    """A car card from the parts one call read. `parts` (additive to the shared format) names
+    each part this card's call read, with that part's note, so a screen can merge two cards
+    for the same car (next_service, then vehicle_recalls) without a part one call never read
+    looking like an empty finding. `note` is every part's note, for a screen that does not
+    merge."""
+    card = {
+        "card": "car",
+        "title": name,
+        "name": name,
+        "mileage": None,
+        "mileage_as_of": None,
+        "next_service": None,
+        "recalls": [],
+        "codes": [],
+    }
+    parts = {}
+    if "service" in read:
+        fields, parts["service"] = _service_part(service or {})
+        card.update(fields)
+    if "codes" in read:
+        card["codes"], parts["codes"] = _codes_part(codes)
+    if "recalls" in read:
+        card["recalls"], parts["recalls"] = _recalls_part(recalls)
+    card["note"] = " ".join(n for n in parts.values() if n)
+    card["parts"] = parts
+    return card
+
+
+def service_car(structured: dict) -> dict | None:
+    """`next_service` for one car: its mileage on file and next service. Several cars is no
+    car card. Codes and recalls are not this call's, so they are not on the card."""
+    vehicles = (structured or {}).get("vehicles") or []
+    if len(vehicles) != 1:
+        return None
+    v = vehicles[0]
+    return _car(v.get("name") or "The car", service=v, read=("service",))
+
+
+def recalls_car(name: str, structured: dict) -> dict:
+    """`vehicle_recalls` for one car: NHTSA's list for its model. Only the recalls part."""
+    return _car(name, recalls=(structured or {}).get("recalls") or [], read=("recalls",))
+
+
+def car_card(values: dict) -> dict | None:
+    """car_check's one car, from its step values (`next_service`, `read_records` of the code
+    tables, `vehicle_recalls`). Several cars, or a service read that did not come back, is no
+    car card (the caller draws the steps instead). Codes or recalls that did not come back are
+    said in the note, never drawn as none."""
+    from procedures.steps import codes_since_clear
+
+    service = _value(values, "service")
+    if not _ok(service):
+        return None
+    vehicles = service["structured"].get("vehicles") or []
+    if len(vehicles) != 1:
+        return None
+    v = vehicles[0]
+    codes_value, clears_value = _value(values, "codes"), _value(values, "clears")
+    codes = None
     if _ok(codes_value) and _ok(clears_value):
-        found = codes_since_clear(
+        codes = codes_since_clear(
             v.get("vehicle_id"),
             codes_value["structured"].get("rows"),
             clears_value["structured"].get("rows"),
         )
-        titles = dtc_titles()
-        codes = [{"code": c, "meaning": titles.get(c, "")} for c in found[:CODES_MAX]]
-        if len(found) > CODES_MAX:
-            notes.append(f"{len(found) - CODES_MAX} more trouble codes not shown.")
-        if codes:
-            notes.append("Codes are what the OBD dongle logged when it last connected.")
-    else:
-        notes.append("Trouble codes were not read.")
-
     recalls_value = _value(values, "recalls")
-    recalls = []
-    if _ok(recalls_value):
-        found = recalls_value["structured"].get("recalls") or []
-        recalls = [{"summary": _recall_words(r)} for r in found[:RECALLS_MAX]]
-        if len(found) > RECALLS_MAX:
-            notes.append(f"{len(found) - RECALLS_MAX} more recalls not shown.")
-        notes.append("Recalls are NHTSA's list for the model, not a check of this car's VIN.")
-    else:
-        notes.append("Recalls were not looked up, so whether there are any is not known.")
-    if next_service is not None:
-        notes.append("Next service is an estimate from the records on file.")
-    return {
-        "card": "car",
-        "title": v.get("name") or "The car",
-        "name": v.get("name") or "The car",
-        "mileage": int(odometer["miles"]) if odometer else None,
-        "mileage_as_of": odometer["read_on"] if odometer else None,
-        "next_service": next_service,
-        "recalls": recalls,
-        "codes": codes,
-        "note": " ".join(notes),
-    }
+    recalls = (recalls_value["structured"].get("recalls") or []) if _ok(recalls_value) else None
+    return _car(v.get("name") or "The car", service=v, codes=codes, recalls=recalls)
 
 
 def _recall_words(recall: dict) -> str:

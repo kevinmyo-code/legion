@@ -134,7 +134,7 @@ def test_the_seed_builds_every_aspect_with_invented_data():
     assert Place.objects.filter(household=demo).count() == 4
     assert VoiceNote.objects.filter(household=demo).count() == 3
     events = Event.objects.filter(household=demo)
-    assert events.count() == 6
+    assert events.count() == 10
     # Ledger categories and budgets (parity quick wins), Transfer not spending.
     from legacy.models.ledger import BudgetTarget, Category
 
@@ -226,7 +226,7 @@ def test_reset_deletes_what_it_may_keeps_what_is_gated_and_reseeds_the_same_rows
     assert report.household.id == demo.id
     # Authored and provisional rows were really deleted, not merely kept...
     assert report.reset_deleted["vehicles"] == 1
-    assert report.reset_deleted["events"] == 6
+    assert report.reset_deleted["events"] == 10
     assert report.reset_deleted["categories"] == 8
     assert report.reset_deleted["budget_targets"] == 6
     assert report.reset_deleted["ledger_transactions (UNRECONCILED)"] > 0

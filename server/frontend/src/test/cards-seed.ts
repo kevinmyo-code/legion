@@ -69,3 +69,47 @@ export const LIST_CARD: ChecklistCard = {
   more: 0,
   note: '1 other list not shown.',
 }
+
+/** "What's on this week?": items carry their day. */
+export const WEEK_CARD: TimelineCard = {
+  card: 'timeline',
+  title: "What's on",
+  period: 'Wed Nov 4 to Wed Nov 11',
+  date: '2026-11-04',
+  zone: 'UTC-05:00',
+  items: [
+    { date: '2026-11-04', start: null, end: null, all_day: true, title: 'Library books due', kind: 'todo' },
+    { date: '2026-11-04', start: '19:00', end: '21:00', all_day: false, title: 'Dinner with the Okafors', kind: 'event' },
+    { date: '2026-11-05', start: '17:30', end: null, all_day: false, title: 'Pick up dry cleaning', kind: 'event' },
+    { date: '2026-11-07', start: '16:00', end: '16:30', all_day: false, title: 'Parent-teacher conference', kind: 'event' },
+  ],
+  more: 0,
+}
+
+/** next_service alone: the service part only. */
+export const SERVICE_HALF: CarCard = {
+  card: 'car',
+  title: 'Wagon',
+  name: 'Wagon',
+  mileage: 48_210,
+  mileage_as_of: '2026-10-28',
+  next_service: { label: 'Oil change', due_miles: 50_000, estimate: true },
+  recalls: [],
+  codes: [],
+  note: 'Next service is an estimate from the records on file.',
+  parts: { service: 'Next service is an estimate from the records on file.' },
+}
+
+/** vehicle_recalls alone: the recalls part only. */
+export const RECALLS_HALF: CarCard = {
+  card: 'car',
+  title: 'Wagon',
+  name: 'Wagon',
+  mileage: null,
+  mileage_as_of: null,
+  next_service: null,
+  recalls: [{ summary: 'Air bags: The passenger air bag may not deploy.' }],
+  codes: [],
+  note: "Recalls are NHTSA's list for the model, not a check of this car's VIN.",
+  parts: { recalls: "Recalls are NHTSA's list for the model, not a check of this car's VIN." },
+}

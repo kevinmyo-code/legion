@@ -1,10 +1,10 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
 
-import { CAR_CARD, DAY_CARD, LIST_CARD, SPEND_CARD, STEPS_CARD } from '@/test/cards-seed'
+import { CAR_CARD, DAY_CARD, LIST_CARD, RECALLS_HALF, SERVICE_HALF, SPEND_CARD, STEPS_CARD, WEEK_CARD } from '@/test/cards-seed'
 
 import { ToolCard } from './card'
-import { asCard, centsWords, clockWords, dayWords } from './types'
+import { asCard, centsWords, clockWords, dayWords, mergeCar } from './types'
 
 const region = (name: string) => screen.getByRole('region', { name })
 
@@ -70,6 +70,45 @@ describe('tool cards', () => {
     expect(rows[0]).toHaveTextContent('Milk, ticked')
     expect(rows[1]).toHaveTextContent('Eggs, not ticked')
     expect(within(card).getByText('1 other list not shown.')).toBeInTheDocument()
+  })
+})
+
+describe('cards over several days, and a car in parts', () => {
+  test('timeline: a window of days puts each item under its own day', () => {
+    render(<ToolCard card={WEEK_CARD} />)
+    const card = region("What's on")
+    expect(within(card).getByText('Wed Nov 4 to Wed Nov 11')).toBeInTheDocument()
+    const days = within(card).getAllByRole('region')
+    expect(days.map((day) => day.getAttribute('aria-label'))).toEqual([
+      'Wed Nov 4, 2026',
+      'Thu Nov 5, 2026',
+      'Sat Nov 7, 2026',
+    ])
+    expect(within(days[0]).getAllByRole('listitem').map((row) => row.textContent)).toEqual([
+      'All dayLibrary books due (to do)',
+      '7:00 pmto 9:00 pmDinner with the Okafors',
+    ])
+  })
+
+  test('car: a card from one call draws only the parts that call read', () => {
+    render(<ToolCard card={SERVICE_HALF} />)
+    const card = region('Wagon')
+    expect(within(card).getByText('Mileage')).toBeInTheDocument()
+    expect(within(card).queryByText('Recalls')).not.toBeInTheDocument()
+    expect(within(card).queryByText('Codes')).not.toBeInTheDocument()
+  })
+
+  test('mergeCar: next_service then vehicle_recalls make one car, each part from the call that read it', () => {
+    const merged = mergeCar(SERVICE_HALF, RECALLS_HALF)
+    expect(merged.mileage).toBe(48_210)
+    expect(merged.next_service?.label).toBe('Oil change')
+    expect(merged.recalls).toEqual(RECALLS_HALF.recalls)
+    expect(Object.keys(merged.parts ?? {})).toEqual(['service', 'recalls'])
+    expect(merged.note).toBe(
+      "Next service is an estimate from the records on file. Recalls are NHTSA's list for the model, not a check of this car's VIN.",
+    )
+    // A full card (car_check) replaces whatever came before it.
+    expect(mergeCar(SERVICE_HALF, CAR_CARD)).toBe(CAR_CARD)
   })
 })
 
