@@ -169,7 +169,7 @@ describe('/try', () => {
     expect(report).toHaveAttribute('sandbox', 'allow-scripts')
     expect(report).toHaveAttribute('src', '/static/demo/report.html')
 
-    expect(screen.getByRole('link', { name: 'Download resume (PDF)' })).toHaveAttribute('href', '/static/demo/resume.pdf')
+    expect(screen.getByRole('link', { name: 'Download the resume (PDF)' })).toHaveAttribute('href', '/static/demo/resume.pdf')
     expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute('href', content.links.linkedin)
     expect(screen.getByRole('link', { name: 'kevin@example.test' })).toHaveAttribute('href', 'mailto:kevin@example.test')
     expect(screen.queryByText(/Preview\./)).not.toBeInTheDocument()
@@ -181,7 +181,7 @@ describe('/try', () => {
     renderApp('/try', engine, 'family')
     await screen.findByRole('heading', { name: 'Experience' })
     expect(screen.queryByTitle('Report samples')).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Download resume (PDF)' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Download the resume (PDF)' })).not.toBeInTheDocument()
   })
 
   test('phone: no chat in the page, one Ask bar at the bottom, no orb; it opens the sheet', async () => {
@@ -326,6 +326,30 @@ describe('/try', () => {
     expect(alert).not.toHaveTextContent('in a little while')
   })
 
+  test('a member preview gets no access note: no visit, no copy of the household', async () => {
+    renderApp('/try', createEngine({ assistant: { companionName: 'Mabel' } }), 'family')
+    const hero = await screen.findByRole('region', { name: sampleContent().hero.title })
+    expect(within(hero).queryByRole('link', { name: 'Open the app' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/deleted when the visit ends/)).not.toBeInTheDocument()
+  })
+
+  test('the header names the page owner when the content does, and LEGION when not', async () => {
+    const engine = visitor()
+    renderApp('/try', engine, 'family')
+    const header = (await screen.findByRole('navigation', { name: 'On this page' })).parentElement!
+    expect(within(header).getByText('LEGION')).toBeInTheDocument()
+    // No phone section in the content: no Phone entry in the nav either.
+    expect(within(header).queryByRole('link', { name: 'Phone' })).not.toBeInTheDocument()
+  })
+
+  test('the header shows content.name', async () => {
+    const engine = visitor()
+    engine.demo.content = { ...sampleContent(), name: 'Test Person' }
+    renderApp('/try', engine, 'family')
+    const header = (await screen.findByRole('navigation', { name: 'On this page' })).parentElement!
+    expect(within(header).getByText('Test Person')).toBeInTheDocument()
+  })
+
   test('a page with no words yet says so', async () => {
     const engine = visitor()
     engine.demo.content = null
@@ -361,8 +385,13 @@ describe('/try', () => {
 
   test('the visitor page has a clear way into the app (ticket 13)', async () => {
     const { router } = renderApp('/try', visitor(), 'family')
-    const explore = await screen.findByRole('region', { name: 'Explore the app' })
-    fireEvent.click(within(explore).getByRole('link', { name: 'Explore the app' }))
+    // Two ways in, both to the app: the top line's nav, and the hero's access note,
+    // which says what the visitor's copy of the household is.
+    const hero = await screen.findByRole('region', { name: sampleContent().hero.title })
+    expect(within(hero).getByText(/deleted when the visit ends/)).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'On this page' })
+    expect(within(nav).getByRole('link', { name: 'Open the app' })).toHaveAttribute('href', '/')
+    fireEvent.click(within(hero).getByRole('link', { name: 'Open the app' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
     expect(await screen.findByRole('note', { name: 'Demo visit' })).toBeInTheDocument()
   })

@@ -5,7 +5,6 @@ import { useState } from 'react'
 import { api } from '@/api/client'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
@@ -60,71 +59,62 @@ function Login() {
     }
   }
 
+  // The door (prototype D "typeset", 2026-11-03): the recruiter section's
+  // look, because a recruiter's code is typed here too. `.recruiter` in
+  // `index.css` holds every value: ruled fields, small-caps labels, ink buttons.
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
-      <Card className="w-full max-w-sm rounded-sheet">
-        <CardHeader>
-          <CardTitle className="text-2xl">Sign in</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="username"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </div>
-            {error && <p className="text-[0.9375rem] text-destructive">{error}</p>}
-            <Button type="submit" size="lg" disabled={submitting}>
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </Button>
-            <p className="text-center text-[0.8125rem] text-muted-foreground">
-              Have an invite? Use the link you were sent, or{' '}
-              <Link to="/signup" className="font-medium text-primary underline-offset-4 hover:underline">
-                enter its code
-              </Link>
-              .
-            </p>
-          </form>
-        </CardContent>
-      </Card>
-      {/* Secondary to sign-in on purpose: members are who this page is for, and a
-          recruiter's code is one line in a resume (recruiter-demo ticket 07). */}
-      <section
-        aria-labelledby="access-code-heading"
-        className="w-full max-w-sm rounded-card border border-outline-variant px-6 py-5"
-      >
-        <h2 id="access-code-heading" className="text-base font-semibold">
-          Have an access code?
-        </h2>
-        <p className="mt-1 mb-3 text-[0.8125rem] text-muted-foreground">
-          From Kevin's resume. It opens a demo on made-up data, with no account.
-        </p>
-        <AccessCodeForm
-          onEntered={async () => {
-            await queryClient.invalidateQueries()
-            await navigate({ to: '/try' })
-          }}
-        />
-      </section>
+    <div className="recruiter rc-prose min-h-screen">
+      <main className="rc-door">
+        <span className="rc-caps">LEGION</span>
+        <h1 className="rc-h1">Sign in</h1>
+        <form className="flex flex-col" onSubmit={onSubmit}>
+          <div className="rc-field">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
+          <div className="rc-field">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
+          {error && <p className="text-destructive">{error}</p>}
+          <Button type="submit" size="lg" className="self-start" disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Sign in'}
+          </Button>
+          <p className="rc-access mt-4">
+            Have an invite? Use the link you were sent, or <Link to="/signup">enter its code</Link>.
+          </p>
+        </form>
+        {/* Secondary to sign-in on purpose: members are who this page is for, and a
+            recruiter's code is one line in a resume (recruiter-demo ticket 07). */}
+        <section aria-labelledby="access-code-heading" className="rc-or">
+          <h2 id="access-code-heading" className="rc-h3">
+            Have an access code?
+          </h2>
+          <p className="rc-access">From Kevin's resume. It opens a demo on made-up data, with no account.</p>
+          <AccessCodeForm
+            onEntered={async () => {
+              await queryClient.invalidateQueries()
+              await navigate({ to: '/try' })
+            }}
+          />
+        </section>
+      </main>
     </div>
   )
 }

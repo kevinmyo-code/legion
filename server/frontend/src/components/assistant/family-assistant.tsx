@@ -45,6 +45,7 @@ export function FamilyAssistant({ launcher = 'orb' }: { launcher?: 'orb' | 'bar'
             type="button"
             onClick={() => ui.setOpen(true)}
             aria-label={live ? `Open the conversation with ${name}` : `Ask ${name}`}
+            data-chat="askbar"
             className="mx-auto flex min-h-12 w-full max-w-[880px] items-center gap-2.5 rounded-full bg-card py-1.5 pr-1.5 pl-2 text-left shadow-md outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <span
@@ -98,7 +99,11 @@ export function FamilyAssistant({ launcher = 'orb' }: { launcher?: 'orb' | 'bar'
             inputRef.current?.focus()
           }}
           style={frame}
-          className="fixed inset-x-0 top-0 z-50 flex flex-col bg-background pt-[env(safe-area-inset-top)] outline-none"
+          // The sheet is portalled out of the page, so the recruiter page's look
+          // (`.recruiter`, the only page with the bar) is put back on it here.
+          className={`fixed inset-x-0 top-0 z-50 flex flex-col bg-background pt-[env(safe-area-inset-top)] outline-none${
+            launcher === 'bar' ? ' recruiter' : ''
+          }`}
         >
           <DialogPrimitive.Title className="sr-only">Conversation with {name}</DialogPrimitive.Title>
           <AssistantChat

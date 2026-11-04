@@ -22,7 +22,29 @@ export interface DemoSession {
   ref: string
 }
 
+/** One "LEGION on the phone" clip. With no `video` yet the page draws a placeholder. */
+export interface DemoPhoneClip {
+  title: string
+  body: string
+  video?: string
+  poster?: string
+  /** A WebVTT file, shown as the clip's captions by default. */
+  captions?: string
+}
+
+export interface DemoPhone {
+  title: string
+  intro: string
+  clips: DemoPhoneClip[]
+  /** The whole recording the clips are cut from, linked under the section. */
+  full_take?: string
+}
+
 export interface DemoContent {
+  /** The page's header line. Absent: the header says "LEGION". */
+  name?: string
+  /** "LEGION on the phone". Absent: the section is not drawn. */
+  phone?: DemoPhone
   hero: { title: string; lead: string; facts: string[] }
   look_for: { title: string; body: string }[]
   work: {

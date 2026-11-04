@@ -15,7 +15,7 @@ from django.core.cache import cache
 from django.core.management import CommandError, call_command
 from rest_framework.test import APIClient
 
-from demo.content import CONTENT_SCHEMA, problems
+from demo.content import CONTENT_SCHEMA, problems, public_content
 from demo.content_views import NO_CONTENT, NOT_A_READER, NOT_A_VISIT, NOT_SIGNED_IN
 from demo.models import DemoCode, RecruiterContent
 from household.models import Household, HouseholdMember, User
@@ -168,6 +168,60 @@ def test_the_schema_requires_every_top_level_section():
     assert problems(fake_content() | {"extra": 1})
 
 
+def fake_phone() -> dict:
+    return {
+        "title": "Fake phone section",
+        "intro": "Lorem ipsum phone intro.",
+        "clips": [
+            {
+                "title": "Fake clip with video",
+                "body": "Lorem ipsum clip.",
+                "video": "/static/demo/fake.mp4",
+                "poster": "/static/demo/fake.jpg",
+                "captions": "/static/demo/fake.vtt",
+            },
+            {"title": "Fake clip, no video yet", "body": "Lorem ipsum placeholder."},
+        ],
+        "full_take": "/static/demo/fake-full.mp4",
+    }
+
+
+def test_name_and_phone_are_optional():
+    assert "name" not in CONTENT_SCHEMA["required"]
+    assert "phone" not in CONTENT_SCHEMA["required"]
+    # Content written before either key existed still fits.
+    assert problems(fake_content()) == []
+    assert problems(fake_content() | {"name": "Test Person"}) == []
+
+
+def test_a_phone_section_fits_with_and_without_its_optional_keys():
+    assert problems(fake_content() | {"phone": fake_phone()}) == []
+    bare = fake_phone()
+    del bare["full_take"]
+    bare["clips"] = [{"title": "Only a title", "body": "And a body."}]
+    assert problems(fake_content() | {"phone": bare}) == []
+
+
+def test_a_phone_section_refuses_unknown_and_missing_keys():
+    unknown_clip = fake_phone()
+    unknown_clip["clips"][0]["autoplay"] = True
+    found = problems(fake_content() | {"phone": unknown_clip})
+    assert len(found) == 1 and found[0].startswith("phone/clips/0:")
+
+    unknown_top = fake_phone() | {"extra": "x"}
+    assert problems(fake_content() | {"phone": unknown_top})
+
+    no_body = fake_phone()
+    del no_body["clips"][1]["body"]
+    assert problems(fake_content() | {"phone": no_body})
+
+    no_clips = fake_phone()
+    del no_clips["clips"]
+    assert problems(fake_content() | {"phone": no_clips})
+
+    assert problems(fake_content() | {"name": 7})
+
+
 # =============================================================================
 # GET /api/demo/session
 # =============================================================================
@@ -217,6 +271,16 @@ def test_content_is_served_without_the_profile(recruiter, tmp_path):
     expected["assets"] = {"report": "/api/demo/asset/report", "resume": "/api/demo/asset/resume"}
     assert response.json() == expected
     assert "pretend work" not in response.content.decode()
+
+
+def test_name_and_phone_are_served_without_the_profile(recruiter, tmp_path):
+    content = fake_content() | {"name": "Test Person", "phone": fake_phone()}
+    load_fake(tmp_path, content=content)
+    served = recruiter.get("/api/demo/content").json()
+    assert served["name"] == "Test Person"
+    assert served["phone"] == fake_phone()
+    assert "profile" not in served
+    assert public_content(content) == {k: v for k, v in content.items() if k != "profile"}
 
 
 def test_assets_are_null_when_not_loaded(recruiter, tmp_path):

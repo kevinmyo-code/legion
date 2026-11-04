@@ -38,6 +38,12 @@ import { cn } from '@/lib/utils'
  *  - "May be recorded to improve the assistant" sits beside the mic, for a
  *    member and a recruiter alike (Kevin, 2026-11-03): the engine keeps a record
  *    of each conversation's words and tool calls, never the audio.
+ *
+ * `data-chat="..."` marks the parts a page may restyle (the recruiter page's
+ * transcript look, `.recruiter [data-chat]` in `index.css`). They are stable
+ * hooks: rename one and that page's styles silently stop applying. The speaker
+ * label on each turn is `hidden` here and shown only by such a page, so the
+ * member chat looks exactly as it did.
  */
 
 /** The recording notice. The companion's name is the engine's; the wording says "improve", never "train". */
@@ -110,17 +116,22 @@ export function AssistantChat({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-none items-center gap-3 px-4 pt-2 pb-2">
+    <div data-chat="root" className="flex h-full min-h-0 flex-col">
+      <header data-chat="header" className="flex flex-none items-center gap-3 px-4 pt-2 pb-2">
         <span
           aria-hidden="true"
+          data-chat="avatar"
           className="grid size-9 flex-none place-items-center rounded-full bg-primary-container font-semibold text-primary-container-foreground"
         >
           {name.slice(0, 1).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate leading-tight font-semibold">{name}</p>
-          <p className="text-[0.8125rem] text-muted-foreground">{subtitle}</p>
+          <p data-chat="name" className="truncate leading-tight font-semibold">
+            {name}
+          </p>
+          <p data-chat="subtitle" className="text-[0.8125rem] text-muted-foreground">
+            {subtitle}
+          </p>
         </div>
         {onMinimise && (
           <Button
@@ -158,6 +169,7 @@ export function AssistantChat({
       {state.notice && (
         <div
           role="alert"
+          data-chat="alert"
           className="mx-3 mb-2 flex flex-none gap-2 rounded-2xl bg-destructive-container p-3 text-sm text-destructive-container-foreground"
         >
           {state.notice.kind === 'engine-unreachable' ? (
@@ -176,20 +188,22 @@ export function AssistantChat({
         role="log"
         aria-label={`Conversation with ${name}`}
         aria-live="polite"
+        data-chat="log"
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-3"
       >
         {state.lines.length === 0 ? (
-          <div className="pt-4 pb-1">
+          <div data-chat="intro" className="pt-4 pb-1">
             <h2 className="text-[1.375rem]">Ask {name}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{intro}</p>
             <SessionLine layout={layout} closable={onClose !== undefined} />
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div data-chat="suggestions" className="mt-3 flex flex-wrap gap-2">
               {suggestions.map((text) => (
                 <button
                   key={text}
                   type="button"
                   onClick={() => ask(text)}
                   disabled={ended}
+                  data-chat="suggestion"
                   className="min-h-11 rounded-full border border-outline px-4 text-left text-sm hover:bg-surface-2"
                 >
                   {text}
@@ -201,7 +215,7 @@ export function AssistantChat({
           <>
             <SessionLine layout={layout} closable={onClose !== undefined} />
             {state.lines.map((line) => (
-              <Bubble key={line.id} line={line} />
+              <Bubble key={line.id} line={line} name={name} />
             ))}
           </>
         )}
@@ -224,8 +238,11 @@ export function AssistantChat({
 
       {state.mic !== 'off' && <VoiceStage state={state} name={name} />}
 
-      <form onSubmit={submit} className="flex flex-none items-center gap-2 px-3 pt-1 pb-3">
-        <label className="flex h-12 min-w-0 flex-1 items-center rounded-full bg-surface-3 pr-1 pl-4 focus-within:ring-2 focus-within:ring-primary">
+      <form onSubmit={submit} data-chat="form" className="flex flex-none items-center gap-2 px-3 pt-1 pb-3">
+        <label
+          data-chat="input"
+          className="flex h-12 min-w-0 flex-1 items-center rounded-full bg-surface-3 pr-1 pl-4 focus-within:ring-2 focus-within:ring-primary"
+        >
           <span className="sr-only">Message {name}</span>
           <input
             ref={inputRef}
@@ -247,6 +264,7 @@ export function AssistantChat({
           <Button
             type="button"
             size="icon-lg"
+            data-chat="mic"
             aria-label={`Talk to ${name}`}
             disabled={ended}
             onClick={() => void client.startVoice()}
@@ -258,6 +276,7 @@ export function AssistantChat({
             type="button"
             size="icon-lg"
             variant="secondary"
+            data-chat="mic"
             aria-label="Stop talking. Typing continues."
             onClick={() => client.stopVoice()}
           >
@@ -265,7 +284,9 @@ export function AssistantChat({
           </Button>
         )}
       </form>
-      <p className="flex-none px-4 pb-2 text-center text-[0.75rem] text-muted-foreground">{recordingNotice(name)}</p>
+      <p data-chat="notice" className="flex-none px-4 pb-2 text-center text-[0.75rem] text-muted-foreground">
+        {recordingNotice(name)}
+      </p>
     </div>
   )
 }
@@ -286,7 +307,7 @@ function SessionLine({ layout, closable }: { layout: 'sheet' | 'panel'; closable
 /** What a failed tool call says on screen: no tool name, no engine words. */
 export const TOOL_FAILED = "Couldn't check that."
 
-function Bubble({ line }: { line: Line }) {
+function Bubble({ line, name }: { line: Line; name: string }) {
   if (line.kind === 'tool') {
     // `line.text` is the engine's text for the model (names, args, JSON). Never rendered.
     if (line.ok) return null
@@ -303,6 +324,7 @@ function Bubble({ line }: { line: Line }) {
   const mine = line.kind === 'me'
   return (
     <div
+      data-chat={mine ? 'bubble-me' : 'bubble-ai'}
       className={cn(
         'max-w-[84%] rounded-[1.25rem] px-3.5 py-2.5 text-[0.9375rem]',
         mine
@@ -310,10 +332,13 @@ function Bubble({ line }: { line: Line }) {
           : 'self-start rounded-bl-md bg-surface-2 text-foreground',
       )}
     >
+      <span data-chat="speaker" className="hidden">
+        {mine ? 'You' : name}
+      </span>
       {line.text}
       {line.kind === 'ai' && line.cut && <span className="text-muted-foreground italic"> (cut off)</span>}
       {(mine || line.via === 'spoken') && (
-        <span className="mt-1 flex items-center gap-1 text-[0.71875rem] opacity-85">
+        <span data-chat="via" className="mt-1 flex items-center gap-1 text-[0.71875rem] opacity-85">
           {mine ? (
             line.via === 'spoken' ? (
               <>

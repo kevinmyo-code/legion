@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Download, Eye } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { DEMO_SESSION_KEY, enterDemo, useDemoContent, useDemoSession, type DemoContent } from '@/api/demo'
 import { useMe } from '@/api/queries'
@@ -10,10 +9,14 @@ import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { useSurface } from '@/lib/surface'
+import { PhoneSection } from '@/screens/try-phone'
 
 /**
- * The recruiter section (recruiter-demo ticket 07, layout = prototype B
- * "editorial"). Three ways in, three different pages:
+ * The recruiter section (recruiter-demo ticket 07). The look is prototype D
+ * "typeset", Kevin's pick of 2026-11-03: one serif, set like a printed
+ * document, hairline rules and no boxes (`.recruiter` in `index.css` holds
+ * every value; this file only names the parts). Three ways in, three
+ * different pages:
  *
  *  - a recruiter's visit (`GET /api/demo/session` says `recruiter`): the page,
  *    with the assistant greeting them;
@@ -105,7 +108,7 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   if (entering || session.isPending || me.isPending) {
     return (
       <Shell>
-        <p role="status" className="py-24 text-center text-muted-foreground">
+        <p role="status" className="rc-status">
           {entering ? 'Opening the demo…' : 'Checking your access…'}
         </p>
       </Shell>
@@ -141,9 +144,9 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
 function Shell({ children, assistant = false }: { children: ReactNode; assistant?: boolean }) {
   const desk = useSurface() === 'workbench'
   return (
-    <div className="recruiter flex min-h-screen overflow-x-clip">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="mx-auto w-full max-w-[880px] flex-1 px-4 sm:px-6">{children}</div>
+    <div className="recruiter rc-layout">
+      <div className="rc-column rc-prose">
+        <div className="rc-inner">{children}</div>
         {assistant && !desk && <FamilyAssistant launcher="bar" />}
       </div>
       {assistant && desk && <AssistantDock pinned />}
@@ -163,26 +166,27 @@ function Gate({
   onEntered: () => Promise<void>
 }) {
   return (
-    <main className="flex min-h-screen flex-col justify-center py-12">
-      <h1 className="font-editorial text-[clamp(2rem,6vw,3rem)] leading-tight font-semibold">Try LEGION</h1>
-      <p className="mt-3 mb-6 max-w-xl text-lg text-muted-foreground">
-        Type the access code from Kevin's resume to open the demo: a voice and text assistant on a
-        made-up household. No account needed.
+    <main className="rc-door">
+      <span className="rc-caps">LEGION</span>
+      <h1 className="rc-h1">Try LEGION</h1>
+      <p className="rc-access">
+        Type the access code from Kevin's resume to open the demo: a voice and text assistant on a made-up
+        household. No account needed.
       </p>
       {lookupError && (
-        <p role="alert" className="mb-4 text-[0.9375rem] text-destructive">
+        <p role="alert" className="text-destructive">
           Could not ask the engine whether this browser already has a demo visit. {lookupError}
         </p>
       )}
-      <div className="max-w-md rounded-card border border-outline-variant bg-card p-5">
-        <AccessCodeForm refTag={refTag} initialError={initialError} onEntered={onEntered} />
+      <AccessCodeForm refTag={refTag} initialError={initialError} onEntered={onEntered} />
+      <div className="rc-or">
+        <p>
+          Have an account?{' '}
+          <Link to="/login" className="inline-flex min-h-11 items-center">
+            Sign in
+          </Link>
+        </p>
       </div>
-      <p className="mt-6 text-[0.9375rem]">
-        Have an account?{' '}
-        <Link to="/login" className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline">
-          Sign in
-        </Link>
-      </p>
     </main>
   )
 }
@@ -196,30 +200,34 @@ function expiryWords(iso: string | undefined): string | null {
 
 function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expiresAt?: string }) {
   const content = useDemoContent(true)
-  const expiry = mode === 'visitor' ? expiryWords(expiresAt) : null
+  // The way into the app is a visitor's only (ticket 13): a member's preview
+  // has no copy of the household to send them to, and no visit to run out.
+  const access = mode === 'visitor' ? <AccessNote expiry={expiryWords(expiresAt)} /> : null
 
   let body: ReactNode
   if (content.isPending) {
     body = (
-      <p role="status" className="py-24 text-center text-muted-foreground">
+      <p role="status" className="rc-status">
         Loading the page…
       </p>
     )
   } else if (content.isError) {
     body = (
-      <p role="alert" className="py-24 text-center">
-        Could not load this page. {content.error.message}
-      </p>
+      <div className="rc-status">
+        <p role="alert">Could not load this page. {content.error.message}</p>
+        {access}
+      </div>
     )
   } else if (content.data.kind === 'not-set-up') {
     body = (
-      <div className="py-24 text-center">
-        <h1 className="font-editorial text-3xl font-semibold">This page isn't set up yet</h1>
-        <p className="mt-2 text-muted-foreground">Its words have not been written on this engine. Nothing is missing on your side.</p>
+      <div className="rc-status">
+        <h1 className="rc-h2">This page isn't set up yet</h1>
+        <p>Its words have not been written on this engine. Nothing is missing on your side.</p>
+        {access}
       </div>
     )
   } else {
-    body = <Sections content={content.data.content} />
+    body = <Sections content={content.data.content} access={access} />
   }
 
   return (
@@ -230,25 +238,11 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
     >
       <Shell assistant>
         {mode === 'preview' && (
-          <p
-            role="note"
-            className="mt-4 flex items-center gap-2 rounded-control bg-primary-container px-4 py-3 text-[0.9375rem] text-primary-container-foreground"
-          >
-            <Eye className="size-4 flex-none" aria-hidden="true" />
-            <span>
-              Preview. This is what a visitor with the access code sees; the assistant here is still yours.{' '}
-              <Link to="/" className="font-medium underline underline-offset-4">
-                Back to your app
-              </Link>
-            </span>
+          <p role="note" className="rc-note">
+            Preview. This is what a visitor with the access code sees; the assistant here is still yours.{' '}
+            <Link to="/">Back to your app</Link>
           </p>
         )}
-        {expiry && (
-          <p role="note" className="mt-4 text-[0.875rem] text-muted-foreground">
-            {expiry}
-          </p>
-        )}
-        {mode === 'visitor' && <ExploreTheApp />}
         {body}
       </Shell>
     </AssistantProvider>
@@ -258,92 +252,107 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
 /**
  * The way from this page into the normal app (ticket 13, rulings 1 and 2): the
  * same screens a member uses, on the visitor's own copy of the made-up
- * household. The app's demo banner links back here.
+ * household. The app's demo banner links back here. The expiry sentence is its
+ * own element so it can be found and read on its own.
  */
-function ExploreTheApp() {
+function AccessNote({ expiry }: { expiry: string | null }) {
   return (
-    <section
-      aria-labelledby="explore-the-app"
-      className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-card border border-outline-variant bg-card px-5 py-4"
-    >
-      <div className="max-w-xl">
-        <h2 id="explore-the-app" className="font-semibold">
-          Explore the app
-        </h2>
-        <p className="text-[0.9375rem] text-muted-foreground">
-          Money, Fleet, Lists, Calendar, Places and Notes, on your own copy of the made-up household.
-          Add or change anything; it stays in your copy and is deleted when your visit ends.
-        </p>
-      </div>
-      <Link
-        to="/"
-        className="inline-flex min-h-11 items-center rounded-full bg-primary px-5 font-medium text-primary-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        Explore the app
-      </Link>
-    </section>
+    <p className="rc-access">
+      {expiry && <span>{expiry}</span>}
+      {expiry && ' '}
+      The app itself is open too: Money, Fleet, Lists, Calendar, Places and Notes, on your own copy of the made-up
+      household. Anything you change stays in your copy and is deleted when the visit ends.{' '}
+      <Link to="/">Open the app</Link>.
+    </p>
   )
 }
 
-function Sections({ content }: { content: DemoContent }) {
-  const { hero, look_for: lookFor, work, experience, links, assets } = content
+/** A run-in lead: the title set bold, ending in a full stop unless it has its own. */
+function runIn(title: string): string {
+  return /[.?!:]$/.test(title) ? title : `${title}.`
+}
+
+const COUNT_WORDS = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine']
+
+function propertiesHeading(count: number): string {
+  const word = COUNT_WORDS[count - 1]
+  if (!word) return 'Properties'
+  return count === 1 ? 'One property' : `${word} properties`
+}
+
+function Sections({ content, access }: { content: DemoContent; access: ReactNode }) {
+  const { hero, look_for: lookFor, work, experience, links, assets, phone } = content
+  const name = content.name?.trim() || 'LEGION'
+  const hasPhone = phone !== undefined && phone.clips.length > 0
   return (
     <>
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-4 text-[0.875rem]">
-        <span className="font-semibold">LEGION</span>
-        <nav aria-label="On this page" className="flex flex-wrap gap-x-4">
-          <a href="#work" className="inline-flex min-h-11 items-center text-primary">Work</a>
-          <a href="#experience" className="inline-flex min-h-11 items-center text-primary">Experience</a>
+      <header className="rc-top">
+        <span className="rc-caps">{name}</span>
+        <nav aria-label="On this page" className="rc-caps">
+          {hasPhone && <a href="#phone">Phone</a>}
+          <a href="#work">Work</a>
+          <a href="#experience">Experience</a>
+          <Link to="/">Open the app</Link>
         </nav>
       </header>
 
       <main>
-        <section aria-labelledby="hero-title" className="border-b border-outline-variant pt-8 pb-8 sm:pt-12">
-          <h1 id="hero-title" className="font-editorial text-[clamp(2.125rem,6vw,3.5rem)] leading-[1.1] font-semibold break-words">
+        <section aria-labelledby="hero-title" className="rc-hero">
+          <h1 id="hero-title" className="rc-h1">
             {hero.title}
           </h1>
-          <p className="font-editorial mt-4 max-w-[640px] text-xl leading-relaxed text-muted-foreground">{hero.lead}</p>
+          <p className="rc-lead">{hero.lead}</p>
           {hero.facts.length > 0 && (
-            <ul aria-label="Facts" className="mt-6 flex flex-wrap gap-2 text-[0.8125rem]">
-              {hero.facts.map((fact) => (
-                <li key={fact} className="rounded-full border border-outline-variant bg-card px-3 py-1">
-                  {fact}
-                </li>
+            <p className="rc-dateline">
+              {/* One dateline: the facts run on, a middle dot before each but the first (CSS). */}
+              {hero.facts.map((fact, index) => (
+                <Fragment key={`${index}-${fact}`}>
+                  {index > 0 && ' '}
+                  <span>{fact}</span>
+                </Fragment>
               ))}
-            </ul>
+            </p>
           )}
+          {access}
         </section>
 
         {lookFor.length > 0 && (
           <Section id="look-for" title="What to look for">
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rc-runin">
               {lookFor.map((item) => (
-                <div key={item.title}>
-                  <h3 className="font-editorial text-lg font-semibold">{item.title}</h3>
-                  <p className="mt-1 text-[0.9375rem] text-muted-foreground">{item.body}</p>
-                </div>
+                <p key={item.title}>
+                  <b>{runIn(item.title)}</b> {item.body}
+                </p>
               ))}
             </div>
           </Section>
         )}
 
+        {hasPhone && <PhoneSection phone={phone} />}
+
         <Section id="work" title={work.title}>
-          <p className="mb-5 text-muted-foreground">{work.intro}</p>
+          <p>{work.intro}</p>
           {work.stats.length > 0 && (
-            <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <dl className="rc-figures">
               {work.stats.map((stat) => (
-                <div key={stat.label} className="flex flex-col-reverse rounded-xl border border-outline-variant bg-card px-4 py-3">
-                  <dt className="text-[0.8125rem] text-muted-foreground">{stat.label}</dt>
-                  <dd className="text-[1.75rem] leading-tight font-semibold">{stat.value}</dd>
-                </div>
+                <Figure key={`${stat.value}-${stat.label}`} value={stat.value} label={stat.label} />
               ))}
             </dl>
           )}
           {work.diagram_svg && <Diagram svg={work.diagram_svg} caption={work.diagram_caption} />}
+          {work.cards.length > 0 && (
+            <div className="rc-runin">
+              <h3 className="rc-h3">{propertiesHeading(work.cards.length)}</h3>
+              {work.cards.map((card) => (
+                <p key={card.title}>
+                  <b>{runIn(card.title)}</b> {card.body}
+                </p>
+              ))}
+            </div>
+          )}
           {assets.report && (
-            <figure className="my-6">
-              <h3 className="font-editorial mb-3 text-[1.375rem] font-semibold">Report samples</h3>
-              <div className="overflow-hidden rounded-card border border-outline-variant bg-card">
+            <figure className="rc-figure">
+              <div className="rc-report">
                 {/* `allow-scripts` without `allow-same-origin`: the mocks may run their
                     own interactions, and can reach nothing of this page or its cookies. */}
                 <iframe
@@ -352,59 +361,30 @@ function Sections({ content }: { content: DemoContent }) {
                   sandbox="allow-scripts"
                   loading="lazy"
                   referrerPolicy="no-referrer"
-                  className="block h-[min(80dvh,56rem)] min-h-[28rem] w-full border-0"
                 />
               </div>
-              <figcaption className="mt-2 text-[0.8125rem] text-muted-foreground">
-                Illustrative mocks with made-up data. It scrolls inside its box.
+              <figcaption className="rc-figcaption">
+                Report samples: illustrative mocks with made-up data. The report scrolls inside its frame.
               </figcaption>
             </figure>
-          )}
-          {work.cards.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {work.cards.map((card) => (
-                <div key={card.title} className="rounded-card border border-outline-variant bg-card p-5">
-                  <h3 className="font-editorial text-lg font-semibold">{card.title}</h3>
-                  <p className="mt-1 text-[0.9375rem] text-muted-foreground">{card.body}</p>
-                </div>
-              ))}
-            </div>
           )}
         </Section>
 
         <Section id="experience" title="Experience">
           {assets.resume && (
-            <p className="mb-5">
-              <a
-                href={assets.resume}
-                className="inline-flex min-h-11 items-center gap-2 font-medium text-primary underline-offset-4 hover:underline"
-              >
-                <Download className="size-4" aria-hidden="true" />
-                Download resume (PDF)
-              </a>
+            <p>
+              <a href={assets.resume}>Download the resume (PDF)</a>
             </p>
           )}
-          <ol className="flex flex-col gap-5">
+          <div className="rc-exp">
             {experience.map((job) => (
-              <li key={`${job.when}-${job.title}`} className="grid gap-x-5 gap-y-1 sm:grid-cols-[160px_1fr]">
-                <p className="text-[0.875rem] text-muted-foreground">{job.when}</p>
-                <div>
-                  <h3 className="font-editorial text-lg font-semibold">{job.title}</h3>
-                  {job.bullets.length > 0 && (
-                    <ul className="mt-1 list-disc pl-5 text-[0.9375rem]">
-                      {job.bullets.map((bullet) => (
-                        <li key={bullet}>{bullet}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </li>
+              <Job key={`${job.when}-${job.title}`} when={job.when} title={job.title} bullets={job.bullets} />
             ))}
-          </ol>
+          </div>
         </Section>
       </main>
 
-      <footer className="flex flex-wrap gap-x-5 py-8 pb-12 text-[0.875rem] text-muted-foreground">
+      <footer className="rc-foot">
         {links.linkedin && <FooterLink href={links.linkedin}>LinkedIn</FooterLink>}
         {links.github && <FooterLink href={links.github}>GitHub</FooterLink>}
         {links.email && <FooterLink href={`mailto:${links.email}`}>{links.email}</FooterLink>}
@@ -413,10 +393,33 @@ function Sections({ content }: { content: DemoContent }) {
   )
 }
 
+/** One figure: the number, right-aligned in tabular figures, then what it counts. */
+function Figure({ value, label }: { value: string; label: string }) {
+  return (
+    <>
+      <dt>{value}</dt>
+      <dd>{label}</dd>
+    </>
+  )
+}
+
+/** One job: the dates hang in the left column; the bullets run on as one paragraph. */
+function Job({ when, title, bullets }: { when: string; title: string; bullets: string[] }) {
+  return (
+    <>
+      <div className="rc-when">{when}</div>
+      <div className="rc-job">
+        <h3 className="rc-role">{title}</h3>
+        {bullets.length > 0 && <p>{bullets.join(' ')}</p>}
+      </div>
+    </>
+  )
+}
+
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-4 border-b border-outline-variant py-10">
-      <h2 id={`${id}-title`} className="font-editorial mb-2 text-[1.75rem] leading-tight font-semibold">
+    <section id={id} aria-labelledby={`${id}-title`} className="rc-section">
+      <h2 id={`${id}-title`} className="rc-h2">
         {title}
       </h2>
       {children}
@@ -426,7 +429,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
 
 function FooterLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <a href={href} className="inline-flex min-h-11 items-center text-primary underline-offset-4 hover:underline" rel="noreferrer">
+    <a href={href} rel="noreferrer">
       {children}
     </a>
   )
@@ -435,16 +438,16 @@ function FooterLink({ href, children }: { href: string; children: ReactNode }) {
 /**
  * The diagram is the owner's own SVG, but it is still drawn as an image, never
  * injected as markup: an `<img>` runs no script and reaches nothing in the page,
- * whatever the SVG holds. Wide diagrams scroll inside their box, not the page.
+ * whatever the SVG holds. Wide diagrams scroll inside their frame, not the page.
  */
 function Diagram({ svg, caption }: { svg: string; caption: string }) {
   const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
   return (
-    <figure className="my-6">
-      <div role="region" className="overflow-x-auto rounded-card border border-outline-variant bg-card p-3" tabIndex={0} aria-label="Diagram, scrolls sideways">
-        <img src={src} alt={caption || 'Diagram'} className="block h-auto w-full min-w-[760px]" />
+    <figure className="rc-figure">
+      <div role="region" className="rc-frame" tabIndex={0} aria-label="Diagram, scrolls sideways">
+        <img src={src} alt={caption || 'Diagram'} />
       </div>
-      {caption && <figcaption className="mt-2 text-[0.8125rem] text-muted-foreground">{caption}</figcaption>}
+      {caption && <figcaption className="rc-figcaption">{caption}</figcaption>}
     </figure>
   )
 }

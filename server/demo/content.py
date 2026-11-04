@@ -25,16 +25,35 @@ _STR = {"type": "string"}
 _STRS = {"type": "array", "items": _STR}
 
 
-def _obj(properties: dict) -> dict:
+def _obj(properties: dict, optional: tuple[str, ...] = ()) -> dict:
+    """A closed object: every key required unless named in `optional`."""
     return {
         "type": "object",
         "properties": properties,
-        "required": list(properties),
+        "required": [key for key in properties if key not in optional],
         "additionalProperties": False,
     }
 
 
 _TITLE_BODY = _obj({"title": _STR, "body": _STR})
+
+# "LEGION on the phone" (prototype D, 2026-11-03): one clip per capability, cut
+# from one recording. A clip with no `video` yet is drawn as a placeholder;
+# `poster` and `captions` (a WebVTT file) go with the video. `full_take` is the
+# whole recording, linked under the section.
+_PHONE_CLIP = _obj(
+    {"title": _STR, "body": _STR, "video": _STR, "poster": _STR, "captions": _STR},
+    optional=("video", "poster", "captions"),
+)
+_PHONE = _obj(
+    {
+        "title": _STR,
+        "intro": _STR,
+        "clips": {"type": "array", "items": _PHONE_CLIP},
+        "full_take": _STR,
+    },
+    optional=("full_take",),
+)
 
 CONTENT_SCHEMA: dict = _obj(
     {
@@ -56,7 +75,13 @@ CONTENT_SCHEMA: dict = _obj(
         },
         "links": _obj({"linkedin": _STR, "github": _STR, "email": _STR}),
         "profile": {"type": "object", "additionalProperties": _STR},
-    }
+        # Optional, so content written before them still loads. `name` is the
+        # page's header line; without it the header says "LEGION". Without
+        # `phone` the phone section is not drawn.
+        "name": _STR,
+        "phone": _PHONE,
+    },
+    optional=("name", "phone"),
 )
 
 _VALIDATOR = Draft202012Validator(CONTENT_SCHEMA)

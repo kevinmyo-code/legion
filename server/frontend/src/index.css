@@ -5,6 +5,10 @@
    bundled"). `wght.css` is the weight axis only: the default entry also ships
    the width axis for every script, which this app never asks for. */
 @import "@fontsource-variable/roboto-flex/wght.css";
+/* The recruiter section's one face (prototype D "typeset", 2026-11-03), used
+   only under `.recruiter`. Weight axis, upright and italic. */
+@import "@fontsource-variable/source-serif-4/wght.css";
+@import "@fontsource-variable/source-serif-4/wght-italic.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -218,46 +222,65 @@
 }
 
 /*
- * The recruiter section (`/try`, recruiter-demo ticket 07): Kevin's pick,
- * prototype B "editorial", light only. It is a re-binding of the SAME tokens
- * on a subtree, not a second stylesheet, so the components inside it (the
- * buttons, the fields, the mounted assistant) keep their shapes and read these
- * colours. Every token a component reads is bound here, because a token the
- * root defines in terms of another (`--card: var(--surface-1)`) resolves at the
- * root and would otherwise carry the dark value into this light page.
+ * The recruiter section (`/try`, and the door on `/login`): Kevin's pick of
+ * 2026-11-03, prototype D "typeset" (`d-typeset.html`, built by
+ * `_build_def.py` in his prototypes folder), light only. One serif, set like a
+ * well-printed document: paper and ink, hairline rules between sections, no
+ * boxes, no pills, no rounded cards. The member app keeps Roboto Flex and soft
+ * Material; nothing here reaches outside a `.recruiter` subtree.
+ *
+ * It is a re-binding of the SAME tokens on a subtree, not a second stylesheet,
+ * so the components inside it (the buttons, the fields, the mounted assistant)
+ * read these colours. Every token a component reads is bound here, because a
+ * token the root defines in terms of another (`--card: var(--surface-1)`)
+ * resolves at the root and would otherwise carry the dark value into this
+ * light page.
+ *
+ * Sizes. The prototype sets `html` to 19px and sizes everything in rem. The
+ * app's root stays 16px, so `--u` stands in for the prototype's rem: 19px at
+ * desk, 18px under 1100px. A prototype `2.65rem` is `calc(2.65 * var(--u))`.
  */
 .recruiter {
     color-scheme: light;
-    --font-editorial: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    --u: 19px;
 
-    --background: #faf8f4;
-    --foreground: #1b1b1f;
-    --muted-foreground: #5c5f66;
+    --rc-paper: #faf8f3;
+    --rc-ink: #1d1a16;
+    --rc-meta: #6b655b;
+    --rc-rule: #dcd6ca;
+    --rc-accent: #8a2d1e;
+    --rc-measure: calc(33 * var(--u));
+
+    --background: var(--rc-paper);
+    --foreground: var(--rc-ink);
+    --muted-foreground: var(--rc-meta);
 
     --surface-1: #ffffff;
-    --surface-2: #f3f0ea;
-    --surface-3: #ebe7df;
+    --surface-2: #f1ede4;
+    --surface-3: #e9e4d9;
     --card: #ffffff;
-    --card-foreground: #1b1b1f;
+    --card-foreground: var(--rc-ink);
     --popover: #ffffff;
-    --popover-foreground: #1b1b1f;
-    --muted: #f3f0ea;
-    --accent: #ebe7df;
-    --accent-foreground: #1b1b1f;
+    --popover-foreground: var(--rc-ink);
+    --muted: #f1ede4;
+    /* shadcn's `accent` is a hover surface, not the prototype's red. */
+    --accent: #e9e4d9;
+    --accent-foreground: var(--rc-ink);
 
-    --primary: #1f4fd1;
-    --primary-foreground: #ffffff;
-    --primary-container: #e4eafb;
-    --primary-container-foreground: #16389a;
-    --secondary: #e4eafb;
-    --secondary-foreground: #16389a;
+    /* Buttons are ink. The tonal "secondary" is ink too: one button look. */
+    --primary: var(--rc-ink);
+    --primary-foreground: var(--rc-paper);
+    --primary-container: #f1ede4;
+    --primary-container-foreground: var(--rc-ink);
+    --secondary: var(--rc-ink);
+    --secondary-foreground: var(--rc-paper);
 
-    --outline: #a8a296;
-    --outline-variant: #e4e0d8;
-    --border: #e4e0d8;
-    --input: #a8a296;
-    --ring: #1f4fd1;
-    --scrim: rgb(27 27 31 / 0.4);
+    --outline: #a39b8c;
+    --outline-variant: var(--rc-rule);
+    --border: var(--rc-rule);
+    --input: var(--rc-ink);
+    --ring: var(--rc-accent);
+    --scrim: rgb(29 26 22 / 0.4);
 
     --destructive: #b42318;
     --destructive-container: #fbe7e4;
@@ -272,8 +295,612 @@
 
     background-color: var(--background);
     color: var(--foreground);
+    font-family: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
+    font-size: var(--u);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
 }
 
-.recruiter .font-editorial {
-    font-family: var(--font-editorial);
+@media (max-width: 1100px) {
+    .recruiter {
+        --u: 18px;
+    }
+}
+
+/*
+ * Square corners everywhere inside, components included. The radius tokens
+ * cannot do this: they are declared `@theme inline`, so `rounded-card` compiles
+ * to a literal length, and `rounded-full` is no token at all. This rule is
+ * unlayered, so it wins over every Tailwind utility. The one exception is the
+ * phone frame below, which depicts a phone.
+ */
+.recruiter,
+.recruiter *,
+.recruiter *::before,
+.recruiter *::after {
+    border-radius: 0;
+}
+
+.recruiter .rc-phone {
+    border-radius: 34px;
+}
+.recruiter .rc-phone .rc-pscreen {
+    border-radius: 25px;
+}
+.recruiter .rc-inline {
+    border-radius: 22px;
+}
+.recruiter .rc-inline .rc-pscreen {
+    border-radius: 16px;
+}
+
+/* Focus stays visible: an ink ring on paper, whatever a component's own
+   `outline-none` says. Fields show focus on their rule instead (below). */
+.recruiter :focus-visible {
+    outline: 2px solid var(--rc-ink);
+    outline-offset: 2px;
+}
+
+@layer components {
+    .recruiter a {
+        color: inherit;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.18em;
+        text-decoration-color: var(--rc-meta);
+    }
+    .recruiter a:hover {
+        color: var(--rc-accent);
+        text-decoration-color: var(--rc-accent);
+    }
+
+    .rc-layout {
+        display: flex;
+        min-height: 100vh;
+        overflow-x: clip;
+    }
+    .rc-column {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-width: 0;
+        padding: 0 calc(3.5 * var(--u));
+    }
+    .rc-inner {
+        flex: 1;
+        width: 100%;
+        max-width: calc(46 * var(--u));
+        margin: 0 auto;
+    }
+    .rc-prose p {
+        margin: 0 0 1em;
+        max-width: var(--rc-measure);
+    }
+    .rc-caps {
+        font-size: calc(0.72 * var(--u));
+        font-weight: 600;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--rc-meta);
+    }
+    .rc-status {
+        padding: calc(6 * var(--u)) 0;
+        color: var(--rc-meta);
+    }
+
+    /* The top line: the name, and the page's own nav. */
+    .rc-top {
+        display: flex;
+        flex-wrap: wrap;
+        gap: calc(0.4 * var(--u)) calc(1.5 * var(--u));
+        justify-content: space-between;
+        align-items: baseline;
+        padding: calc(1.6 * var(--u)) 0 0;
+        white-space: nowrap;
+    }
+    .rc-top nav {
+        display: flex;
+        flex-wrap: wrap;
+        column-gap: calc(1.4 * var(--u));
+    }
+    .recruiter .rc-top nav a {
+        display: inline-block;
+        padding: 0.4em 0;
+        text-decoration: none;
+    }
+    .recruiter .rc-top nav a:hover {
+        text-decoration: underline;
+    }
+
+    /* The preview banner for a signed-in member: a plain ruled note. */
+    .rc-prose .rc-note {
+        margin: calc(1.2 * var(--u)) 0 0;
+        padding: 0 0 calc(0.9 * var(--u));
+        max-width: none;
+        border-bottom: 1px solid var(--rc-rule);
+        font-size: calc(0.9 * var(--u));
+        color: var(--rc-meta);
+    }
+
+    .rc-hero {
+        padding: calc(4.5 * var(--u)) 0 calc(3 * var(--u));
+    }
+    .rc-h1 {
+        max-width: 21ch;
+        margin: 0 0 calc(1.1 * var(--u));
+        font-size: calc(2.65 * var(--u));
+        line-height: 1.1;
+        font-weight: 600;
+        letter-spacing: -0.012em;
+        overflow-wrap: break-word;
+    }
+    .rc-prose .rc-lead {
+        max-width: calc(34 * var(--u));
+        font-size: calc(1.18 * var(--u));
+        line-height: 1.45;
+    }
+    .rc-prose .rc-dateline {
+        max-width: none;
+        margin: calc(1.4 * var(--u)) 0 calc(0.9 * var(--u));
+        font-size: calc(0.92 * var(--u));
+        color: var(--rc-meta);
+    }
+    .rc-dateline > span {
+        display: inline-block;
+    }
+    .rc-dateline > span + span::before {
+        content: "\00b7\00a0";
+    }
+    .rc-prose .rc-access {
+        max-width: calc(33 * var(--u));
+        font-size: calc(0.92 * var(--u));
+        color: var(--rc-meta);
+    }
+
+    .rc-section {
+        padding: calc(2.75 * var(--u)) 0;
+        border-top: 1px solid var(--rc-rule);
+        scroll-margin-top: var(--u);
+    }
+    .rc-h2 {
+        margin: 0 0 calc(0.9 * var(--u));
+        font-size: calc(1.6 * var(--u));
+        line-height: 1.2;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+    }
+    .rc-h3 {
+        margin: 0 0 calc(0.35 * var(--u));
+        font-size: var(--u);
+        line-height: 1.55;
+        font-weight: 600;
+    }
+    .rc-runin b {
+        font-weight: 600;
+    }
+
+    .rc-figures {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: calc(0.4 * var(--u)) calc(1.4 * var(--u));
+        max-width: calc(30 * var(--u));
+        margin: calc(1.2 * var(--u)) 0 calc(1.8 * var(--u));
+        font-variant-numeric: tabular-nums;
+    }
+    .rc-figures dt {
+        font-size: calc(1.55 * var(--u));
+        font-weight: 600;
+        line-height: 1.1;
+        text-align: right;
+    }
+    .rc-figures dd {
+        align-self: baseline;
+        margin: 0;
+    }
+
+    .rc-figure {
+        margin: calc(1.8 * var(--u)) 0;
+    }
+    .rc-frame {
+        overflow-x: auto;
+        padding: calc(0.8 * var(--u));
+        border: 1px solid var(--rc-rule);
+        background: #ffffff;
+    }
+    .rc-frame img {
+        display: block;
+        width: 100%;
+        min-width: 720px;
+        height: auto;
+    }
+    .rc-report {
+        border: 1px solid var(--rc-rule);
+        background: #ffffff;
+    }
+    .rc-report iframe {
+        display: block;
+        width: 100%;
+        height: calc(34 * var(--u));
+        border: 0;
+    }
+    .rc-figcaption {
+        max-width: var(--rc-measure);
+        margin-top: calc(0.6 * var(--u));
+        font-size: calc(0.86 * var(--u));
+        line-height: 1.45;
+        color: var(--rc-meta);
+    }
+
+    /* Experience: dates hanging in a left column. */
+    .rc-exp {
+        display: grid;
+        grid-template-columns: calc(8.2 * var(--u)) 1fr;
+        gap: calc(0.9 * var(--u)) calc(1.6 * var(--u));
+        margin: 0;
+    }
+    .rc-when {
+        padding-top: calc(0.22 * var(--u));
+        font-size: calc(0.9 * var(--u));
+        color: var(--rc-meta);
+        font-variant-numeric: tabular-nums;
+    }
+    .rc-role {
+        margin: 0;
+        font-size: var(--u);
+        line-height: 1.55;
+        font-weight: 600;
+    }
+    .rc-prose .rc-job p {
+        margin: calc(0.15 * var(--u)) 0 0;
+    }
+
+    .rc-foot {
+        padding: calc(2.2 * var(--u)) 0 calc(3.5 * var(--u));
+        border-top: 1px solid var(--rc-rule);
+        font-size: calc(0.9 * var(--u));
+        color: var(--rc-meta);
+    }
+    .rc-foot a {
+        display: inline-block;
+        margin-right: calc(1.4 * var(--u));
+        padding: 0.3em 0;
+    }
+
+    @media (max-width: 1100px) {
+        .rc-column {
+            padding: 0 calc(1.25 * var(--u));
+        }
+        .rc-h1 {
+            font-size: calc(2.1 * var(--u));
+        }
+        .rc-exp {
+            grid-template-columns: 1fr;
+            gap: calc(0.2 * var(--u)) 0;
+        }
+        .rc-when {
+            padding: 0;
+        }
+        .rc-job {
+            margin-bottom: var(--u);
+        }
+    }
+
+    /* LEGION on the phone: the frame sticks while the capability texts scroll past. */
+    .rc-scrolly {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        column-gap: calc(3.2 * var(--u));
+        align-items: start;
+        margin-top: calc(1.2 * var(--u));
+    }
+    .rc-step {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 60vh;
+        padding: var(--u) 0;
+    }
+    .rc-step:first-child {
+        min-height: 44vh;
+        justify-content: flex-start;
+    }
+    .rc-prose .rc-step p {
+        margin: 0;
+        color: var(--rc-meta);
+        transition: color 0.35s;
+    }
+    .rc-prose .rc-step[data-active] p {
+        color: var(--rc-ink);
+    }
+    .rc-stage {
+        position: sticky;
+        top: calc(2.5 * var(--u));
+    }
+    .rc-phone {
+        width: 280px;
+        height: 580px;
+        padding: 10px;
+        border: 1px solid var(--rc-ink);
+        background: #ffffff;
+    }
+    .rc-pscreen {
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+        background: #15130f;
+    }
+    .rc-clip {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: calc(0.5 * var(--u));
+        padding: calc(1.4 * var(--u));
+        color: var(--rc-paper);
+        text-align: center;
+        opacity: 0;
+        transition: opacity 0.45s;
+    }
+    .rc-clip[data-on] {
+        opacity: 1;
+    }
+    .rc-clip video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: #15130f;
+    }
+    .rc-clip .rc-caps,
+    .rc-clip-meta {
+        color: #b4ab9c;
+    }
+    .rc-clip-title {
+        font-size: calc(1.15 * var(--u));
+        line-height: 1.3;
+    }
+    .rc-clip-meta {
+        font-size: calc(0.82 * var(--u));
+    }
+    .rc-prose .rc-stage-caption {
+        max-width: 280px;
+        margin: calc(0.8 * var(--u)) 0 0;
+        font-size: calc(0.86 * var(--u));
+        color: var(--rc-meta);
+        text-align: center;
+    }
+    .rc-inline {
+        width: 220px;
+        aspect-ratio: 9 / 16;
+        margin: calc(0.9 * var(--u)) 0 0;
+        padding: 7px;
+        border: 1px solid var(--rc-ink);
+        background: #ffffff;
+    }
+    .rc-inline .rc-clip {
+        position: static;
+        height: 100%;
+        opacity: 1;
+    }
+    /* Under 1300px, or with reduced motion: no stage, each clip under its text. */
+    .rc-scrolly[data-mode="inline"] {
+        display: block;
+    }
+    .rc-scrolly[data-mode="inline"] .rc-step {
+        min-height: 0;
+        justify-content: flex-start;
+        padding: 0 0 calc(1.8 * var(--u));
+    }
+    .rc-prose .rc-scrolly[data-mode="inline"] .rc-step p {
+        color: var(--rc-ink);
+    }
+
+    /* The door: sign in, and the access code under a rule. */
+    .rc-door {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 100vh;
+        max-width: calc(22 * var(--u));
+        margin: 0 auto;
+        padding: calc(3 * var(--u)) calc(1.25 * var(--u));
+    }
+    .rc-door .rc-h1 {
+        margin: calc(0.4 * var(--u)) 0 calc(1.4 * var(--u));
+        font-size: calc(2 * var(--u));
+    }
+    .rc-or {
+        margin: calc(2.4 * var(--u)) 0 0;
+        padding-top: calc(1.6 * var(--u));
+        border-top: 1px solid var(--rc-rule);
+    }
+    .rc-field {
+        display: flex;
+        flex-direction: column;
+        gap: calc(0.15 * var(--u));
+        margin: 0 0 calc(1.2 * var(--u));
+    }
+}
+
+/*
+ * The shared components inside `.recruiter`, by their stable hooks
+ * (`data-slot` from the ui primitives, `data-chat` from the assistant's chat).
+ * Unlayered on purpose: these must win over the components' own utilities.
+ */
+
+/* Labels: tracked small caps. */
+.recruiter [data-slot="label"] {
+    font-size: calc(0.72 * var(--u));
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--rc-meta);
+}
+
+/* Fields: a rule under the text, no fill. Focus thickens the rule in the accent. */
+.recruiter [data-slot="input"] {
+    height: auto;
+    min-height: 44px;
+    padding: calc(0.3 * var(--u)) 0;
+    border: 0;
+    border-bottom: 1px solid var(--rc-ink);
+    background: none;
+    font: inherit;
+    color: var(--rc-ink);
+}
+.recruiter [data-slot="input"]:focus-visible {
+    outline: none;
+    border-bottom-color: var(--rc-accent);
+    box-shadow: 0 1px 0 0 var(--rc-accent);
+    background: none;
+}
+.recruiter [data-slot="input"][aria-invalid="true"] {
+    border-bottom-color: var(--destructive);
+}
+
+/* Buttons: ink, square, the accent on hover. */
+.recruiter [data-slot="button"][data-variant="default"],
+.recruiter [data-slot="button"][data-variant="secondary"] {
+    background: var(--rc-ink);
+    color: var(--rc-paper);
+    box-shadow: none;
+    filter: none;
+    font-weight: 500;
+}
+.recruiter [data-slot="button"][data-variant="default"]:hover,
+.recruiter [data-slot="button"][data-variant="secondary"]:hover {
+    background: var(--rc-accent);
+    color: #ffffff;
+}
+.recruiter [data-slot="button"][data-size="lg"] {
+    padding: 0 calc(1.1 * var(--u));
+    font-size: calc(0.95 * var(--u));
+}
+
+/* The assistant, as a transcript: no avatar, no bubbles, no pills. */
+.recruiter [data-chat="root"] {
+    font-size: calc(0.95 * var(--u));
+    line-height: 1.5;
+}
+.recruiter [data-chat="avatar"] {
+    display: none;
+}
+.recruiter [data-chat="header"] {
+    padding: calc(1.6 * var(--u)) calc(1.6 * var(--u)) calc(1.1 * var(--u));
+}
+.recruiter [data-chat="name"] {
+    font-size: calc(1.05 * var(--u));
+    font-weight: 600;
+}
+.recruiter [data-chat="subtitle"] {
+    font-size: calc(0.82 * var(--u));
+    color: var(--rc-meta);
+}
+.recruiter [data-chat="log"] {
+    gap: 0;
+    padding: 0 calc(1.6 * var(--u)) calc(0.8 * var(--u));
+}
+.recruiter [data-chat="intro"] h2 {
+    font-size: calc(1.25 * var(--u));
+    font-weight: 600;
+}
+.recruiter [data-chat="intro"] > p {
+    font-size: calc(0.9 * var(--u));
+    line-height: 1.5;
+    color: var(--rc-meta);
+}
+.recruiter [data-chat="bubble-me"],
+.recruiter [data-chat="bubble-ai"] {
+    align-self: stretch;
+    max-width: none;
+    margin: 0 0 calc(1.1 * var(--u));
+    padding: 0;
+    background: none;
+    color: var(--rc-ink);
+    font-size: inherit;
+}
+.recruiter [data-chat="bubble-me"] {
+    font-style: italic;
+}
+.recruiter [data-chat="bubble-me"] [data-chat="speaker"],
+.recruiter [data-chat="bubble-me"] [data-chat="via"] {
+    font-style: normal;
+}
+.recruiter [data-chat="speaker"] {
+    display: block;
+    margin-bottom: calc(0.1 * var(--u));
+    font-size: calc(0.68 * var(--u));
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--rc-meta);
+}
+.recruiter [data-chat="via"] {
+    color: var(--rc-meta);
+    opacity: 1;
+}
+.recruiter [data-chat="suggestions"] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    margin-top: calc(0.8 * var(--u));
+}
+.recruiter [data-chat="suggestion"] {
+    min-height: 0;
+    padding: calc(0.1 * var(--u)) 0;
+    border: 0;
+    background: none;
+    font-size: calc(0.9 * var(--u));
+    line-height: 1.6;
+    text-align: left;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+    text-decoration-color: var(--rc-meta);
+}
+.recruiter [data-chat="suggestion"]:hover {
+    background: none;
+    color: var(--rc-accent);
+    text-decoration-color: var(--rc-accent);
+}
+.recruiter [data-chat="form"] {
+    padding: calc(0.3 * var(--u)) calc(1.6 * var(--u)) calc(0.4 * var(--u));
+}
+.recruiter [data-chat="input"] {
+    height: auto;
+    min-height: 48px;
+    padding: 0;
+    border-top: 1px solid var(--rc-ink);
+    background: none;
+    box-shadow: none;
+}
+.recruiter [data-chat="input"]:focus-within {
+    border-top-color: var(--rc-accent);
+    box-shadow: inset 0 1px 0 0 var(--rc-accent);
+}
+.recruiter [data-chat="input"] input {
+    font: inherit;
+}
+.recruiter [data-chat="input"] input:focus-visible {
+    outline: none;
+}
+.recruiter [data-chat="input"] input::placeholder {
+    color: var(--rc-meta);
+}
+.recruiter [data-chat="notice"] {
+    padding: 0 calc(1.6 * var(--u)) var(--u);
+    font-size: calc(0.76 * var(--u));
+    text-align: left;
+    color: var(--rc-meta);
+}
+.recruiter [data-chat="askbar"] {
+    border: 1px solid var(--rc-ink);
+    background: #ffffff;
+    box-shadow: none;
 }
