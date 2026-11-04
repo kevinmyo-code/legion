@@ -107,6 +107,12 @@ export function PhoneSection({ phone }: { phone: DemoPhone }) {
             </div>
           ))}
         </div>
+        {!stage && clips.length > 1 && (
+          // Shown only at phone width, where the clips are one swipeable row (CSS).
+          <p className="rc-swipe" aria-hidden="true">
+            Swipe sideways for all {clips.length}.
+          </p>
+        )}
         {stage && (
           <div className="rc-stage">
             <div className="rc-phone">

@@ -55,7 +55,11 @@ export class OrbRenderer {
   private rot = 0
   private level = 0
 
-  constructor(count = POINTS) {
+  private readonly dotScale: number
+
+  /** `dotScale` scales each point; a small orb (the phone's Talk bar) wants fewer, smaller points. */
+  constructor(count = POINTS, dotScale = 1) {
+    this.dotScale = dotScale
     // Fibonacci sphere: even coverage, no bunching at the poles. x, y, z, seed.
     this.pts = new Float32Array(count * 4)
     for (let i = 0; i < count; i++) {
@@ -106,7 +110,7 @@ export class OrbRenderer {
     const sr = Math.sin(this.rot)
     const ct = Math.cos(0.38)
     const st = Math.sin(0.38)
-    const dot = pixelRatio * 1.7
+    const dot = pixelRatio * 1.7 * this.dotScale
     const { ink, accent } = colours
     const pts = this.pts
     for (let i = 0; i < pts.length; i += 4) {

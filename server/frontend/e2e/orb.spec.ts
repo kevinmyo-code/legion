@@ -1,8 +1,10 @@
+import fs from 'node:fs'
 import path from 'node:path'
 
 import { expect, test, type Page } from '@playwright/test'
 
 import { createEngine, type Engine } from '../src/test/engine'
+import { sampleContent } from '../src/test/engine-demo'
 
 /**
  * The recruiter dock's voice orb at desk width, for LOOKING (Kevin, 2026-11-04).
@@ -157,4 +159,43 @@ test('the orb through a voice conversation, then the chat unfolded', async ({ pa
   await expect(dock.getByRole('textbox', { name: 'Message Alfred' })).toBeFocused()
   await shot(page, 'orb-5-chat-open')
   expect(errors).toEqual([])
+})
+
+/**
+ * The page at phone width, on the real page copy when `RECRUITER_CONTENT` points
+ * at a content.json (the owner's, never committed), else the fake engine's sample.
+ */
+test.describe('phone (390 px)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
+
+  test('the page, then the voice-first sheet', async ({ page }) => {
+    const engine = visitor()
+    const file = process.env.RECRUITER_CONTENT
+    // The file is the loader's input; the engine adds the asset links when it serves it.
+    if (file) engine.demo.content = { ...JSON.parse(fs.readFileSync(file, 'utf-8')), assets: sampleContent().assets }
+    await useEngine(page, engine)
+    await fakeGoogle(page)
+    await page.goto('/try')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
+    await page.waitForTimeout(800)
+    const height = await page.evaluate(() => document.documentElement.scrollHeight)
+    const width = await page.evaluate(() => document.documentElement.scrollWidth)
+    console.log(`phone page: ${width} x ${height}`)
+    expect(width).toBe(390)
+    for (let y = 0, n = 0; y < height; y += 784, n += 1) {
+      await page.evaluate((top) => window.scrollTo(0, top), y)
+      await page.waitForTimeout(400)
+      await page.screenshot({ path: path.join(OUT, `phone-page-${String(n).padStart(2, '0')}.png`) })
+    }
+    await page.getByRole('button', { name: 'Talk to Alfred' }).click()
+    const sheet = page.getByRole('dialog', { name: /^Conversation with/ })
+    await expect(sheet.getByRole('button', { name: 'Talk to Alfred' })).toBeVisible()
+    await shot(page, 'phone-sheet-idle')
+    await sheet.getByRole('button', { name: 'Talk to Alfred' }).click()
+    await expect(sheet.getByRole('status')).toHaveText(/checking/)
+    await shot(page, 'phone-sheet-thinking')
+    await sheet.getByRole('button', { name: 'Type instead' }).click()
+    await shot(page, 'phone-sheet-chat')
+  })
 })

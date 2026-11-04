@@ -699,6 +699,86 @@
         color: var(--rc-ink);
     }
 
+    /* Swipe hints: only where the row or frame actually scrolls, on a phone (below). */
+    .rc-prose .rc-swipe {
+        display: none;
+    }
+
+    /*
+     * Phone width (Kevin, 2026-11-04: "make the page look good for mobile").
+     * The header on two lines at most, a smaller headline, the facts stacked,
+     * and the phone clips as one swipeable row instead of eight frames stacked
+     * down a 10,000 px page.
+     */
+    @media (max-width: 640px) {
+        .rc-top {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0;
+            padding-top: var(--u);
+        }
+        .rc-top nav {
+            flex-wrap: nowrap;
+            max-width: 100%;
+            overflow-x: auto;
+            column-gap: calc(0.8 * var(--u));
+            scrollbar-width: none;
+        }
+        .recruiter .rc-top nav a {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
+            padding: 0;
+        }
+        .rc-hero {
+            padding: calc(2.2 * var(--u)) 0 calc(2 * var(--u));
+        }
+        .rc-h1 {
+            font-size: calc(1.72 * var(--u));
+            line-height: 1.14;
+        }
+        .rc-prose .rc-lead {
+            font-size: calc(1.06 * var(--u));
+        }
+        .rc-dateline > span {
+            display: block;
+        }
+        .rc-dateline > span + span::before {
+            content: none;
+        }
+
+        .rc-scrolly[data-mode="inline"] > div:first-child {
+            display: flex;
+            gap: var(--u);
+            margin: 0 calc(-1.25 * var(--u));
+            padding: 0 calc(1.25 * var(--u)) calc(0.4 * var(--u));
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
+            scroll-snap-type: x mandatory;
+            scroll-padding: 0 calc(1.25 * var(--u));
+            scrollbar-width: none;
+        }
+        .rc-scrolly[data-mode="inline"] .rc-step {
+            flex: 0 0 82%;
+            padding: 0;
+            scroll-snap-align: start;
+        }
+        .rc-scrolly[data-mode="inline"] .rc-inline {
+            width: 170px;
+            margin-top: auto;
+            padding-top: 7px;
+        }
+        .rc-scrolly[data-mode="inline"] .rc-step > p {
+            margin-bottom: calc(0.9 * var(--u));
+        }
+        .rc-prose .rc-swipe {
+            display: block;
+            margin: calc(0.5 * var(--u)) 0 0;
+            font-size: calc(0.82 * var(--u));
+            color: var(--rc-meta);
+        }
+    }
+
     /* The door: sign in, and the access code under a rule. */
     .rc-door {
         display: flex;
@@ -901,7 +981,8 @@
 }
 
 /* The voice-first dock (`VoiceFirstChat`): the orb in ink, its sweep in the accent. */
-.recruiter [data-chat="orb"] {
+.recruiter [data-chat="orb"],
+.recruiter [data-chat="bar-orb"] {
     color: var(--rc-ink);
     --orb-accent: var(--rc-accent);
 }

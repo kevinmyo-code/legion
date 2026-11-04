@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useAssistant } from '@/assistant/assistant-context'
 import { AssistantChat, statusWords } from '@/components/assistant/chat'
+import { orbMode } from '@/components/assistant/orb'
+import { VoiceFirstChat } from '@/components/assistant/voice-chat'
+import { VoiceOrb } from '@/components/assistant/voice-orb'
 
 /**
  * The family view's assistant (web-assistant 05, variant C): a floating orb on
@@ -23,7 +26,9 @@ import { AssistantChat, statusWords } from '@/components/assistant/chat'
  * type (Kevin, 2026-11-03).
  */
 export function FamilyAssistant({ launcher = 'orb' }: { launcher?: 'orb' | 'bar' } = {}) {
-  const { client, state, name, ui } = useAssistant()
+  const { client, state, name, ui, copy } = useAssistant()
+  // The recruiter page's sheet is voice first, like its desk dock (Kevin, 2026-11-04).
+  const voiceFirst = launcher === 'bar' && copy?.voiceFirst === true
   const inputRef = useRef<HTMLInputElement>(null)
   const frame = useVisualViewport(ui.open)
 
@@ -44,19 +49,28 @@ export function FamilyAssistant({ launcher = 'orb' }: { launcher?: 'orb' | 'bar'
           <button
             type="button"
             onClick={() => ui.setOpen(true)}
-            aria-label={live ? `Open the conversation with ${name}` : `Ask ${name}`}
+            aria-label={live ? `Open the conversation with ${name}` : voiceFirst ? `Talk to ${name}` : `Ask ${name}`}
             data-chat="askbar"
             className="mx-auto flex min-h-12 w-full max-w-[880px] items-center gap-2.5 rounded-full bg-card py-1.5 pr-1.5 pl-2 text-left shadow-md outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <span
-              aria-hidden="true"
-              className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-container text-primary-container-foreground"
-            >
-              <Icon className="size-[18px]" />
+            {voiceFirst ? (
+              // The same orb as the sheet, small and live: the conversation's state at a glance.
+              <span aria-hidden="true" data-chat="bar-orb" className="grid size-10 shrink-0 place-items-center">
+                <VoiceOrb mode={orbMode(state)} levels={() => client.levels()} points={260} dot={0.7} className="size-10" />
+              </span>
+            ) : (
+              <span
+                aria-hidden="true"
+                className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-container text-primary-container-foreground"
+              >
+                <Icon className="size-[18px]" />
+              </span>
+            )}
+            <span className="min-w-0 flex-1 truncate text-[0.9375rem] text-muted-foreground">
+              {tag ?? (voiceFirst ? `Talk to ${name}, or type` : `Ask ${name}…`)}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[0.9375rem] text-muted-foreground">{tag ?? `Ask ${name}…`}</span>
             <span aria-hidden="true" className="grid h-10 place-items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground">
-              Ask
+              {voiceFirst ? 'Talk' : 'Ask'}
             </span>
           </button>
         </div>
@@ -95,8 +109,9 @@ export function FamilyAssistant({ launcher = 'orb' }: { launcher?: 'orb' | 'bar'
           onOpenAutoFocus={(event) => {
             // Typing is the default: the keyboard comes up with the sheet. The
             // sheet is opened by a tap, which is the gesture iOS needs to show it.
+            // The voice-first sheet opens to the orb, not the keyboard: the chat is folded.
             event.preventDefault()
-            inputRef.current?.focus()
+            if (!voiceFirst) inputRef.current?.focus()
           }}
           style={frame}
           // The sheet is portalled out of the page, so the recruiter page's look
@@ -106,15 +121,27 @@ export function FamilyAssistant({ launcher = 'orb' }: { launcher?: 'orb' | 'bar'
           }`}
         >
           <DialogPrimitive.Title className="sr-only">Conversation with {name}</DialogPrimitive.Title>
-          <AssistantChat
-            layout="sheet"
-            inputRef={inputRef}
-            onMinimise={() => ui.setOpen(false)}
-            onClose={() => {
-              client.reset()
-              ui.setOpen(false)
-            }}
-          />
+          {voiceFirst ? (
+            <VoiceFirstChat
+              layout="sheet"
+              inputRef={inputRef}
+              onMinimise={() => ui.setOpen(false)}
+              onClose={() => {
+                client.reset()
+                ui.setOpen(false)
+              }}
+            />
+          ) : (
+            <AssistantChat
+              layout="sheet"
+              inputRef={inputRef}
+              onMinimise={() => ui.setOpen(false)}
+              onClose={() => {
+                client.reset()
+                ui.setOpen(false)
+              }}
+            />
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

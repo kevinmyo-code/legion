@@ -44,14 +44,19 @@ function expiryLine(iso: string) {
 }
 
 /**
- * The phone's one entry point, the Ask bar pinned to the bottom: opens the
- * members' sheet. Any companion name by default: the fake engine answers the
+ * The phone's one entry point, the bar pinned to the bottom ("Talk to <name>"
+ * on this voice-first page): opens the sheet. Any companion name by default: the fake engine answers the
  * companion read for a visit, which the real one refuses (ADR 0068).
  */
 async function openTryChat(name: string | RegExp = /\w+/) {
   const named = (prefix: string) => (typeof name === 'string' ? `${prefix} ${name}` : new RegExp(`^${prefix} ${name.source}$`))
-  fireEvent.click(await screen.findByRole('button', { name: named('Ask') }))
+  fireEvent.click(await screen.findByRole('button', { name: named('Talk to') }))
   return screen.findByRole('dialog', { name: named('Conversation with') })
+}
+
+/** The voice-first sheet and dock fold the chat under the orb; unfold it to type. */
+function openTyping(panel: HTMLElement) {
+  fireEvent.click(within(panel).getByRole('button', { name: 'Type instead' }))
 }
 
 async function connect() {
@@ -195,20 +200,27 @@ describe('/try', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
     // Exactly one entry point: the bar, never also the members' floating orb.
-    const entries = screen.getAllByRole('button', { name: /^(Ask|Open the conversation with) / })
+    const entries = screen.getAllByRole('button', { name: /^(Ask|Talk to|Open the conversation with) / })
     expect(entries).toHaveLength(1)
     expect(entries[0].className).not.toMatch(/fixed/)
 
     const sheet = await openTryChat()
+    // Voice first here too (Kevin, 2026-11-04): the orb, the chat folded, no keyboard.
+    expect(within(sheet).getByRole('button', { name: /^Talk to / })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(within(sheet).getByRole('button', { name: /^Minimise/ })).toBeInTheDocument()
+    expect(within(sheet).getByRole('button', { name: /^Close/ })).toBeInTheDocument()
+    openTyping(sheet)
     expect(screen.getAllByRole('log')).toHaveLength(1)
     expect(within(sheet).getByRole('log', { name: /^Conversation with/ })).toBeInTheDocument()
+    expect(within(sheet).getByRole('textbox', { name: /^Message / })).toHaveFocus()
     expect(within(sheet).getByText('Demo assistant, made-up data')).toBeInTheDocument()
     // The old section's copy lives in the chat now.
     expect(within(sheet).getByText(/A demo conversation lasts up to 5 minutes\./)).toBeInTheDocument()
     expect(within(sheet).getByRole('button', { name: "What's Kevin's experience with Power BI?" })).toBeInTheDocument()
     expect(within(sheet).getByText(/may be recorded to improve/)).toBeInTheDocument()
     // While the sheet is up the bar is gone: still one way in.
-    expect(screen.queryByRole('button', { name: /^Ask \w+$/ })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-chat="askbar"]')).not.toBeInTheDocument()
   })
 
   test('desk: the dock is open on load beside the page, with no close and no chat in the middle', async () => {
@@ -233,7 +245,7 @@ describe('/try', () => {
     expect(screen.getAllByRole('textbox')).toEqual([within(dock).getByRole('textbox', { name: /^Message / })])
     // No close, and no floating orb or Ask bar beside it.
     expect(within(dock).queryByRole('button', { name: /^Close/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Ask \w+$/ })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-chat="askbar"]')).not.toBeInTheDocument()
     // The page column is beside the dock, not under it.
     expect(dock.parentElement?.firstElementChild).toContainElement(screen.getByRole('heading', { level: 1 }))
     // Its copy: the 5-minute line, the chips, the recording notice.
@@ -261,6 +273,7 @@ describe('/try', () => {
     renderApp('/try', engine, 'family')
 
     const sheet = await openTryChat()
+    openTyping(sheet)
     expect(within(sheet).getByRole('button', { name: "What's Kevin's experience with Power BI?" })).toBeInTheDocument()
     // Kevin, 2026-11-02: no receipt ingestion talk; a chip the recruiter tools can answer instead.
     expect(within(sheet).getByRole('button', { name: 'Which card charges are unverified?' })).toBeInTheDocument()
@@ -305,6 +318,7 @@ describe('/try', () => {
     expect(await screen.findByText(VISITOR_SESSION_ENDED, {}, { timeout: 4_000 })).toBeInTheDocument()
     expect(audio.micOpen).toBe(false)
     expect(FakeLiveSocket.last.closed).toBe(true)
+    openTyping(sheet)
     expect(screen.getByRole('textbox', { name: /Message/ })).toBeDisabled()
   })
 
@@ -312,6 +326,7 @@ describe('/try', () => {
     const engine = createEngine({ assistant: { companionName: 'Mabel', sessionMs: 1_500 } })
     renderApp('/try', engine, 'family')
     const sheet = await openTryChat('Mabel')
+    openTyping(sheet)
     const box = within(sheet).getByRole('textbox', { name: 'Message Mabel' })
     fireEvent.change(box, { target: { value: 'hello' } })
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send' }))
@@ -326,6 +341,7 @@ describe('/try', () => {
     const engine = visitor({ assistant: { mint: { status: 429, body: { detail: BUDGET } } } })
     renderApp('/try', engine, 'family')
     const sheet = await openTryChat()
+    openTyping(sheet)
     const box = within(sheet).getByRole('textbox', { name: /^Message / })
     fireEvent.change(box, { target: { value: 'hello' } })
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send' }))

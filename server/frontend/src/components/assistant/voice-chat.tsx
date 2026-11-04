@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, CloudOff, MicOff, RefreshCw, TriangleAlert } from 'lucide-react'
+import { ArrowUp, ChevronDown, CloudOff, MicOff, Minus, RefreshCw, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react'
 
 import { useAssistant } from '@/assistant/assistant-context'
@@ -26,6 +26,9 @@ import { VoiceOrb } from './voice-orb'
  * visitor's location) and on "/", and a failure notice sits above the orb, never
  * inside the folded part, so it is seen either way.
  *
+ * The same panel is the phone's sheet on that page (Kevin, 2026-11-04: "can we
+ * do the mobile view as well?"), with the sheet's Minimise and Close.
+ *
  * The same rules as `AssistantChat`: no tool name or JSON on screen, failures
  * are sentences, the state is in words beside the orb (`statusWords`), and the
  * recording notice is always visible.
@@ -33,9 +36,15 @@ import { VoiceOrb } from './voice-orb'
 export function VoiceFirstChat({
   layout,
   inputRef,
+  onMinimise,
+  onClose,
 }: {
   layout: 'sheet' | 'panel'
   inputRef: RefObject<HTMLInputElement | null>
+  /** Sheet only: hide the sheet, keep the conversation going. */
+  onMinimise?: () => void
+  /** Sheet only: close and clear the conversation. */
+  onClose?: () => void
 }) {
   const { client, state, name, copy, ui } = useAssistant()
   const intro = copy?.intro ?? 'Tap the circle to talk, or type below.'
@@ -103,6 +112,22 @@ export function VoiceFirstChat({
             {subtitle}
           </p>
         </div>
+        {onMinimise && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Minimise. The conversation keeps going."
+            onClick={onMinimise}
+          >
+            <Minus className="size-5" />
+          </Button>
+        )}
+        {onClose && (
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Close. This clears the conversation." onClick={onClose}>
+            <X className="size-5" />
+          </Button>
+        )}
       </header>
 
       {state.notice && (
@@ -122,7 +147,10 @@ export function VoiceFirstChat({
       <section
         aria-label="Voice"
         data-chat="stage"
-        className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 text-center"
+        className={cn(
+          'flex min-h-0 flex-col items-center justify-center px-4 text-center',
+          chatOpen ? 'flex-none py-2' : 'flex-1',
+        )}
       >
         <button
           type="button"
@@ -133,7 +161,11 @@ export function VoiceFirstChat({
           data-mode={mode}
           className={cn(
             'aspect-square rounded-full outline-none transition-[width] duration-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary disabled:cursor-default',
-            chatOpen ? 'w-[min(180px,50%)]' : 'w-[min(300px,80%)]',
+            chatOpen
+              ? layout === 'sheet'
+                ? 'w-[min(112px,30%)]'
+                : 'w-[min(180px,50%)]'
+              : 'w-[min(300px,80%)]',
           )}
         >
           <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
@@ -141,9 +173,12 @@ export function VoiceFirstChat({
         <p role="status" data-chat="status" className="mt-2 min-h-[1.5em] font-semibold">
           {words}
         </p>
-        <p data-chat="caption" className="line-clamp-2 min-h-[3em] max-w-[30ch] text-sm text-muted-foreground italic">
-          {caption}
-        </p>
+        {/* With the chat open the transcript says it; the caption would say it twice. */}
+        {!chatOpen && (
+          <p data-chat="caption" className="line-clamp-2 min-h-[3em] max-w-[30ch] text-sm text-muted-foreground italic">
+            {caption}
+          </p>
+        )}
         <div data-chat="actions" className="flex min-h-11 items-center gap-4">
           {speaking && (
             <button type="button" data-chat="action" onClick={() => client.interrupt()}>
@@ -164,7 +199,7 @@ export function VoiceFirstChat({
         </div>
       </section>
 
-      <div data-chat="drawer" className="flex min-h-0 flex-none flex-col">
+      <div data-chat="drawer" className={cn('flex min-h-0 flex-col', chatOpen ? 'flex-1' : 'flex-none')}>
         <button
           type="button"
           aria-expanded={chatOpen}
@@ -177,14 +212,14 @@ export function VoiceFirstChat({
           <ChevronDown aria-hidden="true" className={cn('size-4 transition-transform', chatOpen && 'rotate-180')} />
         </button>
         {chatOpen && (
-          <div id={chatId} className="flex min-h-0 flex-col">
+          <div id={chatId} className="flex min-h-0 flex-1 flex-col">
             <div
               ref={scroller}
               role="log"
               aria-label={`Conversation with ${name}`}
               aria-live="polite"
               data-chat="log"
-              className="flex max-h-[38vh] min-h-0 flex-col gap-2 overflow-y-auto px-4 pb-3"
+              className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-3"
             >
               {state.lines.length === 0 ? (
                 <div data-chat="intro" className="pb-1">
@@ -209,7 +244,7 @@ export function VoiceFirstChat({
                 </div>
               ) : (
                 <>
-                  <SessionLine layout={layout} closable={false} />
+                  <SessionLine layout={layout} closable={onClose !== undefined} />
                   {state.lines.map((line) => (
                     <Bubble key={line.id} line={line} name={name} />
                   ))}

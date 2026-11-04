@@ -448,6 +448,9 @@ function Diagram({ svg, caption }: { svg: string; caption: string }) {
       <div role="region" className="rc-frame" tabIndex={0} aria-label="Diagram, scrolls sideways">
         <img src={src} alt={caption || 'Diagram'} />
       </div>
+      <p className="rc-swipe" aria-hidden="true">
+        Swipe sideways for the rest of the diagram.
+      </p>
       {caption && <figcaption className="rc-figcaption">{caption}</figcaption>}
     </figure>
   )

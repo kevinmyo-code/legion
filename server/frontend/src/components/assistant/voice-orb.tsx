@@ -17,11 +17,16 @@ export function VoiceOrb({
   mode,
   levels,
   className,
+  points,
+  dot,
 }: {
   mode: OrbMode
   /** Read once a frame: the mic while listening, the reply while speaking. */
   levels: () => AudioLevels
   className?: string
+  /** How many points (default 1500) and how big each is (default 1): a small orb wants fewer and smaller. */
+  points?: number
+  dot?: number
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<OrbRenderer | null>(null)
@@ -40,7 +45,7 @@ export function VoiceOrb({
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
-    const renderer = (rendererRef.current ??= new OrbRenderer())
+    const renderer = (rendererRef.current ??= new OrbRenderer(points, dot))
     renderer.setMode(modeRef.current)
 
     const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)')
@@ -84,6 +89,7 @@ export function VoiceOrb({
       cancelAnimationFrame(frame)
       motion?.removeEventListener?.('change', onMotion)
     }
+    // Points and dot size are fixed for the orb's life: a new renderer would restart the motion.
   }, [])
 
   return <canvas ref={canvasRef} aria-hidden="true" data-chat="orb-canvas" className={className} />
