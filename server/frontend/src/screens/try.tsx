@@ -60,10 +60,11 @@ export const VISITOR_SESSION_ENDED = 'Demo sessions last 5 minutes. Start anothe
 const VISITOR_COPY: ChatCopy = {
   subtitle: 'Demo assistant, made-up data',
   intro:
-    "Ask about the demo household, or about Kevin. It runs on LEGION's real engine, against a made-up household. Type, or tap the mic to talk. A demo conversation lasts up to 5 minutes.",
+    "Ask about the demo household, or about Kevin. It runs on LEGION's real engine, against a made-up household. Talk or type. A demo conversation lasts up to 5 minutes.",
   suggestions: VISITOR_SUGGESTIONS,
+  voiceFirst: true,
 }
-const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)' }
+const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)', voiceFirst: true }
 
 export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) {
   const navigate = useNavigate()

@@ -51,6 +51,11 @@ export interface ChatCopy {
   intro?: string
   /** The tappable first questions. */
   suggestions?: readonly string[]
+  /**
+   * The desk dock shows `VoiceFirstChat`: the orb is the star and typing folds
+   * under it (Kevin, 2026-11-04, the recruiter page). The phone sheet is unchanged.
+   */
+  voiceFirst?: boolean
 }
 
 interface AssistantContextValue {

@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 
 import { useAssistant } from '@/assistant/assistant-context'
 import { AssistantChat, statusWords } from '@/components/assistant/chat'
+import { VoiceFirstChat } from '@/components/assistant/voice-chat'
 
 /**
  * The workbench's assistant (web-assistant 05, variant C on the desk): an entry
@@ -48,7 +49,7 @@ export function AssistantRailEntry() {
  * times"). "New conversation" still clears it.
  */
 export function AssistantDock({ pinned = false }: { pinned?: boolean } = {}) {
-  const { client, name, ui } = useAssistant()
+  const { client, name, ui, copy } = useAssistant()
   const inputRef = useRef<HTMLInputElement>(null)
 
   // "/" opens the panel and takes focus, unless the person is already typing.
@@ -76,18 +77,22 @@ export function AssistantDock({ pinned = false }: { pinned?: boolean } = {}) {
       aria-label={`Conversation with ${name}`}
       className="sticky top-0 flex h-dvh w-[400px] shrink-0 flex-col border-l border-outline-variant bg-popover"
     >
-      <AssistantChat
-        layout="panel"
-        inputRef={inputRef}
-        onClose={
-          pinned
-            ? undefined
-            : () => {
-                client.reset()
-                ui.setOpen(false)
-              }
-        }
-      />
+      {pinned && copy?.voiceFirst ? (
+        <VoiceFirstChat layout="panel" inputRef={inputRef} />
+      ) : (
+        <AssistantChat
+          layout="panel"
+          inputRef={inputRef}
+          onClose={
+            pinned
+              ? undefined
+              : () => {
+                  client.reset()
+                  ui.setOpen(false)
+                }
+          }
+        />
+      )}
     </aside>
   )
 }

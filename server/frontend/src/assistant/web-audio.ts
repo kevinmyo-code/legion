@@ -1,4 +1,4 @@
-import { AudioError, type AudioHandlers, type AudioIO } from './audio'
+import { AudioError, type AudioHandlers, type AudioIO, type AudioLevels } from './audio'
 import { pcm16ToFloat } from './pcm'
 import captureWorkletUrl from './capture.worklet.ts?worker&url'
 
@@ -15,6 +15,11 @@ import captureWorkletUrl from './capture.worklet.ts?worker&url'
  * chunk an `AudioBuffer` scheduled back to back on the context clock, with a
  * small lead on the first so a late network packet does not stutter the start.
  * An interruption stops every scheduled source and resets the clock.
+ *
+ * **Levels:** an `AnalyserNode` taps each side (the mic source, and every reply
+ * chunk on its way to the speaker), so the voice orb can move with the sound.
+ * A tap, not a stage: nothing is routed through it that was not already going
+ * there, and the capture analyser has no output.
  *
  * Two contexts, not one: research/01 section 4 prefers a capture context and a
  * playback context so 24 kHz speech is never squeezed through a 16 kHz one.
@@ -40,6 +45,9 @@ export function createWebAudio(): AudioIO {
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let handlers: AudioHandlers | null = null
   let sounding = false
+  let inTap: AnalyserNode | null = null
+  let outTap: AnalyserNode | null = null
+  let scratch: Float32Array<ArrayBuffer> | null = null
 
   const setSounding = (value: boolean) => {
     if (sounding === value) return
@@ -68,7 +76,18 @@ export function createWebAudio(): AudioIO {
       }
     }
     if (playback.state === 'suspended') void playback.resume()
+    if (!outTap) {
+      outTap = makeTap(playback)
+      outTap.connect(playback.destination)
+    }
     return playback
+  }
+
+  const read = (tap: AnalyserNode | null): number => {
+    if (!tap) return 0
+    if (!scratch || scratch.length !== tap.fftSize) scratch = new Float32Array(tap.fftSize)
+    tap.getFloatTimeDomainData(scratch)
+    return loudness(scratch)
   }
 
   const stopMic = () => {
@@ -78,6 +97,8 @@ export function createWebAudio(): AudioIO {
       node.disconnect()
     }
     source?.disconnect()
+    inTap?.disconnect()
+    inTap = null
     stream?.getTracks().forEach((track) => {
       track.onended = null
       track.stop()
@@ -144,6 +165,8 @@ export function createWebAudio(): AudioIO {
         node.port.onmessage = (event: MessageEvent<Int16Array>) => handlers?.onChunk(event.data)
         source = context.createMediaStreamSource(opened)
         source.connect(node)
+        inTap = makeTap(context)
+        source.connect(inTap)
       } catch {
         stopMic()
         throw new AudioError('unavailable', 'The audio worklet could not start.')
@@ -165,7 +188,7 @@ export function createWebAudio(): AudioIO {
       buffer.copyToChannel(new Float32Array(pcm16ToFloat(pcm)), 0)
       const sourceNode = context.createBufferSource()
       sourceNode.buffer = buffer
-      sourceNode.connect(context.destination)
+      sourceNode.connect(outTap ?? context.destination)
       const startAt = Math.max(context.currentTime + LEAD_SECONDS, nextStart)
       sourceNode.start(startAt)
       nextStart = startAt + buffer.duration
@@ -196,7 +219,32 @@ export function createWebAudio(): AudioIO {
       stopMic()
       void playback?.close()
       playback = null
+      outTap = null
       handlers = null
     },
+
+    levels(): AudioLevels {
+      return { input: read(inTap), output: sounding ? read(outTap) : 0 }
+    },
   }
+}
+
+function makeTap(context: AudioContext): AnalyserNode {
+  const tap = context.createAnalyser()
+  tap.fftSize = 512
+  return tap
+}
+
+/**
+ * RMS of one window, mapped to 0..1 on a log scale: -50 dBFS (a quiet room
+ * after noise suppression) is 0, -10 dBFS (close speech) is 1.
+ */
+export function loudness(samples: ArrayLike<number>): number {
+  if (samples.length === 0) return 0
+  let sum = 0
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
+  const rms = Math.sqrt(sum / samples.length)
+  if (rms <= 0) return 0
+  const db = 20 * Math.log10(rms)
+  return Math.min(1, Math.max(0, (db + 50) / 40))
 }

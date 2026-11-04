@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { AudioError } from '@/assistant/audio'
 import { setAudioFactory } from '@/assistant/deps'
 import { createEngine, type EngineOptions } from '@/test/engine'
 import { SEED_FAILED, SAMPLE_SVG, TOO_MANY, WRONG_CODE, sampleContent } from '@/test/engine-demo'
@@ -221,6 +222,13 @@ describe('/try', () => {
     await screen.findByRole('heading', { name: 'What to look for' })
     expect(screen.queryByRole('region', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
     expect(screen.queryByRole('search')).not.toBeInTheDocument()
+    // Voice is the star (Kevin, 2026-11-04): the orb is the talk button, typing folds under it.
+    expect(within(dock).getByRole('button', { name: /^Talk to / })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    const toggle = within(dock).getByRole('button', { name: 'Type instead' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(toggle)
+    expect(within(dock).getByRole('button', { name: 'Hide the chat' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getAllByRole('log')).toHaveLength(1)
     expect(screen.getAllByRole('textbox')).toEqual([within(dock).getByRole('textbox', { name: /^Message / })])
     // No close, and no floating orb or Ask bar beside it.
@@ -363,8 +371,45 @@ describe('/try', () => {
     const dock = await screen.findByRole('complementary', { name: 'Conversation with Mabel' })
     expect(within(dock).getByText('Your assistant (preview)')).toBeInTheDocument()
     expect(within(dock).queryByRole('button', { name: /^Close/ })).not.toBeInTheDocument()
+    expect(within(dock).getByRole('button', { name: 'Talk to Mabel' })).toBeInTheDocument()
+    fireEvent.click(within(dock).getByRole('button', { name: 'Type instead' }))
     expect(screen.getAllByRole('textbox')).toHaveLength(1)
     expect(screen.queryByRole('search')).not.toBeInTheDocument()
+  })
+
+  test('desk: the orb starts voice and stops it, in words beside it', async () => {
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    renderApp('/try', visitor(), 'workbench')
+    const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
+    await screen.findByRole('heading', { name: 'What to look for' })
+    expect(within(dock).getByRole('status')).toHaveTextContent('Tap to talk')
+
+    fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
+    const socket = await connect()
+    // Live and listening: the orb now stops, and a Stop link says so in words too.
+    const stop = await within(dock).findByRole('button', { name: 'Stop talking. Typing continues.' })
+    expect(within(dock).getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+    // The hidden opening turn is out, so the companion is working on its greeting.
+    expect(within(dock).getByRole('status')).toHaveTextContent(/is checking…$/)
+    expect(socket.sentOf('clientContent')).toHaveLength(1)
+    fireEvent.click(stop)
+    await act(settle)
+    expect(within(dock).getByRole('button', { name: /^Talk to / })).toBeInTheDocument()
+    expect(within(dock).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+  })
+
+  test('desk: a blocked microphone is said above the orb and the chat opens for typing', async () => {
+    const audio = new FakeAudio()
+    audio.failWith = new AudioError('denied', 'The microphone is blocked.')
+    setAudioFactory(() => audio)
+    renderApp('/try', visitor(), 'workbench')
+    const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
+    await screen.findByRole('heading', { name: 'What to look for' })
+    fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
+    expect(await within(dock).findByRole('alert')).toHaveTextContent(/microphone is blocked/)
+    expect(within(dock).getByRole('textbox', { name: /^Message / })).toBeInTheDocument()
+    expect(within(dock).getByRole('button', { name: 'Hide the chat' })).toBeInTheDocument()
   })
 
   test('a signed-in member sees a preview, and the assistant is still theirs', async () => {

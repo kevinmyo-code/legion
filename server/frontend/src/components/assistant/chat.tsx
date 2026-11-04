@@ -291,7 +291,7 @@ export function AssistantChat({
   )
 }
 
-function SessionLine({ layout, closable }: { layout: 'sheet' | 'panel'; closable: boolean }) {
+export function SessionLine({ layout, closable }: { layout: 'sheet' | 'panel'; closable: boolean }) {
   return (
     <p className="flex items-center justify-center gap-1.5 py-1 text-center text-[0.8125rem] text-muted-foreground">
       <Lock className="size-3.5 flex-none" aria-hidden="true" />
@@ -307,7 +307,7 @@ function SessionLine({ layout, closable }: { layout: 'sheet' | 'panel'; closable
 /** What a failed tool call says on screen: no tool name, no engine words. */
 export const TOOL_FAILED = "Couldn't check that."
 
-function Bubble({ line, name }: { line: Line; name: string }) {
+export function Bubble({ line, name }: { line: Line; name: string }) {
   if (line.kind === 'tool') {
     // `line.text` is the engine's text for the model (names, args, JSON). Never rendered.
     if (line.ok) return null

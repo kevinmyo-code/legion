@@ -45,4 +45,15 @@ export interface AudioIO {
   flush(): void
   /** Everything: mic, playback, contexts. Safe to call twice. */
   dispose(): void
+  /**
+   * How loud the microphone and the reply are right now, each 0 to 1. Read once
+   * a frame by the voice orb; optional, so an `AudioIO` without it (a test fake,
+   * a record-and-send fallback) just leaves the orb moving by state alone.
+   */
+  levels?(): AudioLevels
+}
+
+export interface AudioLevels {
+  input: number
+  output: number
 }

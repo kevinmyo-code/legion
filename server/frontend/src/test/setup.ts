@@ -73,3 +73,10 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   }
 }
+
+/**
+ * jsdom has no 2D canvas and logs "Not implemented" for every `getContext`. The
+ * voice orb draws nothing without one (its state is in words beside it), so a
+ * quiet `null` is what a test should see.
+ */
+HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext

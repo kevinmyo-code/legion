@@ -899,6 +899,60 @@
     text-align: left;
     color: var(--rc-meta);
 }
+
+/* The voice-first dock (`VoiceFirstChat`): the orb in ink, its sweep in the accent. */
+.recruiter [data-chat="orb"] {
+    color: var(--rc-ink);
+    --orb-accent: var(--rc-accent);
+}
+.recruiter [data-chat="orb"]:focus-visible {
+    outline-color: var(--rc-accent);
+}
+.recruiter [data-chat="status"] {
+    font-size: calc(1.1 * var(--u));
+}
+.recruiter [data-chat="caption"] {
+    font-size: calc(0.9 * var(--u));
+    color: var(--rc-meta);
+}
+.recruiter [data-chat="alert"] {
+    margin: 0 calc(1.6 * var(--u)) calc(0.6 * var(--u));
+    padding: calc(0.6 * var(--u)) 0;
+    border-top: 1px solid var(--rc-accent);
+    border-radius: 0;
+    background: none;
+    color: var(--rc-accent);
+    font-size: calc(0.85 * var(--u));
+}
+.recruiter [data-chat="action"] {
+    min-height: 44px;
+    padding: 0 2px;
+    background: none;
+    font-size: calc(0.88 * var(--u));
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+    text-decoration-color: var(--rc-meta);
+}
+.recruiter [data-chat="action"]:hover {
+    color: var(--rc-accent);
+    text-decoration-color: var(--rc-accent);
+}
+.recruiter [data-chat="toggle"] {
+    min-height: 48px;
+    padding: 0 calc(1.6 * var(--u));
+    border-top: 1px solid var(--rc-rule);
+    font-size: calc(0.88 * var(--u));
+}
+.recruiter [data-chat="toggle"] svg {
+    color: var(--rc-meta);
+}
+.recruiter [data-chat="drawer-foot"] {
+    padding: 0 calc(1.6 * var(--u));
+}
+.recruiter [data-voice-first] [data-chat="intro"] > p {
+    margin-top: 0;
+}
 .recruiter [data-chat="askbar"] {
     border: 1px solid var(--rc-ink);
     background: #ffffff;
