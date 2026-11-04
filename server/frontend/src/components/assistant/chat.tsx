@@ -19,6 +19,9 @@ import type { AssistantState, Line } from '@/assistant/live-client'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+import { ToolCard } from './cards/card'
+import type { Card } from './cards/types'
+
 /**
  * The conversation itself, shared by the family sheet and the workbench's docked
  * panel (web-assistant 05, Kevin's variant C): a transcript, a message box that
@@ -32,6 +35,9 @@ import { cn } from '@/lib/utils'
  *    engine's conversation record. While a tool runs the status says
  *    "<name> is checking…"; a success shows nothing (the reply says it); a
  *    failure is one neutral, centred sentence: `TOOL_FAILED`.
+ *  - A tool's card (`cards/`) is the one thing of a tool's on screen: the
+ *    engine built it from the tool's rows for the screen, never from model
+ *    text, and it carries no tool name or argument.
  *  - Failures, an ended conversation, a blocked microphone are sentences, not a
  *    silent dead button.
  *  - What closing does is on screen: it clears the conversation from the screen.
@@ -310,6 +316,8 @@ export const TOOL_FAILED = "Couldn't check that."
 export function Bubble({ line, name }: { line: Line; name: string }) {
   if (line.kind === 'tool') {
     // `line.text` is the engine's text for the model (names, args, JSON). Never rendered.
+    // The card is the engine's own drawing of the tool's rows, so it is shown where the tool ran.
+    if (line.card) return <ToolCard card={line.card} />
     if (line.ok) return null
     return (
       <p role="status" className="flex items-center gap-1.5 self-center px-2 text-center text-[0.8125rem] text-muted-foreground">
@@ -358,6 +366,20 @@ export function Bubble({ line, name }: { line: Line; name: string }) {
       )}
     </div>
   )
+}
+
+/**
+ * The newest card of the current exchange, for a stage that shows one at a time:
+ * the latest tool line's card, unless the person has spoken or typed since (a new
+ * question clears the stage until its own answer brings a card, if any).
+ */
+export function latestCard(lines: readonly Line[]): Card | undefined {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (line.kind === 'tool' && line.card) return line.card
+    if (line.kind === 'me') return undefined
+  }
+  return undefined
 }
 
 /** What voice is doing right now, in words (the orb alone would be a colour). */

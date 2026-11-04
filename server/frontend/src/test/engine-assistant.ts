@@ -18,6 +18,8 @@ export interface ToolFixture {
   success?: boolean
   /** The words: `text` on a 200, `detail` on a refusal. */
   text: string
+  /** On 200: the engine's card for the screen (`server/engine_mcp/cards.py`), beside `response`. */
+  card?: unknown
 }
 
 export interface AssistantState {
@@ -124,6 +126,7 @@ export function handleAssistant(
         outcome: success ? 'ok' : 'failed',
         text: fixture.text,
         response: { success, message: fixture.text },
+        ...(fixture.card !== undefined ? { card: fixture.card } : {}),
       },
     }
   }

@@ -6,6 +6,7 @@ import { setAudioFactory } from '@/assistant/deps'
 import { TOOL_FAILED } from '@/components/assistant/chat'
 import { createEngine, seedHousehold, type EngineOptions } from '@/test/engine'
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
+import { SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
 import type { Surface } from '@/lib/surface'
 
@@ -112,6 +113,33 @@ describe('the family surface', () => {
     // The member's own side holds only what they typed.
     const mine = within(log).getByText('Groceries last month?')
     expect(mine.className).toContain('self-end')
+  })
+
+  test("a tool's card is drawn where it ran, and only `response` goes back to Gemini", async () => {
+    const engine = engineWith({
+      assistant: { tools: { monthly_spend: { text: 'Categorised spend for 2026-10 is 2516.81 USD.', card: SPEND_CARD } } },
+    })
+    renderApp('/', engine, 'family')
+    const sheet = await openFamilyChat()
+    typeAndSend(within(sheet).getByRole('textbox', { name: 'Message Dorothy' }), 'What did we spend last month?')
+    const socket = await connect()
+    socket.serve({ toolCall: { functionCalls: [{ id: 's1', name: 'monthly_spend', args: { month: '2026-10' } }] } })
+    const log = within(sheet).getByRole('log')
+    const card = await within(log).findByRole('region', { name: 'Spending by category' })
+    expect(card).toHaveTextContent('Groceries$412.36unverified')
+    await waitFor(() => expect(socket.sentOf('toolResponse')).toHaveLength(1))
+    expect(socket.sentOf('toolResponse')[0]).toEqual({
+      toolResponse: {
+        functionResponses: [
+          {
+            id: 's1',
+            name: 'monthly_spend',
+            response: { success: true, message: 'Categorised spend for 2026-10 is 2516.81 USD.' },
+          },
+        ],
+      },
+    })
+    expect(log.textContent).not.toMatch(/monthly_spend|2026-10"|Categorised spend|Done:/)
   })
 
   test('a refused tool shows one plain sentence: no tool name, no engine words', async () => {

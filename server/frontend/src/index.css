@@ -1039,3 +1039,75 @@
     background: #ffffff;
     box-shadow: none;
 }
+
+/*
+ * Tool cards (`components/assistant/cards/`), as typeset matter: a rule above
+ * and below instead of a box, ink bars on a hairline, small caps for the title.
+ * The accent marks a flag (unverified, estimate) and nothing else.
+ */
+.recruiter [data-card="root"] {
+    max-width: none;
+    margin: 0 0 calc(1.1 * var(--u));
+    padding: calc(0.55 * var(--u)) 0;
+    border: 0;
+    border-top: 1px solid var(--rc-ink);
+    border-bottom: 1px solid var(--rc-rule);
+    background: none;
+    font-size: calc(0.86 * var(--u));
+    line-height: 1.45;
+}
+.recruiter [data-card="title"] {
+    font-size: calc(0.68 * var(--u));
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+.recruiter [data-card="sub"],
+.recruiter [data-card="note"],
+.recruiter [data-card="more"],
+.recruiter [data-card="day"],
+.recruiter [data-card="total"] {
+    font-size: calc(0.76 * var(--u));
+    color: var(--rc-meta);
+}
+.recruiter [data-card="note"] {
+    font-style: italic;
+}
+.recruiter [data-card="track"] {
+    height: 1px;
+    background: var(--rc-rule);
+}
+.recruiter [data-card="fill"] {
+    height: 3px;
+    margin-top: -1px;
+    background: var(--rc-ink);
+}
+.recruiter [data-card="fill"][data-flag] {
+    background: var(--rc-accent);
+}
+.recruiter [data-card="flag"] {
+    padding: 0;
+    background: none;
+    color: var(--rc-accent);
+    font-style: italic;
+    font-size: inherit;
+}
+.recruiter [data-card="value"] {
+    font-variant-numeric: tabular-nums oldstyle-nums;
+}
+.recruiter [data-card="item"] + [data-card="item"] {
+    border-top: 1px solid var(--rc-rule);
+    padding-top: calc(0.2 * var(--u));
+}
+.recruiter [data-card="item"][data-status="failed"] [data-card="status"] {
+    color: var(--rc-ink);
+    font-style: italic;
+}
+.recruiter [data-card="box"] {
+    border-color: var(--rc-ink);
+}
+.recruiter [data-chat="stage-card"] {
+    padding-left: calc(1.6 * var(--u));
+    padding-right: calc(1.6 * var(--u));
+    max-width: calc(30 * var(--u));
+}

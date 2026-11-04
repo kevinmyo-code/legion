@@ -1,3 +1,5 @@
+import type { Card } from '@/components/assistant/cards/types'
+
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { base64ToPcm16, pcm16ToBase64 } from './pcm'
@@ -49,7 +51,8 @@ export type NoticeKind = Notice['kind']
 export type Line =
   | { id: number; kind: 'me'; text: string; via: 'typed' | 'spoken'; open: boolean }
   | { id: number; kind: 'ai'; text: string; via: 'typed' | 'spoken'; open: boolean; cut: boolean }
-  | { id: number; kind: 'tool'; ok: boolean; text: string }
+  /** `card`: what the engine drew from the tool's rows (`cards/types.ts`); never the model's. */
+  | { id: number; kind: 'tool'; ok: boolean; text: string; card?: Card }
   | { id: number; kind: 'sys'; text: string }
 
 type Draft<T> = T extends unknown ? Omit<T, 'id'> : never
@@ -97,6 +100,8 @@ export interface ToolResult {
   text: string
   /** What goes back to Gemini as `functionResponses[].response`. */
   forward: { success: boolean; message: string }
+  /** The engine's card for the screen. Kept on the tool line; never forwarded. */
+  card?: Card
 }
 
 /** The slice of `WebSocket` the client uses. */
@@ -826,6 +831,7 @@ export class LiveClient {
           kind: 'tool',
           ok: result.success,
           text: result.success ? `Done: ${result.text || call.name}` : `Did not run: ${result.text}`,
+          ...(result.card ? { card: result.card } : {}),
         })
         return { id: call.id, name: call.name, response: result.forward }
       }),

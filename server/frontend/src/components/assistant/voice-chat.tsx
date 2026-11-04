@@ -5,7 +5,8 @@ import { useAssistant } from '@/assistant/assistant-context'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import { Bubble, recordingNotice, SessionLine, statusWords } from './chat'
+import { ToolCard } from './cards/card'
+import { Bubble, latestCard, recordingNotice, SessionLine, statusWords } from './chat'
 import { orbMode } from './orb'
 import { VoiceOrb } from './voice-orb'
 
@@ -91,6 +92,8 @@ export function VoiceFirstChat({
   const words = ended ? (state.ended ?? 'This conversation ended.') : statusWords(state, name) || 'Tap to talk'
   const live = [...state.lines].reverse().find((line) => (line.kind === 'me' || line.kind === 'ai') && line.open)
   const caption = live && (live.kind === 'me' || live.kind === 'ai') ? live.text : ''
+  // A voice-only visitor sees the tool's card on the stage, where the caption was.
+  const card = chatOpen ? undefined : latestCard(state.lines)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -150,6 +153,7 @@ export function VoiceFirstChat({
         className={cn(
           'flex min-h-0 flex-col items-center justify-center px-4 text-center',
           chatOpen ? 'flex-none py-2' : 'flex-1',
+          card && 'justify-start pt-1',
         )}
       >
         <button
@@ -161,7 +165,7 @@ export function VoiceFirstChat({
           data-mode={mode}
           className={cn(
             'aspect-square rounded-full outline-none transition-[width] duration-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary disabled:cursor-default',
-            chatOpen
+            chatOpen || card
               ? layout === 'sheet'
                 ? 'w-[min(112px,30%)]'
                 : 'w-[min(180px,50%)]'
@@ -174,7 +178,11 @@ export function VoiceFirstChat({
           {words}
         </p>
         {/* With the chat open the transcript says it; the caption would say it twice. */}
-        {!chatOpen && (
+        {card ? (
+          <div data-chat="stage-card" className="flex min-h-0 w-full max-w-[26rem] flex-1 flex-col overflow-y-auto py-1 text-left">
+            <ToolCard card={card} className="max-w-none" />
+          </div>
+        ) : !chatOpen && (
           <p data-chat="caption" className="line-clamp-2 min-h-[3em] max-w-[30ch] text-sm text-muted-foreground italic">
             {caption}
           </p>

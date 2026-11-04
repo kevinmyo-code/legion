@@ -1,4 +1,5 @@
 import { api, csrfToken } from '@/api/client'
+import { asCard } from '@/components/assistant/cards/types'
 
 import type { AudioIO } from './audio'
 import type { RecordEvent, RecordTransport } from './conversation-record'
@@ -114,7 +115,8 @@ async function runTool(
   try {
     const { data, error, response } = await api.POST('/api/assistant/tool', { body })
     if (data) {
-      return { success: data.response.success, text: data.text, forward: data.response }
+      const card = asCard(data.card)
+      return { success: data.response.success, text: data.text, forward: data.response, ...(card ? { card } : {}) }
     }
     const refusal = error as { detail?: string; response?: { success: boolean; message: string } } | undefined
     if (refusal?.response) {

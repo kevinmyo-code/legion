@@ -6,6 +6,7 @@ import { setAudioFactory } from '@/assistant/deps'
 import { createEngine, type EngineOptions } from '@/test/engine'
 import { SEED_FAILED, SAMPLE_SVG, TOO_MANY, WRONG_CODE, sampleContent } from '@/test/engine-demo'
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
+import { DAY_CARD, SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
 import { OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
 
@@ -413,6 +414,47 @@ describe('/try', () => {
     await act(settle)
     expect(within(dock).getByRole('button', { name: /^Talk to / })).toBeInTheDocument()
     expect(within(dock).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+  })
+
+  test("desk: a voice-only visitor sees the latest tool card on the stage, and Type instead still opens", async () => {
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    const engine = visitor({
+      assistant: {
+        tools: {
+          monthly_spend: { text: 'Categorised spend.', card: SPEND_CARD },
+          list_events: { text: 'Events.', card: DAY_CARD },
+        },
+      },
+    })
+    renderApp('/try', engine, 'workbench')
+    const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
+    await screen.findByRole('heading', { name: 'What to look for' })
+    fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
+    const socket = await connect()
+
+    socket.serve({ toolCall: { functionCalls: [{ id: 'c1', name: 'monthly_spend', args: {} }] } })
+    const stage = within(dock).getByRole('region', { name: 'Voice' })
+    expect(await within(stage).findByRole('region', { name: 'Spending by category' })).toBeInTheDocument()
+    // The stage shows one card: the newest replaces it.
+    socket.serve({ toolCall: { functionCalls: [{ id: 'c2', name: 'list_events', args: {} }] } })
+    expect(await within(stage).findByRole('region', { name: "What's on" })).toBeInTheDocument()
+    expect(within(stage).queryByRole('region', { name: 'Spending by category' })).not.toBeInTheDocument()
+    expect(dock.textContent).not.toMatch(/monthly_spend|list_events|Categorised spend/)
+
+    // Type instead: the transcript carries both cards where the tools ran, and the stage none.
+    fireEvent.click(within(dock).getByRole('button', { name: 'Type instead' }))
+    const log = within(dock).getByRole('log')
+    expect(within(log).getByRole('region', { name: 'Spending by category' })).toBeInTheDocument()
+    expect(within(log).getByRole('region', { name: "What's on" })).toBeInTheDocument()
+    expect(within(stage).queryByRole('region', { name: "What's on" })).not.toBeInTheDocument()
+    expect(within(dock).getByRole('textbox', { name: /^Message / })).toBeInTheDocument()
+
+    // Hidden again, a new spoken question clears the stage until its own answer brings a card.
+    fireEvent.click(within(dock).getByRole('button', { name: 'Hide the chat' }))
+    expect(within(stage).getByRole('region', { name: "What's on" })).toBeInTheDocument()
+    socket.serve({ serverContent: { inputTranscription: { text: 'And tomorrow?' } } })
+    await waitFor(() => expect(within(stage).queryByRole('region', { name: "What's on" })).not.toBeInTheDocument())
   })
 
   test('desk: a blocked microphone is said above the orb and the chat opens for typing', async () => {
