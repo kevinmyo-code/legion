@@ -9,8 +9,10 @@ import type { DemoPhone, DemoPhoneClip } from '@/api/demo'
  * screen picks the clip the frame shows. Under 1300px, or with reduced motion,
  * there is no frame: each clip sits under its own text.
  *
- * Nothing plays by itself. A clip with a `video` is a muted `<video>` with
- * controls that loads nothing until asked (`preload="none"`); a clip without
+ * Nothing plays by itself. A clip with a `video` is a `<video>` with controls
+ * that loads nothing until asked (`preload="none"`). It plays with sound when
+ * the visitor presses play, because the clips are of a voice assistant
+ * (Kevin, 2026-11-04: the voice must be heard); captions are on. A clip without
  * one is a dark placeholder that says the recording is still to come. A clip
  * the stage moves away from is paused, so two never play at once.
  */
@@ -165,7 +167,8 @@ function Clip({
           src={clip.video}
           poster={clip.poster}
           aria-label={clip.title}
-          muted
+          // The clips are hosted off-site (a storage bucket); the captions track needs CORS to load.
+          crossOrigin="anonymous"
           playsInline
           controls
           preload="none"

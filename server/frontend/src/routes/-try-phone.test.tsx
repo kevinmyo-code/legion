@@ -79,7 +79,9 @@ describe('the phone section', () => {
     const videos = Array.from(section.querySelectorAll('video'))
     expect(videos.map((video) => video.getAttribute('src'))).toEqual(['/static/demo/wake.mp4', '/static/demo/obd.mp4'])
     for (const video of videos) {
-      expect(video.muted).toBe(true)
+      // Sound on when the visitor presses play (voice clips); captions load cross-origin.
+      expect(video.muted).toBe(false)
+      expect(video).toHaveAttribute("crossorigin", "anonymous")
       expect(video).toHaveAttribute('controls')
       expect(video).toHaveAttribute('preload', 'none')
       expect(video).not.toHaveAttribute('autoplay')
