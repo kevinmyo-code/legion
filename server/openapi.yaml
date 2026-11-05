@@ -17387,7 +17387,8 @@ components:
           type: integer
         sgd_cents:
           type: integer
-          description: At today's rate.
+          nullable: true
+          description: At today's rate; null when no rate is stored.
         first_short_month:
           type: string
         by:
@@ -17396,6 +17397,7 @@ components:
           description: Start the transfer by this day.
         sg_side_lowest_after_cents:
           type: integer
+          nullable: true
           description: Singapore liquid's lowest point after the transfer, SGD.
       required:
       - by

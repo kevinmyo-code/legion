@@ -1844,11 +1844,16 @@ def _runway(request, args) -> ToolResult:
         )
     transfer = expected["transfer"]
     if transfer:
+        sgd = (
+            f"{_money(transfer['sgd_cents'], 'SGD')} {_rate_words(body['rate'])}"
+            if transfer["sgd_cents"] is not None
+            else "no USD/SGD rate is stored, so the SGD amount is not known"
+        )
         parts.append(
             f"The US side runs short from {transfer['first_short_month']}: move about "
-            f"{_money(transfer['usd_cents'])} ({_money(transfer['sgd_cents'], 'SGD')} "
-            f"{_rate_words(body['rate'])}) from Singapore by {_long_date(transfer['by'])}, "
-            f"because a transfer takes days. Moving it is the user's call."
+            f"{_money(transfer['usd_cents'])} ({sgd}) from Singapore by "
+            f"{_long_date(transfer['by'])}, because a transfer takes days. Moving it is the "
+            f"user's call."
         )
     if body["missing_balances"]:
         parts.append(f"No balance on file for {', '.join(body['missing_balances'])}.")

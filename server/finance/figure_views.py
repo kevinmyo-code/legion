@@ -211,10 +211,13 @@ class RunwayMonthSerializer(serializers.Serializer):
 
 class TransferSerializer(serializers.Serializer):
     usd_cents = serializers.IntegerField()
-    sgd_cents = serializers.IntegerField(help_text="At today's rate.")
+    sgd_cents = serializers.IntegerField(
+        allow_null=True, help_text="At today's rate; null when no rate is stored."
+    )
     first_short_month = serializers.CharField()
     by = serializers.DateField(help_text="Start the transfer by this day.")
     sg_side_lowest_after_cents = serializers.IntegerField(
+        allow_null=True,
         help_text="Singapore liquid's lowest point after the transfer, SGD."
     )
 

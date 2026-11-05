@@ -412,6 +412,36 @@ def test_the_parity_reads_read_only_the_demo(world, monkeypatch):
     assert response.data["is_error"] is True and response.data["text"].startswith("Nothing was")
 
 
+def test_the_finance_reads_never_reach_kevins_money(world, household_a):
+    """Household finance (ADR 0073): the Kevin-like household holds an account,
+    a balance, a policy and a plan, all marked; the visit holds none, so every
+    finance tool answers over the visit's own empty copy, in words."""
+    from finance.models import BalanceSnapshot, FinanceAccount, FinancePolicy, IncomePlan
+
+    account = FinanceAccount.objects.create(
+        household=household_a, key=f"{MARK}-checking", label=f"{MARK} checking",
+        country="US", currency="USD", kind="depository", layer="liquid", source="manual",
+    )
+    BalanceSnapshot.objects.create(
+        household=household_a, account=account, as_of=TODAY, amount_cents=100_000,
+        currency="USD", source="manual", evidence=MARK,
+    )
+    FinancePolicy.objects.create(household=household_a, topup_checking=account,
+                                 fixed_bills=[{"label": MARK, "amount_cents": 100, "day": 1}])
+    IncomePlan.objects.create(
+        household=household_a, key=f"{MARK}-pay", label=MARK, amount_cents=100_000,
+        currency="USD", cadence="monthly", confidence="confirmed", account=account,
+    )
+    month = f"{TODAY:%Y-%m}"
+    assert "no account balances" in _allowed(world, "net_worth", {})
+    _allowed(world, "net_worth", {"currency": "SGD"})
+    assert "Nothing can be said" in _allowed(world, "safe_to_spend", {})
+    _allowed(world, "cash_flow", {})
+    _allowed(world, "cash_flow", {"month": month})
+    _allowed(world, "runway", {})
+    _allowed(world, "budgets", {"month": month})
+
+
 def test_about_kevin_reads_the_profile_and_nothing_of_either_household(world):
     from demo.models import RecruiterContent
     from tests.test_recruiter_content import fake_content
@@ -672,6 +702,12 @@ def test_every_allowed_tool_was_exercised():
         "archive_checklist",
         "rename_place",
         "skip_event_occurrence",
+        # household finance (ADR 0073): test_the_finance_reads_never_reach_kevins_money
+        "safe_to_spend",
+        "net_worth",
+        "cash_flow",
+        "runway",
+        "budgets",
         # procedures (ADR 0070, ruling 07): the run_procedure tests below
         "run_procedure",
     }

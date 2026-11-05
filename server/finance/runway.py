@@ -261,13 +261,17 @@ def _scenario(name, lines, start_us, start_sg, avg, mortgage, policy, today, rat
     transfer = None
     if first_short is not None:
         by = max(today, first_short.first - dt.timedelta(days=lead))
+        # With no rate stored, the SGD side of the transfer is unknown: said
+        # as null, never guessed, and the USD figure still stands.
+        sgd = _to(largest_short, "USD", "SGD", rate) if rate is not None else None
         transfer = {
             "usd_cents": largest_short,
-            "sgd_cents": _to(largest_short, "USD", "SGD", rate),
+            "sgd_cents": sgd,
             "first_short_month": str(first_short),
             "by": by,
-            "sg_side_lowest_after_cents": min(m["sg_end_cents"] for m in months)
-            - _to(largest_short, "USD", "SGD", rate),
+            "sg_side_lowest_after_cents": (
+                min(m["sg_end_cents"] for m in months) - sgd if sgd is not None else None
+            ),
         }
     return {"months": months, "floor_crossing_month": crossing, "transfer": transfer}
 

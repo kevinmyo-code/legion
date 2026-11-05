@@ -7793,8 +7793,8 @@ export interface components {
         };
         Transfer: {
             usd_cents: number;
-            /** @description At today's rate. */
-            sgd_cents: number;
+            /** @description At today's rate; null when no rate is stored. */
+            sgd_cents: number | null;
             first_short_month: string;
             /**
              * Format: date
@@ -7802,7 +7802,7 @@ export interface components {
              */
             by: string;
             /** @description Singapore liquid's lowest point after the transfer, SGD. */
-            sg_side_lowest_after_cents: number;
+            sg_side_lowest_after_cents: number | null;
         };
         Upload: {
             /**
