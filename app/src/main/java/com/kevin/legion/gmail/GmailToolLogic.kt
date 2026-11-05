@@ -3,7 +3,9 @@ package com.kevin.legion.gmail
 import com.kevin.legion.ui.sync.GoogleGrantResolver
 import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 /**
  * Pure logic behind `search_mail`/`read_mail` (ticket 15, graduated from ticket 05's Answer),
@@ -71,6 +73,30 @@ object GmailToolLogic {
             daysBetween < 7L -> "$daysBetween days ago"
             else -> com.kevin.legion.util.shortDate(timestampMs)
         }
+    }
+
+    /**
+     * The mail router's clock and day boundaries (2026-11-05, A25 LIVE_AUDIT 11-04: "any new mail
+     * today?" got "none" while mail had come in). The router ([com.kevin.legion.ai.SubAgent.route]
+     * on `ask_mail`) was handed no date at all, so "today" had nothing to anchor an `after:` to, and
+     * "new" read as unread: a blank query is [BRIEFING_QUERY], which is unread, Primary only, so mail
+     * already opened on another device or filed under Updates reads as nothing.
+     *
+     * Day boundaries go in epoch seconds because the Gmail API reads `after:2026/11/04` as midnight
+     * PACIFIC time (developers.google.com/gmail/api/guides/filtering), hours off for the phone's own
+     * day. The clock is a UTC offset, never an IANA id (CLAUDE.md section 1). Pure for a JVM test.
+     */
+    fun routeDateClause(now: Instant, zone: ZoneId): String {
+        val local = now.atZone(zone)
+        val today = local.toLocalDate().atStartOfDay(zone).toEpochSecond()
+        val yesterday = local.toLocalDate().minusDays(1).atStartOfDay(zone).toEpochSecond()
+        val offset = local.offset.id.let { if (it == "Z") "+00:00" else it }
+        val stamp = local.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy, h:mm a", Locale.US))
+        return " It is $stamp on the phone's clock (UTC$offset). Gmail reads after:/before: dates as " +
+            "Pacific time, so give day boundaries in epoch seconds: today is after:$today, yesterday is " +
+            "after:$yesterday before:$today. \"New\" mail means mail that arrived recently, opened or " +
+            "not: never add is:unread unless the user says unread, and leave the query empty only when " +
+            "they ask for unread mail or a briefing."
     }
 
     /** Which of ticket 10's four causes a failed mail tool call falls under. */

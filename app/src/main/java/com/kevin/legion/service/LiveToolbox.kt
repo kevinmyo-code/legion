@@ -2712,6 +2712,8 @@ object LiveToolbox {
         " You are searching and reading the user's Gmail using the tools you're given. " +
         "Read-only - you cannot send, reply to, or delete mail. Pull only what would change your " +
         "answer, then answer in plain spoken text, no markdown." +
+        // 2026-11-05: "today" and "new" need the phone's day; see GmailToolLogic.routeDateClause.
+        GmailToolLogic.routeDateClause(java.time.Instant.now(), java.time.ZoneId.systemDefault()) +
         dispatchBoundaryClause("mail") +
         Priming.dispatchClause(context, "mail")
 
