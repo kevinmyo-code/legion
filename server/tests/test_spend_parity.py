@@ -16,6 +16,15 @@ left to the phone.
 
 Fixture ids are the phone's `nextId++`: pairing ties break on them, so they
 are kept in the same order.
+
+**A deliberate divergence lives ABOVE this port, not in it** (household-finance
+ticket 02, ADR 0073). `GET /api/ledger/spend` (`api.ledger_spend.spend_for`)
+first removes rows `finance.internal` marks household-internal (a transfer to
+or from a household member, a cross-border transfer between the household's own
+accounts), then runs these ported functions unchanged. The phone does not do
+that yet, so for a month with such a row the engine's figure is lower than the
+phone's by exactly `excluded.household_internal_cents`. Every function tested
+here is still the phone's rule, cent for cent.
 """
 from __future__ import annotations
 

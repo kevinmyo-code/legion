@@ -7190,3 +7190,19 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   signed in, then Amazon redirected it to a fresh sign-in (`max_auth_age=0`) though the login
   cookies were valid for a year. Not worked around (that is a bot check). Kevin chose A: drop it;
   Gmail first, then the carrier's public tracking page. Script and tests deleted.
+
+## 2026-11-05 - Household finance: layers, internal transfers, floors, estimates (Kevin)
+
+- **Asked** (Kevin): track the whole household's net worth across the US and Singapore, cash flow,
+  budgets, and have Alfred warn before a limit is crossed, until he starts full-time work. The map
+  is `.scratch/household-finance/map.md`; its ten rulings are Kevin's, from the interview.
+- **Built in wave 1, engine only** (tickets 01, 12, 03, 02, 07, 08; branch `feat/finance-wave1`):
+  accounts and dated balances, the private-file loader, daily USD/SGD rates, household-internal
+  money, net worth, cash flow, runway, the US top-up check, safe to spend, budgets and pace.
+- **Scope added mid-build** (Kevin, same day): "safe to spend", the main daily money figure,
+  defined as checking less everything owed on the card less US fixed bills due before the next
+  expected pay date; and a pace marker per budget bar.
+- **Definitions chosen in the build, recorded in ADR 0073** (not ruled by Kevin; open to change):
+  the cross-border pairing tolerance (3%, 10 days, the earlier day's rate), the transfer's
+  by-date (first short month less the lead days), wave 1's spend being the ledger's accounts only,
+  the subscription rule, and the card's current balance standing in for its statement balance.

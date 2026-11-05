@@ -1498,6 +1498,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/finance/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every account the household holds or owes on, in both countries. */
+        get: operations["api_finance_accounts_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finance/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Per category spent against its cap, with the pace marker and, from day 10, a projected month total (an estimate). */
+        get: operations["api_finance_budgets_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finance/cashflow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One month's household income, spend, mortgage and net, in USD. */
+        get: operations["api_finance_cashflow_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finance/networth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Net worth per layer and in total. Computed values are estimates. */
+        get: operations["api_finance_networth_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finance/runway": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Liquid projected month by month from the income plan and the last 3 full months' average spend: an estimate. */
+        get: operations["api_finance_runway_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finance/safe-to-spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Checking, minus everything owed on the card, minus the US fixed bills due before the next expected income date. */
+        get: operations["api_finance_safe_to_spend_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finance/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Dated balances per account, newest first. */
+        get: operations["api_finance_snapshots_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/build_entries/": {
         parameters: {
             query?: never;
@@ -3914,6 +4033,11 @@ export interface components {
             /** @description What the screen draws beside the transcript, built by the engine from the tool's own rows (`engine_mcp/cards.py`): `card` is bars, timeline, car, steps or checklist. Absent when the tool has none. Never sent to Gemini: `response` is the whole of what the browser forwards. */
             card?: unknown;
         };
+        AverageSpend: {
+            months: string[];
+            usd_cents: number;
+            sgd_cents: number;
+        };
         BankAccount: {
             name: string | null;
             mask: string | null;
@@ -3951,6 +4075,12 @@ export interface components {
             sentence: string;
             slot_warning: string;
             is_owner: boolean;
+        };
+        Bill: {
+            label: string;
+            /** Format: date */
+            due_on: string;
+            amount_cents: number;
         };
         /**
          * @description Base for every serializer this viewset drives.
@@ -4226,6 +4356,23 @@ export interface components {
          * @enum {string}
          */
         BriefTriggerEnum: "scheduled" | "refresh";
+        BudgetLine: {
+            category: string;
+            /** @description Pending rows included. */
+            spent_cents: number;
+            cap_cents: number | null;
+            percent: number | null;
+            /** @description cap x days elapsed / days in month: the pace marker. */
+            pace_cents: number | null;
+            /** @description An estimate; null before day 10. */
+            projection_cents: number | null;
+            projection_is_estimate: boolean;
+            /** @description ok | near (80%) | over | no cap. */
+            status: string;
+            pending_cents: number;
+            pending_count: number;
+            unverified: boolean;
+        };
         /**
          * @description Field-for-field `RemoteBudgetTarget` / `BudgetTargetFields`.
          *
@@ -4251,6 +4398,25 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid: string;
+        };
+        BudgetTotal: {
+            spent_cents: number;
+            cap_cents: number;
+            percent: number | null;
+            pace_cents: number | null;
+        };
+        Budgets: {
+            month: string;
+            currency: string;
+            days_in_month: number;
+            days_elapsed: number;
+            projection_from_day: number;
+            categories: components["schemas"]["BudgetLine"][];
+            total: components["schemas"]["BudgetTotal"];
+            uncategorised_cents: number;
+            fixed: components["schemas"]["Fixed"][];
+            subscriptions: components["schemas"]["FinanceSubscription"][];
+            new_subscriptions: string[];
         };
         /**
          * @description Field-for-field `RemoteBuildEntry` / `BuildEntryUpload`: one
@@ -4287,6 +4453,27 @@ export interface components {
             readonly updated_at: string;
             /** Format: date-time */
             readonly deleted_at: string | null;
+        };
+        CashFlow: {
+            month: string;
+            currency: string;
+            rate: components["schemas"]["Rate"] | null;
+            /** @description From the income plan: an estimate. */
+            income_planned_cents: number;
+            income_planned_is_estimate: boolean;
+            /** @description Inflows on the ledger the transfer rules leave standing. */
+            income_on_file_cents: number;
+            /** @description Every netted outflow, household-internal money out. */
+            spend_cents: number;
+            spend_by_currency: components["schemas"]["CurrencyCents"][];
+            mortgage_cents: number;
+            /** @description Planned income - spend - mortgage. */
+            net_cents: number;
+            /** @description No burn: net is not negative. */
+            test_a_passes: boolean;
+            /** @description Liquid accounts with no ledger rows this month: their spend is not in it. */
+            accounts_without_rows: string[];
+            household_internal: components["schemas"]["InternalRow"][];
         };
         /** @description Field-for-field `RemoteCategory` / `CategoryFields`. */
         Category: {
@@ -4729,6 +4916,8 @@ export interface components {
             progress: string | null;
             /** Format: date-time */
             progress_at: string | null;
+            /** @description The last 20 distinct steps, newest first; kept after the task finishes. Always empty for a summaries-only (listed) machine. */
+            steps: components["schemas"]["ClaudeTaskStep"][];
         };
         /**
          * @description * `queued` - queued
@@ -4742,6 +4931,14 @@ export interface components {
          * @enum {string}
          */
         ClaudeTaskStatusEnum: "queued" | "needs_machine" | "running" | "cancel_requested" | "done" | "failed" | "needs_confirmation" | "cancelled";
+        ClaudeTaskStep: {
+            /**
+             * Format: date-time
+             * @description When the engine first heard this step.
+             */
+            at: string;
+            text: string;
+        };
         ClaudeUploadResult: {
             file_id: number;
             size: number;
@@ -4857,11 +5054,27 @@ export interface components {
             message: string;
         };
         /**
+         * @description * `US` - US
+         *     * `SG` - SG
+         * @enum {string}
+         */
+        CountryEnum: "US" | "SG";
+        /**
          * @description * `cookie_jar` - Cookie jar
          *     * `oauth_refresh` - OAuth refresh token
          * @enum {string}
          */
         CredentialKindEnum: "cookie_jar" | "oauth_refresh";
+        CurrencyCents: {
+            currency: string;
+            cents: number;
+        };
+        /**
+         * @description * `USD` - USD
+         *     * `SGD` - SGD
+         * @enum {string}
+         */
+        CurrencyEnum: "USD" | "SGD";
         DemoEnterRequest: {
             code: string;
             /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
@@ -5061,6 +5274,44 @@ export interface components {
             /** @description What Plaid Link's onSuccess returned. */
             public_token: string;
         };
+        FinanceAccount: {
+            /** @description The household's own name for the account. */
+            key: string;
+            label: string;
+            /** @description The member's key, or null for a joint account. */
+            owner: string | null;
+            institution: string;
+            country: components["schemas"]["CountryEnum"];
+            currency: components["schemas"]["CurrencyEnum"];
+            kind: string;
+            /** @description liquid | investments | cpf | property | other. */
+            layer: string;
+            /** @description plaid | statement | ibkr_flex | computed | manual. */
+            source: string;
+            last4: string | null;
+            /** @description True for a card or loan: balances are negative. */
+            is_debt: boolean;
+            active: boolean;
+        };
+        FinanceSubscription: {
+            merchant: string;
+            category: string | null;
+            typical_cents: number;
+            months: number;
+            /** Format: date */
+            last_on: string;
+            /**
+             * Format: date
+             * @description An estimate.
+             */
+            next_on: string;
+            is_estimate: boolean;
+        };
+        Fixed: {
+            category: string;
+            paid: boolean;
+            paid_cents: number;
+        };
         Freshness: {
             sources: components["schemas"]["FreshnessSource"][];
         };
@@ -5226,6 +5477,33 @@ export interface components {
              * @description The last time this content was posted, rewritten on every commit and every retry. The column this feed's `?since=` and `next` are keyed on.
              */
             readonly last_attempt_at: string;
+        };
+        InternalReason: {
+            /**
+             * @description MEMBER_TRANSFER: to or from a household member. CROSS_BORDER_PAIR: the two legs of a transfer between the household's accounts in two countries.
+             *
+             *     * `MEMBER_TRANSFER` - MEMBER_TRANSFER
+             *     * `CROSS_BORDER_PAIR` - CROSS_BORDER_PAIR
+             */
+            reason: components["schemas"]["InternalReasonReasonEnum"];
+            cents: number;
+        };
+        /**
+         * @description * `MEMBER_TRANSFER` - MEMBER_TRANSFER
+         *     * `CROSS_BORDER_PAIR` - CROSS_BORDER_PAIR
+         * @enum {string}
+         */
+        InternalReasonReasonEnum: "MEMBER_TRANSFER" | "CROSS_BORDER_PAIR";
+        InternalRow: {
+            /** Format: date */
+            txn_date: string;
+            description: string;
+            amount_cents: number;
+            currency: string;
+            /** @description MEMBER_TRANSFER or CROSS_BORDER_PAIR. */
+            reason: string;
+            /** @description Both legs are on file. */
+            paired: boolean;
         };
         /**
          * @description One live invite, code included.
@@ -5733,6 +6011,43 @@ export interface components {
          * @enum {string}
          */
         ModeEnum: "create" | "update";
+        NetWorth: {
+            currency: string;
+            /** Format: date */
+            as_of: string;
+            rate: components["schemas"]["Rate"] | null;
+            layers: components["schemas"]["NetWorthLayer"][];
+            total_cents: number;
+            total_is_estimate: boolean;
+            /** @description Liquid plus investments. */
+            runway_cents: number;
+            /** @description Accounts with no balance on file, in no total. */
+            missing: string[];
+            /** @description Accounts left out for want of a rate. */
+            unconverted: string[];
+        };
+        NetWorthLayer: {
+            layer: string;
+            total_cents: number;
+            is_estimate: boolean;
+            accounts: components["schemas"]["NetWorthLine"][];
+        };
+        NetWorthLine: {
+            account: string;
+            label: string;
+            currency: string;
+            /** @description In the account's currency; debt negative. */
+            amount_cents: number;
+            /** Format: date */
+            as_of: string;
+            source: string;
+            is_estimate: boolean;
+            /** @description Older than 45 days: say 'as of' the day. */
+            stale: boolean;
+            pending_cents: number | null;
+            /** @description In the view currency at today's rate; null when no rate. */
+            converted_cents: number | null;
+        };
         /** @enum {unknown} */
         NullEnum: null;
         /**
@@ -6641,15 +6956,13 @@ export interface components {
          * @enum {string}
          */
         PushEnum: "sent" | "no_device" | "turned_off" | "failed" | "not_set_up";
-        /**
-         * @description * `drive_end` - drive_end
-         *     * `startup` - startup
-         *     * `manual` - manual
-         *     * `periodic` - periodic
-         *     * `conversation` - conversation
-         * @enum {string}
-         */
-        ReasonEnum: "drive_end" | "startup" | "manual" | "periodic" | "conversation";
+        Rate: {
+            /** @description 1 USD = rate_micros / 1e6 SGD. */
+            rate_micros: number;
+            /** Format: date */
+            rate_date: string;
+            source: string;
+        };
         /**
          * @description One `public.receipts` header, with the anchors the gate checked it
          *     against (section 4 rule 8) and the residual it could not explain (rule 7).
@@ -6961,6 +7274,88 @@ export interface components {
              */
             conversation_id: string | null;
         };
+        Runway: {
+            currency: string;
+            /** Format: date */
+            as_of: string;
+            rate: components["schemas"]["Rate"] | null;
+            is_estimate: boolean;
+            liquid_now_cents: number;
+            /** @description Liquid plus investments. */
+            runway_assets_cents: number;
+            floor_cents: number | null;
+            us_floor_cents: number | null;
+            average_spend: components["schemas"]["AverageSpend"];
+            mortgage_sgd_cents: number;
+            monthly_burn_cents: number;
+            missing_balances: string[];
+            scenarios: components["schemas"]["Scenarios"];
+            us_topup: components["schemas"]["TopUp"];
+        };
+        RunwayMonth: {
+            month: string;
+            income_us_cents: number;
+            /** @description SGD. */
+            income_sg_cents: number;
+            /** @description US liquid at month end, USD. */
+            us_end_cents: number;
+            /** @description Singapore liquid at month end, SGD. */
+            sg_end_cents: number;
+            /** @description Household liquid, USD. */
+            liquid_end_cents: number;
+        };
+        SafeParts: {
+            checking_cents: number;
+            /** Format: date */
+            checking_as_of: string;
+            checking_pending_cents: number | null;
+            /** @description Current balance plus pending charges. */
+            card_owed_cents: number;
+            /** Format: date */
+            card_as_of: string | null;
+            bills_before_until_cents: number;
+            bills: components["schemas"]["Bill"][];
+            /** @description True when the bills were worked out from recurring merchants: an estimate. */
+            bills_detected: boolean;
+        };
+        SafeToSpend: {
+            available: boolean;
+            reason?: string;
+            currency?: string;
+            safe_to_spend_cents?: number;
+            /**
+             * Format: date
+             * @description The next expected income date, or 30 days out when that is sooner.
+             */
+            until?: string | null;
+            /**
+             * @description Which one `until` is.
+             *
+             *     * `next_income` - next_income
+             *     * `30_days` - 30_days
+             */
+            until_reason?: components["schemas"]["UntilReasonEnum"];
+            /**
+             * Format: date
+             * @description The plan's next pay date, an estimate.
+             */
+            next_income_on?: string | null;
+            until_is_estimate?: boolean;
+            parts?: components["schemas"]["SafeParts"];
+            top_up_needed_cents?: number;
+            /** Format: date */
+            top_up_by?: string | null;
+            top_up_reason?: string | null;
+        };
+        Scenario: {
+            months: components["schemas"]["RunwayMonth"][];
+            floor_crossing_month: string | null;
+            transfer: components["schemas"]["Transfer"] | null;
+        };
+        Scenarios: {
+            expected: components["schemas"]["Scenario"];
+            fallback: components["schemas"]["Scenario"];
+        };
         /**
          * @description Field-for-field `RemoteServiceHistory` / `ServiceHistoryUpload`.
          *
@@ -7145,6 +7540,26 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        Snapshot: {
+            /** @description The account's key. */
+            account: string;
+            /**
+             * Format: date
+             * @description The day the figure was true.
+             */
+            as_of: string;
+            /** @description Signed: a debt is negative. */
+            amount_cents: number;
+            currency: string;
+            source: string;
+            /** @description What the figure stands on. */
+            evidence: string;
+            /** @description True when worked out rather than stated. Say 'estimate' beside it. */
+            is_estimate: boolean;
+            /** @description The bank's own not-yet-posted rows at the time, NOT in amount_cents. Say them as pending. */
+            pending_cents: number | null;
+            pending_count: number;
+        };
         /**
          * @description * `canvas` - Canvas
          *     * `webassign` - WebAssign
@@ -7205,6 +7620,9 @@ export interface components {
             early_charges_counted_here_cents: number;
             /** @description Dated this month, counted in the next one. */
             early_charges_counted_next_month_cents: number;
+            /** @description Outflows that moved money inside the household (to a spouse, or between the household's own accounts in two countries). Not spending; say so. */
+            household_internal_cents: number;
+            household_internal_reasons: components["schemas"]["InternalReason"][];
         };
         /**
          * @description One `public.statements` row: a bank statement's header and, crucially,
@@ -7366,6 +7784,44 @@ export interface components {
             /** @default USER_REPORTED */
             source: string;
         };
+        TopUp: {
+            available: boolean;
+            reason?: string;
+            checking_cents?: number;
+            /** Format: date */
+            checking_as_of?: string;
+            card_owed_cents?: number;
+            /** Format: date */
+            card_as_of?: string | null;
+            card_owed_is_estimate?: boolean;
+            headroom_cents?: number;
+            bills_30d_cents?: number;
+            short_cents?: number;
+            /** Format: date */
+            card_due_on?: string | null;
+            /** Format: date */
+            transfer_by?: string | null;
+            status?: string;
+        };
+        Transfer: {
+            usd_cents: number;
+            /** @description At today's rate; null when no rate is stored. */
+            sgd_cents: number | null;
+            first_short_month: string;
+            /**
+             * Format: date
+             * @description Start the transfer by this day.
+             */
+            by: string;
+            /** @description Singapore liquid's lowest point after the transfer, SGD. */
+            sg_side_lowest_after_cents: number | null;
+        };
+        /**
+         * @description * `next_income` - next_income
+         *     * `30_days` - 30_days
+         * @enum {string}
+         */
+        UntilReasonEnum: "next_income" | "30_days";
         Upload: {
             /**
              * Format: uuid
@@ -7376,7 +7832,7 @@ export interface components {
             /** @default  */
             app_version_name: string;
             app_version_code?: number | null;
-            reason: components["schemas"]["ReasonEnum"];
+            reason: components["schemas"]["UploadReasonEnum"];
             /** @description Epoch milliseconds on the DEVICE's clock, which is not trusted. */
             window_start_ms?: number | null;
             /** @description Epoch milliseconds on the DEVICE's clock, which is not trusted. */
@@ -7387,6 +7843,15 @@ export interface components {
              */
             file: string;
         };
+        /**
+         * @description * `drive_end` - drive_end
+         *     * `startup` - startup
+         *     * `manual` - manual
+         *     * `periodic` - periodic
+         *     * `conversation` - conversation
+         * @enum {string}
+         */
+        UploadReasonEnum: "drive_end" | "startup" | "manual" | "periodic" | "conversation";
         VapidKey: {
             enabled: boolean;
             public_key: string | null;
@@ -10964,6 +11429,209 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_finance_accounts_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceAccount"][];
+                };
+            };
+        };
+    };
+    api_finance_budgets_retrieve: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM. Defaults to the current month in the household's zone. */
+                month?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Budgets"];
+                };
+            };
+            /** @description A bad month, in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_finance_cashflow_retrieve: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM. Defaults to the current month in the household's zone. */
+                month?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashFlow"];
+                };
+            };
+            /** @description A bad month, in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description An SGD figure needs a stored USD/SGD rate and none is on file. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_finance_networth_retrieve: {
+        parameters: {
+            query?: {
+                /** @description USD (default) or SGD, at today's rate. */
+                ccy?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetWorth"];
+                };
+            };
+            /** @description A bad currency. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_finance_runway_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Runway"];
+                };
+            };
+            /** @description An SGD figure needs a stored USD/SGD rate and none is on file. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_finance_safe_to_spend_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeToSpend"];
+                };
+            };
+        };
+    };
+    api_finance_snapshots_list: {
+        parameters: {
+            query?: {
+                /** @description An account key. */
+                account?: string;
+                /** @description YYYY-MM-DD, inclusive. */
+                from?: string;
+                /** @description YYYY-MM-DD, inclusive. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"][];
+                };
+            };
+            /** @description A bad date, in words. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

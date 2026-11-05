@@ -1680,6 +1680,12 @@ def _monthly_spend(request, args) -> ToolResult:
             f"{_cents_words(moved)} moved between the household's own accounts or under "
             f"not-spending categories and is left out; say so."
         )
+    internal = excluded.get("household_internal_cents") or 0
+    if internal:
+        parts.append(
+            f"{_cents_words(internal)} moved between household members or between the "
+            f"household's own accounts in two countries, and is not counted as spending; say so."
+        )
     if body["uncategorised_unverified"]:
         parts.append(
             "The amount with no category includes UNVERIFIED rows (no gate checked them); say so."
@@ -1690,6 +1696,256 @@ def _monthly_spend(request, args) -> ToolResult:
             "incomplete; say so."
         )
     return ok(" ".join(parts), structured=body, card=cards.safe(cards.spend_bars, body, currency))
+
+
+# =============================================================================
+# Household finance (ADR 0073): read-only, pull-based. Every figure is the
+# `/api/finance/*` route's, from the same functions.
+# =============================================================================
+
+
+def _money(cents: int, currency: str = "USD") -> str:
+    sign = "-" if cents < 0 else ""
+    cents = abs(cents)
+    return f"{sign}{cents // 100:,}.{cents % 100:02d} {currency}"
+
+
+def _finance_today(request):
+    from finance.figure_views import household_today
+
+    return household_today(request)
+
+
+def _rate_words(rate) -> str:
+    if not rate:
+        return "no USD/SGD rate is stored yet"
+    from finance.fx import rate_words
+
+    return (
+        f"at 1 USD = {rate_words(rate['rate_micros'])} SGD ({rate['source']}, "
+        f"{_long_date(rate['rate_date'])})"
+    )
+
+
+def _net_worth(request, args) -> ToolResult:
+    from finance.networth import net_worth
+
+    currency = (args.get("currency") or "USD").upper()
+    today, zone = _finance_today(request)
+    body = net_worth(_household(request), today, zone, currency)
+    if not any(layer["accounts"] for layer in body["layers"]):
+        return ok(
+            "The engine holds no account balances for this household yet, so there is no net "
+            "worth to state. That is nothing on file, not a net worth of zero.",
+            structured=body,
+        )
+    parts = [
+        f"Net worth is {_money(body['total_cents'], currency)}"
+        + (" (an ESTIMATE: it includes computed values; say so)" if body["total_is_estimate"]
+           else "")
+        + f", with other currencies converted {_rate_words(body['rate'])}."
+    ]
+    for layer in body["layers"]:
+        if layer["accounts"]:
+            parts.append(
+                f"{layer['layer'].title()}: {_money(layer['total_cents'], currency)}"
+                + (" (estimate)" if layer["is_estimate"] else "") + "."
+            )
+    runway_money = _money(body["runway_cents"], currency)
+    parts.append(f"Runway money (liquid plus investments): {runway_money}.")
+    stale = [a["account"] for layer in body["layers"] for a in layer["accounts"] if a["stale"]]
+    if stale:
+        parts.append(f"These balances are over 45 days old; say 'as of': {', '.join(stale)}.")
+    if body["missing"]:
+        parts.append(f"No balance on file for {', '.join(body['missing'])}; they are in no total.")
+    if body["unconverted"]:
+        parts.append(
+            f"Left out for want of a rate: {', '.join(body['unconverted'])}; say so."
+        )
+    return ok(" ".join(parts), structured=body)
+
+
+def _household(request):
+    from household.tenancy import household_of
+
+    return household_of(request)
+
+
+def _cash_flow(request, args) -> ToolResult:
+    from finance.figure_views import month_param
+    from finance.runway import NeedsRate, cash_flow
+
+    today, zone = _finance_today(request)
+    try:
+        month = month_param(args.get("month"), today)
+    except ValueError as exc:
+        return refused(str(exc))
+    try:
+        body = cash_flow(request, _household(request), month, today, zone)
+    except NeedsRate as exc:
+        return failed(str(exc))
+    parts = [
+        f"For {body['month']}: planned income {_money(body['income_planned_cents'])} (an "
+        f"ESTIMATE from the income plan), spend {_money(body['spend_cents'])}, mortgage "
+        f"{_money(body['mortgage_cents'])}, net {_money(body['net_cents'])}.",
+        "No burn: income covers spend and the mortgage."
+        if body["test_a_passes"]
+        else "Burning: spend and the mortgage exceed income.",
+        f"Income on the ledger this month: {_money(body['income_on_file_cents'])}.",
+    ]
+    if body["household_internal"]:
+        parts.append(
+            f"{len(body['household_internal'])} transfer(s) inside the household are left out "
+            f"of spend; say so."
+        )
+    if body["accounts_without_rows"]:
+        parts.append(
+            "Spend covers only accounts with ledger rows; none on file for "
+            f"{', '.join(body['accounts_without_rows'])}. Say the figure is partial."
+        )
+    if body["rate"]:
+        parts.append(f"Converted {_rate_words(body['rate'])}.")
+    return ok(" ".join(parts), structured=body)
+
+
+def _runway(request, args) -> ToolResult:
+    from finance.runway import NeedsRate, runway
+
+    today, zone = _finance_today(request)
+    try:
+        body = runway(request, _household(request), today, zone)
+    except NeedsRate as exc:
+        return failed(str(exc))
+    expected = body["scenarios"]["expected"]
+    fallback = body["scenarios"]["fallback"]
+    parts = [
+        "Every figure here is an ESTIMATE from the income plan and the average spend of "
+        f"{', '.join(body['average_spend']['months'])}; say so.",
+        f"Liquid now: {_money(body['liquid_now_cents'])}; with investments "
+        f"{_money(body['runway_assets_cents'])}. Monthly outgoings average "
+        f"{_money(body['monthly_burn_cents'])}.",
+    ]
+    if body["floor_cents"] is None:
+        parts.append("No household floor is set.")
+    elif expected["floor_crossing_month"]:
+        parts.append(
+            f"On the expected plan, liquid falls below the {_money(body['floor_cents'])} floor in "
+            f"{expected['floor_crossing_month']}."
+        )
+    else:
+        parts.append(
+            f"On the expected plan, liquid stays above the {_money(body['floor_cents'])} floor "
+            f"for the next 24 months."
+        )
+    if fallback["floor_crossing_month"]:
+        parts.append(
+            f"If the expected income does not come, it falls below the floor in "
+            f"{fallback['floor_crossing_month']}."
+        )
+    transfer = expected["transfer"]
+    if transfer:
+        sgd = (
+            f"{_money(transfer['sgd_cents'], 'SGD')} {_rate_words(body['rate'])}"
+            if transfer["sgd_cents"] is not None
+            else "no USD/SGD rate is stored, so the SGD amount is not known"
+        )
+        parts.append(
+            f"The US side runs short from {transfer['first_short_month']}: move about "
+            f"{_money(transfer['usd_cents'])} ({sgd}) from Singapore by "
+            f"{_long_date(transfer['by'])}, because a transfer takes days. Moving it is the "
+            f"user's call."
+        )
+    if body["missing_balances"]:
+        parts.append(f"No balance on file for {', '.join(body['missing_balances'])}.")
+    return ok(" ".join(parts), structured=body)
+
+
+def _safe_to_spend(request, args) -> ToolResult:
+    from finance.runway import safe_to_spend
+
+    today, zone = _finance_today(request)
+    body = safe_to_spend(request, _household(request), today, zone)
+    if not body["available"]:
+        return ok(f"Nothing can be said about safe to spend yet. {body['reason']}",
+                  structured=body)
+    parts_ = body["parts"]
+    currency = body["currency"]
+    if body["until_reason"] == "next_income":
+        until = (
+            f"until the next expected pay on {_long_date(body['until'])} (an estimate from the "
+            f"plan)"
+        )
+    else:
+        until = f"over the next 30 days, to {_long_date(body['until'])}" + (
+            f" (the next expected pay is {_long_date(body['next_income_on'])})"
+            if body["next_income_on"] else " (no pay date is in the plan)"
+        )
+    parts = [
+        f"Safe to spend: {_money(body['safe_to_spend_cents'], currency)} {until}.",
+        f"That is checking {_money(parts_['checking_cents'], currency)} (as of "
+        f"{_long_date(parts_['checking_as_of'])}), less "
+        f"{_money(parts_['card_owed_cents'], currency)} owed on the card including pending "
+        f"charges, less "
+        f"{_money(parts_['bills_before_until_cents'], currency)} of fixed bills due before then"
+        + (" (worked out from recurring charges: an estimate)" if parts_["bills_detected"] else "")
+        + ".",
+    ]
+    if body["top_up_needed_cents"]:
+        parts.append(
+            f"A top-up of {_money(body['top_up_needed_cents'], currency)} is needed "
+            f"({body['top_up_reason']}), by {_long_date(body['top_up_by'])}. Moving money is the "
+            f"user's call."
+        )
+    return ok(" ".join(parts), structured=body)
+
+
+def _budgets(request, args) -> ToolResult:
+    from finance.budgets import budgets
+    from finance.figure_views import month_param
+
+    today, _ = _finance_today(request)
+    try:
+        month = month_param(args.get("month"), today)
+    except ValueError as exc:
+        return refused(str(exc))
+    body = budgets(request, _household(request), month, today)
+    capped = [c for c in body["categories"] if c["cap_cents"]]
+    if not capped:
+        return ok(
+            f"No budget caps are set for {body['month']}, so there is nothing to measure "
+            f"against.",
+            structured=body,
+        )
+    said = []
+    for line in capped:
+        text = (
+            f"{line['category']} {_money(line['spent_cents'])} of {_money(line['cap_cents'])} "
+            f"({line['percent']}%"
+        )
+        if line["status"] == "over":
+            text += ", over"
+        elif line["status"] == "near":
+            text += ", past 80%"
+        if line["projection_cents"] is not None and line["projection_cents"] > line["cap_cents"]:
+            text += f", on pace for about {_money(line['projection_cents'])} (an estimate)"
+        if line["pending_count"]:
+            text += f", {_money(line['pending_cents'])} of it pending"
+        said.append(text + ")")
+    parts = [f"Budgets for {body['month']}, day {body['days_elapsed']} of "
+             f"{body['days_in_month']}: " + "; ".join(said) + "."]
+    total = body["total"]
+    parts.append(
+        f"Altogether {_money(total['spent_cents'])} of {_money(total['cap_cents'])} "
+        f"({total['percent']}%)."
+    )
+    if body["days_elapsed"] < body["projection_from_day"]:
+        parts.append("Too early in the month to project; say so if asked about pace.")
+    unpaid = [f["category"] for f in body["fixed"] if not f["paid"]]
+    if unpaid:
+        parts.append(f"No payment on file yet this month for: {', '.join(unpaid)}.")
+    if body["new_subscriptions"]:
+        parts.append(f"New subscriptions this month: {', '.join(body['new_subscriptions'])}.")
+    return ok(" ".join(parts), structured=body)
 
 
 def _local_day_window(request) -> dict:
@@ -2044,6 +2300,69 @@ TOOLS: tuple[EngineTool, ...] = (
             }
         ),
         handler=_monthly_spend,
+    ),
+    EngineTool(
+        name="safe_to_spend",
+        title="How much is safe to spend",
+        description=(
+            "The household's main daily money figure: the US checking balance, less everything "
+            "owed on the card (pending charges included), less the US fixed bills due before "
+            "the next expected pay date. Says the parts, the pay date (an ESTIMATE from the "
+            "income plan), and any top-up needed from Singapore and by when. Read only: it "
+            "never moves money."
+        ),
+        input_schema=_object({}),
+        handler=_safe_to_spend,
+    ),
+    EngineTool(
+        name="net_worth",
+        title="Household net worth",
+        description=(
+            "The household's net worth across both countries, per layer (liquid, investments, "
+            "CPF, property, other) and in total, debts subtracted, with each account's as-of "
+            "day. Computed values (a flat, a loan, bonds) are ESTIMATES: say so whenever the "
+            "result does. Optional `currency`: USD (default) or SGD, at today's stored rate."
+        ),
+        input_schema=_object({"currency": {"type": "string", "enum": ["USD", "SGD", "usd",
+                                                                        "sgd"]}}),
+        handler=_net_worth,
+    ),
+    EngineTool(
+        name="cash_flow",
+        title="A month's cash flow",
+        description=(
+            "One month's household income (planned, an ESTIMATE, and on file), spend with "
+            "money between the spouses and the household's own accounts left out, the "
+            "mortgage, and the net; whether income covers spend and the mortgage. In USD. "
+            "Optional `month` (YYYY-MM, default the current one)."
+        ),
+        input_schema=_object({"month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"}}),
+        handler=_cash_flow,
+    ),
+    EngineTool(
+        name="runway",
+        title="How long the money lasts",
+        description=(
+            "An ESTIMATE of the household's liquid money month by month for two years, from "
+            "the income plan and the last three full months' average spend: the month it "
+            "falls below the household floor (on the expected plan and if the expected income "
+            "does not come), and any transfer the US side needs from Singapore, how much and "
+            "by when. Read only: it never moves money."
+        ),
+        input_schema=_object({}),
+        handler=_runway,
+    ),
+    EngineTool(
+        name="budgets",
+        title="Budgets and pace",
+        description=(
+            "Each budgeted category's spend this month against its cap, the percent, and from "
+            "day 10 a projected month total (an ESTIMATE). Pending bank charges are counted "
+            "and said as pending. Also fixed bills not yet paid and new subscriptions. "
+            "Optional `month` (YYYY-MM)."
+        ),
+        input_schema=_object({"month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"}}),
+        handler=_budgets,
     ),
     EngineTool(
         name="next_service",

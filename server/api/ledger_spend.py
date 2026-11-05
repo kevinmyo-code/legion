@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
 from api.spend import BadRequest, household_spend, resolve_month
-from household.tenancy import scoped
+from household.tenancy import household_of, scoped
 from ingest.category_overrides import with_effective_category
 from legacy.models.ledger import BudgetTarget, Category, LedgerTransaction, Statement
 
@@ -55,6 +55,15 @@ class SpendCategorySerializer(serializers.Serializer):
     unverified = serializers.BooleanField()
 
 
+class InternalReasonSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(
+        choices=["MEMBER_TRANSFER", "CROSS_BORDER_PAIR"],
+        help_text="MEMBER_TRANSFER: to or from a household member. CROSS_BORDER_PAIR: the "
+        "two legs of a transfer between the household's accounts in two countries.",
+    )
+    cents = serializers.IntegerField()
+
+
 class SpendExcludedSerializer(serializers.Serializer):
     not_spending_cents = serializers.IntegerField(
         help_text="Outflows filed under a category marked not spending (e.g. Transfers)."
@@ -73,6 +82,11 @@ class SpendExcludedSerializer(serializers.Serializer):
     early_charges_counted_next_month_cents = serializers.IntegerField(
         help_text="Dated this month, counted in the next one."
     )
+    household_internal_cents = serializers.IntegerField(
+        help_text="Outflows that moved money inside the household (to a spouse, or between "
+        "the household's own accounts in two countries). Not spending; say so."
+    )
+    household_internal_reasons = InternalReasonSerializer(many=True)
 
 
 class SpendSerializer(serializers.Serializer):
@@ -96,7 +110,61 @@ class SpendSerializer(serializers.Serializer):
 def spend_for(request, month, currency: str) -> dict:
     """One budget month's spend body for the request's household. The route
     and the engine MCP tool (`engine_mcp/tools.py` `monthly_spend`) both call
-    this, so a figure read over MCP is the figure the web shows."""
+    this, so a figure read over MCP is the figure the web shows.
+
+    **One layer above the port** (household-finance ticket 02, ADR 0073): rows
+    `finance.internal` marks household-internal (money between the spouses, a
+    cross-border transfer between the household's own accounts) are taken out
+    BEFORE `household_spend` runs, and disclosed under `excluded`.
+    `api/spend.py` itself is unchanged, so the parity test still replays the
+    phone's own rules exactly."""
+    rows, internal = _rows_and_internal(request)
+    body = household_spend(
+        rows,
+        *_spend_inputs(request),
+        month,
+        currency,
+    )
+    body["excluded"].update(internal_disclosure(internal, month, currency))
+    return body
+
+
+def internal_disclosure(internal: list[tuple[dict, object]], month, currency: str) -> dict:
+    """The household-internal outflows of one budget month, in one currency."""
+    from api.spend import Txn, budget_month_of
+
+    def in_month(row):
+        txn = Txn(
+            id=0,
+            account_id=row["account_last4"],
+            amount_cents=row["amount_cents"],
+            txn_date=row["txn_date"],
+            category=row["effective_category"],
+            currency=row["currency"],
+        )
+        return budget_month_of(txn) == month
+
+    out = [
+        (row, mark)
+        for row, mark in internal
+        if row["currency"] == currency and row["amount_cents"] < 0 and in_month(row)
+    ]
+    reasons: dict[str, int] = {}
+    for row, mark in out:
+        reasons[mark.reason] = reasons.get(mark.reason, 0) - row["amount_cents"]
+    return {
+        "household_internal_cents": sum(reasons.values()),
+        "household_internal_reasons": [
+            {"reason": reason, "cents": cents} for reason, cents in sorted(reasons.items())
+        ],
+    }
+
+
+def _rows_and_internal(request):
+    """Every ledger row the spend rules read, less the household-internal ones,
+    and those ones with their marks."""
+    from finance.internal import marks_for
+
     rows = [
         {
             **row,
@@ -115,8 +183,17 @@ def spend_for(request, month, currency: str) -> dict:
             "amount_cents",
             "effective_category",
             "provenance",
+            "bank_pending",
         )
     ]
+    marks = marks_for(household_of(request), rows)
+    kept = [row for row in rows if str(row["id"]) not in marks]
+    internal = [(row, marks[str(row["id"])]) for row in rows if str(row["id"]) in marks]
+    return kept, internal
+
+
+def _spend_inputs(request) -> tuple[list, list, list]:
+    """Categories, budget targets and statements, as `household_spend` reads them."""
     categories = (
         scoped(Category, request)
         .filter(deleted_at__isnull=True)
@@ -130,7 +207,7 @@ def spend_for(request, month, currency: str) -> dict:
     statements = scoped(Statement, request).values(
         "account_last4", "currency", "period_start", "period_end"
     )
-    return household_spend(rows, list(categories), list(targets), list(statements), month, currency)
+    return list(categories), list(targets), list(statements)
 
 
 class SpendView(APIView):

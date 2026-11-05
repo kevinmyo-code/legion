@@ -157,6 +157,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[32-sitrep-on-demand-only\|32]] | build | Sitreps happen when asked, never on a schedule |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[02-soft-theme-and-chrome\|02]] | build | Soft theme, bundled font and icons, and the shell chrome restyled |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[07-settings-menu-letter-folders-category-buttons\|07]] | build | Settings menu, letter folders in Apps, and category buttons under the dock |
+| [[.scratch/household-finance/map\|household-finance]] | [[01-accounts-and-snapshots\|01]] | build | Household accounts and balance snapshots |
+| [[.scratch/household-finance/map\|household-finance]] | [[03-fx-rates\|03]] | build | Daily FX rates |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | [[09-sdk-in-the-build\|09]] | build | Mapbox in the build, behind the clone-and-run gate, with token setup |
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[01-day-and-night-styles\|01]] | build | Build: day and night map styles that are easy to read, switching like Google's |
@@ -255,6 +257,16 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/home-launcher/map\|home-launcher]] | [[04-lists-as-icon-cards\|04]] | build | Lists as icon cards; a list opens to a real checklist  waiting on [[02-soft-theme-and-chrome\|02]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[05-ship-pass\|05]] | task | Ship pass: the launcher and the lists on the A25  waiting on [[03-home-is-a-launcher\|03]], [[04-lists-as-icon-cards\|04]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[06-pinned-app-dock\|06]] | build | A dock of five pinned apps above the talk bar  waiting on [[03-home-is-a-launcher\|03]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[02-household-internal-money\|02]] | build | Household-internal money: spouse transfers, cross-border wires, card payments  waiting on [[01-accounts-and-snapshots\|01]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[04-statement-drops\|04]] | build | Statement drops for the other accounts  waiting on [[01-accounts-and-snapshots\|01]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[05-ibkr-flex\|05]] | build | IBKR Flex connector  waiting on [[01-accounts-and-snapshots\|01]], [[03-fx-rates\|03]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[06-computed-values\|06]] | build | Computed values: bonds, loan, flat, CPF interest, car  waiting on [[01-accounts-and-snapshots\|01]], [[03-fx-rates\|03]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[07-net-worth-and-runway\|07]] | build | Net worth, cash flow, runway and the income plan  waiting on [[01-accounts-and-snapshots\|01]], [[02-household-internal-money\|02]], [[03-fx-rates\|03]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[08-budgets-and-pace\|08]] | build | Budgets and pace  waiting on [[02-household-internal-money\|02]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[09-money-alerts\|09]] | build | Money alerts  waiting on [[07-net-worth-and-runway\|07]], [[08-budgets-and-pace\|08]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[10-alfred-and-screens\|10]] | build | Alfred and the Money screen  waiting on [[07-net-worth-and-runway\|07]], [[08-budgets-and-pace\|08]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[11-statement-fetch-skill\|11]] | build | Statement fetch skill for the Claude worker  waiting on [[04-statement-drops\|04]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[12-private-loader-and-setup\|12]] | build | Private loader and Kevin's setup list  waiting on [[01-accounts-and-snapshots\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
@@ -368,6 +380,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/hardening/map\|hardening]] | 8 | 4 | [[.scratch/hardening/hardening.canvas\|open]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | 7 | 6 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
+| [[.scratch/household-finance/map\|household-finance]] | 12 | 12 | [[.scratch/household-finance/household-finance.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

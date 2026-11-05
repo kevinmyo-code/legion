@@ -49,3 +49,12 @@
 # claude-session ticket 03 (ADR 0067): Claude session tasks, their files and
 # session rows older than 30 days deleted. Daily, 03:30 UTC (after the backup).
 30 3 * * * python manage.py claude_session_prune
+
+# household-finance ticket 01 (ADR 0073): one balance snapshot a day for each
+# Plaid-linked household account, from the balances plaid_sync stored. 21:45
+# UTC, fifteen minutes after that hour's plaid_sync (30 */3).
+45 21 * * * python manage.py finance_snapshots
+
+# household-finance ticket 03 (ADR 0073): the day's USD/SGD rate, stored as
+# int micros. 17:00 UTC, after the ECB publishes its daily reference rates.
+0 17 * * * python manage.py fx_rates

@@ -163,6 +163,10 @@ INSTALLED_APPS = [
     # alfred-ota ticket 04: published APKs (`releases.AppRelease`, engine-wide, not tenanted)
     # and the signed links a phone downloads them through.
     "releases",
+    # household-finance map (ADR 0073): the household's accounts across two
+    # countries, dated balances, the day's FX rate, the income plan and the
+    # limits Kevin set (`public.finance_*`, `django.fx_rates`).
+    "finance",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).

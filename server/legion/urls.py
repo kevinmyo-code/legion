@@ -81,6 +81,9 @@ urlpatterns = [
     # alfred-ota ticket 04: the newest published build, a signed link to download it, and the
     # owner's publish (`releases/views.py`). Engine-wide, not household-scoped.
     path("api/releases/", include("releases.urls")),
+    # household-finance map (ADR 0073): accounts, balances, net worth, cash
+    # flow, runway and budgets, read-only (`finance/views.py`).
+    path("api/finance/", include("finance.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.
