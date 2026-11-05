@@ -200,3 +200,12 @@ def test_the_not_shared_rule_is_scoped_to_facts_about_kevin(visitor):
     # The old unscoped wording is gone from both.
     assert "anything it does not say, answer" not in text
     assert "Anything it does not say" not in description
+
+
+def test_kevins_other_projects_are_answered_from_about_kevin_not_legion_docs(visitor):
+    """Kevin, 2026-11-05: the page shows projects beside LEGION. They are facts about Kevin, in
+    his profile, and `legion_docs` searches LEGION's own docs only. No project is named here:
+    the names live in the private content."""
+    text, _ = _prompt(visitor)
+    assert "His other projects shown on this page (beside LEGION) are facts about Kevin" in text
+    assert "from about_kevin, never from legion_docs, which covers LEGION alone" in text
