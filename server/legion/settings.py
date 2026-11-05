@@ -160,6 +160,10 @@ INSTALLED_APPS = [
     # claude-session ticket 03 (ADR 0067): Alfred's tasks for Claude Code on
     # Kevin's laptops, the machines' heartbeats and their interactive sessions.
     "claude_session",
+    # household-finance map (ADR 0073): the household's accounts across two
+    # countries, dated balances, the day's FX rate, the income plan and the
+    # limits Kevin set (`public.finance_*`, `django.fx_rates`).
+    "finance",
 ]
 
 # recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter

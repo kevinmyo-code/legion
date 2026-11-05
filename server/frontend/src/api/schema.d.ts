@@ -1498,6 +1498,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/finance/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every account the household holds or owes on, in both countries. */
+        get: operations["api_finance_accounts_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finance/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Dated balances per account, newest first. */
+        get: operations["api_finance_snapshots_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/build_entries/": {
         parameters: {
             query?: never;
@@ -4729,6 +4763,8 @@ export interface components {
             progress: string | null;
             /** Format: date-time */
             progress_at: string | null;
+            /** @description The last 20 distinct steps, newest first; kept after the task finishes. Always empty for a summaries-only (listed) machine. */
+            steps: components["schemas"]["ClaudeTaskStep"][];
         };
         /**
          * @description * `queued` - queued
@@ -4742,6 +4778,14 @@ export interface components {
          * @enum {string}
          */
         ClaudeTaskStatusEnum: "queued" | "needs_machine" | "running" | "cancel_requested" | "done" | "failed" | "needs_confirmation" | "cancelled";
+        ClaudeTaskStep: {
+            /**
+             * Format: date-time
+             * @description When the engine first heard this step.
+             */
+            at: string;
+            text: string;
+        };
         ClaudeUploadResult: {
             file_id: number;
             size: number;
@@ -4857,11 +4901,23 @@ export interface components {
             message: string;
         };
         /**
+         * @description * `US` - US
+         *     * `SG` - SG
+         * @enum {string}
+         */
+        CountryEnum: "US" | "SG";
+        /**
          * @description * `cookie_jar` - Cookie jar
          *     * `oauth_refresh` - OAuth refresh token
          * @enum {string}
          */
         CredentialKindEnum: "cookie_jar" | "oauth_refresh";
+        /**
+         * @description * `USD` - USD
+         *     * `SGD` - SGD
+         * @enum {string}
+         */
+        CurrencyEnum: "USD" | "SGD";
         DemoEnterRequest: {
             code: string;
             /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
@@ -5060,6 +5116,25 @@ export interface components {
         Exchange: {
             /** @description What Plaid Link's onSuccess returned. */
             public_token: string;
+        };
+        FinanceAccount: {
+            /** @description The household's own name for the account. */
+            key: string;
+            label: string;
+            /** @description The member's key, or null for a joint account. */
+            owner: string | null;
+            institution: string;
+            country: components["schemas"]["CountryEnum"];
+            currency: components["schemas"]["CurrencyEnum"];
+            kind: string;
+            /** @description liquid | investments | cpf | property | other. */
+            layer: string;
+            /** @description plaid | statement | ibkr_flex | computed | manual. */
+            source: string;
+            last4: string | null;
+            /** @description True for a card or loan: balances are negative. */
+            is_debt: boolean;
+            active: boolean;
         };
         Freshness: {
             sources: components["schemas"]["FreshnessSource"][];
@@ -7144,6 +7219,26 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid: string;
+        };
+        Snapshot: {
+            /** @description The account's key. */
+            account: string;
+            /**
+             * Format: date
+             * @description The day the figure was true.
+             */
+            as_of: string;
+            /** @description Signed: a debt is negative. */
+            amount_cents: number;
+            currency: string;
+            source: string;
+            /** @description What the figure stands on. */
+            evidence: string;
+            /** @description True when worked out rather than stated. Say 'estimate' beside it. */
+            is_estimate: boolean;
+            /** @description The bank's own not-yet-posted rows at the time, NOT in amount_cents. Say them as pending. */
+            pending_cents: number | null;
+            pending_count: number;
         };
         /**
          * @description * `canvas` - Canvas
@@ -10964,6 +11059,60 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_finance_accounts_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceAccount"][];
+                };
+            };
+        };
+    };
+    api_finance_snapshots_list: {
+        parameters: {
+            query?: {
+                /** @description An account key. */
+                account?: string;
+                /** @description YYYY-MM-DD, inclusive. */
+                from?: string;
+                /** @description YYYY-MM-DD, inclusive. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"][];
+                };
+            };
+            /** @description A bad date, in words. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

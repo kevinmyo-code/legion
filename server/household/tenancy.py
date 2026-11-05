@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Sixty-nine names (count it with len(); this line was stale three times before).
+# Seventy-four names (count it with len(); this line was stale three times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -154,6 +154,16 @@ TENANT_TABLES: tuple[str, ...] = (
     "claude_tasks",
     "claude_task_files",
     "claude_code_sessions",
+    # household-finance map (ADR 0073): the household's accounts, their dated
+    # balances, the people money moves between, the income plan and the limits
+    # Kevin set. Django-managed and born tenanted like `device_logs`
+    # (`finance/models.py`). Every member sees all of them (no private finance
+    # rows). `fx_rates` has no household and is not here.
+    "finance_members",
+    "finance_accounts",
+    "finance_balance_snapshots",
+    "finance_income_plans",
+    "finance_policies",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -211,6 +221,11 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "claude_tasks",
         "claude_task_files",
         "claude_code_sessions",
+        "finance_members",
+        "finance_accounts",
+        "finance_balance_snapshots",
+        "finance_income_plans",
+        "finance_policies",
     }
 )
 

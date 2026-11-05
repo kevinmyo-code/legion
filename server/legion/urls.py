@@ -78,6 +78,9 @@ urlpatterns = [
     # books ticket 04: a PDF converted to an EPUB and handed straight back,
     # nothing kept on the server (`books/views.py`).
     path("api/books/", include("books.urls")),
+    # household-finance map (ADR 0073): accounts, balances, net worth, cash
+    # flow, runway and budgets, read-only (`finance/views.py`).
+    path("api/finance/", include("finance.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

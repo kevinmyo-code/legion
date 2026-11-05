@@ -3747,6 +3747,64 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/finance/accounts:
+    get:
+      operationId: api_finance_accounts_list
+      description: Every account the household holds or owes on, in both countries.
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FinanceAccount'
+          description: ''
+  /api/finance/snapshots:
+    get:
+      operationId: api_finance_snapshots_list
+      description: Dated balances per account, newest first.
+      parameters:
+      - in: query
+        name: account
+        schema:
+          type: string
+        description: An account key.
+      - in: query
+        name: from
+        schema:
+          type: string
+        description: YYYY-MM-DD, inclusive.
+      - in: query
+        name: to
+        schema:
+          type: string
+        description: YYYY-MM-DD, inclusive.
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Snapshot'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A bad date, in words.
   /api/fleet/build_entries/:
     get:
       operationId: api_fleet_build_entries_list
@@ -11257,6 +11315,14 @@ components:
       required:
       - code
       - message
+    CountryEnum:
+      enum:
+      - US
+      - SG
+      type: string
+      description: |-
+        * `US` - US
+        * `SG` - SG
     CredentialKindEnum:
       enum:
       - cookie_jar
@@ -11265,6 +11331,14 @@ components:
       description: |-
         * `cookie_jar` - Cookie jar
         * `oauth_refresh` - OAuth refresh token
+    CurrencyEnum:
+      enum:
+      - USD
+      - SGD
+      type: string
+      description: |-
+        * `USD` - USD
+        * `SGD` - SGD
     DemoEnterRequest:
       type: object
       properties:
@@ -11689,6 +11763,53 @@ components:
           description: What Plaid Link's onSuccess returned.
       required:
       - public_token
+    FinanceAccount:
+      type: object
+      properties:
+        key:
+          type: string
+          description: The household's own name for the account.
+        label:
+          type: string
+        owner:
+          type: string
+          nullable: true
+          description: The member's key, or null for a joint account.
+        institution:
+          type: string
+        country:
+          $ref: '#/components/schemas/CountryEnum'
+        currency:
+          $ref: '#/components/schemas/CurrencyEnum'
+        kind:
+          type: string
+        layer:
+          type: string
+          description: liquid | investments | cpf | property | other.
+        source:
+          type: string
+          description: plaid | statement | ibkr_flex | computed | manual.
+        last4:
+          type: string
+          nullable: true
+        is_debt:
+          type: boolean
+          description: 'True for a card or loan: balances are negative.'
+        active:
+          type: boolean
+      required:
+      - active
+      - country
+      - currency
+      - institution
+      - is_debt
+      - key
+      - kind
+      - label
+      - last4
+      - layer
+      - owner
+      - source
     Freshness:
       type: object
       properties:
@@ -15990,6 +16111,47 @@ components:
       - provenance
       - target_minutes
       - updated_at
+    Snapshot:
+      type: object
+      properties:
+        account:
+          type: string
+          description: The account's key.
+        as_of:
+          type: string
+          format: date
+          description: The day the figure was true.
+        amount_cents:
+          type: integer
+          description: 'Signed: a debt is negative.'
+        currency:
+          type: string
+        source:
+          type: string
+        evidence:
+          type: string
+          description: What the figure stands on.
+        is_estimate:
+          type: boolean
+          description: True when worked out rather than stated. Say 'estimate' beside
+            it.
+        pending_cents:
+          type: integer
+          nullable: true
+          description: The bank's own not-yet-posted rows at the time, NOT in amount_cents.
+            Say them as pending.
+        pending_count:
+          type: integer
+      required:
+      - account
+      - amount_cents
+      - as_of
+      - currency
+      - evidence
+      - is_estimate
+      - pending_cents
+      - pending_count
+      - source
     SourceEnum:
       enum:
       - canvas
