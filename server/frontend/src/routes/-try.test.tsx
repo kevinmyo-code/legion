@@ -8,7 +8,8 @@ import { SEED_FAILED, SAMPLE_SVG, TOO_MANY, WRONG_CODE, sampleContent } from '@/
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
 import { DAY_CARD, SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
-import { OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
+import type { DemoContent, DemoMedia } from '@/api/demo'
+import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
 
 /**
  * The recruiter section (recruiter-demo ticket 07): the code box on `/login`,
@@ -200,10 +201,15 @@ describe('/try', () => {
     expect(screen.queryByRole('search')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
-    // Exactly one entry point: the bar, never also the members' floating orb.
-    const entries = screen.getAllByRole('button', { name: /^(Ask|Talk to|Open the conversation with) / })
+    // One chat entry point: the bar, never also the members' floating orb. The hero's Ask
+    // (Kevin, 2026-11-05) starts the same conversation and is the only other way in.
+    const hero = screen.getByRole('region', { name: sampleContent().hero.title })
+    const entries = screen
+      .getAllByRole('button', { name: /^(Ask|Talk to|Open the conversation with) / })
+      .filter((entry) => !hero.contains(entry))
     expect(entries).toHaveLength(1)
     expect(entries[0].className).not.toMatch(/fixed/)
+    expect(within(hero).getAllByRole('button', { name: /^Ask / })).toHaveLength(1)
 
     const sheet = await openTryChat()
     // Voice first here too (Kevin, 2026-11-04): the orb, the chat folded, no keyboard.
@@ -553,5 +559,184 @@ describe('/try', () => {
     const { router } = renderApp('/', createEngine({ signedIn: false }), 'family')
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
+  })
+})
+
+/** A page with the Projects strip (anchor, anchor, no link) and one project section. Fake words. */
+function withProjects(media: DemoMedia = { note: 'Video coming soon.' }): DemoContent {
+  return {
+    ...sampleContent(),
+    legion: { title: 'How LEGION is built', intro: 'A fake intro.', parts: [{ title: 'The engine', body: 'Fake.' }] },
+    projects: [
+      { title: 'Fake one', line: 'This page, lorem ipsum.', href: '#legion' },
+      { title: 'Fake two', line: 'A fake dashboard.', href: '#fake-two' },
+      { title: 'Fake three', line: 'In progress, lorem ipsum.' },
+    ],
+    project_sections: [
+      {
+        id: 'fake-two',
+        title: 'Fake two',
+        intro: 'A fake dashboard for a fake team.',
+        parts: [{ title: 'Fake refresh', body: 'Every fake minute.' }],
+        media,
+      },
+    ],
+  }
+}
+
+function heroOf() {
+  return screen.findByRole('region', { name: sampleContent().hero.title })
+}
+
+function typed(text: string) {
+  return { clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } }
+}
+
+function follows(first: Node, second: Node): boolean {
+  return (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+}
+
+describe('/try: the hero Ask (Kevin, 2026-11-05)', () => {
+  test('desk: Ask starts a voice conversation, the same as the orb, with the opening turn once', async () => {
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    const engine = visitor()
+    renderApp('/try', engine, 'workbench')
+    const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
+    const hero = await heroOf()
+    // Under the lead, before the dateline: near the top.
+    const ask = within(hero).getByRole('button', { name: /^Ask / })
+    expect(follows(ask, within(hero).getByText('Houston, open to relocation'))).toBe(true)
+    fireEvent.click(ask)
+    const socket = await connect()
+    expect(audio.micOpen).toBe(true)
+    expect(socket.sentOf('clientContent')).toEqual([typed(OPENING_TURN)])
+    expect(await within(dock).findByRole('button', { name: 'Stop talking. Typing continues.' })).toBeInTheDocument()
+    expect(engine.assistant.minted).toBe(1)
+  })
+
+  test('phone: Ask raises the sheet with the orb listening', async () => {
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    renderApp('/try', visitor(), 'family')
+    fireEvent.click(within(await heroOf()).getByRole('button', { name: /^Ask / }))
+    const sheet = await screen.findByRole('dialog', { name: /^Conversation with / })
+    await connect()
+    expect(audio.micOpen).toBe(true)
+    expect(await within(sheet).findByRole('button', { name: 'Stop talking. Typing continues.' })).toBeInTheDocument()
+  })
+
+  test.each([
+    ['workbench', 0],
+    ['family', 1],
+  ] as const)('%s: a first question starts the conversation typed, and the chat unfolds to show it', async (surface, index) => {
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    renderApp('/try', visitor(), surface)
+    const question = FIRST_QUESTIONS[index]
+    fireEvent.click(within(await heroOf()).getByRole('button', { name: question }))
+    const socket = await connect()
+    // The question is the first turn; the engine's prompt greets in a sentence, then answers it.
+    expect(socket.sentOf('clientContent')).toEqual([typed(question)])
+    expect(audio.micOpen).toBe(false)
+    const log = await screen.findByRole('log', { name: /^Conversation with/ })
+    expect(within(log).getByText(question)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide the chat' })).toBeInTheDocument()
+    if (surface === 'family') expect(screen.getByRole('dialog', { name: /^Conversation with / })).toContainElement(log)
+  })
+
+  test('the first questions are the two Kevin approved, and a preview gets the Ask too', async () => {
+    expect(FIRST_QUESTIONS).toEqual(['What did this household spend last month?', 'How is LEGION built?'])
+    renderApp('/try', createEngine({ assistant: { companionName: 'Mabel' } }), 'workbench')
+    const hero = await heroOf()
+    expect(await within(hero).findByRole('button', { name: 'Ask Mabel' })).toBeInTheDocument()
+    for (const question of FIRST_QUESTIONS) {
+      expect(within(hero).getByRole('button', { name: question })).toBeInTheDocument()
+    }
+  })
+})
+
+describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', () => {
+  test('older content (no projects) draws no strip, no Projects nav, no project section', async () => {
+    renderApp('/try', visitor(), 'family')
+    const nav = await screen.findByRole('navigation', { name: 'On this page' })
+    expect(within(nav).queryByRole('link', { name: 'Projects' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Projects' })).not.toBeInTheDocument()
+    expect(document.querySelector('#fake-two')).toBeNull()
+  })
+
+  test('the strip links each project to its section, and a project with no link stands alone', async () => {
+    const engine = visitor()
+    engine.demo.content = withProjects()
+    renderApp('/try', engine, 'family')
+    const strip = await screen.findByRole('region', { name: 'Projects' })
+    expect(within(strip).getByRole('link', { name: 'Fake one.' })).toHaveAttribute('href', '#legion')
+    expect(within(strip).getByRole('link', { name: 'Fake two.' })).toHaveAttribute('href', '#fake-two')
+    expect(within(strip).getByText('Fake three.').closest('a')).toBeNull()
+    expect(within(strip).getByText(/In progress, lorem ipsum\./)).toBeInTheDocument()
+    expect(within(strip).getAllByRole('link')).toHaveLength(2)
+    const nav = screen.getByRole('navigation', { name: 'On this page' })
+    expect(within(nav).getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '#projects')
+    // The strip sits right under the hero, before "What to look for".
+    expect(follows(strip, screen.getByRole('region', { name: 'What to look for' }))).toBe(true)
+
+    const section = screen.getByRole('region', { name: 'Fake two' })
+    expect(section).toHaveAttribute('id', 'fake-two')
+    expect(within(section).getByText('A fake dashboard for a fake team.')).toBeInTheDocument()
+    expect(within(section).getByText('Fake refresh.')).toBeInTheDocument()
+    // No clip yet: the slot says so in words, and draws no player.
+    expect(within(section).getByText('Video coming soon.')).toBeInTheDocument()
+    expect(section.querySelector('video')).toBeNull()
+    // Below LEGION's section.
+    expect(follows(screen.getByRole('region', { name: 'How LEGION is built' }), section)).toBe(true)
+  })
+
+  test('a project section with a recorded clip plays it, with captions', async () => {
+    const engine = visitor()
+    engine.demo.content = withProjects({
+      video: '/static/demo/fake.mp4',
+      poster: '/static/demo/fake.jpg',
+      captions: '/static/demo/fake.vtt',
+    })
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'Fake two' })
+    const video = section.querySelector('video')
+    expect(video).toHaveAttribute('src', '/static/demo/fake.mp4')
+    expect(video).toHaveAttribute('controls')
+    expect(video).not.toHaveAttribute('autoplay')
+    expect(video?.querySelector('track')).toHaveAttribute('src', '/static/demo/fake.vtt')
+  })
+
+  test('an empty media slot draws nothing', async () => {
+    const engine = visitor()
+    engine.demo.content = withProjects({})
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'Fake two' })
+    expect(section.querySelector('video')).toBeNull()
+    expect(within(section).queryByText(/coming soon/)).not.toBeInTheDocument()
+  })
+
+  test('the LinkedIn shape (no work section) still draws the strip and the project section', async () => {
+    const engine = visitor()
+    const { work: _work, ...rest } = withProjects()
+    engine.demo.content = { ...rest, assets: { report: null, resume: null } }
+    renderApp('/try', engine, 'family')
+    expect(await screen.findByRole('region', { name: 'Projects' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Fake two' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'What I built at work' })).not.toBeInTheDocument()
+  })
+})
+
+describe('/try: a per-company ref (Kevin, 2026-11-05)', () => {
+  test.each([
+    ['acme', 'acme'],
+    ['Acme%20Corp', 'acme-corp'],
+    ['acme%26co.', 'acme-co'],
+    ['%26%26', undefined],
+  ])('?ref=%s enters with %s, so a hand-made link never blocks the visit', async (raw, sent) => {
+    const engine = createEngine({ signedIn: false })
+    renderApp(`/try?code=OPEN-SESAME&ref=${raw}`, engine, 'family')
+    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(engine.demo.enterBodies).toEqual([sent ? { code: 'OPEN-SESAME', ref: sent } : { code: 'OPEN-SESAME' }])
   })
 })

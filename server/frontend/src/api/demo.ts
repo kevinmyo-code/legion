@@ -48,9 +48,38 @@ export interface DemoLegion {
   parts: { title: string; body: string }[]
 }
 
+/**
+ * A clip slot that may not be filled yet: with `video` the page plays it, without one it says
+ * `note` ("coming soon"), with neither it draws nothing.
+ */
+export interface DemoMedia {
+  video?: string
+  poster?: string
+  captions?: string
+  note?: string
+}
+
+/** One line of the Projects strip. `href` is `#anchor` or a link out; absent, the line stands alone. */
+export interface DemoProject {
+  title: string
+  line: string
+  href?: string
+  media?: DemoMedia
+}
+
+/** A project section below LEGION's: the `legion` shape plus the anchor `id` and a media slot. */
+export interface DemoProjectSection extends DemoLegion {
+  id: string
+  media?: DemoMedia
+}
+
 export interface DemoContent {
   /** The page's header line. Absent: the header says "LEGION". */
   name?: string
+  /** The Projects strip under the hero. Absent (older content): no strip. */
+  projects?: DemoProject[]
+  /** Project sections after LEGION's (and its phone section). Absent: none. */
+  project_sections?: DemoProjectSection[]
   /** "LEGION on the phone". Absent: the section is not drawn. */
   phone?: DemoPhone
   /** What LEGION is and how it is built; optional, absent draws nothing. */
@@ -131,6 +160,23 @@ export function useDemoContent(enabled: boolean) {
 
 export type EnterResult = { ok: true } | { ok: false; message: string }
 
+/**
+ * A link's `ref` as the engine takes it: `^[A-Za-z0-9_.-]{1,64}$` (`demo/views.py`), else the
+ * whole enter is refused with a 400 and the visitor never gets in. A hand-typed or pasted link
+ * (`?ref=Acme Corp`, `?ref=acme%26co`) must still open the demo, so it is cut to that shape
+ * here: lower case, every other run of characters one `-`, at most 64. Nothing left: no ref.
+ */
+export function cleanRef(ref: string | undefined): string | undefined {
+  if (!ref) return undefined
+  const slug = ref
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 64)
+    .replace(/[-.]+$/, '')
+  return slug || undefined
+}
+
 let csrfPrimed = false
 
 /**
@@ -147,7 +193,8 @@ export async function enterDemo(code: string, ref?: string): Promise<EnterResult
       await api.GET('/api/auth/csrf').catch(() => undefined)
       csrfPrimed = true
     }
-    const body = ref ? { code, ref } : { code }
+    const slug = cleanRef(ref)
+    const body = slug ? { code, ref: slug } : { code }
     const { data, error, response } = await api.POST('/api/demo/enter', { body })
     if (data) return { ok: true }
     const detail = (error as { detail?: string } | undefined)?.detail

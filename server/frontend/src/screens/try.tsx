@@ -2,9 +2,18 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { DEMO_SESSION_KEY, enterDemo, useDemoContent, useDemoSession, type DemoContent } from '@/api/demo'
+import {
+  DEMO_SESSION_KEY,
+  enterDemo,
+  useDemoContent,
+  useDemoSession,
+  type DemoContent,
+  type DemoMedia,
+  type DemoProject,
+  type DemoProjectSection,
+} from '@/api/demo'
 import { useMe } from '@/api/queries'
-import { AssistantProvider, type ChatCopy } from '@/assistant/assistant-context'
+import { AssistantProvider, UNNAMED, useAssistant, type ChatCopy } from '@/assistant/assistant-context'
 import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
@@ -47,6 +56,13 @@ export const VISITOR_SUGGESTIONS = [
   'Which card charges are unverified?',
   "What's Kevin's experience with Power BI?",
 ] as const
+
+/**
+ * The first questions under the hero's Ask button (Kevin, 2026-11-05): tapping one starts the
+ * conversation with it as typed text. One about the made-up household, one about how LEGION is
+ * built, so both of the assistant's halves are a tap away.
+ */
+export const FIRST_QUESTIONS = ['What did this household spend last month?', 'How is LEGION built?'] as const
 
 /**
  * What a visitor's conversation ends with (Kevin, 2026-11-02: five minutes a
@@ -285,11 +301,14 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
   const { hero, look_for: lookFor, work, experience, links, assets, phone, legion } = content
   const name = content.name?.trim() || 'LEGION'
   const hasPhone = phone !== undefined && phone.clips.length > 0
+  const projects = content.projects ?? []
+  const projectSections = content.project_sections ?? []
   return (
     <>
       <header className="rc-top">
         <span className="rc-caps">{name}</span>
         <nav aria-label="On this page" className="rc-caps">
+          {projects.length > 0 && <a href="#projects">Projects</a>}
           {content.legion && <a href="#legion">LEGION</a>}
           {hasPhone && <a href="#phone">Phone</a>}
           {work && <a href="#work">Work</a>}
@@ -307,6 +326,7 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
             {hero.title}
           </h1>
           <p className="rc-lead">{hero.lead}</p>
+          <AskPrompt />
           {hero.facts.length > 0 && (
             <p className="rc-dateline">
               {/* One dateline: the facts run on, a middle dot before each but the first (CSS). */}
@@ -320,6 +340,8 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
           )}
           {access}
         </section>
+
+        {projects.length > 0 && <ProjectsStrip projects={projects} />}
 
         {lookFor.length > 0 && (
           <Section id="look-for" title="What to look for">
@@ -350,6 +372,10 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
         )}
 
         {hasPhone && <PhoneSection phone={phone} />}
+
+        {projectSections.map((section) => (
+          <ProjectSection key={section.id} section={section} />
+        ))}
 
         {work && (
           <Section id="work" title={work.title}>
@@ -448,6 +474,134 @@ function Section({ id, title, children }: { id: string; title: string; children:
       {children}
     </section>
   )
+}
+
+/**
+ * The hero's way in (Kevin, 2026-11-05: visitors read the page and never talked to the
+ * assistant). One plain ink button that starts a voice conversation, the same as tapping the
+ * dock's orb, and two first questions that start it typed. Above the fold on a phone and a desk.
+ *
+ * The button calls `client.startVoice()` straight from the tap, the only moment an iPhone opens
+ * a microphone; at phone width it also raises the sheet so the orb shows what is happening. A
+ * question goes in as typed text and unfolds the chat (`focusBox`), so its answer is read there
+ * rather than flashing past as a caption. A conversation that already ended starts over.
+ */
+function AskPrompt() {
+  const { client, state, name, ui } = useAssistant()
+  const desk = useSurface() === 'workbench'
+  const who = name === UNNAMED ? 'the assistant' : name
+  const freshIfEnded = () => {
+    if (state.phase === 'ended') client.reset()
+  }
+  const talk = () => {
+    freshIfEnded()
+    void client.startVoice()
+    if (!desk) ui.setOpen(true)
+  }
+  const ask = (question: string) => {
+    freshIfEnded()
+    if (client.send(question)) ui.focusBox()
+  }
+  return (
+    <div className="rc-ask">
+      <button type="button" className="rc-ask-button" onClick={talk}>
+        Ask {who}
+      </button>
+      <p className="rc-ask-how">
+        Talk to {who} by voice about the made-up household, how LEGION is built, or Kevin's work. Your browser asks
+        for the microphone first.
+      </p>
+      <div className="rc-ask-try">
+        <span className="rc-caps">Or start with a question</span>
+        {FIRST_QUESTIONS.map((question) => (
+          <button key={question} type="button" className="rc-ask-q" onClick={() => ask(question)}>
+            {question}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** The Projects strip (Kevin, 2026-11-05): one run-in line each, the title linking where it can. */
+function ProjectsStrip({ projects }: { projects: DemoProject[] }) {
+  return (
+    <Section id="projects" title="Projects">
+      <div className="rc-runin">
+        {projects.map((project) => (
+          <p key={project.title}>
+            <b>
+              {project.href ? (
+                <a href={project.href} rel={project.href.startsWith('#') ? undefined : 'noreferrer'}>
+                  {runIn(project.title)}
+                </a>
+              ) : (
+                runIn(project.title)
+              )}
+            </b>{' '}
+            {project.line}
+            {project.media?.video && (
+              <>
+                {' '}
+                <a href={project.media.video} rel="noreferrer">
+                  Watch the clip
+                </a>
+                .
+              </>
+            )}
+          </p>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+/** A project after LEGION's: the same parts as the LEGION section, plus its media slot. */
+function ProjectSection({ section }: { section: DemoProjectSection }) {
+  return (
+    <Section id={section.id} title={section.title}>
+      <p>{section.intro}</p>
+      {section.diagram_svg && <Diagram svg={section.diagram_svg} caption={section.diagram_caption ?? ''} />}
+      {section.parts.length > 0 && (
+        <div className="rc-runin">
+          {section.parts.map((part) => (
+            <p key={part.title}>
+              <b>{runIn(part.title)}</b> {part.body}
+            </p>
+          ))}
+        </div>
+      )}
+      {section.media && <Media media={section.media} title={section.title} />}
+    </Section>
+  )
+}
+
+/**
+ * A clip slot: the video when there is one (hosted off-site like the phone clips, so the captions
+ * track needs CORS), else its note ("coming soon") as a quiet line, else nothing.
+ */
+function Media({ media, title }: { media: DemoMedia; title: string }) {
+  if (media.video) {
+    return (
+      <figure className="rc-figure">
+        <video
+          className="rc-video"
+          src={media.video}
+          poster={media.poster}
+          aria-label={title}
+          crossOrigin="anonymous"
+          playsInline
+          controls
+          preload="none"
+        >
+          {media.captions && <track kind="captions" src={media.captions} srcLang="en" label="Captions" default />}
+        </video>
+        {media.note && <figcaption className="rc-figcaption">{media.note}</figcaption>}
+      </figure>
+    )
+  }
+  if (media.note) return <p className="rc-media-note">{media.note}</p>
+  return null
 }
 
 function FooterLink({ href, children }: { href: string; children: ReactNode }) {

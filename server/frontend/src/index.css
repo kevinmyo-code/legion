@@ -458,6 +458,79 @@
         color: var(--rc-meta);
     }
 
+    /*
+     * The hero's Ask (Kevin, 2026-11-05): one strong, plain button, ink on paper and square
+     * like every button here, then the first questions as underlined lines. No pill, no
+     * gradient, no shadow. Every tap target is at least 44 px tall.
+     */
+    .rc-ask {
+        margin: calc(1.5 * var(--u)) 0 calc(1.2 * var(--u));
+    }
+    .recruiter .rc-ask-button {
+        display: inline-flex;
+        align-items: center;
+        min-height: 54px;
+        padding: 0 calc(1.6 * var(--u));
+        border: 0;
+        background: var(--rc-ink);
+        color: var(--rc-paper);
+        font: inherit;
+        font-size: calc(1.15 * var(--u));
+        font-weight: 600;
+        letter-spacing: 0.005em;
+        cursor: pointer;
+    }
+    .recruiter .rc-ask-button:hover {
+        background: var(--rc-accent);
+        color: #ffffff;
+    }
+    .rc-prose .rc-ask-how {
+        margin: calc(0.6 * var(--u)) 0 calc(0.7 * var(--u));
+        font-size: calc(0.92 * var(--u));
+        color: var(--rc-meta);
+    }
+    .rc-ask-try {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: calc(1.2 * var(--u));
+    }
+    .rc-ask-try .rc-caps {
+        flex-basis: 100%;
+    }
+    .recruiter .rc-ask-q {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.18em;
+        text-decoration-color: var(--rc-meta);
+        cursor: pointer;
+    }
+    .recruiter .rc-ask-q:hover {
+        color: var(--rc-accent);
+        text-decoration-color: var(--rc-accent);
+    }
+    .rc-prose .rc-media-note {
+        font-size: calc(0.92 * var(--u));
+        font-style: italic;
+        color: var(--rc-meta);
+    }
+    .rc-video {
+        display: block;
+        width: 100%;
+        max-width: var(--rc-measure);
+        height: auto;
+        background: var(--rc-ink);
+    }
+
     .rc-section {
         padding: calc(2.75 * var(--u)) 0;
         border-top: 1px solid var(--rc-rule);
@@ -742,6 +815,14 @@
         }
         .rc-prose .rc-lead {
             font-size: calc(1.06 * var(--u));
+        }
+        .recruiter .rc-ask-button {
+            justify-content: center;
+            width: 100%;
+        }
+        .rc-ask-try {
+            flex-direction: column;
+            align-items: flex-start;
         }
         .rc-dateline > span {
             display: block;
