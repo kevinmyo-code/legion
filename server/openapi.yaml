@@ -81,6 +81,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: Too many uploads; nothing stored.
+  /api/assistant/pack:
+    get:
+      operationId: api_assistant_pack_retrieve
+      summary: 'The Alfred pack: versioned wording the phone reads at session start'
+      parameters:
+      - in: header
+        name: If-None-Match
+        schema:
+          type: string
+        description: The ETag the client holds; a match answers 304 with no body.
+      - in: query
+        name: client
+        schema:
+          type: string
+          enum:
+          - phone
+        description: Which client asks. Only `phone` today, and the default.
+      tags:
+      - assistant
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantPack'
+          description: ''
+        '304':
+          description: The client's pack is current. No body.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The engine refused its own pack, so none was sent.
   /api/assistant/session:
     post:
       operationId: api_assistant_session_create
@@ -8756,6 +8805,123 @@ paths:
               schema:
                 $ref: '#/components/schemas/VapidKey'
           description: ''
+  /api/releases/:
+    post:
+      operationId: api_releases_create
+      summary: Record a release (owner only), after its APK is in the bucket
+      tags:
+      - releases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Publish'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Publish'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Publish'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppRelease'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The version code is not higher than the newest release.
+  /api/releases/{release_id}/download:
+    get:
+      operationId: api_releases_download_retrieve
+      summary: A signed link to download one release's APK, valid 15 minutes
+      parameters:
+      - in: path
+        name: release_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - releases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppReleaseDownload'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No link could be made, said in words.
+  /api/releases/latest:
+    get:
+      operationId: api_releases_latest_retrieve
+      summary: The newest release of one app (highest version code)
+      parameters:
+      - in: query
+        name: app
+        schema:
+          type: string
+          enum:
+          - headunit
+          - phone
+      tags:
+      - releases
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppRelease'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/voice_notes/:
     get:
       operationId: api_voice_notes_list
@@ -8996,6 +9162,82 @@ paths:
             message.
 components:
   schemas:
+    AppEnum:
+      enum:
+      - phone
+      - headunit
+      type: string
+      description: |-
+        * `phone` - phone
+        * `headunit` - headunit
+    AppRelease:
+      type: object
+      description: What a client sees. Never `object_name` (where it sits in the bucket)
+        or who published.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        app:
+          allOf:
+          - $ref: '#/components/schemas/AppEnum'
+          readOnly: true
+        version_code:
+          type: integer
+          readOnly: true
+        version_name:
+          type: string
+          readOnly: true
+        sha256:
+          type: string
+          readOnly: true
+        size_bytes:
+          type: integer
+          readOnly: true
+        notes:
+          type: string
+          readOnly: true
+        signer_sha256:
+          type: string
+          readOnly: true
+        published_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - app
+      - id
+      - notes
+      - published_at
+      - sha256
+      - signer_sha256
+      - size_bytes
+      - version_code
+      - version_name
+    AppReleaseDownload:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: A V4 signed GET URL for the APK.
+        expires_at:
+          type: string
+          format: date-time
+        sha256:
+          type: string
+          description: Verify the download against this.
+        size_bytes:
+          type: integer
+        version_code:
+          type: integer
+      required:
+      - expires_at
+      - sha256
+      - size_bytes
+      - url
+      - version_code
     AssistantCompanion:
       type: object
       properties:
@@ -9031,6 +9273,50 @@ components:
       required:
       - detail
       - stored_lines
+    AssistantPack:
+      type: object
+      properties:
+        version:
+          type: integer
+          description: Bumped on every change to the wording.
+        sha256:
+          type: string
+          description: Hash of this payload (version included); also the ETag.
+        clauses:
+          type: object
+          additionalProperties:
+            type: string
+          description: Prompt clauses by the names in shared_clauses.txt, plus pack-only
+            ones. Never the locked set (CRISIS, SAFETY_INSTRUCTIONS, CANNOT_CLAUSE,
+            ASK_BEFORE, NO_PASSWORDS); the app ignores those if sent.
+        tool_text:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/AssistantPackToolText'
+          description: Tool name to wording overrides.
+        flags:
+          type: object
+          additionalProperties: {}
+          description: Name to true/false or a whole number.
+        extra_rules:
+          type: array
+          items:
+            type: string
+          description: Short rules appended to the prompt.
+      required:
+      - clauses
+      - extra_rules
+      - flags
+      - sha256
+      - tool_text
+      - version
+    AssistantPackToolText:
+      type: object
+      properties:
+        description:
+          type: string
+        result_prefix:
+          type: string
     AssistantSession:
       type: object
       properties:
@@ -14785,6 +15071,45 @@ components:
         * `UNRECONCILED` - Unreconciled
         * `USER` - User
         * `BANK_API` - Bank Api
+    Publish:
+      type: object
+      properties:
+        app:
+          $ref: '#/components/schemas/AppEnum'
+        version_code:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        version_name:
+          type: string
+          maxLength: 200
+        sha256:
+          type: string
+          description: The APK's SHA-256, lowercase hex.
+          pattern: ^[0-9a-f]{64}$
+        size_bytes:
+          type: integer
+          minimum: 1
+        object_name:
+          type: string
+          description: The uploaded object's name inside the APK bucket.
+          maxLength: 1024
+        notes:
+          type: string
+          default: ''
+          maxLength: 2000
+        signer_sha256:
+          type: string
+          description: SHA-256 of the signing certificate, lowercase hex.
+          pattern: ^[0-9a-f]{64}$
+      required:
+      - app
+      - object_name
+      - sha256
+      - signer_sha256
+      - size_bytes
+      - version_code
+      - version_name
     Purchase:
       type: object
       properties:

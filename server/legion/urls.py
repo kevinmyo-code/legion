@@ -78,6 +78,9 @@ urlpatterns = [
     # books ticket 04: a PDF converted to an EPUB and handed straight back,
     # nothing kept on the server (`books/views.py`).
     path("api/books/", include("books.urls")),
+    # alfred-ota ticket 04: the newest published build, a signed link to download it, and the
+    # owner's publish (`releases/views.py`). Engine-wide, not household-scoped.
+    path("api/releases/", include("releases.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

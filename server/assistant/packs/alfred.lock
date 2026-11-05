@@ -1,0 +1,4 @@
+# Written by `gen_pack.py --lock`. The version and the hash of the wording it names;
+# tests/test_assistant_pack.py fails when alfred.yaml disagrees.
+version: 1
+content_sha256: cc210311e31573c1003670b581cf250b2a116ed6556a1ca4318aea11ac3f5f33
