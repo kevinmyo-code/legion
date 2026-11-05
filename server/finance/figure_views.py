@@ -321,7 +321,14 @@ class SafeToSpendSerializer(serializers.Serializer):
     currency = serializers.CharField(required=False)
     safe_to_spend_cents = serializers.IntegerField(required=False)
     until = serializers.DateField(
-        required=False, allow_null=True, help_text="The next expected income date (the plan's)."
+        required=False, allow_null=True,
+        help_text="The next expected income date, or 30 days out when that is sooner.",
+    )
+    until_reason = serializers.ChoiceField(
+        choices=["next_income", "30_days"], required=False, help_text="Which one `until` is."
+    )
+    next_income_on = serializers.DateField(
+        required=False, allow_null=True, help_text="The plan's next pay date, an estimate."
     )
     until_is_estimate = serializers.BooleanField(required=False)
     parts = SafePartsSerializer(required=False)

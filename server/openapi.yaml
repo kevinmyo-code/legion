@@ -16431,7 +16431,21 @@ components:
           type: string
           format: date
           nullable: true
-          description: The next expected income date (the plan's).
+          description: The next expected income date, or 30 days out when that is
+            sooner.
+        until_reason:
+          allOf:
+          - $ref: '#/components/schemas/UntilReasonEnum'
+          description: |-
+            Which one `until` is.
+
+            * `next_income` - next_income
+            * `30_days` - 30_days
+        next_income_on:
+          type: string
+          format: date
+          nullable: true
+          description: The plan's next pay date, an estimate.
         until_is_estimate:
           type: boolean
         parts:
@@ -17405,6 +17419,14 @@ components:
       - sg_side_lowest_after_cents
       - sgd_cents
       - usd_cents
+    UntilReasonEnum:
+      enum:
+      - next_income
+      - 30_days
+      type: string
+      description: |-
+        * `next_income` - next_income
+        * `30_days` - 30_days
     Upload:
       type: object
       properties:

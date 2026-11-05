@@ -32,9 +32,11 @@ Definitions (ADR 0073):
   for it (an estimate, and never smaller than the statement balance once the
   statement has closed).
 - **Safe to spend** (Kevin, 2026-11-05): checking, minus everything owed on
-  the card (current plus pending), minus the US fixed bills due before the next
-  expected income date. A top-up is needed when it is below zero, or when the
-  top-up check above is short; by the income date less `topup_warn_days`.
+  the card (current plus pending), minus the US fixed bills due before `until`:
+  the next expected income date, or 30 days out when that is sooner
+  (`until_reason`: `next_income` | `30_days`, the top-up rule's own window). A
+  top-up is needed when it is below zero, or when the top-up check above is
+  short; by `until` less `topup_warn_days`.
 """
 
 from __future__ import annotations
@@ -54,6 +56,8 @@ from finance.spending import Ledger
 HORIZON_MONTHS = 24
 AVERAGE_MONTHS = 3
 DETECT_BILLS_DAYS = 100
+# Safe to spend looks at most this far ahead, like the US top-up rule.
+SAFE_WINDOW_DAYS = 30
 HEADLINE = "USD"
 
 
@@ -375,8 +379,15 @@ def safe_to_spend(request, household, today: dt.date, zone) -> dict:
         return {"available": False,
                 "reason": "The checking account has no balance on file yet, so nothing can be "
                           "said about what is safe to spend."}
-    until = _next_income(_plan(household), policy, today)
-    window_end = until or today + dt.timedelta(days=30)
+    # The window is capped at 30 days, the top-up rule's own window: with no
+    # pay for months, every bill until then would otherwise be held back.
+    next_income = _next_income(_plan(household), policy, today)
+    cap = today + dt.timedelta(days=SAFE_WINDOW_DAYS)
+    if next_income is not None and next_income <= cap:
+        until, until_reason = next_income, "next_income"
+    else:
+        until, until_reason = cap, "30_days"
+    window_end = until
     bills, detected = _bills(request, policy, today, window_end)
     owed = _owed(card)
     bills_cents = sum(b["amount_cents"] for b in bills)
@@ -391,6 +402,8 @@ def safe_to_spend(request, household, today: dt.date, zone) -> dict:
         "currency": policy.topup_checking.currency,
         "safe_to_spend_cents": safe,
         "until": until,
+        "until_reason": until_reason,
+        "next_income_on": next_income,
         "until_is_estimate": True,
         "parts": {
             "checking_cents": checking.cents,

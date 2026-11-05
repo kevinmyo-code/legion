@@ -34,8 +34,9 @@ repo: they are loaded from a private file outside it (`manage.py load_household_
   card covers the next 30 days of US bills, warned before the card's due day.
 - **Safe to spend** (Kevin, 2026-11-05), the main daily money figure: checking, less everything
   owed on the card (current balance plus pending charges), less the US fixed bills due before the
-  next expected pay date. A top-up is needed when it is below zero or the top-up trigger is short,
-  by the pay date less the warning days.
+  next expected pay date or 30 days out, whichever is sooner (the top-up rule's own window, so a
+  months-long gap in pay does not hold back months of bills). A top-up is needed when it is below
+  zero or the top-up trigger is short, by that day less the warning days.
 - **Anything worked out is an estimate, and says so** (CLAUDE.md section 4 rule 5): a computed
   balance, every projection, the plan's pay dates, a detected bill or subscription. A balance from
   the bank feed or a gated statement is fact.

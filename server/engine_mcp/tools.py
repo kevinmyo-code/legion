@@ -1870,10 +1870,16 @@ def _safe_to_spend(request, args) -> ToolResult:
                   structured=body)
     parts_ = body["parts"]
     currency = body["currency"]
-    until = (
-        f"until the next expected pay on {_long_date(body['until'])} (an estimate from the plan)"
-        if body["until"] else "over the next 30 days (no pay date is in the plan)"
-    )
+    if body["until_reason"] == "next_income":
+        until = (
+            f"until the next expected pay on {_long_date(body['until'])} (an estimate from the "
+            f"plan)"
+        )
+    else:
+        until = f"over the next 30 days, to {_long_date(body['until'])}" + (
+            f" (the next expected pay is {_long_date(body['next_income_on'])})"
+            if body["next_income_on"] else " (no pay date is in the plan)"
+        )
     parts = [
         f"Safe to spend: {_money(body['safe_to_spend_cents'], currency)} {until}.",
         f"That is checking {_money(parts_['checking_cents'], currency)} (as of "

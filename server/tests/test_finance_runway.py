@@ -153,7 +153,7 @@ def test_safe_to_spend_is_checking_less_card_owed_less_bills_before_payday(paid_
     household, accounts, caller = paid_biweekly
     snapshot(household, accounts["us-checking"], dt.date(2026, 11, 4), 1_000_000)
     body = safe_to_spend(caller, household, TODAY, UTC)
-    assert body["until"] == dt.date(2026, 11, 13)
+    assert (body["until"], body["until_reason"]) == (dt.date(2026, 11, 13), "next_income")
     parts = body["parts"]
     # Card: 1000 owed plus 200 pending. Bills: only Power falls before the 13th.
     assert (parts["checking_cents"], parts["card_owed_cents"]) == (1_000_000, 120_000)
@@ -219,3 +219,36 @@ def test_the_tools_say_their_figures_and_their_estimates(world, settings):
     assert not is_error and text.startswith("Safe to spend:")
     is_error, text, _ = call(client, "cash_flow", {"month": "2026-13"})
     assert is_error and "Nothing was" in text
+
+
+def test_a_gap_in_pay_caps_safe_to_spend_at_30_days(household_a, household_user):
+    """The job has ended and the next pay is months away: the window is 30
+    days, the response says so, and only the bills due in those 30 days are
+    held back (not every bill until the next job)."""
+    _, accounts = make_household(household_a, with_plan=False)
+    IncomePlan.objects.create(
+        household=household_a, key="old-job", label="Old job", amount_cents=200_000,
+        currency="USD", cadence="monthly", start_on=dt.date(2026, 1, 1),
+        end_on=dt.date(2026, 10, 31), confidence="confirmed", account=accounts["us-checking"],
+    )
+    IncomePlan.objects.create(
+        household=household_a, key="next-job", label="Next job", amount_cents=300_000,
+        currency="USD", cadence="monthly", start_on=dt.date(2027, 3, 1), confidence="expected",
+        account=accounts["us-checking"],
+    )
+    FinancePolicy.objects.filter(household=household_a).update(
+        fixed_bills=[
+            {"label": "Rent", "amount_cents": 100_000, "day": 1},
+            {"label": "Power", "amount_cents": 10_000, "day": 10},
+        ]
+    )
+    snapshot(household_a, accounts["us-checking"], dt.date(2026, 11, 4), 1_000_000)
+    snapshot(household_a, accounts["us-card"], dt.date(2026, 11, 4), -100_000, pending=-20_000)
+    body = safe_to_spend(Caller(household_user), household_a, TODAY, UTC)
+    assert (body["until"], body["until_reason"]) == (dt.date(2026, 12, 5), "30_days")
+    assert body["next_income_on"] == dt.date(2027, 3, 1)
+    # Power on 10 Nov and rent on 1 Dec; nothing from January to March.
+    assert [(b["label"], b["due_on"]) for b in body["parts"]["bills"]] == [
+        ("Power", dt.date(2026, 11, 10)), ("Rent", dt.date(2026, 12, 1)),
+    ]
+    assert body["safe_to_spend_cents"] == 1_000_000 - 120_000 - 110_000

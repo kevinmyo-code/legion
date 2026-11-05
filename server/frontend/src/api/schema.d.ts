@@ -7325,9 +7325,21 @@ export interface components {
             safe_to_spend_cents?: number;
             /**
              * Format: date
-             * @description The next expected income date (the plan's).
+             * @description The next expected income date, or 30 days out when that is sooner.
              */
             until?: string | null;
+            /**
+             * @description Which one `until` is.
+             *
+             *     * `next_income` - next_income
+             *     * `30_days` - 30_days
+             */
+            until_reason?: components["schemas"]["UntilReasonEnum"];
+            /**
+             * Format: date
+             * @description The plan's next pay date, an estimate.
+             */
+            next_income_on?: string | null;
             until_is_estimate?: boolean;
             parts?: components["schemas"]["SafeParts"];
             top_up_needed_cents?: number;
@@ -7804,6 +7816,12 @@ export interface components {
             /** @description Singapore liquid's lowest point after the transfer, SGD. */
             sg_side_lowest_after_cents: number | null;
         };
+        /**
+         * @description * `next_income` - next_income
+         *     * `30_days` - 30_days
+         * @enum {string}
+         */
+        UntilReasonEnum: "next_income" | "30_days";
         Upload: {
             /**
              * Format: uuid
