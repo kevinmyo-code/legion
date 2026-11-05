@@ -215,6 +215,8 @@ export function seedSpend(): Spend {
       early_charges_moved_cents: 185000,
       early_charges_counted_here_cents: 185000,
       early_charges_counted_next_month_cents: 0,
+      household_internal_cents: 0,
+      household_internal_reasons: [],
     },
   }
 }
