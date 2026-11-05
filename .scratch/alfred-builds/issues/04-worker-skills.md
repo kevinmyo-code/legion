@@ -3,8 +3,8 @@ map: alfred-builds
 ticket: "04"
 title: "Worker skills: fix-alfred, build-feature, ship"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05 on feat/alfred-builds-worker; owed: worker restart, engine deploy, the run (ticket 09)"
 blockers: ["02", "03"]
 blocked-by: ["[[02-records-for-the-worker]]", "[[03-ship-step]]"]
 open-blockers: 2

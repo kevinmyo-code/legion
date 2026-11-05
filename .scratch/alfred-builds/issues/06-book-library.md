@@ -4,7 +4,7 @@ ticket: "06"
 title: "Book library on the engine, synced to the phone"
 type: build
 status: open
-status-detail: "charted 2026-11-05"
+status-detail: "engine half built 2026-11-05 (feat/alfred-builds-worker); phone half owed (Gradle)"
 blockers: []
 blocked-by: []
 open-blockers: 0

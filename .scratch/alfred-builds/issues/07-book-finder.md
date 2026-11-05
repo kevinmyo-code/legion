@@ -3,8 +3,8 @@ map: alfred-builds
 ticket: "07"
 title: "book-finder skill"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05 on feat/alfred-builds-worker; owed: worker restart, engine deploy, the run (ticket 09)"
 blockers: ["06"]
 blocked-by: ["[[06-book-library]]"]
 open-blockers: 1
