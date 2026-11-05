@@ -20,6 +20,8 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
                         --session-id <uuid> (new day) | --resume <uuid> (restart)
       helpers finish with:  python report.py --task N --status done|failed|needs_confirmation ...
       helpers send mail with: python send_mail.py --task N --token T ...   (only with a token)
+      helpers ship with: python ship.py ask ... / ship.py run --task N --token T   (only after Kevin's yes)
+      helpers build with: python build_lock.py --task N --cwd <dir> -- <gradle or suite>
     asklist_hook.py   PreToolUse hook, only in worker-settings.json, never in ~/.claude/settings.json
 ```
 
@@ -30,7 +32,10 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `engine_client.py` | `/api/claude/` worker endpoints (heartbeat, claim, finish, files). |
 | `report.py` | How a helper finishes a task. Refuses `needs_confirmation` without `--question`. |
 | `send_mail.py` | Alfred's Gmail over SMTP. Refuses without the worker's confirmation token; Kevin cc'd. |
-| `asklist_hook.py` | Ruling 6 ask list and ruling 5 work-laptop scope. Fails closed. |
+| `asklist_hook.py` | Ruling 6 ask list and ruling 5 work-laptop scope; push, deploy, publish and gcloud only through `ship.py` / `undo.py`; `work\.claude` is Kevin's; the worker's own files are never a helper's. Fails closed. |
+| `ship.py` | The ship step (map alfred-builds, ticket 03): `ask` prints "Ready: ... Ship it?", `run --token` rebases, tests, merges and pushes dev and main, deploys the engine, publishes the phone (`tools/release_apk.py`), adds a book. History in `work\ships.jsonl`. |
+| `undo.py` | Undo the last ship (ticket 05): traffic back a revision plus a revert on dev, the previous phone build republished, a book removed. |
+| `build_lock.py` | One build at a time with a heat check from laptopctl's agent (ticket 08); private Gradle daemon registry, `--stop` after. |
 | `main_session_prompt.md` | The main session's appended system prompt. |
 | `install.ps1` / `uninstall.ps1` / `status.ps1` | Kevin runs these by hand. |
 | `fake_claude.py`, `fake_engine.py`, `test_*.py` | Tests. Never the real CLI, never real mail. |
