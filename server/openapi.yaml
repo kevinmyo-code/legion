@@ -81,6 +81,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: Too many uploads; nothing stored.
+  /api/assistant/pack:
+    get:
+      operationId: api_assistant_pack_retrieve
+      summary: 'The Alfred pack: versioned wording the phone reads at session start'
+      parameters:
+      - in: header
+        name: If-None-Match
+        schema:
+          type: string
+        description: The ETag the client holds; a match answers 304 with no body.
+      - in: query
+        name: client
+        schema:
+          type: string
+          enum:
+          - phone
+        description: Which client asks. Only `phone` today, and the default.
+      tags:
+      - assistant
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantPack'
+          description: ''
+        '304':
+          description: The client's pack is current. No body.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The engine refused its own pack, so none was sent.
   /api/assistant/session:
     post:
       operationId: api_assistant_session_create
@@ -9031,6 +9080,50 @@ components:
       required:
       - detail
       - stored_lines
+    AssistantPack:
+      type: object
+      properties:
+        version:
+          type: integer
+          description: Bumped on every change to the wording.
+        sha256:
+          type: string
+          description: Hash of this payload (version included); also the ETag.
+        clauses:
+          type: object
+          additionalProperties:
+            type: string
+          description: Prompt clauses by the names in shared_clauses.txt, plus pack-only
+            ones. Never the locked set (CRISIS, SAFETY_INSTRUCTIONS, CANNOT_CLAUSE,
+            ASK_BEFORE, NO_PASSWORDS); the app ignores those if sent.
+        tool_text:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/AssistantPackToolText'
+          description: Tool name to wording overrides.
+        flags:
+          type: object
+          additionalProperties: {}
+          description: Name to true/false or a whole number.
+        extra_rules:
+          type: array
+          items:
+            type: string
+          description: Short rules appended to the prompt.
+      required:
+      - clauses
+      - extra_rules
+      - flags
+      - sha256
+      - tool_text
+      - version
+    AssistantPackToolText:
+      type: object
+      properties:
+        description:
+          type: string
+        result_prefix:
+          type: string
     AssistantSession:
       type: object
       properties:

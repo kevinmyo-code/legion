@@ -183,6 +183,10 @@ RECRUITER_DENIED: dict[str, str] = {
     "books.reading.BookPositionDetailView": "books live in a folder on a member's laptop",
     "books.reading.BookBookmarkListView": "books live in a folder on a member's laptop",
     "books.reading.BookBookmarkDetailView": "books live in a folder on a member's laptop",
+    # alfred-ota tickets 01 and 04: what a member's own phone reads and installs.
+    "assistant.pack_views.AssistantPackView": (
+        "the Alfred pack is for a member's own phone; a visit's prompt is built on the engine"
+    ),
     # The engine's MCP door is for Claude Code on Kevin's machines.
     "engine_mcp.views.McpView": _DEVICE,
 }
