@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Alfred pack: versioned wording the phone reads at session start */
+        get: operations["api_assistant_pack_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assistant/session": {
         parameters: {
             query?: never;
@@ -888,6 +905,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/books/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_books_library_list"];
+        put?: never;
+        post: operations["api_books_library_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/library/{book_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["api_books_library_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/library/{book_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_books_library_download"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/library/{book_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description No token header: the signature in `t` is the whole authority. It names one household and
+         *     one book and lives LINK_SECONDS; it is minted only by `LibraryDownloadView`, for a member.
+         */
+        get: operations["api_books_library_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/books/positions": {
         parameters: {
             query?: never;
@@ -1384,9 +1469,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * @description `POST` uploads a batch; `GET` lists the household's recent batches (alfred-builds ticket 02,
+         *     `devicelogs/records.py`), so the Claude worker can find a conversation to read.
+         */
+        get: operations["api_device_logs_list"];
         put?: never;
+        /**
+         * @description `POST` uploads a batch; `GET` lists the household's recent batches (alfred-builds ticket 02,
+         *     `devicelogs/records.py`), so the Claude worker can find a conversation to read.
+         */
         post: operations["api_device_logs_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device-logs/{log_id}/render": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_device_logs_render"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3836,6 +3945,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/releases/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a release (owner only), after its APK is in the bucket */
+        post: operations["api_releases_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/releases/{release_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A signed link to download one release's APK, valid 15 minutes */
+        get: operations["api_releases_download_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/releases/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest release of one app (highest version code) */
+        get: operations["api_releases_latest_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice_notes/": {
         parameters: {
             query?: never;
@@ -3946,6 +4106,39 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description * `phone` - phone
+         *     * `headunit` - headunit
+         * @enum {string}
+         */
+        AppEnum: "phone" | "headunit";
+        /** @description What a client sees. Never `object_name` (where it sits in the bucket) or who published. */
+        AppRelease: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly app: components["schemas"]["AppEnum"];
+            readonly version_code: number;
+            readonly version_name: string;
+            readonly sha256: string;
+            readonly size_bytes: number;
+            readonly notes: string;
+            readonly signer_sha256: string;
+            /** Format: date-time */
+            readonly published_at: string;
+        };
+        AppReleaseDownload: {
+            /**
+             * Format: uri
+             * @description A V4 signed GET URL for the APK.
+             */
+            url: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @description Verify the download against this. */
+            sha256: string;
+            size_bytes: number;
+            version_code: number;
+        };
         AssistantCompanion: {
             /** @description What the companion is called. */
             name: string;
@@ -3961,6 +4154,30 @@ export interface components {
         AssistantConversationStored: {
             stored_lines: number;
             detail: string;
+        };
+        AssistantPack: {
+            /** @description Bumped on every change to the wording. */
+            version: number;
+            /** @description Hash of this payload (version included); also the ETag. */
+            sha256: string;
+            /** @description Prompt clauses by the names in shared_clauses.txt, plus pack-only ones. Never the locked set (CRISIS, SAFETY_INSTRUCTIONS, CANNOT_CLAUSE, ASK_BEFORE, NO_PASSWORDS); the app ignores those if sent. */
+            clauses: {
+                [key: string]: string;
+            };
+            /** @description Tool name to wording overrides. */
+            tool_text: {
+                [key: string]: components["schemas"]["AssistantPackToolText"];
+            };
+            /** @description Name to true/false or a whole number. */
+            flags: {
+                [key: string]: unknown;
+            };
+            /** @description Short rules appended to the prompt. */
+            extra_rules: string[];
+        };
+        AssistantPackToolText: {
+            description?: string;
+            result_prefix?: string;
         };
         AssistantSession: {
             /** @description The ephemeral token's full name (`auth_tokens/...`). Pass it as the `access_token` query parameter on `ws_url`. One conversation; the setup it carries is locked, so the browser's own `setup` message is ignored. */
@@ -5132,6 +5349,11 @@ export interface components {
             /** @description True for the token that made this request, so a client can avoid revoking the device it is running on by accident. */
             current: boolean;
         };
+        DownloadLink: {
+            /** @description Fetch with GET, no header. Valid for `expires_in` seconds. */
+            url: string;
+            expires_in: number;
+        };
         /**
          * @description Field-for-field `RemoteDrive` / `DriveUpload`.
          *
@@ -5311,6 +5533,8 @@ export interface components {
             category: string;
             paid: boolean;
             paid_cents: number;
+            /** @description The category's budget target; null with none set. */
+            cap_cents: number | null;
         };
         Freshness: {
             sources: components["schemas"]["FreshnessSource"][];
@@ -5705,6 +5929,43 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid?: string | null;
+        };
+        LibraryBook: {
+            id: number;
+            title: string;
+            author: string;
+            format: string;
+            sha256: string;
+            /** @description Bytes. */
+            size: number;
+            /** @description Where the copy came from. */
+            source_url: string;
+            /** @description Why the household may hold it: "public domain (Gutenberg)", "free from the author". */
+            licence_note: string;
+            /** @description The member who added it. */
+            added_by: string | null;
+            /** Format: date-time */
+            added_at: string;
+        };
+        LibraryList: {
+            results: components["schemas"]["LibraryBook"][];
+        };
+        LibraryUpload: {
+            /**
+             * Format: uri
+             * @description The EPUB, at most 30 MB.
+             */
+            file: string;
+            title: string;
+            /** @default  */
+            author: string;
+            /** @description Required. Why this copy is legal: "public domain (Project Gutenberg)", "free from the author". */
+            licence_note: string;
+            /**
+             * Format: uri
+             * @description The page the copy came from.
+             */
+            source_url: string;
         };
         LinkToken: {
             /** @description Short-lived; hand it to Plaid Link. */
@@ -6904,6 +7165,20 @@ export interface components {
          * @enum {string}
          */
         ProvenanceEnum: "DETERMINISTIC" | "LLM_RECONCILED" | "UNRECONCILED" | "USER" | "BANK_API";
+        Publish: {
+            app: components["schemas"]["AppEnum"];
+            version_code: number;
+            version_name: string;
+            /** @description The APK's SHA-256, lowercase hex. */
+            sha256: string;
+            size_bytes: number;
+            /** @description The uploaded object's name inside the APK bucket. */
+            object_name: string;
+            /** @default  */
+            notes: string;
+            /** @description SHA-256 of the signing certificate, lowercase hex. */
+            signer_sha256: string;
+        };
         Purchase: {
             /** Format: uuid */
             readonly id: string;
@@ -7085,6 +7360,24 @@ export interface components {
             readonly created_at: string;
             readonly origin_guid: string | null;
         };
+        Record: {
+            /** Format: uuid */
+            id: string;
+            device_label: string;
+            reason: string;
+            /**
+             * Format: date-time
+             * @description The engine's clock.
+             */
+            received_at: string;
+            /** @description Raw lines in the batch, before rendering. */
+            line_count: number;
+            app_version_name: string;
+            app_version_code: number | null;
+        };
+        RecordList: {
+            results: components["schemas"]["Record"][];
+        };
         RecruiterAssets: {
             /** @description `/api/demo/asset/report`, or null when none is loaded. */
             report: string | null;
@@ -7131,6 +7424,18 @@ export interface components {
             diagram_svg: string;
             diagram_caption: string;
             cards: components["schemas"]["RecruiterTitleBody"][];
+        };
+        Rendered: {
+            /** Format: uuid */
+            id: string;
+            device_label: string;
+            reason: string;
+            /** Format: date-time */
+            received_at: string;
+            /** @description The header line `manage.py device_logs` prints. */
+            header: string;
+            /** @description The timeline `manage.py device_logs --render` prints: who said what, each tool call and result, reply latency. Mail stays redacted as stored. */
+            lines: string[];
         };
         ReportBranch: {
             branch: string;
@@ -8170,6 +8475,63 @@ export interface operations {
             };
             /** @description Too many uploads; nothing stored. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_pack_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Which client asks. Only `phone` today, and the default. */
+                client?: "phone";
+            };
+            header?: {
+                /** @description The ETag the client holds; a match answers 304 with no body. */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantPack"];
+                };
+            };
+            /** @description The client's pack is current. No body. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The engine refused its own pack, so none was sent. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9635,6 +9997,177 @@ export interface operations {
             };
         };
     };
+    api_books_library_list: {
+        parameters: {
+            query?: {
+                /** @description ISO 8601; only books added after it. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryList"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_books_library_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["LibraryUpload"];
+            };
+        };
+        responses: {
+            /** @description This file was already in the library. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryBook"];
+                };
+            };
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryBook"];
+                };
+            };
+            /** @description Refused, nothing added. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Over the size cap. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_books_library_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_books_library_download: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadLink"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_books_library_file: {
+        parameters: {
+            query: {
+                /** @description The signed link token. */
+                t: string;
+            };
+            header?: never;
+            path: {
+                book_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The EPUB. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/epub+zip": string;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_books_positions_list: {
         parameters: {
             query?: {
@@ -11025,6 +11558,44 @@ export interface operations {
             };
         };
     };
+    api_device_logs_list: {
+        parameters: {
+            query?: {
+                /** @description Keep only this device label, e.g. web. */
+                device?: string;
+                /** @description At most this many (default 50, max 200). */
+                limit?: number;
+                /** @description Keep only this upload reason. */
+                reason?: "conversation" | "drive_end" | "manual" | "periodic" | "startup";
+                /** @description ISO 8601 time; only batches the engine received after it. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordList"];
+                };
+            };
+            /** @description A filter was malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_device_logs_create: {
         parameters: {
             query?: never;
@@ -11067,6 +11638,49 @@ export interface operations {
             };
             /** @description Over the size cap, nothing stored. */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_device_logs_render: {
+        parameters: {
+            query?: {
+                /** @description Also mic and activity lines. */
+                verbose?: boolean;
+            };
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rendered record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rendered"];
+                };
+            };
+            /** @description No such record here. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Stored, but unreadable. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15523,6 +16137,131 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VapidKey"];
+                };
+            };
+        };
+    };
+    api_releases_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Publish"];
+                "application/x-www-form-urlencoded": components["schemas"]["Publish"];
+                "multipart/form-data": components["schemas"]["Publish"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppRelease"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The version code is not higher than the newest release. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_releases_download_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppReleaseDownload"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No link could be made, said in words. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_releases_latest_retrieve: {
+        parameters: {
+            query?: {
+                app?: "headunit" | "phone";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppRelease"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
         };

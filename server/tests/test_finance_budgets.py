@@ -1,7 +1,7 @@
 """Household-finance ticket 08: budgets and pace.
 
 Synthetic household: caps Groceries 500.00, Dining 100.00, Subscriptions
-50.00. November 2026 has 30 days.
+50.00, and the fixed Housing 1,000.00. November 2026 has 30 days.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ def world(household_a, household_user):
     budget(household_a, "Groceries", 50_000)
     budget(household_a, "Dining", 10_000)
     budget(household_a, "Subscriptions", 5_000)
+    budget(household_a, "Housing", 100_000)
     for month in ("08", "09", "10"):
         statement(household_a, "1000", "US checking",
                   [line(f"2026-{month}-03", "STREAMCO 4000", -1_000, "Subscriptions")],
@@ -87,8 +88,21 @@ def test_the_month_total_and_fixed_categories(world):
     assert body["total"]["percent"] == 63
     assert "Housing" not in by_category(body)
     fixed = {f["category"]: f for f in body["fixed"]}
-    assert fixed["Housing"] == {"category": "Housing", "paid": True, "paid_cents": 100_000}
+    assert fixed["Housing"] == {
+        "category": "Housing", "paid": True, "paid_cents": 100_000, "cap_cents": 100_000
+    }
     assert fixed["Utilities"]["paid"] is False
+
+
+def test_a_fixed_category_says_its_own_cap_and_stays_out_of_the_total(world):
+    """Kevin, 2026-11-05: the total bar shows every budget. The phone adds the fixed caps to
+    the day-to-day total; the engine's `total` keeps its meaning for Alfred."""
+    household, caller = world
+    body = budgets(caller, household, NOVEMBER, dt.date(2026, 11, 15))
+    fixed = {f["category"]: f for f in body["fixed"]}
+    assert fixed["Housing"]["cap_cents"] == 100_000
+    assert fixed["Utilities"]["cap_cents"] is None
+    assert body["total"]["cap_cents"] == 65_000
 
 
 def test_a_recurring_and_a_new_subscription_are_found(world):

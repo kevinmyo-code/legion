@@ -15,7 +15,9 @@ Per category:
 - `pending_cents` / `pending_count`: the bank's own not-yet-posted rows,
   INCLUDED in spent and said as pending.
 
-Fixed categories (rent, utilities, insurance) are only checked for being paid.
+Fixed categories (rent, utilities, insurance) are only checked for being paid,
+and carry their own `cap_cents` (the household's target, or null) so a caller
+can say the whole budget, fixed included. `total` stays day-to-day only.
 Subscriptions are the recurring merchants of the last `SUBSCRIPTION_MONTHS`
 months (`finance.recurring`); one is NEW when its merchant first appears this
 month in the Subscriptions category, with no earlier charge on file.
@@ -25,7 +27,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from api.spend import Month
+from api.spend import Month, _targets_for
 from finance.fx import div_half_even
 from finance.models import FinancePolicy
 from finance.recurring import merchant_of, recurring
@@ -98,12 +100,14 @@ def budgets(request, household, month: Month, today: dt.date) -> dict:
     total_spent = sum(line["spent_cents"] for line in capped)
     total_cap = sum(line["cap_cents"] for line in capped)
 
+    caps = _targets_for(ledger.targets, CURRENCY, month)
     fixed_lines = []
     for name in sorted(fixed):
         paid = [r for r in rows if r["effective_category"] == name and r["amount_cents"] < 0]
         fixed_lines.append(
             {"category": name, "paid": bool(paid),
-             "paid_cents": -sum(r["amount_cents"] for r in paid)}
+             "paid_cents": -sum(r["amount_cents"] for r in paid),
+             "cap_cents": caps.get(name)}
         )
 
     history_start = month.plus(-(SUBSCRIPTION_MONTHS - 1)).first

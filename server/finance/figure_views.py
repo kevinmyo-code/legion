@@ -387,6 +387,9 @@ class FixedSerializer(serializers.Serializer):
     category = serializers.CharField()
     paid = serializers.BooleanField()
     paid_cents = serializers.IntegerField()
+    cap_cents = serializers.IntegerField(
+        allow_null=True, help_text="The category's budget target; null with none set."
+    )
 
 
 class FinanceSubscriptionSerializer(serializers.Serializer):

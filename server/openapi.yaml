@@ -12722,7 +12722,12 @@ components:
           type: boolean
         paid_cents:
           type: integer
+        cap_cents:
+          type: integer
+          nullable: true
+          description: The category's budget target; null with none set.
       required:
+      - cap_cents
       - category
       - paid
       - paid_cents
