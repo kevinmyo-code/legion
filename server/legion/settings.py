@@ -167,6 +167,9 @@ INSTALLED_APPS = [
     # countries, dated balances, the day's FX rate, the income plan and the
     # limits Kevin set (`public.finance_*`, `django.fx_rates`).
     "finance",
+    # arch-diagrams ticket 01 (Kevin, 2026-11-05): `show_diagram`'s catalogue and the private
+    # projects' pre-rendered diagrams (`diagrams.RecruiterDiagram`), never in the repo.
+    "diagrams",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).

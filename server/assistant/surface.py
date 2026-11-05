@@ -114,6 +114,12 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     # public repo's docs (`assistant/docs_corpus.json`): no household row, no
     # private file.
     "legion_docs",
+    # The architecture diagrams (arch-diagrams ticket 01, Kevin 2026-11-05: "so
+    # a technical interviewer could ask and the diagrams pop up"). Pre-rendered
+    # pictures picked from a fixed list (`diagrams/`): no household row. The
+    # private projects' views follow the visit code's content version, and the
+    # LinkedIn version is never shown Quanex (`diagrams.catalogue.WITHHELD`).
+    "show_diagram",
     # The web, through Gemini with Google Search grounding (audit 2026-11-03:
     # "What is the H1B1?" had no answer). Sends the visitor's question and
     # nothing of the household; each call is charged against the demo's daily

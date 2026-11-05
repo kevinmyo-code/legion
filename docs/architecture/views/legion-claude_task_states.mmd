@@ -1,0 +1,25 @@
+stateDiagram-v2
+    accTitle: A Claude task's statuses
+    accDescr: A task Alfred hands to a Claude worker on Kevin's laptop is queued, claimed and run, and finishes done, failed, needs_confirmation or cancelled. A yes to "Ship it?" is a new child task, so needs_confirmation is terminal.
+    %% Source: server/claude_session/models.py (status choices, TERMINAL), views.py
+    %% (TaskListCreateView, TaskAssignView, ClaimView, TaskCancelView, FinishView), state.py.
+    state "needs machine" as needs_machine
+    state "cancel requested" as cancel_requested
+    state "needs confirmation" as needs_confirmation
+    [*] --> queued: created, one machine known
+    [*] --> needs_machine: created, several machines online
+    needs_machine --> queued: assigned a machine
+    queued --> running: claimed by the worker
+    queued --> cancelled: cancelled
+    needs_machine --> cancelled: cancelled
+    running --> cancel_requested: cancel asked
+    running --> done: finished
+    running --> failed: finished, or 30 min cap
+    running --> needs_confirmation: asks "Ship it?"
+    cancel_requested --> cancelled: worker stopped it
+    cancel_requested --> done
+    cancel_requested --> failed
+    done --> [*]
+    failed --> [*]
+    cancelled --> [*]
+    needs_confirmation --> [*]: a yes is a new task (confirms, parent)

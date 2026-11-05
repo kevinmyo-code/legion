@@ -466,6 +466,27 @@ def test_legion_docs_reads_the_docs_and_nothing_of_either_household(world):
     assert _row_counts() == before
 
 
+def test_show_diagram_shows_a_prepared_picture_and_nothing_of_either_household(world):
+    """arch-diagrams ticket 01: the picture comes from the committed catalogue
+    (or a private row loaded for the visit's version), never from a household:
+    no demo row, nothing of Kevin's household, nothing written."""
+    before = _row_counts()
+    response = _tool(
+        world["browser"], "show_diagram",
+        {"project": "legion", "view": "context", "highlight": ["engine", "web"]},
+    )
+    assert response.status_code == 200 and response.data["is_error"] is False
+    assert _leaks(world, response.data["text"], "") == []
+    card = response.data["card"]
+    assert card["card"] == "diagram" and card["highlight"] == ["engine", "web"]
+    assert card["svg"].startswith("<svg") and MARK not in card["svg"]
+    assert "Greenleaf" not in card["svg"] and "Oat milk" not in card["svg"]
+    # A view another project lacks is refused in words, and nothing ran.
+    response = _tool(world["browser"], "show_diagram", {"project": "workflow", "view": "context"})
+    assert response.data["is_error"] is True and response.data["text"].startswith("Nothing was")
+    assert _row_counts() == before
+
+
 def test_web_search_sends_the_question_and_nothing_of_either_household(world, monkeypatch):
     """The visitor's question goes to Google and nothing else: no row of the
     visit's household, none of Kevin's. Google is faked here."""
@@ -679,6 +700,7 @@ def test_every_allowed_tool_was_exercised():
         "list_purchases",
         "about_kevin",
         "legion_docs",
+        "show_diagram",
         "web_search",
         # section 4, the writes
         "write_record",

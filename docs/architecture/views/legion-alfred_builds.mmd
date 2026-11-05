@@ -1,0 +1,34 @@
+sequenceDiagram
+    accTitle: Alfred builds Alfred
+    accDescr: Kevin asks Alfred for a fix by voice, the engine queues a task, a Claude worker on his laptop builds and tests it on a branch and asks "Ship it?"; a yes is a new task that merges, deploys the engine and publishes a phone release, which the phone verifies and offers to install.
+    %% Sources: app/.../service/ClaudeSessionToolbox.kt, server/claude_session/views.py,
+    %% tools/claude_session/worker.py, ship.py, build_lock.py, asklist_hook.py,
+    %% server/releases/views.py, tools/release_apk.py, app/.../update/UpdateController.kt.
+    actor kevin as Kevin
+    participant phone as Phone (Alfred)
+    participant engine as Engine: /api/claude/tasks
+    participant worker as Claude worker (Alienware)
+    participant repo as Git: dev and main
+    participant cloudrun as Cloud Run
+    participant releases as Engine: /api/releases
+
+    kevin->>phone: "fix this" (voice)
+    phone->>engine: claude_session tool: new task
+    worker->>engine: claim (queued to running)
+    worker->>worker: build lock, branch off dev, change, targeted tests
+    worker->>engine: finish: needs_confirmation, "Ready: ... Ship it?"
+    engine-->>phone: task result
+    phone-->>kevin: "Ship it?"
+    kevin->>phone: "yes"
+    phone->>engine: follow-up task (parent, confirms)
+    worker->>engine: claim the yes, one-use ship token
+    worker->>repo: rebase, full suites, merge to dev, then main, push
+    worker->>cloudrun: deploy the engine, wait, smoke /health
+    worker->>releases: assembleFast, release_apk.py publishes the APK
+    worker->>engine: finish: done (logged to ships.jsonl)
+    phone->>releases: latest release for the phone
+    releases-->>phone: signed download link
+    phone->>phone: verify sha256 and signer
+    phone-->>kevin: "Install the update?"
+    kevin->>phone: yes
+    phone->>phone: Android installs it

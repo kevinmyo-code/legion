@@ -95,6 +95,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[08-build-lock-and-heat\|08]] | build | One build at a time, with a heat check |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
+| [[.scratch/arch-diagrams/map\|arch-diagrams]] | [[01-show-diagram\|01]] | build | show_diagram: the diagram catalogue, the tool and the web card |
 | [[.scratch/architecture/map\|architecture]] | [[01-room-kapt-to-ksp\|01]] | build | Room moves from kapt to KSP |
 | [[.scratch/architecture/map\|architecture]] | [[05-detekt-with-a-baseline\|05]] | build | detekt joins the build, with a baseline and a 1000-line ceiling |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[18-build-widget-pager\|18]] | task | Build the widget pager and generated screens |
@@ -364,6 +365,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/alfred-ota/map\|alfred-ota]] | 8 | 8 | [[.scratch/alfred-ota/alfred-ota.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
+| [[.scratch/arch-diagrams/map\|arch-diagrams]] | 1 | 1 | [[.scratch/arch-diagrams/arch-diagrams.canvas\|open]] |
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |

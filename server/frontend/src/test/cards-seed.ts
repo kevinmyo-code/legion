@@ -1,4 +1,4 @@
-import type { BarsCard, CarCard, ChecklistCard, StepsCard, TimelineCard } from '@/components/assistant/cards/types'
+import type { BarsCard, CarCard, ChecklistCard, DiagramCard, StepsCard, TimelineCard } from '@/components/assistant/cards/types'
 
 /** Cards in the engine's shape (`server/engine_mcp/cards.py`), for tests and screenshots. */
 
@@ -112,4 +112,28 @@ export const RECALLS_HALF: CarCard = {
   codes: [],
   note: "Recalls are NHTSA's list for the model, not a check of this car's VIN.",
   parts: { recalls: "Recalls are NHTSA's list for the model, not a check of this car's VIN." },
+}
+
+/** A diagram card in the engine's shape (`diagrams.catalogue.diagram_card`), a tiny SVG. */
+export const DIAGRAM_CARD: DiagramCard = {
+  card: 'diagram',
+  title: 'Engine components, in layers',
+  scope: 'LEGION',
+  project: 'legion',
+  view: 'components',
+  caption: 'Every client enters through the API layer and narrows to its household before Postgres.',
+  highlight: ['tooldoor', 'household'],
+  nodes: [
+    { id: 'tooldoor', label: '/api/assistant/tool' },
+    { id: 'household', label: 'household.tenancy' },
+    { id: 'rest', label: 'REST /api/...' },
+  ],
+  svg:
+    '<svg id="dg-legion-components" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">' +
+    '<title>Engine components</title><desc>Layers</desc>' +
+    '<g class="node default" data-node="tooldoor"><rect width="80" height="30"/><text>/api/assistant/tool</text></g>' +
+    '<g class="node default" data-node="household"><rect x="100" width="80" height="30"/><text>household.tenancy</text></g>' +
+    '<g class="node default" data-node="rest" onclick="alert(1)"><rect x="200" width="80" height="30"/><text>REST</text></g>' +
+    '<script>window.pwned = true</script>' +
+    '</svg>',
 }

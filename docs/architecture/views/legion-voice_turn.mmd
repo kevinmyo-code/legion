@@ -1,0 +1,35 @@
+sequenceDiagram
+    accTitle: One voice turn on the phone
+    accDescr: The wake word opens a Gemini Live session; on-device end-of-turn detection decides when the person has finished; a question for the engine goes through a small sub-agent over /mcp, its card is drawn on the phone, and the answer goes back to Gemini, which speaks it.
+    %% Sources: app/.../service/WakeWordEngine.kt, WakeTwoStageDetector, AriaForegroundService.kt,
+    %% LiveSessionController.kt, GeminiLiveSession.kt, turn/TurnTaker.kt, turn/EndOfTurnPolicy.kt,
+    %% service/LiveToolbox.kt, service/AskEngine.kt, backend/engine/EngineMcpClient.kt,
+    %% assistant/cards/ServerCards.kt; server/engine_mcp/views.py, server.py, tools.py, cards.py.
+    actor person as Person
+    participant wake as Wake word: VAD, keyword spotter, Vosk check
+    participant turn as End of turn: Silero VAD + Smart Turn
+    participant live as GeminiLiveSession: mic and speaker
+    participant gemini as Gemini Live
+    participant tools as LiveSessionController + LiveToolbox
+    participant ask as ask_engine sub-agent (Gemini REST)
+    participant engine as Engine /mcp tool registry
+    participant screen as Assistant strip (cards)
+
+    person->>wake: "Hey Alfred"
+    wake->>live: start a conversation
+    live->>gemini: WebSocket, household key, setup
+    person->>live: speaks
+    live->>turn: 32 ms audio windows
+    turn->>gemini: activityStart, audio, activityEnd
+    Note over turn: Smart Turn can only extend a turn, never end it early
+    gemini-->>live: toolCall ask_engine
+    live->>tools: run the tool ("Working...")
+    tools->>ask: the question
+    ask->>engine: tools/list, then tools/call
+    engine->>engine: write fence, table fence, schema, handler
+    engine-->>ask: text, card in _meta
+    ask-->>screen: card (an unknown kind draws nothing)
+    ask-->>tools: answer in words
+    tools->>gemini: toolResponse
+    gemini-->>live: spoken audio
+    live-->>person: plays the answer

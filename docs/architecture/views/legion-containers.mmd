@@ -1,0 +1,48 @@
+flowchart TB
+    accTitle: Containers and deployment
+    accDescr: One engine image runs two ways on Google Cloud, a Cloud Run service for requests and a Cloud Run job that Cloud Scheduler starts once per line of deploy/crontab, both on Supabase Postgres. The phone keeps a Room replica and an outbox; the Claude worker polls the engine from Kevin's laptop.
+    %% Sources: deploy/cloudrun/deploy.py, deploy_job.py, install_schedule.py, _common.py, README.md;
+    %% deploy/crontab; deploy/release/setup_bucket.sh; server/releases/signing.py; server/Dockerfile;
+    %% server/legion/settings.py; app/.../backend/engine/EnginePoll.kt, data/local/SyncOutbox.kt;
+    %% tools/claude_session/install.ps1, worker.py, engine_client.py, ship.py; tools/release_apk.py.
+
+    subgraph devices["Devices"]
+        android["Android app<br/>Room replica + outbox<br/>polls /api/changes"]
+        headunit["Head unit app"]
+        browser["React SPA / PWA<br/>in the browser"]
+    end
+
+    subgraph gcp["Google Cloud"]
+        service["Cloud Run service: legion<br/>gunicorn + Django<br/>API, /mcp and the built SPA"]
+        scheduler["Cloud Scheduler<br/>one entry per crontab line"]
+        job["Cloud Run job: legion-worker<br/>manage.py task"]
+        bucket[("GCS bucket legion-apk<br/>APKs, private, signed links")]
+        secrets["Secret Manager"]
+        registry["Artifact Registry<br/>the one image"]
+    end
+
+    supabase[("Supabase Postgres<br/>system of record")]
+    gdrive[("Google Drive<br/>nightly pg_dump, statements")]
+
+    subgraph alienware["Kevin's Alienware"]
+        claude["Claude worker<br/>Claude Code CLI"]
+    end
+
+    schedules["Schedules, UTC<br/>push_dispatch every 5 min<br/>canvas_poll, heartbeat every 30 min<br/>morning_brief, prune_demo_visitors hourly<br/>plaid_sync every 3 h, drive_statements every 6 h<br/>backup_nightly, claude_session_prune,<br/>finance_snapshots, fx_rates daily"]
+
+    android -->|"HTTPS, device token"| service
+    headunit -->|"HTTPS, device token"| service
+    browser -->|"HTTPS, session"| service
+    claude -->|"heartbeat 20 s, claim, finish"| service
+    schedules -.- scheduler
+    scheduler -->|"run with args"| job
+    service --> supabase
+    job --> supabase
+    job -->|"backup_nightly"| gdrive
+    service -->|"signs download links"| bucket
+    claude -->|"release_apk.py uploads"| bucket
+    claude -->|"ship.py deploys"| service
+    registry -.-> service
+    registry -.-> job
+    secrets -.-> service
+    secrets -.-> job

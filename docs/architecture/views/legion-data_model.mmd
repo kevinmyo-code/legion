@@ -1,0 +1,19 @@
+erDiagram
+    accTitle: Core entity relationships
+    accDescr: Everything belongs to a household. Members join users to it with a role; ledger rows, category overrides, budget targets, finance accounts and their balance snapshots, events and checklists all carry the household, the boundary tenancy filters on.
+    %% Sources: server/household/models.py, server/legacy/models/ledger.py and dates.py
+    %% (managed = False mirrors), server/finance/models.py, server/checklists/models.py.
+    Household ||--o{ HouseholdMember : "has (owner, member, recruiter)"
+    User ||--|| HouseholdMember : "is"
+    User ||--o{ DeviceToken : "holds"
+    Household ||--o{ LedgerTransaction : "owns"
+    Statement ||--o{ LedgerTransaction : "gated rows from"
+    LedgerTransaction ||--o{ LedgerTransactionCategory : "category override"
+    Household ||--o{ BudgetTarget : "sets, per category"
+    Household ||--o{ FinanceMember : "has"
+    FinanceMember ||--o{ FinanceAccount : "owns"
+    FinanceAccount ||--o{ BalanceSnapshot : "dated balances"
+    Household ||--o{ Event : "calendar"
+    Household ||--o{ Checklist : "lists"
+    Checklist ||--o{ ChecklistItem : "items"
+    ChecklistItem ||--o{ ChecklistTick : "ticks, per day"

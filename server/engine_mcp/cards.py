@@ -4,8 +4,8 @@ Generative UI (Kevin, 2026-11-04: "go for it"). A tool result may carry `card`, 
 object the web chat (members' and the recruiter demo's) and the phone draw beside the
 transcript. The format is shared with the phone, so its field names are fixed:
 
-- common: `card` ("bars" | "timeline" | "car" | "steps" | "checklist"), `title`, optional
-  `scope`, `period`, `note` (plain words, e.g. "Includes $12.40 unverified").
+- common: `card` ("bars" | "timeline" | "car" | "steps" | "checklist" | "diagram"), `title`,
+  optional `scope`, `period`, `note` (plain words, e.g. "Includes $12.40 unverified").
 - bars: `unit` ("usd", values in integer cents, or "" for counts), `points: [{label, value,
   flag?}]` (flag "unverified" or "estimate"), at most 8, and `more` (rows not shown).
 - timeline: `date` (YYYY-MM-DD in the household's zone), `zone` ("UTC-06:00", never an IANA
@@ -14,6 +14,10 @@ transcript. The format is shared with the phone, so its field names are fixed:
   `codes: [{code, meaning}]`.
 - steps: `name`, `items: [{label, status, ms}]`, `total_ms`.
 - checklist: `list_name`, `items: [{text, done}]`, `more`.
+- diagram: `project`, `view`, `caption` (the picture in words, its alt text), `svg` (inline,
+  pre-rendered by `diagrams/render.py`), `highlight: [node id]`, `nodes: [{id, label}]`. Built
+  by `diagrams.catalogue.diagram_card` from a fixed catalogue, never from model text. The phone
+  draws no diagram: `ServerCards.parse` answers null for a kind it does not know.
 
 Rules every builder keeps:
 

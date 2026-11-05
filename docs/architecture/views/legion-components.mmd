@@ -1,0 +1,60 @@
+flowchart TB
+    accTitle: Engine components, in layers
+    accDescr: Every client enters through Django REST Framework or the /mcp face, is authenticated as one household member and fenced by role, reaches a domain app, and every read and write narrows to that member's household at one choke point before Postgres.
+    %% Sources: server/legion/settings.py INSTALLED_APPS and REST_FRAMEWORK, server/legion/urls.py,
+    %% server/household/authentication.py, permissions.py, recruiter_routes.py, tenancy.py,
+    %% server/api/synced.py, server/assistant/surface.py, server/engine_mcp/server.py, tools.py.
+
+    subgraph clients["Clients"]
+        c_phone["Phone"]
+        c_headunit["Head unit"]
+        c_web["Web and /try"]
+        c_worker["Claude worker"]
+    end
+
+    subgraph api["API layer: Django REST Framework"]
+        auth["Auth<br/>device token or session"]
+        perms["IsHouseholdMember<br/>role, write and recruiter fences"]
+        rest["REST /api/...<br/>SyncedModelViewSet for synced tables"]
+        mcp["/mcp<br/>the tool registry"]
+        tooldoor["/api/assistant/tool<br/>the same registry, by session"]
+    end
+
+    subgraph domain["Domain apps"]
+        assistant["assistant<br/>Live token mint, prompts"]
+        tools["engine_mcp tools<br/>and cards"]
+        procedures["procedures"]
+        finance["finance"]
+        ingest["ingest<br/>the reconciliation gate"]
+        devicelogs["devicelogs"]
+        claude_session["claude_session"]
+        releases["releases"]
+        books["books"]
+        demo["demo<br/>recruiter visits"]
+        lists["checklists, purchases,<br/>brief, push, games"]
+    end
+
+    subgraph tenancy["Household tenancy"]
+        household["household.tenancy<br/>household_of, scoped, visible<br/>TENANT_TABLES"]
+    end
+
+    subgraph data["Postgres"]
+        djangotables[("Django-owned tables")]
+        legacytables[("legacy public tables<br/>managed = False mirrors")]
+    end
+
+    c_phone --> auth
+    c_headunit --> auth
+    c_web --> auth
+    c_worker --> auth
+    auth --> perms
+    perms --> rest
+    perms --> mcp
+    perms --> tooldoor
+    mcp --> tools
+    tooldoor --> tools
+    rest --> domain
+    tools --> domain
+    domain --> household
+    household --> djangotables
+    household --> legacytables

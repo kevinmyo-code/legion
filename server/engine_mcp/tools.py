@@ -57,6 +57,10 @@ from jsonschema import Draft202012Validator
 
 from api.event_columns import KIND_SUGGESTION
 from api.registry import SYNCED_VIEWSETS
+from diagrams.catalogue import ALL_VIEW_IDS as DIAGRAM_VIEW_IDS
+from diagrams.catalogue import HIGHLIGHT_MAX as DIAGRAM_HIGHLIGHT_MAX
+from diagrams.catalogue import VIEWS as DIAGRAM_VIEWS
+from diagrams.catalogue import view_words as diagram_view_words
 from engine_mcp import cards
 from engine_mcp.dispatch import RouteNotFound, call_route
 from engine_mcp.models import Outcome
@@ -75,7 +79,8 @@ class ToolResult:
     outcome: str = Outcome.OK
     structured: dict | None = None
     # What a screen draws beside the transcript (`engine_mcp/cards.py`), built from the tool's
-    # own rows. Only the web tool door returns it, beside `response`; it never goes to a model.
+    # own rows. The web tool door returns it beside `response`, and `/mcp` in `_meta`; it never
+    # goes to a model.
     card: dict | None = None
 
 
@@ -2077,12 +2082,31 @@ def _legion_docs(request, args) -> ToolResult:
             "same subject may find something.",
             {"query": query, "passages": []},
         )
+    from diagrams.catalogue import suggested_views, suggestion_words
+
     body = "\n\n".join(f"[{i}] {p.label}\n{p.text}" for i, p in enumerate(passages, 1))
+    structured = {"query": query, "passages": [p.as_dict() for p in passages]}
+    views = suggested_views(passages)
+    if views:
+        structured["diagrams"] = [{"project": p, "view": v} for p, v in views]
     return ok(
         f"{len(passages)} passage(s) from LEGION's design docs for {query!r}. {DOCS_CONTRACT}"
-        f"\n\n{body}",
-        {"query": query, "passages": [p.as_dict() for p in passages]},
+        f"{suggestion_words(passages)}\n\n{body}",
+        structured,
     )
+
+
+# =============================================================================
+# show_diagram: an architecture diagram as a card (arch-diagrams ticket 01,
+# Kevin 2026-11-05). The views are fixed and pre-rendered (`diagrams/`); the
+# model picks one and the parts to highlight, and never draws.
+# =============================================================================
+
+
+def _show_diagram(request, args) -> ToolResult:
+    from diagrams.catalogue import show
+
+    return show(request, args)
 
 
 # =============================================================================
@@ -2194,6 +2218,8 @@ _WRITE_NOTE = (
     " " + WRITE_SCOPE_SENTENCE + "Report it done only when this tool's result says it was "
     "committed."
 )
+
+DIAGRAM_VIEW_WORDS = diagram_view_words()
 
 TOOLS: tuple[EngineTool, ...] = (
     EngineTool(
@@ -2741,6 +2767,35 @@ TOOLS: tuple[EngineTool, ...] = (
             ("query",),
         ),
         handler=_legion_docs,
+    ),
+    EngineTool(
+        name="show_diagram",
+        title="Show an architecture diagram",
+        description=(
+            "Shows one of Kevin's prepared architecture diagrams on the person's screen, as a "
+            "card beside the conversation, and highlights the parts you name. Use it whenever "
+            "someone asks how something is built or how it works - LEGION's architecture, its "
+            "deployment, the voice loop, the data model, how Kevin works with AI coding agents - "
+            "and walk through it while you explain, naming the parts you highlight. You cannot "
+            "draw or change a diagram: pick `project` and one of that project's views below. The "
+            "result lists the view's part ids; to point at parts, call it again with the same "
+            "view and `highlight` set to those ids. If a project or view is not available, say "
+            "so, and never describe a diagram you were not shown. Views: "
+            + DIAGRAM_VIEW_WORDS
+        ),
+        input_schema=_object(
+            {
+                "project": {"type": "string", "enum": list(DIAGRAM_VIEWS)},
+                "view": {"type": "string", "enum": list(DIAGRAM_VIEW_IDS)},
+                "highlight": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,48}$"},
+                    "maxItems": DIAGRAM_HIGHLIGHT_MAX,
+                },
+            },
+            ("project", "view"),
+        ),
+        handler=_show_diagram,
     ),
     EngineTool(
         name="web_search",

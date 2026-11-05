@@ -1,0 +1,45 @@
+flowchart TB
+    accTitle: The ingestion gate
+    accDescr: A bank's own Plaid feed is stored as fact with no gate. A statement meets a registered parser first, a CSV never reaches Gemini, and a PDF the model reads needs all three anchors; every document must reconcile to its own printed figures exactly or it is quarantined whole, and the anchors are kept beside the rows.
+    %% Sources: CLAUDE.md section 4; server/ingest/plaid_sync.py, statements.py (route, missing_anchors,
+    %% three_anchor_reason, CSV_NOT_RECOGNISED), gate.py (check_statement, check_receipt),
+    %% views.py (commit_statement, ReceiptIngestView); server/legacy/models/ingest.py, enums.py.
+
+    plaid["Plaid feed<br/>plaid_sync, every 3 h"]
+    statement["Statement file<br/>Drive folder, every 6 h"]
+    receipt["Receipt photo<br/>on the phone"]
+
+    bankrows["Stored as fact, no gate<br/>provenance BANK_API<br/>replaces file rows from its first date"]
+
+    seen{"Seen this file<br/>before?"}
+    parser{"A registered parser<br/>recognises it?"}
+    csv{"A CSV?"}
+    llm["Gemini reads the PDF<br/>on the household key"]
+    anchors{"Printed total, opening<br/>and closing balance<br/>all stated?"}
+    vision["Gemini vision reads it"]
+
+    reconcile{"Lines sum to the printed total,<br/>closing minus opening<br/>equals the sum?"}
+    receiptcheck{"Items, tax and other<br/>sum to the printed total?"}
+
+    commit["Commit<br/>DETERMINISTIC or LLM_RECONCILED<br/>anchors kept in their own columns"]
+    quarantine["Quarantine the whole document<br/>reason in words, nothing written"]
+    skip["Skip: known"]
+
+    plaid --> bankrows
+    statement --> seen
+    seen -->|"yes"| skip
+    seen -->|"no"| parser
+    parser -->|"yes"| reconcile
+    parser -->|"refused"| quarantine
+    parser -->|"no"| csv
+    csv -->|"yes, never sent to Gemini"| quarantine
+    csv -->|"no, a PDF"| llm
+    llm --> anchors
+    anchors -->|"any missing"| quarantine
+    anchors -->|"all three"| reconcile
+    reconcile -->|"exact"| commit
+    reconcile -->|"off by any cent"| quarantine
+    receipt --> vision
+    vision --> receiptcheck
+    receiptcheck -->|"exact"| commit
+    receiptcheck -->|"no"| quarantine

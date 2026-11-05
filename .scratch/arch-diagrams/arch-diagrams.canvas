@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "id": "11ae1db032b9b086",
+      "type": "file",
+      "file": ".scratch/arch-diagrams/issues/01-show-diagram.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}

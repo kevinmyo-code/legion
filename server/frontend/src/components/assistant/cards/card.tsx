@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { BarsView } from './bars'
 import { CarView } from './car'
 import { ChecklistView } from './checklist'
+import { DiagramView } from './diagram'
 import { StepsView } from './steps'
 import { TimelineView } from './timeline'
 import type { Card } from './types'
@@ -28,6 +29,8 @@ export function ToolCard({ card, className }: { card: Card; className?: string }
         <CarView card={card} />
       ) : card.card === 'steps' ? (
         <StepsView card={card} />
+      ) : card.card === 'diagram' ? (
+        <DiagramView card={card} />
       ) : (
         <ChecklistView card={card} />
       )}

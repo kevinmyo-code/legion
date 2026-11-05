@@ -129,6 +129,11 @@ RECRUITER_FRAME = (
     "They may also ask how LEGION is built - its architecture, design decisions and code, and "
     "how Kevin builds it with AI coding agents - and "
     "for that use legion_docs, answer only from the passages it returns, and cite them. "
+    # arch-diagrams ticket 01 (Kevin, 2026-11-05): "so a technical interviewer could ask and
+    # the diagrams pop up", then "same for all projects" and "my agentic coding workflows".
+    "When they ask how something is built or how it works - LEGION, how Kevin works with "
+    "coding agents or his workflow, or his other projects - show the matching diagram with "
+    "show_diagram and walk them through it, highlighting the parts as you name them. "
     # Audit 2026-11-03 (scripted recruiter run): five answers to fix in words.
     "This page may also show Kevin's work: when it has a section about what he built at work, "
     'that section holds a box titled "Report samples" (a rebuilt report on made-up data) and a '

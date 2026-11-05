@@ -108,7 +108,22 @@ export interface ChecklistCard extends Common {
   more: number
 }
 
-export type Card = BarsCard | TimelineCard | CarCard | StepsCard | ChecklistCard
+/**
+ * An architecture diagram (`show_diagram`, `server/diagrams/catalogue.py`): a picture the engine
+ * rendered ahead of time from a fixed catalogue, never drawn from model text. `caption` is the
+ * picture in words; `highlight` names the parts the assistant is pointing at, by `nodes` id.
+ */
+export interface DiagramCard extends Common {
+  card: 'diagram'
+  project: string
+  view: string
+  caption: string
+  svg: string
+  highlight: string[]
+  nodes: { id: string; label: string }[]
+}
+
+export type Card = BarsCard | TimelineCard | CarCard | StepsCard | ChecklistCard | DiagramCard
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -136,6 +151,16 @@ export function asCard(value: unknown): Card | undefined {
       return typeof value.name === 'string' && isList(value.items) ? (value as unknown as StepsCard) : undefined
     case 'checklist':
       return typeof value.list_name === 'string' && isList(value.items) ? (value as unknown as ChecklistCard) : undefined
+    case 'diagram':
+      return typeof value.svg === 'string' &&
+        value.svg.trimStart().startsWith('<svg') &&
+        typeof value.caption === 'string' &&
+        typeof value.view === 'string' &&
+        Array.isArray(value.highlight) &&
+        value.highlight.every((h) => typeof h === 'string') &&
+        isList(value.nodes)
+        ? (value as unknown as DiagramCard)
+        : undefined
     default:
       return undefined
   }

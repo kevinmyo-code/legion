@@ -1,0 +1,59 @@
+flowchart TB
+    accTitle: LEGION in context
+    accDescr: Three kinds of people reach LEGION through four clients. Every client talks to one Django engine over HTTPS; Gemini is called directly by the phone and head unit on the household's key, and by the browser with a one-use token the engine mints.
+    %% Sources: app/ (backend/engine/*, service/GeminiLiveSession.kt, gmail/GmailClient.kt,
+    %% sync/DriveClient.kt, vehicle/VinDecoder.kt), headunit/, server/frontend/src/assistant/live-client.ts,
+    %% server/assistant/live.py, server/ingest/ (plaid_client, statements, drive, canvas, backup),
+    %% server/engine_mcp/recalls.py, tools/claude_session/ (session.py, ship.py).
+
+    kevin("Kevin<br/>owner")
+    members("Household members<br/>invite only")
+    recruiters("Recruiters<br/>/try, invite code")
+
+    subgraph clients["Clients"]
+        phone["Android phone app<br/>Alfred, Room replica"]
+        headunit["Car head unit app"]
+        web["React web app<br/>and the /try demo"]
+        worker["Claude worker<br/>on Kevin's Alienware"]
+    end
+
+    subgraph direct["Called by the clients directly"]
+        gemini["Gemini Live<br/>voice"]
+        gmail["Gmail<br/>read only"]
+        github["GitHub<br/>the repo"]
+    end
+
+    engine["LEGION engine<br/>Django + Postgres"]
+
+    subgraph outside["Called by the engine"]
+        gemini_rest["Gemini REST<br/>Live token mint, statement PDFs, web search"]
+        plaid["Plaid<br/>bank feed"]
+        drive["Google Drive<br/>statements, nightly backup"]
+        canvas["Canvas<br/>coursework"]
+        nhtsa["NHTSA<br/>recalls"]
+    end
+
+    kevin --> phone
+    kevin --> headunit
+    kevin --> web
+    members --> phone
+    members --> web
+    recruiters --> web
+
+    phone -->|"household key"| gemini
+    headunit -->|"household key"| gemini
+    web -->|"one-use token"| gemini
+    phone -->|"read-through only"| gmail
+    worker --> gmail
+    worker -->|"push dev, main"| github
+
+    phone -->|"device token"| engine
+    headunit -->|"device token"| engine
+    web -->|"session"| engine
+    worker -->|"device token"| engine
+
+    engine --> gemini_rest
+    engine --> plaid
+    engine --> drive
+    engine --> canvas
+    engine --> nhtsa
