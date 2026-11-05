@@ -138,7 +138,12 @@ def canvas_section(viewer: Viewer, now: dt.datetime, zone: dt.tzinfo) -> dict:
             text += " Canvas says submitted."
         elif meta.get("canvas_submitted") is False:
             text += " Canvas says not submitted."
-        lines.append(line(text))
+        # Which row at which start this line said, so a reader that also lists today's events
+        # (`morning_briefing`'s `day_events`) can leave out the same occurrence (2026-11-05:
+        # a task due today was said twice). Additive: the API's line serializer leaves it out.
+        lines.append(
+            {**line(text), "event_id": str(task.id), "starts_at": task.starts_at.isoformat()}
+        )
     if not lines:
         lines.append(line(f"No tasks due in the next {CANVAS_DAYS} days."))
     return section(
