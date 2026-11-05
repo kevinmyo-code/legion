@@ -4,7 +4,7 @@ ticket: "01"
 title: "Alfred pack: format and engine endpoint"
 type: build
 status: built
-status-detail: "engine half built 2026-11-05 on feat/alfred-ota-engine (pack, generator, lock, GET /api/assistant/pack, tests). Owed: engine deploy (Kevin); the phone reading it is ticket 02; ADR 0072 not written"
+status-detail: "engine half built 2026-11-05 on feat/alfred-ota-engine; the phone half (ticket 02) and ADR 0072 built 2026-11-05 on feat/alfred-ota-phone. Owed: engine deploy (Kevin)"
 blockers: []
 blocked-by: []
 open-blockers: 0

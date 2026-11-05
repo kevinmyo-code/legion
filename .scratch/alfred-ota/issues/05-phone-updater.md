@@ -3,8 +3,8 @@ map: alfred-ota
 ticket: "05"
 title: "Phone updater: check, download, verify, ask, install"
 type: build
-status: open
-status-detail: "charted 2026-11-05; after 04 and decision 3"
+status: built
+status-detail: "built 2026-11-05 on feat/alfred-ota-phone, JVM suite green. Owed: Kevin's grants and first OTA (ticket 07)"
 blockers: ["04"]
 blocked-by: ["[[04-version-and-publisher]]"]
 open-blockers: 1
@@ -57,3 +57,28 @@ A `version_code` newer than `BuildConfig.VERSION_CODE` means an update is availa
   - a signer mismatch refuses
   - ask gating: no prompt mid-conversation or in Matrix
 - Robolectric covers the PackageInstaller wrapper boundary, with a fake session.
+
+## Built (2026-11-05, branch `feat/alfred-ota-phone`)
+
+- `update/UpdateRules.kt` (pure: version compare, Wi-Fi gate, verify, install gate, ask gate, the
+  offer window), `UpdateModels.kt` (release JSON), `UpdateController.kt` (check, download, verify,
+  ask, install over fakeable seams), `UpdateAndroid.kt` (engine backend, OkHttp Range download
+  that never sends the engine token, PackageManager facts, PackageInstaller session with
+  `USER_ACTION_NOT_REQUIRED` on 31+, prefs), `UpdateGraph.kt` (the one controller, notification
+  with Install/Later, the spoken ask, receivers, daily `UpdateCheckWorker`).
+- Never installs in Matrix or with the car connected (refused in words); a yes given
+  mid-conversation is held and installs 3 s after the conversation ends (lapses after 15 min).
+  A voice yes counts only 2 s to 3 min after the update was offered (code, not only prompt).
+- The spoken ask is a proactive raise in a new category, `UPDATES` ("App updates"), default on,
+  once per release, never mid-conversation, in Matrix or in the car, and it listens 20 s for the
+  yes. The notification is always posted as well (the map asks for both).
+- `MY_PACKAGE_REPLACED` (`PackageReplacedReceiver`) runs what `BootReceiver` runs, now shared as
+  `rearmAfterRestart`, and deletes the downloaded APK.
+- `REQUEST_INSTALL_PACKAGES` in the manifest; Kevin grants "Install unknown apps" once
+  (Settings, Updates, Allow installs).
+- Signer checks need Android 9+ (`GET_SIGNING_CERTIFICATES`); below that nothing verifies, so
+  nothing installs. The A25 is Android 14.
+- Verification: version compare, the Wi-Fi gate, sha256 mismatch, signer mismatch, ask gating:
+  JVM (`UpdateRulesTest`, `UpdateControllerTest`). The PackageInstaller wrapper: Robolectric
+  (`AndroidPackageInstallerGatewayTest`, the session shadow). On-device: owed, ticket 07,
+  including the first install's Android confirm and the ART first-launch cost.

@@ -77,6 +77,7 @@ Format and the test for whether something deserves an ADR:
 | 0069 | [[0069-each-recruiter-visit-gets-its-own-household\|Each recruiter visit gets its own household, and only there may a gated row be deleted]] | accepted | 2026-11-02 | - |
 | 0070 | [[0070-procedures-run-by-the-engine\|Procedures: compiled multi-step answers, run by the engine]] | accepted | 2026-11-03 | - |
 | 0071 | [[0071-voice-browser\|LEGION has its own browser, and Alfred drives it by voice]] | accepted | 2026-11-03 | - |
+| 0072 | [[0072-alfred-pack-and-self-update\|Alfred's wording comes from the engine; the phone updates itself, and asks first]] | accepted | 2026-11-05 | - |
 
 ## Superseded
 

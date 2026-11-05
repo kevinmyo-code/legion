@@ -7190,3 +7190,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   signed in, then Amazon redirected it to a fresh sign-in (`max_auth_age=0`) though the login
   cookies were valid for a year. Not worked around (that is a bot check). Kevin chose A: drop it;
   Gmail first, then the carrier's public tracking page. Script and tests deleted.
+
+## 2026-11-05 - Patch Alfred over the internet: the pack and self-update (Kevin)
+
+- **Asked:** *"today we deploy via adb installs, is there anyway to patch alfred over the
+  internet"*, then *"lets do it. write a plan then we implement"*. Map `.scratch/alfred-ota/`.
+- **Ruled, all five as recommended:** (1) the Alfred pack is a repo file changed by an engine
+  deploy, not Postgres rows; (2) a locked set (crisis, safety, honesty, ask-before, no-passwords)
+  stays compiled into the app and no pack may override it; (3) always ask before installing, by
+  voice or tap, never mid-conversation, in Matrix or with the car connected; (4) Kevin, or the
+  worker after his yes, publishes with `tools/release_apk.py`; (5) keep the debug key and back it
+  up, a real release key later in one planned reinstall.
+- **Recommended and not taken:** pack rows in Postgres; auto-install when idle and charging.
+- **Found while building:** the map's `yyMMddHHmm` versionCode overflows (2611051200 is over the
+  Int cap and Android's 2,100,000,000). Built as `yyDDDHHmm` UTC instead; Kevin to confirm.
+- ADR 0072.
