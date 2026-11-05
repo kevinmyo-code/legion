@@ -1,0 +1,37 @@
+flowchart TB
+    accTitle: Who does what
+    accDescr: Kevin rules and approves. The orchestrator session plans, dispatches by default and reviews, relaying each agent's verification tags unchanged. Five subagent seats build, audit, run the phone, search and design in their own worktrees. The Claude worker on the Alienware takes Alfred's tasks by voice. Hooks hold the line in both places.
+    %% Sources: docs/working-with-agents.md ("What Kevin does and what agents do", "The agent team");
+    %% CLAUDE.md section 8 (dispatch is the default, relay rule); TEAM.md; .claude/agents/*.md;
+    %% .claude/settings.json hooks and tools/hooks/*.py; tools/claude_session/README.md, asklist_hook.py.
+
+    kevin("Kevin<br/>sets the destination, rules, approves")
+
+    orchestrator["Orchestrator<br/>main Claude Code session<br/>plans, dispatches, reviews, relays tags"]
+
+    subgraph seats["Subagent seats: .claude/agents, own worktrees"]
+        builder["builder<br/>writes code to the spec"]
+        auditor["auditor<br/>reads adversarially"]
+        devicer["device<br/>the real phone, adb"]
+        scout["scout<br/>read-only search"]
+        frontend["frontend<br/>the web client"]
+    end
+
+    alfred["Alfred on the phone"]
+    worker["Claude worker on the Alienware<br/>takes Alfred's tasks, asks Ship it?"]
+
+    subgraph hooks["Hooks"]
+        repohooks["Repo hooks, before tool calls<br/>commit: regenerate board, wiki, ADR index<br/>block destructive commands, generated files<br/>warn: Kotlin over 1000 lines, Room changes"]
+        asklist["asklist_hook on the worker<br/>push, deploy, publish only via ship.py"]
+    end
+
+    kevin -->|"rulings, answers"| orchestrator
+    orchestrator -->|"briefs with tags"| seats
+    seats -->|"reports with an assumptions ledger"| orchestrator
+    orchestrator -->|"results, owed device runs"| kevin
+    kevin -->|"by voice"| alfred
+    alfred -->|"task"| worker
+    worker -->|"Ship it?"| alfred
+    repohooks -.-> orchestrator
+    repohooks -.-> seats
+    asklist -.-> worker

@@ -1,0 +1,33 @@
+sequenceDiagram
+    accTitle: One change, from Kevin's ask to his phone
+    accDescr: The budget bar change of 2026-11-05. Kevin asked to see what he had spent against what was left; an agent built it on a branch with the suites and screenshots, Kevin corrected it twice, the branch merged to dev and main, his own command deployed the engine and published the release, and the phone asked before it installed.
+    %% Sources: git log origin/dev 2026-11-05 (66d7bf5a, 4dfb3c92, 1b051092, d7360072, 0b26ff92);
+    %% tools/release_apk.py; deploy/cloudrun/deploy.py, deploy_job.py; server/releases/views.py;
+    %% app/.../update/UpdateGraph.kt, UpdateController.kt; .scratch/alfred-ota/issues/05-phone-updater.md.
+    actor kevin as Kevin
+    participant orch as Orchestrator session
+    participant agent as Agent in a worktree
+    participant git as Git: dev and main
+    participant cloud as Cloud Run
+    participant releases as Engine /api/releases
+    participant phone as Kevin's phone
+
+    kevin->>orch: "how much ive spent this month vs how much left"
+    orch->>agent: brief: one budget board, a total bar
+    agent->>agent: branch, build, JVM tests, detekt, tsc -b
+    agent->>agent: engine: fixed categories carry their own cap
+    agent->>agent: screenshots re-recorded
+    agent-->>orch: report with its assumptions ledger
+    orch-->>kevin: the built bar
+    kevin->>orch: "why 438 out of 1365?"
+    kevin->>orch: "just show all 2830 and no need for the daily bar"
+    orch->>agent: every budget in the total, no pace tick
+    agent->>git: commits, merged to dev, then main
+    kevin->>cloud: his ! command: deploy.py, deploy_job.py
+    kevin->>releases: same command: release_apk.py checks signer and versionCode, uploads, publishes
+    phone->>releases: latest release (at start, daily, after a conversation)
+    releases-->>phone: newer version, signed download link
+    phone->>phone: download, check sha256 and signer
+    phone-->>kevin: "LEGION update ready. Install?"
+    kevin->>phone: Install
+    phone->>phone: installed

@@ -1,0 +1,47 @@
+flowchart TB
+    accTitle: The agentic coding loop
+    accDescr: Kevin's idea is grilled into rulings, charted as a map of tickets with ADRs, built by agents in parallel in their own git worktrees, held at the real build and test gates, merged to dev and main, and shipped as an engine deploy or an over-the-air phone release; a mistake found on the way becomes a lesson.
+    %% Sources: docs/working-with-agents.md "The loop"; CLAUDE.md sections 8 (working model, L10, L11,
+    %% branching), 12 (maps, tickets, statuses) and 13 (ADRs, the commit hook, docs_check); TEAM.md;
+    %% tools/claude_session/ship.py; tools/release_apk.py.
+
+    subgraph decide["Decide"]
+        direction LR
+        idea("Kevin's idea")
+        grill["Grilling<br/>grillme, one question at a time"]
+        rulings["Kevin's rulings<br/>named and dated"]
+        map["Map and tickets<br/>.scratch/effort/map.md + issues/<br/>a build ticket per resolved decision"]
+        adr["ADRs + decisions.md"]
+    end
+
+    subgraph build["Build"]
+        direction LR
+        agents["Parallel agents<br/>one git worktree each<br/>feat/ or fix/ branch off dev"]
+        gates{"Gates"}
+        gatelist["Real build and suites:<br/>compileDebugKotlin + JVM tests<br/>pytest, tsc -b, detekt baseline<br/>docs_check, decision_debt hook<br/>screenshots"]
+        built["Ticket status: built<br/>owes a run on the real phone"]
+    end
+
+    subgraph ship["Ship"]
+        direction LR
+        merge["Merge to dev<br/>then dev to main"]
+        deploy["Engine deploy<br/>Cloud Run"]
+        ota["Phone release<br/>release_apk.py, over the air"]
+        device("Kevin's run<br/>on his phone")
+        lesson["Lesson in lessons.md<br/>graduates into a rule or a check"]
+    end
+
+    idea --> grill --> rulings
+    rulings --> map
+    rulings --> adr
+    map --> agents
+    agents --> gates
+    gatelist -.- gates
+    gates -->|"red"| agents
+    gates -->|"green"| built
+    built --> merge
+    merge --> deploy
+    merge --> ota
+    deploy --> device
+    ota --> device
+    device -->|"found a bug"| lesson

@@ -1,0 +1,34 @@
+sequenceDiagram
+    accTitle: A recruiter's visit, invite code to deletion
+    accDescr: The invite code buys a two-hour visit with its own freshly seeded demo household; every voice session is a one-use, locked Gemini Live token, every tool call is fenced by the recruiter allowlist, and an hourly job deletes the whole household once the visit expires.
+    %% Sources: server/demo/views.py DemoEnterView, household/demo_seed.py, assistant/views.py,
+    %% assistant/live.py, assistant/surface.py, demo/budget.py, demo/visit_cleanup.py, deploy/crontab.
+    participant visitor as Recruiter's browser (/try)
+    participant enter as Engine: /api/demo/enter
+    participant pg as Postgres
+    participant mint as Engine: /api/assistant/session
+    participant gemini as Gemini Live
+    participant door as Engine: /api/assistant/tool
+    participant prune as Hourly job: prune_demo_visitors
+
+    visitor->>enter: invite code (+ ref from the resume link)
+    enter->>pg: DemoCode.match (sha256 of the code: live, wrong or retired)
+    Note over enter,pg: one transaction, rolled back whole on any error
+    enter->>pg: new Household (is_demo_visit), seeded by demo_seed.seed_household
+    enter->>pg: visitor User, recruiter member, read-scoped token, DemoVisit (expires in 2 h)
+    enter-->>visitor: session cookie + token, expires_at
+    visitor->>mint: start voice
+    mint->>pg: reserve today's demo budget (DemoBudgetDay, code's own cap)
+    mint->>gemini: mint a one-use token, setup locked, RECRUITER_TOOLS declared, 5 min
+    mint-->>visitor: ephemeral token + WebSocket URL
+    visitor->>gemini: audio over the WebSocket
+    gemini-->>visitor: tool call
+    visitor->>door: tool name + args
+    door->>door: refusal_for: RECRUITER_TOOLS and RECRUITER_TABLES, default deny
+    door->>pg: run the tool on the visit's own household only
+    door-->>visitor: response (to Gemini) + card (to the screen)
+    visitor->>gemini: functionResponse
+    gemini-->>visitor: spoken answer
+    Note over visitor,pg: after 2 h the token and session stop working
+    prune->>pg: expired visits: delete_visit_household (every tenant table, then users, then household)
+    Note over prune,pg: the DemoVisit row stays, its user, token and household set to null

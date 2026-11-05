@@ -1,9 +1,10 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
 
-import { CAR_CARD, DAY_CARD, LIST_CARD, RECALLS_HALF, SERVICE_HALF, SPEND_CARD, STEPS_CARD, WEEK_CARD } from '@/test/cards-seed'
+import { CAR_CARD, DAY_CARD, DIAGRAM_CARD, LIST_CARD, RECALLS_HALF, SERVICE_HALF, SPEND_CARD, STEPS_CARD, WEEK_CARD } from '@/test/cards-seed'
 
 import { ToolCard } from './card'
+import { cleanSvg } from './diagram'
 import { asCard, centsWords, clockWords, dayWords, mergeCar } from './types'
 
 const region = (name: string) => screen.getByRole('region', { name })
@@ -114,7 +115,9 @@ describe('cards over several days, and a car in parts', () => {
 
 describe('the card shape', () => {
   test('asCard keeps the five kinds and draws nothing for anything else', () => {
-    for (const card of [SPEND_CARD, DAY_CARD, CAR_CARD, STEPS_CARD, LIST_CARD]) expect(asCard(card)).toBe(card)
+    for (const card of [SPEND_CARD, DAY_CARD, CAR_CARD, STEPS_CARD, LIST_CARD, DIAGRAM_CARD]) expect(asCard(card)).toBe(card)
+    expect(asCard({ ...DIAGRAM_CARD, svg: '<div>not a picture</div>' })).toBeUndefined()
+    expect(asCard({ ...DIAGRAM_CARD, highlight: [1] })).toBeUndefined()
     expect(asCard(undefined)).toBeUndefined()
     expect(asCard({ card: 'pie', title: 'x' })).toBeUndefined()
     expect(asCard({ card: 'bars', title: 'x', points: [{ label: 'a', value: 1.5 }] })).toBeUndefined()
@@ -127,5 +130,44 @@ describe('the card shape', () => {
     expect(clockWords('00:05')).toBe('12:05 am')
     expect(clockWords('12:00')).toBe('12:00 pm')
     expect(dayWords('2026-11-04')).toBe('Wed Nov 4, 2026')
+  })
+})
+
+describe('diagram card', () => {
+  test('draws the SVG, outlines the highlighted parts, and says them and the caption in words', () => {
+    render(<ToolCard card={DIAGRAM_CARD} />)
+    const card = region('Engine components, in layers')
+    expect(within(card).getByText('LEGION')).toBeInTheDocument()
+    expect(within(card).getByText(DIAGRAM_CARD.caption)).toBeInTheDocument()
+    expect(within(card).getByText('Highlighted: /api/assistant/tool, household.tenancy')).toBeInTheDocument()
+    const nodes = card.querySelectorAll('[data-diagram="inline"] [data-node]')
+    expect(nodes).toHaveLength(3)
+    const lit = Array.from(nodes).filter((n) => n.classList.contains('dg-hl')).map((n) => n.getAttribute('data-node'))
+    expect(lit).toEqual(['tooldoor', 'household'])
+  })
+
+  test('nothing in the SVG can run: scripts and handlers are stripped', () => {
+    render(<ToolCard card={DIAGRAM_CARD} />)
+    const card = region('Engine components, in layers')
+    expect(card.querySelector('script')).toBeNull()
+    expect(card.querySelector('[onclick]')).toBeNull()
+    expect(cleanSvg('<div>nope</div>')).toBeNull()
+  })
+
+  test('no highlight says nothing about one', () => {
+    render(<ToolCard card={{ ...DIAGRAM_CARD, highlight: [] }} />)
+    const card = region('Engine components, in layers')
+    expect(within(card).queryByText(/Highlighted/)).toBeNull()
+    expect(card.querySelectorAll('.dg-hl')).toHaveLength(0)
+  })
+
+  test('tap opens it full screen with zoom', () => {
+    render(<ToolCard card={DIAGRAM_CARD} />)
+    fireEvent.click(screen.getByRole('button', { name: /Open the diagram full screen/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Engine components, in layers' })
+    expect(within(dialog).getByText('100%')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Zoom in' }))
+    expect(within(dialog).getByText('125%')).toBeInTheDocument()
+    expect(dialog.querySelectorAll('[data-diagram="full"] .dg-hl')).toHaveLength(2)
   })
 })

@@ -114,6 +114,12 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     # public repo's docs (`assistant/docs_corpus.json`): no household row, no
     # private file.
     "legion_docs",
+    # The architecture diagrams (arch-diagrams ticket 01, Kevin 2026-11-05: "so
+    # a technical interviewer could ask and the diagrams pop up"). Pre-rendered
+    # pictures picked from a fixed list (`diagrams/`): no household row. The
+    # private projects' views follow the visit code's content version, and the
+    # LinkedIn version is never shown Quanex (`diagrams.catalogue.WITHHELD`).
+    "show_diagram",
     # The web, through Gemini with Google Search grounding (audit 2026-11-03:
     # "What is the H1B1?" had no answer). Sends the visitor's question and
     # nothing of the household; each call is charged against the demo's daily
@@ -200,14 +206,22 @@ def tools_for(user):
     """The tools `user`'s web assistant is declared, in order. A recruiter
     gets `RECRUITER_TOOLS`; everyone else the whole web surface, unchanged,
     but for `run_procedure`, whose `name` enum lists what THIS user may run
-    (`procedures.listing.tool_for`)."""
+    (`procedures.listing.tool_for`), and `show_diagram`, whose projects and
+    views are the ones THIS user can be shown (`diagrams.catalogue.declared_for`)."""
+    from diagrams.catalogue import declared_for
     from procedures.listing import tool_for
 
     tools = recruiter_tools() if is_recruiter(user) else web_tools()
-    return [
-        tool_for(tool, user, user.household) if tool.name == "run_procedure" else tool
-        for tool in tools
-    ]
+    out = []
+    for tool in tools:
+        if tool.name == "run_procedure":
+            tool = tool_for(tool, user, user.household)
+        elif tool.name == "show_diagram":
+            # Only the diagrams this caller can be shown: never a withheld project (arch-diagrams
+            # ticket 01: no Quanex for the LinkedIn version), never one with nothing loaded.
+            tool = declared_for(tool, user)
+        out.append(tool)
+    return out
 
 
 def web_description(tool) -> str:

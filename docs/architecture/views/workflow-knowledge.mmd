@@ -1,0 +1,34 @@
+flowchart LR
+    accTitle: The knowledge layer
+    accDescr: Each question has one place to answer it. CLAUDE.md holds the rules, MEMORY.md the dated state, the ADRs what binds now and decisions.md what happened when; tickets' frontmatter generates the board and the public wiki, so they cannot drift. Agent auto-memory lives outside the repo.
+    %% Sources: CLAUDE.md "Read order", sections 8 (improvement loop), 12 (vault layer) and 13 (docs
+    %% layer, the commit hook); memory/MEMORY.md header; docs/working-with-agents.md;
+    %% tools/obsidian_sync.py, tools/pending_wiki.py, tools/decision_debt.py.
+
+    subgraph repo["In the repo"]
+        claudemd["CLAUDE.md<br/>the rules"]
+        memorymd["memory/MEMORY.md<br/>the state, every line dated"]
+        adrs["docs/adr<br/>what binds now"]
+        decisions["memory/library/decisions.md<br/>what happened, when"]
+        lessons["memory/library/lessons.md<br/>mistakes, until they become rules"]
+        agentdefs[".claude/agents + TEAM.md<br/>roles, no stale facts"]
+        tickets["Tickets: .scratch maps<br/>status in YAML frontmatter"]
+        sync["obsidian_sync.py + pending_wiki.py<br/>run by the commit hook"]
+        board["vault/Board.md, canvases<br/>ADR index"]
+        wiki["docs/index.html<br/>the public wiki"]
+    end
+
+    outside["Agent auto-memory<br/>outside the repo"]
+    agent("An agent starting work")
+
+    tickets --> sync
+    sync --> board
+    sync --> wiki
+    lessons -->|"graduates into"| claudemd
+    lessons -->|"graduates into"| agentdefs
+    decisions -->|"standing ones become"| adrs
+    agent -->|"1 state"| memorymd
+    agent -->|"2 rules"| claudemd
+    agent -->|"3 how it fits"| adrs
+    agent -->|"what is planned"| board
+    agent -.-> outside

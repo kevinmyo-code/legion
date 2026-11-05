@@ -1,4 +1,4 @@
-import { mergeCar, type Card } from '@/components/assistant/cards/types'
+import { mergeCar, type Card, type DiagramCard } from '@/components/assistant/cards/types'
 
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
@@ -812,6 +812,7 @@ export class LiveClient {
    * older line gives its card up, so the screen shows the car once.
    */
   private mergedCard(card: Card): Card {
+    if (card.card === 'diagram') return this.replacedDiagram(card)
     if (card.card !== 'car') return card
     const lines = this.state.lines
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -820,6 +821,24 @@ export class LiveClient {
       if (line.card.card !== 'car' || line.card.name !== card.name) return card
       this.update(line.id, { card: undefined } as Partial<Line>)
       return mergeCar(line.card, card)
+    }
+    return card
+  }
+
+  /**
+   * The same diagram shown again (new highlights while the assistant walks
+   * through it) replaces the newest card when that card is the same view, so
+   * the screen shows the picture once, pointing at the parts named now.
+   */
+  private replacedDiagram(card: DiagramCard): Card {
+    const lines = this.state.lines
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i]
+      if (line.kind !== 'tool' || !line.card) continue
+      if (line.card.card === 'diagram' && line.card.project === card.project && line.card.view === card.view) {
+        this.update(line.id, { card: undefined } as Partial<Line>)
+      }
+      return card
     }
     return card
   }
