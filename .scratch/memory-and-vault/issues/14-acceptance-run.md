@@ -6,8 +6,8 @@ type: test
 status: open
 status-detail: ""
 blockers: ["08", "09", "10", "11", "12", "13"]
-blocked-by: []
-open-blockers: 0
+blocked-by: ["[[08-worker-memory-tools]]", "[[09-phone-memory-on-engine]]", "[[10-phone-upload-and-retire]]", "[[11-phone-memory-screen]]", "[[12-phone-id-vault]]", "[[13-phone-vehicle-plate]]"]
+open-blockers: 6
 ready: false
 tags: [ticket]
 ---

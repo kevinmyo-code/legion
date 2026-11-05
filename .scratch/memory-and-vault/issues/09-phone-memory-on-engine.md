@@ -6,8 +6,8 @@ type: build
 status: open
 status-detail: ""
 blockers: ["02"]
-blocked-by: []
-open-blockers: 0
+blocked-by: ["[[02-memory-tools]]"]
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

@@ -6,8 +6,8 @@ type: build
 status: open
 status-detail: ""
 blockers: ["05"]
-blocked-by: []
-open-blockers: 0
+blocked-by: ["[[05-id-vault-engine]]"]
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

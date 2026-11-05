@@ -171,6 +171,9 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/matrix-open/map\|matrix-open]] | [[04-matrix-calendar-and-brief\|04]] | build | Build: Matrix calendar and brief |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[05-matrix-notes-and-voice-notes\|05]] | build | Build: Matrix notes and voice notes |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[06-matrix-ledger-pantry-and-fleet\|06]] | build | Build: Matrix ledger, pantry and fleet |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[01-member-memory-table-and-rest\|01]] | build | Member memory: table and REST |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[05-id-vault-engine\|05]] | build | ID vault on the engine |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[06-vehicle-plate\|06]] | build | Vehicle plate |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
 | [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |
@@ -293,6 +296,17 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[06-place-search\|06]] | decision | Decision: place search (near me, open now)  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | [[07-legion-only-extras\|07]] | decision | Decision: LEGION-only extras (ETA to Mia, leave-by, fuel-aware stops)  waiting on [[02-a-real-drive\|02]] |
 | [[.scratch/matrix-open/map\|matrix-open]] | [[02-all-apps\|02]] | build | Build: All apps on Matrix HOME  waiting on [[01-block-model\|01]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[02-memory-tools\|02]] | build | Memory tools for members and the worker  waiting on [[01-member-memory-table-and-rest\|01]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[03-consolidation-job\|03]] | build | Consolidation job  waiting on [[01-member-memory-table-and-rest\|01]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[04-one-time-import\|04]] | build | One-time import of the phone's memories  waiting on [[01-member-memory-table-and-rest\|01]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[07-hybrid-recall-embeddings\|07]] | build | Hybrid recall: embeddings  waiting on [[01-member-memory-table-and-rest\|01]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[08-worker-memory-tools\|08]] | build | Worker: memory tools on the Alienware only  waiting on [[02-memory-tools\|02]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[09-phone-memory-on-engine\|09]] | build | Phone: memory tools move to the engine  waiting on [[02-memory-tools\|02]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[10-phone-upload-and-retire\|10]] | build | Phone: upload once, retire the local consolidator  waiting on [[03-consolidation-job\|03]], [[04-one-time-import\|04]], [[09-phone-memory-on-engine\|09]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[11-phone-memory-screen\|11]] | build | Phone: Memory screen v2  waiting on [[09-phone-memory-on-engine\|09]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[12-phone-id-vault\|12]] | build | Phone: ID vault screen behind fingerprint  waiting on [[05-id-vault-engine\|05]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[13-phone-vehicle-plate\|13]] | build | Phone: plate on the vehicle  waiting on [[06-vehicle-plate\|06]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[14-acceptance-run\|14]] | test | Acceptance run  waiting on [[08-worker-memory-tools\|08]], [[09-phone-memory-on-engine\|09]], [[10-phone-upload-and-retire\|10]], [[11-phone-memory-screen\|11]], [[12-phone-id-vault\|12]], [[13-phone-vehicle-plate\|13]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
 | [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[13-build-run-traces\|13]] |
 | [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[12-build-runner-and-tool\|12]] |
@@ -347,6 +361,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[15-web-vault-entry\|15]] | build | Vault entry from the web desk (write-only) |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
 | [[.scratch/two-clients/map\|two-clients]] | [[01-schema-ownership-and-django-role\|01]] | build | Schema ownership, and a role of Django's own |
 | [[.scratch/two-clients/map\|two-clients]] | [[02-where-django-runs\|02]] | decision | Where Django runs |
@@ -402,6 +417,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/mapbox-nav/map\|mapbox-nav]] | 13 | 4 | [[.scratch/mapbox-nav/mapbox-nav.canvas\|open]] |
 | [[.scratch/mapbox-plus/map\|mapbox-plus]] | 7 | 7 | [[.scratch/mapbox-plus/mapbox-plus.canvas\|open]] |
 | [[.scratch/matrix-open/map\|matrix-open]] | 6 | 6 | [[.scratch/matrix-open/matrix-open.canvas\|open]] |
+| [[.scratch/memory-and-vault/map\|memory-and-vault]] | 15 | 15 | [[.scratch/memory-and-vault/memory-and-vault.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |

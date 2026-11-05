@@ -6,8 +6,8 @@ type: build
 status: open
 status-detail: ""
 blockers: ["09"]
-blocked-by: []
-open-blockers: 0
+blocked-by: ["[[09-phone-memory-on-engine]]"]
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

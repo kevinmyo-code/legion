@@ -3,8 +3,8 @@ map: memory-and-vault
 ticket: "06"
 title: "Vehicle plate"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "engine built 2026-11-05 on feat/memory-vault-engine, suite green; owed: engine deploy, then Kevin sets the Jeep plate through the API"
 blockers: []
 blocked-by: []
 open-blockers: 0

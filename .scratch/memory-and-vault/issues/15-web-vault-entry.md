@@ -6,8 +6,8 @@ type: build
 status: kiv
 status-detail: "parked by Kevin 2026-11-05: later, not important now"
 blockers: ["05"]
-blocked-by: []
-open-blockers: 0
+blocked-by: ["[[05-id-vault-engine]]"]
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

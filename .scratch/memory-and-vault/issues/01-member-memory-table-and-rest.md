@@ -3,8 +3,8 @@ map: memory-and-vault
 ticket: "01"
 title: "Member memory: table and REST"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "engine built 2026-11-05 on feat/memory-vault-engine, suite green; owed: engine deploy (Kevin), then the phone tickets"
 blockers: []
 blocked-by: []
 open-blockers: 0

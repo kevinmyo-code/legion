@@ -3326,6 +3326,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/member-memories/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own memories and the household's shared ones, newest first. A whole list, never a feed: forgetting is a hard delete, so a cache replaces itself from this. */
+        get: operations["api_member_memories_list"];
+        put?: never;
+        /** @description Saves a memory about the caller, private unless `shared`. Refused in words when the text looks like a vault identifier. */
+        post: operations["api_member_memories_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/{memory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_member_memories_retrieve"];
+        put?: never;
+        post?: never;
+        delete: operations["api_member_memories_destroy"];
+        options?: never;
+        head?: never;
+        /** @description Changes text, kind, importance, decay class or sharing. Only the member a memory is about may share it or make it private again. */
+        patch: operations["api_member_memories_partial_update"];
+        trace?: never;
+    };
+    "/api/member-memories/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The one-time upload of the phone's own memories (`companion_memories` and `memories` rows), at most 500 a call. Idempotent by store and origin_guid. Every row becomes private to the caller. */
+        post: operations["api_member_memories_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The best live memories for `query` by recency (decaying by class), importance and relevance; an empty query gives the newest and most important. Rehearses what it returns. */
+        post: operations["api_member_memories_recall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/companion_memories/": {
         parameters: {
             query?: never;
@@ -3990,6 +4059,59 @@ export interface paths {
         get: operations["api_releases_latest_retrieve"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vault/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own vault items: labels and kinds. Never a value. */
+        get: operations["api_vault_items_list"];
+        put?: never;
+        /** @description Seals and stores a value. Answers with the label only, never the value. */
+        post: operations["api_vault_items_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vault/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description A hard delete, from the member's own phone only. */
+        delete: operations["api_vault_items_destroy"];
+        options?: never;
+        head?: never;
+        /** @description Changes the label, kind or value. Answers with the label only. */
+        patch: operations["api_vault_items_partial_update"];
+        trace?: never;
+    };
+    "/api/vault/items/{item_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The value, for the member's own phone, after the fingerprint. Audited (label and time, never the value), rate limited, never cached. The server cannot verify the fingerprint: the header is the phone's word. */
+        post: operations["api_vault_items_reveal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5628,6 +5750,36 @@ export interface components {
             /** Format: date-time */
             joined_at: string;
         };
+        ImportRequest: {
+            rows: components["schemas"]["ImportRow"][];
+        };
+        ImportResult: {
+            imported: number;
+            already_here: number;
+            /** @description Rows that looked like a vault identifier; never stored. */
+            refused_sensitive: number;
+            refused_invalid: number;
+        };
+        ImportRow: {
+            /**
+             * @description `companion_memories` (learned) or `memories` (what `remember` saved).
+             *
+             *     * `companion_memories` - companion_memories
+             *     * `memories` - memories
+             */
+            store: components["schemas"]["MemberMemoryImportStoreEnum"];
+            origin_guid: string;
+            text: string;
+            /** @default  */
+            category: string;
+            /** @default  */
+            source: string;
+            importance?: number | null;
+            /** Format: date-time */
+            logged_at: string;
+            /** Format: date-time */
+            last_accessed_at?: string | null;
+        };
         /**
          * @description The 200 body, and it covers BOTH no-write outcomes because they are one
          *     status code and a client branches on `outcome`, not on the shape.
@@ -6157,6 +6309,69 @@ export interface components {
             readonly deleted_at: string | null;
             origin_guid: string;
         };
+        MemberMemory: {
+            /** Format: uuid */
+            id: string;
+            text: string;
+            kind: components["schemas"]["MemberMemoryKindEnum"];
+            importance: number;
+            decay_class: components["schemas"]["MemberMemoryDecayClassEnum"];
+            source: components["schemas"]["MemberMemorySourceEnum"];
+            /** @description True for a household fact every member sees; false while private to the member it is about. */
+            shared: boolean;
+            /** @description True when the memory is about the caller. */
+            about_you: boolean;
+            /** Format: uuid */
+            supersedes: string | null;
+            /** Format: date-time */
+            superseded_at: string | null;
+            /** Format: date-time */
+            last_recalled_at: string | null;
+            recall_count: number;
+            /**
+             * Format: uuid
+             * @description The conversation record it was distilled from, if any.
+             */
+            from_conversation: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description * `phone` - phone
+         *     * `manual` - manual
+         * @enum {string}
+         */
+        MemberMemoryClientSourceEnum: "phone" | "manual";
+        /**
+         * @description * `durable` - durable
+         *     * `episodic` - episodic
+         * @enum {string}
+         */
+        MemberMemoryDecayClassEnum: "durable" | "episodic";
+        /**
+         * @description * `companion_memories` - companion_memories
+         *     * `memories` - memories
+         * @enum {string}
+         */
+        MemberMemoryImportStoreEnum: "companion_memories" | "memories";
+        /**
+         * @description * `fact` - fact
+         *     * `preference` - preference
+         *     * `event` - event
+         * @enum {string}
+         */
+        MemberMemoryKindEnum: "fact" | "preference" | "event";
+        /**
+         * @description * `phone` - phone
+         *     * `web` - web
+         *     * `claude` - claude
+         *     * `manual` - manual
+         *     * `consolidation` - consolidation
+         * @enum {string}
+         */
+        MemberMemorySourceEnum: "phone" | "web" | "claude" | "manual" | "consolidation";
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -6231,6 +6446,30 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid: string;
+        };
+        MemoryCreate: {
+            text: string;
+            /** @default fact */
+            kind: components["schemas"]["MemberMemoryKindEnum"];
+            /** @default 5 */
+            importance: number;
+            /** @default durable */
+            decay_class: components["schemas"]["MemberMemoryDecayClassEnum"];
+            /** @default false */
+            shared: boolean;
+            /**
+             * @description `phone` for the phone's voice tools, `manual` for a screen.
+             *
+             *     * `phone` - phone
+             *     * `manual` - manual
+             * @default manual
+             */
+            source: components["schemas"]["MemberMemoryClientSourceEnum"];
+            /** Format: uuid */
+            supersedes?: string | null;
+        };
+        MemoryList: {
+            results: components["schemas"]["MemberMemory"][];
         };
         /**
          * @description One `merchant_aliases` row: show `display_name` wherever a
@@ -6980,6 +7219,13 @@ export interface components {
         PatchedMeUpdate: {
             name?: string;
         };
+        PatchedMemoryUpdate: {
+            text?: string;
+            kind?: components["schemas"]["MemberMemoryKindEnum"];
+            importance?: number;
+            decay_class?: components["schemas"]["MemberMemoryDecayClassEnum"];
+            shared?: boolean;
+        };
         PatchedPurchase: {
             /** Format: uuid */
             readonly id?: string;
@@ -7015,6 +7261,12 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at?: string | null;
             sync_id?: string | null;
+        };
+        PatchedVaultUpdate: {
+            label?: string;
+            kind?: components["schemas"]["VaultItemKindEnum"];
+            /** @description Sealed before it is stored. Never returned by this route. */
+            value?: string;
         };
         PinnedBy: {
             /**
@@ -7237,6 +7489,46 @@ export interface components {
             /** Format: date */
             rate_date: string;
             source: string;
+        };
+        RecallRequest: {
+            /** @default  */
+            query: string;
+            /** @default 6 */
+            limit: number;
+        };
+        RecallResult: {
+            results: components["schemas"]["Recalled"][];
+        };
+        Recalled: {
+            /** Format: uuid */
+            id: string;
+            text: string;
+            kind: components["schemas"]["MemberMemoryKindEnum"];
+            importance: number;
+            decay_class: components["schemas"]["MemberMemoryDecayClassEnum"];
+            source: components["schemas"]["MemberMemorySourceEnum"];
+            /** @description True for a household fact every member sees; false while private to the member it is about. */
+            shared: boolean;
+            /** @description True when the memory is about the caller. */
+            about_you: boolean;
+            /** Format: uuid */
+            supersedes: string | null;
+            /** Format: date-time */
+            superseded_at: string | null;
+            /** Format: date-time */
+            last_recalled_at: string | null;
+            recall_count: number;
+            /**
+             * Format: uuid
+             * @description The conversation record it was distilled from, if any.
+             */
+            from_conversation: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: double */
+            score: number;
         };
         /**
          * @description One `public.receipts` header, with the anchors the gate checked it
@@ -8163,6 +8455,45 @@ export interface components {
             /** @description When push is off, the sentence to show: notifications are not set up here. */
             detail: string | null;
         };
+        VaultCreate: {
+            label: string;
+            kind: components["schemas"]["VaultItemKindEnum"];
+            /** @description Sealed before it is stored. Never returned by this route. */
+            value: string;
+        };
+        VaultItem: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            kind: components["schemas"]["VaultItemKindEnum"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            last_revealed_at: string | null;
+        };
+        /**
+         * @description * `passport` - passport
+         *     * `nric` - nric
+         *     * `ssn` - ssn
+         *     * `a_number` - a_number
+         *     * `bank_account` - bank_account
+         *     * `other` - other
+         * @enum {string}
+         */
+        VaultItemKindEnum: "passport" | "nric" | "ssn" | "a_number" | "bank_account" | "other";
+        VaultList: {
+            results: components["schemas"]["VaultItem"][];
+        };
+        VaultReveal: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            kind: components["schemas"]["VaultItemKindEnum"];
+            /** @description Show it on screen only. Never log, speak or send it. */
+            value: string;
+        };
         /**
          * @description Field-for-field `RemoteVehicle` / `VehicleUpload` (`FleetBackend.kt`).
          *
@@ -8202,6 +8533,8 @@ export interface components {
             archived: boolean;
             /** @description The MAC of the OBD dongle this car was last seen on. A best-effort rebuild HINT, never an identity: a car that changed dongles carries its old value here until the next sync, and nothing may be assigned on the strength of it alone. */
             last_obd_mac?: string | null;
+            /** @description The licence plate, ordinary data (not an ID-vault item). Trimmed and upper-cased; at most 16 characters. Omit it to leave the stored plate as is; send null to clear it. */
+            plate?: string | null;
         };
         /**
          * @description Field-for-field `RemoteVehicleSpec` / `VehicleSpecUpload`: the factory
@@ -14977,6 +15310,288 @@ export interface operations {
             };
         };
     };
+    api_member_memories_list: {
+        parameters: {
+            query?: {
+                /** @description Also older versions a newer fact replaced. */
+                include_superseded?: boolean;
+                kind?: "event" | "fact" | "preference";
+                /** @description Default 100, max 500. */
+                limit?: number;
+                /** @description Only memories whose text contains this. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["MemoryCreate"];
+                "multipart/form-data": components["schemas"]["MemoryCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberMemory"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberMemory"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted for good, with every older version it superseded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedMemoryUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedMemoryUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedMemoryUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberMemory"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["ImportRequest"];
+                "multipart/form-data": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_recall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RecallRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["RecallRequest"];
+                "multipart/form-data": components["schemas"]["RecallRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_memory_companion_memories_list: {
         parameters: {
             query?: {
@@ -16257,6 +16872,209 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_vault_items_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_vault_items_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["VaultCreate"];
+                "multipart/form-data": components["schemas"]["VaultCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultItem"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_vault_items_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted for good. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_vault_items_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedVaultUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedVaultUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedVaultUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultItem"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_vault_items_reveal: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Set by the phone only after BiometricPrompt succeeds. */
+                "X-Legion-Unlocked": "biometric";
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultReveal"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

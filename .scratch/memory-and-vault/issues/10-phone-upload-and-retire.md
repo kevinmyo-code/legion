@@ -6,8 +6,8 @@ type: build
 status: open
 status-detail: ""
 blockers: ["03", "04", "09"]
-blocked-by: []
-open-blockers: 0
+blocked-by: ["[[03-consolidation-job]]", "[[04-one-time-import]]", "[[09-phone-memory-on-engine]]"]
+open-blockers: 3
 ready: false
 tags: [ticket]
 ---

@@ -6,8 +6,8 @@ type: build
 status: open
 status-detail: ""
 blockers: ["06"]
-blocked-by: []
-open-blockers: 0
+blocked-by: ["[[06-vehicle-plate]]"]
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

@@ -7235,3 +7235,24 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   laptop cut out under load that day); no CPU cap (*"dont cap the cpu"*).
 - **Built 2026-11-05** (`feat/alfred-builds-worker`): records endpoints, `ship.py`, `undo.py`,
   `build_lock.py`, the hook's ship-only rule, the worker skills, the library on the engine. ADR 0074.
+
+## 2026-11-05 - Centralized memory and the ID vault (Kevin)
+
+- **Asked:** *"alfred's memory should stay on a centralized place, like the engine no? i thought
+  we did memories that way"*, then *"yeah lets do it. centralized memory. and the id vault"*. Map
+  `.scratch/memory-and-vault/`.
+- **Ruled:** a memory is private to the member it is about, a shared household fact may be marked
+  shared (ADR 0052's ownership); the Claude worker on the Alienware may read and write (*"claude
+  can write too."*), the work laptop never; saving is automatic, visible on a Memory screen and
+  forgettable, and forgetting is a hard delete. The ID vault: phone only, behind fingerprint,
+  never on the web, never readable by Claude, never spoken, never sent to a model, never logged;
+  passport, NRIC, SSN, A-number, bank accounts; plate, VIN and insurance policy are ordinary data.
+  A `plate` field on the vehicle. Later the same day: *"can i enter it on the pc man, but later.
+  not important now"* (web entry, write-only, KIV).
+- **Reverses** the engine-mcp ruling of 2026-10-02 (no engine tool reads or writes memory) for
+  memory v2. The legacy memory tables stay out of the record tools.
+- **Decided in the map, open to Kevin:** lexical recall with two decay classes, embeddings next
+  (no pgvector on the test cluster); consolidation never shares; supersede then forget whole;
+  consolidation reads only the person's words and tool-free replies; one filter keeps vault
+  shapes out of memory; the work-laptop fence binds each worker token to its machine.
+- **Built 2026-11-05** (`feat/memory-vault-engine`, engine half). ADRs 0075 and 0076.

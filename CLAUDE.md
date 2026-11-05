@@ -425,6 +425,18 @@ here.
   rule 8: keep the evidence.** Summary anchored by the transcript beside it, transcript anchored by
   the audio beside it, all three deleted together. Nothing numeric heard in a recording may be
   asserted as fact or become a ledger row without going through that aspect's own ingestion path.
+- **Memory lives on the engine, private to the member it is about (Kevin, 2026-11-05, ADR 0075).**
+  *"centralized memory"*. One store (`member_memories`) for the phone, the web and the Claude
+  worker on the Alienware (*"claude can write too."*); never a recruiter, never the work laptop.
+  A shared household fact is marked shared by a member, never by the consolidation job. Saving is
+  automatic, visible and forgettable, and **forgetting is a hard delete**. Consolidation reads the
+  person's own words and tool-free replies only, so the read-through rule above holds by
+  construction.
+- **The ID vault is phone only, behind the fingerprint (Kevin, 2026-11-05, ADR 0076).** Passport,
+  NRIC, SSN, A-number and bank account numbers: never on the web, never readable by Claude, never
+  spoken aloud, never sent to a model, never logged, never a memory. A plate, a VIN or a policy
+  number is ordinary data. The server cannot verify the fingerprint; the guarantee rests on the
+  phone, and the ADR says so.
 - **Every voice capability has a non-voice path (2026-08-22, Kevin).** *"all voice capabilities
   also must have a non voice UI capability."* Anything LEGION can do by voice must also be doable
   by hand. Voice is the fastest way in and it is the way that FAILS - a loud car, a sleeping
