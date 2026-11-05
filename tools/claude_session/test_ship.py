@@ -80,7 +80,8 @@ class FakeWorld(ship.World):
             self.events.append("deploy")
             assert env and env.get("GOOGLE_CLOUD_PROJECT") == "legion-engine-260906"
             if self.deploy_code == 0:
-                self.revisions.append("legion-00042-new")
+                n = 41 + len(self.revisions)
+                self.revisions.append(f"legion-{n:05d}-new")
             return self.deploy_code, "deployed"
         if any(a.endswith("release_apk.py") for a in argv):
             self.events.append("release " + argv[argv.index("--notes") + 1])
