@@ -17,8 +17,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
-| [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
-| [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -91,6 +89,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
 | [[.scratch/architecture/map\|architecture]] | [[01-room-kapt-to-ksp\|01]] | build | Room moves from kapt to KSP |
 | [[.scratch/architecture/map\|architecture]] | [[05-detekt-with-a-baseline\|05]] | build | detekt joins the build, with a baseline and a 1000-line ceiling |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[18-build-widget-pager\|18]] | task | Build the widget pager and generated screens |

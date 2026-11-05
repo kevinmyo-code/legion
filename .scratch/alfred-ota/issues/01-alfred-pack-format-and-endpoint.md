@@ -3,12 +3,12 @@ map: alfred-ota
 ticket: "01"
 title: "Alfred pack: format and engine endpoint"
 type: build
-status: open
-status-detail: "charted 2026-11-05; waits on decisions 1 and 2"
+status: built
+status-detail: "engine half built 2026-11-05 on feat/alfred-ota-engine (pack, generator, lock, GET /api/assistant/pack, tests). Owed: engine deploy (Kevin); the phone reading it is ticket 02; ADR 0072 not written"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Alfred pack: format and engine endpoint
@@ -49,3 +49,15 @@ A versioned bundle of Alfred's wording. The engine serves it; the phone (later t
   - a recruiter gets 403
   - the size cap holds
 - `tests/test_assistant_prompt.py` stays green; the Kotlin twins don't change until ticket 03.
+
+## Built (2026-11-05, branch `feat/alfred-ota-engine`)
+
+- `server/assistant/pack.py` (loader, locked set, 64 KB cap), `gen_pack.py` (generate, `--check`,
+  `--lock`), `packs/alfred.source.yaml` (hand-edited), `packs/alfred.yaml` (generated, version 1),
+  `packs/alfred.lock`; `assistant/pack_views.py`; `tests/test_assistant_pack.py`.
+- The two rules with no constant name were named `ASK_BEFORE` and `NO_PASSWORDS`. Locked names
+  are refused as a clause, a tool override or a flag, in any letter case.
+- `content_sha256` (wording, no version) is what the lock records; `sha256` (whole payload,
+  version included) is the ETag.
+- A pack the engine refuses is a 503 in words, not a crash at boot.
+- Owed: an engine deploy (Kevin); ticket 02 on the phone; ADR 0072 (the map writes it with 01 and 05).
