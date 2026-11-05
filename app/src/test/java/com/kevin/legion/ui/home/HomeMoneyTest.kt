@@ -55,7 +55,7 @@ class HomeMoneyTest {
     fun `HOME and the More card read the one budget board, nothing else`() {
         val board = homeMoneyPanel(FinanceFixtures.homeFresh)
         assertEquals("November", board.total?.month)
-        assertEquals("$581 of $1,600", board.total?.amountText)
+        assertEquals("$2,541 of $3,760", board.total?.amountText)
         assertEquals("Dining", board.bars.first().category)
     }
 

@@ -67,10 +67,11 @@ object FinanceFixtures {
         ),
         // The capped lines' own sums, as the engine adds them: fixed categories are in neither.
         total = BudgetTotalWire(spentCents = 58_100, capCents = 160_000, percent = 36, paceCents = 26_667),
+        // Their caps, 2,160 in all, the phone adds to the total bar: 2,541 of 3,760.
         fixed = listOf(
-            FixedWire("Housing", paid = true, paidCents = 175_000),
-            FixedWire("Insurance", paid = true, paidCents = 21_000),
-            FixedWire("Utilities", paid = false),
+            FixedWire("Housing", paid = true, paidCents = 175_000, capCents = 175_000),
+            FixedWire("Insurance", paid = true, paidCents = 21_000, capCents = 21_000),
+            FixedWire("Utilities", paid = false, capCents = 20_000),
         ),
     )
 

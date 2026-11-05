@@ -12,8 +12,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Kevin, 2026-11-05: "how much ive spent this month vs how much left on the budget", as a bar. The
- * total bar's figures and words, the category order, and the fixed categories last.
+ * Kevin, 2026-11-05: "how much ive spent this month vs how much left on the budget", as a bar, then
+ * "no need for the daily bar": every budget in the total, fixed included, and
+ * no pace tick. The total bar's figures and words, the category order, and the fixed categories last.
  */
 class BudgetBoardTest {
 
@@ -21,12 +22,12 @@ class BudgetBoardTest {
     private val budgets = FinanceFixtures.budgets
 
     @Test
-    fun `the total bar is filled to spent over cap, with today's pace tick`() {
+    fun `the total bar is every budget, the fixed caps and what was paid on them included`() {
         val total = budgetTotal(budgets, today)
         assertEquals("November", total.month)
-        assertEquals("$581 of $1,600", total.amountText)
-        assertEquals(58_100f / 160_000f, total.fill, 0.0001f)
-        assertEquals(26_667f / 160_000f, total.pace!!, 0.0001f)
+        // Day-to-day 581 of 1,600, plus fixed 1,960 paid of 2,160.
+        assertEquals("$2,541 of $3,760", total.amountText)
+        assertEquals(254_100f / 376_000f, total.fill, 0.0001f)
         assertEquals(BarTone.NORMAL, total.tone)
         assertFalse(total.over)
     }
@@ -34,8 +35,24 @@ class BudgetBoardTest {
     @Test
     fun `under the bar it says what is left, and the pending in it, in words`() {
         val total = budgetTotal(budgets, today)
+        assertEquals("$1,219 left, includes $32 pending", total.words)
+        assertEquals("November: $2,541 spent, $1,219 left of $3,760, includes $32 pending", total.sentence)
+    }
+
+    @Test
+    fun `a fixed category with no cap adds nothing, paid or not`() {
+        val uncapped = budgets.copy(
+            fixed = budgets.fixed + FixedWire("Phone", paid = true, paidCents = 9_000),
+        )
+        assertEquals("$2,541 of $3,760", budgetTotal(uncapped, today).amountText)
+    }
+
+    @Test
+    fun `an engine that sends no fixed caps gives the day-to-day total alone, never a false over`() {
+        val old = budgets.copy(fixed = budgets.fixed.map { it.copy(capCents = null) })
+        val total = budgetTotal(old, today)
+        assertEquals("$581 of $1,600", total.amountText)
         assertEquals("$1,019 left, includes $32 pending", total.words)
-        assertEquals("November: $581 spent, $1,019 left of $1,600, includes $32 pending", total.sentence)
     }
 
     @Test
@@ -43,6 +60,7 @@ class BudgetBoardTest {
         val over = budgets.copy(
             categories = listOf(line("Dining", 170_000, 160_000)),
             total = BudgetTotalWire(spentCents = 170_000, capCents = 160_000, percent = 106, paceCents = 26_667),
+            fixed = emptyList(),
         )
         val total = budgetTotal(over, today)
         assertEquals("over by $100", total.words)
@@ -58,21 +76,22 @@ class BudgetBoardTest {
             month = "2026-10",
             categories = listOf(line("Dining", 50_000, 160_000)),
             total = BudgetTotalWire(spentCents = 50_000, capCents = 160_000, percent = 31, paceCents = 160_000),
+            fixed = emptyList(),
         )
         assertEquals("$1,100 under budget", budgetTotal(october, today).words)
     }
 
     @Test
-    fun `no caps at all says so, and draws an empty bar with no tick`() {
+    fun `no caps at all says so, and draws an empty bar`() {
         val none = budgets.copy(
             categories = listOf(line("Gifts", 4_000, null)),
             total = BudgetTotalWire(spentCents = 0, capCents = 0),
+            fixed = budgets.fixed.map { it.copy(capCents = null) },
         )
         val total = budgetTotal(none, today)
         assertEquals("$0 spent", total.amountText)
         assertEquals("no caps set yet", total.words)
         assertEquals(0f, total.fill, 0f)
-        assertNull(total.pace)
     }
 
     @Test
@@ -112,7 +131,7 @@ class BudgetBoardTest {
     fun `a saved copy keeps its bars and says how old it is`() {
         val note = "Saved 3 hours ago. The engine could not be reached."
         val board = budgetBoard(FinanceRead.Saved(budgets, 0L, note), today)
-        assertEquals("$581 of $1,600", board.total?.amountText)
+        assertEquals("$2,541 of $3,760", board.total?.amountText)
         assertEquals(note, board.note)
         assertTrue(board.noteIsCaution)
     }

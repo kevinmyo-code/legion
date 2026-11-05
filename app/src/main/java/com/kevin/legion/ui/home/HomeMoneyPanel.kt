@@ -152,7 +152,7 @@ private fun PanelBody(model: BudgetBoardModel, onOpenCategory: (String) -> Unit)
     }
 }
 
-/** Every category bar, the fixed rows under their label, and the tick's meaning in words. */
+/** Every category bar, then the fixed rows under their label. */
 @Composable
 private fun BoardLines(model: BudgetBoardModel, onOpenCategory: (String) -> Unit) {
     if (model.bars.isEmpty() && model.fixed.isEmpty()) {
@@ -169,14 +169,6 @@ private fun BoardLines(model: BudgetBoardModel, onOpenCategory: (String) -> Unit
     if (model.fixed.isNotEmpty()) {
         FixedLabel()
         model.fixed.forEach { line -> FixedRow(line) { onOpenCategory(line.category) } }
-    }
-    if (model.bars.any { it.pace != null }) {
-        Text(
-            "White tick: today's even pace.",
-            style = MaterialTheme.typography.labelSmall,
-            color = SoftColors.text3,
-            modifier = Modifier.padding(top = 4.dp),
-        )
     }
 }
 

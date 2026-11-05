@@ -103,6 +103,8 @@ data class FixedWire(
     val category: String,
     val paid: Boolean = false,
     @SerialName("paid_cents") val paidCents: Long = 0,
+    /** The category's budget target; null with none set, or from an engine before 2026-11-05. */
+    @SerialName("cap_cents") val capCents: Long? = null,
 )
 
 @Serializable

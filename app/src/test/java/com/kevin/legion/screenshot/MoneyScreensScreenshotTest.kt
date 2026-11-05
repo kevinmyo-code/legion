@@ -120,10 +120,11 @@ class MoneyScreensScreenshotTest {
         FinanceFixtures.homeFresh.copy(
             budgets = FinanceRead.Fresh(
                 FinanceFixtures.budgets.copy(
+                    // With the fixed 1,960 paid of 2,160: 3,862 of 3,760.
                     total = BudgetTotalWire(
-                        spentCents = 171_250,
+                        spentCents = 190_200,
                         capCents = 160_000,
-                        percent = 107,
+                        percent = 118,
                         paceCents = 26_667,
                     ),
                 ),

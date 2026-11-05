@@ -6,14 +6,11 @@ package com.kevin.legion.ui.money
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,8 +31,9 @@ enum class BarTone { NORMAL, NEAR, OVER }
 
 /**
  * One category against its own cap (household-finance tickets 13 and 14): the bar is filled to
- * spent / cap, NOT to the share of the largest category (the retired `MoneyBars`), and the pace
- * tick sits at `pace_cents` / cap. Shared by the Home panel and the Money view.
+ * spent / cap, NOT to the share of the largest category (the retired `MoneyBars`). No pace tick
+ * (Kevin, 2026-11-05: "no need for the daily bar"); the engine's `pace_cents` is not drawn.
+ * Shared by the Home panel and the Money view.
  */
 data class BudgetBarModel(
     val category: String,
@@ -43,8 +41,6 @@ data class BudgetBarModel(
     val amountText: String,
     /** spent / cap, 0..1. */
     val fill: Float,
-    /** pace / cap, 0..1; null with no pace from the engine. */
-    val pace: Float?,
     val tone: BarTone,
     /** "over by $49", "includes $12 pending", joined; null when there is nothing to say. */
     val note: String?,
@@ -74,7 +70,6 @@ fun budgetBarModel(line: BudgetLineWire, currency: String = "USD"): BudgetBarMod
         category = line.category,
         amountText = "${FinanceText.bare(spent)} / ${FinanceText.bare(cap)}",
         fill = fraction(spent, cap),
-        pace = line.paceCents?.let { fraction(it, cap) },
         tone = tone,
         note = notes.takeIf { it.isNotEmpty() }?.joinToString(", "),
         percent = percent,
@@ -109,8 +104,8 @@ fun BarTone.fillColor(): Color = when (this) {
 val BAR_FILL = Color(0xFF8FA7D6)
 
 /**
- * The bar: name and "spent / cap" on one line, the track filled to spent / cap with the pace tick,
- * and the note under it in the tone's colour. Tapping opens the category's transactions.
+ * The bar: name and "spent / cap" on one line, the track filled to spent / cap, and the note
+ * under it in the tone's colour. Tapping opens the category's transactions.
  */
 @Composable
 fun BudgetBar(model: BudgetBarModel, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
@@ -142,7 +137,7 @@ fun BudgetBar(model: BudgetBarModel, modifier: Modifier = Modifier, onClick: (()
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
-        BarTrack(model.fill, model.pace, model.tone.fillColor(), Modifier.padding(top = 4.dp))
+        BarTrack(model.fill, model.tone.fillColor(), Modifier.padding(top = 4.dp))
         model.note?.let {
             Text(
                 it,
@@ -154,26 +149,17 @@ fun BudgetBar(model: BudgetBarModel, modifier: Modifier = Modifier, onClick: (()
     }
 }
 
-/** The track alone: [fill] of it coloured, a 2dp tick at [pace]. Also the More card's month bar. */
+/** The track alone: [fill] of it coloured. Also the More card's month bar. */
 @Composable
-fun BarTrack(fill: Float, pace: Float?, color: Color, modifier: Modifier = Modifier, height: Int = 8) {
-    BoxWithConstraints(modifier.fillMaxWidth().height((height + 6).dp)) {
-        val shape = RoundedCornerShape((height / 2).dp)
-        Box(
-            Modifier.fillMaxWidth().height(height.dp).offset(y = 3.dp)
-                .background(SoftColors.cardHighest, shape),
-        )
-        if (fill > 0f) {
-            Box(
-                Modifier.fillMaxWidth(fill).height(height.dp).offset(y = 3.dp).background(color, shape),
-            )
-        }
-        pace?.let {
-            val x = (maxWidth - 2.dp) * it
-            Box(
-                Modifier.offset(x = x).width(2.dp).height((height + 6).dp)
-                    .background(SoftColors.text, RoundedCornerShape(1.dp)),
-            )
-        }
+fun BarTrack(fill: Float, color: Color, modifier: Modifier = Modifier, height: Int = 8) {
+    val shape = RoundedCornerShape((height / 2).dp)
+    Box(
+        modifier
+            .padding(vertical = 3.dp)
+            .fillMaxWidth()
+            .height(height.dp)
+            .background(SoftColors.cardHighest, shape),
+    ) {
+        if (fill > 0f) Box(Modifier.fillMaxWidth(fill).height(height.dp).background(color, shape))
     }
 }

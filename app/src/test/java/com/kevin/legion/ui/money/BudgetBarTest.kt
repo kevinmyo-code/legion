@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Household-finance 13's verification: bar fill maths, the pace marker, the over-cap wording. */
+/** Household-finance 13's verification: bar fill maths and the over-cap wording. No pace tick. */
 class BudgetBarTest {
 
     @Test
@@ -15,17 +15,6 @@ class BudgetBarTest {
         assertEquals("119 / 170", bar.amountText)
         assertEquals(BarTone.NORMAL, bar.tone)
         assertNull(bar.note)
-    }
-
-    @Test
-    fun `the pace tick sits at pace over cap`() {
-        val bar = budgetBarModel(line("Groceries", 9_600, 62_000, pace = 10_333))!!
-        assertEquals(10_333f / 62_000f, bar.pace!!, 0.0001f)
-    }
-
-    @Test
-    fun `no pace from the engine draws no tick`() {
-        assertNull(budgetBarModel(line("Pets", 100, 9_000, pace = null))!!.pace)
     }
 
     @Test

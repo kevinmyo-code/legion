@@ -30,8 +30,9 @@ import java.time.YearMonth
 
 /**
  * The month's whole budget as one bar (Kevin, 2026-11-05: "instead of a big number, just give me
- * like a bar that gets filled up as i use just like the budgets, easy to glance"). Spent and left
- * are USD only: the engine's budgets are the US household's daily spending.
+ * like a bar that gets filled up as i use just like the budgets, easy to glance"), and every budget
+ * in it, fixed bills included (Kevin, same day: "just show all 2830 and no need for the daily bar").
+ * Spent and left are USD only: the engine's budgets are the US household's spending.
  */
 data class BudgetTotalModel(
     /** "November". */
@@ -40,8 +41,6 @@ data class BudgetTotalModel(
     val amountText: String,
     /** total spent / total cap, 0..1. */
     val fill: Float,
-    /** pace / cap, 0..1: today's even-pace tick. Null with no caps. */
-    val pace: Float?,
     val tone: BarTone,
     /** "$1,428 left", "over by $12", "$300 under budget", "no caps set yet"; pending said after. */
     val words: String,
@@ -50,7 +49,7 @@ data class BudgetTotalModel(
     val sentence: String,
 )
 
-/** A fixed bill's category: paid this month or not. Fixed categories carry no cap from the engine. */
+/** A fixed bill's category: paid this month or not. Its cap counts only in the total bar. */
 data class FixedLineModel(val category: String, val status: String, val paid: Boolean)
 
 /**
@@ -102,12 +101,18 @@ fun budgetBoard(read: FinanceRead<BudgetsWire>?, today: LocalDate, loading: Bool
 
 private const val USD = "USD"
 
-/** The total bar's figures and words for one month's budgets. */
+/**
+ * The total bar's figures and words for one month's budgets: the engine's day-to-day total plus
+ * every fixed category that has a cap, its paid amount as its spend. An engine from before
+ * 2026-11-05 sends no fixed caps; the bar is then the day-to-day total alone, never fixed spend
+ * against a cap that leaves it out.
+ */
 fun budgetTotal(budgets: BudgetsWire, today: LocalDate): BudgetTotalModel {
     val ym = runCatching { YearMonth.parse(budgets.month) }.getOrNull() ?: YearMonth.from(today)
     val name = monthName(ym)
-    val spent = budgets.total.spentCents
-    val cap = budgets.total.capCents
+    val cappedFixed = budgets.fixed.filter { (it.capCents ?: 0L) > 0L }
+    val spent = budgets.total.spentCents + cappedFixed.sumOf { it.paidCents }
+    val cap = budgets.total.capCents + cappedFixed.sumOf { it.capCents ?: 0L }
     val fixedNames = budgets.fixed.map { it.category }.toSet()
     val pending = budgets.categories
         .filter { it.category !in fixedNames && (it.capCents ?: 0L) > 0L }
@@ -119,7 +124,6 @@ fun budgetTotal(budgets: BudgetsWire, today: LocalDate): BudgetTotalModel {
             month = name,
             amountText = "$spentText spent",
             fill = 0f,
-            pace = null,
             tone = BarTone.NORMAL,
             words = "no caps set yet$pendingWords",
             over = false,
@@ -128,13 +132,12 @@ fun budgetTotal(budgets: BudgetsWire, today: LocalDate): BudgetTotalModel {
     }
     val capText = FinanceText.money(cap, USD)
     val over = spent > cap
-    val percent = budgets.total.percent ?: ((spent * 100 + cap / 2) / cap).toInt()
+    val percent = (spent * 100 / cap).toInt()
     val (words, sentenceLeft) = leftWords(spent, cap, ended = ym.isBefore(YearMonth.from(today)))
     return BudgetTotalModel(
         month = name,
         amountText = "$spentText of $capText",
         fill = fraction(spent, cap),
-        pace = budgets.total.paceCents?.let { fraction(it, cap) },
         tone = if (over) BarTone.OVER else if (percent >= NEAR_PERCENT) BarTone.NEAR else BarTone.NORMAL,
         words = words + pendingWords,
         over = over,
@@ -158,8 +161,8 @@ private const val TOTAL_BAR_DP = 14
 
 /**
  * The total budget bar: a small label row ("November" left, "$1,402 of $2,830" right), the thick
- * track with today's pace tick, and one short line of words under it, in the warning colour when
- * over. No large numerals: the bar does the talking.
+ * track, and one short line of words under it, in the warning colour when over. No large numerals
+ * and no pace tick: the bar does the talking.
  *
  * [trailing] takes the label row's right side (HOME's Brief and Calendar buttons); the amounts then
  * move to the right of the words line, so the row never has to fit both.
@@ -194,7 +197,6 @@ fun TotalBudgetBar(
         ) {
             BarTrack(
                 model.fill,
-                model.pace,
                 model.tone.fillColor(),
                 Modifier.padding(top = 2.dp),
                 height = TOTAL_BAR_DP,

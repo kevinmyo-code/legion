@@ -116,7 +116,7 @@ class MoneyViewComposeTest {
         show(nov)
         rule.onNode(SemanticsMatcher("total") { node ->
             node.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)
-                ?.any { it.startsWith("November: $581 spent, $1,019 left of $1,600") } == true
+                ?.any { it.startsWith("November: $2,541 spent, $1,219 left of $3,760") } == true
         }).assertExists()
         rule.onNodeWithText("Transactions").performScrollTo().assertExists()
         listOf("Safe to spend", "This month", "Net worth today", "Accounts", "Statements").forEach {

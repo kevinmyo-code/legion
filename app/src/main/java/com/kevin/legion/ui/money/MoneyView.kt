@@ -476,7 +476,7 @@ private fun BudgetSection(read: FinanceRead<BudgetsWire>?, today: LocalDate, cal
                 modifier = Modifier.clickable { callbacks.onOpenCategory(null) }.padding(top = 6.dp),
             )
         }
-        Note("White tick: where spend would be at an even pace today. Tap a category for its transactions.")
+        Note("Tap a category for its transactions.")
         board.note?.let { Note(it, caution = board.noteIsCaution) }
         Text(
             "Budget details, trend and new categories ›",

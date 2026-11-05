@@ -85,7 +85,7 @@ class HomeMoneyComposeTest {
     @Test
     fun `tapping the total bar opens Money, tapping a category bar opens its drilldown`() {
         show()
-        rule.onNode(described("November: $581 spent, $1,019 left of $1,600")).performClick()
+        rule.onNode(described("November: $2,541 spent, $1,219 left of $3,760")).performClick()
         assertEquals(1, moneyOpened)
         rule.onNode(described("Dining,")).performClick()
         assertEquals(listOf("Dining"), categories)
@@ -109,7 +109,7 @@ class HomeMoneyComposeTest {
                 MoneyGlanceCard(homeMoneyPanel(FinanceFixtures.homeFresh)) { opened++ }
             }
         }
-        rule.onNodeWithText("$581 of $1,600", substring = true).assertExists()
+        rule.onNodeWithText("$2,541 of $3,760", substring = true).assertExists()
         rule.onNodeWithText("Dining", substring = true).assertExists()
         rule.onNodeWithText("Household", substring = true).assertExists()
         rule.onNodeWithText("Subscriptions", substring = true).assertExists()
