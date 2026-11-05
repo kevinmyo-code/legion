@@ -35,6 +35,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from devicelogs import records
 from devicelogs.models import MAX_UPLOAD_BYTES, REASONS, RETENTION_DAYS, DeviceLog
 from household.tenancy import household_of, scoped
 
@@ -94,7 +95,22 @@ def inflate_capped(blob: bytes, cap: int | None = None) -> bytes:
 
 
 class DeviceLogUploadView(APIView):
+    """`POST` uploads a batch; `GET` lists the household's recent batches (alfred-builds ticket 02,
+    `devicelogs/records.py`), so the Claude worker can find a conversation to read."""
+
     parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        operation_id="api_device_logs_list",
+        tags=TAGS,
+        parameters=records.LIST_PARAMETERS,
+        responses={
+            200: OpenApiResponse(response=records.RecordListSerializer, description="Newest first."),
+            400: OpenApiResponse(response=DetailSerializer, description="A filter was malformed."),
+        },
+    )
+    def get(self, request):
+        return records.list_records(request)
 
     @extend_schema(
         operation_id="api_device_logs_create",

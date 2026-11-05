@@ -164,6 +164,8 @@ RECRUITER_DENIED: dict[str, str] = {
     "push.views.PreferenceView": "notifications are sent to a member's own devices",
     "push.views.PreferenceOffView": "notifications are sent to a member's own devices",
     "devicelogs.views.DeviceLogUploadView": "device logs come from a member's phone",
+    # alfred-builds ticket 02: a member's conversation records, read by the Claude worker.
+    "devicelogs.records.DeviceLogRenderView": "device logs come from a member's phone",
     "games.views.OpponentsView": "games are played between household members",
     "games.views.MatchCreateView": "games are played between household members",
     "games.views.PendingView": "games are played between household members",
