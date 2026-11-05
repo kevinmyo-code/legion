@@ -951,6 +951,13 @@ private fun LegionShell(
                         onOpenClaudeSession = {
                             navController.navigate(LegionRoute.CLAUDE_SESSION) { launchSingleTop = true }
                         },
+                        // Household-finance ticket 13: a Money panel bar opens that category's
+                        // transactions, through the same pending-category hand-off Money reads.
+                        onOpenMoneyCategory = { category ->
+                            pendingMoneyCategory = category
+                            pendingMoneyCategoryNonce++
+                            navController.navigate(LegionRoute.MONEY) { launchSingleTop = true }
+                        },
                         onPlayTetris = { userId ->
                             navController.navigate(
                                 if (userId == null) LegionRoute.TETRIS else LegionRoute.tetrisInvite(userId),
@@ -1066,14 +1073,12 @@ private fun LegionShell(
                 TelemetryScreen(onBack = { navController.popBackStack() })
             }
 
-            composable(LegionRoute.MONEY) {
-                com.kevin.legion.ui.money.MoneyMonthScreen(
-                    onOpenDetails = { navController.navigate(LegionRoute.MONEY_DETAILS) },
-                )
-            }
-            // The previous Money screen, whole: statements, budgets, accounts, and the groceries
-            // entry (onOpenGroceries) all stay reachable from the Money page's bottom row.
-            composable(LegionRoute.MONEY_DETAILS) {
+            // Household-finance ticket 14: ONE Money view, swiping between months. More > Money,
+            // Money details and the statements screen are all this view now, so both routes land
+            // on it and nothing dead-ends. Its drilldowns (a category, categorize, quarantine,
+            // budget details) are LedgerScreen's own, unchanged.
+            // One loop, so the two routes cannot drift apart.
+            for (moneyRoute in listOf(LegionRoute.MONEY, LegionRoute.MONEY_DETAILS)) composable(moneyRoute) {
                 LedgerScreen(
                     // A grocery receipt is a purchase (2026-08-07 brief) - the
                     // pantry read screen moved under Money as a reachable
@@ -1340,7 +1345,12 @@ private fun LegionShell(
         // GlanceCardOverlay, mounted beside it rather than folded into it. See
         // VoiceModalController's own doc for why one auto-dismiss policy cannot serve both an
         // ambient glance card and an interactive modal.
-        VoiceModalHost()
+        VoiceModalHost(
+            onOpenDay = { day, reminderId ->
+                homeDayPick = nextHomeDayPick(homeDayPick, day, reminderId)
+                navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true }
+            },
+        )
 
         // Generated views (`.scratch/one-today/issues/06-a-generated-view-for-niche-questions.md`)
         // - a third SIBLING beside the two above, for the same reason: its own dismiss policy

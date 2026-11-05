@@ -29,6 +29,12 @@ import kotlinx.coroutines.flow.asStateFlow
  * repaired by picking a different account out from under the driver. [buildCredBalanceLine] is
  * where that "still nominated, no longer present" state is actually surfaced; this object only
  * ever answers "what was picked", never "is it still valid".
+ *
+ * **RETIRED FROM EVERY SCREEN 2026-11-05 (household-finance ticket 14).** Kevin: the bank accounts
+ * "no need to be selectable". The Money view's account list is read-only and HOME's safe to spend
+ * replaced the nominated-account balance (ticket 13). The stored value is KEPT so an older backup or
+ * build still reads, and [init] still runs, but nothing reads [nominatedAccountId] and nothing calls
+ * [setNominated] any more.
  */
 object LedgerNominatedAccountPreferences {
     private const val PREFS = "ledger_nominated_account"

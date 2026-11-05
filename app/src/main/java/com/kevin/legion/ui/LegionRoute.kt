@@ -235,6 +235,10 @@ object LegionRoute {
     const val FLEET_TELEMETRY = "fleet/telemetry"
 
     /**
+     * **Since 2026-11-05 (household-finance ticket 14) this is the Money view**: one screen that
+     * swipes between months ([LedgerScreen] hosting `ui/money/MoneyView.kt`). The text below is
+     * the 2026-10-02 history.
+     *
      * Was `ledger` - renamed for the tab. **Since 2026-10-02 this is the Money page**
      * ([com.kevin.legion.ui.money.MoneyMonthScreen]): this calendar month's spend per account and
      * on what, nothing else above the fold. The screen that used to live here, [LedgerScreen],
@@ -243,7 +247,8 @@ object LegionRoute {
      */
     const val MONEY = "money"
 
-    /** The old Money screen ([LedgerScreen]), unchanged, one row down from [MONEY]. */
+    /** Was the old Money details screen. Since household-finance ticket 14 it lands on the same
+     * Money view as [MONEY], so an old link still reaches real content. */
     const val MONEY_DETAILS = "money/details"
     // MONEY_IMPORT ("money/import") deleted - backend-erp ticket 25 ("statement ingestion leaves
     // the phone entirely"). Bank statements are ingested by the web app now.

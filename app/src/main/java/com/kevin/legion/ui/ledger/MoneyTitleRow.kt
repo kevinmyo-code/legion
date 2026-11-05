@@ -34,7 +34,7 @@ internal fun MoneyTitleRow(
         // Back arrow + chip + title, the same bar every soft drill-down has. Titled for what the
         // page is (the Money month page is the front door now), actions on their own row so the
         // header never has to squeeze four things into a phone's width.
-        DeckScreenHeader(title = "Money details", onBack = onBack, accent = AreaAccent.MONEY)
+        DeckScreenHeader(title = "Money", onBack = onBack, accent = AreaAccent.MONEY)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.End,
