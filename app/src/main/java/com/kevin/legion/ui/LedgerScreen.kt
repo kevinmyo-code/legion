@@ -387,6 +387,9 @@ fun LedgerScreen(
     // gets in `LegionShell`'s own effect.
     LaunchedEffect(openCategoryNonce) {
         if (openCategoryNonce > 0) {
+            // HOME's bars are this month's (Kevin, 2026-11-05), so the drilldown opens on this month
+            // even when Money was left paged to another. The month list always holds it.
+            pnlMonth = YearMonth.now()
             drilldownCategory = CategoryDrilldownSelection(openCategory)
             onCategoryDrilldownConsumed()
         }
