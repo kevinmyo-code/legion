@@ -3,8 +3,8 @@ map: household-finance
 ticket: "07"
 title: "Net worth, cash flow, runway and the income plan"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05, incl. safe to spend. Owes: real card statement balance and due day (current balance stands in); SG-side spend waits on ticket 04; figures read back after the loader runs"
 blockers: ["01", "02", "03"]
 blocked-by: ["[[01-accounts-and-snapshots]]", "[[02-household-internal-money]]", "[[03-fx-rates]]"]
 open-blockers: 3

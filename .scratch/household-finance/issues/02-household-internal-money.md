@@ -3,8 +3,8 @@ map: household-finance
 ticket: "02"
 title: "Household-internal money: spouse transfers, cross-border wires, card payments"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05. Owes: card-payment and Zelle description shapes checked against real bank rows (tests use reasoned shapes); cross-border pairing waits on SGD rows (ticket 04); the phone still counts member transfers"
 blockers: ["01"]
 blocked-by: ["[[01-accounts-and-snapshots]]"]
 open-blockers: 1

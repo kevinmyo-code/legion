@@ -3,12 +3,12 @@ map: household-finance
 ticket: "03"
 title: "Daily FX rates"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05. Owes: deploy, install_schedule for fx_rates, one live fetch confirmed from each source"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Daily FX rates

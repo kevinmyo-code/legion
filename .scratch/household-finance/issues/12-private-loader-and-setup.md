@@ -3,8 +3,8 @@ map: household-finance
 ticket: "12"
 title: "Private loader and Kevin's setup list"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05. Owes: Kevin adds the yaml block (payer names, income plan, floors, top-up, budgets) to his private file and runs the loader after deploy; setup steps 2-5 wait on wave 2"
 blockers: ["01"]
 blocked-by: ["[[01-accounts-and-snapshots]]"]
 open-blockers: 1

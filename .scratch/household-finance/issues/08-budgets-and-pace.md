@@ -3,8 +3,8 @@ map: household-finance
 ticket: "08"
 title: "Budgets and pace"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05. Owes: caps loaded from the private file; subscription rule checked against real history; pace drawn on the phone (ticket 10)"
 blockers: ["02"]
 blocked-by: ["[[02-household-internal-money]]"]
 open-blockers: 1

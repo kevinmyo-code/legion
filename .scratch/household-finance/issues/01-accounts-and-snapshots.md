@@ -3,12 +3,12 @@ map: household-finance
 ticket: "01"
 title: "Household accounts and balance snapshots"
 type: build
-status: open
-status-detail: "charted 2026-11-05"
+status: built
+status-detail: "built 2026-11-05 (feat/finance-wave1). Owes: deploy and migrate, install_schedule for finance_snapshots, a first real snapshot read back"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Household accounts and balance snapshots
