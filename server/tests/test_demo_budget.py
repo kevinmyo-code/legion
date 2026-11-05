@@ -15,7 +15,7 @@ from django.db import connection
 from rest_framework.test import APIClient
 
 from demo import budget
-from demo.models import DemoBudgetDay, DemoCode
+from demo.models import DemoBudgetDay, DemoCode, DemoCodeDay
 from household.models import Household
 from ingest.drive import Response
 from tests.test_assistant import google  # noqa: F401 - fixture
@@ -297,3 +297,102 @@ def test_the_two_codes_rotate_and_close_apart(db):
     assert DemoCode.live().filter(unmetered=False).count() == 1
     shared.refresh_from_db()
     assert shared.revoked_at is not None  # replaced by the second rotate
+
+
+# =============================================================================
+# The LinkedIn code (Kevin, 2026-11-04: "if its drained, explicitly tell users
+# that the code is on a shared daily spend cap of $2 and to contact me")
+# =============================================================================
+
+
+def _enter(code) -> APIClient:
+    browser = APIClient()
+    assert browser.post("/api/demo/enter", {"code": code}, format="json").status_code == 201
+    return browser
+
+
+@pytest.fixture
+def linkedin(db):
+    Household.objects.create(name="Demo")
+    DemoCode.rotate()  # the resume code, live beside it
+    row, code = DemoCode.rotate(label="linkedin", daily_cap_cents=200)
+    return row, code
+
+
+def test_a_capped_code_stops_at_its_own_cap_and_says_why(linkedin, google, settings):  # noqa: F811
+    _limits(settings, budget_usd="5", reserve="0")  # $1 a mint
+    _row, code = linkedin
+    first, second = _enter(code), _enter(code)
+    assert first.post("/api/assistant/session", {}, format="json").status_code == 200
+    assert second.post("/api/assistant/session", {}, format="json").status_code == 200
+    refused = first.post("/api/assistant/session", {}, format="json")
+    assert refused.status_code == 429
+    detail = refused.data["detail"]
+    assert "shared, with a daily spend cap of $2" in detail
+    assert "message Kevin on LinkedIn" in detail
+    assert _reserved(budget.utc_today()) == 200  # the refused mint reserved nothing globally
+
+
+def test_a_drained_capped_code_leaves_the_resume_code_its_day(
+    linkedin, recruiter, google, settings  # noqa: F811
+):
+    _limits(settings, budget_usd="3", reserve="0")
+    _row, code = linkedin
+    stranger = _enter(code)
+    for _ in range(2):
+        assert stranger.post("/api/assistant/session", {}, format="json").status_code == 200
+    assert stranger.post("/api/assistant/session", {}, format="json").status_code == 429
+    assert recruiter.post("/api/assistant/session", {}, format="json").status_code == 200
+    refused = recruiter.post("/api/assistant/session", {}, format="json")
+    assert refused.data["detail"] == budget.BUDGET_USED_UP
+
+
+def test_the_global_cap_refusing_gives_the_codes_share_back(linkedin, settings):
+    _limits(settings, budget_usd="1", reserve="0")
+    row, code = linkedin
+    user = _visitor(code)
+    assert budget.reserve_voice_mint(NOON, user=user) is not None
+    assert budget.reserve_voice_mint(NOON, user=user) is None  # global $1 is full
+    assert DemoCodeDay.objects.get(code=row).reserved_cents == 100
+    # The global day is what refused, so the words are the global ones.
+    assert budget.used_up_message(user, "voice", NOON) == budget.BUDGET_USED_UP
+
+
+def test_release_gives_back_both_days(linkedin, settings):
+    _limits(settings, budget_usd="5", reserve="0")
+    row, code = linkedin
+    reservation = budget.reserve_voice_mint(NOON, user=_visitor(code))
+    budget.release(reservation)
+    assert _reserved() == 0
+    assert DemoCodeDay.objects.get(code=row).reserved_cents == 0
+
+
+def test_labelled_codes_rotate_and_close_apart(db):
+    shared, _ = DemoCode.rotate()
+    linked, _ = DemoCode.rotate(label="linkedin", daily_cap_cents=200)
+    DemoCode.rotate()
+    DemoCode.close_all()
+    linked.refresh_from_db()
+    assert linked.revoked_at is None
+    DemoCode.close_all(label="linkedin")
+    linked.refresh_from_db()
+    assert linked.revoked_at is not None
+
+
+def test_the_command_makes_a_capped_code(db):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    out = StringIO()
+    call_command("demo_code", "rotate", "--label", "LinkedIn", "--cap", "2", stdout=out)
+    row = DemoCode.live().get(label="linkedin")
+    assert row.daily_cap_cents == 200
+    assert DemoCode.match(out.getvalue().strip().splitlines()[-1]) == row
+
+
+def _visitor(code):
+    from demo.models import DemoVisit
+
+    _enter(code)
+    return DemoVisit.objects.latest("created_at").user

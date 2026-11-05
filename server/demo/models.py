@@ -44,11 +44,20 @@ class DemoCode(models.Model):
     # (`demo.budget.counts`). It is a separate generation from the shared code:
     # rotating or closing one never touches the other. Never put it on a resume.
     unmetered = models.BooleanField(default=False)
+    # A named code for one channel (Kevin, 2026-11-04: a code for LinkedIn,
+    # "if its drained, explicitly tell users that the code is on a shared daily
+    # spend cap of $2 and to contact me for a proper demo code"). "" is the
+    # shared resume code. Each label is its own generation: rotating or closing
+    # one never touches another (`rotate`, `close_all`).
+    label = models.CharField(max_length=32, blank=True, default="")
+    # The code's own daily cap in cents, on top of the global budget, or None
+    # for none. Counted per UTC day in `DemoCodeDay` (`demo/budget.py`).
+    daily_cap_cents = models.IntegerField(null=True, blank=True)
 
     def __str__(self) -> str:
         # Never the code, and never the hash either: neither belongs in a log line.
         state = "revoked" if self.revoked_at else "live"
-        kind = "tester " if self.unmetered else ""
+        kind = "tester " if self.unmetered else f"{self.label} " if self.label else ""
         return f"Demo {kind}code from {self.created_at:%Y-%m-%d %H:%M} ({state})"
 
     @classmethod
@@ -56,18 +65,26 @@ class DemoCode(models.Model):
         return cls.objects.filter(revoked_at__isnull=True)
 
     @classmethod
-    def close_all(cls, unmetered: bool = False) -> int:
+    def close_all(cls, unmetered: bool = False, label: str = "") -> int:
         """Revoke the live codes of one kind: the shared code by default, the
-        tester code with `unmetered`."""
-        return cls.live().filter(unmetered=unmetered).update(revoked_at=timezone.now())
+        tester code with `unmetered`, a named code with `label`."""
+        return cls.live().filter(unmetered=unmetered, label=label).update(revoked_at=timezone.now())
 
     @classmethod
-    def rotate(cls, unmetered: bool = False) -> tuple[DemoCode, str]:
+    def rotate(
+        cls, unmetered: bool = False, label: str = "", daily_cap_cents: int | None = None
+    ) -> tuple[DemoCode, str]:
         """Revoke the live code of this kind and mint a new one. Returns the row
         and the raw code, which is never stored and cannot be fetched again."""
-        cls.close_all(unmetered=unmetered)
+        cls.close_all(unmetered=unmetered, label=label)
         code = secrets.token_urlsafe(DEMO_CODE_BYTES)
-        return cls.objects.create(code_hash=hash_demo_code(code), unmetered=unmetered), code
+        row = cls.objects.create(
+            code_hash=hash_demo_code(code),
+            unmetered=unmetered,
+            label=label,
+            daily_cap_cents=daily_cap_cents,
+        )
+        return row, code
 
     @classmethod
     def match(cls, code: str) -> DemoCode | None:
@@ -187,3 +204,24 @@ class DemoBudgetDay(models.Model):
 
     def __str__(self) -> str:
         return f"Demo budget {self.day}: {self.reserved_cents} cents reserved"
+
+
+class DemoCodeDay(models.Model):
+    """One UTC day of spend reserved by the visitors of one capped code
+    (`DemoCode.daily_cap_cents`). Reserved beside the global `DemoBudgetDay`,
+    never instead of it: a capped code's visitors must fit both."""
+
+    code = models.ForeignKey(DemoCode, on_delete=models.CASCADE, related_name="days")
+    day = models.DateField()
+    reserved_cents = models.BigIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["code", "day"], name="demo_code_day_unique"),
+            models.CheckConstraint(
+                condition=models.Q(reserved_cents__gte=0), name="demo_code_day_reserved_nonneg"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Demo code day {self.day}: {self.reserved_cents} cents reserved"

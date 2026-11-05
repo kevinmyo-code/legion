@@ -259,11 +259,11 @@ class AssistantSessionView(_AssistantView):
         # reach the budget (`demo_budget.counts`).
         reservation = None
         if demo_budget.counts(request.user):
-            reservation = demo_budget.reserve_voice_mint()
+            reservation = demo_budget.reserve_voice_mint(user=request.user)
             if reservation is None:
                 _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
                 return Response(
-                    {"detail": demo_budget.BUDGET_USED_UP},
+                    {"detail": demo_budget.used_up_message(request.user, "voice")},
                     status=status.HTTP_429_TOO_MANY_REQUESTS,
                 )
 

@@ -365,9 +365,11 @@ def _decide_step(walk: _Walk, step: dict, started, t0):
     reservation = None
     try:
         if is_recruiter(walk.request.user):
-            reservation = budget.charge_text_call()
+            reservation = budget.charge_text_call(user=walk.request.user)
             if reservation is None:
-                raise decide.DecideFailed(budget.BUDGET_USED_UP, refused=True)
+                raise decide.DecideFailed(
+                    budget.used_up_message(walk.request.user, "text"), refused=True
+                )
         choice = decide.choose(step["question"], args, branches)
     except decide.DecideFailed as exc:
         if reservation is not None and exc.refused:

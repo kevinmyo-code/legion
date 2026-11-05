@@ -21,6 +21,17 @@ WHERE day = d AND reserved + n <= cap`). Postgres re-checks the WHERE against
 the row as committed by whoever held its lock, so two requests at the edge
 cannot both fit. `tests/test_demo_budget.py` races them.
 
+## A capped code (Kevin, 2026-11-04)
+
+A named code (`DemoCode.label`, the LinkedIn code) may carry its own daily cap
+(`DemoCode.daily_cap_cents`). Its visitors reserve against BOTH: the code's
+own day (`DemoCodeDay`) first, then the global day; a reservation the global
+day refuses gives the code's share back. Each step is one conditional UPDATE,
+so neither cap can be overshot. When the code's own cap is what refused,
+`used_up_message` says so in words, with the cap and who to ask (Kevin: "tell
+users that the code is on a shared daily spend cap of $2 and to contact me for
+a proper demo code").
+
 ## Voice and text
 
 Kevin, 2026-11-02 (ruling 7): text outlives voice. Voice stops at the budget
@@ -98,7 +109,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.db.models import F
 
-from demo.models import DemoBudgetDay
+from demo.models import DemoBudgetDay, DemoCode, DemoCodeDay
 
 BUDGET_USED_UP = "Today's demo budget is used up. Try again tomorrow."
 
@@ -115,6 +126,51 @@ def counts(user) -> bool:
     if user is None or not is_recruiter(user):
         return False
     return not DemoVisit.objects.filter(user=user, code__unmetered=True).exists()
+
+
+def capped_code(user) -> DemoCode | None:
+    """The capped code this caller's visit came in on, or None."""
+    from demo.models import DemoVisit
+
+    if user is None or not getattr(user, "pk", None):
+        return None
+    visit = (
+        DemoVisit.objects.filter(user=user, code__daily_cap_cents__isnull=False)
+        .select_related("code")
+        .first()
+    )
+    return visit.code if visit else None
+
+
+def _dollars(cents: int) -> str:
+    return f"${cents // 100}" if cents % 100 == 0 else f"${cents / 100:.2f}"
+
+
+def code_used_up_message(cap_cents: int) -> str:
+    return (
+        f"This demo code is shared, with a daily spend cap of {_dollars(cap_cents)}, and "
+        "today's is used up. It resets at midnight UTC. For a proper demo code to test "
+        "it further, message Kevin on LinkedIn."
+    )
+
+
+def used_up_message(user, kind: str, now: datetime | None = None) -> str:
+    """Why a reservation of `kind` ("voice", "text" or "search") was refused:
+    the capped code's own words when its cap is what is full, else the global
+    `BUDGET_USED_UP`."""
+    code = capped_code(user)
+    if code is not None:
+        lim = limits()
+        cents = {
+            "voice": lim.voice_mint_cents,
+            "text": lim.text_call_cents,
+            "search": lim.search_cents,
+        }[kind]
+        row = DemoCodeDay.objects.filter(code=code, day=utc_today(now)).first()
+        used = row.reserved_cents if row else 0
+        if used + cents > code.daily_cap_cents:
+            return code_used_up_message(code.daily_cap_cents)
+    return BUDGET_USED_UP
 
 
 def max_session_minutes() -> int:
@@ -185,6 +241,8 @@ def utc_today(now: datetime | None = None) -> date:
 class Reservation:
     day: date
     cents: int
+    # The capped code this was also reserved against, if any.
+    code_id: int | None = None
 
 
 def _ensure_day(day: date) -> None:
@@ -197,39 +255,72 @@ def _ensure_day(day: date) -> None:
         pass  # another request made it first; the row is what matters
 
 
-def _reserve(cents: int, cap: int, counter: str, now: datetime | None) -> Reservation | None:
-    """Add `cents` to today's reservations if the total stays within `cap`.
-    One conditional UPDATE: it either fits and is recorded, or nothing
-    changes. None means it did not fit."""
+def _reserve_code(code: DemoCode, day: date, cents: int) -> bool:
+    """Add `cents` to this capped code's day if it stays within its cap."""
+    cap = code.daily_cap_cents
+    if cents > cap:
+        return False
+    if not DemoCodeDay.objects.filter(code=code, day=day).exists():
+        try:
+            with transaction.atomic():
+                DemoCodeDay.objects.create(code=code, day=day)
+        except IntegrityError:
+            pass  # another request made it first
+    return bool(
+        DemoCodeDay.objects.filter(code=code, day=day, reserved_cents__lte=cap - cents).update(
+            reserved_cents=F("reserved_cents") + cents
+        )
+    )
+
+
+def _release_code(code_id: int, day: date, cents: int) -> None:
+    DemoCodeDay.objects.filter(code_id=code_id, day=day, reserved_cents__gte=cents).update(
+        reserved_cents=F("reserved_cents") - cents
+    )
+
+
+def _reserve(
+    cents: int, cap: int, counter: str, now: datetime | None, user=None
+) -> Reservation | None:
+    """Add `cents` to today's reservations if the total stays within `cap`
+    and within the caller's capped code, if any. One conditional UPDATE each:
+    it either fits and is recorded, or nothing changes. None: it did not fit."""
     day = utc_today(now)
     if cents > cap:
+        return None
+    code = capped_code(user)
+    if code is not None and not _reserve_code(code, day, cents):
         return None
     _ensure_day(day)
     fitted = DemoBudgetDay.objects.filter(day=day, reserved_cents__lte=cap - cents).update(
         reserved_cents=F("reserved_cents") + cents, **{counter: F(counter) + 1}
     )
-    return Reservation(day=day, cents=cents) if fitted else None
+    if not fitted:
+        if code is not None:
+            _release_code(code.pk, day, cents)
+        return None
+    return Reservation(day=day, cents=cents, code_id=code.pk if code else None)
 
 
-def reserve_voice_mint(now: datetime | None = None) -> Reservation | None:
+def reserve_voice_mint(now: datetime | None = None, user=None) -> Reservation | None:
     """Reserve one Live mint's worst case against the VOICE cap (budget less
     the text reserve). None: no token may be minted today."""
     lim = limits()
-    return _reserve(lim.voice_mint_cents, lim.voice_cap_cents, "voice_mints", now)
+    return _reserve(lim.voice_mint_cents, lim.voice_cap_cents, "voice_mints", now, user)
 
 
-def charge_text_call(now: datetime | None = None) -> Reservation | None:
+def charge_text_call(now: datetime | None = None, user=None) -> Reservation | None:
     """Reserve one text-model call against the FULL budget. None: refuse it.
     Not wired: the web has no text-model route yet (see the module doc)."""
     lim = limits()
-    return _reserve(lim.text_call_cents, lim.budget_cents, "text_calls", now)
+    return _reserve(lim.text_call_cents, lim.budget_cents, "text_calls", now, user)
 
 
-def charge_web_search(now: datetime | None = None) -> Reservation | None:
+def charge_web_search(now: datetime | None = None, user=None) -> Reservation | None:
     """Reserve one recruiter `web_search` against the FULL budget, before
     Google is asked. None: refuse it (`BUDGET_USED_UP`)."""
     lim = limits()
-    return _reserve(lim.search_cents, lim.budget_cents, "web_searches", now)
+    return _reserve(lim.search_cents, lim.budget_cents, "web_searches", now, user)
 
 
 def release(reservation: Reservation) -> None:
@@ -238,3 +329,5 @@ def release(reservation: Reservation) -> None:
     DemoBudgetDay.objects.filter(
         day=reservation.day, reserved_cents__gte=reservation.cents
     ).update(reserved_cents=F("reserved_cents") - reservation.cents)
+    if reservation.code_id is not None:
+        _release_code(reservation.code_id, reservation.day, reservation.cents)

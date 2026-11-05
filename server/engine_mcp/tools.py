@@ -1837,9 +1837,9 @@ def _web_search(request, args) -> ToolResult:
     reservation = None
     if budget.counts(user):
         # Reserved before Google is asked (`demo/budget.py`).
-        reservation = budget.charge_web_search()
+        reservation = budget.charge_web_search(user=user)
         if reservation is None:
-            return refused(f"Nothing was searched. {budget.BUDGET_USED_UP}")
+            return refused(f"Nothing was searched. {budget.used_up_message(user, 'search')}")
     try:
         found = web_search.search(query)
     except web_search.SearchFailed as exc:
