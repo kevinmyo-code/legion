@@ -79,7 +79,8 @@ class MoneyViewModel(
 
     /** Today's figures, and every month already on screen again. */
     fun refresh() {
-        viewModelScope.launch {
+        // Hidden household sections ([MoneySections]) read nothing: their figures are not on screen.
+        if (MoneySections.SHOW_HOUSEHOLD) viewModelScope.launch {
             val safe = async { finance.safeToSpend() }
             val worth = async { finance.netWorth() }
             val accounts = async { finance.accounts() }
@@ -97,7 +98,7 @@ class MoneyViewModel(
         _state.update { it.copy(pages = it.pages + (month to (it.pages[month] ?: MoneyMonthPage()))) }
         viewModelScope.launch {
             val budgets = async { finance.budgets(month) }
-            val cash = async { finance.cashFlow(month) }
+            val cash = async { if (MoneySections.SHOW_HOUSEHOLD) finance.cashFlow(month) else null }
             val rows = async { runCatching { transactions(month) }.getOrNull() }
             val txns = rows.await()
             val page = MoneyMonthPage(budgets.await(), cash.await(), txns, transactionsFailed = txns == null)

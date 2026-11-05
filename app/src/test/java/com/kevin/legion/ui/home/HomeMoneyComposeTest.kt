@@ -23,7 +23,7 @@ import org.robolectric.annotation.Config
 /**
  * Household-finance 13: HOME's Money panel. The [Calendar] button opens the same sheet Alfred's
  * `show_agenda_modal` opens (both are `VoiceModalController.show(AGENDA)`; the tool's side is
- * `LiveSessionController`'s `show_agenda_modal` branch), a bar opens its category, safe to spend
+ * `LiveSessionController`'s `show_agenda_modal` branch), a bar opens its category, the total bar
  * opens Money, and the day's agenda under the panel is still there.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -78,21 +78,43 @@ class HomeMoneyComposeTest {
         rule.onNodeWithText("Today · Thu, Nov 5").assertExists()
     }
 
+    private fun described(prefix: String) = SemanticsMatcher(prefix) { node ->
+        node.config.getOrNull(SemanticsProperties.ContentDescription)?.any { it.startsWith(prefix) } == true
+    }
+
     @Test
-    fun `tapping safe to spend opens Money, tapping a bar opens its category`() {
+    fun `tapping the total bar opens Money, tapping a category bar opens its drilldown`() {
         show()
-        rule.onNodeWithText("-$1,657").performClick()
+        rule.onNode(described("November: $581 spent, $1,019 left of $1,600")).performClick()
         assertEquals(1, moneyOpened)
-        rule.onNode(SemanticsMatcher("Dining bar") { node ->
-            node.config.getOrNull(SemanticsProperties.ContentDescription)?.any { it.startsWith("Dining,") } == true
-        }).performClick()
+        rule.onNode(described("Dining,")).performClick()
         assertEquals(listOf("Dining"), categories)
     }
 
     @Test
-    fun `over the cap is said in words on the panel`() {
+    fun `the panel is the budget only, over the cap said in words, fixed last`() {
         show()
         rule.onNodeWithText("over by $14").assertExists()
-        rule.onNodeWithText("Top up ~$2,000 by Nov 11: below zero.").assertExists()
+        rule.onNodeWithText("Fixed").assertExists()
+        rule.onNodeWithText("not paid yet").assertExists()
+        rule.onNodeWithText("Safe to spend").assertDoesNotExist()
+        rule.onNodeWithText("Net worth").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the More card shows the total bar and the three closest to their cap, and opens Money`() {
+        var opened = 0
+        rule.setContent {
+            com.kevin.legion.ui.theme.soft.SoftTheme {
+                MoneyGlanceCard(homeMoneyPanel(FinanceFixtures.homeFresh)) { opened++ }
+            }
+        }
+        rule.onNodeWithText("$581 of $1,600", substring = true).assertExists()
+        rule.onNodeWithText("Dining", substring = true).assertExists()
+        rule.onNodeWithText("Household", substring = true).assertExists()
+        rule.onNodeWithText("Subscriptions", substring = true).assertExists()
+        rule.onNodeWithText("Shopping", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Money").performClick()
+        assertEquals(1, opened)
     }
 }

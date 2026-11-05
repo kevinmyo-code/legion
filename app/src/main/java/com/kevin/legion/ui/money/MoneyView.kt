@@ -55,11 +55,11 @@ import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.finance.FinanceText
 import com.kevin.legion.finance.noteOrNull
 import com.kevin.legion.finance.valueOrNull
-import com.kevin.legion.ui.home.homeMoneyPanel
-import com.kevin.legion.ui.home.HomeMoneyUiState
+import com.kevin.legion.ui.home.safeLine
 import com.kevin.legion.ui.ledger.MoneyTitleRow
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
+import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.launch
 
@@ -94,11 +94,22 @@ data class MoneyViewHost(
 private val CARD = RoundedCornerShape(18.dp)
 
 /**
+ * Which of the Money view's sections show. Kevin, 2026-11-05: "lets manage our daily spending here
+ * first" - "lets not care about singapore and money transfer and cash flow". So the household
+ * sections (safe to spend, this month's cash flow with its USD/SGD toggle, net worth, accounts,
+ * statements) are hidden, not deleted, and their engine reads are skipped while they are. Flip this
+ * to bring them back.
+ */
+object MoneySections {
+    const val SHOW_HOUSEHOLD = false
+}
+
+/**
  * The Money view (household-finance ticket 14, Kevin's approved prototype screen 3): ONE screen that
  * swipes between months. It replaces More > Money, Money details and the statements screen; every
- * route that reached them lands here. Sections follow the page's month: this month, the budget with
- * the same bars HOME uses, net worth by layer, a plain read-only account list, statements present or
- * missing, and the month's transactions with category chips.
+ * route that reached them lands here. Each month's page is the budget first (Kevin, 2026-11-05): the
+ * total budget bar, every category bar (a tap opens its drilldown), the fixed categories, then the
+ * month's transactions with category chips. The household sections sit behind [MoneySections].
  */
 @Composable
 fun MoneyViewContent(
@@ -233,17 +244,21 @@ private fun MonthPage(
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
     ) {
-        if (month == YearMonth.from(state.today)) SafeSection(state)
-        ThisMonthSection(
-            page?.cashFlow,
-            state.currency,
-            accountLabels(state.accounts?.valueOrNull),
-            callbacks.onSetCurrency,
-        )
-        BudgetSection(page?.budgets, callbacks)
-        NetWorthSection(state)
-        AccountsSection(state)
-        StatementsSection(state, month)
+        if (MoneySections.SHOW_HOUSEHOLD) {
+            if (month == YearMonth.from(state.today)) SafeSection(state)
+            ThisMonthSection(
+                page?.cashFlow,
+                state.currency,
+                accountLabels(state.accounts?.valueOrNull),
+                callbacks.onSetCurrency,
+            )
+        }
+        BudgetSection(page?.budgets, state.today, callbacks)
+        if (MoneySections.SHOW_HOUSEHOLD) {
+            NetWorthSection(state)
+            AccountsSection(state)
+            StatementsSection(state, month)
+        }
         TransactionsSection(page, callbacks.onOpenCategory)
         footer()
         Spacer(Modifier.height(24.dp))
@@ -342,7 +357,7 @@ private fun Tag(text: String) {
 private fun SafeSection(state: MoneyViewUiState) {
     val safe = state.safe
     val body = safe?.valueOrNull
-    val line = homeMoneyPanel(HomeMoneyUiState(loading = safe == null, today = state.today, safe = safe)).safe
+    val line = safeLine(safe, loading = safe == null)
     SectionTitle("Safe to spend")
     Card {
         if (line.figure != null) {
@@ -425,64 +440,44 @@ private fun CurrencyToggle(currency: String, onSetCurrency: (String) -> Unit) {
 }
 
 @Composable
-private fun BudgetSection(read: FinanceRead<BudgetsWire>?, callbacks: MoneyViewCallbacks) {
+private fun BudgetSection(read: FinanceRead<BudgetsWire>?, today: LocalDate, callbacks: MoneyViewCallbacks) {
     SectionTitle("Budget")
     val budgets = read?.valueOrNull ?: return ReadNote(read, "budgets")
-    val bars = closestToCap(budgets.categories, budgets.currency)
+    val board = budgetBoard(read, today)
     Card {
-        Row(Modifier.fillMaxWidth()) {
-            Text(
-                "${FinanceText.money(
-                    budgets.total.spentCents,
-                    budgets.currency,
-                )} of ${FinanceText.money(budgets.total.capCents, budgets.currency)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = SoftColors.text2,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                budgets.total.percent?.let { "$it%" } ?: "no caps set",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = SoftColors.text,
-            )
-        }
-        bars.forEach { bar ->
+        board.total?.let { TotalBudgetBar(it) }
+        board.bars.forEach { bar ->
             BudgetBar(bar, Modifier.padding(top = 6.dp)) { callbacks.onOpenCategory(bar.category) }
         }
-        budgets.categories.filter { it.capCents == null || it.capCents <= 0 }.forEach { line ->
-            Text(
-                "${line.category}: ${FinanceText.money(line.spentCents, budgets.currency)}, no cap" +
-                    if (line.pendingCents > 0) ", includes ${FinanceText.money(
-                        line.pendingCents,
-                        budgets.currency,
-                    )} pending" else "",
-                style = MaterialTheme.typography.bodySmall,
-                color = SoftColors.text2,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { callbacks.onOpenCategory(line.category) }
-                    .padding(top = 6.dp),
-            )
-        }
-        budgets.fixed.forEach { fixed ->
-            Note("${fixed.category}: " + if (fixed.paid) "paid, ${FinanceText.money(
-                fixed.paidCents,
-                budgets.currency,
-            )}" else "not paid yet")
+        val fixedNames = board.fixed.map { it.category }.toSet()
+        budgets.categories
+            .filter { (it.capCents == null || it.capCents <= 0) && it.category !in fixedNames }
+            .forEach { line ->
+                Text(
+                    "${line.category}: ${FinanceText.money(line.spentCents)}, no cap" +
+                        if (line.pendingCents > 0) ", includes ${FinanceText.money(line.pendingCents)} pending" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SoftColors.text2,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { callbacks.onOpenCategory(line.category) }
+                        .padding(top = 6.dp),
+                )
+            }
+        if (board.fixed.isNotEmpty()) {
+            FixedLabel()
+            board.fixed.forEach { line -> FixedRow(line) { callbacks.onOpenCategory(line.category) } }
         }
         if (budgets.uncategorisedCents > 0) {
             Text(
-                "${FinanceText.money(
-                    budgets.uncategorisedCents,
-                    budgets.currency,
-                )} uncategorised, in no category above.",
+                "${FinanceText.money(budgets.uncategorisedCents)} uncategorised, in no category above.",
                 style = MaterialTheme.typography.labelSmall,
                 color = SoftColors.caution,
                 modifier = Modifier.clickable { callbacks.onOpenCategory(null) }.padding(top = 6.dp),
             )
         }
         Note("White tick: where spend would be at an even pace today. Tap a category for its transactions.")
-        (read as? FinanceRead.Saved)?.let { Note(it.note, caution = true) }
+        board.note?.let { Note(it, caution = board.noteIsCaution) }
         Text(
             "Budget details, trend and new categories ›",
             style = MaterialTheme.typography.bodyMedium,

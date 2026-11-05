@@ -10,31 +10,27 @@ import com.kevin.legion.finance.BudgetsWire
 import com.kevin.legion.finance.FinanceController
 import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.finance.FinanceText
-import com.kevin.legion.finance.NetWorthWire
 import com.kevin.legion.finance.SafeToSpendWire
 import com.kevin.legion.finance.noteOrNull
 import com.kevin.legion.finance.valueOrNull
-import com.kevin.legion.ui.money.BarTone
-import com.kevin.legion.ui.money.BudgetBarModel
-import com.kevin.legion.ui.money.closestToCap
-import com.kevin.legion.ui.money.fraction
+import com.kevin.legion.ui.money.BudgetBoardModel
+import com.kevin.legion.ui.money.budgetBoard
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** What HOME's Money panel and the More sheet's Money card read (household-finance 13 and 14). */
+/**
+ * What HOME's Money panel and the More sheet's Money card read: this month's budgets only (Kevin,
+ * 2026-11-05: "lets manage our daily spending here first"). Safe to spend and net worth left HOME;
+ * [safeLine] stays for the Money view's hidden household sections ([com.kevin.legion.ui.money.MoneySections]).
+ */
 data class HomeMoneyUiState(
     val loading: Boolean = true,
     val today: LocalDate = LocalDate.now(),
-    val safe: FinanceRead<SafeToSpendWire>? = null,
     val budgets: FinanceRead<BudgetsWire>? = null,
-    val netWorth: FinanceRead<NetWorthWire>? = null,
 )
 
 /** The safe-to-spend line: the figure, until when, the top-up when one is needed, and any note. */
@@ -49,29 +45,6 @@ data class SafeLineModel(
     /** A saved copy's age, or why nothing could be read. */
     val note: String? = null,
 )
-
-data class HomeMoneyPanelModel(
-    val safe: SafeLineModel,
-    /** "November: $1,402 of $2,830"; null with no budget read. */
-    val monthLine: String?,
-    /** "50%", or "no caps set". */
-    val monthPercent: String?,
-    /** Every capped category, closest to its cap first; the panel shows as many as fit. */
-    val bars: List<BudgetBarModel>,
-    /** A saved budget copy's age, or why no budget could be read. */
-    val budgetNote: String?,
-    /** The whole month's spent / cap and pace / cap, for the More card's single bar. */
-    val monthFill: Float = 0f,
-    val monthPace: Float? = null,
-    val monthTone: BarTone = BarTone.NORMAL,
-    /** "November budget, 50% used on day 5". */
-    val monthUsedLine: String? = null,
-)
-
-private fun monthName(month: String?, today: LocalDate): String {
-    val ym = month?.let { runCatching { YearMonth.parse(it) }.getOrNull() } ?: YearMonth.from(today)
-    return ym.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
-}
 
 /** The safe-to-spend line from whatever the read gave. Never blank, never a made-up zero. */
 // One branch per thing the engine can say; splitting it would scatter one sentence's rules.
@@ -119,62 +92,13 @@ fun safeLine(read: FinanceRead<SafeToSpendWire>?, loading: Boolean): SafeLineMod
     )
 }
 
-@Suppress("CyclomaticComplexMethod") // one field per panel line, each with its own null case
-fun homeMoneyPanel(state: HomeMoneyUiState): HomeMoneyPanelModel {
-    val safe = safeLine(state.safe, state.loading)
-    val budgets = state.budgets?.valueOrNull
-    val budgetNote = when {
-        budgets == null && state.budgets != null ->
-            "Couldn't read budgets. ${state.budgets.noteOrNull.orEmpty()}".trim()
-        budgets == null -> null
-        else -> state.budgets.noteOrNull?.takeIf { it != safe.note }
-    }
-    if (budgets == null) return HomeMoneyPanelModel(safe, null, null, emptyList(), budgetNote)
-    val name = monthName(budgets.month, state.today)
-    val total = budgets.total
-    val currency = budgets.currency
-    val percent = total.percent
-    val monthTone = when {
-        total.capCents > 0 && total.spentCents > total.capCents -> BarTone.OVER
-        percent != null && percent >= NEAR_PERCENT -> BarTone.NEAR
-        else -> BarTone.NORMAL
-    }
-    return HomeMoneyPanelModel(
-        safe = safe,
-        monthLine = "$name: ${FinanceText.money(
-            total.spentCents,
-            currency,
-        )} of ${FinanceText.money(total.capCents, currency)}",
-        monthPercent = percent?.let { "$it%" } ?: "no caps set",
-        bars = closestToCap(budgets.categories, currency),
-        budgetNote = budgetNote,
-        monthFill = fraction(total.spentCents, total.capCents),
-        monthPace = total.paceCents?.let { fraction(it, total.capCents) }?.takeIf { total.capCents > 0 },
-        monthTone = monthTone,
-        monthUsedLine = percent?.let { "$name budget, $it% used on day ${budgets.daysElapsed}" }
-            ?: "$name budget: no caps set yet",
-    )
-}
-
-private const val NEAR_PERCENT = 80
-
-/** The More card's net worth: the figure and, in words, whether it is partial or an estimate. */
-data class NetWorthGlance(val figure: String?, val tag: String?)
-
-fun netWorthGlance(read: FinanceRead<NetWorthWire>?): NetWorthGlance {
-    val body = read?.valueOrNull ?: return NetWorthGlance(null, read?.noteOrNull?.let { "couldn't read" })
-    val left = body.missing.size + body.unconverted.size
-    val tag = when {
-        left > 0 -> "partial: $left account${if (left == 1) "" else "s"} not in it"
-        body.totalIsEstimate -> "includes estimates"
-        else -> null
-    }
-    return NetWorthGlance(FinanceText.compact(body.totalCents, body.currency), tag)
-}
+/** HOME's panel and the More card: the month's total bar and every category, said the same way. */
+fun homeMoneyPanel(state: HomeMoneyUiState): BudgetBoardModel =
+    budgetBoard(state.budgets, state.today, loading = state.loading)
 
 /**
- * HOME's money reads: safe to spend, this month's budgets and net worth, through the one
- * [FinanceController] the Money view and Alfred's tools share (ADR 0035). `AndroidViewModel` with
+ * HOME's money read: this month's budgets, through the one [FinanceController] the Money view and
+ * Alfred's `budgets` tool share (ADR 0035), with its saved-copy fallback. `AndroidViewModel` with
  * a Factory like [HomeCalendarViewModel]: Hilt is not in the build yet (CLAUDE.md section 8's
  * migration order).
  */
@@ -187,17 +111,8 @@ class HomeMoneyViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val month = YearMonth.now()
-            val safe = async { finance.safeToSpend() }
-            val budgets = async { finance.budgets(month) }
-            val worth = async { finance.netWorth() }
-            _state.value = HomeMoneyUiState(
-                loading = false,
-                today = LocalDate.now(),
-                safe = safe.await(),
-                budgets = budgets.await(),
-                netWorth = worth.await(),
-            )
+            val budgets = finance.budgets(YearMonth.now())
+            _state.value = HomeMoneyUiState(loading = false, today = LocalDate.now(), budgets = budgets)
         }
     }
 

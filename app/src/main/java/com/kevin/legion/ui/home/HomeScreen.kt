@@ -509,9 +509,9 @@ fun MoreSheetContent(
             // The weather and area card fits above the tiles (checked at font scale 1.3), so it is back.
             TodayCard(state = state, onClick = onDismiss)
             Spacer(Modifier.height(6.dp))
-            // Household-finance ticket 14: the Money tile became this card (safe to spend, net
-            // worth, the month bar, the closest two, the warning); it opens the Money view.
-            MoneyGlanceCard(homeMoneyPanel(money), netWorthGlance(money.netWorth), callbacks.onOpenMoney)
+            // The Money tile became this card: the month's total budget bar and the three
+            // categories closest to their cap (Kevin, 2026-11-05); it opens the Money view.
+            MoneyGlanceCard(homeMoneyPanel(money), callbacks.onOpenMoney)
             Spacer(Modifier.height(6.dp))
             TileGrid(
                 state = state,

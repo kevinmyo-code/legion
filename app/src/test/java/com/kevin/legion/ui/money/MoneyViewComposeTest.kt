@@ -17,6 +17,7 @@ import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import java.time.YearMonth
 import org.junit.Assert.assertEquals
+import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -89,6 +90,8 @@ class MoneyViewComposeTest {
 
     @Test
     fun `account rows are not clickable and their text is one line`() {
+        // The accounts section is hidden for now (MoneySections); this holds again when it is back.
+        Assume.assumeTrue(MoneySections.SHOW_HOUSEHOLD)
         show(nov)
         val name = rule.onNodeWithText("A credit card with a very long marketing name indeed 0002")
         name.assert(hasNoClickAction())
@@ -106,5 +109,18 @@ class MoneyViewComposeTest {
                 ?.any { it.startsWith("Subscriptions, 119 / 170") } == true
         }).performScrollTo().performClick()
         assertEquals(listOf<String?>("Subscriptions"), opened)
+    }
+
+    @Test
+    fun `each month is the budget first, the household sections hidden`() {
+        show(nov)
+        rule.onNode(SemanticsMatcher("total") { node ->
+            node.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)
+                ?.any { it.startsWith("November: $581 spent, $1,019 left of $1,600") } == true
+        }).assertExists()
+        rule.onNodeWithText("Transactions").performScrollTo().assertExists()
+        listOf("Safe to spend", "This month", "Net worth today", "Accounts", "Statements").forEach {
+            rule.onNodeWithText(it).assertDoesNotExist()
+        }
     }
 }

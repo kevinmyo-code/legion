@@ -7,7 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Household-finance 13: the Money panel's words, including the stale-cache wording. */
+/** The Money panel's words, and safe to spend's (kept for the Money view's hidden household sections). */
 class HomeMoneyTest {
 
     @Test
@@ -52,38 +52,17 @@ class HomeMoneyTest {
     }
 
     @Test
-    fun `the panel says the month's spent of cap and the closest three first`() {
-        val panel = homeMoneyPanel(FinanceFixtures.homeFresh)
-        assertEquals("November: $1,402 of $2,830", panel.monthLine)
-        assertEquals("50%", panel.monthPercent)
-        assertEquals(listOf("Dining", "Subscriptions", "Shopping"), panel.bars.take(3).map { it.category })
-        assertEquals("November budget, 50% used on day 5", panel.monthUsedLine)
+    fun `HOME and the More card read the one budget board, nothing else`() {
+        val board = homeMoneyPanel(FinanceFixtures.homeFresh)
+        assertEquals("November", board.total?.month)
+        assertEquals("$581 of $1,600", board.total?.amountText)
+        assertEquals("Dining", board.bars.first().category)
     }
 
     @Test
-    fun `a saved budget copy says so once, not twice when safe to spend says the same`() {
-        val note = "Saved 1 hour ago. The engine could not be reached."
-        val state = FinanceFixtures.homeFresh.copy(
-            safe = FinanceRead.Saved(FinanceFixtures.safe, 0L, note),
-            budgets = FinanceRead.Saved(FinanceFixtures.budgets, 0L, note),
-        )
-        assertNull(homeMoneyPanel(state).budgetNote)
-    }
-
-    @Test
-    fun `net worth is said partial when the engine lists accounts not in it`() {
-        val glance = netWorthGlance(FinanceRead.Fresh(FinanceFixtures.netWorth))
-        assertEquals("$148.2k", glance.figure)
-        assertEquals("partial: 4 accounts not in it", glance.tag)
-    }
-
-    @Test
-    fun `the More card's warning is the top-up first, else the first category over`() {
-        val panel = homeMoneyPanel(FinanceFixtures.homeFresh)
-        assertEquals("Top up ~$2,000 by Nov 11: below zero.", glanceWarning(panel))
-        val noTopUp = homeMoneyPanel(
-            FinanceFixtures.homeFresh.copy(safe = FinanceRead.Fresh(FinanceFixtures.safe.copy(topUpNeededCents = 0))),
-        )
-        assertEquals("Dining is over by $14.", glanceWarning(noTopUp))
+    fun `before the first read HOME says it is loading, never a zero`() {
+        val board = homeMoneyPanel(HomeMoneyUiState())
+        assertNull(board.total)
+        assertEquals("Loading budgets.", board.note)
     }
 }
