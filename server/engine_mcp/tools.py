@@ -1737,6 +1737,14 @@ def _brief_latest(request, args) -> ToolResult:
     if stale:
         head += " It is not today's brief: nothing has been built for today yet."
     paragraphs = [head]
+    # The event occurrences today's brief said (its Canvas tasks), by row id and start, so
+    # `morning_briefing` does not say them again. A brief from another day said its own day's.
+    events_said = [
+        {"event_id": item["event_id"], "starts_at": item.get("starts_at")}
+        for sec in (brief.sections or [])
+        for item in (sec.get("lines") or [])
+        if not stale and item.get("event_id")
+    ]
     for note in brief.notes or []:
         paragraphs.append(str(note))
     sections = []
@@ -1772,6 +1780,7 @@ def _brief_latest(request, args) -> ToolResult:
                 "is_today": not stale,
                 "sections": sections,
             },
+            "events_said": events_said,
         },
     )
 

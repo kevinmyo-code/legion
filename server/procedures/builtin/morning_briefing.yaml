@@ -32,6 +32,7 @@ steps:
     args:
       events: $steps.events.structured
       utc_offset_minutes: $steps.brief.structured.utc_offset_minutes
+      said: $steps.brief.structured.events_said
     next: ticks
   - id: ticks
     kind: compute
