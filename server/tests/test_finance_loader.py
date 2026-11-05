@@ -51,6 +51,10 @@ def test_the_template_loads_every_part(household_a, capsys):
     assert policy.liquid_floor_cents == 1_000_000 and policy.us_bills_30d_cents == 200_000
     assert policy.topup_checking.key == "us-checking-1000" and policy.card_due_day == 20
     assert (policy.mortgage_monthly_cents, policy.mortgage_currency) == (100_000, "SGD")
+    assert policy.fixed_bills == [
+        {"label": "Rent", "amount_cents": 100_000, "day": 1},
+        {"label": "Power", "amount_cents": 10_000, "day": 15},
+    ]
     assert IncomePlan.objects.filter(household=household_a).count() == 4
     caps = {
         t.category: t.amount_cents

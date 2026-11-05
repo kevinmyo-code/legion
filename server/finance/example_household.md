@@ -100,6 +100,12 @@ policy:
     card_due_day: 20        # optional, day of month
   transfer_lead_days: 7
   fixed_categories: [Housing, Utilities, Insurance]
+  # Optional: the US fixed bills safe-to-spend holds back before the next
+  # income date. Without this list they are worked out from the fixed
+  # categories' recurring merchants (an estimate).
+  fixed_bills:
+    - {label: Rent, amount: 1000, day: 1}
+    - {label: Power, amount: 100, day: 15}
 
 budgets:
   currency: USD

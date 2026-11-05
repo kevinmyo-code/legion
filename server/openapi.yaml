@@ -3765,6 +3765,137 @@ paths:
                 items:
                   $ref: '#/components/schemas/FinanceAccount'
           description: ''
+  /api/finance/budgets:
+    get:
+      operationId: api_finance_budgets_retrieve
+      description: Per category spent against its cap, with the pace marker and, from
+        day 10, a projected month total (an estimate).
+      parameters:
+      - in: query
+        name: month
+        schema:
+          type: string
+        description: YYYY-MM. Defaults to the current month in the household's zone.
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budgets'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A bad month, in words.
+  /api/finance/cashflow:
+    get:
+      operationId: api_finance_cashflow_retrieve
+      description: One month's household income, spend, mortgage and net, in USD.
+      parameters:
+      - in: query
+        name: month
+        schema:
+          type: string
+        description: YYYY-MM. Defaults to the current month in the household's zone.
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CashFlow'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A bad month, in words.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: An SGD figure needs a stored USD/SGD rate and none is on file.
+  /api/finance/networth:
+    get:
+      operationId: api_finance_networth_retrieve
+      description: Net worth per layer and in total. Computed values are estimates.
+      parameters:
+      - in: query
+        name: ccy
+        schema:
+          type: string
+        description: USD (default) or SGD, at today's rate.
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetWorth'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A bad currency.
+  /api/finance/runway:
+    get:
+      operationId: api_finance_runway_retrieve
+      description: 'Liquid projected month by month from the income plan and the last
+        3 full months'' average spend: an estimate.'
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Runway'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: An SGD figure needs a stored USD/SGD rate and none is on file.
+  /api/finance/safe-to-spend:
+    get:
+      operationId: api_finance_safe_to_spend_retrieve
+      description: Checking, minus everything owed on the card, minus the US fixed
+        bills due before the next expected income date.
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafeToSpend'
+          description: ''
   /api/finance/snapshots:
     get:
       operationId: api_finance_snapshots_list
@@ -9231,6 +9362,21 @@ components:
       - outcome
       - response
       - text
+    AverageSpend:
+      type: object
+      properties:
+        months:
+          type: array
+          items:
+            type: string
+        usd_cents:
+          type: integer
+        sgd_cents:
+          type: integer
+      required:
+      - months
+      - sgd_cents
+      - usd_cents
     BankAccount:
       type: object
       properties:
@@ -9333,6 +9479,20 @@ components:
       - needs_sign_in
       - sentence
       - slot_warning
+    Bill:
+      type: object
+      properties:
+        label:
+          type: string
+        due_on:
+          type: string
+          format: date
+        amount_cents:
+          type: integer
+      required:
+      - amount_cents
+      - due_on
+      - label
     BodyweightLog:
       type: object
       description: |-
@@ -9815,6 +9975,51 @@ components:
       description: |-
         * `scheduled` - Scheduled
         * `refresh` - Refresh
+    BudgetLine:
+      type: object
+      properties:
+        category:
+          type: string
+        spent_cents:
+          type: integer
+          description: Pending rows included.
+        cap_cents:
+          type: integer
+          nullable: true
+        percent:
+          type: integer
+          nullable: true
+        pace_cents:
+          type: integer
+          nullable: true
+          description: 'cap x days elapsed / days in month: the pace marker.'
+        projection_cents:
+          type: integer
+          nullable: true
+          description: An estimate; null before day 10.
+        projection_is_estimate:
+          type: boolean
+        status:
+          type: string
+          description: ok | near (80%) | over | no cap.
+        pending_cents:
+          type: integer
+        pending_count:
+          type: integer
+        unverified:
+          type: boolean
+      required:
+      - cap_cents
+      - category
+      - pace_cents
+      - pending_cents
+      - pending_count
+      - percent
+      - projection_cents
+      - projection_is_estimate
+      - spent_cents
+      - status
+      - unverified
     BudgetTarget:
       type: object
       description: |-
@@ -9871,6 +10076,69 @@ components:
       - origin_guid
       - provenance
       - updated_at
+    BudgetTotal:
+      type: object
+      properties:
+        spent_cents:
+          type: integer
+        cap_cents:
+          type: integer
+        percent:
+          type: integer
+          nullable: true
+        pace_cents:
+          type: integer
+          nullable: true
+      required:
+      - cap_cents
+      - pace_cents
+      - percent
+      - spent_cents
+    Budgets:
+      type: object
+      properties:
+        month:
+          type: string
+        currency:
+          type: string
+        days_in_month:
+          type: integer
+        days_elapsed:
+          type: integer
+        projection_from_day:
+          type: integer
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetLine'
+        total:
+          $ref: '#/components/schemas/BudgetTotal'
+        uncategorised_cents:
+          type: integer
+        fixed:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fixed'
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceSubscription'
+        new_subscriptions:
+          type: array
+          items:
+            type: string
+      required:
+      - categories
+      - currency
+      - days_elapsed
+      - days_in_month
+      - fixed
+      - month
+      - new_subscriptions
+      - projection_from_day
+      - subscriptions
+      - total
+      - uncategorised_cents
     BuildEntry:
       type: object
       description: |-
@@ -9948,6 +10216,64 @@ components:
       - title
       - updated_at
       - vehicle_id
+    CashFlow:
+      type: object
+      properties:
+        month:
+          type: string
+        currency:
+          type: string
+        rate:
+          allOf:
+          - $ref: '#/components/schemas/Rate'
+          nullable: true
+        income_planned_cents:
+          type: integer
+          description: 'From the income plan: an estimate.'
+        income_planned_is_estimate:
+          type: boolean
+        income_on_file_cents:
+          type: integer
+          description: Inflows on the ledger the transfer rules leave standing.
+        spend_cents:
+          type: integer
+          description: Every netted outflow, household-internal money out.
+        spend_by_currency:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrencyCents'
+        mortgage_cents:
+          type: integer
+        net_cents:
+          type: integer
+          description: Planned income - spend - mortgage.
+        test_a_passes:
+          type: boolean
+          description: 'No burn: net is not negative.'
+        accounts_without_rows:
+          type: array
+          items:
+            type: string
+          description: 'Liquid accounts with no ledger rows this month: their spend
+            is not in it.'
+        household_internal:
+          type: array
+          items:
+            $ref: '#/components/schemas/InternalRow'
+      required:
+      - accounts_without_rows
+      - currency
+      - household_internal
+      - income_on_file_cents
+      - income_planned_cents
+      - income_planned_is_estimate
+      - month
+      - mortgage_cents
+      - net_cents
+      - rate
+      - spend_by_currency
+      - spend_cents
+      - test_a_passes
     Category:
       type: object
       description: Field-for-field `RemoteCategory` / `CategoryFields`.
@@ -11331,6 +11657,16 @@ components:
       description: |-
         * `cookie_jar` - Cookie jar
         * `oauth_refresh` - OAuth refresh token
+    CurrencyCents:
+      type: object
+      properties:
+        currency:
+          type: string
+        cents:
+          type: integer
+      required:
+      - cents
+      - currency
     CurrencyEnum:
       enum:
       - USD
@@ -11810,6 +12146,48 @@ components:
       - layer
       - owner
       - source
+    FinanceSubscription:
+      type: object
+      properties:
+        merchant:
+          type: string
+        category:
+          type: string
+          nullable: true
+        typical_cents:
+          type: integer
+        months:
+          type: integer
+        last_on:
+          type: string
+          format: date
+        next_on:
+          type: string
+          format: date
+          description: An estimate.
+        is_estimate:
+          type: boolean
+      required:
+      - category
+      - is_estimate
+      - last_on
+      - merchant
+      - months
+      - next_on
+      - typical_cents
+    Fixed:
+      type: object
+      properties:
+        category:
+          type: string
+        paid:
+          type: boolean
+        paid_cents:
+          type: integer
+      required:
+      - category
+      - paid
+      - paid_cents
     Freshness:
       type: object
       properties:
@@ -12149,6 +12527,31 @@ components:
       description: |-
         * `MEMBER_TRANSFER` - MEMBER_TRANSFER
         * `CROSS_BORDER_PAIR` - CROSS_BORDER_PAIR
+    InternalRow:
+      type: object
+      properties:
+        txn_date:
+          type: string
+          format: date
+        description:
+          type: string
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+        reason:
+          type: string
+          description: MEMBER_TRANSFER or CROSS_BORDER_PAIR.
+        paired:
+          type: boolean
+          description: Both legs are on file.
+      required:
+      - amount_cents
+      - currency
+      - description
+      - paired
+      - reason
+      - txn_date
     Invite:
       type: object
       description: |-
@@ -13110,6 +13513,107 @@ components:
       description: |-
         * `create` - create
         * `update` - update
+    NetWorth:
+      type: object
+      properties:
+        currency:
+          type: string
+        as_of:
+          type: string
+          format: date
+        rate:
+          allOf:
+          - $ref: '#/components/schemas/Rate'
+          nullable: true
+        layers:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetWorthLayer'
+        total_cents:
+          type: integer
+        total_is_estimate:
+          type: boolean
+        runway_cents:
+          type: integer
+          description: Liquid plus investments.
+        missing:
+          type: array
+          items:
+            type: string
+          description: Accounts with no balance on file, in no total.
+        unconverted:
+          type: array
+          items:
+            type: string
+          description: Accounts left out for want of a rate.
+      required:
+      - as_of
+      - currency
+      - layers
+      - missing
+      - rate
+      - runway_cents
+      - total_cents
+      - total_is_estimate
+      - unconverted
+    NetWorthLayer:
+      type: object
+      properties:
+        layer:
+          type: string
+        total_cents:
+          type: integer
+        is_estimate:
+          type: boolean
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetWorthLine'
+      required:
+      - accounts
+      - is_estimate
+      - layer
+      - total_cents
+    NetWorthLine:
+      type: object
+      properties:
+        account:
+          type: string
+        label:
+          type: string
+        currency:
+          type: string
+        amount_cents:
+          type: integer
+          description: In the account's currency; debt negative.
+        as_of:
+          type: string
+          format: date
+        source:
+          type: string
+        is_estimate:
+          type: boolean
+        stale:
+          type: boolean
+          description: 'Older than 45 days: say ''as of'' the day.'
+        pending_cents:
+          type: integer
+          nullable: true
+        converted_cents:
+          type: integer
+          nullable: true
+          description: In the view currency at today's rate; null when no rate.
+      required:
+      - account
+      - amount_cents
+      - as_of
+      - converted_cents
+      - currency
+      - is_estimate
+      - label
+      - pending_cents
+      - source
+      - stale
     NullEnum:
       enum:
       - null
@@ -15054,6 +15558,21 @@ components:
         * `turned_off` - turned_off
         * `failed` - failed
         * `not_set_up` - not_set_up
+    Rate:
+      type: object
+      properties:
+        rate_micros:
+          type: integer
+          description: 1 USD = rate_micros / 1e6 SGD.
+        rate_date:
+          type: string
+          format: date
+        source:
+          type: string
+      required:
+      - rate_date
+      - rate_micros
+      - source
     Receipt:
       type: object
       description: |-
@@ -15780,6 +16299,182 @@ components:
       - step_count
       - version
       - who
+    Runway:
+      type: object
+      properties:
+        currency:
+          type: string
+        as_of:
+          type: string
+          format: date
+        rate:
+          allOf:
+          - $ref: '#/components/schemas/Rate'
+          nullable: true
+        is_estimate:
+          type: boolean
+        liquid_now_cents:
+          type: integer
+        runway_assets_cents:
+          type: integer
+          description: Liquid plus investments.
+        floor_cents:
+          type: integer
+          nullable: true
+        us_floor_cents:
+          type: integer
+          nullable: true
+        average_spend:
+          $ref: '#/components/schemas/AverageSpend'
+        mortgage_sgd_cents:
+          type: integer
+        monthly_burn_cents:
+          type: integer
+        missing_balances:
+          type: array
+          items:
+            type: string
+        scenarios:
+          $ref: '#/components/schemas/Scenarios'
+        us_topup:
+          $ref: '#/components/schemas/TopUp'
+      required:
+      - as_of
+      - average_spend
+      - currency
+      - floor_cents
+      - is_estimate
+      - liquid_now_cents
+      - missing_balances
+      - monthly_burn_cents
+      - mortgage_sgd_cents
+      - rate
+      - runway_assets_cents
+      - scenarios
+      - us_floor_cents
+      - us_topup
+    RunwayMonth:
+      type: object
+      properties:
+        month:
+          type: string
+        income_us_cents:
+          type: integer
+        income_sg_cents:
+          type: integer
+          description: SGD.
+        us_end_cents:
+          type: integer
+          description: US liquid at month end, USD.
+        sg_end_cents:
+          type: integer
+          description: Singapore liquid at month end, SGD.
+        liquid_end_cents:
+          type: integer
+          description: Household liquid, USD.
+      required:
+      - income_sg_cents
+      - income_us_cents
+      - liquid_end_cents
+      - month
+      - sg_end_cents
+      - us_end_cents
+    SafeParts:
+      type: object
+      properties:
+        checking_cents:
+          type: integer
+        checking_as_of:
+          type: string
+          format: date
+        checking_pending_cents:
+          type: integer
+          nullable: true
+        card_owed_cents:
+          type: integer
+          description: Current balance plus pending charges.
+        card_as_of:
+          type: string
+          format: date
+          nullable: true
+        bills_before_until_cents:
+          type: integer
+        bills:
+          type: array
+          items:
+            $ref: '#/components/schemas/Bill'
+        bills_detected:
+          type: boolean
+          description: 'True when the bills were worked out from recurring merchants:
+            an estimate.'
+      required:
+      - bills
+      - bills_before_until_cents
+      - bills_detected
+      - card_as_of
+      - card_owed_cents
+      - checking_as_of
+      - checking_cents
+      - checking_pending_cents
+    SafeToSpend:
+      type: object
+      properties:
+        available:
+          type: boolean
+        reason:
+          type: string
+        currency:
+          type: string
+        safe_to_spend_cents:
+          type: integer
+        until:
+          type: string
+          format: date
+          nullable: true
+          description: The next expected income date (the plan's).
+        until_is_estimate:
+          type: boolean
+        parts:
+          $ref: '#/components/schemas/SafeParts'
+        top_up_needed_cents:
+          type: integer
+        top_up_by:
+          type: string
+          format: date
+          nullable: true
+        top_up_reason:
+          type: string
+          nullable: true
+      required:
+      - available
+    Scenario:
+      type: object
+      properties:
+        months:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunwayMonth'
+        floor_crossing_month:
+          type: string
+          nullable: true
+        transfer:
+          allOf:
+          - $ref: '#/components/schemas/Transfer'
+          nullable: true
+      required:
+      - floor_crossing_month
+      - months
+      - transfer
+    Scenarios:
+      type: object
+      properties:
+        expected:
+          $ref: '#/components/schemas/Scenario'
+        fallback:
+          $ref: '#/components/schemas/Scenario'
+      required:
+      - expected
+      - fallback
     ServiceHistory:
       type: object
       description: |-
@@ -16647,6 +17342,67 @@ components:
           default: USER_REPORTED
       required:
       - day
+    TopUp:
+      type: object
+      properties:
+        available:
+          type: boolean
+        reason:
+          type: string
+        checking_cents:
+          type: integer
+        checking_as_of:
+          type: string
+          format: date
+        card_owed_cents:
+          type: integer
+        card_as_of:
+          type: string
+          format: date
+          nullable: true
+        card_owed_is_estimate:
+          type: boolean
+        headroom_cents:
+          type: integer
+        bills_30d_cents:
+          type: integer
+        short_cents:
+          type: integer
+        card_due_on:
+          type: string
+          format: date
+          nullable: true
+        transfer_by:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+      required:
+      - available
+    Transfer:
+      type: object
+      properties:
+        usd_cents:
+          type: integer
+        sgd_cents:
+          type: integer
+          description: At today's rate.
+        first_short_month:
+          type: string
+        by:
+          type: string
+          format: date
+          description: Start the transfer by this day.
+        sg_side_lowest_after_cents:
+          type: integer
+          description: Singapore liquid's lowest point after the transfer, SGD.
+      required:
+      - by
+      - first_short_month
+      - sg_side_lowest_after_cents
+      - sgd_cents
+      - usd_cents
     Upload:
       type: object
       properties:

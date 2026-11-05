@@ -59,6 +59,11 @@ RECRUITER_ALLOWED: frozenset[str] = frozenset(
         # which holds no finance rows, so every answer is a real empty one.
         "finance.views.FinanceAccountsView",
         "finance.views.SnapshotsView",
+        "finance.figure_views.NetWorthView",
+        "finance.figure_views.CashFlowView",
+        "finance.figure_views.RunwayView",
+        "finance.figure_views.SafeToSpendView",
+        "finance.figure_views.BudgetsView",
         # pantry
         "api.pantry.GroceryStapleViewSet",
         "api.pantry.ReceiptViewSet",

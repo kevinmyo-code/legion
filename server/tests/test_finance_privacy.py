@@ -25,7 +25,7 @@ from tests.finance_synthetic import FIGURES, LAST4S, RATE_A, RATE_B
 SERVER = Path(__file__).resolve().parents[1]
 
 # Constants that are not money: micros, rates, HTTP statuses, day counts.
-NOT_MONEY = {1_000_000, RATE_A, RATE_B, 200, 400, 404, 365, 366}
+NOT_MONEY = {1_000_000, RATE_A, RATE_B, 200, 400, 404, 409, 365, 366}
 
 
 def _files() -> list[Path]:

@@ -326,6 +326,10 @@ class FinancePolicy(models.Model):
     card_due_day = models.IntegerField(null=True, blank=True)
     transfer_lead_days = models.IntegerField(default=7)
     fixed_categories = models.JSONField(default=list, blank=True)
+    # The private file's own list of US fixed bills, for safe-to-spend:
+    # [{"label", "amount_cents", "day"}] (day of month). Empty means the bills
+    # are detected from the fixed categories' recurring merchants instead.
+    fixed_bills = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(db_default=Now())
 
     class Meta:

@@ -6,8 +6,8 @@ household-finance ticket 12, ADR 0073, layer two of two. The repo is public; the
 household's figures, names, account numbers and employer live only in a private
 file outside it. Layer one is `server/tests/test_finance_privacy.py`, which holds
 every finance file to the synthetic household's values. It cannot know the real
-ones. This can: it reads the private file, and searches every file this branch
-changed (against `--base`) and every commit message on it for:
+ones. This can: it reads the private file, and searches every line this branch
+added (against `--base`; a new file whole) and every commit message on it for:
 
 - any four-digit account number the file names;
 - any money figure the file states (as written, without commas, and as cents);
@@ -39,7 +39,10 @@ GENERIC = {
     "sgd", "bofa", "dbs", "citibank", "cpf", "hdb", "ibkr", "etf", "zelle", "kevin", "wife",
     "singapore", "bonds", "brokers", "interactive", "headline", "test", "household",
     "budgets", "lease", "alfred", "every", "layer", "owner", "source", "ccy", "key",
-    "only", "rules", "test:",
+    "only", "rules", "test:", "groceries", "subscriptions", "shopping", "dining", "pets",
+    "transport", "utilities", "insurance", "housing", "fees", "fixed", "cash", "already",
+    "travel", "january", "february", "march", "april", "june", "july", "august",
+    "september", "october", "november", "december",
 }
 
 
@@ -91,6 +94,25 @@ def _changed_files(base: str) -> list[Path]:
     return [ROOT / n for n in sorted(names - generated) if (ROOT / n).is_file()]
 
 
+def _added_text(path: Path, base: str) -> str | None:
+    """The lines this branch (and the working tree) ADDED to `path`: a token
+    already in the base came in before this branch and is not its leak. A new
+    or untracked file is read whole."""
+    relative = path.relative_to(ROOT).as_posix()
+    tracked_in_base = subprocess.run(
+        ["git", "cat-file", "-e", f"{base}:{relative}"], cwd=ROOT, capture_output=True
+    ).returncode == 0
+    if not tracked_in_base:
+        try:
+            return path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            return None
+    diff = _git("diff", "--unified=0", base, "--", relative)
+    return "\n".join(
+        line[1:] for line in diff.splitlines() if line.startswith("+") and not line.startswith("+++")
+    )
+
+
 def _hits(text: str, tokens: dict[str, set[str]]) -> list[str]:
     found = []
     for kind, values in tokens.items():
@@ -112,9 +134,8 @@ def main() -> int:
     tokens = _private_tokens(args.private_file.read_text(encoding="utf-8"))
     problems = []
     for path in _changed_files(args.base):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        text = _added_text(path, args.base)
+        if text is None:
             continue
         for kind in _hits(text, tokens):
             problems.append(f"{path.relative_to(ROOT).as_posix()}: a {kind} from the file")

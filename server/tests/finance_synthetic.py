@@ -63,6 +63,10 @@ FIGURES = frozenset(
         0, 100, 500, 1_000, 2_000, 2_500, 5_000, 10_000, 12_500, 20_000, 30_000, 40_000, 50_000,
         60_000, 80_000, 100_000, 120_000, 124_000, 150_000, 200_000, 250_000, 300_000, 400_000,
         500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 50_000_000,
+        # Worked out from the figures above in tests/test_finance_runway.py and
+        # tests/test_finance_budgets.py (sums, the 1.25 rate, a pace).
+        1_500, 25_000, 41_500, 65_000, 220_000, 600_000, 625_000, 870_000, 900_000, 2_500_000,
+        3_125_000, 32_000_000,
     }
 )
 
@@ -143,11 +147,56 @@ def rate(on_date: dt.date, rate_micros: int = RATE_A, source: str = "test"):
     )
 
 
-def snapshot(household, account, as_of: dt.date, cents: int, *, source=None, estimate=False):
+def bank_row(household, last4, day: dt.date, cents: int, description: str, category=None,
+             *, pending=False):
+    """One row from the bank's own feed (provenance BANK_API), as the sync stores it."""
+    import uuid
+
+    from django.db.models.functions import Now
+
+    from legacy.enums import Provenance
+    from legacy.models.ledger import LedgerTransaction
+
+    tid = f"t-{uuid.uuid4()}"
+    LedgerTransaction.objects.create(
+        id=uuid.uuid4(), household=household, statement=None, account_last4=last4,
+        account_nickname="US card", currency="USD", txn_date=day, description=description,
+        amount_cents=cents, balance_cents=None, line_ref=f"plaid:{tid}", category=category,
+        category_pending=False, provenance=Provenance.BANK_API, created_at=Now(),
+        bank_transaction_id=tid, bank_pending=pending,
+    )
+
+
+class Caller:
+    """What the figure functions read from a request: its member."""
+
+    def __init__(self, user):
+        self.user = user
+
+
+def budget(household, category: str, cents: int, month: str = "2026-08"):
+    from api.ledger import BudgetTargetSerializer
+
+    serializer = BudgetTargetSerializer(
+        data={
+            "origin_guid": f"test-budget-{category.lower()}",
+            "category": category,
+            "currency": "USD",
+            "amount_cents": cents,
+            "effective_from_month": f"{month}-01",
+        },
+        context={"household": household, "revive_tombstone": False},
+    )
+    serializer.is_valid(raise_exception=True)
+    return serializer.save()
+
+
+def snapshot(household, account, as_of: dt.date, cents: int, *, source=None, estimate=False,
+             pending=None):
     from finance.models import BalanceSnapshot
 
     return BalanceSnapshot.objects.create(
         household=household, account=account, as_of=as_of, amount_cents=cents,
         currency=account.currency, source=source or account.source, evidence="test",
-        is_estimate=estimate,
+        is_estimate=estimate, pending_cents=pending, pending_count=1 if pending else 0,
     )

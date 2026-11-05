@@ -92,6 +92,13 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     # the visit car's year, make and model only: no account, nothing of the
     # household's beyond those three words, nothing stored.
     "monthly_spend",
+    # Household finance (ADR 0073): reads over the visit's own copy, which
+    # holds no finance rows, so each answers in words that nothing is on file.
+    "safe_to_spend",
+    "net_worth",
+    "cash_flow",
+    "runway",
+    "budgets",
     "next_service",
     "account_balances",
     "grocery_spend",

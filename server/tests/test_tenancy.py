@@ -1448,6 +1448,25 @@ def test_every_mcp_tool_is_scoped_by_household(
     assert "bravo car" in b_reads("next_service", {})
     assert "bravo car" in b_reads("vehicle_recalls", {})
     b_reads("grocery_spend", {})
+    # Household finance (ADR 0073): A holds an account and a balance; B holds none.
+    import datetime as _dt
+
+    from finance.models import BalanceSnapshot, FinanceAccount
+
+    alpha_account = FinanceAccount.objects.create(
+        household=household_user.household, key="alpha-checking", label="alpha checking",
+        country="US", currency="USD", kind="depository", layer="liquid", source="manual",
+    )
+    BalanceSnapshot.objects.create(
+        household=household_user.household, account=alpha_account,
+        as_of=_dt.date(2026, 10, 1), amount_cents=100_000, currency="USD", source="manual",
+    )
+    assert "no account balances" in b_reads("net_worth", {})
+    assert "Nothing can be said" in b_reads("safe_to_spend", {})
+    assert "No budget caps" in b_reads("budgets", {})
+    b_reads("cash_flow", {})
+    b_reads("runway", {})
+    assert "alpha-checking" in str(call(mcp_a, "net_worth", {})[2])
     # brief_latest (procedures ticket 15): the member's own brief, never another household's.
     from brief.models import Brief, Trigger
 

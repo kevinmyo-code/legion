@@ -387,6 +387,24 @@ def _policy(body: dict, account_keys: set[str]) -> dict | None:
     if not isinstance(fixed, list):
         raise LoaderRefused("policy.fixed_categories is not a list.")
     policy["fixed_categories"] = [str(c) for c in fixed]
+    bills = raw.get("fixed_bills") or []
+    if not isinstance(bills, list):
+        raise LoaderRefused("policy.fixed_bills is not a list.")
+    policy["fixed_bills"] = []
+    for index, bill in enumerate(bills, start=1):
+        where = f"policy.fixed_bills[{index}]"
+        if not isinstance(bill, dict) or not bill.get("label"):
+            raise LoaderRefused(f"{where} needs a label, an amount and a day.")
+        day = int(bill.get("day") or 0)
+        if not 1 <= day <= 31:
+            raise LoaderRefused(f"{where}.day must be a day of the month.")
+        policy["fixed_bills"].append(
+            {
+                "label": str(bill["label"]),
+                "amount_cents": cents(bill.get("amount"), f"{where}.amount"),
+                "day": day,
+            }
+        )
     return policy
 
 
