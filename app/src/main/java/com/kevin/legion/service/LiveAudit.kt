@@ -40,12 +40,18 @@ internal class LiveAudit(
     private var readThroughToolThisTurn = false
     private var redactionLoggedThisTurn = false
 
+    /**
+     * [pack] is the Alfred pack the session's prompt was built from, `<version>/<remote|cache|bundled>`
+     * (alfred-ota ticket 02), so every conversation record says which wording it ran. Null leaves
+     * the token off, as before the pack existed.
+     */
     @Synchronized
-    fun sessionStart(model: String, asyncSet: Set<String>) {
+    fun sessionStart(model: String, asyncSet: Set<String>, pack: String? = null) {
         toolNames.clear()
         resetTurn()
         val async = asyncSet.sorted().joinToString(",").ifEmpty { "none" }
-        emit("session_start model=${token(model)} async_set=$async")
+        val packToken = pack?.let { " pack=${token(it)}" }.orEmpty()
+        emit("session_start model=${token(model)} async_set=$async$packToken")
         onSession(true)
     }
 

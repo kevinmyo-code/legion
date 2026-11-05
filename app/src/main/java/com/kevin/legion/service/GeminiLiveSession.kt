@@ -704,7 +704,11 @@ class GeminiLiveSession(
         nonBlockingTools =
             if (VoiceTurnSettings.asyncLookups(appContext)) LiveToolbox.NON_BLOCKING_READ_TOOLS else emptySet()
         audit.enabled = com.kevin.legion.service.conversationlog.ConversationLog.auditWantedAfterReading(appContext)
-        audit.sessionStart(MODEL.removePrefix("models/"), nonBlockingTools)
+        audit.sessionStart(
+            MODEL.removePrefix("models/"),
+            nonBlockingTools,
+            com.kevin.legion.ai.AriaBrain.get(appContext).basePackToken,
+        )
         turnConfig = TurnConfig.SERVER_VAD
         turnTaker = null
         playbackActive = false

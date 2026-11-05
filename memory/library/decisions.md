@@ -7206,3 +7206,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   the cross-border pairing tolerance (3%, 10 days, the earlier day's rate), the transfer's
   by-date (first short month less the lead days), wave 1's spend being the ledger's accounts only,
   the subscription rule, and the card's current balance standing in for its statement balance.
+
+## 2026-11-05 - Patch Alfred over the internet: the pack and self-update (Kevin)
+
+- **Asked:** *"today we deploy via adb installs, is there anyway to patch alfred over the
+  internet"*, then *"lets do it. write a plan then we implement"*. Map `.scratch/alfred-ota/`.
+- **Ruled, all five as recommended:** (1) the Alfred pack is a repo file changed by an engine
+  deploy, not Postgres rows; (2) a locked set (crisis, safety, honesty, ask-before, no-passwords)
+  stays compiled into the app and no pack may override it; (3) always ask before installing, by
+  voice or tap, never mid-conversation, in Matrix or with the car connected; (4) Kevin, or the
+  worker after his yes, publishes with `tools/release_apk.py`; (5) keep the debug key and back it
+  up, a real release key later in one planned reinstall.
+- **Recommended and not taken:** pack rows in Postgres; auto-install when idle and charging.
+- **Found while building:** the map's `yyMMddHHmm` versionCode overflows (2611051200 is over the
+  Int cap and Android's 2,100,000,000). Built as `yyDDDHHmm` UTC instead; Kevin to confirm.
+- ADR 0072.

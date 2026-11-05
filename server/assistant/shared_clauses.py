@@ -106,7 +106,7 @@ KOTLIN: dict[str, tuple[str, str] | None] = {
     "CURRENCY": ("SHARED_INSTRUCTIONS", "within"),
     "PROACTIVE_CLAUSE": ("PROACTIVE_CLAUSE", "whole"),
     "UNREADABLE_IS_NOT_EMPTY": None,
-    "CRISIS": ("safetyInstructions", "within"),
+    "CRISIS": ("SAFETY_INSTRUCTIONS", "within"),
 }
 
 # The web assistant's shared clauses, in source order.

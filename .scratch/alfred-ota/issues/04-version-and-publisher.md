@@ -4,7 +4,7 @@ ticket: "04"
 title: "versionCode, private bucket, releases, publisher"
 type: build
 status: built
-status-detail: "server and tools built 2026-11-05 on feat/alfred-ota-engine (releases app, signed URLs, publisher, signer pin, setup_bucket.sh). Owed: setup_bucket.sh + LEGION_APK_BUCKET + deploy (Kevin); versionCode in app/build.gradle.kts NOT built, and yyMMddHHmm overflows an Int (see Built); keystore backup"
+status-detail: "server and tools built 2026-11-05 on feat/alfred-ota-engine; versionCode built 2026-11-05 on feat/alfred-ota-phone as yyDDDHHmm (yyMMddHHmm overflows). Owed: setup_bucket.sh + LEGION_APK_BUCKET + deploy (Kevin); keystore backup"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -69,3 +69,12 @@ tags: [ticket]
 - Verification: pytest for the endpoints, owner-only publish, the signer seam with a fake and
   versionCode increase: done. Publisher dry run against a real `fast` APK: done (signer matched,
   sha256 computed). The Gradle run for the versionCode: deferred with the versionCode work.
+
+## Built (2026-11-05, branch `feat/alfred-ota-phone`): the versionCode
+
+- `app/build.gradle.kts`: `fast` and `release` take `yyDDDHHmm` UTC (`androidComponents.onVariants`),
+  `debug` keeps 1. versionName `<yyyy-MM-dd>-<short sha>`; `git` missing or failing gives `-dev`.
+- **Deviation from the spec, needs Kevin's nod:** `yyDDDHHmm`, not `yyMMddHHmm`, for the overflow
+  above. Still monotonic; under Android's cap until 2099.
+- Verification: the Gradle run is the `assembleFast` at the end of the phone branch; the APK's
+  badging is in the branch report.

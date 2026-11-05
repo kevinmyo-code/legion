@@ -222,6 +222,13 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "LEGION itself",
+            blurb = "Updates to the app, published by you and installed only on your yes.",
+            entries = listOf(
+                Entry(name = "app_update", say = "Is there an update for LEGION?", does = "Checks whether a newer LEGION has been published, and says what it changes. The update downloads on Wi-Fi only (unless you allow mobile data) and is checked first: a file whose checksum or signing key does not match the app on your phone is thrown away, and it says so. It always asks before installing, and only your yes installs it. Asked during a conversation, it installs as soon as the conversation ends; in Matrix mode or with the car connected it won't install at all, and says why. LEGION closes for about a minute and comes back on its own. When an update is ready you get a notification with Install and Later, and Alfred mentions it once at a quiet moment.", hands = "Settings, Updates: this phone's version, the newest one and its notes, Check now, Install, Allow mobile data, the one-time Allow installs grant, and which wording Alfred is running; or Install on the update's notification."),
+            ),
+        ),
+        Group(
             title = "Phone calls",
             blurb = "Needs phone permissions granted in Setup.",
             entries = listOf(
@@ -275,6 +282,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 129 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 129
+    /** Total entries across every group above - 130 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 130
 }

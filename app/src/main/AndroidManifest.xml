@@ -109,6 +109,9 @@
          AlarmManager does not persist alarms across one. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- alfred-ota ticket 05 (ADR 0072): LEGION installs its own published updates through
+         PackageInstaller, after Kevin's yes. He grants "Install unknown apps" once. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Matrix home's big clock opens AlarmClock.ACTION_SHOW_ALARMS (ADR 0062). Samsung's clock
          guards that intent with SET_ALARM and refuses the launch without it, logging a Permission
@@ -386,6 +389,28 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- alfred-ota ticket 05: the app was replaced by an update. Restarts the assistant service,
+             alarms and geofences, as BootReceiver does after a reboot. MY_PACKAGE_REPLACED is a
+             protected broadcast only the system sends, and only to this app. -->
+        <receiver
+            android:name=".update.PackageReplacedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <!-- The update notification's Install/Later, and PackageInstaller's status: both fired
+             only by this app's own PendingIntents, so exported=false. -->
+        <receiver
+            android:name=".update.UpdateActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <!-- Fires on either direction of SCHEDULE_EXACT_ALARM's grant state changing - ticket 03's
              finding that revoking it kills the process and cancels every pending exact alarm, and

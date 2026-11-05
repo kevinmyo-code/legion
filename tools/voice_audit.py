@@ -11,7 +11,7 @@ the "Conversation log" row in Assistant settings; its logcat switch is default o
 ticket 03 also spools these lines and uploads them to the engine as reason=conversation). One line per event,
 the free-text field always last, JSON-quoted, capped at 400 characters with a "..." marker:
 
-    session_start model=<id> async_set=<a,b|none>
+    session_start model=<id> async_set=<a,b|none> [pack=<version>/<remote|cache|bundled>]
     session_end reason="<text>"
     user final=<bool> [typed=true] text="<inputTranscription chunk, or the whole turn when final>"
     assistant text="<outputTranscription chunk>"
@@ -505,7 +505,8 @@ def _header(s):
     head = s["head"]
     if not head:
         return "== before the first session_start"
-    return f"== session {s['n']}  model={head.get('model', '?')}  async={head.get('async_set', 'none')}"
+    pack = f"  pack={head['pack']}" if head.get("pack") else ""
+    return f"== session {s['n']}  model={head.get('model', '?')}  async={head.get('async_set', 'none')}{pack}"
 
 
 def timeline(lines, verbose=False):

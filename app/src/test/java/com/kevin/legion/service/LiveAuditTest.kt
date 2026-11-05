@@ -210,4 +210,17 @@ class LiveAuditTest {
     fun `the setting defaults on`() {
         assertTrue(VoiceTurnSettings.AUDIT_LOG_DEFAULT)
     }
+
+    @Test
+    fun `session start names the Alfred pack the prompt was built from`() {
+        audit.sessionStart("gemini-3.8-live", emptySet(), pack = "1/bundled")
+        audit.sessionStart("gemini-3.8-live", setOf("ask_fleet"), pack = "2/remote")
+        assertEquals(
+            listOf(
+                "session_start model=gemini-3.8-live async_set=none pack=1/bundled",
+                "session_start model=gemini-3.8-live async_set=ask_fleet pack=2/remote",
+            ),
+            lines,
+        )
+    }
 }

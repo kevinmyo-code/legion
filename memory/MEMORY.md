@@ -22,6 +22,15 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Alfred over the internet (alfred-ota) - 2026-11-05
+
+- `feat/alfred-ota-phone` (pushed, not merged): tickets 02, 04 versionCode, 05, 06 built, JVM green;
+  engine half on `feat/alfred-ota-engine`. ADR 0072. versionCode is `yyDDDHHmm` (map said
+  `yyMMddHHmm`, which overflows): Kevin to confirm. Live payload ceiling moved for `app_update`.
+- Owed by Kevin: engine deploy + `setup_bucket.sh` + `LEGION_APK_BUCKET`; back up
+  `~/.android/debug.keystore`; one adb install of this branch's `fast`, "Install unknown apps"
+  grant, then publish with `tools/release_apk.py` and ticket 07's run. Ticket 03 next.
+
 ## Claude session switched on - 2026-11-03
 
 - `integrate/claude-session-on` = dev + `feat/claude-session` + ticket 09 (HTML delivery:

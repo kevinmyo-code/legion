@@ -184,8 +184,19 @@ class LiveSetupPayloadSizeTest {
      * 10,521 chars of system instruction = 98,026 chars, ~24,506 estimated tokens, 6 over; it was cut
      * to 99 chars (~24,498), about 2 tokens of headroom. The long reason rides on the route-result
      * frame instead (`SubAgent.ROUTE_ENGLISH`), which is billed per result, not per setup.
+     *
+     * **Raised to 24,650 on 2026-11-05 (alfred-ota ticket 06, `app_update`), PENDING KEVIN'S
+     * RATIFICATION; the alternative is trimming another description by ~115 tokens.** Measured on
+     * `feat/alfred-ota-phone`: 95 declarations, 87,967 chars of tools JSON plus 10,487 chars of
+     * system instruction = 98,454 chars, ~24,613 estimated tokens, against ~24,498 before (the
+     * Alfred pack, ticket 02, renders the bundled wording byte for byte and added nothing).
+     * `app_update` is ONE action-dispatched declaration (check, whats_new, install) at 461 chars,
+     * ~115 tokens; its description keeps only the action list, the confirmed-only-after-a-yes rule
+     * and "say only what the result says". Map decision 3 (always ask; Kevin's yes by voice or
+     * tap) needs a voice tool for the voice yes, and ADR 0035 needs the Updates screen beside it.
+     * Headroom is ~37 tokens. The pack's `UNREADABLE_IS_NOT_EMPTY` (~70 tokens) does not fit.
      */
-    private val ceilingTokens = 24_500
+    private val ceilingTokens = 24_650
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {

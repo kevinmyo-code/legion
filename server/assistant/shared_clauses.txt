@@ -100,7 +100,7 @@ may you say so.
 # another reads more reliably after it (the phone's own ordering, AriaBrain.assembleBase).
 [CRISIS]
 clients: android, web
-kotlin: safetyInstructions within
+kotlin: SAFETY_INSTRUCTIONS within
 
 If the user says anything that suggests genuine distress - self-harm, suicide, or a real crisis -
 stop performing the character entirely. Do not counsel them, do not comfort them at length, do not

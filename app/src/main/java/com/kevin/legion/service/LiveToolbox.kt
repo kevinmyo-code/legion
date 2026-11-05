@@ -2441,6 +2441,9 @@ object LiveToolbox {
         // claude-session ticket 05: Kevin's Claude session on his laptops, one action-dispatched declaration.
         val claudeDecls = ClaudeSessionToolbox.declarations()
         for (i in 0 until claudeDecls.length()) fns.put(claudeDecls.getJSONObject(i))
+        // alfred-ota ticket 06 (ADR 0072): LEGION's own updates, one action-dispatched declaration.
+        val updateDecls = AppUpdateToolbox.declarations()
+        for (i in 0 until updateDecls.length()) fns.put(updateDecls.getJSONObject(i))
 
         return fns
     }
@@ -2753,6 +2756,7 @@ object LiveToolbox {
         BooksToolbox.dispatch(context, name, args)?.let { return it }
         BrowserToolbox.dispatch(context, name, args)?.let { return it }
         ClaudeSessionToolbox.dispatch(context, name, args)?.let { return it }
+        AppUpdateToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
@@ -3161,6 +3165,8 @@ object LiveToolbox {
         "bought_log",
         // claude-session ticket 05: send/answer/assign/send_file create or change a task on the engine.
         "claude_session",
+        // alfred-ota ticket 06: action=install hands the APK to PackageInstaller.
+        "app_update",
     )
 
     /**

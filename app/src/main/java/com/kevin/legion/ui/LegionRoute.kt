@@ -434,6 +434,14 @@ object LegionRoute {
     /** Dumb phone mode's setup: the switch, every one-time grant in words, the kept apps (ADR 0062). */
     const val SETTINGS_DUMB_MODE = "settings/dumb-mode"
 
+    /**
+     * Updates (alfred-ota ticket 06, ADR 0072): the installed and newest versions, Check now and
+     * Install, mobile data, the install grant, and which Alfred pack is in use - see
+     * [com.kevin.legion.ui.settings.UpdatesScreen]. The hands path of the `app_update` voice tool
+     * (ADR 0035); the update notification opens it.
+     */
+    const val SETTINGS_UPDATES = "settings/updates"
+
     // TOP_LEVEL, topLevelOf and label DELETED 2026-09-10, one-home ticket 03b, on ticket 01's
     // resolution: **there are no top-level tabs any more.** HOME is what the app opens to and the
     // only surface you land on; everything else is a drill-down reached by tapping the row that

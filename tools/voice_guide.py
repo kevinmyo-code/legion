@@ -52,6 +52,8 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/BrowserToolbox.kt',
     # claude-session ticket 05: the one `claude_session` tool (Kevin's Claude session on his laptops).
     ROOT / 'app/src/main/java/com/kevin/legion/service/ClaudeSessionToolbox.kt',
+    # alfred-ota ticket 06 (ADR 0072): the one `app_update` tool (LEGION's own updates).
+    ROOT / 'app/src/main/java/com/kevin/legion/service/AppUpdateToolbox.kt',
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'

@@ -89,7 +89,17 @@ enum class ProactiveCategory(
      * a question, a file to take), never about his absence, silenced by this switch, the Claude
      * session screen's switch, or "stop telling me about Claude tasks".
      */
-    CLAUDE_TASKS("claude_tasks", "Claude tasks", "Results of tasks you sent to your Claude session.", true);
+    CLAUDE_TASKS("claude_tasks", "Claude tasks", "Results of tasks you sent to your Claude session.", true),
+
+    /**
+     * A LEGION update is downloaded and verified, and Alfred asks once whether to install it
+     * (alfred-ota ticket 05, map decision 3: always ask). **On by default** ([DEFAULT_ON]): it is
+     * the ask the decision requires, said once per release and never mid-conversation, in Matrix
+     * or with the car connected. The compulsion test's four: anchored to a published release he
+     * can see in Settings, Updates; actionable (install now); never about his absence; silenced by
+     * this switch, while the notification keeps the ask.
+     */
+    UPDATES("updates", "App updates", "Once per release: an update is ready, install it now?", true);
 
     companion object {
         fun fromKey(key: String): ProactiveCategory? = entries.firstOrNull { it.key == key }
@@ -115,6 +125,6 @@ enum class ProactiveCategory(
          * deliberate exception to "a fresh install is quiet": every line it carries answers a task
          * he sent.
          */
-        val DEFAULT_ON = setOf(CLAUDE_TASKS)
+        val DEFAULT_ON = setOf(CLAUDE_TASKS, UPDATES)
     }
 }
