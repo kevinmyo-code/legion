@@ -8,6 +8,7 @@ Stdlib only, Python 3.11+.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import tempfile
@@ -45,6 +46,10 @@ class Paths:
         self.settings = self.root / "worker-settings.json"
         self.pid = self.root / "session.pid"
         self.lock = self.root / "worker.lock"
+        # Ship history (alfred-builds tickets 03 and 05): one JSON line per ship or undo.
+        self.ships = self.work / "ships.jsonl"
+        # Kevin's private worker skills: his files, not scratch (the ask-list hook asks).
+        self.skills = self.work / ".claude"
 
     def ensure(self) -> "Paths":
         for d in (self.root, self.reports, self.tokens, self.work, self.logs):
@@ -93,6 +98,28 @@ def is_under(path, root) -> bool:
     if p == r:
         return True
     return p.startswith(r.rstrip("\\/") + os.sep)
+
+
+class TokenRefused(Exception):
+    """No usable confirmation for this step. The message says why, in words."""
+
+
+def find_token(paths: Paths, task: int, token: str, now: float, used_key: str) -> tuple[Path, dict]:
+    """The worker-issued confirmation (`tokens/<task>-<kind>.json`) matching `token` for `task`
+    (or a follow-up whose parent is `task`). One token, one use of `used_key` (`mail_used`,
+    `ship_used`, `undo_used`). The caller checks the token's `kind`."""
+    for f in sorted(paths.tokens.glob("*.json")):
+        t = read_json(f, None)
+        if not t or task not in (t.get("task"), t.get("parent")):
+            continue
+        if not hmac.compare_digest(str(t.get("token", "")), str(token)):
+            continue
+        if t.get("expires_at", 0) < now:
+            raise TokenRefused("the confirmation for this task has expired")
+        if t.get(used_key):
+            raise TokenRefused("this confirmation was already used once")
+        return f, t
+    raise TokenRefused("there is no confirmation from Kevin for this task")
 
 
 def load_config(paths: Paths) -> dict:

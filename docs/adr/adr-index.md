@@ -79,6 +79,7 @@ Format and the test for whether something deserves an ADR:
 | 0071 | [[0071-voice-browser\|LEGION has its own browser, and Alfred drives it by voice]] | accepted | 2026-11-03 | - |
 | 0072 | [[0072-alfred-pack-and-self-update\|Alfred's wording comes from the engine; the phone updates itself, and asks first]] | accepted | 2026-11-05 | - |
 | 0073 | [[0073-household-finance\|Household finance: layers, internal transfers, floors and estimates]] | accepted | 2026-11-05 | - |
+| 0074 | [[0074-alfred-builds-alfred\|Alfred builds Alfred: one yes ships a change]] | accepted | 2026-11-05 | - |
 
 ## Superseded
 

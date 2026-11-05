@@ -781,6 +781,8 @@ export function emptySpend(month = new Date().toISOString().slice(0, 7)): Spend 
       early_charges_moved_cents: 0,
       early_charges_counted_here_cents: 0,
       early_charges_counted_next_month_cents: 0,
+      household_internal_cents: 0,
+      household_internal_reasons: [],
     },
     complete: false,
   }

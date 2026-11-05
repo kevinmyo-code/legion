@@ -17,6 +17,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[01-report-a-problem\|01]] | build | Report a problem: voice and button |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[06-book-library\|06]] | build | Book library on the engine, synced to the phone |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -89,6 +91,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[02-records-for-the-worker\|02]] | build | Conversation records the worker can read |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[08-build-lock-and-heat\|08]] | build | One build at a time, with a heat check |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
 | [[.scratch/architecture/map\|architecture]] | [[01-room-kapt-to-ksp\|01]] | build | Room moves from kapt to KSP |
@@ -208,6 +212,11 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[03-ship-step\|03]] | build | The ship step  waiting on [[04-worker-skills\|04]] |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[04-worker-skills\|04]] | build | Worker skills: fix-alfred, build-feature, ship  waiting on [[02-records-for-the-worker\|02]], [[03-ship-step\|03]] |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[05-undo\|05]] | build | Undo the last ship  waiting on [[03-ship-step\|03]] |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[07-book-finder\|07]] | build | book-finder skill  waiting on [[06-book-library\|06]] |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | [[09-first-run\|09]] | test | Kevin's first run: a fix, Snake, a horror book  waiting on [[01-report-a-problem\|01]], [[02-records-for-the-worker\|02]], [[03-ship-step\|03]], [[04-worker-skills\|04]], [[05-undo\|05]], [[06-book-library\|06]], [[07-book-finder\|07]], [[08-build-lock-and-heat\|08]] |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[02-phone-reads-the-pack\|02]] | build | Phone reads the pack  waiting on [[01-alfred-pack-format-and-endpoint\|01]] |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[03-move-wording-into-the-pack\|03]] | build | Move wording into the pack  waiting on [[02-phone-reads-the-pack\|02]] |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[05-phone-updater\|05]] | build | Phone updater: check, download, verify, ask, install  waiting on [[04-version-and-publisher\|04]] |
@@ -349,6 +358,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 |---|---|---|---|
 | [[.scratch/ai-craft/map\|ai-craft]] | 4 | 3 | [[.scratch/ai-craft/ai-craft.canvas\|open]] |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | 3 | 2 | [[.scratch/ai-upgrade/ai-upgrade.canvas\|open]] |
+| [[.scratch/alfred-builds/map\|alfred-builds]] | 9 | 9 | [[.scratch/alfred-builds/alfred-builds.canvas\|open]] |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | 8 | 8 | [[.scratch/alfred-ota/alfred-ota.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |

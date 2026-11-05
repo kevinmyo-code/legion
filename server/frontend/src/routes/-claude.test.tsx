@@ -42,6 +42,7 @@ function task(partial: Partial<ClaudeTask> = {}): ClaudeTask {
     confirms: false,
     progress: null,
     progress_at: null,
+    steps: [],
     ...partial,
   }
 }
