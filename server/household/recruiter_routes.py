@@ -185,6 +185,10 @@ RECRUITER_DENIED: dict[str, str] = {
     "books.reading.BookPositionDetailView": "books live in a folder on a member's laptop",
     "books.reading.BookBookmarkListView": "books live in a folder on a member's laptop",
     "books.reading.BookBookmarkDetailView": "books live in a folder on a member's laptop",
+    # alfred-builds ticket 06: the household's legal book library.
+    "books.library.LibraryListView": "the household's book library is not part of the demo",
+    "books.library.LibraryDetailView": "the household's book library is not part of the demo",
+    "books.library.LibraryDownloadView": "the household's book library is not part of the demo",
     # The engine's MCP door is for Claude Code on Kevin's machines.
     "engine_mcp.views.McpView": _DEVICE,
 }

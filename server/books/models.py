@@ -125,3 +125,62 @@ class BookBookmark(models.Model):
                 name="book_bookmarks_sha256_hex",
             ),
         ]
+
+
+# alfred-builds ticket 06: the household's book library. Only EPUB is stored (a legal PDF goes
+# through `/api/books/convert` first); `licence_note` says why the household may hold the copy.
+FORMAT_EPUB = "epub"
+FORMATS: tuple[str, ...] = (FORMAT_EPUB,)
+
+
+class LibraryBook(models.Model):
+    """A book the household holds a legal copy of, with the file itself (`content`).
+
+    **Legal copies only** (map alfred-builds, "built in"): public domain (Project Gutenberg,
+    Standard Ebooks, Wikisource, public-domain Internet Archive items) or a copy the author or
+    publisher gives away. `licence_note` ("public domain (Gutenberg)", "free from the author") is
+    required by the API and by a check constraint, and `source_url` says where it came from, so
+    every row carries its own provenance (CLAUDE.md section 4 rule 8's posture: keep the evidence).
+
+    **The file is a Postgres `bytea`**, like `claude_task_files.content`: Cloud Run's disk is
+    ephemeral and the private-bucket pattern (alfred-ota, `releases/signing.py`) is not on dev
+    yet. Downloads go through a short-lived signed link (`books/library.py`) either way, so moving
+    the bytes to a bucket later changes no client. Lists never load `content`.
+
+    **Shared inside the household** (ADR 0052's default), tenanted like `book_positions`.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    # SET_NULL: a book outlives the account that added it.
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    title = models.TextField()
+    author = models.TextField(blank=True, default="")
+    format = models.TextField(default=FORMAT_EPUB)
+    sha256 = models.CharField(max_length=64)
+    size = models.BigIntegerField()
+    source_url = models.TextField()
+    licence_note = models.TextField()
+    content = models.BinaryField()
+    added_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "book_library"
+        indexes = [models.Index(fields=["household", "-added_at"], name="book_library_hh_added")]
+        constraints = [
+            models.UniqueConstraint(fields=["household", "sha256"], name="book_library_one_per_file"),
+            models.CheckConstraint(condition=models.Q(format__in=FORMATS), name="book_library_format_valid"),
+            models.CheckConstraint(
+                condition=models.Q(sha256__regex=SHA256_PATTERN), name="book_library_sha256_hex"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(licence_note__regex=r"\S"), name="book_library_licence_required"
+            ),
+            models.CheckConstraint(condition=models.Q(title__regex=r"\S"), name="book_library_title_required"),
+            models.CheckConstraint(condition=models.Q(size__gt=0), name="book_library_size_positive"),
+        ]
+
+    def __str__(self) -> str:
+        return f"book {self.id}"

@@ -136,6 +136,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # tenanted like `briefs` (`books/models.py`).
     "book_positions",
     "book_bookmarks",
+    # alfred-builds ticket 06: the household's legal book library, with the files.
+    # Django-managed and born tenanted like `book_positions` (`books/models.py`).
+    "book_library",
     # procedures ticket 11 (ADR 0070): procedure definitions and their
     # versions. A built-in has NO household (visible to all, `procedures.models
     # .visible_to`), like a recruiter visit's `device_logs` row; a hand-made or
@@ -203,6 +206,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "briefs",
         "book_positions",
         "book_bookmarks",
+        "book_library",
         "procedures",
         "procedure_versions",
         "procedure_runs",

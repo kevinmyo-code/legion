@@ -822,6 +822,25 @@ def test_book_positions_and_bookmarks_are_scoped_by_household(
         assert "user" not in row and "user_id" not in row, row
 
 
+def test_book_library_is_scoped_by_household(token_a, token_b, household_a, household_b):
+    """alfred-builds ticket 06. `book_library` has no synced route, so this is its leak test: B
+    never lists, downloads or deletes A's book, and the same file in B is B's own row. The rest
+    of the library's behaviour is `tests/test_books_library.py`'s."""
+    from books.models import LibraryBook
+    from tests.test_books_library import URL, body
+
+    a_id = token_a.post(URL, body(), format="multipart").data["id"]
+    assert token_b.get(URL).data["results"] == []
+    assert token_b.get(f"{URL}/{a_id}/download").status_code == 404
+    assert token_b.delete(f"{URL}/{a_id}").status_code == 404
+    assert token_b.post(URL, body(title="B's copy"), format="multipart").status_code == 201
+    assert LibraryBook.objects.get(household=household_a).title == "Dracula"
+    assert LibraryBook.objects.get(household=household_b).title == "B's copy"
+    for row in token_a.get(URL).data["results"]:
+        assert not SERVER_ONLY_FIELDS & set(row), row
+        assert "B's copy" != row["title"]
+
+
 def test_sessions_are_scoped_by_household(token_a, token_b, household_a, household_b, monkeypatch):
     """backend-etl ticket 02. `source_credentials` has no synced route, so
     this is its leak test: B's saved login, and even the fact that B has one,
