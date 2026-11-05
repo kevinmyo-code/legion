@@ -214,6 +214,17 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
     }
 )
 
+# Tables that are deliberately NOT scoped by household, named so their absence from
+# TENANT_TABLES is a decision rather than an omission. `tests/test_tenancy.py` checks each one
+# exists, carries no `household_id`, and is not in TENANT_TABLES. Not an inventory of every
+# unscoped table: Django's own bookkeeping, the household tables themselves and the demo's code
+# tables predate it.
+#
+# `releases_apprelease` (alfred-ota ticket 04, `releases/models.py`): a published build of the
+# app is engine-wide. Every member of every household on this engine reads the same newest
+# release, and the APK it names holds no household data. Owners publish; members read.
+ENGINE_WIDE_TABLES: frozenset[str] = frozenset({"releases_apprelease"})
+
 BOOTSTRAP_ID_ENV = "LEGION_BOOTSTRAP_HOUSEHOLD_ID"
 BOOTSTRAP_NAME_ENV = "LEGION_BOOTSTRAP_HOUSEHOLD_NAME"
 DEFAULT_BOOTSTRAP_NAME = "Home"

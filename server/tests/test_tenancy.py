@@ -57,7 +57,7 @@ import pytest
 from django.db import connection
 
 from api.registry import SYNCED_VIEWSETS
-from household.tenancy import DJANGO_MANAGED_TENANT_TABLES, TENANT_TABLES
+from household.tenancy import DJANGO_MANAGED_TENANT_TABLES, ENGINE_WIDE_TABLES, TENANT_TABLES
 from household.tenancy_sql import household_unique_name
 from tests.test_fleet_api import TABLES as FLEET_TABLES
 from tests.test_fleet_api import a_vehicle
@@ -1041,6 +1041,24 @@ def test_no_public_table_outside_the_list_carries_the_column():
     """The other direction. A stray `household_id` on a table nobody scoped
     is worse than none: it looks like tenancy and enforces nothing."""
     assert _public_tables_with_household_id() <= set(TENANT_TABLES)
+
+
+def test_the_engine_wide_tables_exist_unscoped_and_off_the_list():
+    """`ENGINE_WIDE_TABLES` (alfred-ota ticket 04): unscoped by decision. Each exists, in any
+    schema, has no `household_id` in any schema, and is not mistaken for a tenant table."""
+    assert not ENGINE_WIDE_TABLES & set(TENANT_TABLES)
+    with connection.cursor() as cursor:
+        for table in sorted(ENGINE_WIDE_TABLES):
+            cursor.execute(
+                "select count(*) from information_schema.tables where table_name = %s", [table]
+            )
+            assert cursor.fetchone()[0] == 1, f"{table} does not exist"
+            cursor.execute(
+                "select count(*) from information_schema.columns "
+                "where table_name = %s and column_name = 'household_id'",
+                [table],
+            )
+            assert cursor.fetchone()[0] == 0, f"{table} carries household_id"
 
 
 def test_the_django_managed_tables_are_in_the_list_like_any_other():

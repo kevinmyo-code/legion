@@ -160,7 +160,15 @@ INSTALLED_APPS = [
     # claude-session ticket 03 (ADR 0067): Alfred's tasks for Claude Code on
     # Kevin's laptops, the machines' heartbeats and their interactive sessions.
     "claude_session",
+    # alfred-ota ticket 04: published APKs (`releases.AppRelease`, engine-wide, not tenanted)
+    # and the signed links a phone downloads them through.
+    "releases",
 ]
+
+# alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
+# Optional: unset, `GET /api/releases/<id>/download` refuses in words and nothing loads Cloud
+# Storage. A bucket name, not a secret; the bucket is private and each link is signed.
+LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
 
 # recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter
 # visitors join. `manage.py seed_demo_household` creates it, and

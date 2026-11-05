@@ -187,6 +187,9 @@ RECRUITER_DENIED: dict[str, str] = {
     "assistant.pack_views.AssistantPackView": (
         "the Alfred pack is for a member's own phone; a visit's prompt is built on the engine"
     ),
+    "releases.views.ReleaseLatestView": "app updates are for a member's own phone",
+    "releases.views.ReleaseDownloadView": "app updates are for a member's own phone",
+    "releases.views.ReleasePublishView": "app updates are for a member's own phone",
     # The engine's MCP door is for Claude Code on Kevin's machines.
     "engine_mcp.views.McpView": _DEVICE,
 }

@@ -171,6 +171,10 @@ class IsHouseholdOwner(IsHouseholdMember):
     set once by the person who administers the household rather than moved by
     each member. It gates no row.
 
+    **And one more, 2026-11-05** (alfred-ota ticket 04): publishing an app release, `POST
+    /api/releases/`, through `releases.views.IsReleasePublisher`. Releases are engine-wide
+    builds of the app, not household rows; every member reads them the same. It gates no row.
+
     Subclasses `IsHouseholdMember` rather than restating it: an owner is a
     member first, and the household-membership check is the one that decides
     whether the caller is inside the tenancy at all.
