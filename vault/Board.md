@@ -17,6 +17,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -204,6 +206,11 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[02-phone-reads-the-pack\|02]] | build | Phone reads the pack  waiting on [[01-alfred-pack-format-and-endpoint\|01]] |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[03-move-wording-into-the-pack\|03]] | build | Move wording into the pack  waiting on [[02-phone-reads-the-pack\|02]] |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[05-phone-updater\|05]] | build | Phone updater: check, download, verify, ask, install  waiting on [[04-version-and-publisher\|04]] |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[06-voice-and-screen\|06]] | build | Updates by voice and on a screen  waiting on [[05-phone-updater\|05]] |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[07-acceptance-run\|07]] | test | Acceptance run on the A25  waiting on [[02-phone-reads-the-pack\|02]], [[06-voice-and-screen\|06]] |
 | [[.scratch/architecture/map\|architecture]] | [[02-hilt-plugin-and-entrypoint-shim\|02]] | build | Hilt plugin, @HiltAndroidApp, and the @EntryPoint shim  waiting on [[01-room-kapt-to-ksp\|01]] |
 | [[.scratch/architecture/map\|architecture]] | [[03-bind-the-backend-interfaces\|03]] | build | Bind the backend interfaces  waiting on [[02-hilt-plugin-and-entrypoint-shim\|02]] |
 | [[.scratch/architecture/map\|architecture]] | [[04-three-screens-get-viewmodels\|04]] | build | Calendar, ledger, pantry: a ViewModel each, controllers injected  waiting on [[03-bind-the-backend-interfaces\|03]] |
@@ -312,6 +319,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | Map | Ticket | Type | What |
 |---|---|---|---|
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[03-mcp-for-claude-and-gemini\|03]] | build | Build: engine MCP server on the 2026-07-28 spec with OAuth, connected to Claude and the Gemini app |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | [[08-later\|08]] | build | Later: shrink the APK, head unit, worker publish |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
@@ -329,6 +337,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 |---|---|---|---|
 | [[.scratch/ai-craft/map\|ai-craft]] | 4 | 3 | [[.scratch/ai-craft/ai-craft.canvas\|open]] |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | 3 | 2 | [[.scratch/ai-upgrade/ai-upgrade.canvas\|open]] |
+| [[.scratch/alfred-ota/map\|alfred-ota]] | 8 | 8 | [[.scratch/alfred-ota/alfred-ota.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/architecture/map\|architecture]] | 6 | 6 | [[.scratch/architecture/architecture.canvas\|open]] |
