@@ -20,6 +20,13 @@ class LiveToolboxRecallNoteTest {
         assertTrue(note.contains("rather than generic"))
     }
 
+    /** 2026-11-05: what is remembered is said as the memory states it, with nothing added. */
+    @Test
+    fun `the note forbids adding details the memories do not hold`() {
+        assertTrue(note.contains("say only what a memory states"))
+        assertTrue(note.contains("add no detail"))
+    }
+
     @Test
     fun `the note keeps the register and names no assistant`() {
         assertFalse(Regex("\\bsir\\b").containsMatchIn(note))
