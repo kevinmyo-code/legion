@@ -49,7 +49,7 @@ from urllib.parse import parse_qs, urlparse
 
 # =============================================================================
 # BofA's pages. Every locator lives here and nowhere else.
-# Last seen working 2026-09-28 (checking 3119 and card 4146, captured live).
+# Last seen working 2026-09-28 (checking 9001 and card 9002, captured live).
 # =============================================================================
 
 BOFA_HOME_URL = "https://www.bankofamerica.com/"
@@ -131,7 +131,7 @@ _ACCOUNT_TEXT = re.compile(r"^(?P<name>.+?)\s+-\s+(?P<last4>\d{4})$")
 
 
 def parse_account_link(text: str) -> tuple[str, str] | None:
-    """`Adv SafeBalance Banking - 3119` to (`Adv SafeBalance Banking`, `3119`).
+    """`Adv SafeBalance Banking - 9001` to (`Adv SafeBalance Banking`, `9001`).
     None for an anchor that is not an account name (BofA puts several links
     to the same account on the overview)."""
     cleaned = " ".join((text or "").split())

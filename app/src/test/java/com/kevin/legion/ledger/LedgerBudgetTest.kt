@@ -626,8 +626,8 @@ class LedgerBudgetTest {
 
     @Test
     fun `accountFilter narrows spend to one physical account, filtered lines sum to the ALL total`() {
-        val cardFull = txn("4400664229114146", -80_00, description = "TRADER JOES", category = "Groceries")
-        val cardShort = txn("4146", -20_00, description = "AMAZON", category = "Shopping")
+        val cardFull = txn("4111111111119002", -80_00, description = "TRADER JOES", category = "Groceries")
+        val cardShort = txn("9002", -20_00, description = "AMAZON", category = "Shopping")
         val debit = txn("debit", -15_00, description = "GAS STATION", category = "Fuel")
 
         val all = buildBudgetVsActual(
@@ -636,7 +636,7 @@ class LedgerBudgetTest {
             inPeriod = listOf(cardFull, cardShort, debit),
             pairingWindow = listOf(cardFull, cardShort, debit),
             targets = emptyMap(),
-            coverage = completeCoverage("4400664229114146", "4146", "debit"),
+            coverage = completeCoverage("4111111111119002", "9002", "debit"),
         )
         // The card's two stored ids (full PDF number, bare CSV last-4) cluster into ONE spend
         // figure - a plain-equality filter would have shown 80_00 and 20_00 as two separate
@@ -647,8 +647,8 @@ class LedgerBudgetTest {
             inPeriod = listOf(cardFull, cardShort, debit),
             pairingWindow = listOf(cardFull, cardShort, debit),
             targets = emptyMap(),
-            coverage = completeCoverage("4400664229114146", "4146", "debit"),
-            accountFilter = setOf("4400664229114146"),
+            coverage = completeCoverage("4111111111119002", "9002", "debit"),
+            accountFilter = setOf("4111111111119002"),
         )
         val debitOnly = buildBudgetVsActual(
             entity = LedgerEntity.US,
@@ -656,7 +656,7 @@ class LedgerBudgetTest {
             inPeriod = listOf(cardFull, cardShort, debit),
             pairingWindow = listOf(cardFull, cardShort, debit),
             targets = emptyMap(),
-            coverage = completeCoverage("4400664229114146", "4146", "debit"),
+            coverage = completeCoverage("4111111111119002", "9002", "debit"),
             accountFilter = setOf("debit"),
         )
 
@@ -676,29 +676,29 @@ class LedgerBudgetTest {
             inPeriod = listOf(cardFull, cardShort, debit),
             pairingWindow = listOf(cardFull, cardShort, debit),
             targets = emptyMap(),
-            coverage = completeCoverage("4400664229114146", "4146", "debit"),
-            accountFilter = setOf("4146"),
+            coverage = completeCoverage("4111111111119002", "9002", "debit"),
+            accountFilter = setOf("9002"),
         )
         assertEquals(cardOnly.spentCents, cardOnlyViaShortId.spentCents)
     }
 
     @Test
     fun `accountFilter narrows coverage to the selected cluster too, never leaving a stale entity-wide caveat`() {
-        val row = txn("4400664229114146", -50_00, description = "STORE", category = "Shopping")
+        val row = txn("4111111111119002", -50_00, description = "STORE", category = "Shopping")
         val budget = buildBudgetVsActual(
             entity = LedgerEntity.US,
             month = MONTH,
             inPeriod = listOf(row),
             pairingWindow = listOf(row),
             targets = emptyMap(),
-            coverage = completeCoverage("4400664229114146", "4146", "debit"),
-            accountFilter = setOf("4400664229114146"),
+            coverage = completeCoverage("4111111111119002", "9002", "debit"),
+            accountFilter = setOf("4111111111119002"),
         )
 
         // Only the card's own coverage rows survive - "debit" never appears in a card-only view's
         // own coverage list, which is what keeps `coverageSentence` from describing an account this
         // filtered figure has nothing to do with.
-        assertTrue(budget.coverage.all { sameCard(it.accountId, "4400664229114146") })
+        assertTrue(budget.coverage.all { sameCard(it.accountId, "4111111111119002") })
         assertEquals(2, budget.coverage.size) // the full PAN row and the short-CSV row, same cluster
         assertTrue(budget.coverage.none { it.accountId == "debit" })
     }

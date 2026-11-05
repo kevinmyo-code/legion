@@ -419,7 +419,7 @@ def test_the_legion_section_is_optional_and_closed():
 
 
 # =============================================================================
-# The LinkedIn version (Kevin, 2026-11-04: "a stripped of quanex version for
+# The LinkedIn version (Kevin, 2026-11-04: "a stripped of work-section version for
 # linkedin"; the resume code keeps the full page)
 # =============================================================================
 

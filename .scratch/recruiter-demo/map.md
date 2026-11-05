@@ -35,7 +35,7 @@ Kevin's household, his accounts, his machines, or spend more than $5 a day in to
 5. The engine knows the caller is a recruiter from the code; the assistant greets accordingly.
 6. The guide is Alfred: same name, same voice as the phone.
 7. Text chat keeps working after the voice budget runs out.
-8. Quanex internship: 2026-06-01 to 2026-11-27.
+8. Internship: 2026-06-01 to 2026-11-27.
 9. Resume placement decided after a frontend prototype, later.
 10. Recruiter is a third `HouseholdMember.role` (ADR 0068 amends ADR 0045: the first role that governs
    data, and only to NARROW it). Set on throwaway visitor users in the demo household only.
@@ -105,7 +105,7 @@ web assistant (existing, ADR 0056)
 | 06 | Isolation tests: recruiter cannot reach Kevin's household or excluded tools, incl. prompt injection | build | 01, 02, 03 |
 | 07 | `/try` page + "What this key can't see" governance page | build | 02, 05 |
 | 08 | Demo videos (phone, head unit, receipt scan) embedded on the LEGION page | content | Kevin records |
-| 09 | Resume page + Quanex text | content | Kevin: page location, dates |
+| 09 | Resume page + work text | content | Kevin: page location, dates |
 | 10 | `about_kevin`: recruiters ask about Kevin (experience, location, work authorisation) from a profile he writes | decision | Kevin writes the profile |
 | 11 | Music: "play X" by voice, plays in the page via Spotify embed (not App Remote, not Kevin's account) | build | 01 |
 
@@ -115,5 +115,5 @@ web assistant (existing, ADR 0056)
   the server, never by prompt wording.
 - No Gemini key or engine token in the browser beyond the per-visitor read token.
 - Engine deploy is Kevin's call. Nothing deploys from this map without his OK.
-- Quanex text (ticket 09): Kevin sees the full text before anything publishes. Public tool names,
+- work text (ticket 09): Kevin sees the full text before anything publishes. Public tool names,
   patterns, role, generic outcomes only. No figures, names, internal systems, screenshots, incidents.

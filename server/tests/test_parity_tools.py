@@ -286,14 +286,14 @@ def test_the_now_figure_leads_and_is_the_statement_plus_the_feed_since(
     # Closing balance $88.50 on Tue Oct 6, 2026 (the helper opens at $10,000).
     statement(
         household_a,
-        "3119",
+        "9001",
         "Adv SafeBalance Banking",
         [line("2026-10-02", "RENT", 8_850 - 1_000_000)],
         start="2026-09-07",
         end="2026-10-06",
     )
-    _feed(household_a, "3119", ((dt.date(2026, 10, 9), -40_000), (dt.date(2026, 10, 20), -3_393)))
-    is_error, text, structured = call(mcp_write, "account_balances", {"account": "3119"})
+    _feed(household_a, "9001", ((dt.date(2026, 10, 9), -40_000), (dt.date(2026, 10, 20), -3_393)))
+    is_error, text, structured = call(mcp_write, "account_balances", {"account": "9001"})
     assert not is_error, text
     (account,) = structured["accounts"]
     assert account["statement_closing_cents"] == 8_850
@@ -301,7 +301,7 @@ def test_the_now_figure_leads_and_is_the_statement_plus_the_feed_since(
     assert account["verified_balance_cents"] == account["current_cents"]
     assert account["fact_since_bank_feed_count"] == 2
     assert (
-        "Adv SafeBalance Banking (ending 3119, USD): Now: -$345.43 (statement balance $88.50 on "
+        "Adv SafeBalance Banking (ending 9001, USD): Now: -$345.43 (statement balance $88.50 on "
         "Tue Oct 6, 2026, verified, plus -$433.93 of bank-feed transactions since)."
     ) in text
     # The current figure comes first; the statement's figure only after it.

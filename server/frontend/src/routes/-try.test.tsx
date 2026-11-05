@@ -162,7 +162,7 @@ describe('/try', () => {
     expect(screen.getByText(expiryLine(engine.demo.session!.expires_at))).toBeInTheDocument()
     expect(screen.getByText('Houston, open to relocation')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'What I built at Quanex' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'What I built at work' })).toBeInTheDocument()
     expect(screen.getByText('~770')).toBeInTheDocument()
 
     // The diagram is an image of the SVG, never markup injected into the page.
@@ -396,7 +396,7 @@ describe('/try', () => {
   })
 
   test('a version with no work section draws no Work section, nav entry or report', async () => {
-    // The LinkedIn version (Kevin, 2026-11-04): no Quanex work, no report, no resume.
+    // The LinkedIn version (Kevin, 2026-11-04): no work section, no report, no resume.
     const engine = visitor()
     const { work, ...rest } = sampleContent()
     engine.demo.content = { ...rest, assets: { report: null, resume: null } }

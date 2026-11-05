@@ -62,7 +62,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[01-recruiter-role-and-allowlist\|01]] | build | Recruiter role and tool allowlist (default deny) |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[03-demo-household-seed\|03]] | build | Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, receipt scan |
-| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[09-resume-and-quanex-text\|09]] | content | Resume page and Quanex text |
+| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[09-resume-and-work-text\|09]] | content | Resume page and work text |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[10-about-kevin-profile\|10]] | decision | about_kevin: recruiters ask about Kevin himself |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[12-phone-turn-taking-in-the-browser\|12]] | build | The phone's tuned turn-taking and barge-in, in the browser |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |

@@ -127,7 +127,7 @@ export function sampleContent(): DemoContent {
       { title: 'A gate on the data', body: 'A receipt that does not add up is quarantined.' },
     ],
     work: {
-      title: 'What I built at Quanex',
+      title: 'What I built at work',
       intro: 'A finance data platform that runs every night.',
       stats: [
         { value: '10+', label: 'ERP systems integrated' },

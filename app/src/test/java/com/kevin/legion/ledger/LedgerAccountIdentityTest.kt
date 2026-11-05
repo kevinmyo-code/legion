@@ -108,20 +108,20 @@ class LedgerAccountIdentityTest {
 
     @Test
     fun `a null filter matches every account - the untouched-install default`() {
-        assertTrue(matchesAccountFilter("4400664229114146", filter = null))
+        assertTrue(matchesAccountFilter("4111111111119002", filter = null))
         assertTrue(matchesAccountFilter("debit", filter = null))
     }
 
     @Test
     fun `a filter matches on sameCard, so the card's short and full ids both pass its own filter`() {
-        assertTrue(matchesAccountFilter("4400664229114146", filter = setOf("4400664229114146")))
-        assertTrue(matchesAccountFilter("4146", filter = setOf("4400664229114146")))
-        assertTrue(matchesAccountFilter("4400664229114146", filter = setOf("4146")))
+        assertTrue(matchesAccountFilter("4111111111119002", filter = setOf("4111111111119002")))
+        assertTrue(matchesAccountFilter("9002", filter = setOf("4111111111119002")))
+        assertTrue(matchesAccountFilter("4111111111119002", filter = setOf("9002")))
     }
 
     @Test
     fun `a filter for one account never matches an unrelated account`() {
-        assertFalse(matchesAccountFilter("debit", filter = setOf("4400664229114146")))
-        assertFalse(matchesAccountFilter("4400664229114146", filter = setOf("debit")))
+        assertFalse(matchesAccountFilter("debit", filter = setOf("4111111111119002")))
+        assertFalse(matchesAccountFilter("4111111111119002", filter = setOf("debit")))
     }
 }

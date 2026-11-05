@@ -1,7 +1,7 @@
 ---
 map: recruiter-demo
 ticket: "09"
-title: "Resume page and Quanex text"
+title: "Resume page and work text"
 type: content
 status: open
 status-detail: "page location after the frontend prototype"
@@ -12,7 +12,7 @@ ready: true
 tags: [ticket]
 ---
 
-# Resume page and Quanex text
+# Resume page and work text
 
 ## What
 
@@ -20,11 +20,11 @@ Web CV plus PDF, from the relay brief (work-PC session, 2026-11-02).
 
 ## Rules
 
-- Kevin reads the FULL Quanex text before anything publishes.
+- Kevin reads the FULL work text before anything publishes.
 - OK: public tool names, architecture patterns, role, generic outcomes.
 - Never: figures, customer/supplier/site/employee names, internal system or report names,
   screenshots, ERP accounts, security setup, incidents.
-- Kevin checks Quanex's social media policy.
+- Kevin checks the employer's social media policy.
 
 ## Open
 
