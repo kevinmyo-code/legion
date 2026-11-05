@@ -7221,3 +7221,17 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Found while building:** the map's `yyMMddHHmm` versionCode overflows (2611051200 is over the
   Int cap and Android's 2,100,000,000). Built as `yyDDDHHmm` UTC instead; Kevin to confirm.
 - ADR 0072.
+## 2026-11-05 - Alfred builds Alfred: fix, build and ship LEGION from the phone (Kevin)
+
+- **Asked** (Kevin: *"hey alfred i wanna have snake the game on my phone, lets build it, it calls
+  claude, builds, pushes and boom we have snake on my games section. same goes for books"*): one
+  path for a fix ("that was wrong"), a feature ("build me X") and content ("find me a book"),
+  through the Claude worker (ADR 0067), all from the phone.
+- **Rulings** (`.scratch/alfred-builds/map.md`): voice and a Report button; Claude fixes and tests
+  on its own and **one yes per change ships it**; after that yes the worker may run the engine
+  deploy itself (amends "the engine deploy is Kevin's", 2026-11-03, for this path only); scope is
+  the whole repo, with the ship question naming a guarded area and red tests blocking it.
+- **Built in:** books only from legal free sources; one build at a time with a heat check (the
+  laptop cut out under load that day); no CPU cap (*"dont cap the cpu"*).
+- **Built 2026-11-05** (`feat/alfred-builds-worker`): records endpoints, `ship.py`, `undo.py`,
+  `build_lock.py`, the hook's ship-only rule, the worker skills, the library on the engine. ADR 0074.

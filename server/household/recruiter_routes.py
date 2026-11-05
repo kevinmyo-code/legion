@@ -173,6 +173,8 @@ RECRUITER_DENIED: dict[str, str] = {
     "push.views.PreferenceView": "notifications are sent to a member's own devices",
     "push.views.PreferenceOffView": "notifications are sent to a member's own devices",
     "devicelogs.views.DeviceLogUploadView": "device logs come from a member's phone",
+    # alfred-builds ticket 02: a member's conversation records, read by the Claude worker.
+    "devicelogs.records.DeviceLogRenderView": "device logs come from a member's phone",
     "games.views.OpponentsView": "games are played between household members",
     "games.views.MatchCreateView": "games are played between household members",
     "games.views.PendingView": "games are played between household members",
@@ -199,6 +201,10 @@ RECRUITER_DENIED: dict[str, str] = {
     "releases.views.ReleaseLatestView": "app updates are for a member's own phone",
     "releases.views.ReleaseDownloadView": "app updates are for a member's own phone",
     "releases.views.ReleasePublishView": "app updates are for a member's own phone",
+    # alfred-builds ticket 06: the household's legal book library.
+    "books.library.LibraryListView": "the household's book library is not part of the demo",
+    "books.library.LibraryDetailView": "the household's book library is not part of the demo",
+    "books.library.LibraryDownloadView": "the household's book library is not part of the demo",
     # The engine's MCP door is for Claude Code on Kevin's machines.
     "engine_mcp.views.McpView": _DEVICE,
 }

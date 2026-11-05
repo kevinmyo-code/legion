@@ -1,0 +1,187 @@
+{
+  "nodes": [
+    {
+      "id": "135a7143882ac80b",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/01-report-a-problem.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b664b919939789fb",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/02-records-for-the-worker.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8fd7fc8415203f95",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/06-book-library.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "97ed513cf69eeaf5",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/08-build-lock-and-heat.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7d8e5f016ec1fa9b",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/04-worker-skills.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f7cb0001ea84a80e",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/07-book-finder.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b88c95539801cd39",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/03-ship-step.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0fc748084c98729d",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/05-undo.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "757fb38849525897",
+      "type": "file",
+      "file": ".scratch/alfred-builds/issues/09-first-run.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "b2cb840a6932ac7c",
+      "fromNode": "7d8e5f016ec1fa9b",
+      "fromSide": "right",
+      "toNode": "b88c95539801cd39",
+      "toSide": "left"
+    },
+    {
+      "id": "36f02869334874fe",
+      "fromNode": "b664b919939789fb",
+      "fromSide": "right",
+      "toNode": "7d8e5f016ec1fa9b",
+      "toSide": "left"
+    },
+    {
+      "id": "e73225be6033d8b1",
+      "fromNode": "b88c95539801cd39",
+      "fromSide": "right",
+      "toNode": "7d8e5f016ec1fa9b",
+      "toSide": "left"
+    },
+    {
+      "id": "fbcb80630f59d452",
+      "fromNode": "b88c95539801cd39",
+      "fromSide": "right",
+      "toNode": "0fc748084c98729d",
+      "toSide": "left"
+    },
+    {
+      "id": "0cb2aa0a12bbf231",
+      "fromNode": "8fd7fc8415203f95",
+      "fromSide": "right",
+      "toNode": "f7cb0001ea84a80e",
+      "toSide": "left"
+    },
+    {
+      "id": "a01fa87bbcd0e771",
+      "fromNode": "135a7143882ac80b",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    },
+    {
+      "id": "ceea3538cfbcfbdf",
+      "fromNode": "b664b919939789fb",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    },
+    {
+      "id": "4ee72b732bcbcfca",
+      "fromNode": "b88c95539801cd39",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    },
+    {
+      "id": "bbac7d2300e69128",
+      "fromNode": "7d8e5f016ec1fa9b",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    },
+    {
+      "id": "a1e057f24652699a",
+      "fromNode": "0fc748084c98729d",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    },
+    {
+      "id": "fc6355a8ec13e2fa",
+      "fromNode": "8fd7fc8415203f95",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    },
+    {
+      "id": "a4af68839a850449",
+      "fromNode": "f7cb0001ea84a80e",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    },
+    {
+      "id": "627b7e3d9e72c967",
+      "fromNode": "97ed513cf69eeaf5",
+      "fromSide": "right",
+      "toNode": "757fb38849525897",
+      "toSide": "left"
+    }
+  ]
+}

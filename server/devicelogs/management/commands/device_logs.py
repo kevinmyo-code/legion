@@ -31,8 +31,7 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 
 from devicelogs.models import REASONS, DeviceLog
-from devicelogs.render import render
-from devicelogs.views import inflate_capped
+from devicelogs.render import batch_header, batch_text, render_batch
 
 
 class Command(BaseCommand):
@@ -78,29 +77,24 @@ class Command(BaseCommand):
             return
         shown = 0
         for row in reversed(batches):
+            header = None
             try:
-                text = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace")
+                if options["render"]:
+                    # The same function `GET /api/device-logs/<id>/render` serves (ticket 02).
+                    header, lines = render_batch(row, verbose=options["verbose"])
+                else:
+                    lines = batch_text(row).splitlines()
             except ValueError as exc:
                 self.stdout.write(f"=== {row.id} unreadable: {exc}")
                 continue
-            lines = text.splitlines()
-            if options["render"]:
-                rendered = render(text, verbose=options["verbose"])
-                lines = rendered or ["(no LIVE_AUDIT or LIVE_LATENCY lines in this batch)"]
-            elif needle:
-                lines = [line for line in lines if needle in line.lower()]
-                if not lines:
-                    continue
+            if header is None:
+                if needle:
+                    lines = [line for line in lines if needle in line.lower()]
+                    if not lines:
+                        continue
+                header = batch_header(row, len(lines))
             shown += 1
-            self.stdout.write(
-                f"=== batch {row.id} | received {row.received_at:%Y-%m-%d %H:%M:%S}Z | "
-                f"{row.device_label} v{row.app_version_name or '?'}"
-                f"({row.app_version_code if row.app_version_code is not None else '?'}) | "
-                f"{row.reason} | device window {row.window_start} .. {row.window_end} | "
-                f"{len(lines)} lines"
-                + (f" | conversation {row.batch_id}" if row.device_label == "web" else "")
-                + (f" | visit ref={row.visit_ref or '-'}" if row.demo_visitor else "")
-            )
+            self.stdout.write(header)
             self.stdout.write("\n".join(lines))
         if not shown:
             self.stdout.write(f"No lines matching {options['grep']!r} in the newest {last} batches.")

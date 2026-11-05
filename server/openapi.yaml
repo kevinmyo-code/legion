@@ -1976,6 +1976,155 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConvertError'
           description: '`failed`: the converter failed or ran past 50 s.'
+  /api/books/library:
+    get:
+      operationId: api_books_library_list
+      parameters:
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO 8601; only books added after it.
+      tags:
+      - books
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LibraryList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    post:
+      operationId: api_books_library_create
+      tags:
+      - books
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LibraryUpload'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LibraryBook'
+          description: Added.
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LibraryBook'
+          description: This file was already in the library.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Refused, nothing added.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Over the size cap.
+  /api/books/library/{book_id}:
+    delete:
+      operationId: api_books_library_destroy
+      parameters:
+      - in: path
+        name: book_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - books
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/books/library/{book_id}/download:
+    get:
+      operationId: api_books_library_download
+      parameters:
+      - in: path
+        name: book_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - books
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadLink'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/books/library/{book_id}/file:
+    get:
+      operationId: api_books_library_file
+      description: |-
+        No token header: the signature in `t` is the whole authority. It names one household and
+        one book and lives LINK_SECONDS; it is minted only by `LibraryDownloadView`, for a member.
+      parameters:
+      - in: path
+        name: book_id
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: t
+        schema:
+          type: string
+        description: The signed link token.
+        required: true
+      tags:
+      - books
+      responses:
+        '200':
+          content:
+            application/epub+zip:
+              schema:
+                type: string
+                format: binary
+          description: The EPUB.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/books/positions:
     get:
       operationId: api_books_positions_list
@@ -3386,8 +3535,61 @@ paths:
           description: Not a recruiter's live demo visit (signed out, a member, or
             over).
   /api/device-logs/:
+    get:
+      operationId: api_device_logs_list
+      description: |-
+        `POST` uploads a batch; `GET` lists the household's recent batches (alfred-builds ticket 02,
+        `devicelogs/records.py`), so the Claude worker can find a conversation to read.
+      parameters:
+      - in: query
+        name: device
+        schema:
+          type: string
+        description: Keep only this device label, e.g. web.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: At most this many (default 50, max 200).
+      - in: query
+        name: reason
+        schema:
+          type: string
+          enum:
+          - conversation
+          - drive_end
+          - manual
+          - periodic
+          - startup
+        description: Keep only this upload reason.
+      - in: query
+        name: since
+        schema:
+          type: string
+        description: ISO 8601 time; only batches the engine received after it.
+      tags:
+      - device-logs
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordList'
+          description: Newest first.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A filter was malformed.
     post:
       operationId: api_device_logs_create
+      description: |-
+        `POST` uploads a batch; `GET` lists the household's recent batches (alfred-builds ticket 02,
+        `devicelogs/records.py`), so the Claude worker can find a conversation to read.
       tags:
       - device-logs
       requestBody:
@@ -3424,6 +3626,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: Over the size cap, nothing stored.
+  /api/device-logs/{log_id}/render:
+    get:
+      operationId: api_device_logs_render
+      parameters:
+      - in: path
+        name: log_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: verbose
+        schema:
+          type: boolean
+        description: Also mic and activity lines.
+      tags:
+      - device-logs
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rendered'
+          description: The rendered record.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such record here.
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Stored, but unreadable.
   /api/events:
     get:
       operationId: api_events_list
@@ -12065,6 +12306,17 @@ components:
       - id
       - last_seen_at
       - name
+    DownloadLink:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Fetch with GET, no header. Valid for `expires_in` seconds.
+        expires_in:
+          type: integer
+      required:
+      - expires_in
+      - url
     Drive:
       type: object
       description: |-
@@ -13232,6 +13484,85 @@ components:
       - id
       - transaction_id
       - updated_at
+    LibraryBook:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        format:
+          type: string
+        sha256:
+          type: string
+        size:
+          type: integer
+          description: Bytes.
+        source_url:
+          type: string
+          description: Where the copy came from.
+        licence_note:
+          type: string
+          description: 'Why the household may hold it: "public domain (Gutenberg)",
+            "free from the author".'
+        added_by:
+          type: string
+          nullable: true
+          description: The member who added it.
+        added_at:
+          type: string
+          format: date-time
+      required:
+      - added_at
+      - added_by
+      - author
+      - format
+      - id
+      - licence_note
+      - sha256
+      - size
+      - source_url
+      - title
+    LibraryList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LibraryBook'
+      required:
+      - results
+    LibraryUpload:
+      type: object
+      properties:
+        file:
+          type: string
+          format: uri
+          description: The EPUB, at most 30 MB.
+        title:
+          type: string
+          maxLength: 500
+        author:
+          type: string
+          default: ''
+          maxLength: 500
+        licence_note:
+          type: string
+          description: 'Required. Why this copy is legal: "public domain (Project
+            Gutenberg)", "free from the author".'
+          maxLength: 500
+        source_url:
+          type: string
+          format: uri
+          description: The page the copy came from.
+          maxLength: 2000
+      required:
+      - file
+      - licence_note
+      - source_url
+      - title
     LinkToken:
       type: object
       properties:
@@ -16183,6 +16514,45 @@ components:
       - reversal_of
       - total_price_cents
       - unit_price_cents
+    Record:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_label:
+          type: string
+        reason:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+          description: The engine's clock.
+        line_count:
+          type: integer
+          description: Raw lines in the batch, before rendering.
+        app_version_name:
+          type: string
+        app_version_code:
+          type: integer
+          nullable: true
+      required:
+      - app_version_code
+      - app_version_name
+      - device_label
+      - id
+      - line_count
+      - reason
+      - received_at
+    RecordList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Record'
+      required:
+      - results
     RecruiterAssets:
       type: object
       properties:
@@ -16314,6 +16684,36 @@ components:
       - intro
       - stats
       - title
+    Rendered:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_label:
+          type: string
+        reason:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+        header:
+          type: string
+          description: The header line `manage.py device_logs` prints.
+        lines:
+          type: array
+          items:
+            type: string
+          description: 'The timeline `manage.py device_logs --render` prints: who
+            said what, each tool call and result, reply latency. Mail stays redacted
+            as stored.'
+      required:
+      - device_label
+      - header
+      - id
+      - lines
+      - reason
+      - received_at
     ReportBranch:
       type: object
       properties:
