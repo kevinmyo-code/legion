@@ -1,0 +1,238 @@
+{
+  "nodes": [
+    {
+      "id": "3d828f12cdb28e73",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/01-accounts-and-snapshots.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e19b41234c4ca05b",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/03-fx-rates.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b9000bb1a2eb4edf",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/02-household-internal-money.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ba313890d482557b",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/04-statement-drops.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "644f8c9b5ebfa9e1",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/05-ibkr-flex.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f1f2736ec915c8c9",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/06-computed-values.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f79a2338d8382693",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/12-private-loader-and-setup.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d8557769f05b4902",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/07-net-worth-and-runway.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ebd2774d6fdd9b59",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/08-budgets-and-pace.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8b98598d7d35fb60",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/11-statement-fetch-skill.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f07e3233841009cb",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/09-money-alerts.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ff681543ea84c8f5",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/10-alfred-and-screens.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "59a71577bc0fff71",
+      "fromNode": "3d828f12cdb28e73",
+      "fromSide": "right",
+      "toNode": "b9000bb1a2eb4edf",
+      "toSide": "left"
+    },
+    {
+      "id": "3c11199e3057c018",
+      "fromNode": "3d828f12cdb28e73",
+      "fromSide": "right",
+      "toNode": "ba313890d482557b",
+      "toSide": "left"
+    },
+    {
+      "id": "57a56c455e7c3335",
+      "fromNode": "3d828f12cdb28e73",
+      "fromSide": "right",
+      "toNode": "644f8c9b5ebfa9e1",
+      "toSide": "left"
+    },
+    {
+      "id": "c8b181d5399b87e1",
+      "fromNode": "e19b41234c4ca05b",
+      "fromSide": "right",
+      "toNode": "644f8c9b5ebfa9e1",
+      "toSide": "left"
+    },
+    {
+      "id": "48746842bb61f8ee",
+      "fromNode": "3d828f12cdb28e73",
+      "fromSide": "right",
+      "toNode": "f1f2736ec915c8c9",
+      "toSide": "left"
+    },
+    {
+      "id": "0305985886b8490e",
+      "fromNode": "e19b41234c4ca05b",
+      "fromSide": "right",
+      "toNode": "f1f2736ec915c8c9",
+      "toSide": "left"
+    },
+    {
+      "id": "d9905dd128a0ba0b",
+      "fromNode": "3d828f12cdb28e73",
+      "fromSide": "right",
+      "toNode": "d8557769f05b4902",
+      "toSide": "left"
+    },
+    {
+      "id": "3bf0df78cf97fffe",
+      "fromNode": "b9000bb1a2eb4edf",
+      "fromSide": "right",
+      "toNode": "d8557769f05b4902",
+      "toSide": "left"
+    },
+    {
+      "id": "d18544c9b588cc72",
+      "fromNode": "e19b41234c4ca05b",
+      "fromSide": "right",
+      "toNode": "d8557769f05b4902",
+      "toSide": "left"
+    },
+    {
+      "id": "dfecff846009e717",
+      "fromNode": "b9000bb1a2eb4edf",
+      "fromSide": "right",
+      "toNode": "ebd2774d6fdd9b59",
+      "toSide": "left"
+    },
+    {
+      "id": "74b4d52130b821c1",
+      "fromNode": "d8557769f05b4902",
+      "fromSide": "right",
+      "toNode": "f07e3233841009cb",
+      "toSide": "left"
+    },
+    {
+      "id": "065f9601227b0541",
+      "fromNode": "ebd2774d6fdd9b59",
+      "fromSide": "right",
+      "toNode": "f07e3233841009cb",
+      "toSide": "left"
+    },
+    {
+      "id": "e534598908de7aae",
+      "fromNode": "d8557769f05b4902",
+      "fromSide": "right",
+      "toNode": "ff681543ea84c8f5",
+      "toSide": "left"
+    },
+    {
+      "id": "0d2a88c06bde9fa5",
+      "fromNode": "ebd2774d6fdd9b59",
+      "fromSide": "right",
+      "toNode": "ff681543ea84c8f5",
+      "toSide": "left"
+    },
+    {
+      "id": "ce768a3c892e008f",
+      "fromNode": "ba313890d482557b",
+      "fromSide": "right",
+      "toNode": "8b98598d7d35fb60",
+      "toSide": "left"
+    },
+    {
+      "id": "4d8e001a5d7e6ace",
+      "fromNode": "3d828f12cdb28e73",
+      "fromSide": "right",
+      "toNode": "f79a2338d8382693",
+      "toSide": "left"
+    }
+  ]
+}
