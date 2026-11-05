@@ -55,6 +55,8 @@ It closes the "Alfred improves Alfred" loop with the worker's `legion-chores` sk
 
 ## Decisions for Kevin
 
+**All five DECIDED 2026-11-05 (Kevin picked every recommendation):** repo file + deploy; lock the safety set; always ask before install; Kevin or the worker (after his yes) publishes, debug key kept and backed up.
+
 1. **Where the pack lives** ([Pack format](issues/01-alfred-pack-format-and-endpoint.md)).
    - Recommended: a file in the repo (`server/assistant/packs/alfred.yaml`), served by the engine and
      changed by an engine deploy. That keeps it reviewed, tested and in git; rollback = deploy the
