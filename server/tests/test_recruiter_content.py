@@ -419,6 +419,115 @@ def test_the_legion_section_is_optional_and_closed():
 
 
 # =============================================================================
+# The Projects strip and the project sections (Kevin, 2026-11-05)
+# =============================================================================
+
+
+def fake_projects() -> dict:
+    """A strip of three (anchor, anchor, no link) and one project section with a media slot."""
+    return {
+        "legion": {"title": "How", "intro": "It", "parts": [{"title": "a", "body": "b"}]},
+        "projects": [
+            {"title": "Fake project one", "line": "Lorem ipsum, this page.", "href": "#legion"},
+            {"title": "Fake project two", "line": "Lorem ipsum dashboard.", "href": "#fake-two"},
+            {"title": "Fake project three", "line": "Lorem ipsum, in progress."},
+        ],
+        "project_sections": [
+            {
+                "id": "fake-two",
+                "title": "Fake project two",
+                "intro": "Lorem ipsum intro.",
+                "parts": [{"title": "Part", "body": "Lorem ipsum part."}],
+                "media": {"note": "Video coming soon."},
+            }
+        ],
+    }
+
+
+def test_content_without_projects_still_fits_and_with_them_fits_too():
+    assert "projects" not in CONTENT_SCHEMA["required"]
+    assert "project_sections" not in CONTENT_SCHEMA["required"]
+    assert problems(fake_content()) == []
+    assert problems(fake_content() | fake_projects()) == []
+    # The LinkedIn shape (no work section) with the strip.
+    linkedin = fake_content() | fake_projects()
+    linkedin.pop("work")
+    assert problems(linkedin) == []
+    # A media slot with a recorded clip.
+    clip = fake_content() | fake_projects()
+    clip["project_sections"][0]["media"] = {
+        "video": "/static/demo/fake.mp4", "poster": "/static/demo/fake.jpg",
+    }  # fmt: skip
+    assert problems(clip) == []
+
+
+def test_projects_refuse_unknown_and_missing_keys():
+    unknown = fake_content() | fake_projects()
+    unknown["projects"][0]["stars"] = 5
+    found = problems(unknown)
+    assert len(found) == 1 and found[0].startswith("projects/0:")
+
+    no_line = fake_content() | fake_projects()
+    del no_line["projects"][1]["line"]
+    assert problems(no_line)
+
+    bad_media = fake_content() | fake_projects()
+    bad_media["project_sections"][0]["media"]["autoplay"] = True
+    assert problems(bad_media)
+
+    no_parts = fake_content() | fake_projects()
+    del no_parts["project_sections"][0]["parts"]
+    assert problems(no_parts)
+
+
+@pytest.mark.parametrize("bad_id", ["legion", "work", "Fake Two", "1fake", "", "x" * 41])
+def test_a_project_section_id_is_a_safe_anchor_the_page_does_not_already_use(bad_id):
+    content = fake_content() | fake_projects()
+    content["project_sections"][0]["id"] = bad_id
+    content["projects"][1].pop("href")
+    found = problems(content)
+    assert found and found[0].startswith("project_sections/0/id:")
+
+
+def test_a_strip_anchor_must_name_a_section_on_the_page_and_ids_are_unique():
+    dead = fake_content() | fake_projects()
+    dead["projects"][1]["href"] = "#nowhere"
+    assert problems(dead) == [
+        "projects/1/href: '#nowhere' names no section on this page "
+        "(there are: experience, fake-two, legion, work)"
+    ]
+    # `#legion` with no legion section is a dead link too.
+    no_legion = fake_content() | fake_projects()
+    no_legion.pop("legion")
+    assert problems(no_legion)[0].startswith("projects/0/href:")
+    # A link out is not checked.
+    out = fake_content() | fake_projects()
+    out["projects"][2]["href"] = "https://example.com/fake"
+    assert problems(out) == []
+
+    twice = fake_content() | fake_projects()
+    twice["project_sections"].append(dict(twice["project_sections"][0]))
+    assert problems(twice) == ["project_sections/1/id: 'fake-two' is used twice"]
+
+
+def test_projects_are_served_and_load_through_the_command(recruiter, tmp_path):
+    content = fake_content() | fake_projects()
+    load_fake(tmp_path, content=content)
+    served = recruiter.get("/api/demo/content").json()
+    assert served["projects"] == fake_projects()["projects"]
+    assert served["project_sections"] == fake_projects()["project_sections"]
+    assert "profile" not in served
+
+
+def test_a_bad_project_strip_loads_nothing(tmp_path):
+    content = fake_content() | fake_projects()
+    content["projects"][0]["href"] = "#nowhere"
+    with pytest.raises(CommandError, match="projects/0/href"):
+        load_fake(tmp_path, content=content)
+    assert RecruiterContent.objects.count() == 0
+
+
+# =============================================================================
 # The LinkedIn version (Kevin, 2026-11-04: "a stripped of work-section version for
 # linkedin"; the resume code keeps the full page)
 # =============================================================================

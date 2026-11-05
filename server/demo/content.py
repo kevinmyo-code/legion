@@ -55,6 +55,45 @@ _PHONE = _obj(
     optional=("full_take",),
 )
 
+# A clip that may not exist yet (Kevin, 2026-11-05: "Media: coming soon"). With `video` the page
+# plays it; without, it shows `note` (say, "Video coming soon, recorded on demo data"); with
+# neither, nothing. All optional, so a slot can be declared before anything is recorded.
+_MEDIA = _obj(
+    {"video": _STR, "poster": _STR, "captions": _STR, "note": _STR},
+    optional=("video", "poster", "captions", "note"),
+)
+
+# The "Projects" strip near the top (Kevin, 2026-11-05): one line each. `href` is an anchor on
+# this page ("#legion") or a link out; without it the line stands on its own (a private repo).
+_PROJECT = _obj(
+    {"title": _STR, "line": _STR, "href": _STR, "media": _MEDIA},
+    optional=("href", "media"),
+)
+
+# Ids the page already uses for its own sections; a project section may not take one.
+RESERVED_SECTION_IDS = (
+    "projects", "look-for", "legion", "phone", "work", "experience", "hero-title",
+)  # fmt: skip
+
+# A project section below LEGION's (Kevin, 2026-11-05: the second project). The same shape as
+# `legion`, plus the `id` the strip's anchor points at and an optional media slot.
+_PROJECT_SECTION = _obj(
+    {
+        "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,39}$",
+            "not": {"enum": list(RESERVED_SECTION_IDS)},
+        },
+        "title": _STR,
+        "intro": _STR,
+        "diagram_svg": _STR,
+        "diagram_caption": _STR,
+        "parts": {"type": "array", "items": _TITLE_BODY},
+        "media": _MEDIA,
+    },
+    optional=("diagram_svg", "diagram_caption", "media"),
+)
+
 CONTENT_SCHEMA: dict = _obj(
     {
         "hero": _obj({"title": _STR, "lead": _STR, "facts": _STRS}),
@@ -92,9 +131,13 @@ CONTENT_SCHEMA: dict = _obj(
             },
             optional=("diagram_svg", "diagram_caption"),
         ),
+        # Optional, so content written before them still loads: without `projects` no strip is
+        # drawn, without `project_sections` nothing below LEGION's section.
+        "projects": {"type": "array", "items": _PROJECT},
+        "project_sections": {"type": "array", "items": _PROJECT_SECTION},
     },
     # `work` is optional too: the LinkedIn version leaves it out (Kevin, 2026-11-04).
-    optional=("name", "phone", "legion", "work"),
+    optional=("name", "phone", "legion", "work", "projects", "project_sections"),
 )
 
 _VALIDATOR = Draft202012Validator(CONTENT_SCHEMA)
@@ -117,6 +160,28 @@ def problems(content) -> list[str]:
     for error in sorted(_VALIDATOR.iter_errors(content), key=lambda e: list(e.absolute_path)):
         where = "/".join(str(p) for p in error.absolute_path) or "(top level)"
         found.append(f"{where}: {error.message}")
+    if not found and isinstance(content, dict):
+        found.extend(_anchor_problems(content))
+    return found
+
+
+def _anchor_problems(content: dict) -> list[str]:
+    """What the schema cannot say: two project sections with one id, or a strip line whose
+    `#anchor` names a section this content does not draw (a dead link on the page)."""
+    found = []
+    ids = [section["id"] for section in content.get("project_sections", [])]
+    for index, section_id in enumerate(ids):
+        if section_id in ids[:index]:
+            found.append(f"project_sections/{index}/id: {section_id!r} is used twice")
+    drawn = set(ids) | {"experience"}
+    drawn |= {key for key in ("legion", "phone", "work") if key in content}
+    for index, project in enumerate(content.get("projects", [])):
+        href = project.get("href", "")
+        if href.startswith("#") and href[1:] not in drawn:
+            found.append(
+                f"projects/{index}/href: {href!r} names no section on this page "
+                f"(there are: {', '.join(sorted(drawn))})"
+            )
     return found
 
 
