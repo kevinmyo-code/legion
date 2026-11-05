@@ -119,6 +119,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "388fa11a2487ec2b",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/13-home-money-panel.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -232,6 +242,20 @@
       "fromNode": "3d828f12cdb28e73",
       "fromSide": "right",
       "toNode": "f79a2338d8382693",
+      "toSide": "left"
+    },
+    {
+      "id": "44097a3563e2b29a",
+      "fromNode": "d8557769f05b4902",
+      "fromSide": "right",
+      "toNode": "388fa11a2487ec2b",
+      "toSide": "left"
+    },
+    {
+      "id": "e0cd354d17cf4659",
+      "fromNode": "ebd2774d6fdd9b59",
+      "fromSide": "right",
+      "toNode": "388fa11a2487ec2b",
       "toSide": "left"
     }
   ]
