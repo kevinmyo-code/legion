@@ -58,6 +58,23 @@ class ClaudeResultWatcherTest {
         assertTrue(!text.contains("file_id"))
     }
 
+    /** A check read the result out (and forgot the task) while this poll waited on the engine. */
+    @Test
+    fun `a task forgotten while the poll was reading is not announced`() {
+        backend.machines(machine("Alienware"))
+        watch.tasks += 41
+        tasks(task(41, ClaudeTask.DONE, summary = "Done."))
+        val racing = ClaudeResultWatcher(
+            controller = { ClaudeSessionController(backend) },
+            watch = watch,
+            announce = { id, text, hint -> said += id to text; hints += hint; delivery },
+            saveFile = { _, _ -> true },
+            onOverview = { watch.forgetTask(41) },
+        )
+        assertEquals(0, runBlocking { racing.pollOnce() })
+        assertTrue(said.isEmpty())
+    }
+
     @Test
     fun `a running task is not announced`() {
         backend.machines(machine("Alienware"))

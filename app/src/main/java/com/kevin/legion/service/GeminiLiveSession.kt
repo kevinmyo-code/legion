@@ -2233,8 +2233,9 @@ class GeminiLiveSession(
         val waiting = cancelledTools.hasNotes() || hasOutside
         val busy = speakingThisTurn || awaitingReply || turnTaker?.inActivity == true
         if (!waiting || !conversationActive || busy) return
-        val notes = cancelledTools.takeNotes().map { it.text } +
-            generateSequence { outsideNotes.poll() }.toList()
+        val notes = cancelledTools.takeNotes().map { it.text } + outsideNotes.drain()
+        // A note withdrawn between the check above and the drain leaves nothing to send.
+        if (notes.isEmpty()) return
         val sent = sendText(notes.joinToString("\n"))
         LiveLatency.log("LIVE_TOOL_CANCEL", "told the model ${notes.size} note(s) (outside=$hasOutside) sent=$sent")
     }
@@ -2244,14 +2245,20 @@ class GeminiLiveSession(
      * for the same quiet moment a cancelled write's note waits for. False when no conversation is
      * open, so the caller raises it another way instead.
      */
-    fun offerNote(text: String): Boolean {
+    fun offerNote(key: String, text: String): Boolean {
         if (!running.get() || closed.get() || !conversationActive) return false
-        outsideNotes.add(text)
+        outsideNotes.add(key, text)
         deliverCancelNotesIfQuiet()
         return true
     }
 
-    private val outsideNotes = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    /**
+     * Drops a note still waiting under [key] ([LiveNotes.withdraw]): something else in the
+     * conversation already said it, so delivering it at the next quiet moment would say it twice.
+     */
+    fun withdrawNote(key: String) = outsideNotes.withdraw(key)
+
+    private val outsideNotes = OutsideNoteQueue()
 
     /**
      * Keeps the follow-up window listening at least [ms] after the mic first opens, for a spoken

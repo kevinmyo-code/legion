@@ -172,6 +172,42 @@ class ClaudeSessionToolboxTest {
         assertFalse(r.getBoolean("success"))
     }
 
+    /**
+     * 2026-11-05 (A25 LIVE_AUDIT 11-04, paraphrased): a finished task's note waited in the open
+     * conversation while the user asked what Claude said; the check read the result out in that
+     * turn, then the waiting note went in and the same result was spoken again.
+     */
+    @Test
+    fun `a check that reads a finished result out withdraws its waiting note and stops the watch`() {
+        val watch = com.kevin.legion.claude.FakeWatch()
+        watch.tasks += setOf(6, 7)
+        val withdrawn = mutableListOf<String>()
+        val sink = object : LiveNotes.Sink {
+            override fun offer(key: String, text: String) = true
+            override fun withdraw(key: String) {
+                withdrawn += key
+            }
+        }
+        ClaudeSessionToolbox.watchFactory = { watch }
+        LiveNotes.register(sink)
+        try {
+            backend.machines(machine("Alienware"))
+            backend.tasksOut = ClaudeOutcome.Ok(
+                listOf(
+                    task(7, ClaudeTask.RUNNING, progress = "reading mail"),
+                    task(6, ClaudeTask.DONE, summary = "The parcel arrives Saturday."),
+                ),
+            )
+            val m = call("action" to "check").getString("message")
+            assertTrue(m, m.contains("The parcel arrives Saturday."))
+            assertEquals(listOf(LiveNotes.claudeTaskKey(6)), withdrawn)
+            assertEquals("the running task stays watched, the read-out one does not", setOf(7), watch.tasks)
+        } finally {
+            LiveNotes.unregister(sink)
+            ClaudeSessionToolbox.watchFactory = ::ClaudeWatchStore
+        }
+    }
+
     @Test
     fun `quiet turns the announcements off and unquiet turns them back on`() = runBlocking {
         val watch = com.kevin.legion.claude.FakeWatch()

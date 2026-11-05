@@ -653,9 +653,15 @@ class LiveSessionController(context: Context) {
      * [LiveNotes]' sink: a note from outside (a finished Claude session task) reaches the model only
      * while a conversation is open. Read from a background poll, so the session is read once.
      */
-    private val noteSink: (String) -> Boolean = { text: String ->
-        val s = session
-        s != null && s.inConversation && s.offerNote(text)
+    private val noteSink: LiveNotes.Sink = object : LiveNotes.Sink {
+        override fun offer(key: String, text: String): Boolean {
+            val s = session
+            return s != null && s.inConversation && s.offerNote(key, text)
+        }
+
+        override fun withdraw(key: String) {
+            session?.withdrawNote(key)
+        }
     }.also { LiveNotes.register(it) }
 
     /** Tears down the active session and the controller's scope. */
