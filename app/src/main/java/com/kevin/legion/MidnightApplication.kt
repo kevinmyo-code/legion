@@ -301,6 +301,10 @@ class MidnightApplication : Application() {
                     com.kevin.legion.ai.AriaBrain.get(this).invalidateBase()
                 }
             }.onFailure { MidnightEvents.appStartWorkFailed("alfred_pack", it) }
+            // alfred-ota ticket 05: check for a published update (downloads on Wi-Fi, verifies,
+            // asks), the daily check, and installing a yes held until the conversation ends.
+            runCatching { com.kevin.legion.update.UpdateGraph.start(this) }
+                .onFailure { MidnightEvents.appStartWorkFailed("update_start", it) }
             appScope.launch {
                 runCatching {
                     CompanionProfileStore.ensureSeeded(this@MidnightApplication)

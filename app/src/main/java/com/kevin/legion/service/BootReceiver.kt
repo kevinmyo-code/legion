@@ -48,62 +48,74 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                // Each guarded SEPARATELY, and neither is allowed to take the process down.
-                // This scope has a SupervisorJob and no CoroutineExceptionHandler, so a throw
-                // here reaches the default uncaught handler and crashes the process during boot
-                // - the one moment nobody is watching. Guarding them independently also means a
-                // failure to re-arm reminders cannot cost the assistant its restart, or vice
-                // versa; before this they shared one try and the first thrower ate the second.
-                runCatching { AlarmScheduler.rescheduleAll(context) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_alarms", it) }
-                // The Dates aspect's own single armed alarm (aspect-engine ticket 19 point 3) -
-                // AlarmManager forgets everything across a reboot, same reason rescheduleAll above
-                // exists, guarded separately for the same "one missed re-arm must not cost any of
-                // the others theirs" reasoning as every block in this receiver.
-                runCatching { DatesAlarmScheduler.armNext(context) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("boot_rearm_dates_reminder", it) }
-                // NOTE: the sitrep used to have its own single alarm here (ticket 22). Ticket 32
-                // (Kevin: "sitreps stay tap only or via voice activation only") retired it -
-                // `SitrepScheduler`/`SitrepAlarmReceiver` are both gone, and nothing re-arms a
-                // sitrep on boot anymore. A sitrep is produced only from a tap on the Home card or
-                // a spoken `get_sitrep`, never queued.
-                // The wellbeing digest's own single alarm (goal-plans ticket 05) - same
-                // AlarmManager-forgets-everything-across-a-reboot problem as the sitrep's alarm
-                // above, and the same no-op-when-never-set behaviour. Guarded separately for the
-                // same reason every guard in this receiver is separate: one missed re-arm must
-                // not cost any of the others theirs.
-                runCatching { WellbeingDigestScheduler.rescheduleFromSettings(context) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_wellbeing_digest", it) }
-                // Login-expiry check alarm: AlarmManager forgets it across a reboot like every
-                // other alarm here. Guarded separately for the same reason as the others.
-                runCatching { com.kevin.legion.freshness.LoginExpiryScheduler.arm(context) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("boot_arm_login_expiry", it) }
-                // resumeIfEnabled is a plain (non-suspend) SharedPreferences read plus a
-                // startForegroundService IPC call - safe to fire from this receiver's IO scope
-                // same as rescheduleAll above; nothing about starting a Service requires the
-                // caller to be on the main thread. It is guarded because the boot-completed
-                // foreground-service-start exemption is time-windowed: if this receiver is slow
-                // enough that the window has closed, startForegroundService throws
-                // ForegroundServiceStartNotAllowedException, and a failed assistant restart must
-                // degrade to "still off" rather than to a boot-time crash.
-                runCatching { AssistantIgnition.resumeIfEnabled(context) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("boot_resume_ignition", it) }
-                // Geofences do NOT survive a reboot (location-intelligence ticket 05) - same
-                // "AlarmManager forgets everything across a reboot" problem AlarmScheduler solves
-                // above, for GeofencingClient instead. Guarded the same way, for the same reason:
-                // a failure here must not cost the reminders or the ignition their restart.
-                // Realistically a frequent no-op immediately after boot - GeofenceManager.
-                // registerNearest needs a GPS fix from LocationController.state, and nothing has
-                // requested one yet this process (that happens in AriaForegroundService.onCreate,
-                // triggered by resumeIfEnabled just above, which hasn't produced a fix in the few
-                // milliseconds since). That's fine: startArrivalMonitor's own 20s poll loop calls
-                // registerNearest again once a fix exists, so this call is a courtesy for the rare
-                // case a fix is already cached, not the only chance to re-arm.
-                runCatching { GeofenceManager.registerNearest(context) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("boot_reregister_geofences", it) }
+                rearmAfterRestart(context, "boot")
             } finally {
                 pending.finish()
             }
         }
     }
+}
+
+/**
+ * What a reboot and an app update both owe the user (alfred-ota ticket 05): every alarm, the
+ * assistant service the user switched on, and the geofences, each guarded on its own so one
+ * failure never costs the others theirs. [tag] prefixes each failure's event name
+ * (`boot_reschedule_alarms`, `update_resume_ignition`). [com.kevin.legion.update.PackageReplacedReceiver]
+ * calls it on `MY_PACKAGE_REPLACED`, which is on the same background-start exemption list as
+ * `BOOT_COMPLETED`, with the same microphone-type caveat as [BootReceiver]'s doc.
+ */
+internal suspend fun rearmAfterRestart(context: Context, tag: String) {
+    // Each guarded SEPARATELY, and neither is allowed to take the process down.
+    // This scope has a SupervisorJob and no CoroutineExceptionHandler, so a throw
+    // here reaches the default uncaught handler and crashes the process during boot
+    // - the one moment nobody is watching. Guarding them independently also means a
+    // failure to re-arm reminders cannot cost the assistant its restart, or vice
+    // versa; before this they shared one try and the first thrower ate the second.
+    runCatching { AlarmScheduler.rescheduleAll(context) }
+        .onFailure { MidnightEvents.appStartWorkFailed("${tag}_reschedule_alarms", it) }
+    // The Dates aspect's own single armed alarm (aspect-engine ticket 19 point 3) -
+    // AlarmManager forgets everything across a reboot, same reason rescheduleAll above
+    // exists, guarded separately for the same "one missed re-arm must not cost any of
+    // the others theirs" reasoning as every block in this receiver.
+    runCatching { DatesAlarmScheduler.armNext(context) }
+        .onFailure { MidnightEvents.appStartWorkFailed("${tag}_rearm_dates_reminder", it) }
+    // NOTE: the sitrep used to have its own single alarm here (ticket 22). Ticket 32
+    // (Kevin: "sitreps stay tap only or via voice activation only") retired it -
+    // `SitrepScheduler`/`SitrepAlarmReceiver` are both gone, and nothing re-arms a
+    // sitrep on boot anymore. A sitrep is produced only from a tap on the Home card or
+    // a spoken `get_sitrep`, never queued.
+    // The wellbeing digest's own single alarm (goal-plans ticket 05) - same
+    // AlarmManager-forgets-everything-across-a-reboot problem as the sitrep's alarm
+    // above, and the same no-op-when-never-set behaviour. Guarded separately for the
+    // same reason every guard in this receiver is separate: one missed re-arm must
+    // not cost any of the others theirs.
+    runCatching { WellbeingDigestScheduler.rescheduleFromSettings(context) }
+        .onFailure { MidnightEvents.appStartWorkFailed("${tag}_reschedule_wellbeing_digest", it) }
+    // Login-expiry check alarm: AlarmManager forgets it across a reboot like every
+    // other alarm here. Guarded separately for the same reason as the others.
+    runCatching { com.kevin.legion.freshness.LoginExpiryScheduler.arm(context) }
+        .onFailure { MidnightEvents.appStartWorkFailed("${tag}_arm_login_expiry", it) }
+    // resumeIfEnabled is a plain (non-suspend) SharedPreferences read plus a
+    // startForegroundService IPC call - safe to fire from this receiver's IO scope
+    // same as rescheduleAll above; nothing about starting a Service requires the
+    // caller to be on the main thread. It is guarded because the boot-completed
+    // foreground-service-start exemption is time-windowed: if this receiver is slow
+    // enough that the window has closed, startForegroundService throws
+    // ForegroundServiceStartNotAllowedException, and a failed assistant restart must
+    // degrade to "still off" rather than to a boot-time crash.
+    runCatching { AssistantIgnition.resumeIfEnabled(context) }
+        .onFailure { MidnightEvents.appStartWorkFailed("${tag}_resume_ignition", it) }
+    // Geofences do NOT survive a reboot (location-intelligence ticket 05) - same
+    // "AlarmManager forgets everything across a reboot" problem AlarmScheduler solves
+    // above, for GeofencingClient instead. Guarded the same way, for the same reason:
+    // a failure here must not cost the reminders or the ignition their restart.
+    // Realistically a frequent no-op immediately after boot - GeofenceManager.
+    // registerNearest needs a GPS fix from LocationController.state, and nothing has
+    // requested one yet this process (that happens in AriaForegroundService.onCreate,
+    // triggered by resumeIfEnabled just above, which hasn't produced a fix in the few
+    // milliseconds since). That's fine: startArrivalMonitor's own 20s poll loop calls
+    // registerNearest again once a fix exists, so this call is a courtesy for the rare
+    // case a fix is already cached, not the only chance to re-arm.
+    runCatching { GeofenceManager.registerNearest(context) }
+        .onFailure { MidnightEvents.appStartWorkFailed("${tag}_reregister_geofences", it) }
 }
