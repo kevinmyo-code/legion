@@ -3,8 +3,8 @@ map: household-finance
 ticket: "14"
 title: "Money screens: swipe between months, read-only account list, budget bars against their own cap"
 type: build
-status: open
-status-detail: "charted 2026-11-05 from Kevin's use of the phone"
+status: built
+status-detail: "built 2026-11-05 on feat/money-screens, JVM suite green. Owed: Kevin's run; statements read from balance days until ticket 09"
 blockers: ["13"]
 blocked-by: ["[[13-home-money-panel]]"]
 open-blockers: 1

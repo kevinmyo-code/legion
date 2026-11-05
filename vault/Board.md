@@ -276,6 +276,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/household-finance/map\|household-finance]] | [[10-alfred-and-screens\|10]] | build | Alfred and the Money screen  waiting on [[07-net-worth-and-runway\|07]], [[08-budgets-and-pace\|08]] |
 | [[.scratch/household-finance/map\|household-finance]] | [[11-statement-fetch-skill\|11]] | build | Statement fetch skill for the Claude worker  waiting on [[04-statement-drops\|04]] |
 | [[.scratch/household-finance/map\|household-finance]] | [[12-private-loader-and-setup\|12]] | build | Private loader and Kevin's setup list  waiting on [[01-accounts-and-snapshots\|01]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[13-home-money-panel\|13]] | build | Home: a Money panel replaces the calendar; the calendar becomes a pop-up  waiting on [[07-net-worth-and-runway\|07]], [[08-budgets-and-pace\|08]] |
+| [[.scratch/household-finance/map\|household-finance]] | [[14-money-screens-revamp\|14]] | build | Money screens: swipe between months, read-only account list, budget bars against their own cap  waiting on [[13-home-money-panel\|13]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
@@ -390,7 +392,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/hardening/map\|hardening]] | 8 | 4 | [[.scratch/hardening/hardening.canvas\|open]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | 7 | 6 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
-| [[.scratch/household-finance/map\|household-finance]] | 12 | 12 | [[.scratch/household-finance/household-finance.canvas\|open]] |
+| [[.scratch/household-finance/map\|household-finance]] | 14 | 14 | [[.scratch/household-finance/household-finance.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

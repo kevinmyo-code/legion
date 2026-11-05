@@ -3,8 +3,8 @@ map: household-finance
 ticket: "13"
 title: "Home: a Money panel replaces the calendar; the calendar becomes a pop-up"
 type: build
-status: open
-status-detail: "charted 2026-11-05, Kevin picked layout A"
+status: built
+status-detail: "built 2026-11-05 on feat/money-screens, JVM suite green. Owed: Kevin's run on the A25"
 blockers: ["07", "08"]
 blocked-by: ["[[07-net-worth-and-runway]]", "[[08-budgets-and-pace]]"]
 open-blockers: 2
