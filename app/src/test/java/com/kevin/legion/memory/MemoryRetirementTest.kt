@@ -42,7 +42,8 @@ class MemoryRetirementTest {
     fun `the legacy memory tables are no longer pulled back into Room`() {
         assertFalse(code("ui/MainActivity.kt").contains("MemorySync.maybeAutoPull"))
         assertFalse(code("MidnightApplication.kt").contains("MemoryRealtime.bind("))
-        assertTrue(code("ui/MainActivity.kt").contains("MemoryController.forContext(applicationContext).refresh()"))
+        val main = code("ui/MainActivity.kt")
+        assertTrue(main.contains("MemoryController.forContext(applicationContext).refreshIfStale()"))
     }
 
     @Test

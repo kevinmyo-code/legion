@@ -181,6 +181,11 @@ interface ConversationAuditDao {
     @Insert
     suspend fun insert(row: ConversationAudit)
 
+    /** When the user last said or typed anything (memory-and-vault ticket 10: the continuity
+     *  note's "last talked"; a proactive line nobody answered is not a conversation). */
+    @Query("SELECT MAX(at) FROM conversation_audit WHERE kind = 'user'")
+    suspend fun lastUserLineAt(): Long?
+
     /** Newest first - for any future on-device viewer. */
     @Query("SELECT * FROM conversation_audit ORDER BY at DESC LIMIT :limit")
     suspend fun recent(limit: Int): List<ConversationAudit>

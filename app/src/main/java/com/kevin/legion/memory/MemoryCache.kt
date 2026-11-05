@@ -3,6 +3,10 @@ package com.kevin.legion.memory
 import android.content.Context
 import java.io.File
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -20,19 +24,19 @@ data class CachedMemories(val memories: List<MemberMemory>, val fetchedAtMs: Lon
  * continuity note. An interface because tests need one with no file behind it.
  */
 interface MemoryCache {
-    fun read(): CachedMemories?
-    fun replace(memories: List<MemberMemory>, fetchedAtMs: Long)
+    suspend fun read(): CachedMemories?
+    suspend fun replace(memories: List<MemberMemory>, fetchedAtMs: Long)
     /** Drops one row after a confirmed delete, so an offline read before the next refresh agrees. */
-    fun remove(id: String)
+    suspend fun remove(id: String)
 }
 
 /** The in-memory cache tests use. */
 class InMemoryMemoryCache(private var held: CachedMemories? = null) : MemoryCache {
-    override fun read(): CachedMemories? = held
-    override fun replace(memories: List<MemberMemory>, fetchedAtMs: Long) {
+    override suspend fun read(): CachedMemories? = held
+    override suspend fun replace(memories: List<MemberMemory>, fetchedAtMs: Long) {
         held = CachedMemories(memories, fetchedAtMs)
     }
-    override fun remove(id: String) {
+    override suspend fun remove(id: String) {
         held = held?.let { it.copy(memories = it.memories.filterNot { m -> m.id == id }) }
     }
 }
@@ -59,14 +63,17 @@ private data class CacheFile(val fetchedAtMs: Long, val rows: List<CacheRow>)
  * The production cache: one JSON file in the app's private files directory, written to a temp file
  * and renamed so a crash mid-write leaves the previous copy, never half of one. Unreadable is
  * treated as absent (the next refresh rewrites it), never as an empty list that would read as
- * "nothing remembered".
+ * "nothing remembered". Every call runs on [Dispatchers.IO], whatever thread asks (a screen's
+ * ViewModel and `MainActivity.onResume` ask from Main). One [Mutex] serialises them.
  */
 class FileMemoryCache(private val file: File) : MemoryCache {
 
     private val json = Json { ignoreUnknownKeys = true }
+    private val lock = Mutex()
 
-    @Synchronized
-    override fun read(): CachedMemories? {
+    override suspend fun read(): CachedMemories? = withContext(Dispatchers.IO) { lock.withLock { readNow() } }
+
+    private fun readNow(): CachedMemories? {
         if (!file.exists()) return null
         return try {
             val parsed = json.decodeFromString(CacheFile.serializer(), file.readText())
@@ -80,8 +87,10 @@ class FileMemoryCache(private val file: File) : MemoryCache {
         }
     }
 
-    @Synchronized
-    override fun replace(memories: List<MemberMemory>, fetchedAtMs: Long) {
+    override suspend fun replace(memories: List<MemberMemory>, fetchedAtMs: Long) =
+        withContext(Dispatchers.IO) { lock.withLock { replaceNow(memories, fetchedAtMs) } }
+
+    private fun replaceNow(memories: List<MemberMemory>, fetchedAtMs: Long) {
         val body = json.encodeToString(CacheFile.serializer(), CacheFile(fetchedAtMs, memories.map { it.toRow() }))
         try {
             file.parentFile?.mkdirs()
@@ -97,10 +106,11 @@ class FileMemoryCache(private val file: File) : MemoryCache {
         }
     }
 
-    @Synchronized
-    override fun remove(id: String) {
-        val current = read() ?: return
-        replace(current.memories.filterNot { it.id == id }, current.fetchedAtMs)
+    override suspend fun remove(id: String) = withContext(Dispatchers.IO) {
+        lock.withLock {
+            val current = readNow() ?: return@withLock
+            replaceNow(current.memories.filterNot { it.id == id }, current.fetchedAtMs)
+        }
     }
 
     private fun CacheRow.toMemory() = MemberMemory(

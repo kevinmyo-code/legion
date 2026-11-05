@@ -372,10 +372,10 @@ class AriaBrain private constructor(context: Context) {
      * ago is not a "continuity" moment, just the same outing continuing).
      */
     private suspend fun buildContinuityNote(): String? {
-        // When they last talked: the newest conversation record line. Memory v2 retired the
+        // When they last talked: the user's newest line in the conversation record. Memory v2 retired the
         // episodic turns this used to read (memory-and-vault ticket 10), and a memory's own date is
         // when it was distilled, not when anyone spoke.
-        val lastTalkedAt = conversationAuditDao.recent(1).firstOrNull()?.at ?: return null
+        val lastTalkedAt = conversationAuditDao.lastUserLineAt() ?: return null
 
         val gapMs = System.currentTimeMillis() - lastTalkedAt
         if (gapMs < CONTINUITY_MIN_GAP_MS) return null

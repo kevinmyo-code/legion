@@ -49,7 +49,7 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
 
     // Memory v2 lives on the engine (memory-and-vault ticket 11); this reads the phone's copy of its
     // whole list, with no network, so the line never waits on the engine.
-    fun reloadMemoryStatus() {
+    suspend fun reloadMemoryStatus() {
         storedMemoryCount = com.kevin.legion.memory.MemoryController.forContext(context).cached()?.memories?.size
     }
 

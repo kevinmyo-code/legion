@@ -3192,9 +3192,12 @@ object LiveToolbox {
     val NON_BLOCKING_READ_TOOLS: Set<String> = setOf("ask_fleet", "ask_body", "ask_goals", "ask_pantry")
 
     /**
-     * Every tool whose result must never reach [com.kevin.legion.data.local.EpisodicTurn]/
-     * [com.kevin.legion.data.local.CompanionMemory] (ticket 07's read-through rule, ticket 15's
-     * build). [com.kevin.legion.service.GeminiLiveSession] checks a functionCall's name against
+     * Every read-through tool (ticket 07's rule, ticket 15's build). **Since memory-and-vault ticket
+     * 10 the phone writes no EpisodicTurn and distils no CompanionMemory**; this set now drives the
+     * `remember` gate ([rememberBlockedByReadThroughTool], the `memory` tool's remember action) and
+     * the LIVE_AUDIT / conversation-record redaction, and the engine's consolidation drops any turn
+     * that called a read-through tool on its side. The original text: every tool whose result must
+     * never reach [com.kevin.legion.data.local.EpisodicTurn]/[com.kevin.legion.data.local.CompanionMemory]. [com.kevin.legion.service.GeminiLiveSession] checks a functionCall's name against
      * this set the moment it arrives off the socket - before dispatch even runs - and skips
      * persisting that whole turn's transcript if it matches, since a mail tool's answer can BE
      * the driver's or Alfred's spoken text for the turn, not just a side value. Single source of

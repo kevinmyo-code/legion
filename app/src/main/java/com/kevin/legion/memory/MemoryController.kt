@@ -21,6 +21,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * A plain class with its backend, cache and clock injected (CLAUDE.md section 8).
  */
+@Suppress("TooManyFunctions") // one per memory operation, both doors (tool and screen) share them
 class MemoryController(
     private val backend: MemberMemoryBackend,
     private val cache: MemoryCache,
@@ -45,7 +46,17 @@ class MemoryController(
     }
 
     /** What the cache holds now, with no network. Null when nothing was ever fetched. */
-    fun cached(): CachedMemories? = cache.read()
+    suspend fun cached(): CachedMemories? = cache.read()
+
+    /**
+     * [refresh] only when the cache is older than [RESUME_STALE_MS] (or missing): `MainActivity`
+     * calls this on every resume, and the retired legacy pull it replaced was throttled the same
+     * way, so switching apps does not re-fetch the whole list each time.
+     */
+    suspend fun refreshIfStale() {
+        val held = cache.read()
+        if (held == null || now() - held.fetchedAtMs > RESUME_STALE_MS) refresh()
+    }
 
     /**
      * The best [limit] memories for [query] from the engine (which rehearses them). When the engine
@@ -135,7 +146,10 @@ class MemoryController(
         return outcome
     }
 
-    private fun fromCache(why: String, pick: (List<MemberMemory>) -> List<MemberMemory>): MemoryOutcome<MemoryRead> {
+    private suspend fun fromCache(
+        why: String,
+        pick: (List<MemberMemory>) -> List<MemberMemory>,
+    ): MemoryOutcome<MemoryRead> {
         val held = cache.read()
             ?: return MemoryOutcome.Unreachable("$why There is no copy of your memories on this phone yet.")
         return MemoryOutcome.Ok(
@@ -154,6 +168,7 @@ class MemoryController(
         private const val CONTINUITY_COUNT = 3
         private const val CONTINUITY_STALE_MS = 10 * 60_000L
         private const val CONTINUITY_WAIT_MS = 1_500L
+        private const val RESUME_STALE_MS = 5 * 60_000L
 
         private fun tooLong(clean: String, verb: String): String =
             "A memory is at most $TEXT_MAX characters; that was ${clean.length}. Nothing was $verb."

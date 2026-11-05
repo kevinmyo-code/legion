@@ -334,8 +334,8 @@ class MainActivity : ComponentActivity() {
             // memory-and-vault ticket 10: the legacy tables are no longer PULLED back into Room
             // (MemorySync retired). The drain and backfill above stay so every row the phone
             // already holds reaches the engine's replica, which `manage.py import_legacy_memories`
-            // reads. Memory v2's own cache refreshes here instead: the engine's whole list.
-            com.kevin.legion.memory.MemoryController.forContext(applicationContext).refresh()
+            // reads. Memory v2's own cache refreshes here instead (the engine's whole list, at most every 5 min).
+            com.kevin.legion.memory.MemoryController.forContext(applicationContext).refreshIfStale()
         }
         // Ledger-config-supabase ticket ("give LEGION's ledger CONFIG a Supabase home, end to
         // end"): categories/category_rules/budget_targets only, never ledger_transactions (its own

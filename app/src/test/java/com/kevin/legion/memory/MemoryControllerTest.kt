@@ -182,4 +182,34 @@ class MemoryControllerTest {
         assertTrue(MemoryWording.origin(m).startsWith("from a conversation on "))
         assertNull(memory("b", "y").fromConversation)
     }
+
+    @Test
+    fun `refreshIfStale skips a fresh cache and refreshes a stale one`() = runBlocking {
+        val backend = FakeMemberMemoryBackend(mutableListOf(memory("a", "one")))
+        val cache = InMemoryMemoryCache()
+        controller(backend, cache).refreshIfStale()
+        assertEquals(listOf("list"), backend.calls)
+        controller(backend, cache).refreshIfStale()
+        assertEquals(1, backend.calls.size)
+        MemoryController(backend, cache, now = { NOW + 6 * 60_000L }).refreshIfStale()
+        assertEquals(2, backend.calls.size)
+    }
+
+    @Test
+    fun `the file cache round-trips and is replaced whole`() = runBlocking {
+        val file = java.io.File.createTempFile("memcache", ".json").apply { delete() }
+        val cache = FileMemoryCache(file)
+        assertNull(cache.read())
+        cache.replace(listOf(memory("a", "one", fromConversation = "c1"), memory("b", "two")), NOW)
+        assertEquals(listOf("a", "b"), cache.read()!!.memories.map { it.id })
+        assertEquals("c1", cache.read()!!.memories.first().fromConversation)
+        cache.remove("a")
+        assertEquals(listOf("b"), cache.read()!!.memories.map { it.id })
+        cache.replace(emptyList(), NOW + 1)
+        assertEquals(0, cache.read()!!.memories.size)
+        file.writeText("not json")
+        assertNull(cache.read())
+        file.delete()
+        Unit
+    }
 }
