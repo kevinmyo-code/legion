@@ -292,6 +292,9 @@ def _write_calls(checklist_id, item_id, event_id, purchase_id):
         },
         "log_purchase": {"item": "shampoo", "date": "2026-10-02"},
         "delete_purchase": {"id": purchase_id},
+        # Memory v2 (ADR 0075).
+        "remember": {"text": "Kevin's gym is on Elm"},
+        "forget_memory": {"id": "00000000-0000-0000-0000-000000000001"},
         "create_checklist": {"name": "new list"},
         "untick_checklist_item": {
             "checklist_id": checklist_id,

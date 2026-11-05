@@ -1,0 +1,289 @@
+{
+  "nodes": [
+    {
+      "id": "13dcd3fe4e611e6b",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/01-member-memory-table-and-rest.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c4e42431e8cd860d",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/05-id-vault-engine.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ad30f7ee96f442a0",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/06-vehicle-plate.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7fa877836f5cc347",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/02-memory-tools.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e532e7010a3ad13f",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/03-consolidation-job.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d8584b90008c508d",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/04-one-time-import.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "aac80304cb654db0",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/07-hybrid-recall-embeddings.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d1e8f2206200dfa4",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/12-phone-id-vault.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "55b00ddb38d3e905",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/13-phone-vehicle-plate.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "96afc27f4e58c559",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/15-web-vault-entry.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "95e1f829f58b83c4",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/08-worker-memory-tools.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "da7a64e3a94ec463",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/09-phone-memory-on-engine.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7eff7a52ad6e7a6f",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/10-phone-upload-and-retire.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "339e949d831579da",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/11-phone-memory-screen.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "19664bb870a4b831",
+      "type": "file",
+      "file": ".scratch/memory-and-vault/issues/14-acceptance-run.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "78ccf75994693bdf",
+      "fromNode": "13dcd3fe4e611e6b",
+      "fromSide": "right",
+      "toNode": "7fa877836f5cc347",
+      "toSide": "left"
+    },
+    {
+      "id": "b5529c74b8c9d4d9",
+      "fromNode": "13dcd3fe4e611e6b",
+      "fromSide": "right",
+      "toNode": "e532e7010a3ad13f",
+      "toSide": "left"
+    },
+    {
+      "id": "36ec47816244e952",
+      "fromNode": "13dcd3fe4e611e6b",
+      "fromSide": "right",
+      "toNode": "d8584b90008c508d",
+      "toSide": "left"
+    },
+    {
+      "id": "66f65e631baea913",
+      "fromNode": "13dcd3fe4e611e6b",
+      "fromSide": "right",
+      "toNode": "aac80304cb654db0",
+      "toSide": "left"
+    },
+    {
+      "id": "4ed3a2b1979be596",
+      "fromNode": "7fa877836f5cc347",
+      "fromSide": "right",
+      "toNode": "95e1f829f58b83c4",
+      "toSide": "left"
+    },
+    {
+      "id": "71702d075faf4e63",
+      "fromNode": "7fa877836f5cc347",
+      "fromSide": "right",
+      "toNode": "da7a64e3a94ec463",
+      "toSide": "left"
+    },
+    {
+      "id": "4866273543eb0c45",
+      "fromNode": "e532e7010a3ad13f",
+      "fromSide": "right",
+      "toNode": "7eff7a52ad6e7a6f",
+      "toSide": "left"
+    },
+    {
+      "id": "a2e535c89fcb55da",
+      "fromNode": "d8584b90008c508d",
+      "fromSide": "right",
+      "toNode": "7eff7a52ad6e7a6f",
+      "toSide": "left"
+    },
+    {
+      "id": "f25f2a9c53d4dda2",
+      "fromNode": "da7a64e3a94ec463",
+      "fromSide": "right",
+      "toNode": "7eff7a52ad6e7a6f",
+      "toSide": "left"
+    },
+    {
+      "id": "9171a3171057d6b1",
+      "fromNode": "da7a64e3a94ec463",
+      "fromSide": "right",
+      "toNode": "339e949d831579da",
+      "toSide": "left"
+    },
+    {
+      "id": "47ecd1528f9930d5",
+      "fromNode": "c4e42431e8cd860d",
+      "fromSide": "right",
+      "toNode": "d1e8f2206200dfa4",
+      "toSide": "left"
+    },
+    {
+      "id": "08933f7c5bb57e29",
+      "fromNode": "ad30f7ee96f442a0",
+      "fromSide": "right",
+      "toNode": "55b00ddb38d3e905",
+      "toSide": "left"
+    },
+    {
+      "id": "b5e48e4517f06e87",
+      "fromNode": "95e1f829f58b83c4",
+      "fromSide": "right",
+      "toNode": "19664bb870a4b831",
+      "toSide": "left"
+    },
+    {
+      "id": "88b3aea3c99b7d29",
+      "fromNode": "da7a64e3a94ec463",
+      "fromSide": "right",
+      "toNode": "19664bb870a4b831",
+      "toSide": "left"
+    },
+    {
+      "id": "7c7db8aeb8768868",
+      "fromNode": "7eff7a52ad6e7a6f",
+      "fromSide": "right",
+      "toNode": "19664bb870a4b831",
+      "toSide": "left"
+    },
+    {
+      "id": "483bb40803af3752",
+      "fromNode": "339e949d831579da",
+      "fromSide": "right",
+      "toNode": "19664bb870a4b831",
+      "toSide": "left"
+    },
+    {
+      "id": "2e99ed577f812680",
+      "fromNode": "d1e8f2206200dfa4",
+      "fromSide": "right",
+      "toNode": "19664bb870a4b831",
+      "toSide": "left"
+    },
+    {
+      "id": "38469e8cdf298de5",
+      "fromNode": "55b00ddb38d3e905",
+      "fromSide": "right",
+      "toNode": "19664bb870a4b831",
+      "toSide": "left"
+    },
+    {
+      "id": "ead2a10d68292d0c",
+      "fromNode": "c4e42431e8cd860d",
+      "fromSide": "right",
+      "toNode": "96afc27f4e58c559",
+      "toSide": "left"
+    }
+  ]
+}

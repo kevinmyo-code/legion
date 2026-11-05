@@ -58,3 +58,8 @@
 # household-finance ticket 03 (ADR 0073): the day's USD/SGD rate, stored as
 # int micros. 17:00 UTC, after the ECB publishes its daily reference rates.
 0 17 * * * python manage.py fx_rates
+
+# memory-and-vault ticket 03 (ADR 0075): finished conversation records (phone, web) distilled
+# into each member's private memories on the household's Gemini key. Hourly at :40, clear of
+# the other jobs' minutes. With LEGION_GEMINI_KEY unset it says so and marks nothing.
+40 * * * * python manage.py consolidate_memories

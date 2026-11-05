@@ -80,6 +80,8 @@ Format and the test for whether something deserves an ADR:
 | 0072 | [[0072-alfred-pack-and-self-update\|Alfred's wording comes from the engine; the phone updates itself, and asks first]] | accepted | 2026-11-05 | - |
 | 0073 | [[0073-household-finance\|Household finance: layers, internal transfers, floors and estimates]] | accepted | 2026-11-05 | - |
 | 0074 | [[0074-alfred-builds-alfred\|Alfred builds Alfred: one yes ships a change]] | accepted | 2026-11-05 | - |
+| 0075 | [[0075-memory-lives-on-the-engine\|Memory lives on the engine, private to the member it is about]] | accepted | 2026-11-05 | - |
+| 0076 | [[0076-the-id-vault\|The ID vault: phone only, behind the fingerprint]] | accepted | 2026-11-05 | - |
 
 ## Superseded
 

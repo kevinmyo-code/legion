@@ -167,6 +167,15 @@ TENANT_TABLES: tuple[str, ...] = (
     "finance_balance_snapshots",
     "finance_income_plans",
     "finance_policies",
+    # memory-and-vault map (ADR 0075): memory v2, each memory private to the member it is about
+    # unless shared (`OWNER_PATHS`), and the consolidation job's ledger. Django-managed and born
+    # tenanted like `finance_*` (`member_memory/models.py`).
+    "member_memories",
+    "memory_consolidations",
+    # memory-and-vault map (ADR 0076): the ID vault and its reveal audit, always private to one
+    # member (`id_vault/models.py`).
+    "vault_items",
+    "vault_reveals",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -230,6 +239,10 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "finance_balance_snapshots",
         "finance_income_plans",
         "finance_policies",
+        "member_memories",
+        "memory_consolidations",
+        "vault_items",
+        "vault_reveals",
     }
 )
 
@@ -398,6 +411,12 @@ OWNER_PATHS: dict[str, str] = {
     # purchase-log ticket 01: a bought entry may be private to the member who
     # logged it. Its own column, inherited by nothing.
     "purchases": "owner_user",
+    # ADR 0075: a memory is private to the member it is about; null `owner_user` is a shared
+    # household fact. A check constraint keeps `owner_user` equal to `member` when set.
+    "member_memories": "owner_user",
+    # ADR 0076: never null, so `visible()` gives a member their own vault items and no one else's.
+    "vault_items": "owner_user",
+    "vault_reveals": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

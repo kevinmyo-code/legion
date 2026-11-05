@@ -350,6 +350,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = create_arrival_index(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0025` (vehicles.plate, memory-and-vault ticket 06), the same way.
+            from api.vehicle_plate import add_plate_column
+
+            skipped = add_plate_column(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:
@@ -535,6 +540,18 @@ def _no_decide_model(monkeypatch):
         raise OSError("tests do not reach Google")
 
     monkeypatch.setattr(decide, "_transport", _offline)
+
+
+@pytest.fixture(autouse=True)
+def _no_consolidation_model(monkeypatch):
+    """No test reaches Google from the memory consolidation job: its call fails as unreachable
+    unless a test hands it a transport (`tests/test_member_memory_consolidate.py`)."""
+    from member_memory import consolidate
+
+    def _offline(method, url, headers, body):
+        raise OSError("tests do not reach Google")
+
+    monkeypatch.setattr(consolidate, "_transport", _offline)
 
 
 @pytest.fixture(autouse=True)

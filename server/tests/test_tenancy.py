@@ -1613,6 +1613,18 @@ def test_every_mcp_tool_is_scoped_by_household(
     b_writes("skip_event_occurrence", {"id": a["event"], "date": "2026-10-05"}, lands_in_b=False)
     b_writes("rename_place", {"from": "bravo-place", "to": "bravo-home"}, lands_in_b=True)
     b_writes("create_checklist", {"name": "b-only list"}, lands_in_b=True)
+    # Memory v2 (ADR 0075): A's memory, shared inside A's household, is invisible to B.
+    alpha_memory = token_a.post(
+        "/api/member-memories/", {"text": "alpha-memory gym", "shared": True}, format="json"
+    )
+    assert alpha_memory.status_code == 201, alpha_memory.data
+    alpha_memory_id = alpha_memory.data["id"]
+    a_marks = (*a_marks, alpha_memory_id)
+    assert "real empty result" in b_reads("recall_memory", {"query": "gym"})
+    assert "Nothing is remembered" in b_reads("list_memories", {})
+    b_writes("forget_memory", {"id": alpha_memory_id}, lands_in_b=False)
+    b_writes("remember", {"text": "bravo gym is on Elm"}, lands_in_b=True)
+    assert "alpha-memory gym" in call(mcp_a, "recall_memory", {"query": "gym"})[1]
     assert _feed(token_a) == a_before
     from purchases.models import Purchase
 
