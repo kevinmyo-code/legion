@@ -350,6 +350,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = create_arrival_index(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0025` (vehicles.plate, memory-and-vault ticket 06), the same way.
+            from api.vehicle_plate import add_plate_column
+
+            skipped = add_plate_column(cursor)
+            assert skipped is None, skipped
 
 
 def _apply_tenancy(cursor) -> None:

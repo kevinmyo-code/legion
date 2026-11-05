@@ -39,6 +39,8 @@ class Vehicle(models.Model):
     origin_guid = models.TextField(null=True)
     archived = models.BooleanField()
     last_obd_mac = models.TextField(null=True)
+    # memory-and-vault ticket 06: added by `api/vehicle_plate.py` (ingest migration 0025).
+    plate = models.TextField(null=True)
 
     household = household_field()
 

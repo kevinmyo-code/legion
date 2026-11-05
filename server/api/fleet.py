@@ -158,6 +158,7 @@ from api.synced import (
     minimum_error,
     range_error,
 )
+from api.vehicle_plate import PLATE_MAX_CHARS
 from household.tenancy import household_of, scoped
 from legacy.enums import Provenance
 from legacy.models.fleet import (
@@ -304,9 +305,22 @@ class VehicleSerializer(SyncedSerializer):
             "origin_guid",
             "archived",
             "last_obd_mac",
+            "plate",
         ]
         read_only_fields = ["id", "provenance", "created_at", "updated_at", "deleted_at"]
         extra_kwargs = {
+            # memory-and-vault ticket 06. Optional with NO default, unlike `confirmed` and
+            # `archived` below: a PUT that leaves it out keeps the stored plate, so a client that
+            # predates the field (the phone's migration upload) never clears it.
+            "plate": {
+                "required": False,
+                "allow_null": True,
+                "help_text": (
+                    "The licence plate, ordinary data (not an ID-vault item). Trimmed and "
+                    "upper-cased; at most 16 characters. Omit it to leave the stored plate as is; "
+                    "send null to clear it."
+                ),
+            },
             "confirmed": {"required": False, "default": False},
             "archived": {"required": False, "default": False},
             "last_obd_mac": {
@@ -342,6 +356,19 @@ class VehicleSerializer(SyncedSerializer):
         if value is not None and value < 0:
             raise minimum_error("odometer_baseline", value, 0, exclusive=False)
         return value
+
+    def validate_plate(self, value):
+        # memory-and-vault ticket 06. Blank means none; spacing inside is kept ("XTV 1234").
+        if value is None:
+            return None
+        cleaned = " ".join(value.split()).upper()
+        if not cleaned:
+            return None
+        if len(cleaned) > PLATE_MAX_CHARS:
+            raise serializers.ValidationError(
+                f"plate is at most {PLATE_MAX_CHARS} characters; this one is {len(cleaned)}."
+            )
+        return cleaned
 
     def validate(self, attrs):
         # `vehicles_odometer_baseline_paired`, in words. Both fields are

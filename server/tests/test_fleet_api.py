@@ -1141,3 +1141,33 @@ def test_changes_with_no_aspects_includes_fleet(auth_client, fleet):
     assert len(body["vehicles"]) == 2
     assert "maintenance_schedules" in body
     assert "chassis_quirks" in body
+
+
+# =============================================================================
+# memory-and-vault ticket 06: the plate rides on the vehicle, additively
+# =============================================================================
+
+
+def test_a_plate_is_stored_normalised_and_kept_by_a_put_that_omits_it(auth_client):
+    # A made-up plate: Kevin's own value is set through the API after deploy, never in a test.
+    body = {**a_vehicle(), "plate": "  abc   123 "}
+    created = auth_client.put(f"{VEHICLES}plate-car/", body, format="json")
+    assert created.status_code == 200, created.data
+    assert created.data["plate"] == "ABC 123"
+    # The phone's migration upload predates the field and never sends it.
+    again = auth_client.put(f"{VEHICLES}plate-car/", a_vehicle(), format="json")
+    assert again.status_code == 200, again.data
+    assert again.data["plate"] == "ABC 123"
+    cleared = auth_client.put(
+        f"{VEHICLES}plate-car/", {**a_vehicle(), "plate": None}, format="json"
+    )
+    assert cleared.data["plate"] is None
+
+
+def test_a_vehicle_without_a_plate_reads_null_and_a_long_one_is_refused(auth_client):
+    plain = auth_client.put(f"{VEHICLES}plain-car/", a_vehicle(), format="json")
+    assert plain.status_code == 200 and plain.data["plate"] is None
+    long = auth_client.put(
+        f"{VEHICLES}long-car/", {**a_vehicle(), "plate": "X" * 17}, format="json"
+    )
+    assert long.status_code == 400
