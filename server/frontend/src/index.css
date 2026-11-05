@@ -485,11 +485,12 @@
         color: #ffffff;
     }
     .rc-prose .rc-ask-how {
-        margin: calc(0.6 * var(--u)) 0 calc(0.7 * var(--u));
+        margin: calc(0.5 * var(--u)) 0 0;
         font-size: calc(0.92 * var(--u));
         color: var(--rc-meta);
     }
     .rc-ask-try {
+        margin-top: calc(0.8 * var(--u));
         display: flex;
         flex-wrap: wrap;
         align-items: baseline;

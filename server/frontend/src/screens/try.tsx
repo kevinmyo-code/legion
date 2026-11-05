@@ -507,10 +507,6 @@ function AskPrompt() {
       <button type="button" className="rc-ask-button" onClick={talk}>
         Ask {who}
       </button>
-      <p className="rc-ask-how">
-        Talk to {who} by voice about the made-up household, how LEGION is built, or Kevin's work. Your browser asks
-        for the microphone first.
-      </p>
       <div className="rc-ask-try">
         <span className="rc-caps">Or start with a question</span>
         {FIRST_QUESTIONS.map((question) => (
@@ -519,6 +515,10 @@ function AskPrompt() {
           </button>
         ))}
       </div>
+      <p className="rc-ask-how">
+        {who === 'the assistant' ? 'It' : who} answers about the made-up household, how LEGION is built, and Kevin's
+        work. Voice asks your browser for the microphone first.
+      </p>
     </div>
   )
 }
