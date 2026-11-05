@@ -86,10 +86,10 @@ fun budgetBarModel(line: BudgetLineWire, currency: String = "USD"): BudgetBarMod
 fun fraction(part: Long, whole: Long): Float =
     if (whole <= 0L) 0f else (part.toDouble() / whole.toDouble()).coerceIn(0.0, 1.0).toFloat()
 
-/** The bars closest to their cap first: percent of cap, highest first. Uncapped lines are left out. */
+/** The bars by percent of cap used, highest first (over-cap lines lead). Uncapped lines are left out. */
 fun closestToCap(lines: List<BudgetLineWire>, currency: String = "USD"): List<BudgetBarModel> =
     lines.mapNotNull { budgetBarModel(it, currency) }
-        .sortedWith(compareByDescending<BudgetBarModel> { it.fill }.thenByDescending { it.percent })
+        .sortedWith(compareByDescending<BudgetBarModel> { it.percent }.thenByDescending { it.fill })
 
 /** "+ 11 more on track", or "+ 4 more, 2 near or over cap" when a hidden one is not on track. */
 fun moreLine(all: List<BudgetBarModel>, shown: Int): String? {

@@ -61,10 +61,17 @@ object FinanceFixtures {
             line("Dining", 15_400, 14_000),
             line("Pets", 1_200, 9_000),
             line("Transport", 3_000, 25_000),
+            line("Health", 2_500, 10_000),
+            line("Household", 8_400, 10_000),
             line("Gifts", 4_000, null),
         ),
-        total = BudgetTotalWire(spentCents = 140_200, capCents = 283_000, percent = 50, paceCents = 47_166),
-        fixed = listOf(FixedWire("Rent", paid = true, paidCents = 118_446)),
+        // The capped lines' own sums, as the engine adds them: fixed categories are in neither.
+        total = BudgetTotalWire(spentCents = 58_100, capCents = 160_000, percent = 36, paceCents = 26_667),
+        fixed = listOf(
+            FixedWire("Housing", paid = true, paidCents = 175_000),
+            FixedWire("Insurance", paid = true, paidCents = 21_000),
+            FixedWire("Utilities", paid = false),
+        ),
     )
 
     val rate = RateWire(rateMicros = 1_294_600, rateDate = "2026-11-05", source = "test")
@@ -151,8 +158,6 @@ object FinanceFixtures {
     val homeFresh = HomeMoneyUiState(
         loading = false,
         today = today,
-        safe = FinanceRead.Fresh(safe),
         budgets = FinanceRead.Fresh(budgets),
-        netWorth = FinanceRead.Fresh(netWorth),
     )
 }
