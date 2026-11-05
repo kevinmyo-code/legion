@@ -86,7 +86,7 @@ name), `tools/bofa_pull.py` (statements step removed; period downloads added),
 
 ## Built 2026-09-28 (laptop half, branch `feat/bofa-pull`)
 
-Locators captured live the same day (checking 3119, card 4146) and written into ONE block at the top
+Locators captured live the same day (checking 9001, card 9002) and written into ONE block at the top
 of `tools/bofa_pull.py`, commented "last seen working 2026-09-28".
 
 - **`python tools/connect_session.py bofa`**: headed Chromium on `~/.legion/browser-profiles/bofa`

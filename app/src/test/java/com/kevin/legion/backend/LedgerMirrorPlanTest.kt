@@ -26,7 +26,7 @@ class LedgerMirrorPlanTest {
     ) = RemoteLedgerTransaction(
         serverId = serverId,
         statementId = if (provenance == "UNRECONCILED") null else "stmt-1",
-        accountLast4 = "3119",
+        accountLast4 = "9001",
         accountNickname = "BofA checking",
         currency = "USD",
         txnDateEpochMs = 1_788_000_000_000L,

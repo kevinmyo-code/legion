@@ -68,7 +68,7 @@ class LedgerTransactionsMirrorTest {
     ) = RemoteLedgerTransaction(
         serverId = serverId,
         statementId = if (provenance == "UNRECONCILED") null else "stmt-1",
-        accountLast4 = "4146",
+        accountLast4 = "9002",
         accountNickname = "BofA card",
         currency = "USD",
         txnDateEpochMs = epoch(2026, 9, day),

@@ -57,7 +57,7 @@ def a_statement(**overrides) -> dict:
     payload = {
         "content_sha256": f"sha-{uuid.uuid4()}",
         "provenance": gate.DETERMINISTIC,
-        "account_last4": "3119",
+        "account_last4": "9001",
         "account_nickname": "BofA checking",
         "currency": "USD",
         "stated_total_cents": None,
@@ -80,7 +80,7 @@ def a_provisional(**overrides) -> dict:
     payload = {
         "content_sha256": f"sha-{uuid.uuid4()}",
         "provenance": Provenance.UNRECONCILED,
-        "account_last4": "4146",
+        "account_last4": "9002",
         "account_nickname": "BofA card",
         "currency": "USD",
         "lines": [

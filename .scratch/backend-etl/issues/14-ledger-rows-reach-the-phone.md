@@ -14,7 +14,7 @@ tags: [ticket]
 
 ## The problem (traced 2026-09-28)
 
-The server held about 850 BofA rows (checking 3119: 208 DETERMINISTIC + 20 UNRECONCILED; card 4146:
+The server held about 850 BofA rows (checking 9001: 208 DETERMINISTIC + 20 UNRECONCILED; card 9002:
 27 DETERMINISTIC + 622 UNRECONCILED) and the Money tile read "$0 of $1,300". Four causes, all traced
 from code:
 
@@ -130,7 +130,7 @@ refuses for gated rows. Recommendation: (2), as its own ticket.
      mirror never deletes them, and they duplicate the server's. Not handled here; say so and it
      gets its own ticket.
   2. Setup -> SYNC NOW. The "Money:" line reads pulled N new, N removed (not "none removed").
-  3. Money screen: card 4146 rows show "pending, not verified". No uncategorised row says
+  3. Money screen: card 9002 rows show "pending, not verified". No uncategorised row says
      "category guessed".
   4. Airplane mode, SYNC NOW, back to HOME: the tile says "Not synced - this phone's last copy"
      and the figures are unchanged. Airplane off, SYNC NOW: the line goes.

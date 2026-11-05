@@ -26,7 +26,7 @@ recruiter might want to ask me. where i live, what nationality etc etc"*
   directly." Never inferred from household data, which the role cannot read anyway.
 - Profile stored in the engine DB (admin-editable), NOT in this repo: the repo is public, and Kevin
   should change a line without a commit.
-- Quanex lines follow ticket 09's rules.
+- Work lines follow ticket 09's rules.
 
 ## Decide (Kevin)
 

@@ -41,7 +41,7 @@ reach an outside account; it gains writes only on rows nobody else can see.
    Calendar, Places, Notes...), not only the assistant. Outside-account screens stay hidden/refused:
    bank link (Plaid), mail, Spotify account, Drive, calendar sync, Claude sessions, device logs,
    household settings/members/invites.
-2. The landing page stays: after the code, the visitor lands on `/try` (about Kevin, Quanex, Alfred)
+2. The landing page stays: after the code, the visitor lands on `/try` (about Kevin, his work, Alfred)
    with a way into the app; the app shows a demo banner linking back to it.
 3. Body aspect stays EXCLUDED for recruiters (no seed, no screens, no tools).
 4. Voice notes ALLOWED for recruiters (seeded, fake; read via tools and the Notes screen).

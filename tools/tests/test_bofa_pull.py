@@ -61,12 +61,12 @@ def _no_env(monkeypatch):
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("Adv SafeBalance Banking - 3119", ("Adv SafeBalance Banking", "3119")),
+        ("Adv SafeBalance Banking - 9001", ("Adv SafeBalance Banking", "9001")),
         (
-            "Customized Cash Rewards Visa Signature - 4146",
-            ("Customized Cash Rewards Visa Signature", "4146"),
+            "Customized Cash Rewards Visa Signature - 9002",
+            ("Customized Cash Rewards Visa Signature", "9002"),
         ),
-        ("  Adv SafeBalance\n Banking  -  3119 ", ("Adv SafeBalance Banking", "3119")),
+        ("  Adv SafeBalance\n Banking  -  9001 ", ("Adv SafeBalance Banking", "9001")),
         ("View details", None),
         ("Adv SafeBalance Banking - 311", None),
         ("", None),
@@ -103,8 +103,8 @@ def test_account_kind_comes_from_the_path():
 
 
 def test_file_names():
-    assert bp.activity_name("3119", TODAY) == "bofa_3119_activity_2026-09-28.csv"
-    assert bp.period_name("4146", datetime.date(2026, 9, 5)) == "bofa_4146_period_2026-09-05.csv"
+    assert bp.activity_name("9001", TODAY) == "bofa_9001_activity_2026-09-28.csv"
+    assert bp.period_name("9002", datetime.date(2026, 9, 5)) == "bofa_9002_period_2026-09-05.csv"
 
 
 def test_file_names_match_what_the_server_reads_when_server_is_present():
@@ -119,11 +119,11 @@ def test_file_names_match_what_the_server_reads_when_server_is_present():
         "".join(ast.literal_eval(part.strip().rstrip(",")) for part in pattern.group(1).splitlines()),
         re.ASCII | re.IGNORECASE,
     )
-    current = regex.search(bp.activity_name("3119", TODAY))
-    period = regex.search(bp.period_name("3119", datetime.date(2026, 9, 4)))
-    assert (current.group("last4"), current.group("kind")) == ("3119", "activity")
+    current = regex.search(bp.activity_name("9001", TODAY))
+    period = regex.search(bp.period_name("9001", datetime.date(2026, 9, 4)))
+    assert (current.group("last4"), current.group("kind")) == ("9001", "activity")
     assert (period.group("last4"), period.group("kind"), period.group("date")) == (
-        "3119", "period", "2026-09-04"
+        "9001", "period", "2026-09-04"
     )
 
 
@@ -208,31 +208,31 @@ def test_folder_id_copy_matches_the_server_rule_when_server_is_present():
 
 def test_plan_skips_periods_in_drive_and_replaces_same_day_csv(tmp_path):
     files = [
-        tmp_path / "bofa_3119_period_2026-09-04.csv",
-        tmp_path / "bofa_3119_period_2026-08-04.csv",
-        tmp_path / "bofa_3119_activity_2026-09-28.csv",
-        tmp_path / "bofa_4146_activity_2026-09-28.csv",
+        tmp_path / "bofa_9001_period_2026-09-04.csv",
+        tmp_path / "bofa_9001_period_2026-08-04.csv",
+        tmp_path / "bofa_9001_activity_2026-09-28.csv",
+        tmp_path / "bofa_9002_activity_2026-09-28.csv",
     ]
     existing = {
-        "bofa_3119_period_2026-08-04.csv": "id-period",
-        "bofa_3119_activity_2026-09-28.csv": "id-csv",
+        "bofa_9001_period_2026-08-04.csv": "id-period",
+        "bofa_9001_activity_2026-09-28.csv": "id-csv",
     }
     uploads, skipped = bp.plan_uploads(files, existing)
-    assert skipped == ["bofa_3119_period_2026-08-04.csv"]
+    assert skipped == ["bofa_9001_period_2026-08-04.csv"]
     assert [(u.name, u.action, u.file_id) for u in uploads] == [
-        ("bofa_3119_period_2026-09-04.csv", "create", None),
-        ("bofa_4146_activity_2026-09-28.csv", "create", None),
-        ("bofa_3119_activity_2026-09-28.csv", "update", "id-csv"),
+        ("bofa_9001_period_2026-09-04.csv", "create", None),
+        ("bofa_9002_activity_2026-09-28.csv", "create", None),
+        ("bofa_9001_activity_2026-09-28.csv", "update", "id-csv"),
     ]
 
 
 def test_yesterdays_csv_does_not_stop_todays(tmp_path):
     uploads, skipped = bp.plan_uploads(
-        [tmp_path / "bofa_3119_activity_2026-09-28.csv"],
-        {"bofa_3119_activity_2026-09-27.csv": "old"},
+        [tmp_path / "bofa_9001_activity_2026-09-28.csv"],
+        {"bofa_9001_activity_2026-09-27.csv": "old"},
     )
     assert skipped == []
-    assert [(u.name, u.action) for u in uploads] == [("bofa_3119_activity_2026-09-28.csv", "create")]
+    assert [(u.name, u.action) for u in uploads] == [("bofa_9001_activity_2026-09-28.csv", "create")]
 
 
 def test_multipart_body_carries_metadata_and_content():
@@ -350,8 +350,8 @@ MONTH_NAMES = [
     "August", "September", "October", "November", "December",
 ]
 
-CHECKING = {"label": "Adv SafeBalance Banking", "last4": "3119", "kind": "checking"}
-CARD = {"label": "Customized Cash Rewards Visa Signature", "last4": "4146", "kind": "card"}
+CHECKING = {"label": "Adv SafeBalance Banking", "last4": "9001", "kind": "checking"}
+CARD = {"label": "Customized Cash Rewards Visa Signature", "last4": "9002", "kind": "card"}
 
 
 def period_label(kind: str, end: datetime.date) -> str:
@@ -543,7 +543,7 @@ CARD_PERIODS = _ends((2026, 9, 5), (2026, 8, 5), (2025, 9, 5), (2025, 8, 5))
 
 def _site(**kwargs):
     return FakeBofa(
-        [CHECKING, CARD], {"3119": CHECKING_PERIODS, "4146": CARD_PERIODS}, **kwargs
+        [CHECKING, CARD], {"9001": CHECKING_PERIODS, "9002": CARD_PERIODS}, **kwargs
     )
 
 
@@ -560,35 +560,35 @@ def _in_window(periods):
 def test_a_full_pull_names_every_file_and_skips_what_drive_holds(tmp_path):
     page = _site()
     held = _in_window(CHECKING_PERIODS)[1:]          # all but the newest checking period
-    in_drive = {bp.period_name("3119", end) for end in held}
+    in_drive = {bp.period_name("9001", end) for end in held}
     accounts = bp.pull_all(page, tmp_path, TODAY, in_drive)
 
     by_last4 = {a.last4: a for a in accounts}
-    assert list(by_last4) == ["3119", "4146"]
-    checking, card = by_last4["3119"], by_last4["4146"]
+    assert list(by_last4) == ["9001", "9002"]
+    checking, card = by_last4["9001"], by_last4["9002"]
     assert (checking.kind, card.kind) == ("checking", "card")
-    assert checking.activity.name == "bofa_3119_activity_2026-09-28.csv"
-    assert card.activity.name == "bofa_4146_activity_2026-09-28.csv"
+    assert checking.activity.name == "bofa_9001_activity_2026-09-28.csv"
+    assert card.activity.name == "bofa_9002_activity_2026-09-28.csv"
 
     assert checking.periods_listed == 13 and checking.periods_in_drive == 12
-    assert [p.name for p in checking.periods] == ["bofa_3119_period_2026-09-04.csv"]
+    assert [p.name for p in checking.periods] == ["bofa_9001_period_2026-09-04.csv"]
     assert [p.name for p in card.periods] == [
-        "bofa_4146_period_2026-09-05.csv",
-        "bofa_4146_period_2026-08-05.csv",
-        "bofa_4146_period_2025-09-05.csv",
+        "bofa_9002_period_2026-09-05.csv",
+        "bofa_9002_period_2026-08-05.csv",
+        "bofa_9002_period_2025-09-05.csv",
     ]
     # A period already in Drive, or older than the cutoff, is never clicked.
     assert page.downloads == [
-        ("3119", "Current transactions"),
-        ("3119", "Period ending 09/04/2026"),
-        ("4146", "Current transactions"),
-        ("4146", "September 05, 2026"),
-        ("4146", "August 05, 2026"),
-        ("4146", "September 05, 2025"),
+        ("9001", "Current transactions"),
+        ("9001", "Period ending 09/04/2026"),
+        ("9002", "Current transactions"),
+        ("9002", "September 05, 2026"),
+        ("9002", "August 05, 2026"),
+        ("9002", "September 05, 2025"),
     ]
     # Each file holds what was chosen for it (the fake writes last4|option).
-    assert (tmp_path / "bofa_4146_period_2026-08-05.csv").read_bytes() == b"4146|August 05, 2026"
-    assert (tmp_path / "bofa_3119_activity_2026-09-28.csv").read_bytes() == b"3119|Current transactions"
+    assert (tmp_path / "bofa_9002_period_2026-08-05.csv").read_bytes() == b"9002|August 05, 2026"
+    assert (tmp_path / "bofa_9001_activity_2026-09-28.csv").read_bytes() == b"9001|Current transactions"
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
         [checking.activity.name, card.activity.name]
         + [p.name for p in checking.periods + card.periods]
@@ -596,14 +596,14 @@ def test_a_full_pull_names_every_file_and_skips_what_drive_holds(tmp_path):
 
 
 def test_the_checking_dialog_is_closed_after_every_download(tmp_path):
-    page = FakeBofa([CHECKING], {"3119": _ends((2026, 9, 4), (2026, 8, 4))})
+    page = FakeBofa([CHECKING], {"9001": _ends((2026, 9, 4), (2026, 8, 4))})
     bp.pull_all(page, tmp_path, TODAY, set())
     assert page.closed_by_button == 3
     assert not page.dialog_open
 
 
 def test_escape_closes_the_dialog_when_it_has_no_close_button(tmp_path):
-    page = FakeBofa([CHECKING], {"3119": _ends((2026, 9, 4))}, close_button=False)
+    page = FakeBofa([CHECKING], {"9001": _ends((2026, 9, 4))}, close_button=False)
     bp.pull_all(page, tmp_path, TODAY, set())
     assert page.keyboard.pressed == ["Escape", "Escape"]
 
@@ -611,7 +611,7 @@ def test_escape_closes_the_dialog_when_it_has_no_close_button(tmp_path):
 def test_the_card_panel_is_not_folded_away_between_downloads(tmp_path):
     """The card's link toggles its panel. It is clicked only when the panel
     is not showing, so the second download does not fold it shut."""
-    page = FakeBofa([CARD], {"4146": _ends((2026, 9, 5), (2026, 8, 5))})
+    page = FakeBofa([CARD], {"9002": _ends((2026, 9, 5), (2026, 8, 5))})
     [account] = bp.pull_all(page, tmp_path, TODAY, set())
     assert len(account.periods) == 2
     assert page.panel_open
@@ -620,12 +620,12 @@ def test_the_card_panel_is_not_folded_away_between_downloads(tmp_path):
 @pytest.mark.parametrize(
     "missing, step",
     [
-        ({"#btn-download-txn"}, "checking 3119: the Download dialog, Current transactions"),
-        ({"Download your data"}, "checking 3119: the Download dialog, the period list"),
-        ({"#select_txnPeriod"}, "checking 3119: the Download dialog, the period list"),
-        ({"a.submit-download"}, "card 4146: the download panel, Current transactions"),
-        ({"#select_transaction"}, "card 4146: the download panel, the period list"),
-        ({bp.CARD_DOWNLOAD_LINK}, "opening account 4146"),
+        ({"#btn-download-txn"}, "checking 9001: the Download dialog, Current transactions"),
+        ({"Download your data"}, "checking 9001: the Download dialog, the period list"),
+        ({"#select_txnPeriod"}, "checking 9001: the Download dialog, the period list"),
+        ({"a.submit-download"}, "card 9002: the download panel, Current transactions"),
+        ({"#select_transaction"}, "card 9002: the download panel, the period list"),
+        ({bp.CARD_DOWNLOAD_LINK}, "opening account 9002"),
         ({bp.ACCOUNT_LINK_CSS}, "the Accounts Overview"),
     ],
 )
@@ -646,12 +646,12 @@ def test_an_option_that_is_gone_is_a_page_change(tmp_path):
         return els
 
     page._elements = no_csv
-    with pytest.raises(bp.PageChanged, match="checking 3119: the Download dialog"):
+    with pytest.raises(bp.PageChanged, match="checking 9001: the Download dialog"):
         bp.pull_all(page, tmp_path, TODAY, set())
 
 
 def test_a_dropdown_without_current_transactions_is_a_page_change(tmp_path):
-    page = FakeBofa([CARD], {"4146": CARD_PERIODS})
+    page = FakeBofa([CARD], {"9002": CARD_PERIODS})
     page._period_options = lambda account: [("September 05, 2026", "p0")]
     with pytest.raises(bp.PageChanged, match="no 'Current transactions' option"):
         bp.pull_all(page, tmp_path, TODAY, set())
@@ -660,13 +660,13 @@ def test_a_dropdown_without_current_transactions_is_a_page_change(tmp_path):
 def test_a_dropdown_with_no_closed_period_is_a_page_change(tmp_path):
     """If BofA renames its period labels, the script would otherwise pull
     only the current window forever and nothing would ever be verified."""
-    page = FakeBofa([CHECKING], {"3119": []})
+    page = FakeBofa([CHECKING], {"9001": []})
     with pytest.raises(bp.PageChanged, match="no closed period is listed"):
         bp.pull_all(page, tmp_path, TODAY, set())
 
 
 def test_a_period_label_that_is_not_a_date_is_a_page_change(tmp_path):
-    page = FakeBofa([CHECKING], {"3119": []})
+    page = FakeBofa([CHECKING], {"9001": []})
     page._period_options = lambda account: [
         ("Current transactions", "c"), ("Period ending 31/31/2026", "p0"),
     ]
@@ -675,11 +675,11 @@ def test_a_period_label_that_is_not_a_date_is_a_page_change(tmp_path):
 
 
 def test_an_option_that_is_neither_is_passed_over(tmp_path):
-    page = FakeBofa([CHECKING], {"3119": _ends((2026, 9, 4))})
+    page = FakeBofa([CHECKING], {"9001": _ends((2026, 9, 4))})
     original = page._period_options
     page._period_options = lambda account: original(account) + [("Since last statement", "s")]
     [account] = bp.pull_all(page, tmp_path, TODAY, set())
-    assert [p.name for p in account.periods] == ["bofa_3119_period_2026-09-04.csv"]
+    assert [p.name for p in account.periods] == ["bofa_9001_period_2026-09-04.csv"]
 
 
 def test_no_account_link_that_parses_is_a_page_change(tmp_path):
@@ -692,8 +692,8 @@ def test_the_summary_names_files_and_counts_only(tmp_path):
     accounts = bp.pull_all(_site(), tmp_path, TODAY, set())
     lines = bp.summary_lines(accounts, set(), dry_run=True)
     assert lines[0].startswith(
-        "Checking 3119 (Adv SafeBalance Banking): current transactions "
-        "bofa_3119_activity_2026-09-28.csv (would upload)"
+        "Checking 9001 (Adv SafeBalance Banking): current transactions "
+        "bofa_9001_activity_2026-09-28.csv (would upload)"
     )
     assert "closed periods listed 13, already in Drive 0, would upload 13." in lines[0]
     assert all("$" not in line for line in lines)
@@ -751,8 +751,8 @@ def test_dry_run_touches_no_drive_and_says_what_it_would_upload(tmp_path):
     assert code == 0
     assert record == [("bofa", bp.BOFA_HOME_URL, "Nothing was downloaded and nothing was uploaded.")]
     assert "Dry run: nothing was uploaded. Would upload:" in lines
-    assert "    bofa_3119_activity_2026-09-28.csv" in lines
-    assert "    bofa_4146_period_2025-09-05.csv" in lines
+    assert "    bofa_9001_activity_2026-09-28.csv" in lines
+    assert "    bofa_9002_period_2025-09-05.csv" in lines
     # A dry run keeps its files to be looked at.
     assert len(list((tmp_path / "out").iterdir())) == 2 + 13 + 3
 
@@ -766,17 +766,17 @@ def test_default_out_dir_is_under_home_not_the_repo(monkeypatch, tmp_path):
 def test_a_real_run_creates_new_files_and_replaces_todays_csv(tmp_path):
     held = _in_window(CHECKING_PERIODS)[1:]
     drive = FakeDrive(existing={
-        "bofa_3119_activity_2026-09-28.csv": "csv-id",
-        **{bp.period_name("3119", end): f"p{i}" for i, end in enumerate(held)},
+        "bofa_9001_activity_2026-09-28.csv": "csv-id",
+        **{bp.period_name("9001", end): f"p{i}" for i, end in enumerate(held)},
     })
     lines = []
     code = bp.run(_args(tmp_path), browser=_browser(_site()), drive_factory=lambda a: drive,
                   today=TODAY, out=lines.append)
     assert code == 0
-    assert ("bofa_3119_activity_2026-09-28.csv", "update") in drive.uploaded
-    assert ("bofa_4146_activity_2026-09-28.csv", "create") in drive.uploaded
-    assert ("bofa_3119_period_2026-09-04.csv", "create") in drive.uploaded
-    assert not any(name in {bp.period_name("3119", e) for e in held} for name, _ in drive.uploaded)
+    assert ("bofa_9001_activity_2026-09-28.csv", "update") in drive.uploaded
+    assert ("bofa_9002_activity_2026-09-28.csv", "create") in drive.uploaded
+    assert ("bofa_9001_period_2026-09-04.csv", "create") in drive.uploaded
+    assert not any(name in {bp.period_name("9001", e) for e in held} for name, _ in drive.uploaded)
     assert len(drive.uploaded) == 2 + 1 + 3
     assert any("already in Drive 12, uploaded 1." in line for line in lines)
     # Kevin, 2026-09-28: Drive is the one copy, so the laptop keeps none.
@@ -851,7 +851,7 @@ def test_existing_follows_pages_and_scopes_to_the_folder():
 
 @pytest.mark.parametrize("status", [403, 404])
 def test_a_refused_create_names_the_scope_problem(tmp_path, status):
-    path = tmp_path / "bofa_3119_period_2026-09-04.csv"
+    path = tmp_path / "bofa_9001_period_2026-09-04.csv"
     path.write_bytes(b"x")
     folder = bp.DriveFolder(Session(post_status=status), FOLDER)
     with pytest.raises(bp.DriveRefused, match="drive.file"):
@@ -859,7 +859,7 @@ def test_a_refused_create_names_the_scope_problem(tmp_path, status):
 
 
 def test_update_patches_the_existing_file(tmp_path):
-    path = tmp_path / "bofa_3119_activity_2026-09-28.csv"
+    path = tmp_path / "bofa_9001_activity_2026-09-28.csv"
     path.write_bytes(b"x")
     session = Session()
     bp.DriveFolder(session, FOLDER).upload(bp.Upload(path.name, path, "update", "fid"))
@@ -920,7 +920,7 @@ def test_the_bofa_path_never_calls_put_session(monkeypatch, tmp_path, capsys):
 def test_a_page_change_through_main_exits_1_in_words(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cs, "logged_in_browser", _browser(_site(missing={"a.submit-download"})))
     assert cs.main(["bofa", "--dry-run", "--out", str(tmp_path)]) == 1
-    assert "BofA's page changed at card 4146: the download panel, Current transactions; nothing was uploaded." in capsys.readouterr().err
+    assert "BofA's page changed at card 9002: the download panel, Current transactions; nothing was uploaded." in capsys.readouterr().err
 
 
 def _called_names(path: Path) -> set[str]:

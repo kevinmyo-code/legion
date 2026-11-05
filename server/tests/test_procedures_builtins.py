@@ -190,13 +190,13 @@ def kevin(household_a, household_user, auth_client):
     last_month_end = first - dt.timedelta(days=1)
     statement(
         household_a,
-        "3119",
+        "9001",
         "Adv SafeBalance Banking",
         [line(last_month_end.replace(day=2).isoformat(), "RENT", -150_000)],
         start=last_month_end.replace(day=1).isoformat(),
         end=last_month_end.isoformat(),
     )
-    _bank_feed(household_a, "3119", "Adv SafeBalance Banking", [(money_day, -4_250)])
+    _bank_feed(household_a, "9001", "Adv SafeBalance Banking", [(money_day, -4_250)])
     _bank_feed(household_a, "4242", "Cash Rewards Visa", [(money_day, -1_999)])
     PlaidItem.objects.create(
         household=household_a,

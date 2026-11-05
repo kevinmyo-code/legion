@@ -24,7 +24,7 @@ class DjangoLedgerBackendSetTest {
         DjangoLedgerBackend(EngineHttp(EngineTestSupport.signedInConfig(context), engine.client()))
 
     private fun row(id: String) = """
-        {"id": "$id", "statement_id": "stmt", "account_last4": "4146", "account_nickname": "BofA card",
+        {"id": "$id", "statement_id": "stmt", "account_last4": "9002", "account_nickname": "BofA card",
          "currency": "USD", "txn_date": "2026-09-10", "description": "ROW $id", "amount_cents": -100,
          "balance_cents": null, "line_ref": "r-$id", "category": null, "category_pending": true,
          "pending_logged_at": null, "reversal_of": null, "provenance": "DETERMINISTIC",

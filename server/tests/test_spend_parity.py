@@ -485,14 +485,14 @@ def test_budget_total_is_exact():
 def test_budget_account_filter_clusters_one_card():
     t = Rows(MID_MONTH)
     rows = [
-        t("4400664229114146", -80_00, description="TRADER JOES", category="Groceries"),
-        t("4146", -20_00, description="AMAZON", category="Shopping"),
+        t("4111111111119002", -80_00, description="TRADER JOES", category="Groceries"),
+        t("9002", -20_00, description="AMAZON", category="Shopping"),
         t("debit", -15_00, description="GAS STATION", category="Fuel"),
     ]
     everything = budget(rows)
-    card = budget(rows, account_filter={"4400664229114146"})
+    card = budget(rows, account_filter={"4111111111119002"})
     debit = budget(rows, account_filter={"debit"})
-    via_short = budget(rows, account_filter={"4146"})
+    via_short = budget(rows, account_filter={"9002"})
     assert everything.spent_cents == 115_00
     assert card.spent_cents == 100_00
     assert debit.spent_cents == 15_00

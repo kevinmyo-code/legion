@@ -39,12 +39,12 @@ same day. The canned `demo.js` in the HTML prototypes is a mock for layout only.
   frontend"*. The recruiter page is a public route (`/try`) in the engine's React app
   (`server/frontend`, TanStack routes), on Cloud Run at the run.app URL until Kevin buys a domain.
   Same origin as the assistant, so the visitor session cookie just works. Layout = prototype B
-  (editorial) with the Quanex case study and report mocks, rebuilt as React components.
+  (editorial) with the work case study and report mocks, rebuilt as React components.
 - Root (Kevin, 2026-11-02, replaces the earlier default): *"landing page should be a login page.
   recruiters use the code in my resume, that brings them to the recruiter section. i log in > goes to
   my page"*. `/login` stays the front door and gains an "Have an access code?" field beside sign-in.
   A valid code calls `/api/demo/enter` and lands on the recruiter section (`/try`: about Kevin,
-  Quanex case study and report mocks, Alfred). A member's sign-in goes to their app as now. The
+  work case study and report mocks, Alfred). A member's sign-in goes to their app as now. The
   resume carries a direct link `/try?code=...&ref=...` that skips typing (allowed, Kevin
   2026-11-02). Strip `code` from the address bar after entry (history.replaceState). `/try` without a
   valid recruiter session shows the code box, nothing else.

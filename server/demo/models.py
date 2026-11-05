@@ -151,7 +151,7 @@ class RecruiterContent(models.Model):
     One live row, keyed `CURRENT_KEY`. A reload replaces it in place.
 
     **A named code may have its own version** (Kevin, 2026-11-04: "a stripped of
-    quanex version for linkedin"; the resume code keeps the full page). A row
+    work-section version for linkedin"; the resume code keeps the full page). A row
     keyed by a code's `label` is what that code's visitors read, page,
     files and `about_kevin` alike (`for_user`); a label with no row of its
     own falls back to `CURRENT_KEY`.

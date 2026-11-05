@@ -447,7 +447,7 @@ def test_spend_never_counts_another_households_rows(token_a, token_b):
     def statement(tag, cents):
         return {
             "content_sha256": f"sha-spend-{tag}",
-            "account_last4": "3119",
+            "account_last4": "9001",
             "account_nickname": f"{tag} checking",
             "currency": "USD",
             "provenance": "DETERMINISTIC",
