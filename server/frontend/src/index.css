@@ -724,6 +724,9 @@
             column-gap: calc(0.8 * var(--u));
             scrollbar-width: none;
         }
+        .recruiter .rc-top nav [data-nav-app] {
+            display: none;
+        }
         .recruiter .rc-top nav a {
             display: inline-flex;
             align-items: center;

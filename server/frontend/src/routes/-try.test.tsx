@@ -367,6 +367,34 @@ describe('/try', () => {
     expect(within(header).queryByRole('link', { name: 'Phone' })).not.toBeInTheDocument()
   })
 
+  test('the LEGION section draws its parts and a nav entry, and is absent without content', async () => {
+    const engine = visitor()
+    engine.demo.content = {
+      ...sampleContent(),
+      legion: {
+        title: 'How LEGION is built',
+        intro: 'A personal-life ERP a voice agent can query.',
+        diagram_svg: '<svg xmlns="http://www.w3.org/2000/svg"/>',
+        diagram_caption: 'The engine is the only writer.',
+        parts: [{ title: 'The engine', body: 'Django and Postgres.' }],
+      },
+    }
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'How LEGION is built' })
+    expect(within(section).getByText('A personal-life ERP a voice agent can query.')).toBeInTheDocument()
+    expect(within(section).getByText('The engine.')).toBeInTheDocument()
+    expect(within(section).getByRole('img', { name: 'The engine is the only writer.' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'On this page' })
+    expect(within(nav).getByRole('link', { name: 'LEGION' })).toHaveAttribute('href', '#legion')
+  })
+
+  test('without a legion part there is no LEGION section or nav entry', async () => {
+    renderApp('/try', visitor(), 'family')
+    const nav = await screen.findByRole('navigation', { name: 'On this page' })
+    expect(within(nav).queryByRole('link', { name: 'LEGION' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'How LEGION is built' })).not.toBeInTheDocument()
+  })
+
   test('the header shows content.name', async () => {
     const engine = visitor()
     engine.demo.content = { ...sampleContent(), name: 'Test Person' }

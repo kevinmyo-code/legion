@@ -80,8 +80,20 @@ CONTENT_SCHEMA: dict = _obj(
         # `phone` the phone section is not drawn.
         "name": _STR,
         "phone": _PHONE,
+        # What LEGION is, for a visitor who has not met it (Kevin, 2026-11-04: "a short section about
+        # legion's architecture ... so people know what it is"). Optional: without it nothing is drawn.
+        "legion": _obj(
+            {
+                "title": _STR,
+                "intro": _STR,
+                "diagram_svg": _STR,
+                "diagram_caption": _STR,
+                "parts": {"type": "array", "items": _TITLE_BODY},
+            },
+            optional=("diagram_svg", "diagram_caption"),
+        ),
     },
-    optional=("name", "phone"),
+    optional=("name", "phone", "legion"),
 )
 
 _VALIDATOR = Draft202012Validator(CONTENT_SCHEMA)

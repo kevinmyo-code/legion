@@ -282,7 +282,7 @@ function propertiesHeading(count: number): string {
 }
 
 function Sections({ content, access }: { content: DemoContent; access: ReactNode }) {
-  const { hero, look_for: lookFor, work, experience, links, assets, phone } = content
+  const { hero, look_for: lookFor, work, experience, links, assets, phone, legion } = content
   const name = content.name?.trim() || 'LEGION'
   const hasPhone = phone !== undefined && phone.clips.length > 0
   return (
@@ -290,10 +290,14 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
       <header className="rc-top">
         <span className="rc-caps">{name}</span>
         <nav aria-label="On this page" className="rc-caps">
+          {content.legion && <a href="#legion">LEGION</a>}
           {hasPhone && <a href="#phone">Phone</a>}
           <a href="#work">Work</a>
           <a href="#experience">Experience</a>
-          <Link to="/">Open the app</Link>
+          {/* At phone width the access note carries this link, so the nav stays one row (CSS). */}
+          <Link to="/" data-nav-app="">
+            Open the app
+          </Link>
         </nav>
       </header>
 
@@ -326,6 +330,22 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
                 </p>
               ))}
             </div>
+          </Section>
+        )}
+
+        {legion && (
+          <Section id="legion" title={legion.title}>
+            <p>{legion.intro}</p>
+            {legion.diagram_svg && <Diagram svg={legion.diagram_svg} caption={legion.diagram_caption ?? ''} />}
+            {legion.parts.length > 0 && (
+              <div className="rc-runin">
+                {legion.parts.map((part) => (
+                  <p key={part.title}>
+                    <b>{runIn(part.title)}</b> {part.body}
+                  </p>
+                ))}
+              </div>
+            )}
           </Section>
         )}
 

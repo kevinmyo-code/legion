@@ -40,11 +40,21 @@ export interface DemoPhone {
   full_take?: string
 }
 
+export interface DemoLegion {
+  title: string
+  intro: string
+  diagram_svg?: string
+  diagram_caption?: string
+  parts: { title: string; body: string }[]
+}
+
 export interface DemoContent {
   /** The page's header line. Absent: the header says "LEGION". */
   name?: string
   /** "LEGION on the phone". Absent: the section is not drawn. */
   phone?: DemoPhone
+  /** What LEGION is and how it is built; optional, absent draws nothing. */
+  legion?: DemoLegion
   hero: { title: string; lead: string; facts: string[] }
   look_for: { title: string; body: string }[]
   work: {
