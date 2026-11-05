@@ -130,6 +130,29 @@ def test_a_superseding_fact_retires_the_old_one_and_forgetting_takes_both(auth_c
     assert MemberMemory.objects.count() == 0
 
 
+def test_forgetting_a_shared_fact_never_deletes_an_older_private_version(
+    auth_client, mia_client
+):
+    private = _save(auth_client, "Kevin's gym is on Main Street")
+    shared = _save(
+        auth_client, "Kevin's gym is on Elm Street", shared=True, supersedes=private["id"]
+    )
+    assert mia_client.delete(f"{URL}{shared['id']}").status_code == 204
+    assert not MemberMemory.objects.filter(pk=shared["id"]).exists()
+    assert MemberMemory.objects.filter(pk=private["id"]).exists()
+
+
+def test_a_member_cannot_supersede_a_shared_fact_about_someone_else(auth_client, mia_client):
+    shared = _save(auth_client, "The Jeep lives in the left bay", shared=True)
+    response = mia_client.post(
+        URL, {"text": "The Jeep lives outside", "supersedes": shared["id"]}, format="json"
+    )
+    assert response.status_code == 403
+    assert "Only the person a memory is about" in response.data["detail"]
+    assert MemberMemory.objects.get(pk=shared["id"]).superseded_at is None
+    assert MemberMemory.objects.count() == 1
+
+
 def test_superseding_another_members_private_memory_is_refused(auth_client, mia_client):
     theirs = _save(mia_client, "Mia likes oat milk")
     response = auth_client.post(URL, {"text": "x y z", "supersedes": theirs["id"]}, format="json")

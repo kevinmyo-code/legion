@@ -216,3 +216,22 @@ def test_an_unreadable_answer_fails_in_words(household_user, household_a, bad):
 
     assert consolidate.run(key="k", transport=transport).failed == 1
     assert MemberMemory.objects.count() == 0
+
+
+def test_the_read_through_list_covers_the_phones():
+    """`READ_THROUGH_TOOLS` is a hand copy of `LiveToolbox.EPISODIC_EXCLUDED_TOOLS`; the
+    whole-turn drop depends on it staying a superset. Skipped where the phone tree is absent
+    (the engine image is built from `server/` alone)."""
+    toolbox = (
+        Path(__file__).resolve().parents[2]
+        / "app/src/main/java/com/kevin/legion/service/LiveToolbox.kt"
+    )
+    if not toolbox.exists():
+        pytest.skip("the phone's source is not in this tree")
+    source = toolbox.read_text(encoding="utf-8")
+    match = re.search(r"val EPISODIC_EXCLUDED_TOOLS = setOf\((.*?)\)", source, re.DOTALL)
+    assert match, "LiveToolbox.EPISODIC_EXCLUDED_TOOLS moved; update this test and the copy"
+    phone = set(re.findall(r'"([a-z_]+)"', match.group(1)))
+    assert phone and phone <= consolidate.READ_THROUGH_TOOLS, sorted(
+        phone - consolidate.READ_THROUGH_TOOLS
+    )

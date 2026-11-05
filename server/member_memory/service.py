@@ -159,6 +159,14 @@ def create(
                 "Nothing was saved. The memory it supersedes is not one you can see; recall or "
                 "list memories for its id."
             )
+        # Only your own memory can be replaced: superseding a shared fact about someone else
+        # would take it out of their recall in favour of a row they may not be able to see.
+        if older.member_id != request.user.pk:
+            raise MemoryRefused(
+                "Nothing was saved. Only the person a memory is about can replace it with a newer "
+                "one.",
+                status=403,
+            )
     user = request.user
     with transaction.atomic():
         row = MemberMemory.objects.create(
@@ -235,15 +243,14 @@ def _chain(row: MemberMemory) -> list:
 
 def forget(request, memory_id) -> Forgotten | None:
     """Hard-deletes the memory and the versions it superseded (map decision C). None when there
-    is no such memory for this caller; nothing is deleted then."""
+    is no such memory for this caller; nothing is deleted then. Only versions this caller can
+    see go with it: an older version private to someone else is never touched from here."""
     row = find(request, memory_id)
     if row is None:
         return None
     ids = _chain(row)
     with transaction.atomic():
-        deleted, _ = MemberMemory.objects.filter(
-            household_id=row.household_id, pk__in=ids
-        ).delete()
+        deleted, _ = readable(request).filter(pk__in=ids).delete()
     return Forgotten(text=row.text, deleted=deleted)
 
 
