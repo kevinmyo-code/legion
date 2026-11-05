@@ -1,5 +1,6 @@
 package com.kevin.legion.service
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -98,5 +99,42 @@ class LiveSessionControllerIdleReconnectTest {
         assertFalse(
             LiveSessionController.shouldAutoReconnectAfterClose(lastInteractionMs = 0L, nowMs = window)
         )
+    }
+
+    // --- resumeHandleAfterClose (2026-11-05) --------------------------------------------------
+
+    private fun handleAfter(
+        reason: String = "Session closed due to client inactivity.",
+        everConnected: Boolean = true,
+        userInitiated: Boolean = false,
+        autoReconnect: Boolean = true,
+    ) = LiveSessionController.resumeHandleAfterClose("h1", reason, everConnected, userInitiated, autoReconnect)
+
+    /**
+     * The A25's idle chain (11-01..11-04): past the window nothing reconnects, and the next wake's
+     * first connect sent the idle socket's handle and was refused at once, costing a second setup.
+     */
+    @Test
+    fun `an idle socket closed past the window drops its handle`() {
+        assertEquals(null, handleAfter(autoReconnect = false))
+    }
+
+    @Test
+    fun `an idle socket closed inside the window keeps its handle for the reconnect`() {
+        assertEquals("h1", handleAfter(autoReconnect = true))
+    }
+
+    @Test
+    fun `a conversation's own drop keeps its handle even past the window`() {
+        val dropped = handleAfter(
+            reason = "Software caused connection abort", userInitiated = true, autoReconnect = false,
+        )
+        assertEquals("h1", dropped)
+    }
+
+    @Test
+    fun `a deliberate stop and a resume that never connected still drop it`() {
+        assertEquals(null, handleAfter(reason = "stopped", userInitiated = true))
+        assertEquals(null, handleAfter(everConnected = false))
     }
 }

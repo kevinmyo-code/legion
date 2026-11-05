@@ -653,9 +653,15 @@ class LiveSessionController(context: Context) {
      * [LiveNotes]' sink: a note from outside (a finished Claude session task) reaches the model only
      * while a conversation is open. Read from a background poll, so the session is read once.
      */
-    private val noteSink: (String) -> Boolean = { text: String ->
-        val s = session
-        s != null && s.inConversation && s.offerNote(text)
+    private val noteSink: LiveNotes.Sink = object : LiveNotes.Sink {
+        override fun offer(key: String, text: String): Boolean {
+            val s = session
+            return s != null && s.inConversation && s.offerNote(key, text)
+        }
+
+        override fun withdraw(key: String) {
+            session?.withdrawNote(key)
+        }
     }.also { LiveNotes.register(it) }
 
     /** Tears down the active session and the controller's scope. */
@@ -1131,19 +1137,12 @@ class LiveSessionController(context: Context) {
                 if (shouldNotifyThreadLoss(userInitiated, event.reason, sessionResumeHandle != null)) {
                     pendingThreadLossNotice = true
                 }
-                // A deliberate driver stop is not a drop to resume FROM - the next chat the
-                // driver starts should be a new one, not a silent continuation of the one
-                // they just chose to end.
-                if (event.reason == "stopped") sessionResumeHandle = null
-                // A resume that never connected is a dead handle, and must not be sent again
-                // (2026-09-27). The server expires a session and answers the stale handle with
-                // "BidiGenerateContent session not found", closing before setup completes. This
-                // handle lives only in memory and was never cleared on that close, so every retry
-                // resent it and failed identically - voice was unusable until the process died,
-                // which for a foreground service is days. Kevin: "the voice agent says no
-                // connection retry? i cant talk at all". Dropping it costs one conversation's
-                // continuity; keeping it cost the whole voice path.
-                if (!everConnected && sessionResumeHandle != null) sessionResumeHandle = null
+                // The handle rules ([resumeHandleAfterClose]): a deliberate stop, a resume that
+                // never connected, and an idle socket left closed past the idle window all drop it.
+                val autoReconnect = shouldAutoReconnectAfterClose(lastRealInteractionMs, System.currentTimeMillis())
+                sessionResumeHandle = resumeHandleAfterClose(
+                    sessionResumeHandle, event.reason, everConnected, userInitiated, autoReconnect,
+                )
                 // A tap's cold connect that closed before ever connecting, for a reason that is not
                 // the user's key, quota or mic, gets ONE silent retry, cold and with no handle
                 // (just cleared above). Before this the failure flashed "NO CONNECTION - TAP TO
@@ -1231,7 +1230,7 @@ class LiveSessionController(context: Context) {
                 // stretch pays a cold connect - measured at roughly a second slower than a warm
                 // resume - instead of the instant resume a still-warm socket would have given. That
                 // cost is real and is paid once per idle stretch, not 565 times a day.
-                if (!destroyed && shouldAutoReconnectAfterClose(lastRealInteractionMs, System.currentTimeMillis())) {
+                if (!destroyed && autoReconnect) {
                     val failures = consecutivePrewarmFailures
                     if (failures > 0) {
                         scope.launch {
@@ -1829,6 +1828,38 @@ class LiveSessionController(context: Context) {
          * Pure and Context-free on purpose, per the ticket's own requirement, so it is directly
          * unit-testable - see [LiveSessionControllerIdleReconnectTest].
          */
+        /**
+         * What becomes of the resumption handle when a socket closes. Three closes drop it:
+         *
+         * - **"stopped"**: a deliberate stop is not a drop to resume FROM - the next chat should be
+         *   a new one, not a silent continuation of the one the user chose to end.
+         * - **never connected**: a resume that never connected is a dead handle and must not be
+         *   sent again (2026-09-27). The server answers a stale handle with "BidiGenerateContent
+         *   session not found" before setup completes, and resending it failed identically on every
+         *   retry until the process died (Kevin: "the voice agent says no connection retry? i cant
+         *   talk at all"). Dropping it costs one conversation's continuity.
+         * - **an idle socket left closed past the idle window** (2026-11-05): nothing reconnects
+         *   until a wake 10+ minutes on. In the A25's 11-01..11-04 logs 10 of 157 setups were that
+         *   wake's first connect, sent with the idle chain's handle and refused at once ("session
+         *   not found or expired"), then a second setup: about a second and one setup wasted per
+         *   idle stretch. Only an unattended socket: a conversation's own drop keeps its handle.
+         *
+         * Pure so [LiveSessionControllerIdleReconnectTest] pins it.
+         */
+        internal fun resumeHandleAfterClose(
+            handle: String?,
+            reason: String,
+            everConnected: Boolean,
+            userInitiated: Boolean,
+            autoReconnect: Boolean,
+        ): String? = when {
+            handle == null -> null
+            reason == "stopped" -> null
+            !everConnected -> null
+            !userInitiated && !autoReconnect -> null
+            else -> handle
+        }
+
         internal fun shouldAutoReconnectAfterClose(
             lastInteractionMs: Long,
             nowMs: Long,

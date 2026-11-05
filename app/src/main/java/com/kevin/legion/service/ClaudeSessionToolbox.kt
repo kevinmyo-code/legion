@@ -6,6 +6,7 @@ import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudePageOpener
 import com.kevin.legion.claude.ClaudeSendResult
 import com.kevin.legion.claude.ClaudeSessionController
+import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.claude.ClaudeTaskDraft
 import com.kevin.legion.claude.ClaudeWatch
 import com.kevin.legion.claude.ClaudeWatchStore
@@ -109,7 +110,7 @@ object ClaudeSessionToolbox {
                     page = args.optBoolean("page", false),
                 ),
             )
-            "check" -> check(c, args.optString("machine").ifBlank { null })
+            "check" -> check(c, args.optString("machine").ifBlank { null }, watchFactory(context))
             "answer" -> needsTask(taskId) ?: shown(
                 c.answer(taskId, args.optString("request"), args.optBoolean("yes", false), args.optBoolean("email_me")),
             )
@@ -158,9 +159,13 @@ object ClaudeSessionToolbox {
     /**
      * Machines with their state, then the newest tasks with their status, summary, question, live
      * step and files (ids included, for `send_file`), then the interactive sessions, waiting first.
+     *
+     * **A finished result this reads out is announced** ([consumeAnnouncement]), so the result
+     * watcher does not say it again (2026-11-05, A25 LIVE_AUDIT 11-04: asked "what did Claude say",
+     * the check spoke task 6's result and the watcher's queued note spoke it a second time).
      */
     @Suppress("ReturnCount") // unreadable, no machine ever, or the answer
-    private suspend fun check(c: ClaudeSessionController, machine: String?): JSONObject {
+    private suspend fun check(c: ClaudeSessionController, machine: String?, watch: ClaudeWatch): JSONObject {
         val overview = c.overview()
         if (overview !is ClaudeOutcome.Ok) {
             return result(false, ClaudeWording.failed(overview, "read the Claude session"))
@@ -181,6 +186,7 @@ object ClaudeSessionToolbox {
                     (if (f.uploaded) ", already on the engine" else "") + "]"
             }
             lines += c.wording.result(t, summariesOnly = true) + files
+            consumeAnnouncement(t, watch)
         }
         o.status.sessions.filter { wanted(it.machine) }.forEach { s ->
             val doing = s.lastPromptSummary?.let { ": $it" } ?: ""
@@ -188,6 +194,17 @@ object ClaudeSessionToolbox {
                 (if (s.waitingOnYou) "waiting on you" else s.state) + doing
         }
         return result(true, lines.joinToString("\n"))
+    }
+
+    /**
+     * A finished task whose result [check] just handed the model: forgotten by the watch, and its
+     * note withdrawn if one is waiting in the conversation. A task still waiting on its page is
+     * left alone, because the watcher's announcement is what will say the page is ready.
+     */
+    internal fun consumeAnnouncement(task: ClaudeTask, watch: ClaudeWatch) {
+        if (!task.isFinished || task.pagePending) return
+        if (task.id in watch.watchedTasks()) watch.forgetTask(task.id)
+        LiveNotes.withdraw(LiveNotes.claudeTaskKey(task.id))
     }
 
     private fun result(success: Boolean, message: String): JSONObject =

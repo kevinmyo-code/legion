@@ -90,7 +90,9 @@ object ClaudeResultPolling {
     const val LISTEN_HOLD_MS = 20_000L
 
     private suspend fun announce(context: Context, taskId: Int, text: String, hint: String): ClaudeDelivery {
-        if (LiveNotes.offer(note(text, hint))) return ClaudeDelivery.DELIVERED
+        // Keyed by task, so a `claude_session` check that reads the same result out first can
+        // withdraw this note before it is spoken a second time (ClaudeSessionToolbox.check).
+        if (LiveNotes.offer(LiveNotes.claudeTaskKey(taskId), note(text, hint))) return ClaudeDelivery.DELIVERED
         val asks = hint.isNotBlank()
         val raise = ProactiveRaise(
             // One rule per task, so brushing off one result never suppresses the next task's.

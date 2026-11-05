@@ -2712,6 +2712,8 @@ object LiveToolbox {
         " You are searching and reading the user's Gmail using the tools you're given. " +
         "Read-only - you cannot send, reply to, or delete mail. Pull only what would change your " +
         "answer, then answer in plain spoken text, no markdown." +
+        // 2026-11-05: "today" and "new" need the phone's day; see GmailToolLogic.routeDateClause.
+        GmailToolLogic.routeDateClause(java.time.Instant.now(), java.time.ZoneId.systemDefault()) +
         dispatchBoundaryClause("mail") +
         Priming.dispatchClause(context, "mail")
 
@@ -4172,13 +4174,18 @@ object LiveToolbox {
      * "their". The description is read once at setup; this is read beside the memories it is
      * about. Names no assistant and no honorific: the register's "never sir, never Mr" lives in
      * `ai/Personas.kt` and this must not fight it.
+     *
+     * 2026-11-05 (Kevin: Alfred adds details the memory does not hold): "say only what a memory
+     * states". No occurrence in the 11-01..11-05 phone logs (both recalls there were answered
+     * honestly), so this is the minimal guard; the scoring in `ai/AriaBrain.kt` is memory v2's.
      */
     internal const val RECALL_USE_NOTE =
         "These are things the user told you before. Build the answer on them: name the people, " +
             "places and details as the user does, use the pronouns the memories use for a person " +
             "(never 'they' for someone they call she or he), and make suggestions specific to what " +
-            "the memories say rather than generic. If none of them bears on the question, say so " +
-            "in a clause and ask."
+            "the memories say rather than generic. When you say what you remember, say only what a " +
+            "memory states: add no detail, date, place or reason it does not hold. If none of them " +
+            "bears on the question, say so in a clause and ask."
 
     // --- Build sheet / spend ledger -------------------------------------
 

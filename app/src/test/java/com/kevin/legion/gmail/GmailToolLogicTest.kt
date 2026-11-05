@@ -170,4 +170,29 @@ class GmailToolLogicTest {
             GmailToolLogic.message(GmailToolLogic.Cause.API_ERROR),
         )
     }
+
+    // --- routeDateClause(): the mail router's day (2026-11-05) ---------------------------
+
+    /** "Any new mail today?" at 5 pm on a UTC-6 phone (paraphrased from the 11-04 audit). */
+    @Test
+    fun `the router gets today's local midnight in epoch seconds and the offset, never a zone id`() {
+        val zone = ZoneId.of("America/Chicago")
+        val now = ZonedDateTime.of(2026, 11, 4, 17, 1, 57, 0, zone).toInstant()
+        val clause = GmailToolLogic.routeDateClause(now, zone)
+        val midnight = ZonedDateTime.of(2026, 11, 4, 0, 0, 0, 0, zone).toEpochSecond()
+        val yesterday = ZonedDateTime.of(2026, 11, 3, 0, 0, 0, 0, zone).toEpochSecond()
+        assertTrue(clause, clause.contains("Wednesday, November 4, 2026"))
+        assertTrue(clause, clause.contains("UTC-06:00"))
+        assertTrue(clause, clause.contains("today is after:$midnight"))
+        assertTrue(clause, clause.contains("after:$yesterday before:$midnight"))
+        assertFalse("never an IANA id (CLAUDE.md section 1)", clause.contains("Chicago"))
+        assertFalse(clause.contains("America"))
+    }
+
+    @Test
+    fun `new mail is not unread mail`() {
+        val clause = GmailToolLogic.routeDateClause(Instant.EPOCH, ZoneId.of("UTC")).lowercase()
+        assertTrue(clause, clause.contains("never add is:unread unless the user says unread"))
+        assertTrue(clause, clause.contains("utc+00:00"))
+    }
 }

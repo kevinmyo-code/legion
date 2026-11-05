@@ -78,6 +78,9 @@ class ClaudeResultWatcher(
         // Ticket 09: the page goes up right after the finish. Wait for it a little rather than
         // announce "ready" before there is anything to open; past the wait, say it did not come.
         if (task.pagePending && !pageWaitOver(task)) return false
+        // Re-read: a `claude_session` check may have read this result out (and forgotten the task)
+        // while this poll was waiting on the engine. Saying it again is the double announcement.
+        if (task.id !in watch.watchedTasks()) return false
         val only = overview.summariesOnly(task)
         val delivered = !watch.silenced() &&
             announce(task.id, c.wording.result(task, only), hint(task, only)) == ClaudeDelivery.DELIVERED
