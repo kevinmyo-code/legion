@@ -72,7 +72,8 @@ def _python_problems(path: Path) -> list[str]:
             if not _allowed_int(node.value):
                 out.append(f"{path.name}:{node.lineno}: the number {node.value}")
         elif isinstance(node.value, str):
-            for run in re.findall(r"\d[\d,_]{3,}\d|\d{4,}", node.value):
+            # A run right after a decimal point is a fraction (a rate), never a figure.
+            for run in re.findall(r"(?<![\d.])(?:\d[\d,_]{3,}\d|\d{4,})", node.value):
                 digits = re.sub(r"[,_]", "", run)
                 if len(digits) >= 4 and not _allowed_digits(digits):
                     out.append(f"{path.name}:{node.lineno}: the digits {run!r} in a string")
