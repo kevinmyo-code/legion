@@ -3,8 +3,8 @@ map: memory-and-vault
 ticket: "10"
 title: "Phone: upload once, retire the local consolidator"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "phone built 2026-11-05: local consolidator, reflection, episodic capture and the legacy pull retired; import path is the engine command; owed: Kevin runs import_legacy_memories after deploy"
 blockers: ["03", "04", "09"]
 blocked-by: ["[[03-consolidation-job]]", "[[04-one-time-import]]", "[[09-phone-memory-on-engine]]"]
 open-blockers: 3

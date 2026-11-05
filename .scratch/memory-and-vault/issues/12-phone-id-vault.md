@@ -3,8 +3,8 @@ map: memory-and-vault
 ticket: "12"
 title: "Phone: ID vault screen behind fingerprint"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "phone built 2026-11-05: VaultActivity (FLAG_SECURE, BiometricPrompt STRONG or PIN), show_vault_item; owed: A25 fingerprint run (ticket 14)"
 blockers: ["05"]
 blocked-by: ["[[05-id-vault-engine]]"]
 open-blockers: 1

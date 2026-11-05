@@ -3,8 +3,8 @@ map: memory-and-vault
 ticket: "09"
 title: "Phone: memory tools move to the engine"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "phone built 2026-11-05 on feat/memory-vault-phone, JVM green; one `memory` tool (recall/remember/forget/list) to fit the payload ceiling; owed: engine deploy, A25 run (ticket 14)"
 blockers: ["02"]
 blocked-by: ["[[02-memory-tools]]"]
 open-blockers: 1

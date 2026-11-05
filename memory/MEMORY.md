@@ -22,6 +22,15 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Memory v2 and the ID vault, phone half - 2026-11-05
+
+- `feat/memory-vault-phone` (pushed, not merged): tickets 09-13 built, JVM green. One `memory` tool
+  (recall/remember/forget/list) replaced `remember` + `recall_memory` to fit the payload ceiling;
+  `show_vault_item`; `VaultActivity` (FLAG_SECURE, BiometricPrompt STRONG or PIN); plate on Specs.
+- Owed by Kevin: engine deploy (feat/memory-vault-engine is on dev), `install_schedule.py` for
+  `consolidate_memories`, then `manage.py import_legacy_memories --member <email> --dry-run`, then
+  without `--dry-run`; install this branch's `fast`; ticket 14's run (first vault item typed on the phone).
+
 ## Alfred over the internet (alfred-ota) - 2026-11-05
 
 - `feat/alfred-ota-phone` (pushed, not merged): tickets 02, 04 versionCode, 05, 06 built, JVM green;

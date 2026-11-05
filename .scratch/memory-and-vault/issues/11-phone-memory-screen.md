@@ -3,8 +3,8 @@ map: memory-and-vault
 ticket: "11"
 title: "Phone: Memory screen v2"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "phone built 2026-11-05: Memory screen v2 on the engine, Compose test and Roborazzi shots; owed: A25 screenshot (ticket 14)"
 blockers: ["09"]
 blocked-by: ["[[09-phone-memory-on-engine]]"]
 open-blockers: 1
