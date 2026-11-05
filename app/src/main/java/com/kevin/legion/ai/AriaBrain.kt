@@ -224,9 +224,24 @@ class AriaBrain private constructor(context: Context) {
      * the old car's persona for two minutes.
      */
     fun invalidateBase() {
+        dropBaseCaches()
+        // alfred-ota ticket 02: re-ask the engine for the Alfred pack. Drops the caches again only
+        // when the wording changed, never by calling back into here, so it cannot loop.
+        AlfredPack.refreshAsync(onChanged = ::dropBaseCaches)
+    }
+
+    private fun dropBaseCaches() {
         baseCache = null
         textBaseCache = null
     }
+
+    /**
+     * The Alfred pack the cached base instruction was built from, as LIVE_AUDIT's `pack=` token
+     * (`<version>/<remote|cache|bundled>`). Read at session start, so the conversation record says
+     * which wording that session ran, not what the store holds now.
+     */
+    @Volatile var basePackToken: String = AlfredPack.current().auditToken
+        private set
 
     /**
      * The static half of the system instruction: personality + tone rules +
@@ -279,6 +294,10 @@ class AriaBrain private constructor(context: Context) {
         // Identity, accent, voice style, shared rules, safety: one pure function so the voice and
         // text instructions are provably the same text apart from the voice-only layers.
         // Comments on each layer's placement live on [composeIdentityAndRules].
+        // The clause text in the shared rules comes from the Alfred pack (alfred-ota ticket 02);
+        // the layer order stays here. The bundled pack renders SHARED_INSTRUCTIONS byte for byte.
+        val pack = AlfredPack.current()
+        if (!textMode) basePackToken = pack.auditToken
         val sb = StringBuilder(
             composeIdentityAndRules(
                 defaultPersona = VehicleController.DEFAULT_PERSONA
@@ -287,6 +306,7 @@ class AriaBrain private constructor(context: Context) {
                 delivery = AssistantIdentity.delivery(appContext),
                 voiceStyle = CompanionProfile.voiceStyle(appContext),
                 textMode = textMode,
+                shared = renderSharedInstructions(pack.pack),
             ),
         )
         // The date, and an explicit statement that there is NO clock here.
@@ -1222,7 +1242,8 @@ internal const val TEXT_MODE_NOTE =
  * [textMode] drops [delivery] and [voiceStyle] (a typed reply has no accent and no pace) and adds
  * [TEXT_MODE_NOTE] after safety. [SHARED_INSTRUCTIONS] and [SAFETY_INSTRUCTIONS], which carry
  * [CANNOT_CLAUSE] and [DATA_ACCESS_CLAUSE], are the identical strings in both modes: the honesty
- * rules are not forked. Pure so `AriaBrainTextModeTest` needs no Context.
+ * rules are not forked. Pure so `AriaBrainTextModeTest` needs no Context. [shared] is the shared
+ * rules as [renderSharedInstructions] renders the Alfred pack in use; the default is the bundled one.
  */
 internal fun composeIdentityAndRules(
     defaultPersona: String?,
@@ -1230,6 +1251,7 @@ internal fun composeIdentityAndRules(
     delivery: String?,
     voiceStyle: String?,
     textMode: Boolean,
+    shared: String = SHARED_INSTRUCTIONS,
 ): String = buildString {
     defaultPersona?.let { append(it).append(" ") }
     append(identity)
@@ -1237,13 +1259,18 @@ internal fun composeIdentityAndRules(
         delivery?.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
         voiceStyle?.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
     }
-    append(" ").append(SHARED_INSTRUCTIONS)
+    append(" ").append(shared)
     append(" ").append(SAFETY_INSTRUCTIONS)
     if (textMode) append(" ").append(TEXT_MODE_NOTE)
 }
 
-internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
-    ENGLISH_CLAUSE +
+/**
+ * The shared rules before [PROACTIVE_CLAUSE]: search, tools, the tool-message register and the four
+ * file-scope honesty clauses. Split out of [SHARED_INSTRUCTIONS] (alfred-ota ticket 02) so
+ * [renderSharedInstructions] can put the Alfred pack's clauses in their slots between these fixed
+ * segments without a second copy of this text. Never in the pack: it carries [CANNOT_CLAUSE].
+ */
+internal val SHARED_TOOL_RULES =
     "Use your search tool for anything current or specific - news, scores, prices, weather " +
     "and forecasts - " +
     "and base your answer on what it finds. " +
@@ -1257,20 +1284,21 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     CANNOT_CLAUSE +
     WRITE_ON_REQUEST_CLAUSE +
     DATA_ACCESS_CLAUSE +
-    CLAUDE_SESSION_CLAUSE +
-    PROACTIVE_CLAUSE +
-    // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
-    // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -
-    // zero matches across every text column of every table. It was invented whole.
-    //
-    // The prompt had a rule for ACTIONS ("before claiming you've done something") and a rule
-    // for MEMORY ("don't claim to remember something without checking") and NO rule for FACTS.
-    // Nothing anywhere said that a statement about the driver's own record has to come from a
-    // tool. So the one question a companion gets asked most - what's on today - was the one
-    // question with no honesty rule attached to it.
-    //
-    // Stated as a hard prohibition rather than a preference, and with the failure named, because
-    // "be accurate" is not a rule a model can check itself against mid-turn.
+    CLAUDE_SESSION_CLAUSE
+
+// 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
+// had "a dentist appointment at 3". There is no dentist row anywhere in his real database -
+// zero matches across every text column of every table. It was invented whole.
+//
+// The prompt had a rule for ACTIONS ("before claiming you've done something") and a rule
+// for MEMORY ("don't claim to remember something without checking") and NO rule for FACTS.
+// Nothing anywhere said that a statement about the driver's own record has to come from a
+// tool. So the one question a companion gets asked most - what's on today - was the one
+// question with no honesty rule attached to it.
+//
+// Stated as a hard prohibition rather than a preference, and with the failure named, because
+// "be accurate" is not a rule a model can check itself against mid-turn.
+internal const val RECORD_FACTS =
     "NEVER state a fact about the user's own record unless a tool call in THIS conversation " +
     "returned it. Appointments, reminders, tasks, figures, dates, car details, what they ate, " +
     "what they spent - all of it. If you have not called the tool, call it before you answer. " +
@@ -1278,7 +1306,10 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     "fill a gap with something plausible, never offer an example as if it were real, and never " +
     "carry a detail over from an earlier conversation as fact. An invented appointment is far " +
     "worse than \"I don't have anything for today\" - the user cannot tell them apart, and " +
-    "one of them can make them miss something real. " +
+    "one of them can make them miss something real. "
+
+/** The shared rules between [RECORD_FACTS] and [CURRENCY_CLAUSE]. Fixed in code, see [SHARED_TOOL_RULES]. */
+internal val SHARED_RECORD_RULES =
     "You keep a long-term memory of past conversations and trips with the user. Save new " +
     "things they ask you to remember with the remember tool, and when they reference the past " +
     "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
@@ -1318,12 +1349,27 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
     // 2026-10-28 for non-blocking lookups (ADR 0065); see the constant's own doc.
     LOOKUP_HOLD_CLAUSE +
     "If a lookup returns a " +
-    "proposal, read the proposal out and call accept_proposal only after the user says yes. " +
-    // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
-    // own currency (or explicitly say none was recorded), but a persona-primed model still
-    // guesses whenever a bare number slips past that - Alfred read every unlabelled figure as
-    // pounds sterling, purely from his own manner of speaking. This is the second, model-side
-    // half of that fix; the tool-side half alone was proven not to hold on its own.
+    "proposal, read the proposal out and call accept_proposal only after the user says yes. "
+
+// 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
+// own currency (or explicitly say none was recorded), but a persona-primed model still
+// guesses whenever a bare number slips past that - Alfred read every unlabelled figure as
+// pounds sterling, purely from his own manner of speaking. This is the second, model-side
+// half of that fix; the tool-side half alone was proven not to hold on its own.
+internal const val CURRENCY_CLAUSE =
     "State every amount in the currency code you were given. Never convert between currencies, " +
     "never assume one from your own manner of speaking, and if a figure arrives without a " +
     "currency, say the number without naming a currency at all."
+
+/**
+ * The shared rules as the bundled Alfred pack renders them: [renderSharedInstructions] with today's
+ * constants. The engine's twins test reads this chain as text (`server/tests/kotlin_strings.py`),
+ * so it stays literals and names joined by `+`; `AlfredPackTest` pins it equal to the rendering.
+ */
+internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
+    ENGLISH_CLAUSE +
+    SHARED_TOOL_RULES +
+    PROACTIVE_CLAUSE +
+    RECORD_FACTS +
+    SHARED_RECORD_RULES +
+    CURRENCY_CLAUSE

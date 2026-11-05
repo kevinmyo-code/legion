@@ -292,6 +292,15 @@ class MidnightApplication : Application() {
             // were not. The Robolectric gate above means no test can catch a
             // regression in any of this, which makes belt-and-braces the right
             // posture rather than an over-reaction.
+            // alfred-ota ticket 02: the Alfred pack (cached or bundled at once), then one fetch from
+            // the engine. A changed pack drops the cached prompt; a failed fetch is silent.
+            runCatching {
+                com.kevin.legion.ai.AlfredPack.install(this)
+                // A change re-runs invalidateBase once; its own refresh then finds nothing new.
+                com.kevin.legion.ai.AlfredPack.refreshAsync {
+                    com.kevin.legion.ai.AriaBrain.get(this).invalidateBase()
+                }
+            }.onFailure { MidnightEvents.appStartWorkFailed("alfred_pack", it) }
             appScope.launch {
                 runCatching {
                     CompanionProfileStore.ensureSeeded(this@MidnightApplication)

@@ -92,6 +92,12 @@ class EngineHttpException(val failure: EngineFailure) : Exception(failure.senten
  */
 data class EngineOk(val status: Int, val body: String)
 
+/** A conditional `GET`'s answer: a fresh body with its ETag, or "what you hold is current" (304). */
+sealed interface ConditionalGet {
+    data class Fresh(val body: String, val etag: String?) : ConditionalGet
+    data object NotModified : ConditionalGet
+}
+
 /**
  * A 2xx whose body is bytes, not text (books ticket 05: an EPUB comes back from the engine, and
  * decoding it as a string would corrupt it). [headers] holds only what the caller asked for.
@@ -151,6 +157,37 @@ class EngineHttp(
                 query.forEach { (key, value) -> parameter(key, value) }
             }
         }
+
+    /**
+     * `GET` with `If-None-Match: "<etag>"` when [etag] is given (alfred-ota ticket 02, the Alfred
+     * pack). A 304 is [ConditionalGet.NotModified], not a failure; a 2xx is [ConditionalGet.Fresh]
+     * with the response's own ETag. Everything else is classified exactly as [get] does.
+     */
+    suspend fun getConditional(
+        path: String,
+        query: Map<String, String> = emptyMap(),
+        etag: String? = null,
+    ): Result<ConditionalGet> {
+        val baseUrl = config.baseUrl()
+        if (!EngineConfig.isValidBaseUrl(baseUrl)) return Result.failure(noAddress())
+        return try {
+            val response = client.get(baseUrl + path) {
+                authorize()
+                query.forEach { (key, value) -> parameter(key, value) }
+                if (!etag.isNullOrBlank()) header(HttpHeaders.IfNoneMatch, "\"$etag\"")
+            }
+            if (response.status.value == NOT_MODIFIED) {
+                Result.success(ConditionalGet.NotModified)
+            } else {
+                val tag = response.headers[HttpHeaders.ETag]?.removePrefix("W/")?.trim('"')
+                classify(response).map { ConditionalGet.Fresh(it.body, tag) }
+            }
+        } catch (e: IOException) {
+            Result.failure(
+                EngineHttpException(EngineFailure.Unreachable(baseUrl, unreachableMessage(baseUrl, e))),
+            )
+        }
+    }
 
     /**
      * [extraHeaders] (engine-mcp ticket 11) exist because `/mcp` routes on `Accept` and the MCP
@@ -369,6 +406,7 @@ class EngineHttp(
         private val CLIENT_ERROR_RANGE = 400..499
         private const val UNAUTHORIZED = 401
         private const val FORBIDDEN = 403
+        private const val NOT_MODIFIED = 304
 
         /**
          * ONE Ktor/OkHttp client for the whole process, not one per [EngineHttp].
