@@ -17,6 +17,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from engine_mcp.models import McpCall, Outcome
+from engine_mcp.server import SCREEN_ONLY_TOOLS
 from engine_mcp.tools import (
     DELETABLE,
     EXCLUDED_TABLES,
@@ -151,13 +152,13 @@ def test_a_legacy_client_initializes_and_lists_without_a_session(mcp_write):
     listed = rpc(mcp_write, "tools/list", modern=False)
     assert listed.status_code == 200, listed.content
     names = {tool["name"] for tool in json.loads(listed.content)["result"]["tools"]}
-    assert names == set(TOOLS_BY_NAME)
+    assert names == set(TOOLS_BY_NAME) - SCREEN_ONLY_TOOLS
 
 
 def test_tools_list_is_the_registry_with_its_hints(mcp_read):
     response = rpc(mcp_read, "tools/list")
     tools = {tool["name"]: tool for tool in json.loads(response.content)["result"]["tools"]}
-    assert set(tools) == set(TOOLS_BY_NAME)
+    assert set(tools) == set(TOOLS_BY_NAME) - SCREEN_ONLY_TOOLS
     for name, listed in tools.items():
         tool = TOOLS_BY_NAME[name]
         hints = listed["annotations"]
@@ -571,3 +572,11 @@ def test_monthly_spend_refuses_a_bad_month_in_words(mcp_write):
     is_error, text, _ = call(mcp_write, "monthly_spend", {"month": "2026-13"})
     assert is_error
     assert text.startswith("Nothing was read.")
+
+
+def test_a_screen_only_tool_is_neither_listed_nor_run_over_mcp(mcp_read):
+    """arch-diagrams ticket 01: nothing behind `/mcp` can draw a diagram, so `show_diagram`
+    says so in words and runs nothing, rather than claim a picture is on a screen."""
+    is_error, text, _ = call(mcp_read, "show_diagram", {"project": "legion", "view": "context"})
+    assert is_error and text.startswith("Nothing was read. Nothing was shown either")
+    assert "no screen" in text

@@ -41,8 +41,13 @@ reads the manifests into `diagrams.RecruiterDiagram`, keyed like `RecruiterConte
 else `current`). It refuses a stale or unknown view or an unsafe SVG and loads nothing for that
 project. It never loads Quanex for LinkedIn.
 
-**Tool.** `show_diagram(project, view, highlight)` in the engine registry (so `/mcp` and every
-member's web assistant have it) and in `RECRUITER_TOOLS`. It returns the caption and the view's
+**Tool.** `show_diagram(project, view, highlight)` in the engine registry (so every member's web
+assistant has it) and in `RECRUITER_TOOLS`. **Not on `/mcp`**: nothing behind it can draw the
+card (phone, head unit, Claude Code), so `/mcp` neither lists it nor runs it, and a call by name
+says in words that nothing was shown (`engine_mcp.server.SCREEN_ONLY_TOOLS`). Each caller is
+declared only the projects and views it can be shown (`catalogue.declared_for`, from
+`surface.tools_for`): a private project with nothing loaded, or withheld from the version, is not
+named in the enum or the description, so a LinkedIn visitor's Live token never mentions Quanex. It returns the caption and the view's
 part ids in words for the model, and a `diagram` card (title, scope, caption, inline SVG,
 highlight, nodes) beside `response`, never in it. Unknown highlight ids are dropped and named. A
 LinkedIn visitor is refused Quanex in words whatever rows exist (`catalogue.WITHHELD`), including
@@ -59,7 +64,7 @@ the buttons zoom. Showing the same view again replaces the earlier card instead 
 **Phone.** Nothing built. `assistant/cards/ServerCards.kt` `parse` answers null for a kind it does
 not know (`else -> null`), and `EngineCards.fromAnswer` then falls back to `fromTool`, which is null
 for every tool but `run_procedure`, so a diagram card from `ask_engine` draws nothing, silently.
-The SVG does ride in `/mcp`'s `_meta` to the phone (about 40 KB a view) and is dropped there.
+`show_diagram` is not offered over `/mcp` at all, so no diagram card reaches the phone today.
 
 ## Verification
 

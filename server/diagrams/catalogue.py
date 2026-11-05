@@ -84,13 +84,15 @@ WITHHELD: dict[str, frozenset[str]] = {"linkedin": frozenset({"quanex"})}
 HIGHLIGHT_MAX = 12
 
 
-def view_words() -> str:
-    """Every project's views in words, for the tool's description."""
+def view_words(views: dict[str, list[str]] | None = None) -> str:
+    """The projects' views in words, for the tool's description: every view, or `views`."""
+    views = views if views is not None else {p: list(v) for p, v in VIEWS.items()}
     return " ".join(
         f"{project} ({PROJECT_NAMES[project]}): "
-        + "; ".join(f"{view} - {words}" for view, words in views.items())
+        + "; ".join(f"{view} - {VIEWS[project][view]}" for view in names)
         + "."
-        for project, views in VIEWS.items()
+        for project, names in views.items()
+        if names
     )
 
 
@@ -148,6 +150,27 @@ def available(user, project: str) -> list[str]:
     return [v for v in VIEWS[project] if v in loaded]
 
 
+def declared_for(tool, user):
+    """`show_diagram` as `user`'s assistant is told about it: only the projects and views this
+    caller can be shown. A private project with nothing loaded for its version, or one the
+    version withholds (Quanex for LinkedIn), is not named at all, in the enum or the words, so
+    the model can never offer it. The door still checks every call (`show`)."""
+    import dataclasses
+
+    shown = {project: available(user, project) for project in VIEWS}
+    shown = {project: views for project, views in shown.items() if views}
+    schema = dict(tool.input_schema)
+    properties = dict(schema["properties"])
+    properties["project"] = {**properties["project"], "enum": list(shown)}
+    properties["view"] = {
+        **properties["view"],
+        "enum": sorted({v for views in shown.values() for v in views}),
+    }
+    schema["properties"] = properties
+    description = tool.description.replace(view_words(), view_words(shown))
+    return dataclasses.replace(tool, input_schema=schema, description=description)
+
+
 def diagram_card(found: dict, highlight: list[str]) -> dict:
     """The `diagram` card (`engine_mcp/cards.py`). `svg` is inline so the screen can highlight
     its nodes; `caption` is its alt text, in words."""
@@ -180,6 +203,12 @@ def show(request, args: dict):
         return refused(
             f"Nothing was shown. {name} has no {view!r} view; its views are: {views}. Call "
             f"show_diagram again with one of those."
+        )
+    if project in version_for(user)[1]:
+        # Withheld from this version: said without naming the project or its work.
+        return refused(
+            "Nothing was shown. Those diagrams are not available here. Say so plainly, and do "
+            "not describe or draw one from memory."
         )
     found = find(user, project, view)
     if found is None:

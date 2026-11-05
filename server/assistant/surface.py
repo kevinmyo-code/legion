@@ -206,14 +206,22 @@ def tools_for(user):
     """The tools `user`'s web assistant is declared, in order. A recruiter
     gets `RECRUITER_TOOLS`; everyone else the whole web surface, unchanged,
     but for `run_procedure`, whose `name` enum lists what THIS user may run
-    (`procedures.listing.tool_for`)."""
+    (`procedures.listing.tool_for`), and `show_diagram`, whose projects and
+    views are the ones THIS user can be shown (`diagrams.catalogue.declared_for`)."""
+    from diagrams.catalogue import declared_for
     from procedures.listing import tool_for
 
     tools = recruiter_tools() if is_recruiter(user) else web_tools()
-    return [
-        tool_for(tool, user, user.household) if tool.name == "run_procedure" else tool
-        for tool in tools
-    ]
+    out = []
+    for tool in tools:
+        if tool.name == "run_procedure":
+            tool = tool_for(tool, user, user.household)
+        elif tool.name == "show_diagram":
+            # Only the diagrams this caller can be shown: never a withheld project (arch-diagrams
+            # ticket 01: no Quanex for the LinkedIn version), never one with nothing loaded.
+            tool = declared_for(tool, user)
+        out.append(tool)
+    return out
 
 
 def web_description(tool) -> str:

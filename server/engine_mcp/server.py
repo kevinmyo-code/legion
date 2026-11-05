@@ -35,7 +35,7 @@ from asgiref.sync import sync_to_async
 from mcp.server.lowlevel import Server
 from mcp.server.transport_security import TransportSecuritySettings
 
-from engine_mcp.tools import TOOLS, run_tool
+from engine_mcp.tools import TOOLS, refused, run_tool
 
 MCP_PATH = "/mcp"
 
@@ -72,6 +72,20 @@ def _as_mcp_tool(tool) -> types.Tool:
     )
 
 
+# Tools whose whole point is a picture on a screen (arch-diagrams ticket 01). The web door draws
+# their card; nothing behind `/mcp` does (the phone's `ServerCards.parse` answers null for a
+# `diagram` card, the head unit draws no cards, Claude Code has no screen). So `/mcp` neither lists
+# nor runs them: a result saying "on the screen now" would be an outcome nobody observed
+# (CLAUDE.md section 7).
+SCREEN_ONLY_TOOLS: frozenset[str] = frozenset({"show_diagram"})
+
+SCREEN_ONLY_REFUSAL = (
+    "Nothing was read. Nothing was shown either: {name} draws a picture in LEGION's web app, "
+    "and this client has no screen that can show it. Say plainly that the diagram can be seen "
+    "on the web, and never describe one you were not shown."
+)
+
+
 def _tools_for_request(request):
     """The registry, with `run_procedure`'s `name` enum narrowed to the procedures this caller
     may run (procedures ticket 12). Reads the ORM, so it runs on the request's thread."""
@@ -84,6 +98,7 @@ def _tools_for_request(request):
         if tool.name == "run_procedure"
         else tool
         for tool in TOOLS
+        if tool.name not in SCREEN_ONLY_TOOLS
     ]
 
 
@@ -95,9 +110,12 @@ async def _list_tools(ctx, params) -> types.ListToolsResult:
 
 async def _call_tool(ctx, params) -> types.CallToolResult:
     request = CURRENT_REQUEST.get()
-    result = await sync_to_async(run_tool, thread_sensitive=True)(
-        request, params.name, params.arguments or {}
-    )
+    if params.name in SCREEN_ONLY_TOOLS:
+        result = refused(SCREEN_ONLY_REFUSAL.format(name=params.name))
+    else:
+        result = await sync_to_async(run_tool, thread_sensitive=True)(
+            request, params.name, params.arguments or {}
+        )
     state = CALL_STATE.get(None)
     if state is not None:
         state["outcome"] = result.outcome

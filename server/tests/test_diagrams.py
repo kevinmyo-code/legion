@@ -238,7 +238,7 @@ def test_the_resume_visitor_sees_quanex_and_the_linkedin_visitor_never_does(db, 
     data = _tool(linkedin, "show_diagram", {"project": "quanex", "view": "data_flow"}).data
     assert data["is_error"] is True and "card" not in data
     assert "not available here" in data["text"]
-    assert "Gold" not in data["text"]
+    assert "Gold" not in data["text"] and "quanex" not in data["text"].lower()
     # Midcon still shows for LinkedIn, from its own version's rows.
     data = _tool(linkedin, "show_diagram", {"project": "midcon", "view": "context"}).data
     assert data["is_error"] is False and data["card"]["project"] == "midcon"
@@ -271,3 +271,32 @@ def test_legion_docs_suggests_the_matching_view(kevin_web):
 def test_every_suggested_view_exists():
     for project, view in [*catalogue.PATH_VIEWS.values(), *catalogue.ADR_VIEWS.values()]:
         assert view in VIEWS[project]
+
+
+def _declared(user):
+    return next(t for t in tools_for(user) if t.name == "show_diagram")
+
+
+def test_the_linkedin_visitor_is_never_told_quanex_exists(db, private_folder):
+    """The declaration a visitor's Live token carries names only what it can be shown."""
+    from demo.models import DemoVisit
+
+    Household.objects.create(name="Demo")
+    _r, resume_code = DemoCode.rotate()
+    _l, linkedin_code = DemoCode.rotate(label="linkedin")
+    _load(private_folder)
+    _enter(resume_code)
+    _enter(linkedin_code)
+    full = _declared(DemoVisit.objects.get(code__label="").user)
+    assert "quanex" in full.input_schema["properties"]["project"]["enum"]
+    assert "Quanex" in full.description and "data_flow" in full.description
+    stripped = _declared(DemoVisit.objects.get(code__label="linkedin").user)
+    text = json.dumps(stripped.input_schema) + stripped.description
+    assert "quanex" not in text.lower()
+    assert "midcon" in stripped.input_schema["properties"]["project"]["enum"]
+
+
+def test_nothing_loaded_means_no_private_project_is_declared(household_user):
+    tool = _declared(household_user)
+    assert tool.input_schema["properties"]["project"]["enum"] == ["legion", "workflow"]
+    assert "midcon" not in tool.description.lower() and "quanex" not in tool.description.lower()
