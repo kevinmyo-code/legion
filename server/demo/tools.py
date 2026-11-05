@@ -41,7 +41,7 @@ DESCRIPTION = (
 def _about_kevin(request, arguments: dict) -> ToolResult:
     from demo.models import RecruiterContent
 
-    row = RecruiterContent.current()
+    row = RecruiterContent.for_user(getattr(request, "user", None))
     profile = (row.content or {}).get("profile") if row is not None else None
     if not profile:
         return refused(NO_PROFILE)

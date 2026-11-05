@@ -162,7 +162,7 @@ def test_missing_content_json_and_a_fake_pdf_refuse(tmp_path):
 
 def test_the_schema_requires_every_top_level_section():
     assert set(CONTENT_SCHEMA["required"]) == {
-        "hero", "look_for", "work", "experience", "links", "profile",
+        "hero", "look_for", "experience", "links", "profile",
     }
     assert problems(fake_content()) == []
     assert problems(fake_content() | {"extra": 1})
@@ -416,3 +416,65 @@ def test_the_legion_section_is_optional_and_closed():
     assert problems(good) == []
     bad = dict(fake_content(), legion={"title": "How", "intro": "It", "parts": [], "extra": 1})
     assert problems(bad)
+
+
+# =============================================================================
+# The LinkedIn version (Kevin, 2026-11-04: "a stripped of quanex version for
+# linkedin"; the resume code keeps the full page)
+# =============================================================================
+
+
+def _linkedin_version() -> dict:
+    content = fake_content()
+    content.pop("work")
+    content["profile"] = {"Experience": "Stripped experience line."}
+    return content
+
+
+def _load_linkedin(tmp_path):
+    folder = write_folder(tmp_path / "li", _linkedin_version(), report=False, resume=False)
+    out = StringIO()
+    call_command("load_recruiter_content", str(folder), "--for-code", "LinkedIn", stdout=out)
+    return out.getvalue()
+
+
+def _enter(code) -> APIClient:
+    browser = APIClient()
+    assert browser.post("/api/demo/enter", {"code": code}, format="json").status_code == 201
+    return browser
+
+
+def test_a_labelled_code_reads_its_own_version_and_the_resume_code_the_full(db, tmp_path):
+    Household.objects.create(name="Demo")
+    _r, resume_code = DemoCode.rotate()
+    _l, linkedin_code = DemoCode.rotate(label="linkedin", daily_cap_cents=200)
+    load_fake(tmp_path)
+    assert "(linkedin)" in _load_linkedin(tmp_path)
+
+    full = _enter(resume_code).get("/api/demo/content")
+    assert full.data["work"] == fake_content()["work"]
+    assert full.data["assets"]["resume"] is not None
+
+    stranger = _enter(linkedin_code)
+    page = stranger.get("/api/demo/content")
+    assert page.status_code == 200
+    assert "work" not in page.data
+    assert page.data["assets"] == {"report": None, "resume": None}
+    assert stranger.get("/api/demo/asset/resume").status_code == 404
+    assert stranger.get("/api/demo/asset/report").status_code == 404
+    about = _tool(stranger, "about_kevin").data["text"]
+    assert "Stripped experience line." in about
+    assert "three years of pretend work" not in about
+
+
+def test_a_labelled_code_with_no_version_of_its_own_reads_the_full_one(db, tmp_path):
+    Household.objects.create(name="Demo")
+    _l, code = DemoCode.rotate(label="linkedin")
+    load_fake(tmp_path)
+    assert _enter(code).get("/api/demo/content").data["work"] == fake_content()["work"]
+
+
+def test_an_owner_previews_the_full_version(token_a, tmp_path):
+    load_fake(tmp_path)
+    _load_linkedin(tmp_path)
+    assert token_a.get("/api/demo/content").data["work"] == fake_content()["work"]

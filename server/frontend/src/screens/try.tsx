@@ -292,7 +292,7 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
         <nav aria-label="On this page" className="rc-caps">
           {content.legion && <a href="#legion">LEGION</a>}
           {hasPhone && <a href="#phone">Phone</a>}
-          <a href="#work">Work</a>
+          {work && <a href="#work">Work</a>}
           <a href="#experience">Experience</a>
           {/* At phone width the access note carries this link, so the nav stays one row (CSS). */}
           <Link to="/" data-nav-app="">
@@ -351,45 +351,47 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
 
         {hasPhone && <PhoneSection phone={phone} />}
 
-        <Section id="work" title={work.title}>
-          <p>{work.intro}</p>
-          {work.stats.length > 0 && (
-            <dl className="rc-figures">
-              {work.stats.map((stat) => (
-                <Figure key={`${stat.value}-${stat.label}`} value={stat.value} label={stat.label} />
-              ))}
-            </dl>
-          )}
-          {work.diagram_svg && <Diagram svg={work.diagram_svg} caption={work.diagram_caption} />}
-          {work.cards.length > 0 && (
-            <div className="rc-runin">
-              <h3 className="rc-h3">{propertiesHeading(work.cards.length)}</h3>
-              {work.cards.map((card) => (
-                <p key={card.title}>
-                  <b>{runIn(card.title)}</b> {card.body}
-                </p>
-              ))}
-            </div>
-          )}
-          {assets.report && (
-            <figure className="rc-figure">
-              <div className="rc-report">
-                {/* `allow-scripts` without `allow-same-origin`: the mocks may run their
-                    own interactions, and can reach nothing of this page or its cookies. */}
-                <iframe
-                  title="Report samples"
-                  src={assets.report}
-                  sandbox="allow-scripts"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                />
+        {work && (
+          <Section id="work" title={work.title}>
+            <p>{work.intro}</p>
+            {work.stats.length > 0 && (
+              <dl className="rc-figures">
+                {work.stats.map((stat) => (
+                  <Figure key={`${stat.value}-${stat.label}`} value={stat.value} label={stat.label} />
+                ))}
+              </dl>
+            )}
+            {work.diagram_svg && <Diagram svg={work.diagram_svg} caption={work.diagram_caption} />}
+            {work.cards.length > 0 && (
+              <div className="rc-runin">
+                <h3 className="rc-h3">{propertiesHeading(work.cards.length)}</h3>
+                {work.cards.map((card) => (
+                  <p key={card.title}>
+                    <b>{runIn(card.title)}</b> {card.body}
+                  </p>
+                ))}
               </div>
-              <figcaption className="rc-figcaption">
-                Report samples: illustrative mocks with made-up data. The report scrolls inside its frame.
-              </figcaption>
-            </figure>
-          )}
-        </Section>
+            )}
+            {assets.report && (
+              <figure className="rc-figure">
+                <div className="rc-report">
+                  {/* `allow-scripts` without `allow-same-origin`: the mocks may run their
+                      own interactions, and can reach nothing of this page or its cookies. */}
+                  <iframe
+                    title="Report samples"
+                    src={assets.report}
+                    sandbox="allow-scripts"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <figcaption className="rc-figcaption">
+                  Report samples: illustrative mocks with made-up data. The report scrolls inside its frame.
+                </figcaption>
+              </figure>
+            )}
+          </Section>
+        )}
 
         <Section id="experience" title="Experience">
           {assets.resume && (

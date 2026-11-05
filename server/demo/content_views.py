@@ -165,7 +165,9 @@ class RecruiterAssetsSerializer(serializers.Serializer):
 class RecruiterPageSerializer(serializers.Serializer):
     hero = RecruiterHeroSerializer()
     look_for = RecruiterTitleBodySerializer(many=True)
-    work = RecruiterWorkSerializer()
+    work = RecruiterWorkSerializer(
+        required=False, help_text="Absent in a version that leaves the work section out."
+    )
     experience = RecruiterExperienceSerializer(many=True)
     links = RecruiterLinksSerializer()
     assets = RecruiterAssetsSerializer()
@@ -220,7 +222,7 @@ class DemoContentView(APIView):
         },
     )
     def get(self, request):
-        row = RecruiterContent.current()
+        row = RecruiterContent.for_user(request.user)
         if row is None:
             return Response({"detail": NO_CONTENT}, status=404)
         body = public_content(row.content)
@@ -264,7 +266,7 @@ class DemoAssetView(APIView):
         },
     )
     def get(self, request, kind: str):
-        row = RecruiterContent.current()
+        row = RecruiterContent.for_user(request.user)
         stored = row.asset(kind) if row is not None and kind in ASSET_KINDS else None
         if stored is None:
             return Response({"detail": _no_such_asset(kind)}, status=404)

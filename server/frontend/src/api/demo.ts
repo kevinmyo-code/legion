@@ -57,7 +57,8 @@ export interface DemoContent {
   legion?: DemoLegion
   hero: { title: string; lead: string; facts: string[] }
   look_for: { title: string; body: string }[]
-  work: {
+  /** Absent in a version that leaves the work section out (the LinkedIn one). */
+  work?: {
     title: string
     intro: string
     stats: { value: string; label: string }[]

@@ -130,10 +130,12 @@ RECRUITER_FRAME = (
     "how Kevin builds it with AI coding agents - and "
     "for that use legion_docs, answer only from the passages it returns, and cite them. "
     # Audit 2026-11-03 (scripted recruiter run): five answers to fix in words.
-    "This page itself also shows Kevin's work: in the section \"What I built at Quanex\" there is "
-    'a box titled "Report samples", a rebuilt Value Stream Overview report on made-up data, and a Download '
-    "resume button. You cannot open or read either; when asked for the report or the resume, "
-    "say where it is on this page. "
+    "This page may also show Kevin's work: when it has a section about what he built at work, "
+    'that section holds a box titled "Report samples" (a rebuilt report on made-up data) and a '
+    "Download resume button. You cannot open or read either; when asked for the report or the "
+    "resume, say where it is on this page. Some versions of this page leave that section out: "
+    "if about_kevin does not mention his work in detail, do not describe it, and say Kevin can "
+    "share his resume directly. "
     "Money: the household's verified checking statements run through the end of last month, "
     "and the current month so far holds only the card's unverified rows. When a question about "
     "this month comes back mostly empty, also give last month's figure (monthly_spend with that "

@@ -15275,7 +15275,9 @@ components:
           items:
             $ref: '#/components/schemas/RecruiterTitleBody'
         work:
-          $ref: '#/components/schemas/RecruiterWork'
+          allOf:
+          - $ref: '#/components/schemas/RecruiterWork'
+          description: Absent in a version that leaves the work section out.
         experience:
           type: array
           items:
@@ -15290,7 +15292,6 @@ components:
       - hero
       - links
       - look_for
-      - work
     RecruiterStat:
       type: object
       properties:

@@ -6796,7 +6796,8 @@ export interface components {
         RecruiterPage: {
             hero: components["schemas"]["RecruiterHero"];
             look_for: components["schemas"]["RecruiterTitleBody"][];
-            work: components["schemas"]["RecruiterWork"];
+            /** @description Absent in a version that leaves the work section out. */
+            work?: components["schemas"]["RecruiterWork"];
             experience: components["schemas"]["RecruiterExperience"][];
             links: components["schemas"]["RecruiterLinks"];
             assets: components["schemas"]["RecruiterAssets"];

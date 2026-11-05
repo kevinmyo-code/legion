@@ -149,6 +149,12 @@ class RecruiterContent(models.Model):
     keeping.
 
     One live row, keyed `CURRENT_KEY`. A reload replaces it in place.
+
+    **A named code may have its own version** (Kevin, 2026-11-04: "a stripped of
+    quanex version for linkedin"; the resume code keeps the full page). A row
+    keyed by a code's `label` is what that code's visitors read, page,
+    files and `about_kevin` alike (`for_user`); a label with no row of its
+    own falls back to `CURRENT_KEY`.
     """
 
     CURRENT_KEY = "current"
@@ -171,6 +177,23 @@ class RecruiterContent(models.Model):
     @classmethod
     def current(cls) -> RecruiterContent | None:
         return cls.objects.filter(key=cls.CURRENT_KEY).first()
+
+    @classmethod
+    def for_user(cls, user) -> RecruiterContent | None:
+        """The version this caller reads: their visit code's own, if it has
+        one, else the current (full) one. An owner previewing reads current."""
+        if user is not None and getattr(user, "pk", None):
+            label = (
+                DemoVisit.objects.filter(user=user)
+                .exclude(code__label="")
+                .values_list("code__label", flat=True)
+                .first()
+            )
+            if label:
+                row = cls.objects.filter(key=label).first()
+                if row is not None:
+                    return row
+        return cls.current()
 
     def asset(self, kind: str) -> tuple[bytes, str, str] | None:
         """(bytes, content type, filename) for `report` or `resume`, or None

@@ -166,7 +166,7 @@ describe('/try', () => {
     expect(screen.getByText('~770')).toBeInTheDocument()
 
     // The diagram is an image of the SVG, never markup injected into the page.
-    const diagram = screen.getByRole('img', { name: content.work.diagram_caption })
+    const diagram = screen.getByRole('img', { name: content.work!.diagram_caption })
     expect(diagram.getAttribute('src')).toBe(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(SAMPLE_SVG)}`)
     expect(container.querySelector('text')).toBeNull()
     expect(container.innerHTML).not.toContain('bronze &amp; silver')
@@ -393,6 +393,20 @@ describe('/try', () => {
     const nav = await screen.findByRole('navigation', { name: 'On this page' })
     expect(within(nav).queryByRole('link', { name: 'LEGION' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'How LEGION is built' })).not.toBeInTheDocument()
+  })
+
+  test('a version with no work section draws no Work section, nav entry or report', async () => {
+    // The LinkedIn version (Kevin, 2026-11-04): no Quanex work, no report, no resume.
+    const engine = visitor()
+    const { work, ...rest } = sampleContent()
+    engine.demo.content = { ...rest, assets: { report: null, resume: null } }
+    renderApp('/try', engine, 'family')
+    const nav = await screen.findByRole('navigation', { name: 'On this page' })
+    expect(within(nav).queryByRole('link', { name: 'Work' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: work!.title })).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Report samples')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Download the resume (PDF)' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Experience' })).toBeInTheDocument()
   })
 
   test('the header shows content.name', async () => {

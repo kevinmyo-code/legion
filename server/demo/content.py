@@ -93,7 +93,8 @@ CONTENT_SCHEMA: dict = _obj(
             optional=("diagram_svg", "diagram_caption"),
         ),
     },
-    optional=("name", "phone", "legion"),
+    # `work` is optional too: the LinkedIn version leaves it out (Kevin, 2026-11-04).
+    optional=("name", "phone", "legion", "work"),
 )
 
 _VALIDATOR = Draft202012Validator(CONTENT_SCHEMA)
@@ -158,10 +159,11 @@ def read_folder(folder: Path) -> tuple[dict, dict[str, bytes]]:
     return content, files
 
 
-def load(folder: Path) -> Loaded:
-    """Check the folder, then replace the live row with it: content, and each
-    file present. A file absent from the folder is cleared, so the page never
-    offers a file the folder no longer holds."""
+def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
+    """Check the folder, then replace the row keyed `key` with it: content, and
+    each file present. A file absent from the folder is cleared, so the page
+    never offers a file the folder no longer holds. `key` is a code's label
+    for that code's own version (`RecruiterContent.for_user`)."""
     content, files = read_folder(folder)
     defaults: dict = {"content": content}
     for kind, (name, content_type) in ASSET_FILES.items():
@@ -171,7 +173,7 @@ def load(folder: Path) -> Loaded:
         defaults[f"{kind}_filename"] = name if data is not None else ""
     with transaction.atomic():
         row, created = RecruiterContent.objects.update_or_create(
-            key=RecruiterContent.CURRENT_KEY, defaults=defaults
+            key=key, defaults=defaults
         )
     return Loaded(
         row=row,
