@@ -955,6 +955,12 @@ class SubAgent internal constructor(
             )
 
         /** Appended to a [route] question: the model gets one turn, so it must ask for everything at once. */
+        /** Billed on the result, never the Live setup, so it can afford the full reason. */
+        internal const val ROUTE_ENGLISH =
+            "Reply in English, even if the question reached you in another language: the user's " +
+                "speech transcript can mislabel English. Use another language only if the user asked " +
+                "for one in words."
+
         private const val ROUTE_NOTE =
             "\n\nYou get one turn: call every tool the answer needs now. Their results go to the " +
                 "user unedited, so if no tool fits, answer in plain spoken text."
@@ -968,6 +974,10 @@ class SubAgent internal constructor(
          * 2026-10-28): a non-blocking result arrives in a turn of its own with no user speech, and
          * the model denied a full result there. Equally true on the blocking path, where the
          * result lands inside the turn that asked.
+         *
+         * [ROUTE_ENGLISH] (2026-11-05, A25 LIVE_AUDIT 11-04): the user's English came through the
+         * input transcript as Spanish, and the reply to an English `ask_fleet` result came back in
+         * Spanish. Said here, beside the facts, because this text is read at answer time.
          */
         internal fun frameRouteResults(question: String, results: List<Pair<String, JSONObject>>): String {
             val arr = JSONArray()
@@ -981,7 +991,7 @@ class SubAgent internal constructor(
                 arr.put(entry)
             }
             return "Results for the user's question \"$question\". Answer that question from them in your own " +
-                "voice; state only what is here.\n$arr"
+                "voice; state only what is here. $ROUTE_ENGLISH\n$arr"
         }
 
         /** A tool's output as JSON when it parses as JSON, else the raw string unchanged. */

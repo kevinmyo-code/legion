@@ -1155,6 +1155,17 @@ internal val ASSISTANT_FRAME =
     "calendar, money, and yes their cars - and no one of those is the default subject. "
 
 /**
+ * Reply in English (2026-11-05, A25 LIVE_AUDIT 11-03 and 11-04). Gemini's input transcript
+ * sometimes renders the user's English as Spanish or Korean, and the model answers in the language
+ * the transcript shows: twice in Spanish, once with no tool in the turn, once over an English
+ * `ask_fleet` result, until the user said "in English, please". Here, so it reaches a turn with no
+ * tool; the route-result frame ([SubAgent.frameRouteResults]) repeats it beside the facts. One
+ * sentence on purpose: [com.kevin.legion.service.LiveSetupPayloadSizeTest] bills it on every setup.
+ */
+internal const val ENGLISH_CLAUSE =
+    "Speak English; the transcript may show another language by mistake. Switch only if asked in words. "
+
+/**
  * Companion-safety rules (CLAUDE.md sec 7 safety). Appended to every system instruction, voice and
  * typed alike, and NOT part of the persona: an edited persona cannot reach them. At file scope
  * (2026-10-27) so a test can assert the typed-chat instruction carries this exact string.
@@ -1232,6 +1243,7 @@ internal fun composeIdentityAndRules(
 }
 
 internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME +
+    ENGLISH_CLAUSE +
     "Use your search tool for anything current or specific - news, scores, prices, weather " +
     "and forecasts - " +
     "and base your answer on what it finds. " +

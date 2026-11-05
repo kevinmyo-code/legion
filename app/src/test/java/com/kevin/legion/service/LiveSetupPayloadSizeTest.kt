@@ -177,6 +177,13 @@ class LiveSetupPayloadSizeTest {
      * never sent unasked (ruling 8), and the page that opens only on a yes (ticket 09). Trimming any
      * of them to fit would weaken the rule that stops Alfred sending work to a laptop unasked.
      * Headroom is now ~93 tokens: the next tool needs a trim or its own justification here.
+     *
+     * **NOT raised on 2026-11-05 (`ENGLISH_CLAUSE`, reply in English).** Measured on
+     * `fix/phone-daily-bugs` before the clause: dev had already grown to within ~27 tokens of the
+     * ceiling. A 133-char first wording measured 94 declarations, 87,505 chars of tools JSON plus
+     * 10,521 chars of system instruction = 98,026 chars, ~24,506 estimated tokens, 6 over; it was cut
+     * to 99 chars (~24,498), about 2 tokens of headroom. The long reason rides on the route-result
+     * frame instead (`SubAgent.ROUTE_ENGLISH`), which is billed per result, not per setup.
      */
     private val ceilingTokens = 24_500
 
