@@ -4,8 +4,8 @@ title: "Household finance: net worth across two countries, cash flow, budgets, a
 charted: 2026-11-05
 charted-by: "Kevin + Opus"
 effort: "`.scratch/household-finance/`"
-tickets: 13
-open: 13
+tickets: 14
+open: 14
 status: open
 tags: [map]
 ---
@@ -102,11 +102,12 @@ investments. Moving money is Kevin's job; an alert names the shortfall and the d
 | 11 | [Statement fetch skill for the Claude worker](issues/11-statement-fetch-skill.md) | worker | 04 |
 | 12 | [Private loader and Kevin's setup list](issues/12-private-loader-and-setup.md) | engine + Kevin | 01 |
 | 13 | [Home: Money panel replaces the calendar](issues/13-home-money-panel.md) | phone | 07, 08 |
+| 14 | [Money screens: month swipe, read-only accounts, budget bars](issues/14-money-screens-revamp.md) | phone | 13 |
 
 Order:
 1. Wave 1, engine only: 01, 12, 03, 02, 07, 08. That gives the US top-up trigger and budgets from Plaid data alone.
 2. Wave 2: 04, 05, 06. These fill the household.
-3. Wave 3: 13 first (Kevin's priority), then 09, 10 (phone, one Gradle at a time) and 11.
+3. Wave 3: 13 and 14 first (Kevin's priority), then 09, 10 (phone, one Gradle at a time) and 11.
 
 ADR 0073 is written with 01, 07 and 09.
 

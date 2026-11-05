@@ -129,6 +129,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "86772ce4b6daa258",
+      "type": "file",
+      "file": ".scratch/household-finance/issues/14-money-screens-revamp.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -256,6 +266,13 @@
       "fromNode": "ebd2774d6fdd9b59",
       "fromSide": "right",
       "toNode": "388fa11a2487ec2b",
+      "toSide": "left"
+    },
+    {
+      "id": "b0debe47e04290d6",
+      "fromNode": "388fa11a2487ec2b",
+      "fromSide": "right",
+      "toNode": "86772ce4b6daa258",
       "toSide": "left"
     }
   ]
