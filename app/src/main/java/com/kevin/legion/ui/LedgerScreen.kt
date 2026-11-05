@@ -172,8 +172,9 @@ fun LedgerScreen(
     var hasGeminiKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
     // Household-finance ticket 14: the Money view's engine figures (safe to spend, budgets, net
     // worth, accounts, cash flow), through the one FinanceController HOME and Alfred share.
-    val moneyViewModel: com.kevin.legion.ui.money.MoneyViewModel =
-        androidx.lifecycle.viewmodel.compose.viewModel(factory = com.kevin.legion.ui.money.MoneyViewModel.Factory(context))
+    val moneyViewModel: com.kevin.legion.ui.money.MoneyViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = com.kevin.legion.ui.money.MoneyViewModel.Factory(context),
+    )
     val money by moneyViewModel.state.collectAsStateWithLifecycle()
     var swipeHintSeen by remember { mutableStateOf(com.kevin.legion.ui.money.MoneySwipeHint.seen(context)) }
 
@@ -745,7 +746,10 @@ fun LedgerScreen(
                 pickedMonth = pnlMonth,
                 toCategorizeCount = toCategorizeCount,
                 quarantinedCount = state.quarantined.size,
-                syncLine = listOfNotNull(readStateLine(state.read, System.currentTimeMillis())?.text, state.syncLine).joinToString(" ").ifBlank { null },
+                syncLine = listOfNotNull(
+                    readStateLine(state.read, System.currentTimeMillis())?.text,
+                    state.syncLine,
+                ).joinToString(" ").ifBlank { null },
                 showSwipeHint = !swipeHintSeen,
                 loading = state.loading,
             ),
@@ -769,6 +773,9 @@ fun LedgerScreen(
                     moneyViewModel.loadMonth(month)
                 },
             ),
+            // The money goals panel (ticket 19, CRED aspect) the old root carried, so its hands
+            // path survives the Money view.
+            footer = { com.kevin.legion.ui.goals.GoalsPanel(aspect = "cred") },
         )
     }
 }

@@ -1,6 +1,7 @@
-@file:Suppress("FunctionNaming", "MagicNumber", "LongParameterList")
+@file:Suppress("FunctionNaming", "MagicNumber", "LongParameterList", "LongMethod")
 // FunctionNaming: @Composable convention is PascalCase. MagicNumber: layout dp from the approved
 // prototype (legion-money-prototypes/money-screens.html). LongParameterList: one callback per tap.
+// LongMethod: each card is one composable with its arguments wrapped one per line.
 
 package com.kevin.legion.ui.home
 
@@ -146,7 +147,13 @@ private fun CompactPanel(
                 modifier = Modifier.weight(1f).padding(start = 8.dp),
             )
             onBrief?.let {
-                PillButton("Brief", "Open today's brief", SoftColors.primaryContainer, SoftColors.onPrimaryContainer, it)
+                PillButton(
+                    "Brief",
+                    "Open today's brief",
+                    SoftColors.primaryContainer,
+                    SoftColors.onPrimaryContainer,
+                    it,
+                )
             }
             Spacer(Modifier.width(4.dp))
             PillButton("Calendar", "Open the calendar", SoftColors.cardHigh, SoftColors.text, onCalendar)
@@ -185,7 +192,13 @@ private fun SafeCard(
                 color = SoftColors.text3,
                 modifier = Modifier.weight(1f),
             )
-            onBrief?.let { PillButton("Brief", "Open today's brief", SoftColors.primaryContainer, SoftColors.onPrimaryContainer, it) }
+            onBrief?.let { PillButton(
+                "Brief",
+                "Open today's brief",
+                SoftColors.primaryContainer,
+                SoftColors.onPrimaryContainer,
+                it,
+            ) }
             Spacer(Modifier.width(6.dp))
             PillButton("Calendar", "Open the calendar", SoftColors.cardHigh, SoftColors.text, onCalendar)
         }
@@ -212,7 +225,11 @@ private fun SafeCard(
         safe.note?.let {
             Text(
                 it,
-                style = if (safe.figure == null) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.labelSmall,
+                style = if (safe.figure == null) {
+                    MaterialTheme.typography.bodyMedium
+                } else {
+                    MaterialTheme.typography.labelSmall
+                },
                 color = if (safe.figure == null) SoftColors.text2 else SoftColors.caution,
                 modifier = Modifier.padding(top = 2.dp),
             )
@@ -293,7 +310,8 @@ private fun BudgetLines(
             BudgetBar(bar, Modifier.padding(top = 2.dp)) { onOpenCategory(bar.category) }
         }
         val more = moreLine(model.bars, shown)
-        val legend = if (shown > 0 && model.bars.take(shown).any { it.pace != null }) "white tick: today's pace" else null
+        val ticked = shown > 0 && model.bars.take(shown).any { it.pace != null }
+        val legend = if (ticked) "white tick: today's pace" else null
         listOfNotNull(more, legend).takeIf { it.isNotEmpty() }?.let {
             Text(
                 it.joinToString(" · "),
@@ -321,7 +339,12 @@ fun MoneyGlanceCard(model: HomeMoneyPanelModel, netWorth: NetWorthGlance, onOpen
             .padding(14.dp),
     ) {
         Row(Modifier.fillMaxWidth()) {
-            Text("Money", style = MaterialTheme.typography.titleSmall, color = SoftColors.text, modifier = Modifier.weight(1f))
+            Text(
+                "Money",
+                style = MaterialTheme.typography.titleSmall,
+                color = SoftColors.text,
+                modifier = Modifier.weight(1f),
+            )
             Text("open ›", style = MaterialTheme.typography.labelMedium, color = SoftColors.text3)
         }
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -346,8 +369,19 @@ fun MoneyGlanceCard(model: HomeMoneyPanelModel, netWorth: NetWorthGlance, onOpen
             }
         }
         model.monthUsedLine?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = SoftColors.text3, modifier = Modifier.padding(top = 10.dp))
-            BarTrack(model.monthFill, model.monthPace, model.monthTone.fillColor(), Modifier.padding(top = 4.dp), height = 6)
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = SoftColors.text3,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+            BarTrack(
+                model.monthFill,
+                model.monthPace,
+                model.monthTone.fillColor(),
+                Modifier.padding(top = 4.dp),
+                height = 6,
+            )
         }
         val closest = model.bars.take(2)
         if (closest.isNotEmpty()) {
@@ -361,7 +395,12 @@ fun MoneyGlanceCard(model: HomeMoneyPanelModel, netWorth: NetWorthGlance, onOpen
             )
         }
         listOfNotNull(model.safe.note, model.budgetNote).distinct().forEach {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = SoftColors.caution, modifier = Modifier.padding(top = 4.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = SoftColors.caution,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
         glanceWarning(model)?.let { AlertLine(it, Modifier.padding(top = 8.dp)) }
     }

@@ -33,7 +33,11 @@ fun thisMonthModel(cash: CashFlowWire, currency: String, labels: Map<String, Str
     fun m(cents: Long) = if (sgd) FinanceText.money(FinanceText.usdToSgd(cents, rate!!.rateMicros), "SGD")
     else FinanceText.money(cents, "USD")
     val rows = listOf(
-        KvRow("Money in, planned", m(cash.incomePlannedCents), tag = "estimate".takeIf { cash.incomePlannedIsEstimate }),
+        KvRow(
+            "Money in, planned",
+            m(cash.incomePlannedCents),
+            tag = "estimate".takeIf { cash.incomePlannedIsEstimate },
+        ),
         KvRow("Money in, on file", m(cash.incomeOnFileCents)),
         KvRow("Spent", m(cash.spendCents)),
         KvRow("Mortgage", m(cash.mortgageCents)),
@@ -53,7 +57,8 @@ fun thisMonthModel(cash: CashFlowWire, currency: String, labels: Map<String, Str
             add("No USD/SGD rate is on file, so there is no SGD view.")
         }
         if (cash.accountsWithoutRows.isNotEmpty()) {
-            add("No rows yet this month from ${cash.accountsWithoutRows.joinToString(", ") { labels[it] ?: it }}: their spend is not in it.")
+            val names = cash.accountsWithoutRows.joinToString(", ") { labels[it] ?: it }
+            add("No rows yet this month from $names: their spend is not in it.")
         }
     }
     return ThisMonthModel(rows, notes, sgdAvailable = rate != null)
@@ -82,7 +87,12 @@ fun safeParts(safe: SafeToSpendWire, today: LocalDate): List<KvRow> {
 
 data class LayerRow(val name: String, val locked: Boolean, val value: String, val tags: List<String>)
 
-data class NetWorthModel(val partialLine: String?, val layers: List<LayerRow>, val total: KvRow, val notes: List<String>)
+data class NetWorthModel(
+    val partialLine: String?,
+    val layers: List<LayerRow>,
+    val total: KvRow,
+    val notes: List<String>,
+)
 
 private val LAYER_NAMES = mapOf(
     "liquid" to "Liquid", "investments" to "Investments", "cpf" to "CPF", "property" to "Property", "other" to "Other",
@@ -107,7 +117,9 @@ fun netWorthModel(nw: NetWorthWire, labels: Map<String, String> = emptyMap()): N
     }
     val notes = buildList {
         if (nw.missing.isNotEmpty()) add("No balance yet: ${nw.missing.joinToString(", ") { labels[it] ?: it }}.")
-        if (nw.unconverted.isNotEmpty()) add("Left out for want of a USD/SGD rate: ${nw.unconverted.joinToString(", ") { labels[it] ?: it }}.")
+        if (nw.unconverted.isNotEmpty()) {
+            add("Left out for want of a USD/SGD rate: ${nw.unconverted.joinToString(", ") { labels[it] ?: it }}.")
+        }
     }
     return NetWorthModel(
         partialLine = partial,
@@ -147,7 +159,10 @@ fun accountRows(accounts: List<FinanceAccountWire>, nw: NetWorthWire?, today: Lo
             line == null -> "${sourceWord(account.source)}, none yet"
             line.isEstimate && account.source != "computed" -> "${sourceWord(account.source)}, estimate, as of $asOf"
             else -> "${sourceWord(account.source)}, as of $asOf"
-        } + if ((line?.pendingCents ?: 0L) != 0L) ", ${FinanceText.money(line!!.pendingCents!!, line.currency)} pending" else ""
+        } + if ((line?.pendingCents ?: 0L) != 0L) ", ${FinanceText.money(
+            line!!.pendingCents!!,
+            line.currency,
+        )} pending" else ""
         AccountRow(name, sub, line?.let { FinanceText.exact(it.amountCents, it.currency) } ?: "-")
     }
 }

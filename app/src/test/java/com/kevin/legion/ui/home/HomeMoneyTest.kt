@@ -45,7 +45,8 @@ class HomeMoneyTest {
 
     @Test
     fun `the engine's own not-available reason is shown as it is`() {
-        val line = safeLine(FinanceRead.Fresh(SafeToSpendWire(available = false, reason = "No checking account is set.")), false)
+        val body = SafeToSpendWire(available = false, reason = "No checking account is set.")
+        val line = safeLine(FinanceRead.Fresh(body), false)
         assertNull(line.figure)
         assertEquals("No checking account is set.", line.note)
     }

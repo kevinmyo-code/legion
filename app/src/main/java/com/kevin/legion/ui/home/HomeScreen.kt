@@ -345,7 +345,7 @@ fun HomeScreen(
  * buttons, the pinned dock, the category row, any dock message, and the now-playing row. The top
  * bar and the talk bar (with the mic) are the shell's and are not drawn here.
  */
-@Suppress("FunctionNaming") // @Composable convention is PascalCase; detekt's rule does not know it.
+@Suppress("FunctionNaming", "LongMethod") // @Composable PascalCase; one screen, its sheets and slots
 @Composable
 fun HomeContent(
     calendar: HomeCalendarUiState,

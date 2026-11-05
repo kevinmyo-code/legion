@@ -78,14 +78,31 @@ object FinanceFixtures {
                 "liquid", -165_724, false,
                 listOf(
                     NetWorthLineWire("us_checking", "Checking", "USD", 8_850, "2026-11-05", "plaid"),
-                    NetWorthLineWire("us_card", "Cash card", "USD", -174_574, "2026-11-05", "plaid", pendingCents = -3_210),
+                    NetWorthLineWire(
+                        "us_card",
+                        "Cash card",
+                        "USD",
+                        -174_574,
+                        "2026-11-05",
+                        "plaid",
+                        pendingCents = -3_210,
+                    ),
                 ),
             ),
             NetWorthLayerWire("investments", 0, false, emptyList()),
             NetWorthLayerWire("cpf", 0, false, emptyList()),
             NetWorthLayerWire(
                 "property", 15_100_000, true,
-                listOf(NetWorthLineWire("flat", "Flat", "SGD", 19_500_000, "2026-11-01", "computed", isEstimate = true, convertedCents = 15_100_000)),
+                listOf(NetWorthLineWire(
+                    "flat",
+                    "Flat",
+                    "SGD",
+                    19_500_000,
+                    "2026-11-01",
+                    "computed",
+                    isEstimate = true,
+                    convertedCents = 15_100_000,
+                )),
             ),
             NetWorthLayerWire(
                 "other", 350_000, false,
@@ -99,9 +116,23 @@ object FinanceFixtures {
 
     val accounts = listOf(
         FinanceAccountWire("us_checking", "Everyday checking", source = "plaid", last4 = "0001", layer = "liquid"),
-        FinanceAccountWire("us_card", "A credit card with a very long marketing name indeed", source = "plaid", last4 = "0002", layer = "liquid", isDebt = true),
+        FinanceAccountWire(
+            "us_card",
+            "A credit card with a very long marketing name indeed",
+            source = "plaid",
+            last4 = "0002",
+            layer = "liquid",
+            isDebt = true,
+        ),
         FinanceAccountWire("spouse_checking", "Spouse checking", source = "statement", layer = "liquid"),
-        FinanceAccountWire("sg_savings", "Singapore savings", country = "SG", currency = "SGD", source = "statement", layer = "liquid"),
+        FinanceAccountWire(
+            "sg_savings",
+            "Singapore savings",
+            country = "SG",
+            currency = "SGD",
+            source = "statement",
+            layer = "liquid",
+        ),
         FinanceAccountWire("flat", "Flat", country = "SG", currency = "SGD", source = "computed", layer = "property"),
         FinanceAccountWire("car", "Car", source = "manual", layer = "other"),
     )

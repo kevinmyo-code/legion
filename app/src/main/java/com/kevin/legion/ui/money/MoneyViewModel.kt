@@ -145,6 +145,9 @@ object MoneySwipeHint {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY, false)
 
     fun markSeen(context: Context) {
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY, true).apply()
+        context.applicationContext.getSharedPreferences(
+            PREFS,
+            Context.MODE_PRIVATE,
+        ).edit().putBoolean(KEY, true).apply()
     }
 }

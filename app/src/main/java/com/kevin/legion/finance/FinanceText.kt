@@ -12,6 +12,7 @@ import kotlin.math.abs
  * scoped to these screens: they show one household currency at a time, with the currency said
  * whenever it is not USD.
  */
+@Suppress("MagicNumber") // decimal place arithmetic: 10, 10_000 are digits, not tunables
 object FinanceText {
     private const val CENTS = 100L
     private const val HALF = 50L

@@ -137,10 +137,46 @@ class MoneyScreensScreenshotTest {
     }
 
     private val txns = listOf(
-        MoneyTxnRow(1, LocalDate.of(2026, 11, 4), "Grocery store", -3_210, "USD", "Groceries", pending = true, currentPeriod = false),
-        MoneyTxnRow(2, LocalDate.of(2026, 11, 3), "A subscription", -10_700, "USD", "Subscriptions", pending = false, currentPeriod = false),
-        MoneyTxnRow(3, LocalDate.of(2026, 11, 2), "Another grocery store", -6_390, "USD", "Groceries", pending = false, currentPeriod = true),
-        MoneyTxnRow(4, LocalDate.of(2026, 11, 1), "Something uncategorised", -1_500, "USD", null, pending = false, currentPeriod = false),
+        MoneyTxnRow(
+            1,
+            LocalDate.of(2026, 11, 4),
+            "Grocery store",
+            -3_210,
+            "USD",
+            "Groceries",
+            pending = true,
+            currentPeriod = false,
+        ),
+        MoneyTxnRow(
+            2,
+            LocalDate.of(2026, 11, 3),
+            "A subscription",
+            -10_700,
+            "USD",
+            "Subscriptions",
+            pending = false,
+            currentPeriod = false,
+        ),
+        MoneyTxnRow(
+            3,
+            LocalDate.of(2026, 11, 2),
+            "Another grocery store",
+            -6_390,
+            "USD",
+            "Groceries",
+            pending = false,
+            currentPeriod = true,
+        ),
+        MoneyTxnRow(
+            4,
+            LocalDate.of(2026, 11, 1),
+            "Something uncategorised",
+            -1_500,
+            "USD",
+            null,
+            pending = false,
+            currentPeriod = false,
+        ),
     )
 
     private fun moneyView(file: String, state: MoneyViewUiState) {
@@ -167,7 +203,11 @@ class MoneyScreensScreenshotTest {
         netWorth = FinanceRead.Fresh(FinanceFixtures.netWorth),
         accounts = FinanceRead.Fresh(FinanceFixtures.accounts),
         pages = mapOf(
-            nov to MoneyMonthPage(FinanceRead.Fresh(FinanceFixtures.budgets), FinanceRead.Fresh(FinanceFixtures.cashFlow), txns),
+            nov to MoneyMonthPage(
+                FinanceRead.Fresh(FinanceFixtures.budgets),
+                FinanceRead.Fresh(FinanceFixtures.cashFlow),
+                txns,
+            ),
         ),
     )
 
@@ -182,7 +222,11 @@ class MoneyScreensScreenshotTest {
         "money-view-refused-saved.png",
         fresh.copy(
             currency = "SGD",
-            netWorth = FinanceRead.Saved(FinanceFixtures.netWorth, 0L, "Saved 2 days ago. The engine could not be reached."),
+            netWorth = FinanceRead.Saved(
+                FinanceFixtures.netWorth,
+                0L,
+                "Saved 2 days ago. The engine could not be reached.",
+            ),
             pages = mapOf(
                 nov to MoneyMonthPage(
                     FinanceRead.Unavailable("The engine could not be reached."),

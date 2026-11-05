@@ -43,7 +43,11 @@ class MoneyViewComposeTest {
         netWorth = FinanceRead.Fresh(FinanceFixtures.netWorth),
         accounts = FinanceRead.Fresh(FinanceFixtures.accounts),
         pages = mapOf(
-            nov to MoneyMonthPage(FinanceRead.Fresh(FinanceFixtures.budgets), FinanceRead.Fresh(FinanceFixtures.cashFlow), emptyList()),
+            nov to MoneyMonthPage(
+                FinanceRead.Fresh(FinanceFixtures.budgets),
+                FinanceRead.Fresh(FinanceFixtures.cashFlow),
+                emptyList(),
+            ),
         ),
     )
 

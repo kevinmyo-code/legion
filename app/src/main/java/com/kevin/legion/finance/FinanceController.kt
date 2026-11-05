@@ -112,6 +112,8 @@ class FinanceController(
     suspend fun accounts(): FinanceRead<List<FinanceAccountWire>> =
         read("accounts", "$ROOT/accounts", emptyMap(), ListSerializer(FinanceAccountWire.serializer()))
 
+    // One return per outcome (no engine, fresh, unreadable, refused, saved): flatter than a nest.
+    @Suppress("ReturnCount")
     private suspend fun <T> read(
         key: String,
         path: String,
@@ -134,6 +136,7 @@ class FinanceController(
         return saved(key, serializer, FinanceWords.why(failure))
     }
 
+    @Suppress("ReturnCount") // nothing saved, saved but unreadable, saved
     private fun <T> saved(key: String, serializer: KSerializer<T>, why: String): FinanceRead<T> {
         val (body, at) = cache.read(key) ?: return FinanceRead.Unavailable(why)
         val value = runCatching { financeJson.decodeFromString(serializer, body) }.getOrNull()

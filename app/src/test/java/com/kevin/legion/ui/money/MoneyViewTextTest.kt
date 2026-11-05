@@ -41,8 +41,14 @@ class MoneyViewTextTest {
     fun `net worth by layer says partial and estimate`() {
         val model = netWorthModel(FinanceFixtures.netWorth)
         assertEquals("partial: 4 accounts not in it", model.partialLine)
-        assertEquals(LayerRow("Property", locked = true, value = "$151,000", tags = listOf("estimate")), model.layers[3])
-        assertEquals(LayerRow("Investments", locked = false, value = "nothing on file", tags = emptyList()), model.layers[1])
+        assertEquals(
+            LayerRow("Property", locked = true, value = "$151,000", tags = listOf("estimate")),
+            model.layers[3],
+        )
+        assertEquals(
+            LayerRow("Investments", locked = false, value = "nothing on file", tags = emptyList()),
+            model.layers[1],
+        )
         assertEquals(KvRow("Total", "$148,200", "estimate"), model.total)
     }
 
@@ -63,7 +69,14 @@ class MoneyViewTextTest {
         val withSg = FinanceFixtures.netWorth.copy(
             layers = FinanceFixtures.netWorth.layers + com.kevin.legion.finance.NetWorthLayerWire(
                 "liquid", 0, false,
-                listOf(com.kevin.legion.finance.NetWorthLineWire("sg_savings", "Singapore savings", "SGD", 1, "2026-09-30", "statement")),
+                listOf(com.kevin.legion.finance.NetWorthLineWire(
+                    "sg_savings",
+                    "Singapore savings",
+                    "SGD",
+                    1,
+                    "2026-09-30",
+                    "statement",
+                )),
             ),
         )
         // November is not over, so October is owed; the newest statement is September's.

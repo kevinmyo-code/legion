@@ -74,6 +74,8 @@ private fun monthName(month: String?, today: LocalDate): String {
 }
 
 /** The safe-to-spend line from whatever the read gave. Never blank, never a made-up zero. */
+// One branch per thing the engine can say; splitting it would scatter one sentence's rules.
+@Suppress("CyclomaticComplexMethod", "ReturnCount")
 fun safeLine(read: FinanceRead<SafeToSpendWire>?, loading: Boolean): SafeLineModel {
     val body = read?.valueOrNull
     if (body == null) {
@@ -89,7 +91,10 @@ fun safeLine(read: FinanceRead<SafeToSpendWire>?, loading: Boolean): SafeLineMod
     }
     val savedNote = (read as? FinanceRead.Saved)?.note
     if (!body.available || body.safeCents == null) {
-        return SafeLineModel(figure = null, note = listOfNotNull(body.reason, savedNote).joinToString(" ").ifBlank { null })
+        return SafeLineModel(
+            figure = null,
+            note = listOfNotNull(body.reason, savedNote).joinToString(" ").ifBlank { null },
+        )
     }
     val currency = body.currency ?: "USD"
     val until = FinanceText.parseDay(body.until)?.let { day ->
@@ -114,11 +119,13 @@ fun safeLine(read: FinanceRead<SafeToSpendWire>?, loading: Boolean): SafeLineMod
     )
 }
 
+@Suppress("CyclomaticComplexMethod") // one field per panel line, each with its own null case
 fun homeMoneyPanel(state: HomeMoneyUiState): HomeMoneyPanelModel {
     val safe = safeLine(state.safe, state.loading)
     val budgets = state.budgets?.valueOrNull
     val budgetNote = when {
-        budgets == null && state.budgets != null -> "Couldn't read budgets. ${state.budgets.noteOrNull.orEmpty()}".trim()
+        budgets == null && state.budgets != null ->
+            "Couldn't read budgets. ${state.budgets.noteOrNull.orEmpty()}".trim()
         budgets == null -> null
         else -> state.budgets.noteOrNull?.takeIf { it != safe.note }
     }
@@ -134,7 +141,10 @@ fun homeMoneyPanel(state: HomeMoneyUiState): HomeMoneyPanelModel {
     }
     return HomeMoneyPanelModel(
         safe = safe,
-        monthLine = "$name: ${FinanceText.money(total.spentCents, currency)} of ${FinanceText.money(total.capCents, currency)}",
+        monthLine = "$name: ${FinanceText.money(
+            total.spentCents,
+            currency,
+        )} of ${FinanceText.money(total.capCents, currency)}",
         monthPercent = percent?.let { "$it%" } ?: "no caps set",
         bars = closestToCap(budgets.categories, currency),
         budgetNote = budgetNote,

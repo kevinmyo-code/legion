@@ -1,6 +1,7 @@
-@file:Suppress("FunctionNaming", "MagicNumber", "LongParameterList", "TooManyFunctions")
+@file:Suppress("FunctionNaming", "MagicNumber", "LongParameterList", "TooManyFunctions", "LongMethod")
 // FunctionNaming: @Composable convention is PascalCase. MagicNumber: layout dp from the approved
 // prototype. LongParameterList: one callback per tap. TooManyFunctions: one composable per section.
+// LongMethod: a section is one card.
 
 package com.kevin.legion.ui.money
 
@@ -100,15 +101,26 @@ private val CARD = RoundedCornerShape(18.dp)
  * missing, and the month's transactions with category chips.
  */
 @Composable
-fun MoneyViewContent(state: MoneyViewUiState, host: MoneyViewHost, callbacks: MoneyViewCallbacks) {
+fun MoneyViewContent(
+    state: MoneyViewUiState,
+    host: MoneyViewHost,
+    callbacks: MoneyViewCallbacks,
+    /** Under every page: the host's Room-backed money goals panel. Empty in tests. */
+    footer: @Composable () -> Unit = {},
+) {
     Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
         MoneyTitleRow(host.toCategorizeCount, callbacks.onOpenGroceries, callbacks.onOpenCategorize, callbacks.onBack)
         host.syncLine?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.caution, modifier = Modifier.padding(horizontal = 16.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftColors.caution,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
         }
         if (host.quarantinedCount > 0) {
             Text(
-                "${host.quarantinedCount} statement file${if (host.quarantinedCount == 1) "" else "s"} quarantined. Tap to review.",
+                quarantineLine(host.quarantinedCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = SoftColors.caution,
                 modifier = Modifier.fillMaxWidth().clickable(onClick = callbacks.onOpenQuarantine)
@@ -134,7 +146,7 @@ fun MoneyViewContent(state: MoneyViewUiState, host: MoneyViewHost, callbacks: Mo
             }
             MonthHeader(months, pager, host.showSwipeHint)
             HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth()) { index ->
-                MonthPage(months[index], state, callbacks)
+                MonthPage(months[index], state, callbacks, footer)
             }
         }
     }
@@ -211,18 +223,29 @@ private fun StepButton(description: String, enabled: Boolean, left: Boolean, onC
 }
 
 @Composable
-private fun MonthPage(month: YearMonth, state: MoneyViewUiState, callbacks: MoneyViewCallbacks) {
+private fun MonthPage(
+    month: YearMonth,
+    state: MoneyViewUiState,
+    callbacks: MoneyViewCallbacks,
+    footer: @Composable () -> Unit,
+) {
     val page = state.pages[month]
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
     ) {
         if (month == YearMonth.from(state.today)) SafeSection(state)
-        ThisMonthSection(page?.cashFlow, state.currency, accountLabels(state.accounts?.valueOrNull), callbacks.onSetCurrency)
+        ThisMonthSection(
+            page?.cashFlow,
+            state.currency,
+            accountLabels(state.accounts?.valueOrNull),
+            callbacks.onSetCurrency,
+        )
         BudgetSection(page?.budgets, callbacks)
         NetWorthSection(state)
         AccountsSection(state)
         StatementsSection(state, month)
         TransactionsSection(page, callbacks.onOpenCategory)
+        footer()
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -237,9 +260,18 @@ private fun Card(content: @Composable () -> Unit) {
 @Composable
 private fun SectionTitle(title: String, tag: String? = null) {
     Row(Modifier.padding(top = 8.dp, bottom = 8.dp, start = 2.dp), verticalAlignment = Alignment.Bottom) {
-        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = SoftColors.text)
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = SoftColors.text,
+        )
         tag?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3, modifier = Modifier.padding(start = 8.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftColors.text3,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }
@@ -321,7 +353,12 @@ private fun SafeSection(state: MoneyViewUiState) {
                     color = if (line.negative) SoftColors.onAlert else SoftColors.text,
                 )
                 line.until?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text3, modifier = Modifier.padding(start = 10.dp, bottom = 5.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SoftColors.text3,
+                        modifier = Modifier.padding(start = 10.dp, bottom = 5.dp),
+                    )
                 }
             }
             body?.let { b -> safeParts(b, state.today).forEachIndexed { i, row -> Kv(row, first = i == 0) } }
@@ -353,7 +390,12 @@ private fun ThisMonthSection(
     val model = thisMonthModel(cash, currency, labels)
     Card {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("This month", style = MaterialTheme.typography.labelMedium, color = SoftColors.text3, modifier = Modifier.weight(1f))
+            Text(
+                "This month",
+                style = MaterialTheme.typography.labelMedium,
+                color = SoftColors.text3,
+                modifier = Modifier.weight(1f),
+            )
             if (model.sgdAvailable) CurrencyToggle(currency, onSetCurrency)
         }
         model.rows.forEachIndexed { i, row -> Kv(row, first = i == 0) }
@@ -390,7 +432,10 @@ private fun BudgetSection(read: FinanceRead<BudgetsWire>?, callbacks: MoneyViewC
     Card {
         Row(Modifier.fillMaxWidth()) {
             Text(
-                "${FinanceText.money(budgets.total.spentCents, budgets.currency)} of ${FinanceText.money(budgets.total.capCents, budgets.currency)}",
+                "${FinanceText.money(
+                    budgets.total.spentCents,
+                    budgets.currency,
+                )} of ${FinanceText.money(budgets.total.capCents, budgets.currency)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = SoftColors.text2,
                 modifier = Modifier.weight(1f),
@@ -407,18 +452,30 @@ private fun BudgetSection(read: FinanceRead<BudgetsWire>?, callbacks: MoneyViewC
         budgets.categories.filter { it.capCents == null || it.capCents <= 0 }.forEach { line ->
             Text(
                 "${line.category}: ${FinanceText.money(line.spentCents, budgets.currency)}, no cap" +
-                    if (line.pendingCents > 0) ", includes ${FinanceText.money(line.pendingCents, budgets.currency)} pending" else "",
+                    if (line.pendingCents > 0) ", includes ${FinanceText.money(
+                        line.pendingCents,
+                        budgets.currency,
+                    )} pending" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = SoftColors.text2,
-                modifier = Modifier.fillMaxWidth().clickable { callbacks.onOpenCategory(line.category) }.padding(top = 6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { callbacks.onOpenCategory(line.category) }
+                    .padding(top = 6.dp),
             )
         }
         budgets.fixed.forEach { fixed ->
-            Note("${fixed.category}: " + if (fixed.paid) "paid, ${FinanceText.money(fixed.paidCents, budgets.currency)}" else "not paid yet")
+            Note("${fixed.category}: " + if (fixed.paid) "paid, ${FinanceText.money(
+                fixed.paidCents,
+                budgets.currency,
+            )}" else "not paid yet")
         }
         if (budgets.uncategorisedCents > 0) {
             Text(
-                "${FinanceText.money(budgets.uncategorisedCents, budgets.currency)} uncategorised, in no category above.",
+                "${FinanceText.money(
+                    budgets.uncategorisedCents,
+                    budgets.currency,
+                )} uncategorised, in no category above.",
                 style = MaterialTheme.typography.labelSmall,
                 color = SoftColors.caution,
                 modifier = Modifier.clickable { callbacks.onOpenCategory(null) }.padding(top = 6.dp),
@@ -451,9 +508,20 @@ private fun NetWorthSection(state: MoneyViewUiState) {
             if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(SoftColors.barRule))
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(layer.name, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text)
-                if (layer.locked) Text("locked", style = MaterialTheme.typography.labelSmall, color = SoftColors.text3, modifier = Modifier.padding(start = 4.dp))
+                if (layer.locked) Text(
+                    "locked",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SoftColors.text3,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
                 Spacer(Modifier.weight(1f))
-                Text(layer.value, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text, maxLines = 1, softWrap = false)
+                Text(
+                    layer.value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SoftColors.text,
+                    maxLines = 1,
+                    softWrap = false,
+                )
                 layer.tags.forEach { Tag(it) }
             }
         }
@@ -469,7 +537,11 @@ private fun AccountsSection(state: MoneyViewUiState) {
     val accounts = state.accounts?.valueOrNull ?: return ReadNote(state.accounts, "the account list")
     val rows = accountRows(accounts, state.netWorth?.valueOrNull, state.today)
     Card {
-        if (rows.isEmpty()) Text("No accounts on file.", style = MaterialTheme.typography.bodyMedium, color = SoftColors.text2)
+        if (rows.isEmpty()) Text(
+            "No accounts on file.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SoftColors.text2,
+        )
         rows.forEachIndexed { i, row -> AccountLine(row, first = i == 0) }
     }
 }
@@ -480,11 +552,31 @@ internal fun AccountLine(row: AccountRow, first: Boolean) {
     if (!first) Box(Modifier.fillMaxWidth().height(1.dp).background(SoftColors.barRule))
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(row.name, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-            Text(row.sub, style = MaterialTheme.typography.labelSmall, color = SoftColors.text3, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+            Text(
+                row.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SoftColors.text,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                row.sub,
+                style = MaterialTheme.typography.labelSmall,
+                color = SoftColors.text3,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Spacer(Modifier.width(10.dp))
-        Text(row.balance, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text, maxLines = 1, softWrap = false)
+        Text(
+            row.balance,
+            style = MaterialTheme.typography.bodyMedium,
+            color = SoftColors.text,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
@@ -494,12 +586,30 @@ private fun StatementsSection(state: MoneyViewUiState, month: YearMonth) {
     val accounts = state.accounts?.valueOrNull ?: return ReadNote(state.accounts, "the statement list")
     val rows = statementRows(accounts, state.netWorth?.valueOrNull, month, state.today)
     Card {
-        if (rows.isEmpty()) Text("No account takes a statement.", style = MaterialTheme.typography.bodyMedium, color = SoftColors.text2)
+        if (rows.isEmpty()) Text(
+            "No account takes a statement.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SoftColors.text2,
+        )
         rows.forEachIndexed { i, row ->
             if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(SoftColors.barRule))
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Text(row.name, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Text(row.status, style = MaterialTheme.typography.bodyMedium, color = if (row.onFile) SoftColors.good else SoftColors.caution, maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 8.dp))
+                Text(
+                    row.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SoftColors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    row.status,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (row.onFile) SoftColors.good else SoftColors.caution,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
             }
         }
         Note("Read from each account's newest balance day; the engine does not check statements one by one yet.")
@@ -507,6 +617,7 @@ private fun StatementsSection(state: MoneyViewUiState, month: YearMonth) {
 }
 
 @Composable
+@Suppress("LongMethod", "CyclomaticComplexMethod") // chips and rows share the chip state
 private fun TransactionsSection(page: MoneyMonthPage?, onOpenCategory: (String?) -> Unit) {
     SectionTitle("Transactions")
     val rows = page?.transactions
@@ -522,7 +633,10 @@ private fun TransactionsSection(page: MoneyMonthPage?, onOpenCategory: (String?)
     }
     var chip by remember(rows) { mutableStateOf<String?>(ALL) }
     val categories = rows.map { it.category }.distinct().sortedBy { it ?: "~" }
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         (listOf<String?>(ALL) + categories).forEach { c ->
             val on = c == chip
             Text(
@@ -546,7 +660,11 @@ private fun TransactionsSection(page: MoneyMonthPage?, onOpenCategory: (String?)
     }
     val shown = if (chip == ALL) rows else rows.filter { it.category == chip }
     Card {
-        if (shown.isEmpty()) Text("No spend this month.", style = MaterialTheme.typography.bodyMedium, color = SoftColors.text2)
+        if (shown.isEmpty()) Text(
+            "No spend this month.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SoftColors.text2,
+        )
         shown.forEachIndexed { i, row ->
             if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(SoftColors.barRule))
             Row(
@@ -554,8 +672,20 @@ private fun TransactionsSection(page: MoneyMonthPage?, onOpenCategory: (String?)
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(row.description, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(txnSubLine(row), style = MaterialTheme.typography.labelSmall, color = SoftColors.text3, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        row.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SoftColors.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        txnSubLine(row),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SoftColors.text3,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 Text(
                     FinanceText.exact(row.cents, row.currency).let { if (row.cents < 0) it else "+$it" },
@@ -579,3 +709,7 @@ internal fun txnSubLine(row: MoneyTxnRow): String = listOfNotNull(
     "pending".takeIf { row.pending },
     "current period".takeIf { row.currentPeriod },
 ).joinToString(", ")
+
+/** "2 statement files quarantined. Tap to review." */
+internal fun quarantineLine(count: Int): String =
+    "$count statement file${if (count == 1) "" else "s"} quarantined. Tap to review."
