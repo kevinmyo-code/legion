@@ -246,6 +246,37 @@ def test_a_recruiters_record_names_the_visit_and_has_no_household():
     assert "What lists do we have?" in body
 
 
+def test_a_per_company_ref_survives_enter_visit_and_every_conversation_record():
+    """Kevin, 2026-11-05: one demo link per company (`/try?code=...&ref=acme-corp`). Through the
+    real doors: the enter stores `ref` on the visit, the page reads it back, and every
+    conversation of that visit carries it, in the row and in `device_logs`' batch header."""
+    from rest_framework.test import APIClient
+
+    from demo.models import DemoCode
+    from devicelogs.render import batch_header
+
+    Household.objects.create(name="Demo")
+    _row, code = DemoCode.rotate()
+    web = APIClient(enforce_csrf_checks=True)
+    entered = web.post("/api/demo/enter", {"code": code, "ref": "acme-corp"}, format="json")
+    assert entered.status_code == 201, entered.data
+    assert entered.data["ref"] == "acme-corp"
+    # Signing in rotates the CSRF token: take the new one, as the page does.
+    web.get("/api/auth/csrf")
+    web.credentials(HTTP_X_CSRFTOKEN=web.cookies["csrftoken"].value)
+
+    session = web.get("/api/demo/session")
+    assert session.status_code == 200 and session.data["ref"] == "acme-corp"
+    visit = DemoVisit.objects.get()
+    assert visit.ref == "acme-corp"
+
+    first, second = _mint(web), _mint(web)
+    for cid in (first, second):
+        row = DeviceLog.objects.get(batch_id=cid)
+        assert (row.demo_visitor, row.visit, row.visit_ref) == (True, visit, "acme-corp")
+        assert batch_header(row, 0).endswith("| visit ref=acme-corp")
+
+
 def test_a_recruiter_cannot_upload_to_another_visit_or_a_member(member_web):
     _visit_a, web_a = _visit("a")
     _visit_b, web_b = _visit("b")
