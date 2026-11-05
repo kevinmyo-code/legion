@@ -50,22 +50,34 @@ Copy these rules into every helper prompt, with the task number filled in:
    recipient). Put its
    one-line output (sent or not sent) in the summary in words.
 10. Amazon orders ("where's my Amazon order", "has it shipped", "when does it arrive", any
-   package or delivery from Amazon), on a machine whose scope says Gmail is readable.
-   **For such a task, paste this whole rule into the helper prompt word for word.** Gmail first,
-   the carrier's public tracking page second (Kevin, 2026-11-04).
-   a. Gmail, read only: load the tools with ToolSearch
-      `select:mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread`, search
-      Amazon's shipping mail newest first (`from:amazon.com newer_than:14d`), and read only the
-      threads that answer the question.
-   b. Unless every order asked about is already "Delivered" in mail: if a shipping email names a
-      UPS, USPS or FedEx tracking number or link, WebFetch that carrier's public tracking page and
-      lead the summary with its latest status. Never sign in to Amazon or any carrier, and never
-      open Amazon's own site. An Amazon-delivered package (tracking starting TBA) has no public
-      page: say what the mail says and that live tracking for it is only in the Amazon app.
-   c. What is kept is the answer, not the mail (CLAUDE.md section 7). The summary says the item in
-      a few words, its status and the day it arrives. Never prices, order numbers, tracking
-      numbers, quoted mail, senders or addresses, and no mail content in any file. Never send,
-      draft, label, archive or delete mail through Gmail; sending is rule 9 only.
+   package or delivery from Amazon), on a machine whose scope says Gmail is readable: the helper
+   prompt starts with "Use the amazon-orders skill" (rule 11); the skill holds the steps (Gmail
+   read only, then the carrier's public tracking page, no logins). Paste this sentence into that
+   helper prompt word for word: what is kept is the answer, not the mail (CLAUDE.md section 7);
+   the summary says the item in a few words, its status and the day it arrives, never prices,
+   order numbers, tracking numbers, quoted mail, senders or addresses, and no mail content goes
+   in any file. Never send, draft, label, archive or delete mail through Gmail; sending is rule 9
+   only.
+11. Skills. This folder's project skills (`.claude/skills`) hold the steps for jobs Kevin asks for
+   again and again. **If a project skill matches the task, the helper prompt starts with "Use the
+   <name> skill"**, then the task. LEGION work: `fix-alfred` (Kevin says Alfred got something
+   wrong, or reported a reply), `build-feature` ("build me X in LEGION"), `legion-chores` (tests,
+   anything else in the repo), `ship` (shipping or undoing a change), `book-finder` ("recommend
+   me a book", "find me a free copy"). Helpers never edit a skill: `.claude` is Kevin's, and the
+   hook asks.
+12. Shipping LEGION (merge, push, deploy the engine, publish a phone update, add a book to the
+   library) goes only through the ship skill, after Kevin's one yes (map alfred-builds):
+   - `<<PYTHON>> <<SHIP>> ask --task N ...` checks, tests and prints the question. Report it
+     with `--status needs_confirmation --question "<that question>"`, word for word, including
+     any "This also changes ..." it adds. Red tests or a conflict: report `failed` in words.
+   - On Kevin's yes the follow-up task message gives a token:
+     `<<PYTHON>> <<SHIP>> run --task N --token <token>`. Its last line is the summary.
+   - "Undo the last update": `<<PYTHON>> <<UNDO>> ask --task N`, then on the yes
+     `<<PYTHON>> <<UNDO>> run --task N --token <token>`.
+   - Never `git push`, run a deploy script, `release_apk.py` or `gcloud` directly: the hook
+     denies them even with a token. Gradle and full test suites run only through
+     `<<PYTHON>> <<BUILD_LOCK>> --task N --cwd <folder> -- <command>` (one build at a time on
+     this laptop, with a heat check).
 
 ## This machine
 

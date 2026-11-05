@@ -288,7 +288,11 @@ class Worker:
                      "not apply on this machine.")
         for k, v in {"<<MACHINE>>": self.name, "<<PYTHON>>": cmd_path(helper_python()),
                      "<<REPORT>>": cmd_path(HERE / "report.py"),
-                     "<<SEND_MAIL>>": cmd_path(HERE / "send_mail.py"), "<<SCOPE>>": scope}.items():
+                     "<<SEND_MAIL>>": cmd_path(HERE / "send_mail.py"),
+                     # alfred-builds tickets 03, 05, 08: the ship step, undo, the build lock.
+                     "<<SHIP>>": cmd_path(HERE / "ship.py"), "<<UNDO>>": cmd_path(HERE / "undo.py"),
+                     "<<BUILD_LOCK>>": cmd_path(HERE / "build_lock.py"),
+                     "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
 

@@ -179,6 +179,11 @@ class TestTasks(WorkerCase):
         prompt = argv[argv.index("--append-system-prompt") + 1]
         self.assertIn("Alienware", prompt)
         self.assertIn("report.py", prompt)
+        for script in ("ship.py", "undo.py", "build_lock.py"):  # alfred-builds 03, 05, 08
+            self.assertIn((HERE / script).as_posix(), prompt)
+        self.assertIn('the helper prompt starts with "Use the\n   <name> skill"', prompt)
+        self.assertIn("amazon-orders skill", prompt)
+        self.assertIn("what is kept is the answer, not the mail", prompt)
         self.assertNotIn("<<", prompt)
         self.assertTrue(Path(s["cwd"]).resolve() == self.paths.work.resolve())
 
@@ -501,6 +506,9 @@ class TestGmailAndAmazon(unittest.TestCase):
     def test_the_prompt_carries_rule_10_and_the_script_path(self):
         text = (Path(W.__file__).parent / "main_session_prompt.md").read_text(encoding="utf-8")
         self.assertIn("10. Amazon orders", text)
+        # alfred-builds 04: the steps moved to the amazon-orders skill; what is kept stays here
+        # (CLAUDE.md section 7 points at rule 10).
+        self.assertIn('"Use the amazon-orders skill"', text)
         self.assertIn("carrier's public tracking page", text)
-        self.assertIn("open Amazon's own site", text)
-        self.assertIn("Never prices, order numbers", text)
+        self.assertIn("what is kept is the answer, not the mail (CLAUDE.md section 7)", text)
+        self.assertIn("never prices,\n   order numbers", text)
