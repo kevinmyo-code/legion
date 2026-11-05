@@ -56,6 +56,13 @@ ebooklib==0.20
 # YAML in the repo). Was already pinned below as a transitive dependency; now a
 # direct pick, same version, so removing whatever pulled it in cannot drop it.
 pyyaml==6.0.3
+# alfred-ota ticket 04, 2026-11-05: V4 signed download URLs for the private APK
+# bucket (`releases/signing.py`, the only importer, and only lazily, so a clone
+# with no bucket never loads it). 3.17.1 is what `uv pip compile` resolved on
+# 2026-11-05 against the pins here for Python 3.13; its transitive pins are in
+# the block below. On Cloud Run the URL is signed through IAM signBlob, never
+# with a key file (`deploy/release/setup_bucket.sh` grants it).
+google-cloud-storage==3.17.1
 
 # Transitive, pinned by `uv pip freeze` against the above.
 aiohappyeyeballs==2.7.1
@@ -71,6 +78,12 @@ charset-normalizer==3.5.2
 click==8.5.0
 colorama==0.4.6
 frozenlist==1.8.0
+google-api-core==2.43.2
+google-auth==2.62.1
+google-cloud-core==2.8.0
+google-crc32c==1.9.0
+google-resumable-media==2.11.0
+googleapis-common-protos==1.76.0
 h11==0.16.0
 http-ece==1.2.1
 httpcore2==2.13.1
@@ -88,8 +101,12 @@ opentelemetry-api==1.45.0
 packaging==26.3
 pluggy==1.6.0
 propcache==0.5.4
+proto-plus==1.29.0
+protobuf==7.36.2
 psycopg-binary==3.2.10
 py-vapid==1.9.4
+pyasn1==0.6.5
+pyasn1-modules==0.4.2
 pycparser==3.0
 pydantic==2.13.5
 pydantic-core==2.46.5
