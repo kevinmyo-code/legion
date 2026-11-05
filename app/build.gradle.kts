@@ -1,3 +1,6 @@
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 plugins {
@@ -273,6 +276,41 @@ android {
 // androidTest asset source set (below) and every MigrationNNToMMTest still read from.
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// alfred-ota ticket 04 (ADR 0072): the phone only installs an update with a HIGHER versionCode, so
+// `fast` and `release` take theirs from the UTC build time, `yyDDDHHmm` (two-digit year, day of
+// year, hour, minute): 2026-11-05 12:00 UTC is 263091200. Monotonic, and under Android's
+// 2,100,000,000 cap until 2099. The map's `yyMMddHHmm` was already past it (2611051200) and past
+// Int.MAX, hence day of year. `debug` keeps 1 and never updates itself (update/UpdateRules.kt).
+// versionName is `<yyyy-MM-dd>-<short sha>`; with no git (a zip, no git on PATH) the sha is "dev",
+// so clone-and-run still builds.
+val otaBuildTime: ZonedDateTime = ZonedDateTime.now(ZoneOffset.UTC)
+val otaVersionCode: Int = otaBuildTime.format(DateTimeFormatter.ofPattern("yyDDDHHmm")).toInt()
+val otaShortSha: String = try {
+    providers.exec {
+        commandLine("git", "rev-parse", "--short=7", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim().ifEmpty { "dev" }
+} catch (e: Exception) {
+    "dev"
+}
+val otaVersionName: String =
+    otaBuildTime.format(DateTimeFormatter.ISO_LOCAL_DATE) + "-" + otaShortSha
+
+androidComponents {
+    onVariants(selector().withBuildType("fast")) { variant ->
+        variant.outputs.forEach {
+            it.versionCode.set(otaVersionCode)
+            it.versionName.set(otaVersionName)
+        }
+    }
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach {
+            it.versionCode.set(otaVersionCode)
+            it.versionName.set(otaVersionName)
+        }
+    }
 }
 
 // backend-erp Phase 2 (2026-08-26): the Compose `resolutionStrategy.force` that used to live here
