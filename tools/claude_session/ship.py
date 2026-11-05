@@ -458,7 +458,9 @@ class Shipper:
         if code != 0:
             raise Refused(f"gcloud could not describe the {self.service} service: {out.strip()[-200:]}")
         try:
-            return json.loads(out[out.index("{"):])
+            # stdout and stderr arrive together; gcloud's own notices ("Updates are available")
+            # can follow the JSON, so read the first JSON object and ignore what trails it.
+            return json.JSONDecoder().raw_decode(out[out.index("{"):])[0]
         except ValueError:
             raise Refused("gcloud described the service in a shape ship.py cannot read") from None
 

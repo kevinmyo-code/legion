@@ -69,9 +69,12 @@ class FakeWorld(ship.World):
             latest = self.revisions[-1]
             traffic = ([{"revisionName": self.revisions[0], "percent": 100}] if self.split_traffic
                        else [{"latestRevision": True, "percent": 100}])
-            return 0, json.dumps({"status": {"latestReadyRevisionName": latest,
-                                             "url": "https://legion.example.run.app",
-                                             "traffic": traffic}})
+            # stdout and stderr come back together from World.run; real gcloud adds notices.
+            return 0, ("WARNING: Python 3.13 is not officially supported.\n"
+                       + json.dumps({"status": {"latestReadyRevisionName": latest,
+                                                "url": "https://legion.example.run.app",
+                                                "traffic": traffic}}, indent=2)
+                       + "\n\nUpdates are available for some Google Cloud CLI components.\n")
         if name == "gcloud" and "update-traffic" in argv:
             self.events.append("update-traffic " + argv[-1])
             self.split_traffic = False
