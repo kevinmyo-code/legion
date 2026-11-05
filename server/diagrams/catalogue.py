@@ -17,8 +17,8 @@ Where each project's views come from:
   rows, loaded from Kevin's private folder (`manage.py load_recruiter_diagrams`), keyed by the
   visitor's demo code label like `RecruiterContent`, else `current`.
 
-**The LinkedIn version gets no Quanex diagram** (Kevin, 2026-11-05: that version strips all
-Quanex work). `WITHHELD` says so here, whatever rows exist, and the loader refuses to load one.
+**The LinkedIn version gets no Quanex and no Mid-Continent diagram** (Kevin, 2026-11-05: that
+version strips all Quanex work, and "leave midcon out of the linkedin one"). `WITHHELD` says so here, whatever rows exist, and the loader refuses to load one.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ PRIVATE_PROJECTS = ("midcon", "quanex")
 ALL_VIEW_IDS: tuple[str, ...] = tuple(sorted({v for views in VIEWS.values() for v in views}))
 
 # A demo code's label -> projects its visitors are never shown, whatever is loaded.
-WITHHELD: dict[str, frozenset[str]] = {"linkedin": frozenset({"quanex"})}
+WITHHELD: dict[str, frozenset[str]] = {"linkedin": frozenset({"quanex", "midcon"})}
 
 HIGHLIGHT_MAX = 12
 

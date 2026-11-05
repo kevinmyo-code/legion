@@ -202,7 +202,8 @@ def test_the_loader_never_loads_quanex_for_linkedin(db, private_folder):
     said = _load(private_folder, "--for-code", "linkedin")
     assert "quanex: never loaded for the linkedin version (withheld); skipped." in said
     assert not RecruiterDiagram.objects.filter(key="linkedin", project="quanex").exists()
-    assert RecruiterDiagram.objects.filter(key="linkedin", project="midcon").exists()
+    # Kevin 2026-11-05: "leave midcon out of the linkedin one".
+    assert not RecruiterDiagram.objects.filter(key="linkedin", project="midcon").exists()
 
 
 def test_the_loader_refuses_a_stale_or_unknown_view(db, private_folder):
@@ -239,9 +240,9 @@ def test_the_resume_visitor_sees_quanex_and_the_linkedin_visitor_never_does(db, 
     assert data["is_error"] is True and "card" not in data
     assert "not available here" in data["text"]
     assert "Gold" not in data["text"] and "quanex" not in data["text"].lower()
-    # Midcon still shows for LinkedIn, from its own version's rows.
+    # Midcon is withheld from LinkedIn too (Kevin, 2026-11-05).
     data = _tool(linkedin, "show_diagram", {"project": "midcon", "view": "context"}).data
-    assert data["is_error"] is False and data["card"]["project"] == "midcon"
+    assert data["is_error"] is True and "card" not in data
 
 
 def test_linkedin_never_falls_back_to_the_full_versions_quanex(db, private_folder):
@@ -254,7 +255,7 @@ def test_linkedin_never_falls_back_to_the_full_versions_quanex(db, private_folde
     data = _tool(linkedin, "show_diagram", {"project": "quanex", "view": "data_flow"}).data
     assert data["is_error"] is True and "card" not in data
     data = _tool(linkedin, "show_diagram", {"project": "midcon", "view": "context"}).data
-    assert data["is_error"] is False
+    assert data["is_error"] is True and "card" not in data
 
 
 # =============================================================================
@@ -293,7 +294,8 @@ def test_the_linkedin_visitor_is_never_told_quanex_exists(db, private_folder):
     stripped = _declared(DemoVisit.objects.get(code__label="linkedin").user)
     text = json.dumps(stripped.input_schema) + stripped.description
     assert "quanex" not in text.lower()
-    assert "midcon" in stripped.input_schema["properties"]["project"]["enum"]
+    assert "midcon" not in text.lower() and "mid-continent" not in text.lower()
+    assert stripped.input_schema["properties"]["project"]["enum"] == ["legion", "workflow"]
 
 
 def test_nothing_loaded_means_no_private_project_is_declared(household_user):
