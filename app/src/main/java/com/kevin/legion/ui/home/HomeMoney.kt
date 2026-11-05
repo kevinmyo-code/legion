@@ -44,7 +44,7 @@ data class SafeLineModel(
     val negative: Boolean = false,
     /** "until Nov 20 pay, expected" or "for 30 days, to Dec 5". */
     val until: String? = null,
-    /** "Top up ~$2,000 by Nov 11: safe to spend is below zero." */
+    /** "Top up ~$2,000 by Nov 11: below zero." */
     val topUp: String? = null,
     /** A saved copy's age, or why nothing could be read. */
     val note: String? = null,
@@ -99,8 +99,8 @@ fun safeLine(read: FinanceRead<SafeToSpendWire>?, loading: Boolean): SafeLineMod
     val topUp = body.topUpNeededCents.takeIf { it > 0 }?.let { needed ->
         val by = FinanceText.parseDay(body.topUpBy)?.let { " by ${FinanceText.day(it)}" }.orEmpty()
         val why = when (body.topUpReason) {
-            "below zero" -> ": safe to spend is below zero."
-            "below the top-up trigger" -> ": checking is under the 30-day bills trigger."
+            "below zero" -> ": below zero."
+            "below the top-up trigger" -> ": under the 30-day bills trigger."
             else -> "."
         }
         "Top up ~${FinanceText.money(needed, currency)}$by$why"

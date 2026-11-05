@@ -393,13 +393,14 @@ fun HomeContent(
             // Household-finance ticket 13: the Money panel replaces ONLY the month grid; the day's
             // agenda under it is the calendar's own, unchanged. The grid opens from [Calendar].
             val panel = homeMoneyPanel(money)
-            HomeTodayArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth()) {
+            HomeTodayArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth()) { fitPx ->
                 HomeMoneyPanel(
                     panel,
                     onOpenMoney = tileCallbacks.onOpenMoney,
                     onOpenCategory = onOpenMoneyCategory,
                     onCalendar = onCalendar,
                     onBrief = onBrief,
+                    fitPx = fitPx,
                 )
             }
             HomePanelButtons(

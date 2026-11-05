@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -44,9 +45,13 @@ private val CARD_SHAPE = RoundedCornerShape(18.dp)
 
 /**
  * HOME's Money panel (household-finance ticket 13, layout A): safe to spend with its [Calendar] and
- * [Brief] buttons, then this month's spent of cap and the categories closest to their cap. **It
- * takes the height it is given and drops bars before anything else**: the safe-to-spend card, the
- * month line, any note and "+N more" are always drawn in full; bars go from 3 down to none.
+ * [Brief] buttons, then this month's spent of cap and the categories closest to their cap.
+ *
+ * **It fits [fitPx] by dropping bars before anything else**: the full two-card layout with 3, 2, 1
+ * bars; then one compact card (the figure on the buttons' row, the month line inside it) with 2, 1,
+ * 0 bars. The figure, the top-up warning, any note, the month line and "+N more" are never dropped:
+ * when even the compact card is taller than [fitPx], it takes what it needs (up to the layout's
+ * limit) and the agenda under it gives way instead (CLAUDE.md section 4: a disclosure is not clipped).
  */
 @Composable
 fun HomeMoneyPanel(
@@ -56,36 +61,105 @@ fun HomeMoneyPanel(
     onCalendar: () -> Unit,
     onBrief: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    fitPx: Int? = null,
 ) {
     SubcomposeLayout(modifier.fillMaxWidth()) { constraints ->
         val width = constraints.maxWidth
         val loose = Constraints(minWidth = width, maxWidth = width)
-        val safe = subcompose("safe") { SafeCard(model.safe, onOpenMoney, onCalendar, onBrief) }.map { it.measure(loose) }
-        val safeH = safe.sumOf { it.height }
-        val gap = 6.dp.roundToPx()
         val bounded = constraints.maxHeight != Constraints.Infinity
-        val room = if (bounded) constraints.maxHeight - safeH - gap else Int.MAX_VALUE
-        var budget = emptyList<androidx.compose.ui.layout.Placeable>()
-        if (model.monthLine != null || model.budgetNote != null) {
-            for (shown in minOf(MAX_BARS, model.bars.size) downTo 0) {
-                val measured = subcompose("budget-$shown") {
-                    BudgetCard(model, shown, onOpenMoney, onOpenCategory)
-                }.map { it.measure(loose) }
-                if (measured.sumOf { it.height } <= room || shown == 0) {
-                    budget = measured
-                    break
-                }
-            }
+        val room = fitPx ?: if (bounded) constraints.maxHeight else Int.MAX_VALUE
+        val most = minOf(MAX_BARS, model.bars.size)
+        val options = (most downTo minOf(1, most)).map { true to it } +
+            (minOf(2, most) downTo 0).map { false to it }
+        var chosen = emptyList<androidx.compose.ui.layout.Placeable>()
+        for ((full, shown) in options) {
+            chosen = subcompose("${if (full) "full" else "compact"}-$shown") {
+                if (full) FullPanel(model, shown, onOpenMoney, onOpenCategory, onCalendar, onBrief)
+                else CompactPanel(model, shown, onOpenMoney, onOpenCategory, onCalendar, onBrief)
+            }.map { it.measure(loose) }
+            if (chosen.sumOf { it.height } <= room) break
         }
-        val budgetH = budget.sumOf { it.height }
-        val total = safeH + if (budget.isEmpty()) 0 else gap + budgetH
+        val total = chosen.sumOf { it.height }
         val height = if (bounded) total.coerceAtMost(constraints.maxHeight) else total
         layout(width, height) {
             var y = 0
-            safe.forEach { it.placeRelative(0, y); y += it.height }
-            y += gap
-            budget.forEach { it.placeRelative(0, y); y += it.height }
+            chosen.forEach { it.placeRelative(0, y); y += it.height }
         }
+    }
+}
+
+@Composable
+private fun FullPanel(
+    model: HomeMoneyPanelModel,
+    shown: Int,
+    onOpenMoney: () -> Unit,
+    onOpenCategory: (String) -> Unit,
+    onCalendar: () -> Unit,
+    onBrief: (() -> Unit)?,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        SafeCard(model.safe, onOpenMoney, onCalendar, onBrief)
+        if (model.monthLine != null || model.budgetNote != null) {
+            Spacer(Modifier.height(6.dp))
+            Column(
+                Modifier.fillMaxWidth().background(SoftColors.card, CARD_SHAPE)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) { BudgetLines(model, shown, onOpenMoney, onOpenCategory) }
+        }
+    }
+}
+
+/** The squeezed layout: one card, the figure on the buttons' row, the month line inside it. */
+@Composable
+private fun CompactPanel(
+    model: HomeMoneyPanelModel,
+    shown: Int,
+    onOpenMoney: () -> Unit,
+    onOpenCategory: (String) -> Unit,
+    onCalendar: () -> Unit,
+    onBrief: (() -> Unit)?,
+) {
+    val safe = model.safe
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(CARD_SHAPE)
+            .background(SoftColors.card)
+            .padding(start = 14.dp, end = 10.dp, top = 4.dp, bottom = 6.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "Open Money", onClick = onOpenMoney),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                safe.figure ?: "Safe to spend",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = if (safe.negative) SoftColors.onAlert else SoftColors.text,
+                maxLines = 1,
+            )
+            Text(
+                safe.until.orEmpty(),
+                style = MaterialTheme.typography.labelSmall,
+                color = SoftColors.text3,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = 8.dp),
+            )
+            onBrief?.let {
+                PillButton("Brief", "Open today's brief", SoftColors.primaryContainer, SoftColors.onPrimaryContainer, it)
+            }
+            Spacer(Modifier.width(4.dp))
+            PillButton("Calendar", "Open the calendar", SoftColors.cardHigh, SoftColors.text, onCalendar)
+        }
+        safe.note?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (safe.figure == null) SoftColors.text2 else SoftColors.caution,
+            )
+        }
+        safe.topUp?.let { AlertLine(it, Modifier.padding(vertical = 2.dp)) }
+        BudgetLines(model, shown, onOpenMoney, onOpenCategory)
     }
 }
 
@@ -181,19 +255,15 @@ private fun PillButton(label: String, clickLabel: String, container: Color, cont
     }
 }
 
+/** The month line, any budget note, [shown] bars and "+N more". The caller draws the card. */
 @Composable
-private fun BudgetCard(
+private fun BudgetLines(
     model: HomeMoneyPanelModel,
     shown: Int,
     onOpenMoney: () -> Unit,
     onOpenCategory: (String) -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(SoftColors.card, CARD_SHAPE)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    ) {
+    Column(Modifier.fillMaxWidth()) {
         model.monthLine?.let { line ->
             Row(
                 Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onOpenMoney),

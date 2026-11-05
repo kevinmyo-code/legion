@@ -217,7 +217,7 @@ private fun MonthPage(month: YearMonth, state: MoneyViewUiState, callbacks: Mone
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
     ) {
         if (month == YearMonth.from(state.today)) SafeSection(state)
-        ThisMonthSection(page?.cashFlow, state.currency, callbacks.onSetCurrency)
+        ThisMonthSection(page?.cashFlow, state.currency, accountLabels(state.accounts?.valueOrNull), callbacks.onSetCurrency)
         BudgetSection(page?.budgets, callbacks)
         NetWorthSection(state)
         AccountsSection(state)
@@ -335,7 +335,12 @@ private fun SafeSection(state: MoneyViewUiState) {
 }
 
 @Composable
-private fun ThisMonthSection(read: FinanceRead<com.kevin.legion.finance.CashFlowWire>?, currency: String, onSetCurrency: (String) -> Unit) {
+private fun ThisMonthSection(
+    read: FinanceRead<com.kevin.legion.finance.CashFlowWire>?,
+    currency: String,
+    labels: Map<String, String>,
+    onSetCurrency: (String) -> Unit,
+) {
     val cash = read?.valueOrNull
     if (cash == null) {
         if (read is FinanceRead.Refused) {
@@ -345,7 +350,7 @@ private fun ThisMonthSection(read: FinanceRead<com.kevin.legion.finance.CashFlow
         }
         return
     }
-    val model = thisMonthModel(cash, currency)
+    val model = thisMonthModel(cash, currency, labels)
     Card {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("This month", style = MaterialTheme.typography.labelMedium, color = SoftColors.text3, modifier = Modifier.weight(1f))
@@ -439,7 +444,7 @@ private fun NetWorthSection(state: MoneyViewUiState) {
         ReadNote(state.netWorth, "net worth")
         return
     }
-    val model = netWorthModel(nw)
+    val model = netWorthModel(nw, accountLabels(state.accounts?.valueOrNull))
     SectionTitle("Net worth today", model.partialLine)
     Card {
         model.layers.forEachIndexed { i, layer ->

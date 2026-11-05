@@ -27,7 +27,7 @@ fun monthName(month: YearMonth): String = month.month.getDisplayName(TextStyle.F
  * The This month card. USD as the engine sends it; SGD converted on the phone at the engine's own
  * stated rate (the rate and its day are said), never at a guessed one: with no rate, SGD is off.
  */
-fun thisMonthModel(cash: CashFlowWire, currency: String): ThisMonthModel {
+fun thisMonthModel(cash: CashFlowWire, currency: String, labels: Map<String, String> = emptyMap()): ThisMonthModel {
     val rate = cash.rate
     val sgd = currency == "SGD" && rate != null
     fun m(cents: Long) = if (sgd) FinanceText.money(FinanceText.usdToSgd(cents, rate!!.rateMicros), "SGD")
@@ -53,7 +53,7 @@ fun thisMonthModel(cash: CashFlowWire, currency: String): ThisMonthModel {
             add("No USD/SGD rate is on file, so there is no SGD view.")
         }
         if (cash.accountsWithoutRows.isNotEmpty()) {
-            add("No rows yet this month from ${cash.accountsWithoutRows.joinToString(", ")}: their spend is not in it.")
+            add("No rows yet this month from ${cash.accountsWithoutRows.joinToString(", ") { labels[it] ?: it }}: their spend is not in it.")
         }
     }
     return ThisMonthModel(rows, notes, sgdAvailable = rate != null)
@@ -69,11 +69,11 @@ fun safeParts(safe: SafeToSpendWire, today: LocalDate): List<KvRow> {
         parts.checkingPendingCents?.takeIf { it != 0L }?.let {
             add(KvRow("Checking pending, not in it", FinanceText.money(it, ccy), "pending"))
         }
-        add(KvRow("Owed on the card", "-" + FinanceText.money(parts.cardOwedCents, ccy), "includes pending"))
+        add(KvRow("Owed on the card", FinanceText.money(-parts.cardOwedCents, ccy), "includes pending"))
         add(
             KvRow(
                 "Bills before then",
-                "-" + FinanceText.money(parts.billsCents, ccy),
+                FinanceText.money(-parts.billsCents, ccy),
                 "estimate, from repeat charges".takeIf { parts.billsDetected },
             ),
         )
@@ -90,7 +90,7 @@ private val LAYER_NAMES = mapOf(
 private val LOCKED = setOf("cpf", "property")
 
 /** Net worth by layer. "partial" when the engine lists accounts that are in no total. */
-fun netWorthModel(nw: NetWorthWire): NetWorthModel {
+fun netWorthModel(nw: NetWorthWire, labels: Map<String, String> = emptyMap()): NetWorthModel {
     val left = nw.missing.size + nw.unconverted.size
     val partial = if (left > 0) "partial: $left account${if (left == 1) "" else "s"} not in it" else null
     val layers = nw.layers.map { layer ->
@@ -106,8 +106,8 @@ fun netWorthModel(nw: NetWorthWire): NetWorthModel {
         )
     }
     val notes = buildList {
-        if (nw.missing.isNotEmpty()) add("No balance yet: ${nw.missing.joinToString(", ")}.")
-        if (nw.unconverted.isNotEmpty()) add("Left out for want of a USD/SGD rate: ${nw.unconverted.joinToString(", ")}.")
+        if (nw.missing.isNotEmpty()) add("No balance yet: ${nw.missing.joinToString(", ") { labels[it] ?: it }}.")
+        if (nw.unconverted.isNotEmpty()) add("Left out for want of a USD/SGD rate: ${nw.unconverted.joinToString(", ") { labels[it] ?: it }}.")
     }
     return NetWorthModel(
         partialLine = partial,
@@ -116,6 +116,10 @@ fun netWorthModel(nw: NetWorthWire): NetWorthModel {
         notes = notes,
     )
 }
+
+/** Account key to the household's own label, for sentences that name accounts. */
+fun accountLabels(accounts: List<FinanceAccountWire>?): Map<String, String> =
+    accounts.orEmpty().associate { it.key to it.label.ifBlank { it.key } }
 
 /** One read-only account line: name (one line, ellipsised), how it is known, and its balance. */
 data class AccountRow(val name: String, val sub: String, val balance: String)

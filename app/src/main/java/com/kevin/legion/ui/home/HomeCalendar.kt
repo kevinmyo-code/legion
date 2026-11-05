@@ -171,40 +171,43 @@ fun HomeCalendarArea(
  * HOME's top area since household-finance ticket 13 (Kevin, 2026-11-05: *"i just want that
  * calendar section replaced the top one"*): [top] (the Money panel) where the month header and the
  * grid were, and the selected day's agenda under it, unchanged. **It never scrolls**, like
- * [HomeCalendarArea]: [top] is measured against what the agenda's minimum ([MIN_AGENDA_ROWS] rows
- * and "+N more") leaves, and the agenda takes everything [top] did not use.
+ * [HomeCalendarArea]. [top] is told the height that still leaves the agenda [MIN_AGENDA_ROWS] rows
+ * (`fitPx`) and should shrink to it; when it cannot (a large font, a busy shell) it may take more,
+ * down to [MIN_AGENDA_ROWS_SQUEEZED] agenda rows, the floor the month grid used to leave
+ * (HomeCalendarScreenshotTest's real-phone case). The agenda takes everything [top] did not use.
  */
 @Composable
 fun HomeTodayArea(
     state: HomeCalendarUiState,
     callbacks: HomeCalendarCallbacks,
     modifier: Modifier = Modifier,
-    top: @Composable () -> Unit,
+    top: @Composable (fitPx: Int) -> Unit,
 ) {
     val density = LocalDensity.current
     val rowH = agendaRowHeight(density.fontScale)
-    val agendaMin = PANEL_PAD_V * 2 + PANEL_TITLE_LINE + PANEL_ROWS_GAP + rowH * MIN_AGENDA_ROWS + MORE_LINE
-    Layout(
-        modifier = modifier,
-        content = {
-            Box { top() }
-            AgendaPanel(state, callbacks, rowH)
-        },
-    ) { measurables, constraints ->
+    val chrome = PANEL_PAD_V * 2 + PANEL_TITLE_LINE + PANEL_ROWS_GAP + MORE_LINE
+    val agendaMin = chrome + rowH * MIN_AGENDA_ROWS
+    val agendaFloor = chrome + rowH * MIN_AGENDA_ROWS_SQUEEZED
+    androidx.compose.ui.layout.SubcomposeLayout(modifier) { constraints ->
         val width = constraints.maxWidth
-        val agendaMinPx = with(density) { agendaMin.roundToPx() }
-        val gapPx = with(density) { 6.dp.roundToPx() }
-        val topMax = (constraints.maxHeight - agendaMinPx - gapPx).coerceAtLeast(0)
-        val panel = measurables[0].measure(Constraints(maxWidth = width, maxHeight = topMax))
-        val agendaY = panel.height + gapPx
-        val agendaH = (constraints.maxHeight - agendaY).coerceAtLeast(0)
-        val agenda = measurables[1].measure(Constraints.fixed(width, agendaH))
-        layout(width, constraints.maxHeight) {
-            panel.placeRelative(0, 0)
-            agenda.placeRelative(0, agendaY)
+        val height = constraints.maxHeight
+        val gapPx = 6.dp.roundToPx()
+        val fit = (height - agendaMin.roundToPx() - gapPx).coerceAtLeast(0)
+        val hard = (height - agendaFloor.roundToPx() - gapPx).coerceAtLeast(fit)
+        val panel = subcompose("top") { top(fit) }
+            .map { it.measure(Constraints(maxWidth = width, maxHeight = hard)) }
+        val agendaY = (panel.maxOfOrNull { it.height } ?: 0) + gapPx
+        val agenda = subcompose("agenda") { AgendaPanel(state, callbacks, rowH) }
+            .map { it.measure(Constraints.fixed(width, (height - agendaY).coerceAtLeast(0))) }
+        layout(width, height) {
+            panel.forEach { it.placeRelative(0, 0) }
+            agenda.forEach { it.placeRelative(0, agendaY) }
         }
     }
 }
+
+/** The agenda's floor under HOME's Money panel when nothing else gives: two rows and "+N more". */
+private const val MIN_AGENDA_ROWS_SQUEEZED = 2
 
 /** [dp] as a text size that ignores the font scale (see [GRID_TEXT_DP]). */
 @Composable

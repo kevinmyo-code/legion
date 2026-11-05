@@ -197,6 +197,7 @@ class HomeCalendarScreenshotTest {
                     onOpenMedia = {},
                     dockSlots = buildDockSlots(dockApps.map(::pin), loaded),
                     categories = categories,
+                    money = com.kevin.legion.finance.FinanceFixtures.homeFresh,
                 )
             }
         }
@@ -274,6 +275,7 @@ class HomeCalendarScreenshotTest {
                                 onOpenMedia = {},
                                 dockSlots = buildDockSlots(dockApps.take(4).map(::pin), loaded),
                                 categories = categories,
+                                money = com.kevin.legion.finance.FinanceFixtures.homeFresh,
                             )
                         }
                         Column(Modifier.fillMaxWidth().height(110.dp).padding(horizontal = 12.dp)) {
@@ -346,7 +348,7 @@ class HomeCalendarScreenshotTest {
 
     @Config(qualifiers = "w384dp-h800dp")
     @Test
-    fun `more sheet - the six area tiles, font 1_3`() {
+    fun `more sheet - the Money card and the area tiles, font 1_3`() {
         rule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density, 1.3f)) {
@@ -362,6 +364,7 @@ class HomeCalendarScreenshotTest {
                             recordRefusal = null,
                             callbacks = noTileCallbacks,
                             onDismiss = {},
+                            money = com.kevin.legion.finance.FinanceFixtures.homeFresh,
                         )
                     }
                 }
