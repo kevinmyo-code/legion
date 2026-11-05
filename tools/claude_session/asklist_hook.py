@@ -16,6 +16,13 @@ Decisions:
 - Work laptop (`scope: listed`): file tools only inside the repos root (reads) or the work folder
   (writes); shell only for read-only git, simple listing/reading commands, and report.py. Those are
   hard denials, not questions.
+- **The ship step** (map alfred-builds, ticket 03): `git push`, the engine deploy scripts,
+  `release_apk.py` and `gcloud` are denied to every helper, a confirmed one included. They run
+  only inside `ship.py` / `undo.py` (this folder's own copies, invoked alone), which check Kevin's
+  yes token themselves, the way `send_mail.py` does.
+- **Kevin's worker skills** (`work/.claude`) are his files, not scratch: writing one, new or
+  existing, asks like any of his files. **The worker's own files** (tokens, config, the agents map,
+  the ship history `work/ships.jsonl`) are never a helper's to write: a hard denial, token or not.
 - Anything unexpected inside this hook denies (fails closed).
 
 The hook log records tool, decision, rule and agent id. Never the command, a path, or any text.
@@ -30,7 +37,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import Paths, is_under, load_config, read_json  # noqa: E402
+from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
+
+HERE = Path(__file__).resolve().parent
 
 SHELL_TOOLS = ("Bash", "PowerShell")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
@@ -69,6 +78,24 @@ RULES = [
 ]
 
 SEND_MAIL_RE = re.compile(r"send_mail\.py\b", re.I)
+
+# Ticket 03: what only ship.py and undo.py may do. Denied to helpers whatever their token says.
+# `git ... push` is matched outside quotes and inside each quoted string on its own, so a commit
+# message saying "push the fix" passes while `bash -c "git push"` and `git "push"` do not. The
+# tools are matched raw: their path may be quoted.
+_GIT_OPTS = r"\bgit(?:\.exe)?(?:\s+(?:-[Cc]\s+\S+|--?[\w.-]+(?:=\S+)?))*\s+"
+SHIP_GIT_PUSH = re.compile(_GIT_OPTS + r"push\b", re.I)
+SHIP_GIT_QPUSH = re.compile(_GIT_OPTS + r"[\"']push[\"']", re.I)
+SHIP_GIT_QEXE = re.compile(r"git(?:\.exe)?[\"'](?:\s+(?:-[Cc]\s+\S+|--?[\w.-]+(?:=\S+)?))*\s+push\b",
+                           re.I)  # "C:/Program Files/Git/bin/git.exe" push
+QUOTED_RE = re.compile(r'"((?:\\.|[^"\\])*)"' + r"|'([^']*)'")
+SHIP_TOOLS = re.compile(
+    r"\b(?:deploy|deploy_job|install_schedule)\.py\b|\brelease_apk\.py\b"
+    r"|\bgcloud(?:\.cmd)?\b|\bupdate-traffic\b", re.I)
+SHIP_SCRIPTS = ("ship.py", "undo.py")
+_LEAD_RE = re.compile(
+    r'^\s*&?\s*(?:"[^"]*python[0-9.]*(?:\.exe)?"|\S*python[0-9.]*(?:\.exe)?)\s+'
+    r'(?:"(?P<q>[^"]+)"|(?P<s>\S+))(?P<rest>.*)$', re.I | re.S)
 REPORT_RE = re.compile(r"report\.py\b", re.I)
 
 # Things that look like a path inside a command.
@@ -104,6 +131,57 @@ def _is_lone_report(command: str) -> bool:
     return _is_lone_script(command, "report.py")
 
 
+def _is_our_lone_script(command: str, script: str) -> bool:
+    """`python <this folder>/<script> ...` alone: the script must be THIS folder's copy (a helper
+    could write its own ship.py), and nothing may be chained to it. Free text in its arguments
+    (the ship notes) is judged with quoted strings removed."""
+    m = _LEAD_RE.match(command or "")
+    if not m:
+        return False
+    p = m.group("q") or m.group("s")
+    if norm(_to_os_path(p)) != norm(HERE / script):
+        return False
+    return not re.search(r"[;&|`<>\n]|\$\(", _unquoted(m.group("rest")))
+
+
+def _unquoted(command: str) -> str:
+    return re.sub(r'"(?:\\.|[^"\\])*"' + r"|'[^']*'", '""', command)
+
+
+def _pushes(command: str) -> bool:
+    if (SHIP_GIT_PUSH.search(_unquoted(command)) or SHIP_GIT_QPUSH.search(command)
+            or SHIP_GIT_QEXE.search(command)):
+        return True
+    return any(SHIP_GIT_PUSH.search(a or b) for a, b in QUOTED_RE.findall(command))
+
+
+def _scratch(path, paths: Paths) -> bool:
+    """Inside the worker's work folder and not one of the things in it that are not scratch."""
+    return (is_under(path, paths.work) and not is_under(path, paths.skills)
+            and not is_under(path, paths.ships))
+
+
+def _worker_internal(path, paths: Paths) -> bool:
+    """The worker's own files: everything under its root outside the work folder, plus the ship
+    history. Tokens live here, so a helper writing one would be forging Kevin's yes."""
+    return is_under(path, paths.ships) or (is_under(path, paths.root)
+                                           and not is_under(path, paths.work))
+
+
+def _worker_files_reason() -> str:
+    return ("WORKER FILES: the worker's own files (confirmation tokens, config, the agents map, the "
+            "ship history) are never a helper's to write, and this cannot be confirmed. Do not "
+            "retry or work around it. Report what you needed with --status failed.")
+
+
+def _ship_reason() -> str:
+    return ("SHIP STEP: pushing, deploying, publishing and gcloud run only through ship.py (undo.py "
+            "for an undo), after Kevin's yes to the ship question; no helper runs them directly, "
+            "even with a confirmation. Use the ship skill: ship.py ask, then report "
+            "needs_confirmation with the question it prints; on the yes, ship.py run --token. Do not "
+            "retry or work around it.")
+
+
 def _deny(reason: str) -> dict:
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                    "permissionDecisionReason": reason}}
@@ -137,21 +215,27 @@ def _to_os_path(tok: str) -> str:
     return tok
 
 
-def _targets_outside(command: str, cwd: str, work_root: Path) -> bool:
-    """True if any path the command names, or its cwd when it names none, is outside the work folder."""
+def _targets(command: str, cwd: str) -> list:
+    """Every path the command names (redirect targets too), or its cwd when it names none. None
+    stands for a path that cannot be resolved here (`~`, `$env:`, `%VAR%`, `..`)."""
     toks = _path_tokens(command)
     for m in REDIRECT_RE.finditer(command):
         t = m.group(1).strip("\"'")
         if t not in REDIRECT_SAFE:
             toks.append(t if DRIVE_RE.match(t) else os.path.join(cwd or ".", t))
     if not toks:
-        return not (cwd and is_under(cwd, work_root))
-    for tok in toks:
-        if tok.startswith(("~", "$", "%")) or ".." in tok:
-            return True
-        if not is_under(_to_os_path(tok), work_root):
-            return True
-    return False
+        return [cwd or None]
+    return [None if tok.startswith(("~", "$", "%")) or ".." in tok else _to_os_path(tok)
+            for tok in toks]
+
+
+def _targets_outside(command: str, cwd: str, paths: Paths) -> bool:
+    """True if any path the command names, or its cwd when it names none, is not scratch."""
+    return any(t is None or not _scratch(t, paths) for t in _targets(command, cwd))
+
+
+def _targets_internal(command: str, cwd: str, paths: Paths) -> bool:
+    return any(t is not None and _worker_internal(t, paths) for t in _targets(command, cwd))
 
 
 def _agent_task(paths: Paths, agent_id: str | None) -> int | None:
@@ -229,7 +313,13 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
 
     if tool in WRITE_TOOLS:
         target = inp.get("file_path") or inp.get("notebook_path") or ""
-        if target and Path(target).exists() and not is_under(target, paths.work):
+        if target and _worker_internal(target, paths):
+            return _deny(_worker_files_reason()), "worker files"
+        if target and is_under(target, paths.skills):  # new or existing: Kevin's skills
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason("change one of Kevin's worker skills")), "skills"
+        if target and Path(target).exists() and not _scratch(target, paths):
             if _confirmed(paths, task, now):
                 return None, "confirmed"
             return _deny(_ask_reason("overwrite one of Kevin's existing files")), "overwrite"
@@ -239,13 +329,19 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
         command = inp.get("command", "") or ""
         if _is_lone_report(command):
             return None, ""
+        if any(_is_our_lone_script(command, s) for s in SHIP_SCRIPTS):
+            return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
+        if _pushes(command) or SHIP_TOOLS.search(command):
+            return _deny(_ship_reason()), "ship only"
         for label, kind, pat in RULES:
             if not re.search(pat, command, re.I):
                 continue
             if label == "send something" and SEND_MAIL_RE.search(command) and not re.search(
                     r"smtplib|Send-MailMessage|System\.Net\.Mail", command, re.I):
                 continue  # send_mail.py refuses without the worker's confirmation token
-            if kind == "path" and not _targets_outside(command, cwd, paths.work):
+            if kind == "path" and _targets_internal(command, cwd, paths):
+                return _deny(_worker_files_reason()), "worker files"
+            if kind == "path" and not _targets_outside(command, cwd, paths):
                 continue
             if _confirmed(paths, task, now):
                 return None, "confirmed"

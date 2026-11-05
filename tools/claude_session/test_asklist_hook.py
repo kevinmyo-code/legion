@@ -149,6 +149,93 @@ class TestAskList(Base):
         self.assertNotIn("budget", log)
 
 
+class TestShipStep(Base):
+    """alfred-builds ticket 03: push, deploy, publish and gcloud only through ship.py / undo.py."""
+
+    def setUp(self):
+        super().setUp()
+        write_json_atomic(self.paths.agents, {"agentA": 42})
+        write_json_atomic(self.paths.tokens / "42-yes.json", {
+            "token": "t", "task": 42, "parent": 41, "kind": "yes", "expires_at": time.time() + 60})
+        self.ship = (HERE / "ship.py").as_posix()
+        self.undo = (HERE / "undo.py").as_posix()
+
+    def test_push_deploy_publish_gcloud_are_denied_even_to_a_confirmed_task(self):
+        for cmd in ("git push origin dev", "git -C C:/w/wt push origin HEAD:dev",
+                    "git push --force origin main", 'git "push" origin dev',
+                    'bash -c "git push origin dev"', '"C:/Program Files/Git/bin/git.exe" push',
+                    "cd C:/w/wt && git --no-pager push origin dev",
+                    "python deploy/cloudrun/deploy.py", "python C:/r/deploy/cloudrun/deploy_job.py",
+                    "python tools/release_apk.py --app phone --apk a.apk --notes x",
+                    "gcloud run services update-traffic legion --to-revisions a=100",
+                    "gcloud run services describe legion", "gcloud.cmd builds submit",
+                    f"python {self.ship} run --task 42 --token t; git push origin dev",
+                    f"python {(HERE / 'build_lock.py').as_posix()} --task 42 -- git push origin dev"):
+            with self.subTest(cmd=cmd):
+                out = self.assertDenied("Bash", {"command": cmd}, agent="agentA")
+                self.assertIn("SHIP STEP", out["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_our_ship_and_undo_run_alone_and_check_the_token_themselves(self):
+        self.assertPassed("Bash", {"command": f'python {self.ship} ask --task 41 --kind engine '
+                                              f'--branch fix/x --worktree C:/w/wt --notes "git push; deploy.py"'},
+                          agent=None)
+        self.assertPassed("PowerShell", {"command": f'& "C:/Program Files/Python/python.exe" '
+                                                    f'{self.ship} run --task 42 --token t'})
+        self.assertPassed("Bash", {"command": f"python {self.undo} run --task 42 --token t"})
+
+    def test_a_ship_py_that_is_not_ours_gets_no_carve_out(self):
+        fake = (self.work / "ship.py").as_posix()
+        self.assertDenied("Bash", {"command": f'python {fake} ask --notes "git push origin dev"'},
+                          agent="agentA")
+
+    def test_a_commit_message_saying_push_is_not_a_push(self):
+        self.assertPassed("Bash", {"command": 'git commit -m "push the timer fix to dev"'})
+        self.assertPassed("Bash", {"command": "git log --oneline --grep push"})
+
+
+class TestKevinsSkillsAndWorkerFiles(Base):
+    """`work/.claude` is Kevin's, not scratch; the worker's own files are never a helper's."""
+
+    def setUp(self):
+        super().setUp()
+        self.skill = self.paths.skills / "skills" / "legion-chores" / "SKILL.md"
+        self.skill.parent.mkdir(parents=True)
+        self.skill.write_text("x")
+        write_json_atomic(self.paths.agents, {"agentA": 42})
+        write_json_atomic(self.paths.tokens / "42-yes.json", {
+            "token": "t", "task": 42, "parent": 41, "kind": "yes", "expires_at": time.time() + 60})
+
+    def test_writing_a_skill_new_or_existing_asks(self):
+        new = self.paths.skills / "skills" / "evil" / "SKILL.md"
+        for tool, target in (("Write", self.skill), ("Edit", self.skill), ("Write", new)):
+            with self.subTest(tool=tool, target=target.name):
+                out = self.assertDenied(tool, {"file_path": str(target)}, agent="agentB")
+                self.assertIn("needs_confirmation", out["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertPassed("Write", {"file_path": str(new)}, agent="agentA")  # Kevin said yes
+
+    def test_shell_deletes_and_overwrites_in_skills_ask(self):
+        d = (self.paths.skills / "skills" / "legion-chores").as_posix()
+        self.assertDenied("Bash", {"command": f"rm -rf {d}"}, agent="agentB")
+        self.assertDenied("Bash", {"command": f"echo hi > {d}/SKILL.md"}, agent="agentB")
+        self.assertDenied("PowerShell", {"command": "Remove-Item SKILL.md"}, cwd=self.skill.parent,
+                          agent="agentB")
+
+    def test_scratch_in_the_task_folder_still_runs(self):
+        self.assertPassed("Write", {"file_path": str(self.work / "notes.md")})
+        self.assertPassed("Bash", {"command": f"rm -f {(self.work / 'tmp.txt').as_posix()}"})
+
+    def test_worker_files_are_never_a_helpers_to_write_even_confirmed(self):
+        for target in (self.paths.tokens / "99-yes.json", self.paths.config, self.paths.agents,
+                       self.paths.ships, self.paths.root / "worker-settings.json"):
+            with self.subTest(target=target.name):
+                out = self.assertDenied("Write", {"file_path": str(target)}, agent="agentA")
+                self.assertIn("WORKER FILES", out["hookSpecificOutput"]["permissionDecisionReason"])
+        tok = (self.paths.tokens / "99-yes.json").as_posix()
+        out = self.assertDenied("Bash", {"command": f"echo x > {tok}"}, agent="agentA")
+        self.assertIn("WORKER FILES", out["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertDenied("Bash", {"command": f"rm {self.paths.ships.as_posix()}"}, agent="agentA")
+
+
 class TestListedScope(Base):
     def setUp(self):
         super().setUp()
