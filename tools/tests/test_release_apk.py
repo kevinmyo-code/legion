@@ -99,8 +99,11 @@ def test_fingerprints_normalise_from_both_tools():
     assert ra.parse_signers("Signer #1 certificate SHA-256 digest: " + PINNED.upper()) == {PINNED}
 
 
-def test_the_committed_pin_is_the_debug_key():
-    assert ra.read_pinned_signer() == PINNED
+def test_the_committed_pin_is_one_well_formed_fingerprint():
+    """Format, not value: a stranger's clone pins its own key there (ticket 04)."""
+    pinned = ra.read_pinned_signer()
+    assert len(pinned) == 64 and pinned == pinned.lower()
+    int(pinned, 16)
 
 
 def test_dry_run_checks_the_signer_and_hashes_the_file_and_touches_nothing(apk, pin, tools):
