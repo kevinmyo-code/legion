@@ -90,13 +90,16 @@ object UpdateRules {
 
     /**
      * A voice yes counts only when the update was offered to the user moments ago (the tool's own
-     * ask, or the spoken announcement). Code, not only a prompt rule, so the model cannot install
-     * on a yes to something else.
+     * ask, or the spoken announcement), and not in the same breath: at least [MIN_OFFER_AGE_MS]
+     * after it, the time it takes to hear the question and answer it. Code, not only a prompt
+     * rule, so the model can neither install on a yes to something else nor ask and install in one
+     * turn with no answer between.
      */
     fun offerStillOpen(offeredAtMs: Long?, nowMs: Long, windowMs: Long = OFFER_WINDOW_MS): Boolean =
-        offeredAtMs != null && nowMs - offeredAtMs in 0..windowMs
+        offeredAtMs != null && nowMs - offeredAtMs in MIN_OFFER_AGE_MS..windowMs
 
     const val OFFER_WINDOW_MS = 3 * 60_000L
+    const val MIN_OFFER_AGE_MS = 2_000L
 
     /** A yes given mid-conversation installs when it ends, within this long; after that it lapses. */
     const val PENDING_INSTALL_MS = 15 * 60_000L

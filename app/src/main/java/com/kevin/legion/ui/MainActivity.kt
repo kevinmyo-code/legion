@@ -1108,6 +1108,7 @@ private fun LegionShell(
                     onOpenPermissionsDiagnostics = { navController.navigate(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) },
                     onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
                     onOpenDumbMode = { navController.navigate(LegionRoute.SETTINGS_DUMB_MODE) },
+                    onOpenUpdates = { navController.navigate(LegionRoute.SETTINGS_UPDATES) },
                     // The widget pager's own hands path (rehomed from the deleted
                     // `ui/TodayScreen.kt`'s "DASHBOARD" button, one-today ticket 07).
                     onOpenDashboard = { navController.navigate(LegionRoute.DASHBOARD) { launchSingleTop = true } },
@@ -1124,6 +1125,9 @@ private fun LegionShell(
                     onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
                     onOpenWakeTuning = { navController.navigate(LegionRoute.SETTINGS_WAKE_TUNING) },
                 )
+            }
+            composable(LegionRoute.SETTINGS_UPDATES) {
+                com.kevin.legion.ui.settings.UpdatesScreen(onBack = { navController.popBackStack() })
             }
             composable(LegionRoute.SETTINGS_WAKE_TUNING) {
                 com.kevin.legion.ui.settings.WakeTuningScreen(onBack = { navController.popBackStack() })

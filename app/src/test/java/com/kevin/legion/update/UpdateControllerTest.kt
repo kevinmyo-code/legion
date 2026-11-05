@@ -194,6 +194,7 @@ class UpdateControllerTest {
     fun `a yes mid-conversation waits and installs when the conversation ends`() = runBlocking {
         controller.check()
         controller.offered()
+        clock += 5_000
         platform.busy = true
         val outcome = controller.install(Consent.VOICE)
         assertTrue(outcome.waiting)
@@ -210,6 +211,7 @@ class UpdateControllerTest {
     fun `a held yes lapses, and Matrix after the conversation refuses it`() = runBlocking {
         controller.check()
         controller.offered()
+        clock += 5_000
         platform.busy = true
         controller.install(Consent.VOICE)
         platform.busy = false
@@ -220,6 +222,7 @@ class UpdateControllerTest {
 
         platform.matrix = false
         controller.offered()
+        clock += 5_000
         platform.busy = true
         controller.install(Consent.VOICE)
         platform.busy = false
@@ -245,6 +248,8 @@ class UpdateControllerTest {
         assertTrue(controller.maybeAnnounce())
         assertFalse(controller.maybeAnnounce())
         assertEquals(1, notifier.spoken)
+        assertFalse("no answer has been heard yet", controller.install(Consent.VOICE).started)
+        clock += 5_000
         assertTrue("the spoken ask opens the offer for the voice yes", controller.install(Consent.VOICE).started)
     }
 

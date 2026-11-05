@@ -50,7 +50,8 @@ class VoiceGuideDataTest {
                 nameRe.findAll(read("PurchaseToolbox.kt")) +
                 nameRe.findAll(read("BooksToolbox.kt")) +
                 nameRe.findAll(read("BrowserToolbox.kt")) +
-                nameRe.findAll(read("ClaudeSessionToolbox.kt"))
+                nameRe.findAll(read("ClaudeSessionToolbox.kt")) +
+                nameRe.findAll(read("AppUpdateToolbox.kt"))
         )
             .map { it.groupValues[1] }
             .toSet()

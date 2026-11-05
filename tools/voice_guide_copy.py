@@ -45,6 +45,7 @@ GROUP_BLURBS = {
     "The web": "LEGION's own browser. Sites you sign in to stay signed in; saved passwords come from Android's autofill.",
     "Books": "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
     "Claude session": "Claude Code on your own laptops, for what the phone can't do. Nothing goes unless you name it or say yes.",
+    "LEGION itself": "Updates to the app, published by you and installed only on your yes.",
     "Phone calls": "Needs phone permissions granted in Setup.",
     "Recordings": "Voice notes and meetings. Audio, a transcript and a summary are all kept until "
         "you delete them, and the summary is the assistant's reading of the transcript, not a "
@@ -215,6 +216,7 @@ COPY = {
     "books": ("What's the last book I read?", "Tells you the last book you were reading and where you left off, without opening it; say 'pull it up' to open it there. Also opens a named book from your Books folder in the reader ('Read me Moby-Dick'). Say 'read aloud' to have the phone's own voice read an ebook to you, offline. Listen is for ebooks only: a PDF or a comic opens to read but is not read aloud, and a CBR comic cannot be opened yet. If the folder is not set up, the book is not found, or two books fit, it says nothing was opened and why.", "HOME, Books chip: tap a book to read it, or Read and Listen on the Continue card."),
     "aspect_clerk": ("Log three sets of squats at 225, 5 reps each", "A helper that works out what to read or write across your trackers for a request with more than one step - finding something first, or logging several things from one sentence. Tells you plainly how much of it actually got written.", "Voice only for now, same as list_aspects."),
     "create_aspect": ("Start tracking my reading - book, pages, date finished", "Drafts a brand-new tracker from what you describe and reads the shape back to you. Creates nothing until you say yes.", "Voice only for now, same as list_aspects."),
+    "app_update": ("Is there an update for LEGION?", "Checks whether a newer LEGION has been published, and says what it changes. The update downloads on Wi-Fi only (unless you allow mobile data) and is checked first: a file whose checksum or signing key does not match the app on your phone is thrown away, and it says so. It always asks before installing, and only your yes installs it. Asked during a conversation, it installs as soon as the conversation ends; in Matrix mode or with the car connected it won't install at all, and says why. LEGION closes for about a minute and comes back on its own. When an update is ready you get a notification with Install and Later, and Alfred mentions it once at a quiet moment.", "Settings, Updates: this phone's version, the newest one and its notes, Check now, Install, Allow mobile data, the one-time Allow installs grant, and which wording Alfred is running; or Install on the update's notification."),
     "update_aspect": ("Add a genre field to my reading tracker", "Drafts one change to a tracker you already have - a new field, a new category of entry, or a rename - and reads it back. Changes nothing until you say yes.", "Voice only for now, same as list_aspects."),
 }
 
@@ -232,6 +234,7 @@ GROUPS = {
     "The web": ["browser"],
     "Books": ["books"],
     "Claude session": ["claude_session"],
+    "LEGION itself": ["app_update"],
     "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Recordings": ["start_voice_note", "stop_voice_note", "read_voice_note", "list_voice_notes"],
     "Memory": ["remember", "recall_memory", "why_did_you_say_that"],

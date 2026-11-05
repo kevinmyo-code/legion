@@ -52,6 +52,8 @@ fun SettingsScreen(
     onOpenDashboard: () -> Unit = {},
     // Dumb phone mode's setup (ADR 0062). A no-op default, like the other optional rows.
     onOpenDumbMode: () -> Unit = {},
+    // Updates (alfred-ota ticket 06): the app_update voice tool's hands path (ADR 0035).
+    onOpenUpdates: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
 
@@ -112,6 +114,13 @@ fun SettingsScreen(
                 label = "Permissions and diagnostics",
                 status = "Calls, location, and diagnostic probes.",
                 onClick = onOpenPermissionsDiagnostics,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            SettingsNavRow(
+                label = "Updates",
+                status = "This version, the newest one, and installing it. Asks first.",
+                onClick = onOpenUpdates,
             )
 
             Spacer(Modifier.height(8.dp))

@@ -89,6 +89,8 @@ class UpdateRulesTest {
         assertTrue(UpdateRules.offerStillOpen(10_000, 10_000 + UpdateRules.OFFER_WINDOW_MS))
         assertFalse(UpdateRules.offerStillOpen(10_000, 10_001 + UpdateRules.OFFER_WINDOW_MS))
         assertFalse(UpdateRules.offerStillOpen(20_000, 10_000))
+        assertFalse("asked and installed in one breath", UpdateRules.offerStillOpen(10_000, 10_500))
+        assertTrue(UpdateRules.offerStillOpen(10_000, 10_000 + UpdateRules.MIN_OFFER_AGE_MS))
     }
 
     @Test
