@@ -219,6 +219,14 @@ class TestKevinsSkillsAndWorkerFiles(Base):
         self.assertDenied("Bash", {"command": f"echo hi > {d}/SKILL.md"}, agent="agentB")
         self.assertDenied("PowerShell", {"command": "Remove-Item SKILL.md"}, cwd=self.skill.parent,
                           agent="agentB")
+        src = (self.work / "SKILL.md").as_posix()
+        for cmd in (f"cp {src} {d}/SKILL.md", f"Copy-Item {src} {d}/SKILL.md",
+                    f"mkdir {self.paths.skills.as_posix()}/skills/new",
+                    f"python -c \"open('{d}/SKILL.md','a')\""):
+            with self.subTest(cmd=cmd):
+                self.assertDenied("PowerShell", {"command": cmd}, agent="agentB")
+        self.assertPassed("PowerShell", {"command": f"cp {src} {d}/SKILL.md"}, agent="agentA")
+        self.assertPassed("Bash", {"command": f"cat {d}/SKILL.md"}, agent="agentB")
 
     def test_scratch_in_the_task_folder_still_runs(self):
         self.assertPassed("Write", {"file_path": str(self.work / "notes.md")})

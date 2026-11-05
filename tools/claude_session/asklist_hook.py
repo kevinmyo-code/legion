@@ -93,6 +93,12 @@ SHIP_TOOLS = re.compile(
     r"\b(?:deploy|deploy_job|install_schedule)\.py\b|\brelease_apk\.py\b"
     r"|\bgcloud(?:\.cmd)?\b|\bupdate-traffic\b", re.I)
 SHIP_SCRIPTS = ("ship.py", "undo.py")
+# Writing verbs the delete/overwrite rules do not cover, for a command naming Kevin's skills:
+# a copy onto an existing SKILL.md overwrites it without any -f.
+SKILL_WRITE_RE = re.compile(
+    r"(?<![\w./\\-])(?:cp|copy|cpi|xcopy|robocopy|ni|mkdir|md|tee|touch|unzip|tar)(?:\.exe)?\s"
+    r"|Copy-Item|New-Item|Tee-Object|\bsed\b[^|;&]*\s-i|Expand-Archive"
+    r"|\bgit\b[^|;&]*\b(checkout|restore|clone|worktree|apply|am)\b|\bpython\S*\s", re.I)
 _LEAD_RE = re.compile(
     r'^\s*&?\s*(?:"[^"]*python[0-9.]*(?:\.exe)?"|\S*python[0-9.]*(?:\.exe)?)\s+'
     r'(?:"(?P<q>[^"]+)"|(?P<s>\S+))(?P<rest>.*)$', re.I | re.S)
@@ -234,6 +240,10 @@ def _targets_outside(command: str, cwd: str, paths: Paths) -> bool:
     return any(t is None or not _scratch(t, paths) for t in _targets(command, cwd))
 
 
+def _names_skills(command: str, cwd: str, paths: Paths) -> bool:
+    return any(t is not None and is_under(t, paths.skills) for t in _targets(command, cwd))
+
+
 def _targets_internal(command: str, cwd: str, paths: Paths) -> bool:
     return any(t is not None and _worker_internal(t, paths) for t in _targets(command, cwd))
 
@@ -333,6 +343,11 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
+        if _names_skills(command, cwd, paths) and (SKILL_WRITE_RE.search(command) or any(
+                re.search(pat, command, re.I) for _l, kind, pat in RULES if kind == "path")):
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason("change one of Kevin's worker skills")), "skills"
         for label, kind, pat in RULES:
             if not re.search(pat, command, re.I):
                 continue
