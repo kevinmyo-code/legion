@@ -1518,6 +1518,11 @@ def test_every_mcp_tool_is_scoped_by_household(
     # legion_docs reads the committed docs corpus, never a household row: every
     # household sees the same docs.
     assert "ADR 0045" in b_reads("legion_docs", {"query": "households are tenants"})
+    # show_diagram (arch-diagrams ticket 01) reads the committed catalogue, never a household
+    # row: every household is shown the same picture.
+    assert "Core entity relationships" in b_reads(
+        "show_diagram", {"project": "legion", "view": "data_model"}
+    )
     # web_search reads no row at all; offline here, it fails in words.
     covered.add("web_search")
     is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})
