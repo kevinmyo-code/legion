@@ -18,7 +18,6 @@ Never prints or logs the app password, the body, or attachment paths.
 from __future__ import annotations
 
 import argparse
-import hmac
 import mimetypes
 import smtplib
 import ssl
@@ -28,7 +27,7 @@ from email.message import EmailMessage
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import Paths, load_config, read_json, write_json_atomic  # noqa: E402
+from common import Paths, TokenRefused, find_token, load_config, write_json_atomic  # noqa: E402
 
 ATTACH_CAP_BYTES = 20 * 1024 * 1024  # Gmail refuses over 25 MB after encoding
 
@@ -42,18 +41,16 @@ class Refused(Exception):
 
 
 def _find_token(paths: Paths, task: int, token: str, now: float) -> tuple[Path, dict]:
-    for f in sorted(paths.tokens.glob("*.json")):
-        t = read_json(f, None)
-        if not t or task not in (t.get("task"), t.get("parent")):
-            continue
-        if not hmac.compare_digest(str(t.get("token", "")), token):
-            continue
-        if t.get("expires_at", 0) < now:
-            raise Refused("the confirmation for this task has expired")
-        if t.get("mail_used"):
-            raise Refused("this confirmation was already used for one send")
-        return f, t
-    raise Refused("there is no confirmation from Kevin for this send")
+    """The same check ship.py and undo.py make (`common.find_token`), worded for a send."""
+    try:
+        return find_token(paths, task, token, now, "mail_used")
+    except TokenRefused as e:
+        msg = str(e)
+        if "already used" in msg:
+            msg = "this confirmation was already used for one send"
+        elif "no confirmation" in msg:
+            msg = "there is no confirmation from Kevin for this send"
+        raise Refused(msg) from None
 
 
 def prepare(argv: list[str], paths: Paths, cfg: dict, now: float | None = None):
