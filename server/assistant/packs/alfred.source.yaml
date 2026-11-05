@@ -1,0 +1,30 @@
+# The hand-edited half of the Alfred pack (alfred-ota ticket 01). `gen_pack.py` merges it with
+# the clauses in `../shared_clauses.txt` and writes `alfred.yaml`, which the engine serves at
+# GET /api/assistant/pack and the phone reads at session start (ticket 02).
+#
+# Changing anything here, or any shared clause, changes the pack's wording, so:
+#   1. bump `version` (whole numbers, only ever up);
+#   2. python server/assistant/gen_pack.py
+#   3. python server/assistant/gen_pack.py --lock
+# then commit all three files. An engine deploy ships it (map decision 1).
+#
+# Never name CRISIS, SAFETY_INSTRUCTIONS, CANNOT_CLAUSE, ASK_BEFORE or NO_PASSWORDS anywhere
+# here: the app keeps those compiled in and the engine refuses a pack that names one (map
+# decision 2). No profile data either: the repo is public, so this holds rules and wording,
+# never Kevin's facts.
+
+version: 1
+
+# Clauses that exist only in the pack, UPPER_SNAKE name to text. A name shared_clauses.txt
+# already uses is refused: edit that clause there, so the web prompt changes with it.
+clauses: {}
+
+# Tool name to {description, result_prefix}: per-tool wording overrides. Ticket 03 fills this.
+tool_text: {}
+
+# Name to true/false or a whole number, e.g. idle_reconnect_lazy, camera_mode.
+flags: {}
+
+# Short rules appended to the prompt. Seeded empty; the reply-in-English rule arrives with the
+# phone-bugs branch.
+extra_rules: []
