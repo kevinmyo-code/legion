@@ -167,6 +167,12 @@ INSTALLED_APPS = [
     # countries, dated balances, the day's FX rate, the income plan and the
     # limits Kevin set (`public.finance_*`, `django.fx_rates`).
     "finance",
+    # memory-and-vault map (ADR 0075): memory v2, one store on the engine for every member's
+    # memories (`public.member_memories`), and the consolidation job's ledger.
+    "member_memory",
+    # memory-and-vault map (ADR 0076): the ID vault, sealed under LEGION_VAULT_KEY, opened only
+    # on a member's phone behind the fingerprint (`public.vault_items`, `public.vault_reveals`).
+    "id_vault",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
@@ -461,6 +467,9 @@ REST_FRAMEWORK = {
             os.environ.get("LEGION_ASSISTANT_SESSION_RATE", "").strip() or "30/hour"
         ),
         "assistant_tool": os.environ.get("LEGION_ASSISTANT_TOOL_RATE", "").strip() or "60/min",
+        # ADR 0076: ID vault reveals per MEMBER (`id_vault.views.VaultRevealThrottle`). Same
+        # per-process LocMemCache caveat as `mcp` above.
+        "vault_reveal": os.environ.get("LEGION_VAULT_REVEAL_RATE", "").strip() or "10/hour",
         # The browser's half of a conversation record (`POST /api/assistant/conversation`):
         # about one upload per turn and one at the end, per member.
         "assistant_conversation": (
@@ -587,5 +596,13 @@ SPECTACULAR_SETTINGS = {
         "ClaudeMachineScopeEnum": "claude_session.models.SCOPES",
         "ClaudeReportedStateEnum": "claude_session.models.REPORTED_MACHINE_STATES",
         "ClaudeMachineStateEnum": "claude_session.models.SHOWN_MACHINE_STATES",
+        # memory-and-vault map: memory v2's and the ID vault's `kind` and `source`, named for
+        # what they are rather than left to collide with the bare names.
+        "MemberMemoryKindEnum": "member_memory.models.KINDS",
+        "MemberMemorySourceEnum": "member_memory.models.SOURCES",
+        "MemberMemoryClientSourceEnum": "member_memory.models.CLIENT_SOURCES",
+        "MemberMemoryDecayClassEnum": "member_memory.models.DECAY_CLASSES",
+        "MemberMemoryImportStoreEnum": "member_memory.importer.STORES",
+        "VaultItemKindEnum": "id_vault.models.KINDS",
     },
 }

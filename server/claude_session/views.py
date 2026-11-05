@@ -85,6 +85,7 @@ from claude_session.models import (
     ClaudeTaskFile,
 )
 from claude_session.state import effective_status, failure_reason, machine_state
+from household.models import DeviceToken
 from household.tenancy import household_of, scoped
 
 TAGS = ["claude"]
@@ -560,6 +561,10 @@ def _touch_machine(request, data: dict, now) -> ClaudeMachine:
     machine.reported_state = data["state"]
     machine.claude_version = data.get("claude_version", "")
     machine.last_seen_at = now
+    # Map decision G (memory-and-vault): bind the token that speaks for this machine, so memory
+    # and the vault can refuse a `listed` machine's token. A browser session binds nothing.
+    if isinstance(getattr(request, "auth", None), DeviceToken):
+        machine.token = request.auth
     machine.save()
     return machine
 

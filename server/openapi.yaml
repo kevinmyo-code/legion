@@ -7755,6 +7755,292 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/member-memories/:
+    get:
+      operationId: api_member_memories_list
+      description: 'The caller''s own memories and the household''s shared ones, newest
+        first. A whole list, never a feed: forgetting is a hard delete, so a cache
+        replaces itself from this.'
+      parameters:
+      - in: query
+        name: include_superseded
+        schema:
+          type: boolean
+        description: Also older versions a newer fact replaced.
+      - in: query
+        name: kind
+        schema:
+          type: string
+          enum:
+          - event
+          - fact
+          - preference
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Default 100, max 500.
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Only memories whose text contains this.
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    post:
+      operationId: api_member_memories_create
+      description: Saves a memory about the caller, private unless `shared`. Refused
+        in words when the text looks like a vault identifier.
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MemoryCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MemoryCreate'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberMemory'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/{memory_id}:
+    get:
+      operationId: api_member_memories_retrieve
+      parameters:
+      - in: path
+        name: memory_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberMemory'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    patch:
+      operationId: api_member_memories_partial_update
+      description: Changes text, kind, importance, decay class or sharing. Only the
+        member a memory is about may share it or make it private again.
+      parameters:
+      - in: path
+        name: memory_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMemoryUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMemoryUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMemoryUpdate'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberMemory'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    delete:
+      operationId: api_member_memories_destroy
+      parameters:
+      - in: path
+        name: memory_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted for good, with every older version it superseded.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/import:
+    post:
+      operationId: api_member_memories_import
+      description: The one-time upload of the phone's own memories (`companion_memories`
+        and `memories` rows), at most 500 a call. Idempotent by store and origin_guid.
+        Every row becomes private to the caller.
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/recall:
+    post:
+      operationId: api_member_memories_recall
+      description: The best live memories for `query` by recency (decaying by class),
+        importance and relevance; an empty query gives the newest and most important.
+        Rehearses what it returns.
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecallRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecallRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecallRequest'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecallResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/memory/companion_memories/:
     get:
       operationId: api_memory_companion_memories_list
@@ -9347,6 +9633,201 @@ paths:
                 $ref: '#/components/schemas/Detail'
           description: ''
         '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/vault/items:
+    get:
+      operationId: api_vault_items_list
+      description: 'The caller''s own vault items: labels and kinds. Never a value.'
+      tags:
+      - vault
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    post:
+      operationId: api_vault_items_create
+      description: Seals and stores a value. Answers with the label only, never the
+        value.
+      tags:
+      - vault
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VaultCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VaultCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VaultCreate'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultItem'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/vault/items/{item_id}:
+    patch:
+      operationId: api_vault_items_partial_update
+      description: Changes the label, kind or value. Answers with the label only.
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vault
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedVaultUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedVaultUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedVaultUpdate'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultItem'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    delete:
+      operationId: api_vault_items_destroy
+      description: A hard delete, from the member's own phone only.
+      parameters:
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vault
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted for good.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/vault/items/{item_id}/reveal:
+    post:
+      operationId: api_vault_items_reveal
+      description: 'The value, for the member''s own phone, after the fingerprint.
+        Audited (label and time, never the value), rate limited, never cached. The
+        server cannot verify the fingerprint: the header is the phone''s word.'
+      parameters:
+      - in: header
+        name: X-Legion-Unlocked
+        schema:
+          type: string
+          enum:
+          - biometric
+        description: Set by the phone only after BiometricPrompt succeeds.
+        required: true
+      - in: path
+        name: item_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vault
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultReveal'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
           content:
             application/json:
               schema:
@@ -12920,6 +13401,69 @@ components:
       - name
       - role
       - user_id
+    ImportRequest:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportRow'
+      required:
+      - rows
+    ImportResult:
+      type: object
+      properties:
+        imported:
+          type: integer
+        already_here:
+          type: integer
+        refused_sensitive:
+          type: integer
+          description: Rows that looked like a vault identifier; never stored.
+        refused_invalid:
+          type: integer
+      required:
+      - already_here
+      - imported
+      - refused_invalid
+      - refused_sensitive
+    ImportRow:
+      type: object
+      properties:
+        store:
+          allOf:
+          - $ref: '#/components/schemas/MemberMemoryImportStoreEnum'
+          description: |-
+            `companion_memories` (learned) or `memories` (what `remember` saved).
+
+            * `companion_memories` - companion_memories
+            * `memories` - memories
+        origin_guid:
+          type: string
+          maxLength: 64
+        text:
+          type: string
+        category:
+          type: string
+          default: ''
+        source:
+          type: string
+          default: ''
+        importance:
+          type: integer
+          nullable: true
+        logged_at:
+          type: string
+          format: date-time
+        last_accessed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - logged_at
+      - origin_guid
+      - store
+      - text
     IngestOutcome:
       type: object
       description: |-
@@ -13933,6 +14477,120 @@ components:
       - protein_g
       - provenance
       - updated_at
+    MemberMemory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MemberMemoryKindEnum'
+        importance:
+          type: integer
+          maximum: 10
+          minimum: 1
+        decay_class:
+          $ref: '#/components/schemas/MemberMemoryDecayClassEnum'
+        source:
+          $ref: '#/components/schemas/MemberMemorySourceEnum'
+        shared:
+          type: boolean
+          description: True for a household fact every member sees; false while private
+            to the member it is about.
+        about_you:
+          type: boolean
+          description: True when the memory is about the caller.
+        supersedes:
+          type: string
+          format: uuid
+          nullable: true
+        superseded_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_recalled_at:
+          type: string
+          format: date-time
+          nullable: true
+        recall_count:
+          type: integer
+        from_conversation:
+          type: string
+          format: uuid
+          nullable: true
+          description: The conversation record it was distilled from, if any.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - about_you
+      - created_at
+      - decay_class
+      - from_conversation
+      - id
+      - importance
+      - kind
+      - last_recalled_at
+      - recall_count
+      - shared
+      - source
+      - superseded_at
+      - supersedes
+      - text
+      - updated_at
+    MemberMemoryClientSourceEnum:
+      enum:
+      - phone
+      - manual
+      type: string
+      description: |-
+        * `phone` - phone
+        * `manual` - manual
+    MemberMemoryDecayClassEnum:
+      enum:
+      - durable
+      - episodic
+      type: string
+      description: |-
+        * `durable` - durable
+        * `episodic` - episodic
+    MemberMemoryImportStoreEnum:
+      enum:
+      - companion_memories
+      - memories
+      type: string
+      description: |-
+        * `companion_memories` - companion_memories
+        * `memories` - memories
+    MemberMemoryKindEnum:
+      enum:
+      - fact
+      - preference
+      - event
+      type: string
+      description: |-
+        * `fact` - fact
+        * `preference` - preference
+        * `event` - event
+    MemberMemorySourceEnum:
+      enum:
+      - phone
+      - web
+      - claude
+      - manual
+      - consolidation
+      type: string
+      description: |-
+        * `phone` - phone
+        * `web` - web
+        * `claude` - claude
+        * `manual` - manual
+        * `consolidation` - consolidation
     Memory:
       type: object
       description: |-
@@ -14066,6 +14724,52 @@ components:
       - provenance
       - store
       - updated_at
+    MemoryCreate:
+      type: object
+      properties:
+        text:
+          type: string
+          maxLength: 500
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/MemberMemoryKindEnum'
+          default: fact
+        importance:
+          type: integer
+          maximum: 10
+          minimum: 1
+          default: 5
+        decay_class:
+          allOf:
+          - $ref: '#/components/schemas/MemberMemoryDecayClassEnum'
+          default: durable
+        shared:
+          type: boolean
+          default: false
+        source:
+          allOf:
+          - $ref: '#/components/schemas/MemberMemoryClientSourceEnum'
+          default: manual
+          description: |-
+            `phone` for the phone's voice tools, `manual` for a screen.
+
+            * `phone` - phone
+            * `manual` - manual
+        supersedes:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - text
+    MemoryList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemberMemory'
+      required:
+      - results
     MerchantAlias:
       type: object
       description: |-
@@ -15691,6 +16395,22 @@ components:
         name:
           type: string
           maxLength: 150
+    PatchedMemoryUpdate:
+      type: object
+      properties:
+        text:
+          type: string
+          maxLength: 500
+        kind:
+          $ref: '#/components/schemas/MemberMemoryKindEnum'
+        importance:
+          type: integer
+          maximum: 10
+          minimum: 1
+        decay_class:
+          $ref: '#/components/schemas/MemberMemoryDecayClassEnum'
+        shared:
+          type: boolean
     PatchedPurchase:
       type: object
       properties:
@@ -15769,6 +16489,19 @@ components:
           type: string
           nullable: true
           maxLength: 64
+    PatchedVaultUpdate:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 60
+        kind:
+          $ref: '#/components/schemas/VaultItemKindEnum'
+        value:
+          type: string
+          writeOnly: true
+          description: Sealed before it is stored. Never returned by this route.
+          maxLength: 128
     PinnedBy:
       type: object
       properties:
@@ -16234,6 +16967,96 @@ components:
       - rate_date
       - rate_micros
       - source
+    RecallRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          default: ''
+        limit:
+          type: integer
+          maximum: 20
+          minimum: 1
+          default: 6
+    RecallResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recalled'
+      required:
+      - results
+    Recalled:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MemberMemoryKindEnum'
+        importance:
+          type: integer
+          maximum: 10
+          minimum: 1
+        decay_class:
+          $ref: '#/components/schemas/MemberMemoryDecayClassEnum'
+        source:
+          $ref: '#/components/schemas/MemberMemorySourceEnum'
+        shared:
+          type: boolean
+          description: True for a household fact every member sees; false while private
+            to the member it is about.
+        about_you:
+          type: boolean
+          description: True when the memory is about the caller.
+        supersedes:
+          type: string
+          format: uuid
+          nullable: true
+        superseded_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_recalled_at:
+          type: string
+          format: date-time
+          nullable: true
+        recall_count:
+          type: integer
+        from_conversation:
+          type: string
+          format: uuid
+          nullable: true
+          description: The conversation record it was distilled from, if any.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        score:
+          type: number
+          format: double
+      required:
+      - about_you
+      - created_at
+      - decay_class
+      - from_conversation
+      - id
+      - importance
+      - kind
+      - last_recalled_at
+      - recall_count
+      - score
+      - shared
+      - source
+      - superseded_at
+      - supersedes
+      - text
+      - updated_at
     Receipt:
       type: object
       description: |-
@@ -18225,6 +19048,93 @@ components:
       - detail
       - enabled
       - public_key
+    VaultCreate:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 60
+        kind:
+          $ref: '#/components/schemas/VaultItemKindEnum'
+        value:
+          type: string
+          writeOnly: true
+          description: Sealed before it is stored. Never returned by this route.
+          maxLength: 128
+      required:
+      - kind
+      - label
+      - value
+    VaultItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        kind:
+          $ref: '#/components/schemas/VaultItemKindEnum'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_revealed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - id
+      - kind
+      - label
+      - last_revealed_at
+      - updated_at
+    VaultItemKindEnum:
+      enum:
+      - passport
+      - nric
+      - ssn
+      - a_number
+      - bank_account
+      - other
+      type: string
+      description: |-
+        * `passport` - passport
+        * `nric` - nric
+        * `ssn` - ssn
+        * `a_number` - a_number
+        * `bank_account` - bank_account
+        * `other` - other
+    VaultList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VaultItem'
+      required:
+      - results
+    VaultReveal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        kind:
+          $ref: '#/components/schemas/VaultItemKindEnum'
+        value:
+          type: string
+          description: Show it on screen only. Never log, speak or send it.
+      required:
+      - id
+      - kind
+      - label
+      - value
     Vehicle:
       type: object
       description: |-
@@ -18304,6 +19214,12 @@ components:
             rebuild HINT, never an identity: a car that changed dongles carries its
             old value here until the next sync, and nothing may be assigned on the
             strength of it alone.'
+        plate:
+          type: string
+          nullable: true
+          description: The licence plate, ordinary data (not an ID-vault item). Trimmed
+            and upper-cased; at most 16 characters. Omit it to leave the stored plate
+            as is; send null to clear it.
       required:
       - created_at
       - deleted_at

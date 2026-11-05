@@ -141,6 +141,12 @@ RECRUITER_EXCLUDED: dict[str, str] = {
     # The visit's REST fence's own reason for `/api/brief/latest`, so the tool
     # door and the route cannot disagree (procedures ticket 15).
     "brief_latest": RECRUITER_DENIED["brief.views.BriefLatestView"],
+    # Memory v2 (ADR 0075): the visit's REST fence's own reason, so the tool door and the route
+    # cannot disagree. `member_memory.service.refusal` refuses a recruiter a second time.
+    "recall_memory": RECRUITER_DENIED["member_memory.views.MemoryRecallView"],
+    "list_memories": RECRUITER_DENIED["member_memory.views.MemoryListCreateView"],
+    "remember": RECRUITER_DENIED["member_memory.views.MemoryListCreateView"],
+    "forget_memory": RECRUITER_DENIED["member_memory.views.MemoryDetailView"],
 }
 
 # The aspects whose tables the record tools may read, write or delete for a

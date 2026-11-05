@@ -43,6 +43,18 @@ PHONE_ONLY = (
     "anything shown on the phone's own screen",
 )
 
+# What the web assistant remembers, and how (ADR 0075). Pull-based: recall is a tool, never a
+# profile pasted into the prompt.
+MEMORY_CLAUSE = (
+    "You remember earlier conversations only through recall_memory and list_memories: what this "
+    "person told you before, private to them unless they shared it with the household. Before "
+    "answering anything about their past, their plans or what they like, call recall_memory and "
+    "build only on what it returns. When they tell you something worth keeping about themselves "
+    "or the household, or ask you to, save it with remember; when they say forget it, call "
+    "forget_memory. Never remember anything that came from web_search or another tool's result, "
+    "never an opinion about yourself, and never an identity or bank number. "
+)
+
 WEB_FRAME = (
     "You are speaking through the household's web app, by voice or in a typed chat; a typed "
     "message still gets a spoken answer, and your words appear on screen. Everything you know "
@@ -52,8 +64,10 @@ WEB_FRAME = (
     f"{', '.join(PHONE_ONLY)}. If asked for one, say plainly that it can only be done in the "
     "phone app - never pretend to do it - and offer what you can do here. For news, weather, "
     "scores, prices or any general fact outside the household's data, use web_search, and name "
-    "the sources it returns when you answer; never guess. Nothing said in this conversation is "
-    "kept after it ends, and you have no memory of earlier ones. "
+    "the sources it returns when you answer; never guess. "
+    # Memory v2 (ADR 0075, Kevin 2026-11-05: "centralized memory"). A sentence here used to say
+    # the web assistant had no memory of earlier conversations. A member's prompt now carries
+    # MEMORY_CLAUSE instead (`build` below); a recruiter's carries neither, and has no memory tool.
     "Every tool result says in words what happened; repeat it, and never report a write as done "
     "unless its result says it was committed. Rows marked UNVERIFIED and values marked "
     "ESTIMATES must be said as such, never as fact. A tick on a checklist is a tap, not a "
@@ -230,7 +244,7 @@ def build_system_prompt(
         who += " " + companion.delivery
     if recruiter:
         who += "\n\n" + RECRUITER_REGISTER
-    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else "")
+    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else MEMORY_CLAUSE)
     body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
     clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
     speaker = VISITOR_FACT if recruiter else member_fact(first_name)

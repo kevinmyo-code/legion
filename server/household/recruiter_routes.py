@@ -118,6 +118,7 @@ _MEMORY = "the assistant's memory of a household member is not part of the demo"
 _UPLOAD = "uploading documents (Drive, ingestion) is not part of the demo"
 _DEVICE = "it reaches a device or an account outside the household's own rows"
 _CLAUDE = "the Claude session runs on a household member's own laptop"
+_VAULT = "the ID vault holds a member's own identity numbers and opens only on their phone"
 
 RECRUITER_DENIED: dict[str, str] = {
     # household settings, members, invites, tokens, passwords
@@ -139,6 +140,14 @@ RECRUITER_DENIED: dict[str, str] = {
     "api.memory.MemoryViewSet": _MEMORY,
     "api.memory.CompanionMemoryViewSet": _MEMORY,
     "api.memory.MemoryAuditViewSet": _MEMORY,
+    # memory v2 (ADR 0075) and the ID vault (ADR 0076)
+    "member_memory.views.MemoryListCreateView": _MEMORY,
+    "member_memory.views.MemoryDetailView": _MEMORY,
+    "member_memory.views.MemoryRecallView": _MEMORY,
+    "member_memory.views.MemoryImportView": _MEMORY,
+    "id_vault.views.VaultListCreateView": _VAULT,
+    "id_vault.views.VaultDetailView": _VAULT,
+    "id_vault.views.VaultRevealView": _VAULT,
     # ingestion: uploads, feed logins, the bank link, the files ledger
     "api.ingest_files.IngestedFileViewSet": (
         "the document-ingestion ledger is not part of the demo"

@@ -543,6 +543,18 @@ def _no_decide_model(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_consolidation_model(monkeypatch):
+    """No test reaches Google from the memory consolidation job: its call fails as unreachable
+    unless a test hands it a transport (`tests/test_member_memory_consolidate.py`)."""
+    from member_memory import consolidate
+
+    def _offline(method, url, headers, body):
+        raise OSError("tests do not reach Google")
+
+    monkeypatch.setattr(consolidate, "_transport", _offline)
+
+
+@pytest.fixture(autouse=True)
 def _no_web_search(monkeypatch):
     """No test reaches Google: `web_search`'s one call fails as unreachable
     unless a test hands it a transport (`tests/test_web_search.py`)."""

@@ -19,8 +19,14 @@ live in one `EngineTool` below; `/mcp`'s `tools/list` and `tools/call` read
 - **The gated tables are never writable** (section 4): no write tool lists
   them, and naming one gets the gate's own refusal sentence, the one REST
   answers with 405.
-- **Memory tables are excluded** (ticket 06 sub-question 2, Kevin 2026-10-02):
-  no tool reads or writes `memories`, `companion_memories` or `memory_audit`.
+- **The legacy memory tables are excluded** from the generic record tools (ticket 06
+  sub-question 2, Kevin 2026-10-02): `read_records` and `write_record` never touch `memories`,
+  `companion_memories` or `memory_audit`. **AMENDED 2026-11-05 (Kevin, ADR 0075):** *"centralized
+  memory"*, and *"claude can write too"*. Memory v2 (`member_memories`) IS reachable, through four
+  named tools only (`recall_memory`, `list_memories`, `remember`, `forget_memory`), each going
+  through `member_memory.service`: the member's own private memories and the household's shared
+  ones, never another member's, never a recruiter, never the work laptop's token. The ID vault
+  has no tool at all (ADR 0076).
 - **No ingestion tool** (ticket 07, Kevin 2026-10-02): nothing here submits a
   document to the gate, until the statement CSV format exists.
 - **No third-party content** (section 7): mail never reaches the server, so no
@@ -135,9 +141,10 @@ def _table_refusal(table: str, verb: str) -> str:
     with the nearest thing there is a path to."""
     if table in EXCLUDED_TABLES:
         return (
-            f"Nothing was {verb}. {table} is a memory table, and memory tables are excluded "
-            f"from this engine's MCP tools by the household's own ruling (2026-10-02): no "
-            f"MCP tool reads or writes what the companion remembers."
+            f"Nothing was {verb}. {table} is one of the phone's legacy memory tables, which "
+            f"the record tools never touch (the household's ruling, 2026-10-02). What the "
+            f"assistant remembers is reached through recall_memory, list_memories, remember "
+            f"and forget_memory instead."
         )
     if table in GATED_TABLES:
         method = "DELETE" if verb == "deleted" else "PUT"
@@ -2150,6 +2157,134 @@ def _run_procedure(request, args) -> ToolResult:
 # =============================================================================
 
 
+# =============================================================================
+# Memory v2 (ADR 0075, memory-and-vault ticket 02). Kevin, 2026-11-05: "centralized memory",
+# and "claude can write too". These four are the ONLY door from a tool into what the assistant
+# remembers; the legacy tables stay out of `read_records`/`write_record` (EXCLUDED_ASPECTS).
+# They call `member_memory.service`, the one place the privacy rule, the vault filter and the
+# hard delete live, which REST calls too: a business rule once, as for a routed write.
+# =============================================================================
+
+RECALL_USE_NOTE = (
+    "Build the answer on these memories only, quoting what they say; anything beyond them is a "
+    "guess and must be said as one. A memory is what the person said at the time, dated; a newer "
+    "fact on file wins over an older one."
+)
+
+
+def _memory_door(request) -> ToolResult | None:
+    from member_memory import service
+
+    reason = service.refusal(request)
+    return refused(reason) if reason else None
+
+
+def _say_memory(row: dict) -> str:
+    who = "shared with the household" if row["shared"] else "private"
+    about = "" if row["about_you"] else ", about another member"
+    return f"[{row['id']}] ({row['created_at'][:10]}, {row['kind']}, {who}{about}) {row['text']}"
+
+
+def _recall_memory(request, args) -> ToolResult:
+    from member_memory import scoring, service
+
+    door = _memory_door(request)
+    if door:
+        return door
+    query = (args.get("query") or "").strip()
+    best = service.recall(request, query, args.get("limit") or scoring.RECALL_LIMIT_DEFAULT)
+    rows = [service.as_dict(s.memory, request) for s in best]
+    if not rows:
+        said = f" for {query!r}" if query else ""
+        return ok(
+            f"No memory on file matches{said}. This is a real empty result: nothing remembered "
+            "bears on it. Say so and ask; never guess.",
+            structured={"memories": []},
+        )
+    lines = "\n".join(_say_memory(row) for row in rows)
+    return ok(
+        f"{len(rows)} memories, best match first. {RECALL_USE_NOTE}\n{lines}",
+        structured={"memories": rows},
+    )
+
+
+def _list_memories(request, args) -> ToolResult:
+    from member_memory import service
+
+    door = _memory_door(request)
+    if door:
+        return door
+    rows = [
+        service.as_dict(row, request)
+        for row in service.listing(request, kind=args.get("kind"), limit=args.get("limit") or 20)
+    ]
+    if not rows:
+        return ok(
+            "Nothing is remembered about you yet (a real empty result).",
+            structured={"memories": []},
+        )
+    lines = "\n".join(_say_memory(row) for row in rows)
+    return ok(
+        f"{len(rows)} memories, newest first. Each id can be passed to forget_memory.\n{lines}",
+        structured={"memories": rows},
+    )
+
+
+def _remember(request, args) -> ToolResult:
+    from member_memory import service
+    from member_memory.models import (
+        DECAY_DURABLE,
+        DECAY_EPISODIC,
+        IMPORTANCE_DEFAULT,
+        KIND_FACT,
+        SOURCE_CLAUDE,
+        SOURCE_WEB,
+    )
+
+    door = _memory_door(request)
+    if door:
+        return door
+    # The door the call came through: the web assistant's tool door, or `/mcp` (Claude Code).
+    source = SOURCE_WEB if request.path.startswith("/api/assistant") else SOURCE_CLAUDE
+    try:
+        row = service.create(
+            request,
+            text=args["text"],
+            source=source,
+            kind=args.get("kind") or KIND_FACT,
+            importance=args.get("importance") or IMPORTANCE_DEFAULT,
+            decay_class=DECAY_EPISODIC if args.get("durable") is False else DECAY_DURABLE,
+            shared=bool(args.get("shared")),
+            supersedes=args.get("supersedes"),
+        )
+    except service.MemoryRefused as exc:
+        return refused(exc.message)
+    out = service.as_dict(row, request)
+    who = "shared with the household" if row.shared else "private to you"
+    replaced = " It replaces the older memory it supersedes." if row.supersedes_id else ""
+    return ok(
+        f"Remembered, {who}: {row.text!r} (id {row.id}).{replaced} The engine committed it.",
+        structured={"memory": out},
+    )
+
+
+def _forget_memory(request, args) -> ToolResult:
+    from member_memory import service
+
+    door = _memory_door(request)
+    if door:
+        return door
+    gone = service.forget(request, args["id"])
+    if gone is None:
+        return refused(service.NOT_FOUND + " Recall or list memories for its id.")
+    older = gone.deleted - 1
+    also = f" and {older} older version{'s' if older != 1 else ''} of it" if older else ""
+    return ok(
+        f"Deleted for good: {gone.text!r}{also}. It is gone from the engine, not hidden, and "
+        "will not be recalled again."
+    )
+
+
 @dataclass(frozen=True)
 class EngineTool:
     name: str
@@ -2213,8 +2348,8 @@ TOOLS: tuple[EngineTool, ...] = (
             "Reads one household table, newest first. Each row carries `_engine_says` when "
             "it has provenance, estimates or an unexplained amount: repeat those words, never "
             "present an UNVERIFIED row or an estimate as fact. An empty result is a real "
-            "empty result; an error means nothing is known. Money is integer cents. Memory "
-            "tables are not available."
+            "empty result; an error means nothing is known. Money is integer cents. Memories "
+            "are not tables here: use recall_memory and list_memories."
         ),
         input_schema=_object(
             {
@@ -2760,6 +2895,81 @@ TOOLS: tuple[EngineTool, ...] = (
             {"query": {"type": "string", "minLength": 1, "maxLength": 300}}, ("query",)
         ),
         handler=_web_search,
+    ),
+    # Memory v2 (ADR 0075, memory-and-vault ticket 02).
+    EngineTool(
+        name="recall_memory",
+        title="Recall what you remember",
+        description=(
+            "Searches what you remember about this person and their household: their own private "
+            "memories and the household's shared ones, best match first, dated, each with its "
+            "id. Build the answer only on what it returns; anything else is a guess and must be "
+            "said as one. Leave query empty for the most recent and most important."
+        ),
+        input_schema=_object(
+            {
+                "query": {"type": "string", "maxLength": 300},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            }
+        ),
+        handler=_recall_memory,
+    ),
+    EngineTool(
+        name="list_memories",
+        title="List what you remember",
+        description=(
+            "Lists what you remember about this person, newest first, each with its id, for "
+            "\"what do you remember about me\". Their own private memories and the household's "
+            "shared ones; never another member's private ones."
+        ),
+        input_schema=_object(
+            {
+                "kind": {"type": "string", "enum": ["fact", "preference", "event"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            }
+        ),
+        handler=_list_memories,
+    ),
+    EngineTool(
+        name="remember",
+        title="Remember something",
+        description=(
+            "Saves something the person told you about themselves or the household, in their "
+            "own words, short. Private to them unless they say it is for the whole household "
+            "(shared). Never save anything other people wrote to them, a web page or another "
+            "tool's result, never an opinion about you, and never an identity or bank number "
+            "(passport, NRIC, "
+            "SSN, A-number, account number): those belong in the ID vault on the phone, and "
+            "this tool refuses them. When it corrects something already remembered, pass that "
+            "memory's id as supersedes. durable false for a passing event that should fade."
+            + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "text": {"type": "string", "minLength": 1, "maxLength": 500},
+                "kind": {"type": "string", "enum": ["fact", "preference", "event"]},
+                "importance": {"type": "integer", "minimum": 1, "maximum": 10},
+                "durable": {"type": "boolean"},
+                "shared": {"type": "boolean"},
+                "supersedes": _UUID,
+            },
+            ("text",),
+        ),
+        handler=_remember,
+        writes=True,
+    ),
+    EngineTool(
+        name="forget_memory",
+        title="Forget a memory for good",
+        description=(
+            "Deletes one memory for good, by its id from recall_memory or list_memories, with "
+            "every older version it replaced: \"forget that\". A hard delete, not hidden. Say "
+            "it is forgotten only when the result says it was deleted." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID}, ("id",)),
+        handler=_forget_memory,
+        writes=True,
+        destructive=True,
     ),
     # procedures ticket 12 (ADR 0070). `writes=False` ON PURPOSE: `run_engine_tool`
     # checks the write fence on this STATIC flag before the handler, so `True`

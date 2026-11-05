@@ -125,6 +125,14 @@ class ClaudeMachine(models.Model):
     # Null for a machine only a session hook has ever named.
     last_seen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
+    # memory-and-vault map decision G: the device token whose heartbeat last named this machine.
+    # Memory and the ID vault read it to tell a worker's token from a phone's
+    # (`claude_session.tokens`). Set by every heartbeat; null for a machine only a session hook
+    # has named. SET_NULL: revoking or deleting the token leaves the machine row.
+    token = models.ForeignKey(
+        "household.DeviceToken", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="claude_machines",
+    )
 
     class Meta:
         db_table = "claude_machines"

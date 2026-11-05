@@ -147,15 +147,17 @@ def test_every_registry_tool_is_classified_for_recruiters():
 
 def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
     """Ticket 13 (ADR 0069): writes over the household's own rows are in; the
-    registry tools out are the one that names body and memory tables, and the
-    daily brief (procedures ticket 15), which the visit's routes refuse too."""
-    assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest"}
+    registry tools out are the one that names body and memory tables, the
+    daily brief (procedures ticket 15), which the visit's routes refuse too, and
+    memory v2's four (ADR 0075: a member's memory is not part of the demo)."""
+    memory = {"recall_memory", "list_memories", "remember", "forget_memory"}
+    assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest", *memory}
     assert (
         RECRUITER_EXCLUDED["brief_latest"]
         == RECRUITER_DENIED["brief.views.BriefLatestView"]
     )
     for tool in TOOLS:
-        if tool.writes:
+        if tool.writes and tool.name not in memory:
             assert tool.name in RECRUITER_TOOLS, tool.name
     assert "about_kevin" in RECRUITER_TOOLS
     assert "about_kevin" not in surface.WEB_TOOL_NAMES
