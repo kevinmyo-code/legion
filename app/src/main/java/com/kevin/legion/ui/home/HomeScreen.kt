@@ -129,6 +129,8 @@ fun HomeScreen(
     onPlayTetris: (opponentUserId: String?) -> Unit = {},
     /** The More sheet's Claude session row. */
     onOpenClaudeSession: () -> Unit = {},
+    /** A Money panel bar: that category's transactions in the Money view (household-finance 13). */
+    onOpenMoneyCategory: (category: String) -> Unit = { onOpenMoney() },
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -150,6 +152,9 @@ fun HomeScreen(
     val pickBooksFolder = rememberBooksFolderPicker(booksViewModel)
     // Ai-upgrade ticket 02: the Brief chip's modal, reopenable any time, never opened unasked.
     var briefOpen by remember { mutableStateOf(false) }
+    // Household-finance ticket 13: the Money panel where the month grid was, and the More card.
+    val moneyViewModel: HomeMoneyViewModel = viewModel(factory = HomeMoneyViewModel.Factory(context))
+    val money by moneyViewModel.state.collectAsStateWithLifecycle()
 
     // Home-launcher ticket 06's own dock - pins are read fresh on every resume (a pin/unpin made
     // from Apps must show up here without a process restart), and against AppDrawerCache's own
@@ -168,6 +173,7 @@ fun HomeScreen(
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         calendarViewModel.refresh()
+        moneyViewModel.refresh()
         tilesViewModel.refresh()
         gamesViewModel.refresh()
         booksViewModel.refresh()
@@ -327,6 +333,8 @@ fun HomeScreen(
         ),
         onBrief = { briefOpen = true },
         claudeLine = claudeLine,
+        money = money,
+        onOpenMoneyCategory = onOpenMoneyCategory,
     )
     SoftTheme { com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false }) }
 }
@@ -360,6 +368,16 @@ fun HomeContent(
     onBrief: () -> Unit = {},
     /** The quiet Claude session line, or null for none; a tap opens the Claude session screen. */
     claudeLine: String? = null,
+    /** Household-finance 13 and 14: the Money panel's and the More card's reads. */
+    money: HomeMoneyUiState = HomeMoneyUiState(),
+    onOpenMoneyCategory: (String) -> Unit = {},
+    /**
+     * The panel's [Calendar] button: the month grid as a modal sheet. The same sheet Alfred's
+     * `show_agenda_modal` opens ([com.kevin.legion.ui.VoiceModalHost]), so one trigger each, one sheet.
+     */
+    onCalendar: () -> Unit = {
+        com.kevin.legion.service.VoiceModalController.show(com.kevin.legion.service.VoiceModalTarget.AGENDA)
+    },
 ) {
     var moreOpen by remember { mutableStateOf(false) }
     var gamesOpen by remember { mutableStateOf(false) }
@@ -372,7 +390,18 @@ fun HomeContent(
     androidx.compose.runtime.LaunchedEffect(launched) { if (launched != null) gamesOpen = false }
     SoftTheme {
         Column(Modifier.fillMaxSize().background(SoftColors.ground).padding(12.dp)) {
-            HomeCalendarArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth(), onBrief = onBrief)
+            // Household-finance ticket 13: the Money panel replaces ONLY the month grid; the day's
+            // agenda under it is the calendar's own, unchanged. The grid opens from [Calendar].
+            val panel = homeMoneyPanel(money)
+            HomeTodayArea(calendar, calendarCallbacks, Modifier.weight(1f).fillMaxWidth()) {
+                HomeMoneyPanel(
+                    panel,
+                    onOpenMoney = tileCallbacks.onOpenMoney,
+                    onOpenCategory = onOpenMoneyCategory,
+                    onCalendar = onCalendar,
+                    onBrief = onBrief,
+                )
+            }
             HomePanelButtons(
                 calendar, calendarCallbacks, Modifier.padding(top = 6.dp, bottom = 4.dp),
                 onMore = { moreOpen = true },
@@ -408,6 +437,7 @@ fun HomeContent(
             fun closing(go: () -> Unit): () -> Unit = { moreOpen = false; go() }
             MoreSheet(
                 state = tiles,
+                money = money,
                 recording = recording,
                 recordRefusal = recordRefusal,
                 callbacks = tileCallbacks.copy(
@@ -435,6 +465,7 @@ fun HomeContent(
 @Composable
 fun MoreSheet(
     state: HomeUiState,
+    money: HomeMoneyUiState = HomeMoneyUiState(),
     recording: Boolean,
     recordRefusal: String?,
     callbacks: HomeCallbacks,
@@ -445,7 +476,7 @@ fun MoreSheet(
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = SoftColors.card,
     ) {
-        MoreSheetContent(state, recording, recordRefusal, callbacks, onDismiss)
+        MoreSheetContent(state, recording, recordRefusal, callbacks, onDismiss, money)
     }
 }
 
@@ -458,6 +489,7 @@ fun MoreSheetContent(
     recordRefusal: String?,
     callbacks: HomeCallbacks,
     onDismiss: () -> Unit,
+    money: HomeMoneyUiState = HomeMoneyUiState(),
 ) {
     Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 20.dp)) {
         Row(
@@ -476,6 +508,10 @@ fun MoreSheetContent(
             // The weather and area card fits above the tiles (checked at font scale 1.3), so it is back.
             TodayCard(state = state, onClick = onDismiss)
             Spacer(Modifier.height(6.dp))
+            // Household-finance ticket 14: the Money tile became this card (safe to spend, net
+            // worth, the month bar, the closest two, the warning); it opens the Money view.
+            MoneyGlanceCard(homeMoneyPanel(money), netWorthGlance(money.netWorth), callbacks.onOpenMoney)
+            Spacer(Modifier.height(6.dp))
             TileGrid(
                 state = state,
                 recording = recording,
@@ -483,6 +519,7 @@ fun MoreSheetContent(
                 callbacks = callbacks,
                 fillRemaining = false,
                 showCalendarAndLists = false,
+                showMoney = false,
             )
             // Claude session (claude-session ticket 05): the hands path for the claude_session tool.
             com.kevin.legion.ui.claudesession.ClaudeSessionMoreRow(callbacks.onOpenClaudeSession)
@@ -632,6 +669,8 @@ internal fun TileGrid(
     modifier: Modifier = Modifier,
     /** False in the More sheet: Calendar and Lists are the panel buttons now (one-home ticket 11). */
     showCalendarAndLists: Boolean = true,
+    /** False in the More sheet: [MoneyGlanceCard] sits above the grid (household-finance ticket 14). */
+    showMoney: Boolean = true,
 ) {
     // 4dp between rows (was 8, then 6) - the same height-back-to-the-grid reasoning as
     // HomeContent's own tightened Spacer (ticket 06's dock, then ticket 07's category row).
@@ -684,10 +723,10 @@ internal fun TileGrid(
             )
         }
         Row(
-            rowModifier(null, growsToContent = true),
+            rowModifier(null, growsToContent = showMoney),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TileCard(
+            if (showMoney) TileCard(
                 modifier = Modifier.weight(1f).fillMaxSize(),
                 accent = AreaAccent.MONEY,
                 iconRes = R.drawable.ms_account_balance_wallet,

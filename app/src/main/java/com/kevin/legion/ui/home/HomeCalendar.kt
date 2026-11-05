@@ -167,6 +167,45 @@ fun HomeCalendarArea(
     }
 }
 
+/**
+ * HOME's top area since household-finance ticket 13 (Kevin, 2026-11-05: *"i just want that
+ * calendar section replaced the top one"*): [top] (the Money panel) where the month header and the
+ * grid were, and the selected day's agenda under it, unchanged. **It never scrolls**, like
+ * [HomeCalendarArea]: [top] is measured against what the agenda's minimum ([MIN_AGENDA_ROWS] rows
+ * and "+N more") leaves, and the agenda takes everything [top] did not use.
+ */
+@Composable
+fun HomeTodayArea(
+    state: HomeCalendarUiState,
+    callbacks: HomeCalendarCallbacks,
+    modifier: Modifier = Modifier,
+    top: @Composable () -> Unit,
+) {
+    val density = LocalDensity.current
+    val rowH = agendaRowHeight(density.fontScale)
+    val agendaMin = PANEL_PAD_V * 2 + PANEL_TITLE_LINE + PANEL_ROWS_GAP + rowH * MIN_AGENDA_ROWS + MORE_LINE
+    Layout(
+        modifier = modifier,
+        content = {
+            Box { top() }
+            AgendaPanel(state, callbacks, rowH)
+        },
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val agendaMinPx = with(density) { agendaMin.roundToPx() }
+        val gapPx = with(density) { 6.dp.roundToPx() }
+        val topMax = (constraints.maxHeight - agendaMinPx - gapPx).coerceAtLeast(0)
+        val panel = measurables[0].measure(Constraints(maxWidth = width, maxHeight = topMax))
+        val agendaY = panel.height + gapPx
+        val agendaH = (constraints.maxHeight - agendaY).coerceAtLeast(0)
+        val agenda = measurables[1].measure(Constraints.fixed(width, agendaH))
+        layout(width, constraints.maxHeight) {
+            panel.placeRelative(0, 0)
+            agenda.placeRelative(0, agendaY)
+        }
+    }
+}
+
 /** [dp] as a text size that ignores the font scale (see [GRID_TEXT_DP]). */
 @Composable
 private fun fixedSp(dp: Int): androidx.compose.ui.unit.TextUnit = with(LocalDensity.current) { dp.dp.toSp() }

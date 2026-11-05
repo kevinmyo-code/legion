@@ -36,11 +36,17 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VoiceModalHost() {
+fun VoiceModalHost(
+    /** The calendar sheet's rows and "+N more": that day's view (household-finance ticket 13). */
+    onOpenDay: (day: java.time.LocalDate, reminderId: Long?) -> Unit = { _, _ -> },
+) {
     val payload by VoiceModalController.current.collectAsStateWithLifecycle()
     val current = payload ?: return
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    // The calendar sheet opens full: a half-height sheet cuts the 6-week grid off at its middle.
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = current.target == VoiceModalTarget.AGENDA,
+    )
 
     ModalBottomSheet(
         onDismissRequest = { VoiceModalController.dismiss() },
@@ -67,7 +73,14 @@ fun VoiceModalHost() {
             // CALENDAR tab), and it already opens with TODAY selected by default
             // (`selectedDayStart`'s own `remember` default), so hosting it bare here shows exactly
             // "today's due items" with no day-filter parameter needed at all.
-            VoiceModalTarget.AGENDA -> CalendarScreen()
+            // **REPOINTED again 2026-11-05 (household-finance ticket 13):** the month grid HOME
+            // used to show, header, grid and the selected day's agenda, now a sheet. HOME's
+            // [Calendar] button opens this same sheet, so voice and hands show one composable
+            // (ADR 0035). The full Calendar screen stays one tap away from any row.
+            VoiceModalTarget.AGENDA -> com.kevin.legion.ui.home.HomeCalendarSheetBody(
+                onOpenDay = onOpenDay,
+                onDismiss = { VoiceModalController.dismiss() },
+            )
             // The codes card (2026-11-03). Hands path: Fleet tab, Faults page, "Codes card" -
             // the same CodesCardHost, so voice and hands show one composable (ADR 0035).
             VoiceModalTarget.CODES -> current.vehicleId?.let { id ->
