@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kevin.legion.finance.FinanceFixtures
+import com.kevin.legion.finance.BudgetTotalWire
 import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.ui.home.AgendaKind
 import com.kevin.legion.ui.home.AgendaRowUi
@@ -23,7 +24,9 @@ import com.kevin.legion.ui.home.HomeCalendarCallbacks
 import com.kevin.legion.ui.home.HomeCalendarUiState
 import com.kevin.legion.ui.home.HomeContent
 import com.kevin.legion.ui.home.HomeMoneyUiState
+import com.kevin.legion.ui.home.MoneyGlanceCard
 import com.kevin.legion.ui.home.buildHomeCells
+import com.kevin.legion.ui.home.homeMoneyPanel
 import com.kevin.legion.ui.money.MoneyMonthPage
 import com.kevin.legion.ui.money.MoneyTxnRow
 import com.kevin.legion.ui.money.MoneyViewContent
@@ -44,8 +47,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Household-finance tickets 13 and 14, against the approved prototype
- * (`legion-money-prototypes/money-screens.html`): HOME's Money panel (fresh, saved copy, engine down),
- * the Calendar sheet, and the Money view's current month top to bottom. Synthetic figures only.
+ * (`legion-money-prototypes/money-screens.html`), cut to the budget on Kevin's 2026-11-05 run: HOME's
+ * Money panel (fresh, font 1.3, saved copy, engine down, over budget), the More card, the Calendar
+ * sheet, and the Money view's current month top to bottom. Synthetic figures only.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -96,7 +100,7 @@ class MoneyScreensScreenshotTest {
 
     @Config(qualifiers = "w384dp-h636dp")
     @Test
-    fun `home - money panel, font 1_3, bars give way before anything else`() =
+    fun `home - money panel, font 1_3, the bars scroll under the header`() =
         home("home-money-panel-font13.png", FinanceFixtures.homeFresh, 1.3f)
 
     @Config(qualifiers = "w384dp-h636dp")
@@ -105,22 +109,41 @@ class MoneyScreensScreenshotTest {
         val note = "Saved 3 hours ago. The engine could not be reached."
         home(
             "home-money-panel-saved.png",
-            FinanceFixtures.homeFresh.copy(
-                safe = FinanceRead.Saved(FinanceFixtures.safe.copy(topUpNeededCents = 0), 0L, note),
-                budgets = FinanceRead.Saved(FinanceFixtures.budgets, 0L, note),
-            ),
+            FinanceFixtures.homeFresh.copy(budgets = FinanceRead.Saved(FinanceFixtures.budgets, 0L, note)),
         )
+    }
+
+    @Config(qualifiers = "w384dp-h636dp")
+    @Test
+    fun `home - over the whole budget, said in words in the warning colour`() = home(
+        "home-money-panel-over.png",
+        FinanceFixtures.homeFresh.copy(
+            budgets = FinanceRead.Fresh(
+                FinanceFixtures.budgets.copy(
+                    total = BudgetTotalWire(spentCents = 171_250, capCents = 160_000, percent = 107, paceCents = 26_667),
+                ),
+            ),
+        ),
+    )
+
+    @Config(qualifiers = "w384dp-h832dp")
+    @Test
+    fun `more - the Money card, total bar and the three closest`() {
+        rule.setContent {
+            SoftTheme {
+                Box(Modifier.background(SoftColors.card).padding(16.dp)) {
+                    MoneyGlanceCard(homeMoneyPanel(FinanceFixtures.homeFresh)) {}
+                }
+            }
+        }
+        rule.onRoot().captureRoboImage("more-money-card.png")
     }
 
     @Config(qualifiers = "w384dp-h636dp")
     @Test
     fun `home - engine down and nothing saved`() = home(
         "home-money-panel-unavailable.png",
-        HomeMoneyUiState(
-            loading = false,
-            safe = FinanceRead.Unavailable("The engine could not be reached."),
-            budgets = FinanceRead.Unavailable("The engine could not be reached."),
-        ),
+        HomeMoneyUiState(loading = false, budgets = FinanceRead.Unavailable("The engine could not be reached.")),
     )
 
     @Config(qualifiers = "w384dp-h700dp")
@@ -218,21 +241,11 @@ class MoneyScreensScreenshotTest {
 
     @Config(qualifiers = "w384dp-h832dp")
     @Test
-    fun `money view - SGD, no rate for cash flow, net worth saved`() = moneyView(
-        "money-view-refused-saved.png",
+    fun `money view - budgets unreadable, transactions still loading`() = moneyView(
+        "money-view-budgets-unavailable.png",
         fresh.copy(
-            currency = "SGD",
-            netWorth = FinanceRead.Saved(
-                FinanceFixtures.netWorth,
-                0L,
-                "Saved 2 days ago. The engine could not be reached.",
-            ),
             pages = mapOf(
-                nov to MoneyMonthPage(
-                    FinanceRead.Unavailable("The engine could not be reached."),
-                    FinanceRead.Refused("No USD/SGD rate is stored for 2026-11-05, so nothing was converted."),
-                    null,
-                ),
+                nov to MoneyMonthPage(FinanceRead.Unavailable("The engine could not be reached."), null, null),
             ),
         ),
     )
