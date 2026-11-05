@@ -12125,6 +12125,30 @@ components:
       - size_bytes
       - source_file_id
       - state
+    InternalReason:
+      type: object
+      properties:
+        reason:
+          allOf:
+          - $ref: '#/components/schemas/InternalReasonReasonEnum'
+          description: |-
+            MEMBER_TRANSFER: to or from a household member. CROSS_BORDER_PAIR: the two legs of a transfer between the household's accounts in two countries.
+
+            * `MEMBER_TRANSFER` - MEMBER_TRANSFER
+            * `CROSS_BORDER_PAIR` - CROSS_BORDER_PAIR
+        cents:
+          type: integer
+      required:
+      - cents
+      - reason
+    InternalReasonReasonEnum:
+      enum:
+      - MEMBER_TRANSFER
+      - CROSS_BORDER_PAIR
+      type: string
+      description: |-
+        * `MEMBER_TRANSFER` - MEMBER_TRANSFER
+        * `CROSS_BORDER_PAIR` - CROSS_BORDER_PAIR
     Invite:
       type: object
       description: |-
@@ -15030,20 +15054,6 @@ components:
         * `turned_off` - turned_off
         * `failed` - failed
         * `not_set_up` - not_set_up
-    ReasonEnum:
-      enum:
-      - drive_end
-      - startup
-      - manual
-      - periodic
-      - conversation
-      type: string
-      description: |-
-        * `drive_end` - drive_end
-        * `startup` - startup
-        * `manual` - manual
-        * `periodic` - periodic
-        * `conversation` - conversation
     Receipt:
       type: object
       description: |-
@@ -16285,10 +16295,21 @@ components:
         early_charges_counted_next_month_cents:
           type: integer
           description: Dated this month, counted in the next one.
+        household_internal_cents:
+          type: integer
+          description: Outflows that moved money inside the household (to a spouse,
+            or between the household's own accounts in two countries). Not spending;
+            say so.
+        household_internal_reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/InternalReason'
       required:
       - early_charges_counted_here_cents
       - early_charges_counted_next_month_cents
       - early_charges_moved_cents
+      - household_internal_cents
+      - household_internal_reasons
       - not_spending_categories
       - not_spending_cents
       - own_account_moves_cents
@@ -16645,7 +16666,7 @@ components:
           type: integer
           nullable: true
         reason:
-          $ref: '#/components/schemas/ReasonEnum'
+          $ref: '#/components/schemas/UploadReasonEnum'
         window_start_ms:
           type: integer
           nullable: true
@@ -16663,6 +16684,20 @@ components:
       - device_label
       - file
       - reason
+    UploadReasonEnum:
+      enum:
+      - drive_end
+      - startup
+      - manual
+      - periodic
+      - conversation
+      type: string
+      description: |-
+        * `drive_end` - drive_end
+        * `startup` - startup
+        * `manual` - manual
+        * `periodic` - periodic
+        * `conversation` - conversation
     VapidKey:
       type: object
       properties:

@@ -1680,6 +1680,12 @@ def _monthly_spend(request, args) -> ToolResult:
             f"{_cents_words(moved)} moved between the household's own accounts or under "
             f"not-spending categories and is left out; say so."
         )
+    internal = excluded.get("household_internal_cents") or 0
+    if internal:
+        parts.append(
+            f"{_cents_words(internal)} moved between household members or between the "
+            f"household's own accounts in two countries, and is not counted as spending; say so."
+        )
     if body["uncategorised_unverified"]:
         parts.append(
             "The amount with no category includes UNVERIFIED rows (no gate checked them); say so."

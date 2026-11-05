@@ -5302,6 +5302,22 @@ export interface components {
              */
             readonly last_attempt_at: string;
         };
+        InternalReason: {
+            /**
+             * @description MEMBER_TRANSFER: to or from a household member. CROSS_BORDER_PAIR: the two legs of a transfer between the household's accounts in two countries.
+             *
+             *     * `MEMBER_TRANSFER` - MEMBER_TRANSFER
+             *     * `CROSS_BORDER_PAIR` - CROSS_BORDER_PAIR
+             */
+            reason: components["schemas"]["InternalReasonReasonEnum"];
+            cents: number;
+        };
+        /**
+         * @description * `MEMBER_TRANSFER` - MEMBER_TRANSFER
+         *     * `CROSS_BORDER_PAIR` - CROSS_BORDER_PAIR
+         * @enum {string}
+         */
+        InternalReasonReasonEnum: "MEMBER_TRANSFER" | "CROSS_BORDER_PAIR";
         /**
          * @description One live invite, code included.
          *
@@ -6717,15 +6733,6 @@ export interface components {
          */
         PushEnum: "sent" | "no_device" | "turned_off" | "failed" | "not_set_up";
         /**
-         * @description * `drive_end` - drive_end
-         *     * `startup` - startup
-         *     * `manual` - manual
-         *     * `periodic` - periodic
-         *     * `conversation` - conversation
-         * @enum {string}
-         */
-        ReasonEnum: "drive_end" | "startup" | "manual" | "periodic" | "conversation";
-        /**
          * @description One `public.receipts` header, with the anchors the gate checked it
          *     against (section 4 rule 8) and the residual it could not explain (rule 7).
          *
@@ -7300,6 +7307,9 @@ export interface components {
             early_charges_counted_here_cents: number;
             /** @description Dated this month, counted in the next one. */
             early_charges_counted_next_month_cents: number;
+            /** @description Outflows that moved money inside the household (to a spouse, or between the household's own accounts in two countries). Not spending; say so. */
+            household_internal_cents: number;
+            household_internal_reasons: components["schemas"]["InternalReason"][];
         };
         /**
          * @description One `public.statements` row: a bank statement's header and, crucially,
@@ -7471,7 +7481,7 @@ export interface components {
             /** @default  */
             app_version_name: string;
             app_version_code?: number | null;
-            reason: components["schemas"]["ReasonEnum"];
+            reason: components["schemas"]["UploadReasonEnum"];
             /** @description Epoch milliseconds on the DEVICE's clock, which is not trusted. */
             window_start_ms?: number | null;
             /** @description Epoch milliseconds on the DEVICE's clock, which is not trusted. */
@@ -7482,6 +7492,15 @@ export interface components {
              */
             file: string;
         };
+        /**
+         * @description * `drive_end` - drive_end
+         *     * `startup` - startup
+         *     * `manual` - manual
+         *     * `periodic` - periodic
+         *     * `conversation` - conversation
+         * @enum {string}
+         */
+        UploadReasonEnum: "drive_end" | "startup" | "manual" | "periodic" | "conversation";
         VapidKey: {
             enabled: boolean;
             public_key: string | null;
