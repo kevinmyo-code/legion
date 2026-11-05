@@ -129,33 +129,28 @@ fun budgetTotal(budgets: BudgetsWire, today: LocalDate): BudgetTotalModel {
     val capText = FinanceText.money(cap, USD)
     val over = spent > cap
     val percent = budgets.total.percent ?: ((spent * 100 + cap / 2) / cap).toInt()
-    val tone = when {
-        over -> BarTone.OVER
-        percent >= NEAR_PERCENT -> BarTone.NEAR
-        else -> BarTone.NORMAL
-    }
-    val leftText = FinanceText.money(cap - spent, USD)
-    val ended = ym.isBefore(YearMonth.from(today))
-    val words = when {
-        over -> "over by ${FinanceText.money(spent - cap, USD)}"
-        ended -> "$leftText under budget"
-        else -> "$leftText left"
-    } + pendingWords
-    val sentenceLeft = when {
-        over -> "over by ${FinanceText.money(spent - cap, USD)} on $capText"
-        ended -> "$leftText under $capText"
-        else -> "$leftText left of $capText"
-    }
+    val (words, sentenceLeft) = leftWords(spent, cap, ended = ym.isBefore(YearMonth.from(today)))
     return BudgetTotalModel(
         month = name,
         amountText = "$spentText of $capText",
         fill = fraction(spent, cap),
         pace = budgets.total.paceCents?.let { fraction(it, cap) },
-        tone = tone,
-        words = words,
+        tone = if (over) BarTone.OVER else if (percent >= NEAR_PERCENT) BarTone.NEAR else BarTone.NORMAL,
+        words = words + pendingWords,
         over = over,
         sentence = "$name: $spentText spent, $sentenceLeft$pendingWords",
     )
+}
+
+/** "$1,019 left" / "over by $12" / "$300 under budget" for the bar, and the same for the sentence. */
+private fun leftWords(spent: Long, cap: Long, ended: Boolean): Pair<String, String> {
+    val capText = FinanceText.money(cap, USD)
+    val left = FinanceText.money(cap - spent, USD)
+    return when {
+        spent > cap -> FinanceText.money(spent - cap, USD).let { "over by $it" to "over by $it on $capText" }
+        ended -> "$left under budget" to "$left under $capText"
+        else -> "$left left" to "$left left of $capText"
+    }
 }
 
 /** The total bar's track is this much thicker than a category's (8dp). */
