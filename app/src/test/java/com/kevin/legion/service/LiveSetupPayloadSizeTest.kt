@@ -195,6 +195,15 @@ class LiveSetupPayloadSizeTest {
      * and "say only what the result says". Map decision 3 (always ask; Kevin's yes by voice or
      * tap) needs a voice tool for the voice yes, and ADR 0035 needs the Updates screen beside it.
      * Headroom is ~37 tokens. The pack's `UNREADABLE_IS_NOT_EMPTY` (~70 tokens) does not fit.
+     *
+     * **NOT raised on 2026-11-05 (memory-and-vault tickets 09 and 12: `memory`, `show_vault_item`).**
+     * Measured on `feat/memory-vault-phone`: 95 declarations, 87,949 chars of tools JSON plus 10,487
+     * chars of system instruction = 98,436 chars, ~24,609 estimated tokens, against ~24,613 before.
+     * `remember` (312 chars) and `recall_memory` (733) became ONE action-dispatched `memory`
+     * (recall, remember, forget, list; 732 chars), the trade `books`/`browser`/`app_update` made;
+     * the recall description's "never guess, never refuse" sentence moved onto the empty-recall
+     * result (`MemoryToolbox.RECALL_EMPTY_NOTE`), billed per result. `show_vault_item` is 295 chars.
+     * Headroom is ~41 tokens.
      */
     private val ceilingTokens = 24_650
 

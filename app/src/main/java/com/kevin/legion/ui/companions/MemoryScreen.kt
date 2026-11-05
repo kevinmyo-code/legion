@@ -1,304 +1,336 @@
 package com.kevin.legion.ui.companions
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.ai.AriaBrain
-import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.MemoryAudit
-import com.kevin.legion.data.local.record
-import com.kevin.legion.data.local.CompanionMemory
-import com.kevin.legion.data.local.MemoryEntry
-import com.kevin.legion.ui.common.DeckScreenHeader
-import com.kevin.legion.ui.common.Hairline
-import com.kevin.legion.ui.common.SectionHeader
-import com.kevin.legion.ui.theme.LegionType
-import com.kevin.legion.ui.theme.LocalLegionSemantics
-import com.kevin.legion.util.shortDate
-import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kevin.legion.R
+import com.kevin.legion.memory.MemberMemory
+import com.kevin.legion.memory.MemoryWording
+import com.kevin.legion.ui.theme.soft.MsIcon
+import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 
 /**
- * `settings/memory` - "what it remembers" (2026-08-18). Two tables, two sections, both
- * driver-editable: [MemoryEntry] ("remembered facts") is the older, still-live table wired to the
- * explicit "remember X" tool/command; [CompanionMemory] ("learned from conversations") is the
- * newer consolidated/reflected memory [com.kevin.legion.ai.MemoryConsolidator] and
- * [com.kevin.legion.ai.ReflectionEngine] distill from a drive's raw transcript. Neither table's
- * own doc comment claims the other is obsolete - see [CompanionMemory]'s "unifying the two recall
- * paths is a later ticket's call, not this one's" - so this screen shows both rather than picking
- * a side.
+ * `settings/memory`, v2 (memory-and-vault ticket 11, ADR 0075): what the assistant remembers, read
+ * from the ENGINE, the one store the phone, the web and the Claude worker share. The hands path
+ * for every action of the `memory` voice tool (ADR 0035), through the same
+ * [com.kevin.legion.memory.MemoryController] via [MemoryViewModel].
  *
- * **Why this screen exists at all.** Nothing upstream of it ever asks the driver whether a
- * consolidated memory is actually right - [com.kevin.legion.ai.ReflectionEngine] synthesizes new
- * rows from clusters of old ones with no human in the loop. A wrong memory a driver cannot see or
- * remove would sit there being read into every future prompt indefinitely. This is that visibility
- * and that removal, nothing more - it does not edit a memory's text, only deletes it outright.
+ * - Each memory shows its text, its kind, where it came from ("from a conversation on <date>" for a
+ *   distilled one), and whether it is private to you or shared with the household.
+ * - **Delete is a hard delete and asks first** (Kevin, 2026-11-05: "forget that" deletes it for
+ *   real). The old screen deleted on one tap with no confirm because a soft delete could be undone
+ *   on the server; this one cannot, so it asks, and says "Deleted for good" only from the engine.
+ * - The shared/private switch appears only on your own memories (the engine refuses the rest).
+ * - Search narrows the list on the phone, so it works on the cached copy too.
+ * - Offline, the phone's copy is shown with a line saying so; a failed read is never an empty list.
  *
- * **Read is [CompanionMemoryDao.allRecent], not [CompanionMemoryDao.getRecent].** The latter is
- * scoped to one `vehicleId`, which is right for [com.kevin.legion.ai.AriaBrain]'s own recall (which
- * always knows which car it's talking about) and wrong here - see [allRecent]'s own doc comment for
- * why a driver-facing "find and delete a wrong memory" screen must not hide a row attached to a car
- * he isn't currently sitting in.
- *
- * **Delete is immediate, no confirm dialog, no [android.app.AlertDialog]/system modal** - a single
- * row is not the ledger-purge shape ([com.kevin.legion.ui.PurgeLedgerRow]'s two-tap arm), it is one
- * fact leaving one list, and [MemoryDao]/[CompanionMemoryDao] have no undo to make a confirm step
- * meaningfully safer than just doing it.
- *
- * **ADD (command-center ticket 11, ADR 0035).** Traced `remember`'s dispatch in
- * `service/LiveToolbox.kt` before writing [AddMemoryDialog]: it calls
- * [com.kevin.legion.ai.AriaBrain.remember] directly with the typed text - no category parameter
- * exists anywhere on that path. [MemoryEntry] itself carries only `text`/`timestamp`/`syncId` (no
- * category column at all); the category split this screen actually shows (REMEMBERED FACTS vs.
- * LEARNED FROM CONVERSATIONS) is a split between [MemoryEntry] and the separate [CompanionMemory]
- * table, not a field on either row, so there is no category to prompt for - [AddMemoryDialog] is
- * text-only, matching the tool's own single argument.
- *
- * **The read-through gate does not apply here, and this is a reasoned finding, not a skip.**
- * `LiveToolbox`'s `remember` case refuses when [com.kevin.legion.service.GeminiLiveSession] has
- * already reduced "did this TURN touch a mail-read tool" to a boolean
- * (`rememberBlockedByReadThroughTool`, ticket 21's "close the remember leak") - the gate exists
- * because a live turn that just read Gmail could otherwise smuggle mail content into long-term
- * memory disguised as something the driver said. A hand-typed entry on this screen has no live
- * turn, no socket, and no mail read behind it at all - there is no "this turn" for the boolean to
- * describe, so the gate has no input to evaluate, not an input it happens to pass. The refusal
- * string [REMEMBER_MAIL_REFUSAL] exists for the one call site testing that boolean; this call site
- * never constructs one because nothing here could ever set it true.
+ * The read-through gate does not apply to the add dialog: a typed entry has no conversation turn
+ * behind it, so no mail could have been read into it (same reasoning as the v1 screen).
  */
-private const val MEMORY_LIMIT = 200
-
 @Composable
 fun MemoryScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(true) }
-    var facts by remember { mutableStateOf(emptyList<MemoryEntry>()) }
-    var learned by remember { mutableStateOf(emptyList<CompanionMemory>()) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var reloadNonce by remember { mutableStateOf(0) }
-
-    LaunchedEffect(reloadNonce) {
-        val db = CarDatabase.getDatabase(context)
-        // Room's suspend DAO methods already dispatch off the caller's thread through their own
-        // query executor - unlike PlaybookStore's raw file IO, no explicit Dispatchers.IO wrap is
-        // needed here (same posture ai/AriaBrain.kt's own memoryDao/companionMemoryDao calls take).
-        facts = db.memoryDao().getRecent(MEMORY_LIMIT)
-        learned = db.companionMemoryDao().allRecent(MEMORY_LIMIT)
-        loading = false
-    }
-
-    if (showAddDialog) {
-        AddMemoryDialog(
-            onDismiss = { showAddDialog = false },
-            onDone = { showAddDialog = false; reloadNonce++ },
+    val viewModel: MemoryViewModel = viewModel()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    SoftTheme {
+        MemoryContent(
+            state = state,
+            callbacks = MemoryCallbacks(
+                onBack = onBack,
+                onQuery = viewModel::setQuery,
+                onRetry = viewModel::refresh,
+                onAdd = viewModel::openAdd,
+                onEdit = viewModel::openEdit,
+                onForget = viewModel::askForget,
+                onShared = viewModel::setShared,
+                onDialogText = viewModel::editDialogText,
+                onAddShared = viewModel::setAddShared,
+                onSaveAdd = viewModel::saveAdd,
+                onSaveEdit = viewModel::saveEdit,
+                onConfirmForget = viewModel::confirmForget,
+                onDismiss = viewModel::dismissDialog,
+            ),
         )
     }
-
-    val sem = LocalLegionSemantics.current
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            DeckScreenHeader(title = "What it remembers", onBack = onBack)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { showAddDialog = true }) {
-                    Text("ADD", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            if (loading) {
-                Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
-            } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item(key = "facts-header") { SectionHeader("REMEMBERED FACTS", facts.size.toString()) }
-                    if (facts.isEmpty()) {
-                        // Never a bare header with nothing under it - an empty section still says
-                        // so in words, the same "state plainly what is not set" posture CLAUDE.md
-                        // §7 applies to credential rows applied here to memory rows.
-                        item(key = "facts-empty") { EmptyMemorySection("Nothing remembered yet.") }
-                    } else {
-                        items(facts, key = { "fact-${it.id}" }) { entry ->
-                            Column {
-                                MemoryFactRow(
-                                    entry = entry,
-                                    onDelete = {
-                                        scope.launch {
-                                            val db = CarDatabase.getDatabase(context)
-                                            // Soft-deletes and pushes a tombstone when configured,
-                                            // rather than a bare local delete - memory-supabase
-                                            // ticket, same reasoning MemoryWriteThrough.deleteMemoryEntry's
-                                            // own doc comment gives.
-                                            com.kevin.legion.backend.MemoryWriteThrough.deleteMemoryEntry(context, entry)
-                                            // Audit trail (2026-08-20): a rejected memory is the
-                                            // most interesting row in the trail. The memory itself
-                                            // is gone, so without this there is no record that the
-                                            // companion ever believed it, or that Kevin said no.
-                                            db.memoryAuditDao().record(
-                                                MemoryAudit.Event.DELETED,
-                                                MemoryAudit.Store.FLAT,
-                                                entry.text,
-                                                refId = entry.id,
-                                            )
-                                            facts = facts.filterNot { it.id == entry.id }
-                                        }
-                                    },
-                                )
-                                Hairline()
-                            }
-                        }
-                    }
-
-                    item(key = "learned-header") { SectionHeader("LEARNED FROM CONVERSATIONS", learned.size.toString()) }
-                    if (learned.isEmpty()) {
-                        item(key = "learned-empty") { EmptyMemorySection("Nothing learned yet.") }
-                    } else {
-                        items(learned, key = { "learned-${it.id}" }) { memory ->
-                            Column {
-                                CompanionMemoryRow(
-                                    memory = memory,
-                                    onDelete = {
-                                        scope.launch {
-                                            val db = CarDatabase.getDatabase(context)
-                                            // Soft-deletes and pushes a tombstone when configured -
-                                            // see MemoryWriteThrough.deleteCompanionMemory's own doc.
-                                            com.kevin.legion.backend.MemoryWriteThrough.deleteCompanionMemory(context, memory)
-                                            db.memoryAuditDao().record(
-                                                MemoryAudit.Event.DELETED,
-                                                MemoryAudit.Store.COMPANION,
-                                                "[${memory.category}/${memory.source}] ${memory.text}",
-                                                refId = memory.id,
-                                                vehicleId = memory.vehicleId,
-                                            )
-                                            learned = learned.filterNot { it.id == memory.id }
-                                        }
-                                    },
-                                )
-                                Hairline()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
-/** One explicitly-remembered fact: its text, when it was set (or last touched), and a DELETE
- * affordance - no confirm, see the file doc comment for why. */
-@Composable
-private fun MemoryFactRow(entry: MemoryEntry, onDelete: () -> Unit) {
-    val sem = LocalLegionSemantics.current
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(entry.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            Text(shortDate(entry.timestamp), style = LegionType.stamp, color = sem.faint)
-        }
-        TextButton(onClick = onDelete) {
-            Text("DELETE", style = LegionType.stamp, color = sem.estimated)
-        }
-    }
-}
+data class MemoryCallbacks(
+    val onBack: () -> Unit = {},
+    val onQuery: (String) -> Unit = {},
+    val onRetry: () -> Unit = {},
+    val onAdd: () -> Unit = {},
+    val onEdit: (MemberMemory) -> Unit = {},
+    val onForget: (MemberMemory) -> Unit = {},
+    val onShared: (MemberMemory, Boolean) -> Unit = { _, _ -> },
+    val onDialogText: (String) -> Unit = {},
+    val onAddShared: (Boolean) -> Unit = {},
+    val onSaveAdd: () -> Unit = {},
+    val onSaveEdit: () -> Unit = {},
+    val onConfirmForget: () -> Unit = {},
+    val onDismiss: () -> Unit = {},
+)
 
-/** One consolidated/reflected memory: its text, then [CompanionMemory.category]/[CompanionMemory
- * .source]/[CompanionMemory.importance]/[CompanionMemory.createdAt] on the caption line - the four
- * fields the task calls out, in the same order the class itself declares them. */
+/** Plain UI: state in, callbacks out. Rendered by the screenshot and Compose tests directly. */
 @Composable
-private fun CompanionMemoryRow(memory: CompanionMemory, onDelete: () -> Unit) {
-    val sem = LocalLegionSemantics.current
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(memory.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+fun MemoryContent(state: MemoryUiState, callbacks: MemoryCallbacks) {
+    Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
+        TopBar(callbacks.onBack)
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = callbacks.onQuery,
+            label = { Text("Search what it remembers") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        )
+        state.message?.let {
             Text(
-                "${memory.category} - ${memory.source} - importance ${memory.importance} - ${shortDate(memory.createdAt)}",
-                style = LegionType.stamp,
-                color = sem.faint,
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SoftColors.text,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp).testTag("memory-message"),
             )
         }
-        TextButton(onClick = onDelete) {
-            Text("DELETE", style = LegionType.stamp, color = sem.estimated)
+        TextButton(onClick = callbacks.onAdd, enabled = !state.busy, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text("Add a memory by hand")
+        }
+        Body(state, callbacks)
+    }
+    when (val dialog = state.dialog) {
+        is MemoryDialog.Add -> AddDialog(dialog, state.busy, callbacks)
+        is MemoryDialog.Edit -> EditDialog(dialog, state.busy, callbacks)
+        is MemoryDialog.ConfirmForget -> ForgetDialog(dialog.memory, state.busy, callbacks)
+        null -> Unit
+    }
+}
+
+@Composable
+private fun TopBar(onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            MsIcon(res = R.drawable.ms_arrow_back, contentDescription = "Back", tint = SoftColors.text)
+        }
+        Text("What it remembers", style = MaterialTheme.typography.titleLarge, color = SoftColors.text)
+    }
+}
+
+@Composable
+private fun Body(state: MemoryUiState, callbacks: MemoryCallbacks) {
+    when (val view = state.view) {
+        MemoryView.Loading -> Note("Reading your memories from the engine...")
+        is MemoryView.Unavailable -> Column(Modifier.padding(16.dp)) {
+            Text(view.sentence, style = MaterialTheme.typography.bodyMedium, color = SoftColors.onAlert)
+            Text(
+                "This is not an empty memory; it just can't be read right now.",
+                style = MaterialTheme.typography.labelMedium,
+                color = SoftColors.text2,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            TextButton(onClick = callbacks.onRetry) { Text("Try again") }
+        }
+        is MemoryView.Listed -> {
+            view.cachedNote?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SoftColors.onAlert,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            val shown = state.shown
+            when {
+                view.memories.isEmpty() -> Note(
+                    "Nothing remembered yet. What you tell it, and what it learns from conversations, shows here.",
+                )
+                shown.isEmpty() -> Note("No memory matches \"${state.query.trim()}\".")
+                else -> LazyColumn(
+                    Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item(key = "count") {
+                        Text(
+                            "${shown.size} of ${view.memories.size}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = SoftColors.text2,
+                        )
+                    }
+                    items(shown, key = { it.id }) { MemoryRow(it, state.busy, callbacks) }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun EmptyMemorySection(text: String) {
-    val sem = LocalLegionSemantics.current
-    Text(text, style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+private fun MemoryRow(memory: MemberMemory, busy: Boolean, callbacks: MemoryCallbacks) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(SoftColors.card).padding(14.dp)
+            .testTag("memory-${memory.id}"),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(memory.text, style = MaterialTheme.typography.bodyLarge, color = SoftColors.text)
+        Text(
+            "${kindWord(memory.kind)}, ${MemoryWording.origin(memory)}",
+            style = MaterialTheme.typography.labelMedium,
+            color = SoftColors.text2,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                MemoryWording.sharing(memory).replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.labelMedium,
+                color = SoftColors.text3,
+                modifier = Modifier.weight(1f),
+            )
+            if (memory.aboutYou) {
+                Switch(
+                    checked = memory.shared,
+                    onCheckedChange = { callbacks.onShared(memory, it) },
+                    enabled = !busy,
+                    modifier = Modifier.testTag("share-${memory.id}"),
+                )
+            }
+        }
+        if (!memory.aboutYou) {
+            Text(
+                "About someone else in the household, so only they can make it private.",
+                style = MaterialTheme.typography.labelMedium,
+                color = SoftColors.text3,
+            )
+        }
+        Row {
+            TextButton(onClick = { callbacks.onEdit(memory) }, enabled = !busy) { Text("Edit") }
+            TextButton(
+                onClick = { callbacks.onForget(memory) },
+                enabled = !busy,
+                modifier = Modifier.testTag("forget-${memory.id}"),
+            ) { Text("Forget") }
+        }
+    }
 }
 
-/**
- * `remember` by hand (command-center ticket 11). Calls the exact same
- * [com.kevin.legion.ai.AriaBrain.remember] the `remember` voice tool dispatches to - text only, no
- * category, no read-through gate to evaluate (see the file doc comment for why). Same
- * `result`/`busy` shape [com.kevin.legion.ui.body.BodyWriteDialogs] already established for this
- * app's hands-path dialogs, so a driver sees the same interaction everywhere.
- */
-@Composable
-private fun AddMemoryDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<String?>(null) }
-    val sem = LocalLegionSemantics.current
+private fun kindWord(kind: String): String = when (kind) {
+    "preference" -> "Preference"
+    "event" -> "Event"
+    else -> "Fact"
+}
 
+@Composable
+private fun Note(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = SoftColors.text2,
+        modifier = Modifier.padding(16.dp),
+    )
+}
+
+@Composable
+private fun AddDialog(dialog: MemoryDialog.Add, busy: Boolean, callbacks: MemoryCallbacks) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = callbacks.onDismiss,
         title = { Text("Remember something") },
         text = {
             Column {
                 OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("What should it remember") },
+                    value = dialog.text,
+                    onValueChange = callbacks.onDialogText,
+                    label = { Text("What it should remember") },
                     enabled = !busy,
                 )
-                result?.let { Text(it, style = LegionType.stamp, color = sem.data, modifier = Modifier.padding(top = 8.dp)) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Text(
+                        if (dialog.shared) "Shared with the household" else "Private to you",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(checked = dialog.shared, onCheckedChange = callbacks.onAddShared, enabled = !busy)
+                }
+                Text(
+                    "ID numbers (passport, SSN, bank account) belong in the ID vault, not here.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SoftColors.text3,
+                )
+                dialog.error?.let { Text(it, color = SoftColors.onAlert, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
         confirmButton = {
-            if (result == null) {
-                TextButton(
-                    enabled = !busy && text.isNotBlank(),
-                    onClick = {
-                        busy = true
-                        scope.launch {
-                            // Same call remember's dispatch makes: AriaBrain.get(context).remember(text).
-                            result = AriaBrain.get(context).remember(text.trim()).message
-                            busy = false
-                        }
-                    },
-                ) { Text("Remember") }
-            } else {
-                TextButton(onClick = onDone) { Text("Done") }
+            TextButton(onClick = callbacks.onSaveAdd, enabled = !busy && dialog.text.isNotBlank()) { Text("Remember") }
+        },
+        dismissButton = { TextButton(onClick = callbacks.onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun EditDialog(dialog: MemoryDialog.Edit, busy: Boolean, callbacks: MemoryCallbacks) {
+    AlertDialog(
+        onDismissRequest = callbacks.onDismiss,
+        title = { Text("Edit this memory") },
+        text = {
+            Column {
+                OutlinedTextField(value = dialog.text, onValueChange = callbacks.onDialogText, enabled = !busy)
+                dialog.error?.let { Text(it, color = SoftColors.onAlert, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
-        dismissButton = { if (result == null) TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = {
+            TextButton(onClick = callbacks.onSaveEdit, enabled = !busy && dialog.text.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = callbacks.onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** "Forget this?" - the memory named, and that it cannot come back. Nothing is deleted until Forget. */
+@Composable
+private fun ForgetDialog(memory: MemberMemory, busy: Boolean, callbacks: MemoryCallbacks) {
+    AlertDialog(
+        onDismissRequest = callbacks.onDismiss,
+        title = { Text("Forget this for good?") },
+        text = {
+            Text(
+                "\"${memory.text}\" will be deleted from the engine, with any older version of it. " +
+                    "It cannot be brought back.",
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = callbacks.onConfirmForget,
+                enabled = !busy,
+                modifier = Modifier.testTag("confirm-forget"),
+            ) {
+                Text("Forget")
+            }
+        },
+        dismissButton = { TextButton(onClick = callbacks.onDismiss) { Text("Keep it") } },
     )
 }

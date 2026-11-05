@@ -17,7 +17,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,7 +52,9 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.IdentityWriteResult
+import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.VehiclePlateController
 import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.VehicleSpecController
 import com.kevin.legion.vehicle.VinDecoder
@@ -103,6 +109,21 @@ fun VehicleSpecsScreen(onBack: () -> Unit, onOpenPopulate: () -> Unit = {}) {
     LaunchedEffect(reloadKey) {
         spec = VehicleSpecController.current(context)
         loaded = true
+    }
+
+    // memory-and-vault ticket 13: the plate, from the replica, edited through the engine.
+    val plateController = remember { VehiclePlateController.forContext(context) }
+    var plate by remember { mutableStateOf<PlatePane>(PlatePane.Loading) }
+    var plateReload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(plateReload) {
+        val target = plateController.target(ActiveVehicle.current(context))
+        val previousMessage = (plate as? PlatePane.Ready)?.message
+        val serverId = target.serverId
+        plate = if (serverId == null) {
+            PlatePane.NotOnEngine
+        } else {
+            PlatePane.Ready(serverId, target.plate, saving = false, message = previousMessage)
+        }
     }
 
     VehicleSpecsContent(
@@ -172,7 +193,32 @@ fun VehicleSpecsScreen(onBack: () -> Unit, onOpenPopulate: () -> Unit = {}) {
             }
         },
         onOpenPopulate = onOpenPopulate,
+        plate = plate,
+        onSavePlate = { typed ->
+            val ready = plate as? PlatePane.Ready
+            if (ready != null && !ready.saving) {
+                plate = ready.copy(saving = true, message = null)
+                scope.launch {
+                    val outcome = plateController.setPlate(ready.serverId, typed)
+                    plate = ready.copy(saving = false, message = VehiclePlateController.sentence(outcome))
+                    plateReload++
+                }
+            }
+        },
     )
+}
+
+/**
+ * The plate pane's state (memory-and-vault ticket 13). [Hidden] is the default for callers and
+ * previews that predate the pane, so they render exactly as before.
+ */
+sealed interface PlatePane {
+    data object Hidden : PlatePane
+    data object Loading : PlatePane
+
+    /** The car has no engine id yet, so there is no engine record to hold a plate. */
+    data object NotOnEngine : PlatePane
+    data class Ready(val serverId: String, val plate: String?, val saving: Boolean, val message: String?) : PlatePane
 }
 
 private fun copyToClipboard(context: Context, vin: String) {
@@ -199,6 +245,9 @@ fun VehicleSpecsContent(
     onCheckRecalls: () -> Unit,
     /** Ticket 14's populate trigger, one of its two entry points ("beside SYNC ID FROM VIN"). Defaults to a no-op so every pre-existing caller/preview keeps compiling. */
     onOpenPopulate: () -> Unit = {},
+    /** Ticket 13's plate pane; [PlatePane.Hidden] (the default) renders nothing. */
+    plate: PlatePane = PlatePane.Hidden,
+    onSavePlate: (String) -> Unit = {},
 ) {
     FleetSoftSurface {
         val sem = LocalLegionSemantics.current
@@ -346,6 +395,9 @@ fun VehicleSpecsContent(
                     }
                 }
 
+                if (plate != PlatePane.Hidden) {
+                    item(key = "plate-pane") { PlatePaneBody(plate, onSavePlate) }
+                }
                 item(key = "recalls-pane") {
                     Spacer(Modifier.height(12.dp))
                     DeckPane(header = "Recalls") {
@@ -424,6 +476,108 @@ internal fun specRows(spec: VehicleSpec?): List<Pair<String, String>> {
         text(spec.paintColor)?.let { add("Paint" to it) }
         text(spec.paintCode)?.let { add("Paint code" to it) }
     }
+}
+
+/**
+ * The licence plate (memory-and-vault ticket 13). Ordinary data, not an ID-vault item: shown in
+ * full, editable here, saved on the engine. Every state is said in words.
+ */
+@Composable
+private fun PlatePaneBody(plate: PlatePane, onSavePlate: (String) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    var editing by remember { mutableStateOf(false) }
+    DeckPane(header = "Plate") {
+        when (plate) {
+            PlatePane.Hidden -> Unit
+            PlatePane.Loading -> Text(
+                "Reading the plate...",
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(12.dp),
+            )
+            PlatePane.NotOnEngine -> Text(
+                "This car is not on the engine yet, so it has no record to hold a plate. It gets one " +
+                    "after the next fleet sync.",
+                style = MaterialTheme.typography.bodySmall,
+                color = sem.faint,
+                modifier = Modifier.padding(12.dp),
+            )
+            is PlatePane.Ready -> {
+                val onFile = plate.plate
+                Text(
+                    onFile ?: "No plate on file.",
+                    style = if (onFile != null) {
+                        MaterialTheme.typography.headlineSmall
+                    } else {
+                        MaterialTheme.typography.bodySmall
+                    },
+                    color = if (onFile != null) MaterialTheme.colorScheme.onSurface else sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+                if (plate.saving) {
+                    Text(
+                        "Saving on the engine...",
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                } else {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        SpecAction(
+                            if (onFile != null) "Edit" else "Add plate",
+                            onClick = { editing = true },
+                            announce = plate.message,
+                        )
+                    }
+                }
+                plate.message?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = sem.faint,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+                if (editing) {
+                    PlateDialog(
+                        current = onFile.orEmpty(),
+                        onDismiss = { editing = false },
+                        onSave = { typed ->
+                            editing = false
+                            onSavePlate(typed)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlateDialog(current: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var text by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Licence plate") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Plate") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                )
+                Text(
+                    "Leave it empty to remove the plate. At most ${VehiclePlateController.PLATE_MAX_CHARS} characters.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(text) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 /**

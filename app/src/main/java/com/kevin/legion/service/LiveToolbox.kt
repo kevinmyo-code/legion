@@ -5,7 +5,6 @@ import android.content.Intent
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AgentTool
-import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.SubAgent
@@ -1336,13 +1335,9 @@ object LiveToolbox {
             required = listOf("year", "make", "model"),
         ))
 
-        fns.put(fn(
-            name = "remember",
-            description = "Save a fact to long-term memory so it persists across drives. Use when " +
-                "the user explicitly asks you to remember something.",
-            params = obj("text" to schema("string", "The fact to remember, in the user's own terms.")),
-            required = listOf("text"),
-        ))
+        // `remember` and `recall_memory` moved to MemoryToolbox's one `memory` tool (memory-and-vault
+        // ticket 09, ADR 0075): memory lives on the engine now, and one action-dispatched declaration
+        // is smaller than the two were.
 
         // ----------------------------------------------------------------------------------
         // Notes / lists / calendar (`.scratch/notes-lists-calendar/`, phase 1). Absorbs the car
@@ -1565,23 +1560,6 @@ object LiveToolbox {
                 "title" to schema("string", "Short label for the view, e.g. 'Grocery spend, last 3 months'."),
             ),
             required = listOf("shape", "source", "aggregation", "window", "grouping", "title"),
-        ))
-
-        fns.put(fn(
-            name = "recall_memory",
-            // 2026-10-30 (LIVE_AUDIT, A25): asked for gift ideas for his wife, the model gave a
-            // generic list and called her "their". The last two sentences: build on what came back
-            // and on what the user said, by name, in the user's own pronouns, and say so when the
-            // memories hold nothing on the question instead of guessing or refusing.
-            description = "Search your long-term memory of past conversations with the user. Use " +
-                "when they ask what you remember, mention someone or something from before, or a " +
-                "past detail would make the reply personal. Returns the closest matches, dated. " +
-                "Build your answer on what it returns and what the user just said, naming people " +
-                "as the user does, with the user's pronouns for them. If nothing returned bears " +
-                "on the question, say so in a clause and ask; never guess and never refuse.",
-            params = obj("query" to schema("string", "What to look for, in a few words - e.g. " +
-                "'brakes', 'trip to Tahoe', 'favorite coffee'. Leave empty for the most recent memories.")),
-            required = listOf(),
         ))
 
         fns.put(fn(
@@ -2444,6 +2422,12 @@ object LiveToolbox {
         // alfred-ota ticket 06 (ADR 0072): LEGION's own updates, one action-dispatched declaration.
         val updateDecls = AppUpdateToolbox.declarations()
         for (i in 0 until updateDecls.length()) fns.put(updateDecls.getJSONObject(i))
+        // memory-and-vault ticket 09 (ADR 0075): memory on the engine, one action-dispatched declaration.
+        val memoryDecls = MemoryToolbox.declarations()
+        for (i in 0 until memoryDecls.length()) fns.put(memoryDecls.getJSONObject(i))
+        // memory-and-vault ticket 12 (ADR 0076): opens the ID vault screen; never carries a value.
+        val vaultDecls = VaultToolbox.declarations()
+        for (i in 0 until vaultDecls.length()) fns.put(vaultDecls.getJSONObject(i))
 
         return fns
     }
@@ -2757,6 +2741,8 @@ object LiveToolbox {
         BrowserToolbox.dispatch(context, name, args)?.let { return it }
         ClaudeSessionToolbox.dispatch(context, name, args)?.let { return it }
         AppUpdateToolbox.dispatch(context, name, args)?.let { return it }
+        MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
+        VaultToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
@@ -2990,12 +2976,17 @@ object LiveToolbox {
             // used, dropped"), and a refusal is the only implementation consistent with that. See
             // rememberBlockedByReadThroughTool's doc for why this checks a pre-reduced boolean
             // rather than re-testing tool names here.
-            "remember" -> if (rememberBlockedByReadThroughTool(touchedReadThroughToolThisTurn)) {
-                result(success = false, message = REMEMBER_MAIL_REFUSAL)
-            } else {
-                AriaBrain.get(context).remember(args.optString("text")).let { result(it.success, it.message) }
-            }
-            "recall_memory" -> recallMemory(context, args.optString("query"))
+            // Retired by memory-and-vault ticket 09 (the `memory` tool, MemoryToolbox) - named here,
+            // never left to the generic "Unknown tool" branch, so a model that still calls either by
+            // name is told in words what replaced it and that nothing happened.
+            "remember" -> result(
+                success = false,
+                message = "Nothing was saved: remember is now the memory tool with action=remember.",
+            )
+            "recall_memory" -> result(
+                success = false,
+                message = "Nothing was read: recall_memory is now the memory tool with action=recall.",
+            )
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".
             "manage_item" -> manageItem(context, args)
@@ -3143,7 +3134,9 @@ object LiveToolbox {
 
     private val MUTATING_TOOLS = setOf(
         "clear_codes", "set_reminder", "tag_place", "rename_place", "forget_place", "set_odometer", "log_service",
-        "log_past_service", "set_maintenance_interval", "register_vehicle", "remember",
+        "log_past_service", "set_maintenance_interval", "register_vehicle",
+        // memory-and-vault ticket 09: `memory` replaced `remember`; remember and forget write.
+        "memory",
         // "manage_grocery" removed (one-today ticket 10 slice B, 2026-09-05) - its dispatch branch
         // no longer writes anything, only returns the retirement message.
         "manage_item", "manage_checklist", "log_build_entry", "activate_garage",
@@ -3273,11 +3266,11 @@ object LiveToolbox {
      * The worded refusal `remember` returns when [rememberBlockedByReadThroughTool] fires
      * (ticket 21). Says plainly that mail is never kept, that this is deliberate rather than a
      * bug, and what the driver can do instead - the register the ticket asked for, no jargon, no
-     * rule numbers, matching [AriaBrain]'s own REMEMBER_ACKS for tone rather than reading like a
+     * rule numbers, matching the old remember acknowledgements for tone rather than reading like a
      * system error.
      */
     // ADR 0071: a web page read in the same turn trips the same gate, so the words name both.
-    private const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail or web pages - that's on " +
+    internal const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail or web pages - that's on " +
         "purpose, not a slip. Tell me the fact yourself, in your own words, and I'll remember that."
 
     /**
@@ -4018,6 +4011,8 @@ object LiveToolbox {
             // estimated, last confirmed 3 days ago"), so the string itself is the caveat.
             val mileageLabel = VehicleController.mileageLabel(v)
             if (mileageLabel.isNotBlank()) o.put("odometer", mileageLabel)
+            // memory-and-vault ticket 13: the plate is ordinary data (ruling 5), said when asked.
+            com.kevin.legion.vehicle.VehiclePlateController.plateOf(context, v.obdMac)?.let { o.put("plate", it) }
             arr.put(o)
         }
         return JSONObject().put("success", true).put("count", vehicles.size).put("vehicles", arr)
@@ -4074,6 +4069,8 @@ object LiveToolbox {
         putIfSet(o, "paintColor", spec.paintColor)
         putIfSet(o, "paintCode", spec.paintCode)
         putIfSet(o, "notes", spec.buildNotes)
+        com.kevin.legion.vehicle.VehiclePlateController.plateOf(context, vehicleId ?: ActiveVehicle.current(context))
+            ?.let { o.put("plate", it) }
         return o
     }
 
@@ -4163,19 +4160,9 @@ object LiveToolbox {
         return StatedIdentity(y, mk, md, missing)
     }
 
-    /** Searches long-term memory for entries relevant to [query], for Zero to read out. */
-    private suspend fun recallMemory(context: Context, query: String): JSONObject {
-        val memories = AriaBrain.get(context).recallMemories(query)
-        val arr = JSONArray()
-        for (m in memories) arr.put(m)
-        val out = JSONObject().put("success", true).put("count", memories.size).put("memories", arr)
-        // Read at answer time, which the tool description is not (2026-10-30, see RECALL_USE_NOTE).
-        if (memories.isNotEmpty()) out.put("how_to_use", RECALL_USE_NOTE)
-        return out
-    }
-
     /**
-     * Rides on every non-empty `recall_memory` result (LIVE_AUDIT, A25, 2026-10-30): with six
+     * Rides on every non-empty `memory` recall result (was `recall_memory` until memory-and-vault
+     * ticket 09; [MemoryToolbox] puts it on) (LIVE_AUDIT, A25, 2026-10-30): with six
      * memories about his wife in front of it, the model offered generic gift ideas and called her
      * "their". The description is read once at setup; this is read beside the memories it is
      * about. Names no assistant and no honorific: the register's "never sir, never Mr" lives in
@@ -5000,7 +4987,7 @@ object LiveToolbox {
     /**
      * Persists [text] as a stated goal-plan constraint, unless an existing one already says the
      * same thing (trimmed, case-insensitive exact match) - the same dedup posture
-     * [AriaBrain.remember] already takes for the older memory table, so restating an
+     * the retired local `remember` took for the older memory table, so restating an
      * already-known constraint refreshes nothing and does not grow the recall pool with a
      * near-duplicate row. Category [CompanionMemory.Category.DRIVER], source
      * [CompanionMemory.Source.STATED] - written directly from THIS turn, never from a later

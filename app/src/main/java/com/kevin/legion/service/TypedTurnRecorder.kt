@@ -21,10 +21,8 @@ import java.util.UUID
  * `GeminiLiveSession`'s turnComplete like any spoken one. Leaving it unrecorded would silently drop
  * typed chat from memory, so this writes the same rows with the same rules:
  *
- * - **Episodic memory** ([EpisodicTurn], driver line plus reply): skipped WHOLE when a read-through
- *   tool ran this turn (CLAUDE.md sec 7: mail and anything of that shape is never stored), exactly
- *   as `captureEpisodicTurn` does. A failed turn with no reply still records the user's line, as a
- *   spoken turn the model never answered does.
+ * - **Episodic memory** ([EpisodicTurn]): no longer written (memory-and-vault ticket 10). The
+ *   engine distils memories from the conversation record below, which redacts a read-through turn.
  * - **Conversation audit** ([ConversationAudit] USER and COMPANION rows): the reply is redacted
  *   when a read-through tool ran, the user's own words never are, matching `auditConversationTurn`.
  *   TOOL_RESULT rows come from the controller's shared tool runner, under the same [TypedTurnRecord.turnSeq].
@@ -50,7 +48,6 @@ object TypedTurnRecorder {
 
     fun record(context: Context, turn: TypedTurnRecord) {
         val app = context.applicationContext
-        val sid = sessionId
         io.launch {
             val db = CarDatabase.getDatabase(app)
             val vehicleId = ActiveVehicle.current(app)
@@ -75,26 +72,9 @@ object TypedTurnRecorder {
                     )
                 }
             }.onFailure { Log.w(TAG, "typed turn audit failed: ${it.message}") }
-            if (!turn.readThrough) {
-                runCatching {
-                    val dao = db.episodicTurnDao()
-                    val now = System.currentTimeMillis()
-                    dao.insert(
-                        EpisodicTurn(
-                            sessionId = sid, vehicleId = vehicleId,
-                            role = EpisodicTurn.Role.DRIVER, text = turn.userText, timestamp = now,
-                        ),
-                    )
-                    if (turn.replyText.isNotBlank()) {
-                        dao.insert(
-                            EpisodicTurn(
-                                sessionId = sid, vehicleId = vehicleId,
-                                role = EpisodicTurn.Role.COMPANION, text = turn.replyText, timestamp = now,
-                            ),
-                        )
-                    }
-                }.onFailure { Log.w(TAG, "typed turn episodic capture failed: ${it.message}") }
-            }
+            // No episodic capture (memory-and-vault ticket 10): the engine distils memories from
+            // the conversation record above, which already carries this turn redacted when it read
+            // third-party content.
             runCatching { ProactiveBus.noteReply(app, turn.userText) }
         }
     }

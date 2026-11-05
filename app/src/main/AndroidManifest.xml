@@ -99,6 +99,8 @@
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The ID vault's fingerprint prompt (memory-and-vault ticket 12, ADR 0076). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
@@ -289,6 +291,15 @@
             android:name=".ui.mirror.MirrorSyncActivity"
             android:exported="false"
             android:label="Mirror Sync"
+            android:theme="@style/Theme.Legion" />
+
+        <!-- The ID vault (memory-and-vault ticket 12, ADR 0076). Its own activity so FLAG_SECURE
+             (no screenshots, blank recents thumbnail) covers the vault and nothing else. Not
+             exported: Settings and the show_vault_item voice tool open it in-process. -->
+        <activity
+            android:name=".ui.vault.VaultActivity"
+            android:exported="false"
+            android:label="ID vault"
             android:theme="@style/Theme.Legion" />
 
         <!-- Books reader (ADR 0061). A FragmentActivity because Readium's EPUB navigator is a

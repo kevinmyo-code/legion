@@ -57,7 +57,18 @@ import java.io.IOException
 sealed interface EngineFailure {
     val sentence: String
 
-    data class Unauthorized(override val sentence: String) : EngineFailure
+    /**
+     * A 401 or 403. [status] and [body] (memory-and-vault tickets 09 and 12) are kept beside the
+     * "sign in again" sentence because a 403 is not always a lost token: memory and the ID vault
+     * answer a recruiter, a Claude worker's token or a missing fingerprint header with a 403 whose
+     * `detail` says why in words, and those callers read it back from [body]. Every other caller
+     * reads [sentence] exactly as before.
+     */
+    data class Unauthorized(
+        override val sentence: String,
+        val status: Int = 401,
+        val body: String = "",
+    ) : EngineFailure
 
     data class Unreachable(val host: String, val message: String) : EngineFailure {
         override val sentence: String get() = message
@@ -381,6 +392,8 @@ class EngineHttp(
                 EngineHttpException(
                     EngineFailure.Unauthorized(
                         "The engine no longer accepts this device's token${detailSuffix(body)} Sign in again.",
+                        status = code,
+                        body = body,
                     ),
                 ),
             )

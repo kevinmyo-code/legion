@@ -374,7 +374,7 @@ import androidx.room.RoomDatabase
         FeedSubscription::class,
         BookRow::class, BookBookmark::class, BookConversionRow::class, BookSyncOutboxRow::class,
     ],
-    version = 78,
+    version = 79,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -554,7 +554,9 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 78
+        const val SCHEMA_VERSION = 79
+        // 2026-11-05: bumped to 79 alongside `@Database(version=)` in the same edit (memory-and-vault
+        // ticket 13: the nullable `vehicles_replica.plate` column; see [MIGRATION_78_79]).
         // 2026-10-23: bumped to 78 alongside `@Database(version=)` in the same edit (books ticket 09:
         // `book_bookmarks.syncUuid` and the `book_sync_outbox` table; see [MIGRATION_77_78]).
         // 2026-10-23: bumped to 77 alongside `@Database(version=)` in the same edit (books ticket 05:
@@ -694,7 +696,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_66_67, MIGRATION_67_68, MIGRATION_68_69, MIGRATION_69_70,
                         MIGRATION_70_71, MIGRATION_71_72, MIGRATION_72_73,
                         MIGRATION_73_74, MIGRATION_74_75, MIGRATION_75_76,
-                        MIGRATION_76_77, MIGRATION_77_78,
+                        MIGRATION_76_77, MIGRATION_77_78, MIGRATION_78_79,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

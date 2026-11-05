@@ -438,6 +438,9 @@ object FleetEngineStore {
                 deleted = remote.deleted,
                 originGuid = remote.originGuid,
                 archived = remote.archived,
+                // memory-and-vault ticket 13: the Supabase transport never carries a plate, so a
+                // null here keeps the one the replica already holds rather than wiping it.
+                plate = remote.plate ?: db.vehicleReplicaDao().getByServerId(remote.serverId)?.plate,
             ),
         )
         db.vehicleSidecarDao().upsert(

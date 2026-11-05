@@ -3104,3 +3104,23 @@ val MIGRATION_77_78 = object : Migration(SCHEMA_V77, SCHEMA_V78) {
         )
     }
 }
+
+private const val SCHEMA_V79 = 79
+
+/**
+ * The licence plate on the vehicle (memory-and-vault ticket 13, Kevin 2026-11-05): one nullable
+ * `vehicles_replica.plate` column, the phone's copy of the engine's `vehicles.plate` (ticket 06).
+ * A plate is ordinary data, not an ID-vault item. Additive, nothing backfilled: every existing row
+ * reads null until the next fleet pull carries the engine's value down. Copied verbatim from the
+ * generated `79.json` (a nullable TEXT with no default).
+ */
+val MIGRATION_78_79 = object : Migration(SCHEMA_V78, SCHEMA_V79) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // ALTER TABLE ADD COLUMN has no IF NOT EXISTS, so look first: a rerun must not fail.
+        val hasColumn = db.query("PRAGMA table_info(`vehicles_replica`)").use { c ->
+            val name = c.getColumnIndexOrThrow("name")
+            generateSequence { if (c.moveToNext()) c.getString(name) else null }.any { it == "plate" }
+        }
+        if (!hasColumn) db.execSQL("ALTER TABLE `vehicles_replica` ADD COLUMN `plate` TEXT")
+    }
+}

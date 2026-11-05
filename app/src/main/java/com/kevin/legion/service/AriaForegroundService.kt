@@ -21,8 +21,6 @@ import com.kevin.legion.BuildConfig
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
-import com.kevin.legion.ai.MemoryConsolidator
-import com.kevin.legion.ai.ReflectionEngine
 import com.kevin.legion.location.ArrivalController
 import com.kevin.legion.location.GeofenceManager
 import com.kevin.legion.location.LocationController
@@ -250,29 +248,10 @@ class AriaForegroundService : Service() {
             com.kevin.legion.claude.ClaudeResultPolling.watcher(this@AriaForegroundService).run()
         }
 
-        // Companion-memory map, tickets 02 + 05 (2026-07-22): distill whatever's
-        // left pending into durable memories, then look for patterns across
-        // them. TWO call sites, deliberately, for the same reason the drive-
-        // sync loop above is periodic-not-drive-end: the Cherokee's head unit
-        // loses power the instant the engine turns off, so a purely-periodic
-        // trigger would frequently die before it ever gets to run. A startup
-        // catch-up sweep picks up whatever was pending when the engine last cut
-        // out; the periodic loop catches sessions that finished earlier in the
-        // SAME still-running drive. See MemoryConsolidator's own doc for why the
-        // correctness gate is "nothing is live right now," not a staleness
-        // timestamp - either call site is safe at any cadence. Reflection always
-        // runs AFTER consolidation in the same pass so its input pool is fresh.
-        serviceScope.launch {
-            MemoryConsolidator.consolidatePending(this@AriaForegroundService)
-            ReflectionEngine.reflectIfDue(this@AriaForegroundService)
-        }
-        serviceScope.launch {
-            while (isActive) {
-                delay(MEMORY_CONSOLIDATION_INTERVAL_MS)
-                MemoryConsolidator.consolidatePending(this@AriaForegroundService)
-                ReflectionEngine.reflectIfDue(this@AriaForegroundService)
-            }
-        }
+        // The phone's own memory distillation (MemoryConsolidator, ReflectionEngine) is RETIRED
+        // (memory-and-vault ticket 10, ADR 0075): the engine's `consolidate_memories` job distils
+        // the conversation records this phone already uploads, so nothing is distilled twice. Both
+        // objects stay in the tree, uncalled; MemoryRetirementTest fails if a call comes back.
 
         // Wire the proactive engine to the one session (the Cruise screen drives
         // listening directly). Used to be collected in AriaLiveScreen.
@@ -1211,12 +1190,6 @@ class AriaForegroundService : Service() {
 
         // How often the proactive health monitor scans the OBD port.
         private const val HEALTH_SCAN_INTERVAL_MS = 5 * 60 * 1000L
-
-        // How often the running-loop side of memory consolidation sweeps for
-        // pending sessions (the startup sweep handles the other case - see the
-        // launch site's comment). Same cadence class as the health monitor;
-        // MemoryConsolidator itself no-ops instantly whenever it's not safe to run.
-        private const val MEMORY_CONSOLIDATION_INTERVAL_MS = 5 * 60 * 1000L
 
         // How often the arrival monitor checks whether the driver reached a
         // saved place. Frequent enough to catch arrivals promptly, cheap since

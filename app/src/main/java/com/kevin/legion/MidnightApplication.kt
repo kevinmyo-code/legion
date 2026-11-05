@@ -547,10 +547,8 @@ class MidnightApplication : Application() {
             runCatching { com.kevin.legion.backend.BodyRealtime.bind(this@MidnightApplication) }
                 .onFailure { MidnightEvents.appStartWorkFailed("bind_body_realtime", it) }
 
-            // Memory Realtime (memory-supabase ticket) - same shape and reasoning as BodyRealtime
-            // just above; see MemoryRealtime's own class doc for the full lifecycle contract.
-            runCatching { com.kevin.legion.backend.MemoryRealtime.bind(this@MidnightApplication) }
-                .onFailure { MidnightEvents.appStartWorkFailed("bind_memory_realtime", it) }
+            // Memory Realtime is no longer bound (memory-and-vault ticket 10, ADR 0075): it only
+            // ever triggered MemorySync.pull of the legacy tables, which memory v2 retired.
 
             // Ledger config Realtime (ledger-config-supabase ticket) - same shape and reasoning as
             // MemoryRealtime just above; see LedgerConfigRealtime's own class doc for the full

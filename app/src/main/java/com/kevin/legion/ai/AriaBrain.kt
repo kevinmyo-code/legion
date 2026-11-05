@@ -6,10 +6,8 @@ import android.location.Location
 import android.util.Log
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.CompanionMemory
 import com.kevin.legion.data.local.MemoryAudit
 import com.kevin.legion.data.local.record
-import com.kevin.legion.data.local.MemoryEntry
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
@@ -19,7 +17,6 @@ import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -35,14 +32,14 @@ import java.util.Locale
  *  2. [structuredQuery] - a one-shot, non-conversational REST lookup with search
  *     grounding (used to fetch a vehicle's maintenance schedule).
  *
- * Long-term memories live in Room and are saved via [remember] (invoked when
- * Gemini calls the "remember" function tool).
+ * Long-term memories live on the engine (ADR 0075, memory-and-vault ticket 09) and are read and
+ * written through [com.kevin.legion.memory.MemoryController], by the `memory` tool and the Memory
+ * screen; this class only reads them for the session's continuity note.
  */
 class AriaBrain private constructor(context: Context) {
     private val appContext = context.applicationContext
-    private val memoryDao = CarDatabase.getDatabase(context).memoryDao()
-    private val companionMemoryDao = CarDatabase.getDatabase(context).companionMemoryDao()
-    private val episodicTurnDao = CarDatabase.getDatabase(context).episodicTurnDao()
+    private val conversationAuditDao = CarDatabase.getDatabase(context).conversationAuditDao()
+    private val memories by lazy { com.kevin.legion.memory.MemoryController.forContext(appContext) }
     private val auditDao = CarDatabase.getDatabase(context).memoryAuditDao()
     private val geocoder by lazy { Geocoder(appContext, Locale.getDefault()) }
 
@@ -116,75 +113,6 @@ class AriaBrain private constructor(context: Context) {
     suspend fun auditSpoken(text: String) = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext
         audit(MemoryAudit.Event.SPOKEN, MemoryAudit.Store.SPEECH, text)
-    }
-
-    /**
-     * What one [remember] call did. Same shape and same reason as
-     * [com.kevin.legion.workouts.WorkoutController.WriteOutcome]: `remember` returned a bare
-     * `String` and `LiveToolbox`'s dispatch hardcoded `success = true` above it, which was
-     * harmless while the local write was unconditional and is not once a server can refuse the
-     * row (`.scratch/django-engine/issues/15-*`). [message] is what the caller speaks either way.
-     */
-    data class RememberOutcome(val success: Boolean, val message: String)
-
-    /**
-     * Saves something to long-term memory and returns a short in-character
-     * acknowledgement. Invoked when Gemini calls the "remember" tool.
-     *
-     * **A refusal from the engine is NOT acknowledged as a memory.** On the server-first path
-     * ([com.kevin.legion.backend.MemoryWriteThrough]) a refused row never reaches Room, so there
-     * is nothing to acknowledge and nothing to audit - the server's own sentence goes back
-     * instead, and the `WRITTEN` audit line is skipped, because an audit trail that records a
-     * write which did not happen is worse than no audit line at all.
-     *
-     * **Text that trims to nothing is refused for the same reason** - see the blank guard below.
-     */
-    suspend fun remember(text: String): RememberOutcome = withContext(Dispatchers.IO) {
-        val trimmed = text.trim()
-        // Nothing to store. **This used to read `RememberOutcome(true, REMEMBER_ACKS.random())`**,
-        // with the comment "model called remember with no real content - just ack", and that ack
-        // was a claim about a write that never happened: the same §7 breach [RememberOutcome]
-        // exists to close, on a different branch than the server refusal it was added for.
-        //
-        // Found on the A25 2026-09-07, in `conversation_audit`: the model called `remember` with
-        // `{"text":"\u00a0"}` - written as the escape here on purpose, since the literal
-        // character is invisible in source - and the tool result came back
-        // `{"success":true,"message":"Filed away."}`, and the assistant said "Very well, I have
-        // filed that away" while Room's `memories` stayed at 8 rows, `sync_outbox` at 0 and
-        // Postgres at 8. U+00A0 trims away here because Kotlin's `Char.isWhitespace()` folds in
-        // `Character.isSpaceChar` (Java's own `Character.isWhitespace` excludes it) - so a
-        // character the model plainly meant as content reaches this branch as nothing at all,
-        // which is exactly why the branch must not speak an ack.
-        if (trimmed.isEmpty()) {
-            return@withContext RememberOutcome(
-                false,
-                "There was nothing in that to save, so I haven't stored anything. Tell me what to remember.",
-            )
-        }
-        // Dedup: if we already know this, refresh its recency instead of adding a
-        // duplicate row that would waste one of the limited recall slots.
-        val existing = memoryDao.findByText(trimmed)
-        var queuedNote = ""
-        if (existing != null) {
-            memoryDao.touch(existing.id, System.currentTimeMillis())
-        } else {
-            val now = System.currentTimeMillis()
-            val outcome = com.kevin.legion.backend.MemoryWriteThrough.addMemoryEntry(
-                appContext,
-                MemoryEntry(text = trimmed, timestamp = now, updatedAtMs = now),
-            )
-            if (outcome is com.kevin.legion.backend.WriteThroughOutcome.Refused) {
-                return@withContext RememberOutcome(false, "I couldn't save that: ${outcome.message}")
-            }
-            audit(MemoryAudit.Event.WRITTEN, MemoryAudit.Store.FLAT, trimmed)
-            // Written here, not on the server yet - said in words (ADR 0044 rule 4), never folded
-            // silently into the ordinary ack.
-            queuedNote = (outcome as? com.kevin.legion.backend.WriteThroughOutcome.Queued<*>)
-                ?.let { " " + com.kevin.legion.backend.queuedSentence(it.reason) } ?: ""
-        }
-        // The memory list just changed; force the next base instruction to rebuild.
-        invalidateBase()
-        RememberOutcome(true, REMEMBER_ACKS.random() + queuedNote)
     }
 
     /**
@@ -353,8 +281,8 @@ class AriaBrain private constructor(context: Context) {
         sb.append("\n\n").append(AssistantIdentity.anchor(appContext))
 
         // Long-term memories are NOT dumped here anymore - they're pulled on demand
-        // via the recall_memory tool (search over the memory table), so the prompt
-        // stays lean no matter how many memories accumulate. See [recallMemories].
+        // via the `memory` tool (memory-and-vault ticket 09: on the engine), so the prompt
+        // stays lean no matter how many memories accumulate.
         return sb.toString()
     }
 
@@ -425,118 +353,6 @@ class AriaBrain private constructor(context: Context) {
     }
 
     /**
-     * Searches long-term memory for entries relevant to [query], across BOTH
-     * memory stores - the older explicit-"remember X" table ([MemoryEntry],
-     * global) and the consolidated/reflected companion-memory table
-     * ([CompanionMemory], ticket 01/02). Returns the top
-     * matches as spoken-friendly, date-tagged lines for the recall_memory
-     * tool. Pull-based, not pre-injected into every prompt.
-     *
-     * **Ticket 03's scoring (Generative-Agents-style):** each candidate is
-     * ranked by `recency + importance + relevance`, not relevance alone -
-     * see [score]. This is the "human-like forgetting" Kevin asked for: a
-     * memory doesn't need to be DELETED to stop surfacing, it just needs a
-     * low enough score to fall out of the top [limit]. Recalling a memory
-     * bumps its [CompanionMemory.lastAccessedAt] (rehearsal refreshes
-     * recency, same as the old table's `touch()`), so what the driver keeps
-     * bringing up naturally stays reachable.
-     *
-     * A blank/term-less query returns the most recent+important memories
-     * instead of scoring by relevance (nothing to be relevant TO).
-     *
-     * **Not partitioned by car since 2026-08-20.** It was, because this table was written for a
-     * car launcher, and that stranded 46 of Kevin's own driver memories behind whichever car
-     * happened to be connected. `car_anchored` rows are still scoped to the active car; facts
-     * about the driver are not, because the driver is the same person in every car.
-     */
-    suspend fun recallMemories(query: String, limit: Int = RECALL_LIMIT): List<String> =
-        withContext(Dispatchers.IO) {
-            val vehicleId = ActiveVehicle.current(appContext)
-            val legacy = memoryDao.getRecent(RECALL_SCAN)
-            // getRecallScan, not getRecent: driver/relationship memories come back whichever car
-            // is connected, car facts stay scoped to the car in front of him. See its own doc.
-            val companion = companionMemoryDao.getRecallScan(vehicleId, RECALL_SCAN)
-
-            val terms = query.lowercase()
-                .split(Regex("[^a-z0-9]+"))
-                .filter { it.length >= 3 && it !in RECALL_STOPWORDS }
-
-            val now = System.currentTimeMillis()
-            val candidates = legacy.map { Candidate.Legacy(it) } + companion.map { Candidate.Companion(it) }
-            // With real search terms, require actual keyword overlap first (recency/importance
-            // alone are always > 0, so scoring without this pre-filter would let the composite
-            // score surface a recent-but-unrelated memory for an unmatched query - the old
-            // grep-only behaviour's ".filter { it.second > 0 }" guarantee, preserved here).
-            val relevant = if (terms.isEmpty()) candidates else candidates.filter { relevance(it, terms) > 0.0 }
-            val chosen = relevant
-                .sortedByDescending { score(it, terms, now) }
-                .take(limit)
-
-            // Rehearsal: recalling a companion_memories row refreshes its recency,
-            // same effect the old table's touch() has on re-mention.
-            for (c in chosen) if (c is Candidate.Companion) companionMemoryDao.touch(c.memory.id, now)
-
-            // The audit trail's most useful pair: the query that was asked, then one line per
-            // memory the model was actually handed. Without the second half, "it had the right
-            // memory and said something else" cannot be told from "it never saw it".
-            audit(MemoryAudit.Event.RECALL, MemoryAudit.Store.COMPANION, query.ifBlank { "(no query - continuity)" })
-            for (c in chosen) {
-                audit(
-                    MemoryAudit.Event.RECALLED,
-                    if (c is Candidate.Companion) MemoryAudit.Store.COMPANION else MemoryAudit.Store.FLAT,
-                    c.text,
-                    refId = if (c is Candidate.Companion) c.memory.id else 0L,
-                )
-            }
-
-            chosen.map { formatMemory(it) }
-        }
-
-    /** One candidate memory from either store, normalized just enough to score/format uniformly. */
-    private sealed class Candidate {
-        data class Legacy(val entry: MemoryEntry) : Candidate()
-        data class Companion(val memory: CompanionMemory) : Candidate()
-
-        val text: String get() = when (this) { is Legacy -> entry.text; is Companion -> memory.text }
-        /** 1-10; the legacy table has no importance field, so treat it as a neutral midpoint. */
-        val importance: Int get() = when (this) { is Legacy -> 5; is Companion -> memory.importance }
-        val createdAt: Long get() = when (this) { is Legacy -> entry.timestamp; is Companion -> memory.createdAt }
-        /** What "last brought up" means for recency decay - touch() bumps the legacy timestamp itself. */
-        val lastAccessedAt: Long get() = when (this) {
-            is Legacy -> entry.timestamp
-            is Companion -> memory.lastAccessedAt.takeIf { it > 0 } ?: memory.createdAt
-        }
-    }
-
-    /**
-     * `w_recency * recencyDecay + w_importance * (importance/10) + w_relevance * relevanceFraction`.
-     * Equal weights (Generative Agents' own documented default) - a car companion has no data yet to
-     * justify tuning away from that, and hand-tuned weights here would be guessing, not designing.
-     * [relevanceFraction] is keyword-overlap / term-count today; ticket 04/layer-5 wiring is
-     * designed to swap ONLY this term for embedding cosine similarity later, unchanged otherwise.
-     */
-    private fun score(c: Candidate, terms: List<String>, nowMs: Long): Double {
-        val hoursSinceAccess = (nowMs - c.lastAccessedAt).coerceAtLeast(0L) / 3_600_000.0
-        val recencyDecay = Math.pow(RECENCY_DECAY_PER_HOUR, hoursSinceAccess)
-        val importanceFraction = c.importance / 10.0
-        return RECENCY_WEIGHT * recencyDecay + IMPORTANCE_WEIGHT * importanceFraction +
-            RELEVANCE_WEIGHT * relevance(c, terms)
-    }
-
-    /**
-     * Keyword-overlap fraction (matched terms / total terms), 1.0 for a term-less
-     * query (nothing to be relevant TO, so it shouldn't zero out the score). This
-     * is the term [score] weights AND the hard gate [recallMemories] applies before
-     * ranking - ticket 04/layer-5 wiring swaps only this function's body for
-     * embedding cosine similarity later.
-     */
-    private fun relevance(c: Candidate, terms: List<String>): Double {
-        if (terms.isEmpty()) return 1.0
-        val text = c.text.lowercase()
-        return terms.count { text.contains(it) }.toDouble() / terms.size
-    }
-
-    /**
      * Companion-memory map, ticket 06 (2026-07-22): the felt sense of an ongoing
      * relationship, at the cost of one small DB read. Surfaces WHEN the driver
      * last talked to the assistant (a raw time gap, not a scripted phrase - the model
@@ -556,13 +372,10 @@ class AriaBrain private constructor(context: Context) {
      * ago is not a "continuity" moment, just the same outing continuing).
      */
     private suspend fun buildContinuityNote(): String? {
-        val vehicleId = ActiveVehicle.current(appContext)
-        // Two sources because consolidation may not have caught up yet: a pending
-        // (not-yet-consolidated) session's raw turns are still the freshest signal
-        // of "when did we last talk" until MemoryConsolidator processes them.
-        val lastMemoryAt = companionMemoryDao.latestCreatedAt(vehicleId)
-        val lastTurnAt = episodicTurnDao.latestTimestamp(vehicleId)
-        val lastTalkedAt = listOfNotNull(lastMemoryAt, lastTurnAt).maxOrNull() ?: return null
+        // When they last talked: the newest conversation record line. Memory v2 retired the
+        // episodic turns this used to read (memory-and-vault ticket 10), and a memory's own date is
+        // when it was distilled, not when anyone spoke.
+        val lastTalkedAt = conversationAuditDao.recent(1).firstOrNull()?.at ?: return null
 
         val gapMs = System.currentTimeMillis() - lastTalkedAt
         if (gapMs < CONTINUITY_MIN_GAP_MS) return null
@@ -575,20 +388,17 @@ class AriaBrain private constructor(context: Context) {
             else -> "over a month ago"
         }
 
-        val topMemories = recallMemories(query = "", limit = CONTINUITY_MEMORY_COUNT)
+        // The engine's list (refreshed when the phone's copy is stale, never waiting long), ranked
+        // on the phone with no query. Not a recall on the engine: that would rehearse the same
+        // three memories at every session start and keep them on top for good.
+        val topMemories = runCatching { memories.continuity() }.getOrDefault(emptyList())
+            .map { "(${com.kevin.legion.memory.MemoryWording.day(it.createdAtMs)}) ${it.text}" }
         val memoryLine = if (topMemories.isEmpty()) "" else
             " A couple of things worth keeping in mind: ${topMemories.joinToString("; ")}."
 
         return "Your last conversation with the user was $gapDescription.$memoryLine Reference " +
             "this naturally if it fits the moment - as a factual continuity note, never as having " +
             "missed them or needed them (you don't have needs)."
-    }
-
-    private fun formatMemory(c: Candidate): String {
-        val date = Instant.ofEpochMilli(c.createdAt)
-            .atZone(ZoneId.systemDefault()).toLocalDate()
-            .format(DateTimeFormatter.ofPattern("MMMM d, yyyy"))
-        return "($date) ${c.text}"
     }
 
     /**
@@ -886,35 +696,9 @@ class AriaBrain private constructor(context: Context) {
 
         private const val TAG = "AriaBrain"
 
-        // Memory recall (pull-based via the recall_memory tool, no longer
-        // pre-injected): scan at most this many recent rows, return at most
-        // RECALL_LIMIT matches. Bounded so a huge memory table can't bloat either
-        // the DB scan or the model's context.
-        private const val RECALL_SCAN = 200
-        private const val RECALL_LIMIT = 6
-
-        // Ticket 03 (2026-07-22) retrieval scoring - see [score]. 0.99/hour is the
-        // Generative Agents paper's own default: half-life ~69 hours (~2.9 days),
-        // so an un-rehearsed memory fades over about a week without needing to be
-        // deleted - the "forgetting" is a score falling out of the top RECALL_LIMIT,
-        // not a purge. Weights are equal (the paper's default too); no data exists
-        // yet to justify tuning away from it.
-        private const val RECENCY_DECAY_PER_HOUR = 0.99
-        private const val RECENCY_WEIGHT = 1.0
-        private const val IMPORTANCE_WEIGHT = 1.0
-        private const val RELEVANCE_WEIGHT = 1.0
-
         // Ticket 06 (2026-07-22) continuity note. Below this gap, it's still the
         // same outing (another PTT tap minutes later) - not a "welcome back" moment.
         private const val CONTINUITY_MIN_GAP_MS = 20 * 60 * 1000L
-        private const val CONTINUITY_MEMORY_COUNT = 3
-
-        // Common words dropped from a recall query so they don't match everything.
-        private val RECALL_STOPWORDS = setOf(
-            "the", "and", "for", "you", "your", "our", "was", "were", "did",
-            "what", "when", "where", "who", "why", "how", "about", "that", "this",
-            "with", "have", "has", "had", "are", "from", "they", "them", "remember",
-        )
 
         // How long DTC codes are reused for prompt-building before re-querying
         // the OBD adapter. New codes are still surfaced live by the health
@@ -927,19 +711,6 @@ class AriaBrain private constructor(context: Context) {
         // sessions skip the DB read. remember() invalidates it immediately.
         private const val BASE_TTL_MS = 120_000L
 
-        // De-carred 2026-08-20. Two of these three were car jokes - "better than my suspension",
-        // "hauling around back here" - and unlike the system prompt, these are SPOKEN VERBATIM.
-        // The assistant answering "remember my gym address" with a suspension joke is the drive
-        // framing leaking straight out of its mouth, with no model in the loop to soften it.
-        //
-        // Kept deliberately plain rather than re-flavoured for a persona: these are shared by
-        // every persona, and a line written in one register is wrong in the other. The character
-        // lives in Personas.kt, which is where a flavoured acknowledgement would have to come from.
-        private val REMEMBER_ACKS = listOf(
-            "Noted. I'll hold on to that.",
-            "Filed away.",
-            "Got it - I'll remember that.",
-        )
     }
 }
 

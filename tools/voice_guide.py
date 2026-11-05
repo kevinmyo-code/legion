@@ -54,6 +54,10 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/ClaudeSessionToolbox.kt',
     # alfred-ota ticket 06 (ADR 0072): the one `app_update` tool (LEGION's own updates).
     ROOT / 'app/src/main/java/com/kevin/legion/service/AppUpdateToolbox.kt',
+    # memory-and-vault ticket 09 (ADR 0075): the one `memory` tool (recall, remember, forget, list).
+    ROOT / 'app/src/main/java/com/kevin/legion/service/MemoryToolbox.kt',
+    # memory-and-vault ticket 12 (ADR 0076): `show_vault_item`, which opens the ID vault screen.
+    ROOT / 'app/src/main/java/com/kevin/legion/service/VaultToolbox.kt',
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'

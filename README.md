@@ -60,7 +60,7 @@ model rather than to sell the feature.
 | LEGION itself | 1 | &ldquo;Is there an update for LEGION?&rdquo; |
 | Phone calls | 3 | &ldquo;Answer it&rdquo; |
 | Recordings | 4 | &ldquo;Record this meeting&rdquo; |
-| Memory | 3 | &ldquo;Remember that the XJ takes 5W-30&rdquo; |
+| Memory | 3 | &ldquo;Remember that the XJ takes 5W-30 / What do you remember about the Jeep? / Forget that&rdquo; |
 | Settings and control | 3 | &ldquo;Call yourself Alfred&rdquo; |
 | Your own trackers | 9 | &ldquo;What are you tracking for me?&rdquo; |
 

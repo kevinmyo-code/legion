@@ -322,6 +322,7 @@ object FleetSync {
         deleted = deleted,
         originGuid = originGuid,
         archived = archived,
+        plate = plate,
     )
 
     // =============================================================================================

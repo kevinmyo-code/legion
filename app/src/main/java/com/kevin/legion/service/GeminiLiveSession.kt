@@ -1463,28 +1463,11 @@ class GeminiLiveSession(
      * them. The owner handling [LiveEvent.CrisisDetected] is what actually ends
      * the performance.
      */
-    /**
-     * Companion-memory ticket 01 (2026-07-22): persists this turn's transcript
-     * into the raw [EpisodicTurn] buffer, for ticket 02's consolidation pass to
-     * later distill into scored, sec-9.1-categorized [com.kevin.legion.data.local.CompanionMemory]
-     * rows. Fire-and-forget on [io] - never blocks the conversation, and a
-     * write failure here must not affect the live turn in any way.
-     *
-     * Skips a blank driver line (nothing to remember) and skips entirely when
-     * [episodicSessionId] hasn't been minted yet (start() never ran - shouldn't
-     * happen mid-turnComplete, but this is transcript capture, not the
-     * conversation itself, so it fails silent rather than throwing).
-     *
-     * **Also skips the WHOLE turn when [mailToolCalledThisTurn] is set (ticket 15, ticket 07's
-     * read-through rule).** Not just the companion half - the driver's own line can be "what's
-     * unread in my inbox" and Alfred's reply can literally be a subject line he just read out
-     * loud, and either half landing here is a mail-shaped fact leaving the device the moment
-     * sync's whole-database backup next runs (commit 7c3822f, 2026-08-12). Dropping the entire
-     * turn rather than trying to redact just the mail-bearing half is deliberate: there is no
-     * reliable way to tell "the reply that used the mail tool" apart from "the reply that also
-     * mentioned something else" from plain transcript text, and the guarantee this rule exists
-     * to give is that mail was never stored - not that something remembered to scrub it.
-     */
+    // captureEpisodicTurn is RETIRED (memory-and-vault ticket 10, ADR 0075): the engine distils
+    // memories from the uploaded conversation record, so the raw `episodic_turns` buffer the phone's
+    // own consolidator read is no longer written. The read-through rule still holds there: the
+    // conversation record redacts a mail turn, and the engine's job drops any turn that called a
+    // read-through tool.
     /**
      * Records what the assistant actually SAID, in full, to the memory audit trail.
      *
@@ -1597,30 +1580,6 @@ class GeminiLiveSession(
         }
     }
 
-    private fun captureEpisodicTurn(driverText: String, companionText: String) {
-        val sessionId = episodicSessionId
-        if (sessionId.isBlank() || driverText.isBlank()) return
-        if (mailToolCalledThisTurn) return
-        io.launch {
-            try {
-                val dao = CarDatabase.getDatabase(appContext).episodicTurnDao()
-                val vehicleId = ActiveVehicle.current(appContext)
-                val now = System.currentTimeMillis()
-                dao.insert(EpisodicTurn(
-                    sessionId = sessionId, vehicleId = vehicleId,
-                    role = EpisodicTurn.Role.DRIVER, text = driverText, timestamp = now,
-                ))
-                if (companionText.isNotBlank()) {
-                    dao.insert(EpisodicTurn(
-                        sessionId = sessionId, vehicleId = vehicleId,
-                        role = EpisodicTurn.Role.COMPANION, text = companionText, timestamp = now,
-                    ))
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "episodic turn capture failed: ${e.message}")
-            }
-        }
-    }
 
     private fun checkForCrisis() {
         if (crisisFiredThisTurn) return
@@ -1795,7 +1754,6 @@ class GeminiLiveSession(
                 connectCountedAsCarryingTurn = true
                 GeminiUsageMeter.recordLiveConnectCarriedTurn()
             }
-            captureEpisodicTurn(heard, said)
             // Ticket 05 call 5: a brush-off of an unprompted line suppresses that rule for a day.
             // Read here because this is the one place the user's actual words exist; ProactiveBus
             // is what knows which rule (if any) is still awaiting an answer, and it no-ops when

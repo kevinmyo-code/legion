@@ -80,6 +80,8 @@ internal data class DjangoVehicleRow(
     @SerialName("origin_guid") val originGuid: String? = null,
     val archived: Boolean = false,
     @SerialName("last_obd_mac") val lastObdMac: String? = null,
+    /** memory-and-vault ticket 06/13: absent on an engine that predates the column, null for none. */
+    val plate: String? = null,
 ) {
     fun toRemote() = RemoteVehicle(
         serverId = id,
@@ -97,6 +99,7 @@ internal data class DjangoVehicleRow(
         originGuid = originGuid,
         archived = archived,
         lastObdMac = lastObdMac,
+        plate = plate,
     )
 }
 

@@ -56,6 +56,9 @@ data class RemoteVehicle(
     // exercise the hint - keep compiling unchanged. FleetSyncTest's own fake sets it explicitly
     // wherever the hint matters to what it is asserting.
     val lastObdMac: String? = null,
+    // memory-and-vault ticket 13: the engine's `vehicles.plate`. Defaulted for the same reason as
+    // [lastObdMac]; only the Django transport carries it (Supabase never had the column).
+    val plate: String? = null,
 )
 
 /**

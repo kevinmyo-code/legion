@@ -22,7 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ui.PurgeLedgerRow
 import com.kevin.legion.ui.SettingsNavRow
@@ -31,13 +30,6 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import kotlinx.coroutines.launch
 
-/**
- * Shared with `settings/memory`'s own MEMORY_LIMIT - kept as a separate named constant here rather
- * than importing that private one, since this screen only needs it to keep its own headline count
- * from ever exceeding what the destination screen can actually show. Unchanged from the old
- * monolith's own copy of this constant.
- */
-private const val MEMORY_SETTINGS_SCAN = 200
 
 /**
  * "Data and privacy" - the fourth subscreen `settings/` split into (command-center ticket 02).
@@ -51,16 +43,14 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var storedMemoryCount by remember { mutableStateOf(0) }
+    // Null until the phone has a copy of the engine's list: "not read yet" is not "nothing remembered".
+    var storedMemoryCount by remember { mutableStateOf<Int?>(null) }
     var reloadNonce by remember { mutableStateOf(0) }
 
-    // Both counts are capped at MEMORY_SETTINGS_SCAN - `settings/memory`'s own screen fetches with
-    // the same limit, so this status line can never claim a bigger number than that screen can
-    // actually show, rather than running a second, uncapped query just to headline a count.
-    suspend fun reloadMemoryStatus() {
-        val db = CarDatabase.getDatabase(context)
-        storedMemoryCount = db.memoryDao().getRecent(MEMORY_SETTINGS_SCAN).size +
-            db.companionMemoryDao().allRecent(MEMORY_SETTINGS_SCAN).size
+    // Memory v2 lives on the engine (memory-and-vault ticket 11); this reads the phone's copy of its
+    // whole list, with no network, so the line never waits on the engine.
+    fun reloadMemoryStatus() {
+        storedMemoryCount = com.kevin.legion.memory.MemoryController.forContext(context).cached()?.memories?.size
     }
 
     LaunchedEffect(reloadNonce) { reloadMemoryStatus() }
@@ -103,12 +93,20 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                 // actually remembered, previously invisible and uneditable outside a rebuild.
                 SettingsNavRow(
                     label = "Memory",
-                    status = if (storedMemoryCount > 0) {
-                        "$storedMemoryCount memories stored"
-                    } else {
-                        "Nothing remembered yet"
+                    status = when (val count = storedMemoryCount) {
+                        null -> "On the engine; not read on this phone yet"
+                        0 -> "Nothing remembered yet"
+                        else -> "$count memories on the engine"
                     },
                     onClick = onOpenMemory,
+                )
+
+                // memory-and-vault ticket 12 (ADR 0076): the ID vault opens in its own activity,
+                // behind the fingerprint, the same door `show_vault_item` uses.
+                SettingsNavRow(
+                    label = "ID vault",
+                    status = "Passport, SSN and account numbers, behind your fingerprint",
+                    onClick = { com.kevin.legion.ui.vault.VaultActivity.open(context, label = null) },
                 )
 
                 // Recordings moved off this screen 2026-09-04 (Kevin: "it needs a place on the

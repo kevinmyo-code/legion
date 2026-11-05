@@ -196,8 +196,8 @@ COPY = {
     "stop_voice_note": ("Stop recording", "Stops and saves the recording. It is only saved at that point, not yet transcribed - it will not claim the note is ready to read back until transcription has actually finished.", "Setup > Data & privacy > Recordings."),
     "read_voice_note": ("What did that meeting say?", "Reads back a note's summary. The summary is written from the transcript by a model, not a verbatim account, and anything in it - a number, a date, a name - is reported as something that was said, never as confirmed fact.", "Setup > Data & privacy > Recordings."),
     "list_voice_notes": ("What recordings do I have?", "Lists recent voice notes: titles, when they were recorded, and whether each was solo or a meeting.", "Setup > Data & privacy > Recordings."),
-    "remember": ("Remember that the XJ takes 5W-30", "Stores something for later.", "Settings > Memory screen, add dialog."),
-    "recall_memory": ("What do you remember about the Jeep?", "Looks up what it has stored.", "Settings > Memory screen, browse stored facts."),
+    "memory": ("Remember that the XJ takes 5W-30 / What do you remember about the Jeep? / Forget that", "Saves, looks up, lists and forgets what it remembers about you. Memories live on your engine, private to you unless you say the household may know one, and the web desk sees the same ones. Forget deletes it for good. With no connection it answers from the phone's last copy and says so, and it won't save or forget anything until it's back online. ID numbers are refused and pointed to the ID vault.", "Settings > Data and privacy > Memory: search, add, edit, share or make private, and Forget (asks first, deletes for good)."),
+    "show_vault_item": ("Show my passport number", "Opens the ID vault on your phone at that item. You unlock it with your fingerprint and read it yourself; the assistant never sees, says or keeps the number. Copy puts it on the clipboard for 60 seconds.", "Settings > Data and privacy > ID vault: add, edit, show and delete items behind your fingerprint."),
     "why_did_you_say_that": ("Why did you say that?", "Explains what triggered the last thing it said on its own - the rule and the fact behind it.", "Voice only - no audit-trail screen."),
 
     # --- Settings and control ---
@@ -237,7 +237,7 @@ GROUPS = {
     "LEGION itself": ["app_update"],
     "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Recordings": ["start_voice_note", "stop_voice_note", "read_voice_note", "list_voice_notes"],
-    "Memory": ["remember", "recall_memory", "why_did_you_say_that"],
+    "Memory": ["memory", "show_vault_item", "why_did_you_say_that"],
     "Settings and control": ["set_companion_name", "set_personality", "set_driver"],
     "Your own trackers": ["list_aspects", "describe_aspect", "query_records", "create_record", "update_record", "delete_record", "aspect_clerk", "create_aspect", "update_aspect"],
 }

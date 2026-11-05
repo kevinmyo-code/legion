@@ -68,6 +68,10 @@ data class VehicleReplica(
      * the car, not about which phone is holding it. See [com.kevin.legion.backend.RemoteVehicle.archived]'s
      * own doc comment. */
     @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
+    /** The licence plate, the engine's `vehicles.plate` (memory-and-vault ticket 13, v79). Ordinary
+     * data, not an ID-vault item; null when none is on file. Written by the fleet pull and by
+     * [com.kevin.legion.vehicle.VehiclePlateController] after the engine accepted an edit. */
+    val plate: String? = null,
 )
 
 /**
