@@ -13,6 +13,11 @@ data class NavDestination(
     val longitude: Double,
     /** What it is, so the preview can show "Gas station · 12 Main St" and the user can tell (device-run defect 11). */
     val detail: String? = null,
+    /**
+     * Which resolver source found it (`saved_place`, `search`, ...), for the NAV_AUDIT `route_request`
+     * line's `to_src=`; null when it did not come through the resolver.
+     */
+    val source: String? = null,
 ) {
     val point: GeoPoint get() = GeoPoint(latitude, longitude)
 }

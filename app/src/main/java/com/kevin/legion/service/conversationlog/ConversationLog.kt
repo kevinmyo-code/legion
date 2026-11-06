@@ -96,8 +96,8 @@ class EngineConversationTransport(private val http: EngineHttp) : ConversationTr
 
 /**
  * The phone's conversation log (conversation-records ticket 03, 2026-10-28, Kevin: "all logs on
- * engine. both headunit and phone"). Every `LIVE_AUDIT`, `LIVE_LATENCY`, `LIVE_FOLLOWUP` and
- * `LIVE_TOOL_CANCEL` line also goes to a bounded spool under `files/conversationlog/`, and sealed
+ * engine. both headunit and phone"). Every `LIVE_AUDIT`, `LIVE_LATENCY`, `LIVE_FOLLOWUP`,
+ * `LIVE_TOOL_CANCEL` and `NAV_AUDIT` line also goes to a bounded spool under `files/conversationlog/`, and sealed
  * batches go to the household's engine as `reason=conversation`, readable with
  * `manage.py device_logs --reason conversation --render`.
  *
@@ -112,6 +112,7 @@ class EngineConversationTransport(private val http: EngineHttp) : ConversationTr
  * **Not initialised means silent**, never a throw: JVM tests and anything before
  * `MidnightApplication.onCreate` reach [record] with no spool.
  */
+@Suppress("TooManyFunctions") // the log's whole surface: init, switches, record, and each upload trigger
 object ConversationLog {
     const val UPLOAD_INTERVAL_MS = 3 * 60_000L
     private const val STARTUP_DELAY_MS = 30_000L
@@ -175,7 +176,7 @@ object ConversationLog {
         return keepAndSend || logcatMirror
     }
 
-    /** One line under [tag]; anything but the four conversation tags is ignored. */
+    /** One line under [tag]; anything but the conversation tags ([ConversationSpool.TAGS]) is ignored. */
     fun record(tag: String, message: String) {
         recorder?.record(tag, message)
     }
@@ -188,6 +189,16 @@ object ConversationLog {
             stopTicker()
             if (keepAndSend && uploader != null) scope.launch { uploadNow(manual = false) }
         }
+    }
+
+    /**
+     * A finished nav trip (NAV_AUDIT `trip_end`): send what is spooled, as a session end would. A trip
+     * started by hand opens no Live session, so without this its lines waited for the next one or app
+     * start. Respects the switch and the uploader's backoff; silent when not initialised.
+     */
+    fun uploadSoon() {
+        if (!keepAndSend || uploader == null) return
+        scope.launch { uploadNow(manual = false) }
     }
 
     /** At app start: after a short wait for the network, send anything an earlier run left. */

@@ -17,6 +17,7 @@ import com.kevin.legion.navigation.MapboxNavSdk
 import com.kevin.legion.navigation.MapboxTokenProvider
 import com.kevin.legion.navigation.MapboxTokenStore
 import com.kevin.legion.navigation.NavMapFeed
+import com.kevin.legion.navigation.audit.NavAudit
 import com.kevin.legion.navigation.resolve.CalendarSource
 import com.kevin.legion.navigation.resolve.ContactSource
 import com.kevin.legion.navigation.resolve.DestinationResolver
@@ -119,6 +120,18 @@ class MidnightApplication : Application() {
     val navMapFeed: NavMapFeed by lazy { NavMapFeed() }
 
     /**
+     * The NAV_AUDIT log (2026-11-06): searches, route requests, trips, reroutes and cue counts, through
+     * the conversation log's own switches to logcat and the household engine. A finished trip asks for an
+     * upload, since a trip started by hand opens no Live session to trigger one.
+     */
+    val navAudit: NavAudit by lazy {
+        NavAudit(
+            sink = { com.kevin.legion.service.LiveLatency.audit(NavAudit.TAG, it) },
+            onTripEnd = { com.kevin.legion.service.conversationlog.ConversationLog.uploadSoon() },
+        )
+    }
+
+    /**
      * The one navigation controller (mapbox-nav ticket 10, ticket 07: a trip outlives its screen).
      * App-owned, like [mapboxTokens], because a guided trip ends only on arrival, End or process
      * death. There is no Hilt in the tree yet; this is the single-instance stopgap CLAUDE.md sec 8
@@ -129,6 +142,7 @@ class MidnightApplication : Application() {
             tokens = mapboxTokens,
             sdkFactory = { MapboxNavSdk(this, navMapFeed) },
             fix = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
+            audit = navAudit,
         )
     }
 
@@ -143,6 +157,7 @@ class MidnightApplication : Application() {
                 ContactSource(PhoneContacts(this)),
             ),
             placeSearch = MapboxPlaceSearch(),
+            audit = navAudit,
         )
     }
 
@@ -150,7 +165,7 @@ class MidnightApplication : Application() {
      * Speaks the SDK's turn cues (mapbox-nav tickets 05 and 11). App-owned for the same reason the
      * controller is: cues must keep coming with the screen off and the nav screen gone.
      */
-    val navCueSpeaker: NavCueSpeaker by lazy { NavCueSpeaker(this, navController) }
+    val navCueSpeaker: NavCueSpeaker by lazy { NavCueSpeaker(this, navController, navAudit) }
 
     /** The four voice tools' logic (ticket 04), over the same controller and resolver the nav screen uses. */
     val navVoiceTools: NavVoiceTools by lazy {
@@ -159,6 +174,7 @@ class MidnightApplication : Application() {
             resolver = navResolver,
             fix = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
             screen = com.kevin.legion.service.NavScreenOpener(this),
+            audit = navAudit,
         )
     }
 

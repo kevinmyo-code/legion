@@ -11,6 +11,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.kevin.legion.navigation.MapboxNavController
 import com.kevin.legion.navigation.NavPhase
+import com.kevin.legion.navigation.audit.NavAudit
 import com.kevin.legion.service.AssistantCueBridge
 import com.kevin.legion.service.AssistantCueHold
 import com.kevin.legion.service.MicArbiter
@@ -41,9 +42,12 @@ import java.util.Locale
 class NavCueSpeaker(
     private val context: Context,
     private val controller: MapboxNavController,
+    private val audit: NavAudit = NavAudit.OFF,
 ) : CueEnvironment {
     private val main = Handler(Looper.getMainLooper())
-    private val arbiter = NavCueArbiter(this)
+
+    // Counts only, into the trip's NAV_AUDIT trip_end line; the cue text is never logged.
+    private val arbiter = NavCueArbiter(this) { audit.cue(it) }
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private var tts: TextToSpeech? = null

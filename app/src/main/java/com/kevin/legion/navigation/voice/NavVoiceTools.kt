@@ -9,6 +9,9 @@ import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.NavPhase
 import com.kevin.legion.navigation.NavResult
 import com.kevin.legion.navigation.TripStatus
+import com.kevin.legion.navigation.audit.NavAudit
+import com.kevin.legion.navigation.audit.ResolveVerdict
+import com.kevin.legion.navigation.audit.SearchOrigin
 import com.kevin.legion.navigation.resolve.Candidate
 import com.kevin.legion.navigation.resolve.DestinationResolver
 import com.kevin.legion.navigation.resolve.LookupContext
@@ -52,6 +55,7 @@ class NavVoiceTools(
     private val fix: () -> GeoPoint?,
     private val screen: NavScreenLauncher,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
+    private val audit: NavAudit = NavAudit.OFF,
 ) {
     private enum class Slot { DESTINATION, VIA, STOP }
 
@@ -60,6 +64,8 @@ class NavVoiceTools(
         val key: String,
         val candidates: List<Candidate>,
         val at: Long,
+        /** The NAV_AUDIT search the candidates came from, so the yes names it. */
+        val searchId: String?,
     )
 
     private sealed interface Pick {
@@ -250,7 +256,7 @@ class NavVoiceTools(
     }
 
     /** Resolves one spoken place, or says why nothing may proceed. See the class doc on [choice]. */
-    @Suppress("ReturnCount") // each return is one verdict
+    @Suppress("ReturnCount", "LongMethod") // each return is one verdict, with its audit line
     private suspend fun pick(
         slot: Slot,
         phrase: String,
@@ -260,24 +266,47 @@ class NavVoiceTools(
     ): Pick {
         val key = QueryText.normalize(phrase)
         val now = nowMs()
+        val tool = if (slot == Slot.STOP) "change_trip" else "navigate"
+        val slotName = slot.name.lowercase()
         confirmed[slot]?.takeIf { it.first == key && now - it.third < PENDING_TTL_MS }?.let {
+            audit.resolve(tool, slotName, ResolveVerdict.CACHED, null, 1, choice, null, null)
             return Pick.Chosen(it.second, emptyList())
         }
         val held = pending?.takeIf { it.slot == slot && it.key == key && now - it.at < PENDING_TTL_MS }
         if (choice != null && held != null) {
             val c = held.candidates.getOrNull(choice - 1)
-                ?: return Pick.Stop(fail("There is no option $choice; there are ${held.candidates.size}. $unchanged"))
+            if (c == null) {
+                val why = "There is no option $choice; there are ${held.candidates.size}."
+                audit.resolve(
+                    tool, slotName, ResolveVerdict.CHOICE_OUT_OF_RANGE, held.searchId, held.candidates.size,
+                    choice, null, why,
+                )
+                return Pick.Stop(fail("$why $unchanged"))
+            }
             pending = null
             confirmed[slot] = Triple(key, c.toDestination(), now)
+            audit.resolve(
+                tool, slotName, ResolveVerdict.CHOICE_OK, held.searchId, held.candidates.size, choice, c.source, null,
+            )
+            audit.pick(held.searchId, choice, "voice", c.source)
             return Pick.Chosen(c.toDestination(), emptyList())
         }
-        return when (val r = resolver.resolve(phrase, ctx)) {
-            is Resolution.NotFound -> Pick.Stop(fail("${r.message} $unchanged"))
+        return when (val r = resolver.resolve(phrase, ctx, SearchOrigin.VOICE)) {
+            is Resolution.NotFound -> {
+                audit.resolve(tool, slotName, ResolveVerdict.NOT_FOUND, null, 0, choice, null, r.message)
+                Pick.Stop(fail("${r.message} $unchanged"))
+            }
             is Resolution.Resolved -> if (r.ambiguous) {
-                pending = Pending(slot, key, r.candidates, now)
+                pending = Pending(slot, key, r.candidates, now, r.searchId)
+                // Never the read-back sentence: it names Mapbox results (ToS 2.7.2).
+                audit.resolve(
+                    tool, slotName, ResolveVerdict.ASK, r.searchId, r.candidates.size, choice, r.source,
+                    "several_plausible",
+                )
                 Pick.Stop(fail(askSentence(r, unchanged)))
             } else {
                 confirmed[slot] = Triple(key, r.destination, now)
+                audit.resolve(tool, slotName, ResolveVerdict.GO, r.searchId, r.candidates.size, choice, r.source, null)
                 Pick.Chosen(r.destination, r.notes)
             }
         }

@@ -3,6 +3,11 @@ package com.kevin.legion.navigation.resolve
 import com.kevin.legion.navigation.GeoPoint
 import com.kevin.legion.navigation.NavDestination
 import com.kevin.legion.navigation.NavFormat
+import com.kevin.legion.navigation.audit.NavAudit
+import com.kevin.legion.navigation.audit.SearchOrigin
+import com.kevin.legion.navigation.audit.SearchVerdict
+import com.kevin.legion.navigation.audit.SourceOutcome
+import com.kevin.legion.navigation.audit.SourceTry
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -41,7 +46,7 @@ data class Candidate(
         listOfNotNull(category?.replaceFirstChar { it.uppercase() }, detail?.takeIf { it.isNotBlank() })
             .joinToString(" · ").ifEmpty { null }
 
-    fun toDestination() = NavDestination(name, latitude, longitude, subtitle())
+    fun toDestination() = NavDestination(name, latitude, longitude, subtitle(), NavAudit.sourceToken(source))
 }
 
 /** What a lookup knows about the world: the live fix (for proximity) and, for a via, the route so far. */
@@ -93,6 +98,8 @@ sealed interface Resolution {
         val ambiguous: Boolean,
         val source: SourceKind,
         val notes: List<String>,
+        /** The NAV_AUDIT `search` line's id, so a later pick among [candidates] names the search it answers. */
+        val searchId: String? = null,
     ) : Resolution {
         /** The sentence to read back. */
         fun sentence(): String {
@@ -126,24 +133,68 @@ sealed interface Resolution {
  * places both called "gym" resolving silently to a stranger's gym from search is the expensive
  * failure the read-back rule exists to stop. If Kevin meant the other reading it is the `return`
  * on the ambiguous branch below.
+ *
+ * **Every run writes one NAV_AUDIT `search` line** through [audit]: the phrase, where it came from
+ * ([SearchOrigin]), each source actually asked (a later source never runs after an earlier match) with
+ * its latency and result count, the merged top five, and the verdict. A calendar or contact match whose
+ * address text is then geocoded counts that Mapbox call in ITS source's latency, not in `search`'s.
+ * [clockMs] is a monotonic millisecond clock, injected so a test can time sources.
  */
 class DestinationResolver(
     private val sources: List<DestinationSource>,
     private val placeSearch: PlaceSearch,
+    private val audit: NavAudit = NavAudit.OFF,
+    private val clockMs: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) {
     private val searchSource = SearchSource(placeSearch)
 
+    /** One run's trail for the audit line. */
+    private class Trail(val started: Long) {
+        val tried = mutableListOf<SourceTry>()
+    }
+
+    suspend fun resolve(
+        text: String,
+        ctx: LookupContext,
+        origin: SearchOrigin = SearchOrigin.UNKNOWN,
+    ): Resolution {
+        val trail = Trail(clockMs())
+        val id = audit.newId("s")
+        val query = text.trim()
+        val result = run(query, ctx, trail)
+        val verdict = when {
+            result is Resolution.Resolved -> if (result.ambiguous) SearchVerdict.AMBIGUOUS else SearchVerdict.RESOLVED
+            query.isEmpty() -> SearchVerdict.EMPTY
+            trail.tried.lastOrNull()?.outcome == SourceOutcome.NO_ADDRESS -> SearchVerdict.NO_ADDRESS
+            else -> SearchVerdict.NOT_FOUND
+        }
+        val resolved = result as? Resolution.Resolved
+        audit.search(
+            id = id,
+            origin = origin,
+            alongRoute = !ctx.alongRoute.isNullOrEmpty(),
+            verdict = verdict,
+            source = resolved?.source,
+            tried = trail.tried,
+            top = resolved?.candidates.orEmpty(),
+            totalMs = clockMs() - trail.started,
+            query = query,
+        )
+        return resolved?.copy(searchId = id) ?: result
+    }
+
     // Each early return is a verdict (resolved, or a terminal "no address"); the loop reads top to bottom.
     @Suppress("ReturnCount")
-    suspend fun resolve(text: String, ctx: LookupContext): Resolution {
-        val query = text.trim()
+    private suspend fun run(query: String, ctx: LookupContext, trail: Trail): Resolution {
         if (query.isEmpty()) return Resolution.NotFound("I didn't catch where to go.", emptyList())
         val reports = mutableListOf<SourceReport>()
         for (source in sources + searchSource) {
+            val began = clockMs()
             val answer = when (val a = source.lookup(query, ctx)) {
                 is SourceAnswer.NeedsSearch -> addressesToHits(a, ctx, reports, source.kind)
                 else -> a
             }
+            trail.tried += SourceTry(source.kind, clockMs() - began, resultsOf(answer), outcomeOf(answer))
             when (answer) {
                 SourceAnswer.NoMatch -> reports += SourceReport(source.kind, "nothing matched", unreadable = false)
                 is SourceAnswer.Unreadable -> reports += SourceReport(source.kind, answer.why, unreadable = true)
@@ -198,6 +249,20 @@ class DestinationResolver(
     }
 
     private fun noteFor(r: SourceReport) = "Couldn't read ${r.kind.label}: ${r.line}."
+
+    private fun resultsOf(a: SourceAnswer): Int = (a as? SourceAnswer.Hits)?.candidates?.size ?: 0
+
+    private fun outcomeOf(a: SourceAnswer): SourceOutcome = when (a) {
+        is SourceAnswer.Hits -> if (a.candidates.isEmpty()) SourceOutcome.NO_MATCH else SourceOutcome.HITS
+        SourceAnswer.NoMatch -> SourceOutcome.NO_MATCH
+        is SourceAnswer.Unreadable -> SourceOutcome.UNREADABLE
+        is SourceAnswer.NoAddress -> SourceOutcome.NO_ADDRESS
+        is SourceAnswer.NeedsSearch -> SourceOutcome.HITS
+    }
+
+    private companion object {
+        const val NANOS_PER_MS = 1_000_000L
+    }
 
     private fun notFoundSentence(query: String, reports: List<SourceReport>): String {
         val unread = reports.filter { it.unreadable }

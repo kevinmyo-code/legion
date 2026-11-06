@@ -134,8 +134,11 @@ class ConversationSpool(
         private const val TRIM_TO_PERCENT = 75
         private const val PERCENT = 100
 
-        /** The four tags `tools/voice_audit.py` reads; nothing else enters the spool. */
-        val TAGS: Set<String> = setOf("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL")
+        /**
+         * The four tags `tools/voice_audit.py` reads, plus `NAV_AUDIT` (`tools/nav_audit_report.py`,
+         * 2026-11-06); nothing else enters the spool.
+         */
+        val TAGS: Set<String> = setOf("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL", "NAV_AUDIT")
 
         /**
          * One `logcat -v threadtime`-shaped line, `MM-dd HH:mm:ss.SSS pid tid I TAG: message`, so

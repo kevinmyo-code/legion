@@ -26,6 +26,7 @@ import com.mapbox.navigation.core.reroute.RerouteController
 import com.mapbox.navigation.core.reroute.RerouteState
 import com.mapbox.navigation.core.trip.session.LocationMatcherResult
 import com.mapbox.navigation.core.trip.session.LocationObserver
+import com.mapbox.navigation.core.trip.session.OffRouteObserver
 import com.mapbox.navigation.core.trip.session.RouteProgressObserver
 import com.mapbox.navigation.core.trip.session.TripSessionState
 import com.mapbox.navigation.core.trip.session.VoiceInstructionsObserver
@@ -135,7 +136,9 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
 
     private val routesObserver = RoutesObserver { result ->
         feed.setRoutes(result.navigationRoutes)
-        if (result.navigationRoutes.isNotEmpty()) listener?.onRoutesChanged(result.navigationRoutes.map(::toInfo))
+        if (result.navigationRoutes.isNotEmpty()) {
+            listener?.onRoutesChanged(result.navigationRoutes.map(::toInfo), reasonToken(result.reason))
+        }
     }
 
     private val arrivalObserver = object : ArrivalObserver {
@@ -152,10 +155,14 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         when (state) {
             is RerouteState.FetchingRoute -> listener?.onReroute(RerouteStatus.FETCHING, null)
             is RerouteState.Failed -> listener?.onReroute(RerouteStatus.FAILED, state.message)
-            is RerouteState.Idle, is RerouteState.RouteFetched, is RerouteState.Interrupted ->
-                listener?.onReroute(RerouteStatus.IDLE, null)
+            is RerouteState.RouteFetched -> listener?.onReroute(RerouteStatus.FETCHED, state.routerOrigin)
+            is RerouteState.Interrupted -> listener?.onReroute(RerouteStatus.INTERRUPTED, null)
+            is RerouteState.Idle -> listener?.onReroute(RerouteStatus.IDLE, null)
         }
     }
+
+    // NAV_AUDIT only: the SDK reroutes on its own; this tells the audit a reroute followed leaving the route.
+    private val offRouteObserver = OffRouteObserver { offRoute -> listener?.onOffRoute(offRoute) }
 
     // Ticket 05: the SDK decides WHAT and WHEN; LEGION's own speech path says it (`NavCueSpeaker`).
     // `announcement()` is plain text, in the voice units the route options asked for. Mapbox's own
@@ -171,6 +178,7 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         nav.registerRoutesObserver(routesObserver)
         nav.registerArrivalObserver(arrivalObserver)
         nav.getRerouteController()?.registerRerouteStateObserver(rerouteObserver)
+        nav.registerOffRouteObserver(offRouteObserver)
     }
 
     override fun requestRoutes(request: RouteRequest, onResult: (RouteRequestResult) -> Unit): Long {
@@ -193,7 +201,7 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         if (request.avoid.isNotEmpty()) builder.exclude(request.avoid.joinToString(",") { it.excludeValue })
         return nav.requestRoutes(builder.build(), object : NavigationRouterCallback {
             override fun onRoutesReady(routes: List<NavigationRoute>, @RouterOrigin routerOrigin: String) {
-                onResult(RouteRequestResult.Ready(routes, routes.map(::toInfo)))
+                onResult(RouteRequestResult.Ready(routes, routes.map(::toInfo), routerOrigin))
             }
 
             override fun onFailure(reasons: List<RouterFailure>, routeOptions: RouteOptions) {
@@ -262,6 +270,7 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         nav.unregisterArrivalObserver(arrivalObserver)
         nav.unregisterVoiceInstructionsObserver(voiceObserver)
         nav.getRerouteController()?.unregisterRerouteStateObserver(rerouteObserver)
+        nav.unregisterOffRouteObserver(offRouteObserver)
         feed.clear()
         listener = null
         MapboxNavigationProvider.destroy()
@@ -303,6 +312,7 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
                 congestion.takeIf { it.isNotEmpty() },
                 distances.takeIf { it.size == congestion.size },
             ),
+            profile = options?.let { "${it.user()}/${it.profile()}" },
         )
     }
 
@@ -329,7 +339,11 @@ class MapboxNavSdk(appContext: Context, private val feed: NavMapFeed) : NavSdk {
         )
     }
 
+    /** `ROUTES_UPDATE_REASON_REFRESH` to `refresh`, for the audit line. */
+    private fun reasonToken(reason: String): String = reason.removePrefix(REASON_PREFIX).lowercase()
+
     private companion object {
+        const val REASON_PREFIX = "ROUTES_UPDATE_REASON_"
         const val POLYLINE_PRECISION = 6
         const val TAG = "MapboxNavSdk"
 
