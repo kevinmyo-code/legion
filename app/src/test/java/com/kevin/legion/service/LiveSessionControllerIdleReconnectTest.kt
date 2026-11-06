@@ -1,140 +1,60 @@
 package com.kevin.legion.service
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Ticket 24 (`.scratch/hands-and-senses/issues/24-the-socket-that-never-rests.md`, "the socket
- * restarts every 2.5 minutes, all day"): covers
- * [LiveSessionController.shouldAutoReconnectAfterClose], the pure decision behind the
- * [LiveEvent.Closed] branch's automatic re-prewarm. Same shape as
- * [LiveSessionControllerThreadLossTest]/[LiveSessionControllerToolCallRestoreTest] -
- * [LiveSessionController] needs a live Context/GeminiLiveSession/Room to construct at all, so
- * this is the seam a plain JVM test can exercise directly against the real production decision.
+ * The resumption-handle rule behind the [LiveEvent.Closed] branch,
+ * [LiveSessionController.resumeHandleAfterClose].
  *
- * The measured problem this protects against: the Live server closes an idle prewarmed socket
- * roughly every 153 seconds on its own, and every connect (cold or resumed) re-sends the whole
- * setup payload - ~16,189 estimated tokens. Reconnecting on every one of those closes forever is
- * what produced ~565 reconnects and ~9.1M estimated input tokens a day with nobody using the
- * app. This function is the fix's whole decision: inside the idle window of the last real
- * signal, keep reconnecting; past it, stop.
+ * History: ticket 24 (`.scratch/hands-and-senses/issues/24-the-socket-that-never-rests.md`) built a
+ * 10 minute idle window here, inside which every unattended close re-prewarmed a socket. Kevin
+ * retired the idle socket outright on 2026-11-05 (*"stop keeping a voice session open while idle;
+ * only open one when you tap or say the wake word"*), so the window and its tests are gone; what
+ * reopens after a close is now [LiveSessionLifecycle.afterClose] ([LiveSessionLifecycleTest]). The
+ * handle rule stays, and since nothing reopens on an unattended close, such a close always drops
+ * the handle rather than only past the window.
  */
 class LiveSessionControllerIdleReconnectTest {
-
-    private val window = 600_000L // 10 minutes, matches IDLE_RECONNECT_WINDOW_MS - passed
-                                   // explicitly so this test pins its own behaviour rather than
-                                   // silently tracking a production constant that could change.
-
-    @Test
-    fun `well inside the idle window - reconnect`() {
-        assertTrue(
-            LiveSessionController.shouldAutoReconnectAfterClose(
-                lastInteractionMs = 0L, nowMs = 1_000L, idleWindowMs = window,
-            )
-        )
-    }
-
-    @Test
-    fun `well past the idle window - do not reconnect`() {
-        assertFalse(
-            LiveSessionController.shouldAutoReconnectAfterClose(
-                lastInteractionMs = 0L, nowMs = window * 3, idleWindowMs = window,
-            )
-        )
-    }
-
-    @Test
-    fun `boundary - one millisecond inside the window still reconnects`() {
-        assertTrue(
-            LiveSessionController.shouldAutoReconnectAfterClose(
-                lastInteractionMs = 0L, nowMs = window - 1, idleWindowMs = window,
-            )
-        )
-    }
-
-    @Test
-    fun `boundary - exactly at the window edge does NOT reconnect`() {
-        // Pinned deliberately: the comparison is a strict less-than, so the instant the window
-        // elapses is already "past it", not the last moment still inside it. Elapsed time this
-        // exact is not achievable from two System.currentTimeMillis() calls in practice, but the
-        // pure function's boundary still has to be a specific, checkable answer.
-        assertFalse(
-            LiveSessionController.shouldAutoReconnectAfterClose(
-                lastInteractionMs = 0L, nowMs = window, idleWindowMs = window,
-            )
-        )
-    }
-
-    @Test
-    fun `boundary - one millisecond past the window does NOT reconnect`() {
-        assertFalse(
-            LiveSessionController.shouldAutoReconnectAfterClose(
-                lastInteractionMs = 0L, nowMs = window + 1, idleWindowMs = window,
-            )
-        )
-    }
-
-    @Test
-    fun `a signal that arrives after the close - now before last interaction - still reconnects`() {
-        // Cannot happen with real wall-clock reads (nowMs is always >= lastInteractionMs in
-        // production), but a negative elapsed time must not accidentally read as "expired" if the
-        // clock ever moves backwards (e.g. NTP correction) - it should read as well within the
-        // window, which the plain subtraction naturally gives.
-        assertTrue(
-            LiveSessionController.shouldAutoReconnectAfterClose(
-                lastInteractionMs = 5_000L, nowMs = 4_000L, idleWindowMs = window,
-            )
-        )
-    }
-
-    @Test
-    fun `the default idle window is the production constant, not a test-only value`() {
-        // Exercises the default parameter directly (no idleWindowMs supplied) so a future edit to
-        // IDLE_RECONNECT_WINDOW_MS is caught here rather than only in the field.
-        assertTrue(
-            LiveSessionController.shouldAutoReconnectAfterClose(lastInteractionMs = 0L, nowMs = window - 1)
-        )
-        assertFalse(
-            LiveSessionController.shouldAutoReconnectAfterClose(lastInteractionMs = 0L, nowMs = window)
-        )
-    }
-
-    // --- resumeHandleAfterClose (2026-11-05) --------------------------------------------------
 
     private fun handleAfter(
         reason: String = "Session closed due to client inactivity.",
         everConnected: Boolean = true,
         userInitiated: Boolean = false,
-        autoReconnect: Boolean = true,
-    ) = LiveSessionController.resumeHandleAfterClose("h1", reason, everConnected, userInitiated, autoReconnect)
+    ) = LiveSessionController.resumeHandleAfterClose("h1", reason, everConnected, userInitiated)
 
     /**
-     * The A25's idle chain (11-01..11-04): past the window nothing reconnects, and the next wake's
-     * first connect sent the idle socket's handle and was refused at once, costing a second setup.
+     * The A25's idle chain (11-01..11-04): the next tap's first connect sent the idle socket's
+     * handle and was refused at once, costing a second setup. Nothing reopens on this close now, so
+     * the handle would only ever be sent by that tap.
      */
     @Test
-    fun `an idle socket closed past the window drops its handle`() {
-        assertEquals(null, handleAfter(autoReconnect = false))
+    fun `a socket no conversation was using drops its handle when it closes`() {
+        assertEquals(null, handleAfter())
+        assertEquals(null, handleAfter(reason = "idle"))
+        assertEquals(null, handleAfter(reason = "warm expired"))
+        assertEquals(null, handleAfter(reason = "Software caused connection abort"))
     }
 
+    /** The mid-conversation recovery: the next tap resumes the dropped conversation with this. */
     @Test
-    fun `an idle socket closed inside the window keeps its handle for the reconnect`() {
-        assertEquals("h1", handleAfter(autoReconnect = true))
-    }
-
-    @Test
-    fun `a conversation's own drop keeps its handle even past the window`() {
-        val dropped = handleAfter(
-            reason = "Software caused connection abort", userInitiated = true, autoReconnect = false,
-        )
-        assertEquals("h1", dropped)
+    fun `a conversation's own drop keeps its handle`() {
+        assertEquals("h1", handleAfter(reason = "Software caused connection abort", userInitiated = true))
+        assertEquals("h1", handleAfter(reason = "goAway", userInitiated = true))
+        assertEquals("h1", handleAfter(reason = "Unable to resolve host \"generativelanguage.googleapis.com\"", userInitiated = true))
     }
 
     @Test
     fun `a deliberate stop and a resume that never connected still drop it`() {
         assertEquals(null, handleAfter(reason = "stopped", userInitiated = true))
-        assertEquals(null, handleAfter(everConnected = false))
+        assertEquals(null, handleAfter(everConnected = false, userInitiated = true))
+    }
+
+    @Test
+    fun `no handle stays no handle`() {
+        assertEquals(
+            null,
+            LiveSessionController.resumeHandleAfterClose(null, "goAway", everConnected = true, userInitiated = true),
+        )
     }
 }

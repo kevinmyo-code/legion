@@ -4,7 +4,7 @@ ticket: 24
 title: "The socket restarts every 2.5 minutes, all day"
 type: build
 status: built
-status-detail: "Measured, then fixed. Idle window is 10 minutes and GUESSED. Owes the on-phone check: leave it idle, confirm the storm stops, then tap and confirm it still answers."
+status-detail: "Superseded 2026-11-05 (Kevin): no idle socket at all, the 10 minute window is gone (fix/no-idle-session). Owes the on-phone check: leave it idle 5 minutes with no session_start, then tap and wake and confirm each answers."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -210,3 +210,29 @@ tested**: `requestSpeak` with a null session falls to `startProactive`, which ca
 sets `Pending.PROACTIVE_COLD`, and speaks the pending prompt on `Connected`. A unit test would need
 a live `Context`, a `GeminiLiveSession` and Room, which is the same constraint that keeps every
 other test here on the companion object's pure functions.
+
+## Superseded 2026-11-05: no idle socket at all
+
+Kevin, asked "stop keeping a voice session open while idle; only open one when you tap or say the
+wake word": **"OK"**. The A25's prod log (build 263092342, LIVE_AUDIT) showed the window above was
+not enough: after a conversation ended the socket reopened at once, Google closed it for "Session
+closed due to client inactivity" about every 2 minutes (now 120 s, not 153 s), and it reopened, from
+19:39 to 20:17, with `superseded` and "already connected to an existing client" among them.
+
+**Why 10 minutes became 40 (traced, on-device 20:43-20:49).** Three things re-armed or bypassed the
+window: `refreshIdleVoice()` prewarmed unconditionally, and `ActiveVehicle.notifyResolutionChanged`
+fires it on every OBD dongle connect and disconnect (`obd_disconnected` 20:46:55.718, `session_start`
+0.2 s later); `newConversation()` prewarmed unconditionally; and every proactive raise renewed the
+window. The service also prewarmed on every start.
+
+**What changed (`fix/no-idle-session`).** No prewarm anywhere: not on service start, not after a
+close, not on a voice or car refresh, not on "new conversation". A close opens a socket only for
+the turn-detector fallback mid-conversation or one cold retry of a tap's failed connect
+(`LiveSessionLifecycle.afterClose`). One door (`newSession`) supersedes any held session and drops
+its resume handle, and only the held session's events reach the controller. An unattended close
+drops the handle. Tests: `LiveSessionLifecycleTest`, `LiveSessionControllerIdleReconnectTest`.
+
+**The trade.** A tap that used to find a warm socket pays one cold connect: `cold_start_ms` on the
+A25 was 482, 498, 700, 730 and 1012 ms in the 11-05 logcat. A tap with no warm socket also greets
+before the mic opens (`GREETING_PROMPT`), where a warm resume went straight to listening.
+

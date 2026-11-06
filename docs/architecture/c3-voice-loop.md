@@ -52,7 +52,7 @@ The names are not self-explanatory and several are not where you would guess.
 | Piece | Role | Not in the turn loop? |
 |---|---|---|
 | `service/WakeWordEngine.kt` | Vosk, on-device, opt-in. Grammar is `"hey <name>"` built from the active companion profile | Entry only |
-| `service/LiveSessionController.kt` | **The conversation state machine and sole socket owner.** Three doors in: prewarm, start conversation, start proactive, all funnelled through one `newSession()` | Core |
+| `service/LiveSessionController.kt` | **The conversation state machine and sole socket owner.** Opens a socket only on demand (a tap, the wake word, a proactive raise; never while idle, Kevin 2026-11-05), always through one `newSession()`, which supersedes any socket still held. Close rules in `service/LiveSessionLifecycle.kt` | Core |
 | `service/GeminiLiveSession.kt` | The WebSocket, the mic loop, the playback path. Emits `LiveEvent`s | Core |
 | `service/turn/TurnTaker.kt` | Local end of turn and barge-in (ADR 0064): Silero over each mic buffer, `EndOfTurnPolicy` for activityStart/activityEnd, `BargeInGate` while Alfred speaks, Smart Turn checks on one shared thread | Core, inside the session's mic loop |
 | `service/LiveToolbox.kt` | Every tool declaration and the single `dispatch()` entry | Core |
