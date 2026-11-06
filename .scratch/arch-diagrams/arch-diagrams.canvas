@@ -9,6 +9,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "4a81510488069fea",
+      "type": "file",
+      "file": ".scratch/arch-diagrams/issues/02-demo-modals.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []

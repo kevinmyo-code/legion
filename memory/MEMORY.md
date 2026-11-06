@@ -22,6 +22,13 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## /try modals - 2026-11-05
+
+- `feat/demo-modals` (pushed, not merged): diagrams and the resume open over the page, diagrams
+  first in the recruiter prompt, `show_resume`, no second greeting. arch-diagrams ticket 02.
+- Owed by Kevin: engine deploy (demo 0008), `load_recruiter_content` of the full folder (now holds
+  `resume.png`), one `/try` run on the Android phone.
+
 ## Memory v2 and the ID vault, phone half - 2026-11-05
 
 - `feat/memory-vault-phone` (pushed, not merged): tickets 09-13 built, JVM green. One `memory` tool

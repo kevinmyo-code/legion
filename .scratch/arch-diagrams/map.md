@@ -34,9 +34,12 @@ he explains it, outlining the parts he names.
 5. **Quanex facts come only from Kevin's approved recruiter text** (`work` and the Experience
    section `about_kevin` answers from): no figures, no real names, system types over product names.
 6. **No phone work in this map.** The phone draws no diagram card and ignores the kind.
+7. **Kevin's /try test (2026-11-05):** diagrams and the resume open over the whole page, fitted
+   to it; any how-it-works question gets a diagram first (ticket 02).
 
 ## Tickets
 
 | # | Ticket | Status |
 |---|---|---|
 | 01 | [[01-show-diagram]] | built |
+| 02 | [[02-demo-modals]] | built |
