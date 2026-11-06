@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "15"
 title: "G2 and G3: partial meal targets, honest plan acceptance"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; owed: 'set protein to N' by voice on the phone"
 blockers: ["01"]
 blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]

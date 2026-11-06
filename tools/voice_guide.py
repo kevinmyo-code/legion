@@ -58,6 +58,8 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/MemoryToolbox.kt',
     # memory-and-vault ticket 12 (ADR 0076): `show_vault_item`, which opens the ID vault screen.
     ROOT / 'app/src/main/java/com/kevin/legion/service/VaultToolbox.kt',
+    # fat-loss ticket 10: the body coach's three read tools, behind ask_body.
+    ROOT / 'app/src/main/java/com/kevin/legion/service/BodyCoachToolbox.kt',
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'

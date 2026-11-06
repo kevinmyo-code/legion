@@ -134,7 +134,8 @@ fun SetMealTargetDialog(
     val parsedProtein = protein.toDoubleOrNull()
     val parsedCarbs = carbs.toDoubleOrNull()
     val parsedFat = fat.toDoubleOrNull()
-    val valid = parsedCalories != null && parsedProtein != null && parsedCarbs != null && parsedFat != null
+    // fat-loss 15 (ruling 3): kcal and protein are what he tracks; carbs and fat may stay blank.
+    val valid = parsedCalories != null && parsedProtein != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -143,8 +144,8 @@ fun SetMealTargetDialog(
             Column {
                 OutlinedTextField(value = calories, onValueChange = { calories = it }, label = { Text("Calories (kcal)") }, enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(value = protein, onValueChange = { protein = it }, label = { Text("Protein (g)") }, enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 6.dp))
-                OutlinedTextField(value = carbs, onValueChange = { carbs = it }, label = { Text("Carbs (g)") }, enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 6.dp))
-                OutlinedTextField(value = fat, onValueChange = { fat = it }, label = { Text("Fat (g)") }, enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 6.dp))
+                OutlinedTextField(value = carbs, onValueChange = { carbs = it }, label = { Text("Carbs (g, optional)") }, enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 6.dp))
+                OutlinedTextField(value = fat, onValueChange = { fat = it }, label = { Text("Fat (g, optional)") }, enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 6.dp))
                 result?.let { Text(it, style = LegionType.stamp, color = sem.data, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
@@ -157,7 +158,7 @@ fun SetMealTargetDialog(
                         scope.launch {
                             // Same call set_meal_target's dispatch makes: MealController.setTarget(...).
                             result = MealController.setTarget(
-                                context, parsedCalories!!, parsedProtein!!, parsedCarbs!!, parsedFat!!,
+                                context, parsedCalories, parsedProtein, parsedCarbs, parsedFat,
                             ).message
                             busy = false
                         }

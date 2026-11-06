@@ -11,6 +11,8 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -108,6 +110,27 @@ class BodyWriteSameFunctionTest {
         )
         val afterVoice = CarDatabase.getDatabase(context).mealTargetDao().currentTarget(dayStartEpoch(System.currentTimeMillis()))!!
         assertEquals("the voice call's own function (MealController.setTarget) landed its own value", 2400, afterVoice.caloriesKcal)
+    }
+
+    @Test
+    fun `set_meal_target with protein only keeps the current calories (fat-loss 15, G2)`() = runBlocking {
+        MealController.setTarget(context, 2200, 150.0, null, null)
+        val result = LiveToolbox.dispatch(context, "set_meal_target", JSONObject().put("protein_g", 175.0))!!
+        val row = CarDatabase.getDatabase(context).mealTargetDao().currentTarget(dayStartEpoch(System.currentTimeMillis()))!!
+        assertEquals(2200, row.caloriesKcal)
+        assertEquals(175.0, row.proteinG, 0.0)
+        assertEquals(0.0, row.carbsG, 0.0)
+        assertTrue(result.getBoolean("success"))
+        assertFalse("an unset carb target is never read back", result.getString("message").contains("carbs"))
+    }
+
+    @Test
+    fun `set_meal_target with nothing and no current target refuses in words`() = runBlocking {
+        val none = LiveToolbox.dispatch(context, "set_meal_target", JSONObject())!!
+        assertFalse(none.getBoolean("success"))
+        val proteinOnly = LiveToolbox.dispatch(context, "set_meal_target", JSONObject().put("protein_g", 150.0))!!
+        assertFalse("no current target to keep calories from", proteinOnly.getBoolean("success"))
+        assertNull(CarDatabase.getDatabase(context).mealTargetDao().currentTarget(dayStartEpoch(System.currentTimeMillis())))
     }
 
     // ---------------------------------------------------------------------- sleep

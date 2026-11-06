@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "10"
 title: "Phone: BodyCoachController, ask_body reads, saved meals in log_meal"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; owed: engine deploy, then ask_body questions and 'log my usual breakfast' on the phone"
 blockers: ["04", "05", "07"]
 blocked-by: ["[[04-energy-calculator]]", "[[05-trend-and-waist]]", "[[07-saved-meals]]"]
 tags: [ticket]

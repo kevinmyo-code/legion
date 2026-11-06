@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "16"
 title: "G4 to G6: get_health to fleet, voice guide copy, body routing"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; Live setup payload ~24,608 tokens (was ~24,609), ceiling 24,650 unchanged; owed: a calorie question routed to ask_body on the phone"
 blockers: ["01"]
 blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]
