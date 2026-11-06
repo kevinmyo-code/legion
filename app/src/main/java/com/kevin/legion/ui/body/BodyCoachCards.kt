@@ -478,6 +478,7 @@ internal fun BodyWeekCard(
     sessionsPlanned: Int?,
     waistIn: Double?,
     waistChange28d: Double?,
+    subtitle: String = "Workouts finished this week",
     onOpenTraining: () -> Unit,
 ) {
     BodyCard {
@@ -486,13 +487,13 @@ internal fun BodyWeekCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     when {
-                        sessionsPlanned == null -> "No training plan yet"
+                        sessionsPlanned == null -> "Training not read yet"
                         else -> "${sessionsDone ?: 0} of $sessionsPlanned sessions"
                     },
                     style = MaterialTheme.typography.titleSmall,
                     color = SoftColors.text,
                 )
-                Text("Training, from what you logged", style = MaterialTheme.typography.labelSmall, color = SoftColors.text3)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = SoftColors.text3)
             }
             if (sessionsPlanned != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -526,7 +527,7 @@ internal fun BodyWeekCard(
 /** The rest, one row each. The checklist lives here now, off the main view (Kevin's ask). */
 @Composable
 internal fun BodyMoreList(
-    onPlan: () -> Unit,
+    onTraining: () -> Unit,
     onSleep: () -> Unit,
     onGoals: () -> Unit,
     onWeighIns: () -> Unit,
@@ -534,7 +535,7 @@ internal fun BodyMoreList(
 ) {
     BodyCard {
         CardTitle("More")
-        MoreRow("Today's plan", R.drawable.ms_checklist, onPlan)
+        MoreRow("Training history", R.drawable.ms_fitness_center, onTraining)
         MoreRow("Sleep", R.drawable.ms_bedtime, onSleep)
         MoreRow("Goals", R.drawable.ms_task_alt, onGoals)
         MoreRow("Weigh-ins", R.drawable.ms_history, onWeighIns)

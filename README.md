@@ -50,7 +50,7 @@ model rather than to sell the feature.
 | Driving | 6 | &ldquo;Take me to the hardware store&rdquo; |
 | Money | 10 | &ldquo;What's my balance?&rdquo; |
 | Food and shopping | 9 | &ldquo;When did we last buy shampoo?&rdquo; |
-| Training and sleep | 13 | &ldquo;Squats, five at a hundred kilos&rdquo; |
+| Training and sleep | 13 | &ldquo;Log bench 135 for 8&rdquo; |
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |
 | Music | 4 | &ldquo;Play the Roadtrip playlist&rdquo; |
 | Mail and calendar | 5 | &ldquo;Any mail from the garage?&rdquo; |

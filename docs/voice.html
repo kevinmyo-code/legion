@@ -129,10 +129,10 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <section><h2>Training and sleep</h2>
 <p class="blurb">Workouts, bodyweight and rest.</p>
 <dl>
-<dt>&ldquo;Squats, five at a hundred kilos&rdquo;</dt><dd>Logs a set.<span class="hands">By hand: Body tab, log-a-set dialog.</span></dd>
+<dt>&ldquo;Log bench 135 for 8&rdquo;</dt><dd>Ticks that set in today&#x27;s workout; anything not in today&#x27;s workout is logged as a standalone set.<span class="hands">By hand: Body tab, today&#x27;s workout, tick the set.</span></dd>
 <dt>&ldquo;What did I train this week?&rdquo;</dt><dd>Recent workouts.<span class="hands">By hand: Body tab, workout history.</span></dd>
-<dt>&ldquo;How&#x27;s my training this week?&rdquo;</dt><dd>Sessions done against sessions planned this week.<span class="hands">By hand: Body tab, checklist panel.</span></dd>
-<dt>&ldquo;Make me a plan to get stronger&rdquo;</dt><dd>Builds a training plan from a goal you describe.<span class="hands">By hand: Voice only - a generated plan has no form equivalent; the closest hands step is reviewing and accepting one on the Goals panel.</span></dd>
+<dt>&ldquo;How&#x27;s my training this week?&rdquo;</dt><dd>Workouts finished this week against the three your programme plans.<span class="hands">By hand: Body tab, This week card.</span></dd>
+<dt>&ldquo;What&#x27;s my workout today?&rdquo;</dt><dd>Today&#x27;s workout from your programme: each exercise as sets x reps at a weight, and why a weight went up or held. The numbers come from the programme&#x27;s rules, never made up.<span class="hands">By hand: Body tab, Today&#x27;s workout card.</span></dd>
 <dt>&ldquo;I&#x27;m eighty-two kilos&rdquo;</dt><dd>Logs your bodyweight.<span class="hands">By hand: Body tab, log-bodyweight dialog.</span></dd>
 <dt>&ldquo;I slept six hours, woke up twice&rdquo;</dt><dd>Logs a night&#x27;s sleep.<span class="hands">By hand: Body tab, log-sleep dialog.</span></dd>
 <dt>&ldquo;How have I been sleeping?&rdquo;</dt><dd>Recent sleep.<span class="hands">By hand: Body tab, sleep history.</span></dd>
@@ -153,7 +153,7 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <dt>&ldquo;How am I doing overall?&rdquo;</dt><dd>Asks one of the five advisors - body, notes, fleet, money, or overall.<span class="hands">By hand: Is itself a read-only dispatcher; each aspect&#x27;s own screen shows the same data.</span></dd>
 <dt>&ldquo;Yes, do that&rdquo;</dt><dd>Accepts something an advisor proposed.<span class="hands">By hand: Advisor proposals render with accept/dismiss buttons wherever that aspect surfaces them (Money tab today).</span></dd>
 <dt>&ldquo;Lose fat, gain muscle - build me a plan&rdquo;</dt><dd>Turns a fitness/nutrition goal into a rough calorie, sleep, and workout plan to look over - a proposal, not something set up yet. Say a constraint once (&quot;I don&#x27;t have gym access&quot;) and it&#x27;s remembered for next time.<span class="hands">By hand: Goals panel, plan-review dialog.</span></dd>
-<dt>&ldquo;Yes, set that up&rdquo;</dt><dd>Sets up the workout part of a plan once you&#x27;ve agreed to the whole thing.<span class="hands">By hand: Goals panel, plan-review dialog&#x27;s accept action.</span></dd>
+<dt>&ldquo;Yes, set that up&rdquo;</dt><dd>Sets up your three-day workout programme once you&#x27;ve agreed to the whole plan; its numbers come from the programme&#x27;s rules.<span class="hands">By hand: Goals panel, plan-review dialog&#x27;s accept action.</span></dd>
 <dt>&ldquo;Undo that&rdquo;</dt><dd>Undoes the last thing you logged.<span class="hands">By hand: Body tab, a per-row delete on the same four logs (reaches the exact same delete functions).</span></dd>
 </dl></section>
 <section><h2>Music</h2>

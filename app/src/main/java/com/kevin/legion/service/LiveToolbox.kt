@@ -3,6 +3,8 @@ package com.kevin.legion.service
 import android.content.Context
 import android.content.Intent
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.finance.noteOrNull
+import com.kevin.legion.finance.valueOrNull
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AgentTool
 import com.kevin.legion.ai.AssistantIdentity
@@ -996,19 +998,9 @@ object LiveToolbox {
         // --- Workouts (ticket 08 D20-D24) ------------------------------------
 
         fns.put(fn(
-            name = "create_workout_plan",
-            description = "Have the AI write a loose weekly workout plan (which exercises, target " +
-                "sets per week for each, and how many days a week) from the user's stated goal. " +
-                "Use when the user asks for a workout plan or routine, e.g. 'make me a plan to " +
-                "build strength three days a week'. Replaces the current plan going forward - past " +
-                "weeks are untouched.",
-            params = obj("goal" to schema("string", "The user's goal in their own words.")),
-            required = listOf("goal"),
-        ))
-
-        fns.put(fn(
             name = "log_workout_set",
-            description = "Log a set-group just performed, e.g. 'three sets of squats at 225'. Use " +
+            description = "Log a set-group just performed, e.g. 'bench 135 for 8' or 'three sets of " +
+                "squats at 225'; it ticks today's workout when the exercise is in it. Use " +
                 "the moment the user reports a set - no confirmation needed, just log it and say " +
                 "back what was recorded. If the user only names the exercise with no set count, " +
                 "ask once for how many sets rather than guessing.",
@@ -2272,6 +2264,8 @@ object LiveToolbox {
             "list_recent_workouts", "get_workout_gap",
             // fat-loss ticket 10: reads only (BodyCoachToolbox). The writes ride ask_engine.
             "get_energy_estimate", "get_weight_trend", "list_saved_meals",
+            // workouts, 2026-11-06: today's workout from the engine's programme, a read.
+            "get_todays_workout",
         ),
         "goals" to listOf("list_goals", "ask_advisor"),
         // manage_grocery came BACK OUT of this list on 2026-08-18 and was declared directly to the
@@ -2361,8 +2355,9 @@ object LiveToolbox {
                 "weight trend, waist, and estimates of maintenance, calorie target and protein " +
                 "('is my target right'). Read-only - it records NOTHING. Anything the user just " +
                 "ate, slept, lifted or weighed is a RECORD for its named tool - log_meal, " +
-                "log_sleep, log_workout_set, log_bodyweight, create_workout_plan - never here. " +
-                "Recording a body profile, waist or saved meal is ask_engine. Ask a " +
+                "log_sleep, log_workout_set, log_bodyweight - never here. Recording a " +
+                "body profile, waist or saved meal, or starting, swapping or finishing a workout, " +
+                "is ask_engine. Ask a " +
                 "plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
@@ -3039,9 +3034,6 @@ object LiveToolbox {
             // {"success": true, "message": "<a failure>"}. CANNOT_CLAUSE is conditioned on the tool
             // RESULT, so a lying flag defeats it outright. Fixed 2026-09-07, same shape
             // log_workout_set and remember already had.
-            "create_workout_plan" ->
-                WorkoutController.generatePlan(context, args.optString("goal"))
-                    .let { result(it.success, it.message) }
             "log_workout_set" -> logWorkoutSet(context, args)
             "log_bodyweight" ->
                 WorkoutController.logBodyweight(
@@ -3162,7 +3154,7 @@ object LiveToolbox {
         // no longer writes anything, only returns the retirement message.
         "manage_item", "manage_checklist", "log_build_entry", "activate_garage",
         "categorize_transactions", "set_category", "log_pending_transaction",
-        "clear_pending_transaction", "create_workout_plan", "log_workout_set", "log_bodyweight",
+        "clear_pending_transaction", "log_workout_set", "log_bodyweight",
         "log_meal", "set_meal_target", "set_budget", "log_sleep", "set_sleep_target",
         "undo_last_log", "manage_vehicle", "set_goal", "close_goal", "accept_proposal",
         // goal-plans ticket 03: generate_goal_plan writes NOTHING about the plan itself (it is a
@@ -4758,26 +4750,51 @@ object LiveToolbox {
      * SubAgent's investigate-loop fix in the prior commit), yet the old `success = true` here would
      * have told him it was recorded even on a genuine write failure or a garbage argument.
      */
+    /**
+     * workouts, 2026-11-06: a spoken set ticks today's workout first. "Log bench 135 for 8" goes to
+     * the engine's workout ([com.kevin.legion.bodycoach.WorkoutSessionController.logByName], the
+     * same controller the Body screen's session view uses), once per set said, in pounds. Only when
+     * the engine says the exercise is not in today's workout, or no reps were said, or the weight is
+     * in kg, does it fall back to the standalone set log below - and the result says which happened.
+     * An unreachable engine also falls back, so a set said at the gym is never lost.
+     */
     private suspend fun logWorkoutSet(context: Context, args: JSONObject): JSONObject {
         val weight = if (args.has("weight")) args.optDouble("weight").takeIf { !it.isNaN() } else null
         val weightUnit = if (weight != null) args.optString("weight_unit", "lbs") else null
         val reps = if (args.has("reps")) args.optInt("reps") else null
+        if (reps != null && weightUnit != "kg") {
+            val sessions = com.kevin.legion.bodycoach.WorkoutSessionController.forApp(context)
+            val count = args.optInt("sets", 1).coerceIn(1, 10)
+            val said = mutableListOf<String>()
+            for (i in 1..count) {
+                val step = sessions.logByName(args.optString("exercise"), reps, weight)
+                if (!step.ok) {
+                    if (said.isNotEmpty()) return result(success = true, message = said.joinToString(" ") + " The rest did not go through: ${step.sentence}")
+                    break
+                }
+                said += step.sentence
+            }
+            if (said.isNotEmpty()) return result(success = true, message = said.last())
+        }
         val outcome = WorkoutController.logSet(
             context, args.optString("exercise"), args.optInt("sets"), reps, weight, weightUnit,
         )
         return result(success = outcome.success, message = outcome.message)
     }
 
-    /** D24's weekly session gap, worded for the model to speak. */
+    /** Sessions done of planned this week, from the engine's workout (workouts, 2026-11-06). */
     private suspend fun getWorkoutGap(context: Context): JSONObject {
-        val gap = WorkoutController.weekGap(context)
-            ?: return result(success = false, message = "No workout plan set yet - ask the user if they'd like one.")
-        return JSONObject()
+        val read = com.kevin.legion.bodycoach.WorkoutSessionController.forApp(context).today()
+        val week = read.valueOrNull?.week
+            ?: return result(success = false, message = (read.noteOrNull ?: "The workout could not be read.") + " Nothing is known about this week.")
+        val out = JSONObject()
             .put("success", true)
-            .put("sessionsPlanned", gap.target)
-            .put("sessionsDone", gap.actual)
-            .put("sessionsRemaining", gap.gap)
-            .put("reported", gap.tier == com.kevin.legion.plan.TrustTier.REPORTED)
+            .put("sessionsPlanned", week.planned)
+            .put("sessionsDone", week.done)
+            .put("sessionsRemaining", (week.planned - week.done).coerceAtLeast(0))
+            .put("reported", true)
+        read.noteOrNull?.let { out.put("savedCopy", it) }
+        return out
     }
 
     /** Recent workout set logs. */

@@ -31,6 +31,9 @@ import com.kevin.legion.ui.body.BodyTodayCard
 import com.kevin.legion.ui.body.BodyTrendCard
 import com.kevin.legion.ui.body.BodyWeekCard
 import com.kevin.legion.ui.body.TodayIntake
+import com.kevin.legion.ui.body.BodyWorkoutCard
+import com.kevin.legion.ui.body.WorkoutSessionScreen
+import com.kevin.legion.ui.body.weekSubtitle
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import java.time.LocalDate
@@ -103,9 +106,23 @@ class BodyScreenScreenshotTest {
         hasMealTarget = true,
         mealTargetKcal = 2250,
         mealTargetProteinG = 190.0,
-        sessionsDone = 2,
-        sessionsPlanned = 3,
     )
+
+    // workouts, 2026-11-06: a synthetic Day A; the weights are made up for the picture.
+    private val plan = com.kevin.legion.bodycoach.PlanWire(
+        dayKey = "A",
+        sessionNumber = 4,
+        setCount = 13,
+        exercises = listOf(
+            com.kevin.legion.bodycoach.TargetWire("back_squat", "Back squat", sets = 3, repsLow = 6, repsHigh = 8, weightLbs = 155.0, rule = "add", words = "+10 lb: every set reached 8 last time."),
+            com.kevin.legion.bodycoach.TargetWire("bench_press", "Bench press", sets = 3, repsLow = 6, repsHigh = 8, weightLbs = 125.0, rule = "hold", words = "Same weight: 8, 7, 6 last time. Add weight when every set reaches 8."),
+            com.kevin.legion.bodycoach.TargetWire("barbell_row", "Barbell row", sets = 3, repsLow = 8, repsHigh = 10, weightLbs = 105.0, rule = "hold"),
+            com.kevin.legion.bodycoach.TargetWire("lateral_raise", "Lateral raise", sets = 2, repsLow = 12, repsHigh = 15, weightLbs = 15.0, rule = "hold"),
+            com.kevin.legion.bodycoach.TargetWire("plank", "Plank", kind = "timed", sets = 2, repsLow = 30, repsHigh = 45, unit = "seconds", rule = "reps"),
+        ),
+    )
+    private val week = com.kevin.legion.bodycoach.WeekWire(done = 1, planned = 3)
+    private val workout = com.kevin.legion.bodycoach.WorkoutTodayWire(trainingDay = true, week = week, next = plan)
 
     private fun shot(file: String, content: @Composable () -> Unit) {
         rule.setContent { SoftTheme { content() } }
@@ -120,7 +137,7 @@ class BodyScreenScreenshotTest {
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     @Test
     fun `body - first screen, quick log and the trend`() =
-        shot("body-a-first-screen.png") { BodyContent(state, BodyCoachUi(loaded = true, trend = trend, energy = energy)) }
+        shot("body-a-first-screen.png") { BodyContent(state, BodyCoachUi(loaded = true, trend = trend, energy = energy, workout = workout)) }
 
     @Config(qualifiers = "w384dp-h900dp")
     @Test
@@ -135,7 +152,7 @@ class BodyScreenScreenshotTest {
     @Test
     fun `body - this week and more`() = shot("body-a-week-more.png") {
         OnGround {
-            BodyWeekCard(2, 3, 44.5, -0.25) {}
+            BodyWeekCard(1, 3, 44.5, -0.25, weekSubtitle(week)) {}
             BodyMoreList({}, {}, {}, {}, {})
         }
     }
@@ -145,6 +162,7 @@ class BodyScreenScreenshotTest {
     fun `body - empty states, no profile, nothing logged, engine down`() = shot("body-a-empty.png") {
         OnGround {
             BodyTrendCard(null, note = "The engine could not be reached.", fallback = null) {}
+            BodyWorkoutCard(null, note = "The engine could not be reached.", busy = false, message = null, onStart = {}, onOpen = {})
             BodyTodayCard(TodayIntake(null, null, null, null), {}, {}, {})
             BodyEnergyCard(
                 EnergyWire(missing = listOf("height", "birth year", "activity level"), words = "No estimate yet."),
@@ -152,5 +170,27 @@ class BodyScreenScreenshotTest {
                 busy = false, result = null, onAccept = {}, onDismiss = {}, onEditProfile = {},
             )
         }
+    }
+
+    @Config(qualifiers = "w384dp-h900dp")
+    @Test
+    fun `body - todays workout, training day and calibration`() = shot("body-workout-card.png") {
+        OnGround {
+            BodyWorkoutCard(workout, note = null, busy = false, message = null, onStart = {}, onOpen = {})
+            BodyWorkoutCard(
+                workout.copy(next = plan.copy(calibrating = true, exercises = plan.exercises.map { if (it.kind == "weighted") it.copy(weightLbs = null, calibrating = true, rule = "calibrate") else it })),
+                note = null, busy = false, message = null, onStart = {}, onOpen = {},
+            )
+        }
+    }
+
+    @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
+    @Test
+    fun `body - workout session, mid way`() = shot("body-workout-session.png") {
+        val base = com.kevin.legion.bodycoach.WorkoutSessionController.localSession(plan, "shot", "2026-11-06")
+        val s = listOf(1 to 8, 2 to 8, 3 to 7).fold(base) { acc, (n, r) ->
+            com.kevin.legion.bodycoach.WorkoutSessionController.applyTick(acc, "back_squat", n, true, r, 155.0)
+        }.let { com.kevin.legion.bodycoach.WorkoutSessionController.applyTick(it, "bench_press", 1, true, 8, 125.0) }
+        WorkoutSessionScreen(s, note = null, message = null, busy = false, onBack = {}, onTick = { _, _ -> }, onEdit = { _, _, _ -> }, onSwap = {}, onFinish = {}, onCancel = {})
     }
 }

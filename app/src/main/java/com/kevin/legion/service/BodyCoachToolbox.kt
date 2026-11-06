@@ -3,6 +3,8 @@ package com.kevin.legion.service
 import android.content.Context
 import com.kevin.legion.bodycoach.BodyCoachController
 import com.kevin.legion.bodycoach.BodyCoachText
+import com.kevin.legion.bodycoach.WorkoutSessionController
+import com.kevin.legion.bodycoach.WorkoutText
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -25,7 +27,10 @@ object BodyCoachToolbox {
     /** Test seam: swapped for a controller over a fake backend. Production builds the real one. */
     internal var controllerFactory: (Context) -> BodyCoachController = BodyCoachController::forApp
 
-    val NAMES = listOf("get_energy_estimate", "get_weight_trend", "list_saved_meals")
+    /** Test seam for the workout read (workouts, 2026-11-06). */
+    internal var workoutFactory: (Context) -> WorkoutSessionController = WorkoutSessionController::forApp
+
+    val NAMES = listOf("get_energy_estimate", "get_weight_trend", "list_saved_meals", "get_todays_workout")
 
     fun declarations(): JSONArray = JSONArray()
         .put(
@@ -55,6 +60,17 @@ object BodyCoachToolbox {
                     "and protein. Logging one is log_meal with its name.",
             ),
         )
+        .put(
+            fn(
+                name = "get_todays_workout",
+                description = "Today's workout from the user's programme: each exercise as sets x reps " +
+                    "@ weight, what is already ticked, why a weight went up or held, and sessions done " +
+                    "this week. Use for 'what's my workout today', 'what weight for squats'. Every " +
+                    "number comes from the programme's rules: say it as given, never invent or change " +
+                    "one. 'Your pick' means a calibration session: a weight they could lift for 2 more " +
+                    "reps than the top of the range.",
+            ),
+        )
 
     // `name = "..."` written out at each call, not via NAMES: tools/voice_guide.py and
     // VoiceGuideDataTest find tool names by scanning for that exact shape.
@@ -70,6 +86,7 @@ object BodyCoachToolbox {
     /** Null when [name] is not one of these tools, so [LiveToolbox.dispatch] can fall through. */
     suspend fun dispatch(context: Context, name: String): JSONObject? {
         if (name !in NAMES) return null
+        if (name == "get_todays_workout") return WorkoutText.todayResult(workoutFactory(context).today())
         val controller = controllerFactory(context)
         return when (name) {
             "get_energy_estimate" -> BodyCoachText.energyResult(controller.energy())

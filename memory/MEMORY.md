@@ -22,6 +22,15 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Workouts - 2026-11-06
+
+- `feat/workouts` (pushed, not merged): deterministic 3-day A/B programme on the engine
+  (`body_coach/programme.py`, ADR 0078), session tick-off on the Body tab (direction 2, Kevin's
+  pick), `get_todays_workout` behind ask_body, engine tools on ask_engine; BIO Plan tickbox list
+  archived once; `create_workout_plan` retired. Fat-loss tickets 23-26.
+- Owed by Kevin: engine deploy (`body_coach.0003`), install `fast`, ticket 25's run on the phone;
+  rule on Mon/Wed/Fri default days. Web Workouts tab is ticket 26.
+
 ## Fat-loss loop and Body screen - 2026-11-05
 
 - `feat/fat-loss` (pushed, not merged): map `.scratch/fat-loss/`, Body is the seventh aspect (ADR

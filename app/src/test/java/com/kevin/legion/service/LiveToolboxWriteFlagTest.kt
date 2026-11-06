@@ -188,20 +188,6 @@ class LiveToolboxWriteFlagTest {
         assertTrue(result.optString("message").contains("real duration"))
     }
 
-    @Test
-    fun `create_workout_plan reports a plan it could not draft as a failure`() {
-        // WorkoutPlanAgent needs the user's own Gemini key, which no test environment has, so
-        // generatePlan takes its "I couldn't put a plan together" branch and writes nothing. That
-        // branch is exactly what used to be reported as success = true: a plan that does not exist,
-        // announced as set.
-        val result = dispatch("create_workout_plan", "goal" to "get stronger")
-
-        assertFalse(
-            "a plan that was never drafted is not a success: ${result.optString("message")}",
-            result.optBoolean("success"),
-        )
-    }
-
     private companion object {
         /** The shape `server/api/body.py`'s own validators produce - a sentence meant to be shown
          * to a person, which `EngineFailure.Refused` carries verbatim. */

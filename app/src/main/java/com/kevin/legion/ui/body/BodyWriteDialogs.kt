@@ -58,8 +58,16 @@ import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------- meal
 
+private const val SAVED_MEAL_CHIPS = 6
+
 @Composable
-fun LogMealDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
+fun LogMealDialog(
+    onDismiss: () -> Unit,
+    onDone: () -> Unit,
+    // workouts map item 4 (2026-11-06): his saved meals one tap away in the same dialog, so "log
+    // my usual breakfast" by hand is as short as by voice. Same call as the Saved meals dialog.
+    savedMeals: List<com.kevin.legion.bodycoach.SavedMealWire> = emptyList(),
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var description by remember { mutableStateOf("") }
@@ -72,6 +80,19 @@ fun LogMealDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
         title = { Text("Log a meal") },
         text = {
             Column {
+                if (savedMeals.isNotEmpty() && result == null) {
+                    Text("Tap a saved meal to log it", style = LegionType.stamp, color = sem.faint)
+                    savedMeals.take(SAVED_MEAL_CHIPS).forEach { m ->
+                        TextButton(enabled = !busy, onClick = {
+                            busy = true
+                            scope.launch {
+                                result = MealController.logSavedMeal(context, m).message
+                                busy = false
+                            }
+                        }) { Text(m.name) }
+                    }
+                    Text("Or describe it", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
+                }
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },

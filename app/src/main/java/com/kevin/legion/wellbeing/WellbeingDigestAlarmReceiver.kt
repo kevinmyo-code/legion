@@ -75,7 +75,7 @@ class WellbeingDigestAlarmReceiver : BroadcastReceiver() {
             val checklist = ChecklistController.getChecklistBySourceKey(
                 context,
                 AdvisorProposalExecutor.BIO_CHECKLIST_SOURCE_KEY,
-            ) ?: return@runCatching emptyList<String>()
+            )?.takeUnless { it.archived } ?: return@runCatching emptyList<String>()
             when (val res = ChecklistController.itemsWithTickState(context, checklist.id)) {
                 // Unreadable is not empty (CLAUDE.md §1). Throwing here routes it to the same
                 // `wellbeing_digest_read_failed` event a thrown read would, rather than quietly

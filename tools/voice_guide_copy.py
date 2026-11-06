@@ -150,10 +150,10 @@ COPY = {
     "ask_pantry": ("Ask the pantry what I'm low on", "Sends a harder food question to the pantry specialist.", "Is itself a read-only dispatcher; the Pantry sub-route already shows what it would answer."),
 
     # --- Training and sleep ---
-    "log_workout_set": ("Squats, five at a hundred kilos", "Logs a set.", "Body tab, log-a-set dialog."),
+    "log_workout_set": ("Log bench 135 for 8", "Ticks that set in today's workout; anything not in today's workout is logged as a standalone set.", "Body tab, today's workout, tick the set."),
     "list_recent_workouts": ("What did I train this week?", "Recent workouts.", "Body tab, workout history."),
-    "get_workout_gap": ("How's my training this week?", "Sessions done against sessions planned this week.", "Body tab, checklist panel."),
-    "create_workout_plan": ("Make me a plan to get stronger", "Builds a training plan from a goal you describe.", "Voice only - a generated plan has no form equivalent; the closest hands step is reviewing and accepting one on the Goals panel."),
+    "get_workout_gap": ("How's my training this week?", "Workouts finished this week against the three your programme plans.", "Body tab, This week card."),
+    "get_todays_workout": ("What's my workout today?", "Today's workout from your programme: each exercise as sets x reps at a weight, and why a weight went up or held. The numbers come from the programme's rules, never made up.", "Body tab, Today's workout card."),
     "log_bodyweight": ("I'm eighty-two kilos", "Logs your bodyweight.", "Body tab, log-bodyweight dialog."),
     "log_sleep": ("I slept six hours, woke up twice", "Logs a night's sleep.", "Body tab, log-sleep dialog."),
     "list_recent_sleep": ("How have I been sleeping?", "Recent sleep.", "Body tab, sleep history."),
@@ -172,7 +172,7 @@ COPY = {
     "ask_advisor": ("How am I doing overall?", "Asks one of the five advisors - body, notes, fleet, money, or overall.", "Is itself a read-only dispatcher; each aspect's own screen shows the same data."),
     "accept_proposal": ("Yes, do that", "Accepts something an advisor proposed.", "Advisor proposals render with accept/dismiss buttons wherever that aspect surfaces them (Money tab today)."),
     "generate_goal_plan": ("Lose fat, gain muscle - build me a plan", "Turns a fitness/nutrition goal into a rough calorie, sleep, and workout plan to look over - a proposal, not something set up yet. Say a constraint once (\"I don't have gym access\") and it's remembered for next time.", "Goals panel, plan-review dialog."),
-    "accept_goal_plan": ("Yes, set that up", "Sets up the workout part of a plan once you've agreed to the whole thing.", "Goals panel, plan-review dialog's accept action."),
+    "accept_goal_plan": ("Yes, set that up", "Sets up your three-day workout programme once you've agreed to the whole plan; its numbers come from the programme's rules.", "Goals panel, plan-review dialog's accept action."),
     "undo_last_log": ("Undo that", "Undoes the last thing you logged.", "Body tab, a per-row delete on the same four logs (reaches the exact same delete functions)."),
 
     # --- Music ---
@@ -230,7 +230,7 @@ GROUPS = {
     "Driving": ["navigate", "change_trip", "trip_status", "end_trip", "activate_garage", "control_volume"],
     "Money": ["get_balance", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],
     "Food and shopping": ["bought_log", "import_receipt", "list_recent_groceries", "get_grocery_spend", "log_meal", "list_recent_meals", "get_meal_gap", "set_meal_target", "ask_pantry"],
-    "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "create_workout_plan", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "get_energy_estimate", "get_weight_trend", "list_saved_meals", "ask_body"],
+    "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "get_todays_workout", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "get_energy_estimate", "get_weight_trend", "list_saved_meals", "ask_body"],
     "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
     "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status"],

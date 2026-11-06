@@ -36,7 +36,11 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class AdvisorCreateChecklistTest {
     private val context = RuntimeEnvironment.getApplication()
-    private val brief = AdvisorBriefs.forAspect(AdvisorAspect.BIO)
+    // BIO no longer allows the op (workouts, 2026-11-06); the op's own machinery is still tested on
+    // a BIO brief that lists it, since nothing else about the executor changed.
+    private val brief = AdvisorBriefs.forAspect(AdvisorAspect.BIO).let {
+        it.copy(writableOps = it.writableOps + AdvisorProposalExecutor.OP_CREATE_CHECKLIST)
+    }
 
     @Before
     fun clearState() {

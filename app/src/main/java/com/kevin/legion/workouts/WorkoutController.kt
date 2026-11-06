@@ -6,8 +6,6 @@ import com.kevin.legion.backend.WriteThroughOutcome
 import com.kevin.legion.backend.queuedSentence
 import com.kevin.legion.data.local.BodyweightLog
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.WorkoutPlan
-import com.kevin.legion.data.local.WorkoutPlanItem
 import com.kevin.legion.data.local.WorkoutSetLog
 import com.kevin.legion.data.local.WorkoutSetLogDao
 import com.kevin.legion.plan.PlanGap
@@ -17,7 +15,7 @@ import java.util.UUID
 
 /**
  * Orchestrates the workouts aspect - mirrors [com.kevin.legion.pantry.PantryController]'s shape
- * (a thin Context/Room-reading wrapper around pure logic + a [WorkoutPlanAgent] call), which
+ * (a thin Context/Room-reading wrapper around pure logic), which
  * itself mirrors [com.kevin.legion.ledger.LedgerController].
  */
 object WorkoutController {
@@ -40,107 +38,20 @@ object WorkoutController {
     data class WriteOutcome(val success: Boolean, val message: String)
 
     /**
-     * D21: hands the driver's stated [goal] to [WorkoutPlanAgent], then stores the result as the
-     * new current [WorkoutPlan] + [WorkoutPlanItem] rows, effective from THIS week (D2's "copy
-     * forward" - nothing before this week's boundary is touched or deleted). Returns a spoken
-     * summary on success, or a failure message on any step going wrong - never a half-written
-     * plan (if the agent call fails or returns nothing usable, nothing is written).
+     * **No model writes a workout any more (workouts, 2026-11-06).** This used to hand [goal] to a
+     * Gemini sub-agent that invented exercises and set counts. Training is now the engine's
+     * deterministic programme (`server/body_coach/programme.py`): 3 full-body days, A and B,
+     * targets from double progression. So this sets that programme up on the engine and says so;
+     * [goal] is not used to change a number, ever. Kept under its old name because the goal plan
+     * ([com.kevin.legion.advisor.GoalPlanAgent.accept]) still calls it for a plan's workout piece.
+     *
+     * [WriteOutcome.success] is the engine's own 2xx; with no engine it says nothing was set up.
      */
+    @Suppress("UNUSED_PARAMETER")
     suspend fun generatePlan(context: Context, goal: String): WriteOutcome {
-        val draft = WorkoutPlanAgent.write(goal)
-            ?: return WriteOutcome(false, "I couldn't put a plan together just now - try again in a sec.")
-
-        val now = System.currentTimeMillis()
-        val weekStart = weekStartEpoch(now)
-        val db = CarDatabase.getDatabase(context)
-        // Reuse each row's existing guid on a same-week re-plan - see
-        // WorkoutPlanDao.getByEffectiveWeek's own doc comment for why a fresh one here would
-        // orphan a server row (body-supabase ticket).
-        val planGuid = db.workoutPlanDao().getByEffectiveWeek(weekStart)?.guid ?: UUID.randomUUID().toString()
-        val planOutcome = BodyWriteThrough.setWorkoutPlan(
-            context,
-            WorkoutPlan(
-                sessionsPerWeek = draft.sessionsPerWeek,
-                effectiveFromWeekEpoch = weekStart,
-                updatedAt = now,
-                guid = planGuid,
-            ),
-        )
-        // The plan row is the parent of every item row, so a refused plan stops here and NO items
-        // are written - the same "never a half-written plan" posture this function's own doc
-        // comment already states for a failed agent call, extended to a server that says no.
-        return if (planOutcome is WriteThroughOutcome.Refused) {
-            WriteOutcome(false, "That plan didn't go through: ${planOutcome.message}")
-        } else {
-            val itemRows = draft.exercises.map { (exercise, targetSets) ->
-                val existingGuid = db.workoutPlanItemDao().getByExerciseAndWeek(exercise, weekStart)?.guid
-                WorkoutPlanItem(
-                    exercise = exercise,
-                    targetSetsPerWeek = targetSets,
-                    effectiveFromWeekEpoch = weekStart,
-                    updatedAt = now,
-                    // Ticket 08: only the exercises the model actually gave a rep count for carry
-                    // one - draft.repsPerSet has no entry at all for the rest, and this stays null
-                    // rather than inventing one (see WorkoutPlanItem.repsPerSet's own doc).
-                    repsPerSet = draft.repsPerSet[exercise],
-                    guid = existingGuid ?: UUID.randomUUID().toString(),
-                )
-            }
-            planMessage(draft, planOutcome, itemRows, BodyWriteThrough.setWorkoutPlanItems(context, itemRows))
-        }
+        val out = com.kevin.legion.bodycoach.WorkoutSessionController.forApp(context).setUpProgramme()
+        return WriteOutcome(out.ok, if (out.ok) out.sentence else "I couldn't set up the workout programme. ${out.sentence}")
     }
-
-    /**
-     * The spoken result of a plan write, once every row has had its own answer from the engine.
-     * Split out of [generatePlan] so that function keeps one exit per branch, and because the
-     * composition is pure - no Context, no Room - which is the half worth reading on its own.
-     *
-     * **A refused exercise is NAMED, never counted**: per-row outcomes exist precisely because the
-     * engine can take four exercises and refuse the fifth (see
-     * [com.kevin.legion.backend.BodyWriteThrough.setWorkoutPlanItems]), and "one exercise was
-     * rejected" leaves the driver with no way to find out which one is missing from his plan.
-     *
-     * **[WriteOutcome.success] is false only when NOTHING landed**, not when something was left
-     * out: the plan row plus one exercise IS a plan that now exists, and calling that a failure
-     * would have the caller deny a write that really happened - the mirror image of the
-     * hardcoded-true defect this return type exists to close. A partial write says so in words
-     * (`Left out: ...`) and still reads as done, the same way a QUEUED write does.
-     */
-    private fun planMessage(
-        draft: WorkoutPlanDraft,
-        planOutcome: WriteThroughOutcome<*>,
-        itemRows: List<WorkoutPlanItem>,
-        itemOutcomes: List<WriteThroughOutcome<*>>,
-    ): WriteOutcome {
-        val refused = itemRows.zip(itemOutcomes).mapNotNull { (item, outcome) ->
-            (outcome as? WriteThroughOutcome.Refused)?.let { item.exercise to it.message }
-        }
-        val refusedList = refused.joinToString("; ") { "${it.first} - ${it.second}" }
-        val landed = draft.exercises.entries.filterNot { entry -> refused.any { it.first == entry.key } }
-        return if (landed.isEmpty()) {
-            WriteOutcome(false, "None of that plan's exercises went through: $refusedList")
-        } else {
-            val exerciseList = landed.joinToString(", ") { "${it.key} (${it.value} sets/week)" }
-            val refusedNote = if (refused.isEmpty()) "" else " Left out: $refusedList"
-            val anyQueued = planOutcome is WriteThroughOutcome.Queued<*> ||
-                itemOutcomes.any { it is WriteThroughOutcome.Queued<*> }
-            val queuedNote = if (anyQueued) " " + queuedSentence(queuedReason(planOutcome, itemOutcomes)) else ""
-            WriteOutcome(
-                true,
-                "Plan set: ${draft.sessionsPerWeek} sessions a week - $exerciseList.$refusedNote$queuedNote",
-            )
-        }
-    }
-
-    /** The first queue reason among a plan write's outcomes - one sentence covers the whole plan,
-     * and repeating the same "engine unreachable" line once per exercise would bury it. */
-    private fun queuedReason(
-        planOutcome: WriteThroughOutcome<*>,
-        itemOutcomes: List<WriteThroughOutcome<*>>,
-    ): String = (
-        (planOutcome as? WriteThroughOutcome.Queued<*>)
-            ?: itemOutcomes.filterIsInstance<WriteThroughOutcome.Queued<*>>().firstOrNull()
-        )?.reason ?: "unknown error"
 
     /**
      * D22: writes one set-group log entry. [exercise]/[sets] are the "important missing piece" the

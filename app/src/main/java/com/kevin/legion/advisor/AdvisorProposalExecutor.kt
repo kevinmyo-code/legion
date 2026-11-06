@@ -112,7 +112,6 @@ object AdvisorProposalExecutor {
             AdvisorBriefs.OP_SET_GOAL -> setGoal(context, brief, obj)
             "set_meal_target" -> setMealTarget(context, obj)
             "set_sleep_target" -> setSleepTarget(context, obj)
-            "create_workout_plan" -> createWorkoutPlan(context, obj)
             "set_budget" -> setBudget(context, obj)
             "set_maintenance_item" -> setMaintenanceItem(context, obj)
             "set_reminder" -> setReminder(context, obj)
@@ -174,29 +173,6 @@ object AdvisorProposalExecutor {
         val message = SleepController.setTarget(context, obj.optDouble("targetHours"), now).message
         val landed = CarDatabase.getDatabase(context).sleepTargetDao()
             .currentTarget(com.kevin.legion.meals.dayStartEpoch(now))
-        return if (landed != null && landed.updatedAt >= now) {
-            ExecuteResult.Ok(message)
-        } else {
-            ExecuteResult.WriteFailed(message)
-        }
-    }
-
-    /** [WorkoutController.generatePlan] itself calls a sub-agent (`WorkoutPlanAgent.write`) to draft
-     * the plan's shape - the SAME behaviour the direct-dictation `create_workout_plan` live tool
-     * already has today. The proposal carries only `goal` (the prose the advisor and driver already
-     * discussed and agreed on); nothing here supplies session/rep/set numbers itself, so this is
-     * still "execute the stored proposal", not the live model inventing plan values. */
-    private suspend fun createWorkoutPlan(context: Context, obj: JSONObject): ExecuteResult {
-        val goal = obj.optString("goal").trim()
-        if (goal.isBlank()) return ExecuteResult.Refused("That proposal didn't say what the plan is for.")
-        // generatePlan returns "I couldn't put a plan together just now..." as a normal String,
-        // never a thrown exception, when its sub-agent write comes back null (network/rate-limit) -
-        // nothing is written in that case. Verified by read-back, not by matching that sentence:
-        // require the current plan's updatedAt be no older than this call.
-        val now = System.currentTimeMillis()
-        val message = WorkoutController.generatePlan(context, goal).message
-        val landed = CarDatabase.getDatabase(context).workoutPlanDao()
-            .currentPlan(com.kevin.legion.workouts.weekStartEpoch(now))
         return if (landed != null && landed.updatedAt >= now) {
             ExecuteResult.Ok(message)
         } else {

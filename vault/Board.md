@@ -154,6 +154,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/fat-loss/map\|fat-loss]] | [[16-routing-and-voice-guide\|16]] | build | G4 to G6: get_health to fleet, voice guide copy, body routing |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[17-coach-tone-and-appetite\|17]] | build | G7: answer the question asked; appetite and habits doctrine |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[21-body-screen-build\|21]] | build | Phone: build the chosen Body screen |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[24-workout-programme-engine\|24]] | build | Engine: the deterministic workout programme, sessions and sets |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[08-daily-prescription-and-autolog\|08]] | build | The checklist prescribes a day, and a ticked day logs itself |
@@ -278,6 +279,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/fat-loss/map\|fat-loss]] | [[13-monday-weekly-line\|13]] | build | Phone: the Monday 8 am weekly weight line  waiting on [[05-trend-and-waist\|05]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[14-weight-goal-tracked\|14]] | build | G1: the weight goal is shown and tracked  waiting on [[05-trend-and-waist\|05]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[22-ship-pass\|22]] | test | Ship pass: deploy, enter the profile, run it on the phone  waiting on [[03-body-profile\|03]], [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[06-adaptation-proposals\|06]], [[07-saved-meals\|07]], [[08-engine-tools\|08]], [[09-web-body\|09]], [[10-phone-coach-reads\|10]], [[11-plan-generator-uses-the-estimate\|11]], [[12-digest-energy-and-protein\|12]], [[13-monday-weekly-line\|13]], [[14-weight-goal-tracked\|14]], [[15-meal-target-partial-and-honest-accept\|15]], [[16-routing-and-voice-guide\|16]], [[17-coach-tone-and-appetite\|17]], [[21-body-screen-build\|21]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[25-workout-on-the-phone\|25]] | build | Phone: Today's workout card, the session tick-off view, voice  waiting on [[24-workout-programme-engine\|24]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[26-web-workouts-tab\|26]] | build | Web: the Workouts tab shows the programme, not the old plan CRUD  waiting on [[24-workout-programme-engine\|24]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[03-the-renderer\|03]] | build | The Compose renderer: validation, components, and worded failure  waiting on [[01-the-response-schema\|01]], [[02-the-tool-binding-contract\|02]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[05-the-phone-shell\|05]] | grilling | The phone shell: what home is, and what happens when voice fails  waiting on [[04-adr-0035-amendment\|04]] |
@@ -420,7 +423,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
-| [[.scratch/fat-loss/map\|fat-loss]] | 22 | 18 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | 26 | 21 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | 7 | 6 | [[.scratch/generated-ui/generated-ui.canvas\|open]] |

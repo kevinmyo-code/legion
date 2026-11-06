@@ -45,8 +45,11 @@ object AdvisorBriefs {
         playbook = BioPlaybook.TEXT,
         digestBuilder = BioDigestBuilder(),
         writableOps = setOf(
-            OP_SET_GOAL, "set_meal_target", "set_sleep_target", "create_workout_plan",
-            AdvisorProposalExecutor.OP_CREATE_CHECKLIST,
+            // workouts, 2026-11-06 (Kevin: "the old workout tickboxes left over from before and
+            // its confusing"): no `create_checklist` (the "BIO Plan" tickbox list) and no
+            // `create_workout_plan` (a model-written plan). Training is the engine's deterministic
+            // programme (`server/body_coach/programme.py`), ticked off on the Body screen.
+            OP_SET_GOAL, "set_meal_target", "set_sleep_target",
         ),
     )
 

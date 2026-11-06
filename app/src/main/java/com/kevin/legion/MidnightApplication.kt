@@ -521,10 +521,13 @@ class MidnightApplication : Application() {
             // left alone, see AdvisorChecklistMigration's own class doc). Same guard shape as the
             // grocery/reminder checklist migrations above: a SharedPreferences flag, safe to call
             // unconditionally on every process start.
+            // workouts, 2026-11-06: that migration retired with the list it fed. The "BIO Plan" tickbox
+            // list is archived once (Kevin: "the old workout tickboxes left over from before and its
+            // confusing"); the Body screen's workout replaces it. Archived, not deleted: its history stays.
             appScope.launch {
                 runCatching {
-                    com.kevin.legion.advisor.AdvisorChecklistMigration.migrateIfNeeded(this@MidnightApplication)
-                }.onFailure { MidnightEvents.appStartWorkFailed("migrate_plan_lines_to_checklist", it) }
+                    com.kevin.legion.advisor.BioChecklistRetirement.retireIfNeeded(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("retire_bio_checklist", it) }
             }
 
             // The mirror/sync lifecycle triggers (aspect-engine ticket 20, senior review MUST-FIX

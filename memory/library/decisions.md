@@ -7311,3 +7311,49 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   retry per tap, a dropped conversation's handle for the next tap, goAway, offline wording.
 - **The trade:** a tap that used to find a warm socket pays one cold connect, and greets before
   listening. Open to Kevin: a cold tap could skip the greeting and listen at once, as a warm one did.
+
+## 2026-11-06 - Workouts the engine writes, ticked off on the phone; the old tickboxes go (Kevin)
+
+- **Asked:** *"i wanna have it make workouts for me that i can tick off, log meals etc. right now
+  theres the old workout tickboxes left over from before and its confusing"*. Kevin picked
+  **direction 2** of the workout prototypes (a Body card that says today's targets and why; Start
+  opens a session screen, one row per set, big tick, tappable numbers), with the week-1
+  calibration card.
+- **The programme is deterministic** (`server/body_coach/programme.py`, ADR 0078): 3 full-body
+  days, A and B alternating, three compounds and two accessories a day; double progression (every
+  set at the top of the range adds the exercise's increment next time); calibration on an
+  exercise's first session ("a weight you could lift for 2 more reps"); two sessions in a row with
+  a set under the range at one weight drop it to 90%; a deload every sixth block of sessions,
+  counted in finished sessions, not weeks. The model may explain or swap (to a listed
+  alternative); it never writes a number.
+- **The engine owns the plan and the logs**: `training_programmes`, `workout_sessions`,
+  `workout_sets` in `body_coach`, each set's target and rule stored beside what was done. Finishing
+  writes the legacy `workout_set_logs` rows once (training history and progression charts keep
+  working); a tick never does. The phone mints the session id, every route is idempotent, and
+  ticks queue offline and replay in order.
+- **Voice:** "what's my workout today" is `get_todays_workout` behind `ask_body`; "start my
+  workout", "swap squats", "finish" are engine tools on `ask_engine` (writes ride `ask_engine`,
+  map decision 3); "log bench 135 for 8" stays `log_workout_set`, which now ticks today's workout
+  and falls back to a standalone set only when the exercise is not in it. Live setup payload
+  ~24,507 of 24,650 (was ~24,609): `create_workout_plan` retired.
+- **The old tickbox sources, each ruled on** (inventory 2026-11-06):
+
+  | Source | Ruling |
+  |---|---|
+  | BIO advisor's "BIO Plan" checklist (`create_checklist` op, model text, ticks wrote nothing) | Op removed from the BIO brief; the list is **archived once** per install (`BioChecklistRetirement`), history kept, so it leaves Body > More, Lists, the Calendar day and the web |
+  | Body > More > "Today's plan" (`GoalChecklistPanel`) | Deleted; More now has "Training history" |
+  | `create_workout_plan` voice tool and advisor op, `WorkoutPlanAgent` (Gemini wrote exercises and sets) | Retired; `generatePlan` (the goal plan's accept) now sets up the engine programme instead |
+  | `GoalChecklist.kt` (dead since one-home 05) | Deleted with its test |
+  | Quick-log "Workout" (log-a-set dialog) | Opens or starts today's workout |
+  | "This week" card (sessions from Room `workout_plans`) | Reads the engine's week: finished sessions of the programme's days |
+  | `get_workout_gap` | Reads the engine's week |
+  | Wellbeing digest reading the BIO list | Skips an archived list |
+  | Room `workout_plans` / `workout_plan_items`, `sourceListItemId` | Kept (additive-only), no longer written |
+  | Web `/body` Workouts tab ("Weekly plan", "Planned exercises" CRUD) | **Not changed here**; fat-loss ticket 26 |
+
+- **Decided in the build, open to Kevin:** training days default Mon/Wed/Fri on the programme
+  (settable over `PUT workout/programme/`); on a rest day the card says "Next workout" and still
+  offers Start. Weights are pounds only. Increments: 10 lb for back squat, Romanian deadlift, hip
+  thrust and leg press, 5 lb for the rest.
+- **Meals (item 4):** the Today card already had Saved meals and Log meal; the quick-log Meal
+  dialog now lists saved meals as one-tap logs above the free-text field.

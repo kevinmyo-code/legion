@@ -50,9 +50,11 @@ import com.kevin.legion.ui.body.BodyWeekCard
 import com.kevin.legion.ui.body.LogWaistDialog
 import com.kevin.legion.ui.body.SavedMealsDialog
 import com.kevin.legion.ui.body.TodayIntake
-import com.kevin.legion.workouts.buildWeeklyWorkoutGap
-import com.kevin.legion.workouts.weekEndEpoch
-import com.kevin.legion.workouts.weekStartEpoch
+import com.kevin.legion.bodycoach.WorkoutSessionController
+import com.kevin.legion.bodycoach.WorkoutTodayWire
+import com.kevin.legion.ui.body.BodyWorkoutCard
+import com.kevin.legion.ui.body.WorkoutSessionHost
+import com.kevin.legion.ui.body.weekSubtitle
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import com.kevin.legion.data.local.CarDatabase
@@ -74,7 +76,6 @@ import com.kevin.legion.ui.body.DeleteLogDialog
 import com.kevin.legion.ui.body.LogBodyweightDialog
 import com.kevin.legion.ui.body.LogMealDialog
 import com.kevin.legion.ui.body.LogSleepDialog
-import com.kevin.legion.ui.body.LogWorkoutSetDialog
 import com.kevin.legion.ui.body.SetMealTargetDialog
 import com.kevin.legion.ui.body.SetSleepTargetDialog
 import com.kevin.legion.ui.body.softSentence
@@ -112,22 +113,10 @@ import com.kevin.legion.workouts.WorkoutController
  * internal drill-down... rather than adding nav-graph sub-routes with arguments" precedent -
  * [BodyDrilldown] is a plain state var this file swaps on, not a new `LegionRoute`.
  *
- * **The standalone TRAINING PANE retired (ticket 08, `goal-plans`, Kevin: "bio page > training and
- * checklist > retire training page. delete it.").** The logged-sets record that pane used to show
- * was redundant with the checklist below it once ticket 08 gave that checklist a real daily
- * prescription - two sections both answering "what training am I doing" is exactly how they end up
- * disagreeing (one derived from the plan, the other from logged sets), the same reasoning ticket 07
- * already used to retire the "workouts this week" gap row. **ADR 0035 still binds, so the TRAINING
- * DRILLDOWN itself did not vanish - only its entry point moved.** [BodyDrilldown.TrainingExercises]/
- * [BodyDrilldown.TrainingProgression] and their two composables are unchanged; this file still owns
- * the top-level swap for the same "one state holder" reason every other drilldown here does (a full-
- * screen [Surface] swapped in from inside a `LazyColumn` `item {}` cannot safely rely on
- * `fillMaxSize()` against that item's unbounded scroll-axis constraint - staying with the existing
- * top-level swap sidesteps that risk entirely rather than nesting a second one inside
- * [com.kevin.legion.ui.goals.GoalChecklistPanel]). What moved is the AFFORDANCE: `+ LOG SET` and the
- * "view training history" tap now render inside [com.kevin.legion.ui.goals.GoalChecklistPanel]'s own
- * full-mode UI (via the `onLogSet`/`onOpenTrainingDrilldown` callbacks this file passes down), not on
- * a `TRAINING` `DeckPane` of their own.
+ * **Training is the engine's workout now (workouts, 2026-11-06).** The "Today's plan" checklist
+ * and its log-a-set entry are gone (Kevin: *"the old workout tickboxes left over from before and
+ * its confusing"*): [BodyDrilldown.Workout] is the session tick-off view and "Training history"
+ * under More opens the TRAINING drilldown, which still reads the logged sets.
  *
  * **Tiled to the mission-control grammar (ticket 16's BIO build, `.scratch/mission-control/issues/
  * 12-surface-inventories.md`).** MASS stays FULL (this surface's hero - latest reading, trend,
@@ -195,9 +184,6 @@ data class BodyUiState(
     val massSparkline: List<Float?> = emptyList(),
     val intakeSparkline: List<Float?> = emptyList(),
     val sleepSparkline: List<Float?> = emptyList(),
-    // fat-loss ticket 21: training this week, for the "This week" card. Null planned = no plan.
-    val sessionsDone: Int? = null,
-    val sessionsPlanned: Int? = null,
 )
 
 /**
@@ -215,6 +201,9 @@ data class BodyCoachUi(
     val savedMeals: List<SavedMealWire> = emptyList(),
     val savedMealsNote: String? = null,
     val profile: ProfileWire? = null,
+    /** workouts, 2026-11-06: today's workout and the week, from the engine's programme. */
+    val workout: WorkoutTodayWire? = null,
+    val workoutNote: String? = null,
 )
 
 /**
@@ -223,9 +212,7 @@ data class BodyCoachUi(
  * carries data ([TrainingProgression.exercise]) the other three don't need. `null` (a plain state
  * var, not a member of this type - matching [com.kevin.legion.ui.ledger.CategoryDrilldownSelection]'s
  * own doc comment on why "not open" is deliberately kept out of the sealed type) means the panel
- * list is showing. **Ticket 08 (goal-plans) retired the standalone TRAINING PANE that used to open
- * [TrainingExercises], not the drilldown itself** - see the file doc comment for why it stays a
- * top-level swap owned here, entered from [com.kevin.legion.ui.goals.GoalChecklistPanel] instead.
+ * list is showing.
  */
 internal sealed class BodyDrilldown {
     object Mass : BodyDrilldown()
@@ -233,8 +220,8 @@ internal sealed class BodyDrilldown {
     object Sleep : BodyDrilldown()
     object TrainingExercises : BodyDrilldown()
 
-    /** fat-loss ticket 21: the checklist, moved off the main view into "More" (Kevin's ask). */
-    object Plan : BodyDrilldown()
+    /** workouts, 2026-11-06: the session tick-off view. It replaced the "Today's plan" checklist. */
+    object Workout : BodyDrilldown()
 
     /** fat-loss ticket 21: the BIO goals panel, moved into "More". */
     object Goals : BodyDrilldown()
@@ -282,17 +269,8 @@ fun BodyScreen(onBack: () -> Unit = {}) {
         // Hours, not minutes - the sparkline is a silhouette, and a driver reads sleep in hours.
         val sleepSparkline = bucketSleepMinutesDaily(sleepNights, sevenDayStart, now).map { it?.let { m -> m / 60f } }
 
-        val weekStart = weekStartEpoch(now)
-        val plan = CarDatabase.getDatabase(context).workoutPlanDao().currentPlan(weekStart)
-        val weekGap = plan?.let {
-            val sets = CarDatabase.getDatabase(context).workoutSetLogDao().forWindow(weekStart, weekEndEpoch(now))
-            buildWeeklyWorkoutGap(it.sessionsPerWeek, sets)
-        }
-
         state = BodyUiState(
             loading = false,
-            sessionsDone = weekGap?.actual,
-            sessionsPlanned = weekGap?.target,
             mealGap = MealController.dayGap(context, now),
             hasMealTarget = mealTarget != null,
             mealTargetKcal = mealTarget?.caloriesKcal,
@@ -320,6 +298,7 @@ fun BodyScreen(onBack: () -> Unit = {}) {
         val energy = controller.energy()
         val saved = controller.savedMeals()
         val profile = controller.profile()
+        val workout = WorkoutSessionController.forApp(context).today()
         coach = BodyCoachUi(
             loaded = true,
             trend = trend.valueOrNull,
@@ -329,6 +308,8 @@ fun BodyScreen(onBack: () -> Unit = {}) {
             savedMeals = saved.valueOrNull?.results.orEmpty(),
             savedMealsNote = saved.noteOrNull,
             profile = profile.valueOrNull,
+            workout = workout.valueOrNull,
+            workoutNote = workout.noteOrNull,
         )
     }
 
@@ -369,7 +350,7 @@ fun BodyScreen(onBack: () -> Unit = {}) {
         val from = deckRangeStartMs(range, now)
         when (val current = drilldown) {
             // Plan and Goals load their own panels (fat-loss ticket 21).
-            null, BodyDrilldown.Plan, BodyDrilldown.Goals -> {}
+            null, BodyDrilldown.Workout, BodyDrilldown.Goals -> {}
             BodyDrilldown.Mass -> {
                 drilldownLoading = true
                 val samples = WorkoutController.bodyweightHistory(context, from, now)
@@ -432,15 +413,7 @@ fun BodyScreen(onBack: () -> Unit = {}) {
     SoftTheme {
     when (val current = drilldown) {
         null -> BodyContent(state, coach, onOpenPane = { drilldown = it }, onDataChanged = { reloadKey++ }, onBack = onBack)
-        BodyDrilldown.Plan -> BodyPanelDrilldown(title = "Today's plan", onBack = { drilldown = null }) {
-            var showLogSet by remember { mutableStateOf(false) }
-            com.kevin.legion.ui.goals.GoalChecklistPanel(
-                compact = false,
-                onLogSet = { showLogSet = true },
-                onOpenTrainingDrilldown = { drilldown = BodyDrilldown.TrainingExercises },
-            )
-            if (showLogSet) LogWorkoutSetDialog(onDismiss = { showLogSet = false }, onDone = { showLogSet = false; reloadKey++ })
-        }
+        BodyDrilldown.Workout -> WorkoutSessionHost(onBack = { drilldown = null; reloadKey++ })
         BodyDrilldown.Goals -> BodyPanelDrilldown(title = "Goals", onBack = { drilldown = null }) {
             com.kevin.legion.ui.goals.GoalsPanel(aspect = "bio")
         }
@@ -560,7 +533,19 @@ private fun BodyCardList(
     var showLogWeight by remember { mutableStateOf(false) }
     var showLogMeal by remember { mutableStateOf(false) }
     var showEditMealTarget by remember { mutableStateOf(false) }
-    var showLogSet by remember { mutableStateOf(false) }
+    var workoutBusy by remember { mutableStateOf(false) }
+    var workoutMessage by remember { mutableStateOf<String?>(null) }
+    val startWorkout: () -> Unit = {
+        workoutBusy = true
+        scope.launch {
+            val step = WorkoutSessionController.forApp(context).start()
+            workoutBusy = false
+            if (step.session != null) onOpenPane(BodyDrilldown.Workout) else workoutMessage = step.sentence
+        }
+    }
+    val openWorkout: () -> Unit = {
+        if (WorkoutSessionController.forApp(context).current()?.inProgress == true) onOpenPane(BodyDrilldown.Workout) else startWorkout()
+    }
     var showWaist by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
     var showSavedMeals by remember { mutableStateOf(false) }
@@ -580,7 +565,17 @@ private fun BodyCardList(
                 onWeight = { showLogWeight = true },
                 onMeal = { showLogMeal = true },
                 onWaist = { showWaist = true },
-                onWorkout = { showLogSet = true },
+                onWorkout = openWorkout,
+            )
+        }
+        item(key = "workout") {
+            BodyWorkoutCard(
+                today = coach.workout,
+                note = if (coach.loaded) coach.workoutNote else null,
+                busy = workoutBusy,
+                message = workoutMessage,
+                onStart = startWorkout,
+                onOpen = { onOpenPane(BodyDrilldown.Workout) },
             )
         }
         item(key = "trend") {
@@ -629,8 +624,9 @@ private fun BodyCardList(
         }
         item(key = "week") {
             BodyWeekCard(
-                sessionsDone = state.sessionsDone,
-                sessionsPlanned = state.sessionsPlanned,
+                sessionsDone = coach.workout?.week?.done,
+                sessionsPlanned = coach.workout?.week?.planned,
+                subtitle = weekSubtitle(coach.workout?.week),
                 waistIn = coach.trend?.waist?.firstOrNull()?.waistIn,
                 waistChange28d = coach.trend?.waistChangeIn28d,
                 onOpenTraining = { onOpenPane(BodyDrilldown.TrainingExercises) },
@@ -638,7 +634,7 @@ private fun BodyCardList(
         }
         item(key = "more") {
             BodyMoreList(
-                onPlan = { onOpenPane(BodyDrilldown.Plan) },
+                onTraining = { onOpenPane(BodyDrilldown.TrainingExercises) },
                 onSleep = { onOpenPane(BodyDrilldown.Sleep) },
                 onGoals = { onOpenPane(BodyDrilldown.Goals) },
                 onWeighIns = { onOpenPane(BodyDrilldown.Mass) },
@@ -648,7 +644,7 @@ private fun BodyCardList(
     }
 
     if (showLogWeight) LogBodyweightDialog(onDismiss = { showLogWeight = false }, onDone = { showLogWeight = false; onDataChanged() })
-    if (showLogMeal) LogMealDialog(onDismiss = { showLogMeal = false }, onDone = { showLogMeal = false; onDataChanged() })
+    if (showLogMeal) LogMealDialog(onDismiss = { showLogMeal = false }, onDone = { showLogMeal = false; onDataChanged() }, savedMeals = coach.savedMeals)
     if (showEditMealTarget) {
         SetMealTargetDialog(
             currentCalories = state.mealTargetKcal,
@@ -659,7 +655,6 @@ private fun BodyCardList(
             onDone = { showEditMealTarget = false; onDataChanged() },
         )
     }
-    if (showLogSet) LogWorkoutSetDialog(onDismiss = { showLogSet = false }, onDone = { showLogSet = false; onDataChanged() })
     if (showWaist) LogWaistDialog(onDismiss = { showWaist = false }, onDone = { showWaist = false; onDataChanged() })
     if (showProfile) BodyProfileDialog(current = coach.profile, onDismiss = { showProfile = false }, onDone = { showProfile = false; onDataChanged() })
     if (showSavedMeals) {
@@ -907,7 +902,7 @@ private fun BodySleepDrilldown(
     }
 }
 
-/** TRAINING's first drilldown level: every distinct exercise, most recently worked first - taps into [BodyExerciseProgressionDrilldown]. Entry point relocated to [com.kevin.legion.ui.goals.GoalChecklistPanel] by ticket 08 - see this file's doc comment. */
+/** TRAINING's first drilldown level: every distinct exercise, most recently worked first - taps into [BodyExerciseProgressionDrilldown]. Opened from More > Training history. */
 @Composable
 internal fun BodyTrainingExerciseListDrilldown(
     exercises: List<WorkoutSetLogDao.ExerciseRecency>,
@@ -945,8 +940,7 @@ internal fun BodyTrainingExerciseListDrilldown(
  * (sets without a weight are listed here even though [series] excludes them from the plot - see
  * [buildExerciseProgression]'s doc comment). Ticket 03 build item 3: [onDelete] is
  * `WorkoutController.deleteSetLog`, the SAME row-scoped delete `undo_last_log` reaches for a
- * workout-set log. Entry point relocated to [com.kevin.legion.ui.goals.GoalChecklistPanel] by
- * ticket 08 - see this file's doc comment.
+ * workout-set log.
  */
 @Composable
 internal fun BodyExerciseProgressionDrilldown(
