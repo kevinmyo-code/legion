@@ -19,6 +19,35 @@ data class WorkoutTodayWire(
     /** The next workout's plan when none is running. */
     val next: PlanWire? = null,
     val words: String = "",
+    // Workout reads (2026-11-06). Absent from an engine older than this; empty means NOT SENT,
+    // never "there is no Day B" (WorkoutText.programmeResult says so in words).
+    @SerialName("today_weekday") val todayWeekday: String = "",
+    /** "rest", "not_started", "in_progress" or "done". */
+    @SerialName("today_status") val todayStatus: String = "",
+    /** Every day of the programme (A and B) with the rules' current targets. */
+    val days: List<ProgrammeDayWire> = emptyList(),
+    /** One week of coming sessions, counting today while today's is not done. */
+    val upcoming: List<UpcomingWire> = emptyList(),
+    @SerialName("programme_words") val programmeWords: String = "",
+)
+
+@Serializable
+data class ProgrammeDayWire(
+    @SerialName("day_key") val dayKey: String,
+    @SerialName("next_on") val nextOn: String? = null,
+    @SerialName("next_weekday") val nextWeekday: String? = null,
+    val calibrating: Boolean = false,
+    val exercises: List<TargetWire> = emptyList(),
+)
+
+@Serializable
+data class UpcomingWire(
+    @SerialName("day_key") val dayKey: String,
+    val date: String,
+    val weekday: String = "",
+    @SerialName("session_number") val sessionNumber: Int = 0,
+    val deload: Boolean = false,
+    @SerialName("is_today") val isToday: Boolean = false,
 )
 
 @Serializable

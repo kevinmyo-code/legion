@@ -156,6 +156,7 @@ object VoiceGuideData {
                 Entry(name = "list_recent_workouts", say = "What did I train this week?", does = "Recent workouts.", hands = "Body tab, workout history."),
                 Entry(name = "get_workout_gap", say = "How's my training this week?", does = "Workouts finished this week against the three your programme plans.", hands = "Body tab, This week card."),
                 Entry(name = "get_todays_workout", say = "What's my workout today?", does = "Today's workout from your programme: each exercise as sets x reps at a weight, and why a weight went up or held. The numbers come from the programme's rules, never made up.", hands = "Body tab, Today's workout card."),
+                Entry(name = "get_workout_programme", say = "What's on Day B? When's my next workout?", does = "Your whole programme: Day A and Day B with every exercise as sets x reps at a weight, your training days, whether today is a training day and done, and the next sessions with their dates. The numbers come from the programme's rules, never made up.", hands = "Body tab: Today's workout shows the next day's exercises and This week your training days. A screen with both days side by side is still to come."),
                 Entry(name = "log_bodyweight", say = "I'm eighty-two kilos", does = "Logs your bodyweight.", hands = "Body tab, log-bodyweight dialog."),
                 Entry(name = "log_sleep", say = "I slept six hours, woke up twice", does = "Logs a night's sleep.", hands = "Body tab, log-sleep dialog."),
                 Entry(name = "list_recent_sleep", say = "How have I been sleeping?", does = "Recent sleep.", hands = "Body tab, sleep history."),
@@ -285,6 +286,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 133 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 133
+    /** Total entries across every group above - 134 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 134
 }

@@ -384,6 +384,7 @@ class LiveToolboxDeclarationSetTest {
                 "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
                 "list_recent_workouts", "get_workout_gap",
                 "get_energy_estimate", "get_weight_trend", "list_saved_meals", "get_todays_workout",
+                "get_workout_programme",
             ),
             "goals" to listOf("list_goals", "ask_advisor"),
             "pantry" to listOf("list_recent_groceries", "get_grocery_spend"),
