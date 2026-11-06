@@ -24,8 +24,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import android.content.Context
+import com.kevin.legion.bodycoach.BodyCoachController
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
+import com.kevin.legion.finance.noteOrNull
+import com.kevin.legion.finance.valueOrNull
 import com.kevin.legion.goals.GoalController
 import com.kevin.legion.goals.GoalProgress
 import com.kevin.legion.ledger.formatCents
@@ -184,6 +187,19 @@ private sealed class MetricResolution {
     /** [currentCents] backs the words line's exact Long-cents label; [fraction] backs the meter (null only when [Goal.targetValue] itself was null/non-positive - see [GoalProgress.accumulationProgress]). */
     data class Accumulation(val currentCents: Long, val fraction: Float?) : MetricResolution()
     data class Reading(val currentValue: Double, val unit: String) : MetricResolution()
+
+    /**
+     * fat-loss ticket 14 (G1): a `bodyweight_lbs` goal's progress from the engine's smoothed trend
+     * (`server/body_coach/trend.py`), unit-safe and rate based, never one raw reading. [note] is the
+     * saved copy's age in words, or null when fresh.
+     */
+    data class Milestone(
+        val trendLbs: Double,
+        val remainingLbs: Double?,
+        val fraction: Float?,
+        val weeksToGo: Double?,
+        val note: String?,
+    ) : MetricResolution()
 }
 
 /**
@@ -210,6 +226,23 @@ private suspend fun resolveMetric(context: Context, goal: Goal): MetricResolutio
         }
         "bodyweight_kg" -> db.bodyweightLogDao().mostRecent()?.let { log ->
             MetricResolution.Reading(currentValue = log.weightValue, unit = log.weightUnit)
+        }
+        "bodyweight_lbs" -> {
+            val read = BodyCoachController.forApp(context).trend()
+            val trend = read.valueOrNull
+            val lbs = trend?.latestTrendLbs
+            if (trend == null || lbs == null) {
+                null
+            } else {
+                val m = trend.milestone
+                MetricResolution.Milestone(
+                    trendLbs = lbs,
+                    remainingLbs = m?.remainingLbs,
+                    fraction = m?.progressPct?.let { it / 100f },
+                    weeksToGo = m?.weeksToGo,
+                    note = read.noteOrNull,
+                )
+            }
         }
         else -> null
     }
@@ -247,6 +280,7 @@ private fun GoalRow(goal: Goal, resolution: MetricResolution? = null, modifier: 
             val nowText = when (resolution) {
                 is MetricResolution.Accumulation -> formatCents(resolution.currentCents)
                 is MetricResolution.Reading -> "${formatGoalNumber(resolution.currentValue)} ${resolution.unit.uppercase()}"
+                is MetricResolution.Milestone -> "%.1f LBS TREND".format(resolution.trendLbs)
             }
             val targetText = buildString {
                 append(formatGoalNumber(goal.targetValue!!))
@@ -260,6 +294,19 @@ private fun GoalRow(goal: Goal, resolution: MetricResolution? = null, modifier: 
             )
             if (resolution is MetricResolution.Accumulation && resolution.fraction != null) {
                 DeckMeter(fraction = resolution.fraction, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            }
+            if (resolution is MetricResolution.Milestone) {
+                resolution.fraction?.let {
+                    DeckMeter(fraction = it, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                }
+                val words = listOfNotNull(
+                    resolution.remainingLbs?.let { "%.1f lb to go".format(it) },
+                    resolution.weeksToGo?.let { "about %.0f weeks at the current rate".format(it) },
+                    resolution.note,
+                ).joinToString(". ")
+                if (words.isNotBlank()) {
+                    Text(words, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+                }
             }
         }
     }

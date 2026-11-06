@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "17"
 title: "G7: answer the question asked; appetite and habits doctrine"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; appetite section ~300 tokens by chars/4, not countTokens-measured; owed: a boredom-eating question on the phone"
 blockers: ["01"]
 blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]

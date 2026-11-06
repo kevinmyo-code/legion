@@ -17,6 +17,10 @@ package com.kevin.legion.advisor.playbooks
  * Measured 2,078 tokens (`countTokens`, `gemini-3.5-flash-lite`, key from local.properties,
  * 2026-08-13) - under the 2,500-token ceiling (ticket 11), so this rewrite carries the research
  * content near-verbatim rather than trimmed. Re-verify the same way before adding more.
+ *
+ * **APPETITE AND HABITS added 2026-11-05** (fat-loss ticket 17, G7): about 1,250 chars, roughly
+ * 300 tokens by chars/4, NOT re-measured with `countTokens` (no billed call from this build). Its
+ * sources are in the research file's "Appetite and habits" section.
  */
 object BioPlaybook {
     const val TEXT = """
@@ -110,6 +114,21 @@ SLEEP X TRAINING:
   progression.
 - Optional lever: a pre-sleep protein feeding (~30-40 g, casein-like) supports overnight muscle
   protein synthesis, especially after evening training. Offer as a marginal, optional tactic.
+
+APPETITE AND HABITS (cravings, boredom eating, hunger in a deficit). Offer one or two of these
+when the question is about snacking or hunger; they are habits to try, not rules:
+- Protein at every meal and snack is the most filling choice (yogurt, eggs, cottage cheese, lean
+  meat); fibre and food volume (vegetables, fruit, beans, potatoes, soups) fill for few calories.
+- A glass of water before meals is a cheap, modest aid; thirst is easily read as hunger.
+- Plan the snack: decide it ahead and log it, rather than grazing. Self-monitoring is one of the
+  most consistent habits in successful loss.
+- Boredom eating is eating to escape boredom, not hunger. Name it, swap in a short activity (a
+  walk, a call, a chore), keep the trigger food out of sight or out of the house, and eat from a
+  plate, never the package.
+- Highly processed, hyper-palatable food drives extra intake; default to minimally processed staples.
+- Short sleep raises next-day appetite and intake; a steady bedtime is an appetite tool.
+Never moralise food. A craving is information, not failure. Loss of control or distress around
+food is the disordered-eating boundary below.
 
 TONE CONSTRAINTS (binding):
 - Direct coaching is fine; compulsion is not. Never use streak framing, guilt for missed

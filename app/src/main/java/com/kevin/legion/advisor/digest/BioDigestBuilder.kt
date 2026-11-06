@@ -4,7 +4,13 @@ import android.content.Context
 import com.kevin.legion.advisor.AdvisorAspect
 import com.kevin.legion.advisor.DigestBuilder
 import com.kevin.legion.advisor.DigestText
+import com.kevin.legion.bodycoach.BodyCoachController
+import com.kevin.legion.bodycoach.BodyCoachText
+import com.kevin.legion.bodycoach.EnergyWire
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.finance.FinanceRead
+import com.kevin.legion.finance.noteOrNull
+import com.kevin.legion.finance.valueOrNull
 import com.kevin.legion.meals.dayEndEpoch
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.plan.TrustTier
@@ -40,7 +46,14 @@ import java.time.ZoneId
  * private label constants (`"not logged"`'s day-of-week labels), which are pure formatting, not a
  * competing vocabulary for tier/unverified/estimate.
  */
-class BioDigestBuilder : DigestBuilder {
+class BioDigestBuilder(
+    /**
+     * The engine's energy estimate as this phone last SAVED it (fat-loss ticket 12). Never a network
+     * call: [DigestBuilder]'s contract is that a digest never blocks on the network, so the ENERGY
+     * line reads the saved copy and says its age, or says why there is none.
+     */
+    private val savedEnergy: (Context) -> FinanceRead<EnergyWire> = { BodyCoachController.forApp(it).savedEnergy() },
+) : DigestBuilder {
     override val aspect = AdvisorAspect.BIO
 
     override suspend fun build(context: Context): String = build(context, System.currentTimeMillis())
@@ -55,6 +68,7 @@ class BioDigestBuilder : DigestBuilder {
         val lines = mutableListOf<String>()
         lines += weightLine(db, now, zone)
         lines += intakeLine(db, now, zone)
+        lines += energyLine(savedEnergy(context))
         lines += sessionsLine(db, now, zone)
         stalledLiftLine(db, zone)?.let { lines += it }
         lines += sleepLine(db, now, zone)
@@ -133,13 +147,16 @@ class BioDigestBuilder : DigestBuilder {
                 days += "$label ${DigestText.notLogged()}"
             } else {
                 val kcal = meals.sumOf { it.caloriesKcal ?: 0 }
-                days += "$label $kcal"
+                // fat-loss ticket 12 (G8): protein beside kcal, the two figures Kevin tracks.
+                val protein = meals.mapNotNull { it.proteinG }.takeIf { it.isNotEmpty() }?.sum()
+                days += if (protein != null) "$label ${kcal}kcal/${protein.toInt()}g" else "$label ${kcal}kcal"
                 tiers += meals.map { it.trustTier }
             }
             cursor = dayEnd
             idx++
         }
-        val value = DigestText.estimate("target ${target.caloriesKcal}kcal " + days.joinToString(" "))
+        val proteinTarget = if (target.proteinG > 0) "/${target.proteinG.toInt()}g protein" else ""
+        val value = DigestText.estimate("target ${target.caloriesKcal}kcal$proteinTarget " + days.joinToString(" "))
         return DigestText.withTier(DigestText.line("INTAKE", value), tiers.combinedTier())
     }
 
@@ -261,6 +278,16 @@ class BioDigestBuilder : DigestBuilder {
             }
             DigestText.line("GOAL", (listOf(g.statement) + extras).joinToString(" "))
         }
+    }
+
+    /**
+     * fat-loss ticket 12: the engine's energy estimate, from the saved copy. Always an estimate
+     * (CLAUDE.md section 4 rule 5); a saved copy carries its age; with no copy the line says why.
+     */
+    internal fun energyLine(read: FinanceRead<EnergyWire>): String {
+        val e = read.valueOrNull ?: return DigestText.line("ENERGY", "not available: ${read.noteOrNull ?: "never read"}")
+        val age = (read as? FinanceRead.Saved)?.note?.let { " [$it]" } ?: ""
+        return DigestText.line("ENERGY", DigestText.estimate(BodyCoachText.digestEnergy(e)) + age)
     }
 
     private fun formatOneDecimal(value: Double): String = "%.1f".format(value)

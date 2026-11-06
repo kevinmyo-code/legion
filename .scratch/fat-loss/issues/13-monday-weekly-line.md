@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "13"
 title: "Phone: the Monday 8 am weekly weight line"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; owed: a Monday 8 am on the phone, then 'stop the weekly weight line'"
 blockers: ["05"]
 blocked-by: ["[[05-trend-and-waist]]"]
 tags: [ticket]

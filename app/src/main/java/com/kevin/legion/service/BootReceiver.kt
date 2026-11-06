@@ -91,6 +91,9 @@ internal suspend fun rearmAfterRestart(context: Context, tag: String) {
     // not cost any of the others theirs.
     runCatching { WellbeingDigestScheduler.rescheduleFromSettings(context) }
         .onFailure { MidnightEvents.appStartWorkFailed("${tag}_reschedule_wellbeing_digest", it) }
+    // fat-loss ticket 13: the Monday weekly weight line's alarm, lost across a reboot like the rest.
+    runCatching { com.kevin.legion.bodycoach.WeeklyLineScheduler.arm(context) }
+        .onFailure { MidnightEvents.appStartWorkFailed("${tag}_arm_weekly_line", it) }
     // Login-expiry check alarm: AlarmManager forgets it across a reboot like every
     // other alarm here. Guarded separately for the same reason as the others.
     runCatching { com.kevin.legion.freshness.LoginExpiryScheduler.arm(context) }

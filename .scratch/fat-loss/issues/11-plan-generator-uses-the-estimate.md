@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "11"
 title: "Phone: the plan generator uses the estimate and will not invent one"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; owed: a plan generated on the phone before and after the profile is entered"
 blockers: ["10"]
 blocked-by: ["[[10-phone-coach-reads]]"]
 tags: [ticket]

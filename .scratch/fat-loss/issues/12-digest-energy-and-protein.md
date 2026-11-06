@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "12"
 title: "Phone: BIO digest ENERGY line, INTAKE gains protein"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss, targeted JVM tests green; owed: an ask_advisor BIO answer on the phone naming the ENERGY line"
 blockers: ["10"]
 blocked-by: ["[[10-phone-coach-reads]]"]
 tags: [ticket]

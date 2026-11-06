@@ -466,6 +466,13 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- fat-loss ticket 13: the Monday 8 am weekly weight line's one alarm, this app's own
+             PendingIntent only, so exported=false. -->
+        <receiver
+            android:name=".bodycoach.WeeklyLineAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Login-expiry notices: the alarm is this app's own PendingIntent and the Stop action is
              this app's own notification button - never the system, so exported=false. -->
         <receiver

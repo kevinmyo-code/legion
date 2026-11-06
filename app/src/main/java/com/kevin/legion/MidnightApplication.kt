@@ -339,6 +339,10 @@ class MidnightApplication : Application() {
             appScope.launch {
                 runCatching { com.kevin.legion.notes.AlarmScheduler.rescheduleAll(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("reschedule_alarms", it) }
+                // fat-loss ticket 13: the Monday weekly weight line, armed on every start so a fresh
+                // install has it without a reboot. Idempotent (one PendingIntent, replaced).
+                runCatching { com.kevin.legion.bodycoach.WeeklyLineScheduler.arm(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("arm_weekly_line", it) }
             }
 
             // The built-in Dates aspect (aspect-engine ticket 19, repointed off the engine by
