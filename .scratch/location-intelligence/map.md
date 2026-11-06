@@ -47,6 +47,10 @@ already exist: **zoom them, never rebuild.**
 
 ## Settled, carried in - binding on every ticket
 
+> **TomTom retired 2026-11-06 (Kevin; `memory/library/decisions.md`, "Navigation quality").** Decisions
+> 4, 8, 17, 18 and 19 are superseded where they name TomTom: the departure advisor's traffic ETA comes
+> from Mapbox Directions, and is still never persisted.
+
 From `hands-and-senses` ticket 15 (8 calls) and this map's charting session (8 more). None is
 re-openable without Kevin.
 

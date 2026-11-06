@@ -29,7 +29,7 @@ text search is four round trips, and never more than three places.
   `select(List<SearchSuggestion>, ...)`, never sequential selects.
 - `search` stays one resolver source, so its `tried=` entry still times it.
 
-## Billing (decision D3)
+## Billing (decision D3, ruled 2026-11-06: `forward`)
 
 Per request: 25,000 free a month, against 2,500 sessions (Mapbox pricing, 2026-11-06). Two users are
 far inside either.

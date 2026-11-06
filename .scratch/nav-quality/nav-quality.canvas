@@ -18,7 +18,7 @@
       "y": 150,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "77c324f5d3d4c172",
@@ -28,7 +28,7 @@
       "y": 300,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "9cf736a66ed88c78",
@@ -36,6 +36,16 @@
       "file": ".scratch/nav-quality/issues/12-engine-render.md",
       "x": 0,
       "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d99396302c72a88e",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/13-recents-by-arrival-fix.md",
+      "x": 0,
+      "y": 600,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -68,7 +78,7 @@
       "y": 300,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "fb292b3f45377491",

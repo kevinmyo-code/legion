@@ -4,8 +4,8 @@ title: "Search and routing close to Google Maps, measured"
 charted: 2026-11-06
 charted-by: "Kevin + Opus"
 effort: "`.scratch/nav-quality/`"
-tickets: 12
-open: 12
+tickets: 13
+open: 10
 status: open
 tags: [map]
 ---
@@ -63,6 +63,7 @@ term lets LEGION borrow.
 | 03 | build | One request for text search (`forward`), five results, ETA per result | 01 |
 | 04 | build | Spoken-name matching: fuzzy, brand, "X near a place I know" | 01 |
 | 05 | decision | Recent and frequent destinations: what is stored, and how | 02 |
+| 13 | build | Recent and frequent destinations, kept by the arrival fix | - |
 | 06 | build | Route to the entrance, and measure wrong picks | 01 |
 | 07 | build | A faster route and incidents ahead, mid-trip | 01 |
 | 08 | build | Open now and rating in "near me" ranking | 03 |
@@ -72,31 +73,25 @@ term lets LEGION borrow.
 | 12 | build | NAV_AUDIT in the engine's `device_logs` render | - |
 
 **Order.** 01 runs first and is cheap: it is the "before" every later ticket is measured against.
-02 and 11 are rulings that can happen today. 03 and 04 are the highest return for the least code.
+02, 05 and 11 are ruled (2026-11-06); 10 is parked. 03 and 04 are the highest return for the least code.
 
 ## Decisions for Kevin
 
-- **D1 (ticket 02): Mapbox result names in the log.** Today: never (2.7.2). Option: log the
-  `mapbox_id`, which 2.7.6 lets LEGION store, so a pick can be looked up again.
-- **D2 (ticket 02): Directions results in the log.** `route_request` keeps distance, ETA and
-  coordinates rounded to about 110 m. A strict reading of 2.10.1 ("shall not ... store results")
-  forbids it. Built as asked; Kevin accepts the risk or it is cut back.
-- **D3 (ticket 03): billing shape.** `forward` bills per request (25,000 free a month) instead of per
-  session (2,500 free). Cheaper; the same token.
-- **D4 (ticket 05): how recents are kept.** The arrival fix (first-party, like `tag_place`) or the
-  `mapbox_id` (2.7.6).
-- **D5 (ticket 10): a second POI dataset on the engine.** No API key at query time; a Foursquare
-  Places Portal token only to download. Engine disk and a refresh job.
-- **D6 (ticket 11): Google Places.** Recommended closed: 14.2, plus a new billed Google key, plus
-  ADR 0054.
-- **D7: how long the engine keeps NAV_AUDIT batches.** Same as conversation batches unless ruled.
-- **D8: the upload at trip end.** `trip_end` calls `ConversationLog.uploadSoon()`, so a hand-started
-  trip's lines reach the engine without waiting for the next voice session. The other choice is to
-  let them ride along with the next upload.
-- **D9: contact addresses in `resolve` reasons.** A contact whose address cannot be geocoded logs a
-  not-found sentence that quotes the address text. That is the household's own contact data, but it
-  is a third party's address in a log. Keep it, or log the label only.
-- **Standing, from mapbox-nav: TomTom.** `TOMTOM_API_KEY` is still baked and almost unused. Retire it.
+**All ruled 2026-11-06 (Kevin: *"ok for navigation. all of it"*), every recommendation accepted.**
+Record: `memory/library/decisions.md`, 2026-11-06, "Navigation quality".
+
+| # | Question | Ruling |
+|---|---|---|
+| D1 | Mapbox result names in the log (02) | The `mapbox_id` is logged on a `search` hit (2.7.6); never its name or address |
+| D2 | Directions results in the log (02) | Distance and ETA kept, risk accepted in words; destination coordinates only for a saved place (first-party fix) |
+| D3 | Billing shape (03) | `forward`, per request |
+| D4 | How recents are kept (05) | The arrival GPS fix; build ticket [13](issues/13-recents-by-arrival-fix.md) |
+| D5 | A second POI dataset (10) | Later; ticket 10 parked (KIV) |
+| D6 | Google Places (11) | Closed |
+| D7 | How long the engine keeps NAV_AUDIT | 90 days; a conversation batch's other lines still go at 60 |
+| D8 | The upload at trip end | Kept |
+| D9 | Contact addresses in `resolve` reasons | The label only, never the address text (calendar and suggestion addresses too) |
+| - | TomTom (standing, mapbox-nav) | Retired: build-config key and credit removed; Kevin revokes the key at TomTom |
 
 ## Not yet specified
 

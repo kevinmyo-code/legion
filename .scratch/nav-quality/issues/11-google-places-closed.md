@@ -3,11 +3,12 @@ map: nav-quality
 ticket: "11"
 title: "Decision: Google Places, closed on the terms"
 type: decision
-status: open
+status: resolved
+status-detail: "2026-11-06, Kevin: closed"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
@@ -35,3 +36,7 @@ Closed. If Kevin wants Google's data, the honest form is ADR 0062's: open Google
 a hand-off, which ADR 0054 rules out for navigation.
 
 Resolve by Kevin's word; no build follows.
+
+## Resolution (Kevin, 2026-11-06)
+
+Closed, as recommended (decision D6). No build follows.

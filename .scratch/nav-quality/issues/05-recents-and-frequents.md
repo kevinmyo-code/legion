@@ -3,10 +3,11 @@ map: nav-quality
 ticket: "05"
 title: "Decision: recent and frequent destinations as a resolver source"
 type: decision
-status: open
+status: resolved
+status-detail: "2026-11-06, Kevin: option A, the arrival fix (D4); build is ticket 13"
 blockers: ["02"]
 blocked-by: ["[[02-what-the-audit-may-keep]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -43,3 +44,9 @@ calendar.
 - Picked rank 1 share up for destinations driven before.
 
 A build ticket opens when this resolves.
+
+## Resolution (Kevin, 2026-11-06)
+
+**Option A, the arrival fix** (decision D4), not C. On `arrival`, the phone's own GPS fix and the
+words Kevin used are kept, first-party like `tag_place`. No `mapbox_id` is stored for recents, so no
+re-retrieve and no network on use. Build: [ticket 13](13-recents-by-arrival-fix.md).

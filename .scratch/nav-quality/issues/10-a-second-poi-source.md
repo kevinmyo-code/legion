@@ -3,7 +3,8 @@ map: nav-quality
 ticket: "10"
 title: "Decision: a second POI source on the engine"
 type: decision
-status: open
+status: kiv
+status-detail: "2026-11-06, Kevin: later (D5)"
 blockers: ["01"]
 blocked-by: ["[[01-baseline]]"]
 open-blockers: 1
@@ -35,3 +36,7 @@ against it, and count how many it answers that Mapbox did not. Build only if tha
 ## Proven by NAV_AUDIT
 
 A new `poi_open` source in `tried=`, and the zero-result rate on the replayed baseline phrases.
+
+## Parked (Kevin, 2026-11-06)
+
+"Later" (decision D5). Not closed: ticket 01's zero-result phrases are still the test that reopens it.
