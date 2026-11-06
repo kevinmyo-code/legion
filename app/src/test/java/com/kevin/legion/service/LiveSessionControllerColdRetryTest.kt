@@ -29,7 +29,7 @@ class LiveSessionControllerColdRetryTest {
     }
 
     @Test
-    fun `a background prewarm is never retried here`() {
+    fun `a background connect is never retried here`() {
         assertFalse(decide(userInitiated = false))
     }
 

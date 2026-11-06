@@ -22,6 +22,12 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## No idle voice session - 2026-11-05
+
+- `fix/no-idle-session`: no Live socket while idle (Kevin's "OK"); prewarm gone everywhere, one
+  door, stale-session events dropped. Owed by Kevin: install `fast`, leave idle 5 min (no
+  `session_start`), then tap and wake once each; rule on a cold tap greeting vs listening at once.
+
 ## Phone verification - 2026-11-05
 
 - `feat/phone-verify`: `python tools/phone` drives the phone with rails;

@@ -7271,3 +7271,21 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Built 2026-11-05** (`feat/phone-verify`): `tools/phone/`, `tools/screen_map.py` and
   `docs/screen-map.md` (in the commit hook), skills `verify-on-phone` and `maintain-screen-map`,
   `testTagsAsResourceId` at the window roots.
+
+## 2026-11-05 - No voice session while idle (Kevin)
+
+- **Asked:** "stop keeping a voice session open while idle; only open one when you tap or say the
+  wake word." **Kevin: "OK".**
+- **Why:** prod LIVE_AUDIT on the A25 (263092342): after a conversation a socket reopened at once,
+  Google closed it for client inactivity every ~2 minutes, and it reopened, 19:39 to 20:17, with
+  `superseded` and "already connected to an existing client" collisions. Each reopen re-sent the
+  ~16k-token setup (ticket 24's measure) and cost a `cold_start_ms` of 500-1000.
+- **Supersedes** hands-and-senses ticket 24's 10 minute idle window (2026-08-22, "yeah take it"),
+  which sat between "warm all day" and "warm when he is likely to speak" (ticket 24, question 3).
+  This ruling is past both: never warm while idle.
+- **Built** on `fix/no-idle-session`: no prewarm on start, close, voice/car refresh or new
+  conversation; one door that supersedes the held session; only the held session's events count;
+  a raise never overwrites a tap's connect in flight. Kept: the turn-detector resume, one cold
+  retry per tap, a dropped conversation's handle for the next tap, goAway, offline wording.
+- **The trade:** a tap that used to find a warm socket pays one cold connect, and greets before
+  listening. Open to Kevin: a cold tap could skip the greeting and listen at once, as a warm one did.

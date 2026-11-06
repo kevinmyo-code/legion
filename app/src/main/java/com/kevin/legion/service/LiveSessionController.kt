@@ -52,16 +52,20 @@ import org.json.JSONObject
  * [phase] and [status] are exposed as flows so the overlay (and the setup
  * screen) can render the current state.
  *
- * **Warm sessions (latency):** the WebSocket + setup handshake is the dominant
- * per-conversation latency, so we avoid paying it on every tap. The service
- * [prewarm]s a connected-but-idle session on start; tapping resumes it
- * instantly. After a conversation goes quiet the socket parks *warm* (see
- * [GeminiLiveSession.parkWarm]) rather than closing, so follow-up turns through a
- * drive are instant too; it fully closes only after a few idle minutes, and the
- * next tap lazily reconnects. The session is set up with the cached static
- * instruction ([AriaBrain.buildBaseInstruction]); fresh live context
- * ([AriaBrain.buildLiveContext]) is injected into the greeting at the start of
- * each conversation so it's current without rebuilding the whole prompt per turn.
+ * **No socket while idle (Kevin, 2026-11-05):** *"stop keeping a voice session open
+ * while idle; only open one when you tap or say the wake word."* A session is opened
+ * only by something that needs it now - a tap or Talk ([onTap]), the wake word (also
+ * [onTap]), the side key ([onAssistRequest]), or a proactive raise that has to speak
+ * ([requestSpeak]) - and nothing reopens one after it closes. The idle prewarm this
+ * replaced (on service start, after every close inside a 10 minute window, and on every
+ * voice or car refresh) was closed by the server for "client inactivity" about every two
+ * minutes and reopened at once, for as long as the window kept being renewed. The cost is
+ * one cold connect (`LIVE_LATENCY cold_start_ms`) on a tap that used to find a warm socket.
+ * [newSession] is the only door, and it supersedes any session still held, so there is at
+ * most one. The typed chat panel never needs a socket ([onTyped]). The session is set up
+ * with the cached static instruction ([AriaBrain.buildBaseInstruction]); fresh live context
+ * ([AriaBrain.buildLiveContext]) is injected into the greeting at the start of each
+ * conversation so it's current without rebuilding the whole prompt per turn.
  *
  * Three ways a session is driven:
  *  - The driver taps the floating button ([onTap]) to start (or resume) a
@@ -90,8 +94,8 @@ class LiveSessionController(context: Context) {
             if (value == null) CompanionPhase.setSilenced(false)
         }
 
-    // Set once destroy() runs so a final Closed event doesn't re-prewarm a socket
-    // on a torn-down controller.
+    // Set once destroy() runs so a final Closed event cannot start anything on a torn-down
+    // controller.
     private var destroyed = false
 
     private val _phase = MutableStateFlow(Phase.IDLE)
@@ -111,24 +115,8 @@ class LiveSessionController(context: Context) {
     // failed connection ("Couldn't connect") from a mid-chat drop ("Connection lost").
     private var connectedThisSession = false
 
-    // Consecutive prewarm sockets that never connected (dead zone / bad key). The
-    // auto-prewarm after a close backs off exponentially on this so we don't
-    // hot-loop failed connects. Reset on any successful connect and on a fresh tap.
-    private var consecutivePrewarmFailures = 0
-
-    // Ticket 24 (`.scratch/hands-and-senses/issues/24-the-socket-that-never-rests.md`):
-    // wall-clock time of the last genuine signal - a tap ([onTap]), a wake-word trigger (also
-    // [onTap], with fromWakeWord=true), or a proactive raise that needed to speak
-    // ([requestSpeak]). This is the only input [shouldAutoReconnectAfterClose] reads, and it is
-    // what the [LiveEvent.Closed] branch's auto-reconnect is gated on: a server-initiated close
-    // (measured at ~153s, unrelated to anything the app does) is only worth immediately
-    // reconnecting when something real happened recently. Initialized to construction time so a
-    // freshly-started service still gets the ordinary warm behaviour for a while, not an
-    // instant cold shoulder.
-    private var lastRealInteractionMs = System.currentTimeMillis()
-
     // What to do once the socket finishes connecting (the setup handshake is
-    // async). A warm/prewarmed socket is already connected, so these only matter
+    // async). A warm (parked) socket is already connected, so these only matter
     // for a cold connect.
     private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM }
     private var pendingAction = Pending.NONE
@@ -198,7 +186,7 @@ class LiveSessionController(context: Context) {
 
     // Ticket 02 (drive-test-2026-08-18): the latest session-resumption handle Gemini has
     // confirmed we can reconnect with, threaded into the NEXT [GeminiLiveSession.start] call
-    // (prewarm/startConversation). Lives on the controller, not the session, because a
+    // (the next tap's startConversation). Lives on the controller, not the session, because a
     // [GeminiLiveSession] instance dies with its own socket and this is precisely the thing
     // meant to outlive that. Cleared on a driver-initiated stop (see the Closed branch) so a
     // deliberately ended chat doesn't silently bleed into whatever the driver starts next.
@@ -236,12 +224,29 @@ class LiveSessionController(context: Context) {
      * Constructs a fresh [GeminiLiveSession] and, alongside the caller's own wiring, starts
      * mirroring its [GeminiLiveSession.isSilenced] transitions to [CarProbeLog] (ticket 15 wave 2's
      * signal, ticket 08's wave 3 consumer - `.scratch/android-auto/issues/15-the-live-session-can-be-silenced.md`).
-     * The three construction sites below ([prewarm], [startConversation], [startProactive]) all
+     * The construction sites below ([startConversation], [speakAndListen], [startProactive]) all
      * route through here so the car probe session can see silencing regardless of which door opened
      * the socket, without each call site remembering to wire it separately.
+     *
+     * **The single-session guard (2026-11-05).** This is the only place a [GeminiLiveSession] is
+     * made, so it is where "at most one" is enforced: a session still held is superseded
+     * ([supersede]) before the new one exists, and only the CURRENT session's events reach
+     * [handleEvent] ([LiveSessionLifecycle.accepts]). Before this, a replaced session's late
+     * Closed could null out its successor and orphan a live socket, and the prod log showed
+     * "superseded" followed by "already connected to an existing client".
      */
     private fun newSession(): GeminiLiveSession {
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        supersede("new session")
+        var self: GeminiLiveSession? = null
+        val s = GeminiLiveSession(appContext) { event ->
+            // Events are posted to the main thread, so [self] is set by the time any arrives.
+            if (LiveSessionLifecycle.accepts(source = self, current = session)) {
+                handleEvent(event)
+            } else {
+                android.util.Log.d("LiveSessionController", "dropped ${event::class.simpleName} from a superseded session")
+            }
+        }
+        self = s
         scope.launch {
             s.isSilenced.collect { silenced ->
                 CarProbeLog.log("CarProbeMicSilenced", "GeminiLiveSession.isSilenced=$silenced")
@@ -270,55 +275,42 @@ class LiveSessionController(context: Context) {
     // --- public entry points (service / overlay) -------------------------
 
     /**
-     * Opens a connected-but-idle (warm) session ahead of the first tap so that
-     * tap doesn't pay the connect + setup handshake. Safe/cheap to call when one
-     * already exists (no-op). Called by the service on start and again after a
-     * session fully closes, so there's normally always a warm socket ready.
+     * Tears down the session still held, if any, without a [LiveEvent.Closed] (so nothing in the
+     * Closed branch runs for it), and drops the resumption handle.
+     *
+     * **Why the handle goes too.** A superseded socket can still be attached on the server for a
+     * moment, and a start that resent its handle at once was refused with "BidiGenerateContent
+     * session is already connected to an existing client" (A25 prod log, 2026-11-05: superseded at
+     * 20:25:38, that refusal at 20:25:42). The next start goes out without one, which costs the
+     * superseded socket's continuity and nothing else: every caller here is replacing or ending it.
      */
-    fun prewarm() {
-        if (destroyed || session != null) return
-        // Only prewarm eagerly on a BYO/dev key. A broker-minted ephemeral token
-        // (trial/subscribed) expires in ~6 min server-side, so eagerly opening a
-        // warm socket ahead of any tap risks it going stale before the driver
-        // ever taps. Trial/sub users pay a real connect handshake on first tap
-        // instead (see resolveConnectionMode + onTap/startConversation) - a small
-        // latency cost, not a correctness one.
-        if (!GeminiKeyProvider.hasKey()) return
-        val s = newSession()
-        session = s
-        pendingAction = Pending.NONE
-        conversationMode = false
-        connectedThisSession = false
-        scope.launch {
-            val base = brain.buildBaseInstruction()
-            s.start(
-                base, LiveToolbox.declarations(),
-                vad = true, voiceName = CompanionProfile.voice(appContext),
-                keepWarm = true, prewarmOnly = true,
-                // Ticket 02: carry forward whatever the last session confirmed - a prewarm
-                // that follows a dropped conversation should still be able to resume it.
-                resumeHandle = sessionResumeHandle,
-            )
-        }
+    private fun supersede(why: String) {
+        val old = session ?: return
+        android.util.Log.i("LiveSessionController", "superseding the held session: $why")
+        old.silentDestroy()
+        session = null
+        sessionResumeHandle = null
     }
 
     /**
-     * Rebuilds the idle warm/prewarm socket so the next line the companion speaks
-     * uses the CURRENT voice. [prewarm] captures voiceName at socket start, so after
-     * the driver changes voice (onboarding finish, Settings) a still-open warm socket
-     * would keep the old voice - the field-test "default voice after onboarding" bug.
-     * No-op during an active conversation (never kills a live turn); the fresh prewarm
-     * re-reads CompanionProfile.voice. Only BYO keys prewarm eagerly, so this is a
-     * no-op for trial/subscribed (whose greet already cold-opens with the current voice).
+     * Closes an idle (parked warm) socket so the next line the companion speaks uses the CURRENT
+     * voice and car: a socket captures voiceName at start, so after the voice changes (onboarding
+     * finish, Settings) or the resolved car changes (an OBD dongle connecting or dropping,
+     * `ActiveVehicle.notifyResolutionChanged`) a still-open socket would keep the old one - the
+     * field-test "default voice after onboarding" bug.
+     *
+     * **It does not reopen one (2026-11-05).** It used to prewarm a fresh socket straight after,
+     * past any idle window, which is how a dongle flapping in a parked car kept a voice session
+     * open all evening (A25: `obd_disconnected` 20:46:55.718, `session_start` 0.2 s later, closed
+     * for client inactivity two minutes on). Every start reads the voice and car itself, so
+     * nothing is lost by waiting for the next tap. A conversation, a proactive line still
+     * speaking, and a connect in flight are all left alone: each is short-lived and the next
+     * socket picks up the change.
      */
     fun refreshIdleVoice() {
         if (destroyed || conversationMode) return
-        // silentDestroy skips LiveEvent.Closed, so close out any dangling
-        // segment here too (e.g. a proactive line still speaking) - otherwise
-        // its stuck-open segmentStartMs would inflate the NEXT socket's report.
-        session?.silentDestroy()
-        session = null
-        prewarm()
+        val s = session ?: return
+        if (s.isWarm()) supersede("voice or car changed while idle")
     }
 
     /**
@@ -343,13 +335,6 @@ class LiveSessionController(context: Context) {
 
     @Suppress("ReturnCount") // one early exit per tap state; folding them is riskier than the rule is worth
     fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false) {
-        // Ticket 24: a tap (or a wake-word trigger, which calls this with fromWakeWord=true) IS
-        // the genuine signal [shouldAutoReconnectAfterClose] waits for. Recorded unconditionally,
-        // before any of the early returns below, so even a tap that bounces off "ON A CALL" or
-        // "NO SIGNAL OUT HERE" still counts as someone being there - the socket staying warm a
-        // while longer is the safe direction to be wrong in, not the storm this ticket exists to
-        // stop.
-        lastRealInteractionMs = System.currentTimeMillis()
         // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
         // driver tapped stop, or the socket died, between the tool call and TurnComplete, the flag
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
@@ -378,9 +363,6 @@ class LiveSessionController(context: Context) {
             return
         }
 
-        // A deliberate tap resets the prewarm backoff - the driver is actively
-        // asking, so try now rather than honoring a long dead-zone cooldown.
-        consecutivePrewarmFailures = 0
         retriedColdConnectThisTap = false
 
         // Fast-fail with a visible reason instead of a silent 15s connect attempt.
@@ -393,7 +375,7 @@ class LiveSessionController(context: Context) {
         if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
         // Added 2026-09-07, and it is a spend fix as much as an honesty one. Without it a tap with
         // RECORD_AUDIO revoked opened a socket, paid for the whole setup prompt (~16k tokens, see
-        // [shouldAutoReconnectAfterClose]'s doc), connected, opened the mic, and only THEN found out
+        // `LiveSetupPayloadSizeTest`), connected, opened the mic, and only THEN found out
         // in [GeminiLiveSession.micLoop] - which closes with "microphone permission not granted" and
         // lands as a notice at the [LiveEvent.Closed] branch below. The answer was right and it cost
         // a connect to reach; [com.kevin.legion.ui.assistant.AssistantStrip] already checks this
@@ -410,15 +392,8 @@ class LiveSessionController(context: Context) {
         }
         // Anything left here is neither in-conversation nor warm - e.g. mid
         // self-intro/proactive speech (speakOnWarm clears both flags before
-        // speaking), or still cold-connecting. Tear it down before starting
-        // fresh so a tap never leaves two live sessions running at once.
-        if (s != null) {
-            // silentDestroy skips Closed - close out any dangling segment
-            // (e.g. the proactive speech this branch is interrupting) so it
-            // doesn't leak into the fresh conversation's own reported total.
-            s.silentDestroy()
-            session = null
-        }
+        // speaking), or still cold-connecting. startConversation's newSession()
+        // supersedes it, so a tap never leaves two live sessions running at once.
         startConversation(fromWakeWord)
     }
 
@@ -433,8 +408,8 @@ class LiveSessionController(context: Context) {
      * its own clock, and the phase is not touched ([typedPhase]). The text model sees the spoken
      * lines through the panel history; the Live session does not see the typed exchange.
      *
-     * **Not a real interaction for [shouldAutoReconnectAfterClose]** on purpose: keeping a prewarm
-     * socket alive costs setup tokens on every reconnect, and typing needs no socket.
+     * **Opens no Live socket** (2026-11-05): typing needs none, and every connect re-sends the
+     * whole setup payload.
      *
      * **There is deliberately no microphone check here.** Every message that is not sent says so
      * in the panel, in words.
@@ -485,18 +460,17 @@ class LiveSessionController(context: Context) {
         TypedTurnRecorder.newConversation()
         sessionResumeHandle = null
         pendingThreadLossNotice = false
-        // A fresh socket for a fresh conversation. silentDestroy skips Closed, so the controller
-        // state a Closed would reset is reset here; prewarm() brings the idle socket back.
+        // A fresh conversation gets a fresh socket on the next tap; none is opened here
+        // (2026-11-05). supersede() skips Closed, so the controller state a Closed would reset is
+        // reset here.
         if (session != null && !destroyed) {
-            session?.silentDestroy()
-            session = null
+            supersede("new conversation")
             pendingAction = Pending.NONE
             pendingPrompt = null
             conversationMode = false
             ConversationCards.end()
             connectedThisSession = false
             set(Phase.IDLE, IDLE_STATUS)
-            prewarm()
         }
     }
 
@@ -580,12 +554,6 @@ class LiveSessionController(context: Context) {
         userInitiated: Boolean = false,
         listenHoldMs: Long = 0L,
     ) {
-        // Ticket 24: a proactive raise that needs to speak is the third genuine signal
-        // [shouldAutoReconnectAfterClose] recognises, alongside a tap and a wake-word trigger
-        // (see [onTap]). It reconnects on its own cold path below regardless of the idle window
-        // (startProactive / speakAndListen / the warm/mid-connect branches) - this timestamp only
-        // extends how long the socket THEN stays willing to auto-reconnect on its own after that.
-        lastRealInteractionMs = System.currentTimeMillis()
         // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
         // still lands in a turn already flagged. See GeminiLiveSession.markTurnReadThrough.
         if (carriesReadThroughContent) session?.markTurnReadThrough()
@@ -594,49 +562,43 @@ class LiveSessionController(context: Context) {
             return
         }
         val s = session
-        android.util.Log.d("LiveSessionController", "requestSpeak branch: ${speakBranchLabel(s)}")
+        val route = LiveSessionLifecycle.speakRoute(
+            hasSession = s != null,
+            inConversation = s?.inConversation == true,
+            warm = s?.isWarm() == true,
+            connectQueued = pendingAction != Pending.NONE,
+        )
+        android.util.Log.d("LiveSessionController", "requestSpeak branch: ${route.label}")
         when {
+            // Nothing live: open a short-lived speak-only session for this line. The one door a
+            // raise has to a socket (2026-11-05: nothing is held open for it in advance).
+            s == null -> startProactive(prompt, userInitiated)
             // Mid-conversation: fold the line into the ongoing turn flow (rare).
             // The segment is already active from when the conversation started.
             //
             // sendText returns false rather than throwing when OkHttp's socket is already
             // closing/closed - the same shape handleToolCall's own `sent` check documents. Ignoring
             // that false is how a line vanished with nothing logged and nothing said.
-            s != null && s.inConversation ->
+            route == LiveSessionLifecycle.SpeakRoute.FOLD_IN ->
                 if (!s.sendText(prompt)) refuse(VoiceRefusal.SOCKET_GONE, userInitiated)
-            // Warm socket already up: speak on it and stay warm. This is a
-            // proactive line spoken on an already-connected socket - it never
-            // fires LiveEvent.Connected, so start the billing segment here.
-            s != null && s.isWarm() ->
+            // A parked warm socket (a conversation's 30 minute backstop): speak on it. This is a
+            // proactive line spoken on an already-connected socket - it never fires
+            // LiveEvent.Connected.
+            route == LiveSessionLifecycle.SpeakRoute.SPEAK_ON_WARM ->
                 if (!s.speakOnWarm(prompt)) refuse(VoiceRefusal.SOCKET_GONE, userInitiated)
-            // A socket is still connecting (prewarm): speak once it's up, warm. If that connect
-            // never lands, the [LiveEvent.Closed] branch reports the dropped prompt - which is
-            // what [pendingSpeakUserInitiated] is carried for.
-            s != null -> {
+            // A socket is still connecting with nothing queued on it: speak once it's up, warm.
+            // If that connect never lands, the [LiveEvent.Closed] branch reports the dropped
+            // prompt - which is what [pendingSpeakUserInitiated] is carried for.
+            route == LiveSessionLifecycle.SpeakRoute.QUEUE_ON_CONNECT -> {
                 pendingAction = Pending.PROACTIVE_WARM
                 pendingPrompt = prompt
                 pendingSpeakUserInitiated = userInitiated
             }
-            // Nothing live: spin up a short-lived speak-only session.
-            else -> startProactive(prompt, userInitiated)
+            // A connect is in flight for something else (a tap's conversation, another raise).
+            // Queuing here used to overwrite its pending action, turning a tap into a spoken line
+            // with no microphone. The raise is refused in words instead.
+            else -> refuse(VoiceRefusal.CONNECT_IN_FLIGHT, userInitiated)
         }
-    }
-
-    /**
-     * DIAGNOSTIC (B9, remove once root-caused): which branch a proactive line takes decides whether
-     * the mic reopens after it (only the `inConversation` fold-in branch skips
-     * `suppressMicNextTurn`), so a field report of "it listened after proactive speech" should show
-     * "fold-in" here.
-     *
-     * Lifted out of [requestSpeak] 2026-09-07 - purely so that function stays under detekt's
-     * cyclomatic-complexity ceiling once every branch of it started reporting its own failures.
-     * The four cases and their wording are unchanged.
-     */
-    private fun speakBranchLabel(s: GeminiLiveSession?): String = when {
-        s == null -> "cold startProactive (mic suppressed)"
-        s.inConversation -> "fold-in (mic WILL reopen after, by design)"
-        s.isWarm() -> "warm speakOnWarm (mic suppressed)"
-        else -> "mid-connect PROACTIVE_WARM (mic suppressed)"
     }
 
     /**
@@ -703,12 +665,10 @@ class LiveSessionController(context: Context) {
         conversationMode = true
         ConversationCards.begin()
         val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
-        // Ticket 02: a warm socket that resumes here is either a genuinely warm-parked
-        // conversation (the common case - no loss, nothing to say) or a FRESH prewarmed
-        // socket that replaced one that died since the driver was last talking (see
-        // startConversation's Pending.NONE prewarm auto-reconnect in the Closed handler).
-        // consumeThreadLossNotice() tells the two apart the only way that's actually
-        // possible from here: whether the Closed handler flagged a real loss.
+        // Ticket 02: a warm socket that resumes here is a warm-parked conversation (its 30
+        // minute backstop) or a socket a proactive line was spoken on. Nothing reopens an idle
+        // socket any more (2026-11-05), but a loss flagged by the Closed handler is still
+        // reported here, the first place a conversation begins again.
         val lostThread = consumeThreadLossNotice()
         val ok = when {
             isFirst -> {
@@ -739,8 +699,7 @@ class LiveSessionController(context: Context) {
             // in LISTENING forever. silentDestroy skips Closed, so close out any
             // dangling segment (e.g. a proactive line that was mid-speech on this
             // socket) before the fresh conversation starts its own.
-            s.silentDestroy()
-            session = null
+            supersede("stale warm socket")
             // Ticket 10: a stale warm socket must not swallow the acknowledgement - the
             // driver still spoke, and still heard nothing back.
             startConversation(fromWakeWord)
@@ -857,7 +816,7 @@ class LiveSessionController(context: Context) {
             refuse(if (!GeminiKeyProvider.hasKey()) VoiceRefusal.NO_KEY else VoiceRefusal.OFFLINE, userInitiated)
             return
         }
-        existing?.silentDestroy()
+        // newSession() supersedes whatever [existing] is (a proactive line, a connect in flight).
         val s = newSession()
         session = s
         // The mark in requestSpeak landed on the PREVIOUS session (or on nothing, cold). This one
@@ -941,7 +900,7 @@ class LiveSessionController(context: Context) {
      * The panel's half of a socket closing: marks a voice conversation ended (what was said stays
      * readable). Typed turns never ride this socket, so there is no queued typed message to fail
      * here; [ChatTranscript.sessionEnded] adds nothing when no spoken line was added since the
-     * last end, so a prewarm socket cycling under a typed-only chat leaves it alone.
+     * last end, so a speak-only socket closing under a typed-only chat leaves it alone.
      */
     private fun closeOutTypedChat() {
         AssistantChatStore.update { it.sessionEnded() }
@@ -951,12 +910,6 @@ class LiveSessionController(context: Context) {
         when (event) {
             is LiveEvent.Connected -> {
                 connectedThisSession = true
-                consecutivePrewarmFailures = 0
-                // A fresh connect that's about to actually talk starts the
-                // billing segment here; Pending.NONE is a bare prewarm sitting
-                // idle (no one spoke), so it must NOT start one.
-                if (pendingAction != Pending.NONE) {
-                }
                 when (pendingAction) {
                     Pending.CONVERSATION -> {
                         // Commit the first-session flag only on a successful
@@ -974,7 +927,9 @@ class LiveSessionController(context: Context) {
                         pendingPrompt?.let { session?.speakOnWarm(it) }
                         set(Phase.IDLE, IDLE_STATUS)
                     }
-                    Pending.NONE -> set(Phase.IDLE, IDLE_STATUS) // warm, ready to tap
+                    // Nothing opens a socket with nothing to do any more (2026-11-05); kept so the
+                    // `when` stays exhaustive and a stray connect leaves the strip honest.
+                    Pending.NONE -> set(Phase.IDLE, IDLE_STATUS)
                 }
                 pendingAction = Pending.NONE
                 pendingPrompt = null
@@ -1077,8 +1032,8 @@ class LiveSessionController(context: Context) {
             // that sets phase correctly. See [LiveEvent.MicClosed]'s doc.
             is LiveEvent.MicClosed -> {}
             // Ticket 02: persist the handle regardless of whether a conversation is even
-            // active right now - a warm/prewarmed socket idling between chats can still
-            // receive these, and the next real conversation is what benefits.
+            // active right now - a parked or speak-only socket can still receive these, and the
+            // next real conversation is what benefits.
             is LiveEvent.ResumeHandleUpdated -> sessionResumeHandle = event.handle
             is LiveEvent.Idle -> {
                 // Conversation went quiet but the socket is warm - ready for an
@@ -1116,10 +1071,22 @@ class LiveSessionController(context: Context) {
             }
             is LiveEvent.ToolCall -> handleToolCall(event)
             is LiveEvent.Closed -> {
+                // The one decision about what a close opens next ([LiveSessionLifecycle.afterClose]).
+                // Only two answers open a socket, and both serve someone who is talking or just
+                // tapped; an unattended close (client inactivity, a proactive line done, a stop)
+                // opens nothing (Kevin, 2026-11-05).
+                val outcome = LiveSessionLifecycle.afterClose(
+                    reason = event.reason,
+                    conversationMode = conversationMode,
+                    destroyed = destroyed,
+                    coldRetryArmed = coldRetry != null && pendingAction == Pending.CONVERSATION,
+                    everConnected = connectedThisSession,
+                    alreadyRetried = retriedColdConnectThisTap,
+                )
                 // Silero failed mid-conversation: the session closed itself to come back on server
                 // VAD (said in words already, TurnNotice). Resume the same conversation, mic open,
                 // no greeting.
-                if (event.reason == GeminiLiveSession.TURN_FALLBACK_REASON && conversationMode && !destroyed) {
+                if (outcome == LiveSessionLifecycle.AfterClose.RESUME_CONVERSATION) {
                     session = null
                     startConversation(listenOnly = true)
                     return
@@ -1138,10 +1105,9 @@ class LiveSessionController(context: Context) {
                     pendingThreadLossNotice = true
                 }
                 // The handle rules ([resumeHandleAfterClose]): a deliberate stop, a resume that
-                // never connected, and an idle socket left closed past the idle window all drop it.
-                val autoReconnect = shouldAutoReconnectAfterClose(lastRealInteractionMs, System.currentTimeMillis())
+                // never connected, and any close of a socket no conversation was using drop it.
                 sessionResumeHandle = resumeHandleAfterClose(
-                    sessionResumeHandle, event.reason, everConnected, userInitiated, autoReconnect,
+                    sessionResumeHandle, event.reason, everConnected, userInitiated,
                 )
                 // A tap's cold connect that closed before ever connecting, for a reason that is not
                 // the user's key, quota or mic, gets ONE silent retry, cold and with no handle
@@ -1150,9 +1116,7 @@ class LiveSessionController(context: Context) {
                 // stays CONNECTING (startConversation sets it); the notice only appears if this
                 // second attempt also fails, because [retriedColdConnectThisTap] is then set.
                 val retry = coldRetry
-                if (retry != null && pendingAction == Pending.CONVERSATION &&
-                    shouldRetryColdConnect(userInitiated, everConnected, event.reason, retriedColdConnectThisTap)
-                ) {
+                if (outcome == LiveSessionLifecycle.AfterClose.RETRY_COLD && retry != null) {
                     retriedColdConnectThisTap = true
                     session?.silentDestroy()
                     session = null
@@ -1201,10 +1165,6 @@ class LiveSessionController(context: Context) {
                     refuse(VoiceRefusal.SOCKET_GONE, pendingSpeakUserInitiated)
                 }
 
-                // A prewarm socket (not a conversation) that never connected is a
-                // failed connect - escalate the retry backoff.
-                if (!everConnected && !userInitiated) consecutivePrewarmFailures++
-
                 session = null
                 pendingAction = Pending.NONE
                 pendingPrompt = null
@@ -1213,42 +1173,12 @@ class LiveSessionController(context: Context) {
                 connectedThisSession = false
                 set(Phase.IDLE, IDLE_STATUS)
 
-                // Re-establish a warm socket so the next tap is instant again, backing off after
-                // repeated connect failures (dead zone / bad key) - UNLESS ticket 24's idle window
-                // has lapsed, in which case we do nothing here and let the socket stay closed.
-                //
-                // This is the fix for the measured reconnect storm: the Live server closes an
-                // idle prewarmed socket every ~153s on its own (see the ticket - resumption does
-                // NOT discount the re-sent setup payload), and reconnecting on every one of those
-                // closes forever is what turned an idle phone into ~565 reconnects and ~9.1M
-                // estimated input tokens a day with nobody using the app. Past the idle window, a
-                // close is left alone; the next tap, wake-word trigger, or proactive raise
-                // reconnects instantly anyway through its own cold-start path ([onTap],
-                // [startProactive]/[speakAndListen]) regardless of what happens here.
-                //
-                // The trade, stated rather than buried: the FIRST interaction after a long idle
-                // stretch pays a cold connect - measured at roughly a second slower than a warm
-                // resume - instead of the instant resume a still-warm socket would have given. That
-                // cost is real and is paid once per idle stretch, not 565 times a day.
-                if (!destroyed && autoReconnect) {
-                    val failures = consecutivePrewarmFailures
-                    if (failures > 0) {
-                        scope.launch {
-                            delay((30_000L * (1L shl failures.coerceAtMost(6))).coerceAtMost(300_000L))
-                            // Re-check the idle window too, not just destroyed/session==null: the
-                            // backoff delay itself can be long enough to carry the last real
-                            // interaction outside the window, and a real tap/wake/raise during the
-                            // delay already reconnects on its own via its own cold path.
-                            if (!destroyed && session == null &&
-                                shouldAutoReconnectAfterClose(lastRealInteractionMs, System.currentTimeMillis())
-                            ) {
-                                prewarm()
-                            }
-                        }
-                    } else {
-                        prewarm()
-                    }
-                }
+                // Nothing is reopened here (Kevin, 2026-11-05: "only open one when you tap or say
+                // the wake word"). This block used to prewarm a fresh socket after every close
+                // inside a 10 minute window of the last tap or raise; the server closes an idle one
+                // for "client inactivity" about every two minutes, so the A25 reconnected all
+                // evening and re-sent the ~16k-token setup each time (ticket 24 measured it). A
+                // conversation's drop still keeps its handle (above), so the next tap resumes it.
             }
         }
     }
@@ -1577,7 +1507,7 @@ class LiveSessionController(context: Context) {
      * An enum rather than a string literal at each call site so [refusalNotice] can be a pure
      * function a plain JVM test walks exhaustively - [LiveSessionController] needs a live
      * Context/GeminiLiveSession/Room to construct at all, the same constraint
-     * [shouldAutoReconnectAfterClose] and [shouldRestoreAfterToolCall] already live with.
+     * [resumeHandleAfterClose] and [shouldRestoreAfterToolCall] already live with.
      * `when` over an enum with no `else` is also what makes a NEW guard added below fail to
      * compile until somebody writes its sentence.
      */
@@ -1601,6 +1531,10 @@ class LiveSessionController(context: Context) {
 
         /** There was a socket, and it was already gone by the time we tried to speak on it. */
         SOCKET_GONE,
+
+        /** A connect was already in flight for something else (a tap's conversation, another
+         *  raise), so this line had nowhere to go without overwriting it (2026-11-05). */
+        CONNECT_IN_FLIGHT,
     }
 
     companion object {
@@ -1639,6 +1573,7 @@ class LiveSessionController(context: Context) {
             VoiceRefusal.NO_MIC_PERMISSION -> "Didn't start - microphone permission is off"
             VoiceRefusal.OFFLINE -> "Didn't start - no network"
             VoiceRefusal.SOCKET_GONE -> "Didn't speak - the connection had already closed"
+            VoiceRefusal.CONNECT_IN_FLIGHT -> "Didn't speak - another voice session was still connecting"
         }
 
         // Close reasons that are expected (user stop / idle timeout / teardown /
@@ -1787,47 +1722,6 @@ class LiveSessionController(context: Context) {
             reason != "key rejected" && reason != "quota" &&
             !reason.contains("microphone", ignoreCase = true)
 
-        // Ticket 24: how long the socket keeps auto-reconnecting after an unattended close, once
-        // nothing real has happened for a while. GUESSED, not measured - the ticket fixed the
-        // decision shape (a pure idle window) and left the exact number to this build. Long enough
-        // that an ordinary pause between turns, or Kevin setting the phone down and picking it back
-        // up a few minutes later, still finds a warm socket and pays no cold-connect tax; short
-        // enough that the measured ~153s reconnect storm only runs a handful of times - not all
-        // day - before it goes quiet. If real usage says otherwise, this is the one number to
-        // revisit; the mechanism around it should not need to change.
-        private const val IDLE_RECONNECT_WINDOW_MS = 10 * 60 * 1000L // 10 minutes
-
-        /**
-         * Ticket 24 (`.scratch/hands-and-senses/issues/24-the-socket-that-never-rests.md`) pure
-         * decision behind the [LiveEvent.Closed] branch's auto-reconnect.
-         *
-         * Measured 2026-08-22: the Live server closes an idle prewarmed socket roughly every 153
-         * seconds regardless of anything the app does, and every connect - cold OR resumed -
-         * re-sends the full `systemInstruction` plus all 66 tool declarations (~16,189 estimated
-         * tokens; session resumption does NOT discount it, traced in the ticket). Reconnecting on
-         * every one of those closes, forever, is what turned an idle phone into ~565 reconnects and
-         * ~9.1M estimated input tokens a day on Kevin's own BYO key with nobody using the app.
-         *
-         * [lastInteractionMs] is the wall-clock time of the last genuine signal - a tap ([onTap],
-         * which also covers a wake-word trigger), or a proactive raise that needed to speak
-         * ([requestSpeak]). All three ALSO reconnect unconditionally through their own already-
-         * existing cold-start paths ([onTap] -> [startConversation]/[resumeWarm],
-         * [requestSpeak] -> [startProactive]/[speakAndListen]/the mid-connect PROACTIVE_WARM
-         * branch) - this function does not gate any of those. It governs only whether the
-         * [LiveEvent.Closed] branch's own automatic re-prewarm fires after a close nobody asked
-         * for.
-         *
-         * Inside [idleWindowMs] of the last signal: yes, keep reconnecting, same as today - tap
-         * latency in the case that matters (Kevin actually using the app) is unchanged. Past it:
-         * no, leave the socket closed. The trade this accepts, stated rather than buried: the
-         * FIRST interaction after a long idle stretch then pays a cold connect - measured at
-         * roughly a second slower than a warm resume from a real capture - instead of finding an
-         * already-warm socket. That cost is real, and it is paid once per idle stretch instead of
-         * on every one of the ~565 daily closes.
-         *
-         * Pure and Context-free on purpose, per the ticket's own requirement, so it is directly
-         * unit-testable - see [LiveSessionControllerIdleReconnectTest].
-         */
         /**
          * What becomes of the resumption handle when a socket closes. Three closes drop it:
          *
@@ -1838,11 +1732,13 @@ class LiveSessionController(context: Context) {
          *   session not found" before setup completes, and resending it failed identically on every
          *   retry until the process died (Kevin: "the voice agent says no connection retry? i cant
          *   talk at all"). Dropping it costs one conversation's continuity.
-         * - **an idle socket left closed past the idle window** (2026-11-05): nothing reconnects
-         *   until a wake 10+ minutes on. In the A25's 11-01..11-04 logs 10 of 157 setups were that
-         *   wake's first connect, sent with the idle chain's handle and refused at once ("session
-         *   not found or expired"), then a second setup: about a second and one setup wasted per
-         *   idle stretch. Only an unattended socket: a conversation's own drop keeps its handle.
+         * - **a socket no conversation was using** ([userInitiated] false: a speak-only proactive
+         *   line, a parked socket expiring, a server close for client inactivity). Nothing reopens
+         *   on that close any more (2026-11-05), so the handle would wait for the next tap, and in
+         *   the A25's 11-01..11-04 logs 10 of 157 setups were exactly that tap sending an idle
+         *   chain's handle and being refused ("session not found or expired"), then a second setup:
+         *   about a second wasted each time. A conversation's own drop keeps its handle, so the next
+         *   tap resumes it - that is the mid-conversation recovery.
          *
          * Pure so [LiveSessionControllerIdleReconnectTest] pins it.
          */
@@ -1851,20 +1747,13 @@ class LiveSessionController(context: Context) {
             reason: String,
             everConnected: Boolean,
             userInitiated: Boolean,
-            autoReconnect: Boolean,
         ): String? = when {
             handle == null -> null
             reason == "stopped" -> null
             !everConnected -> null
-            !userInitiated && !autoReconnect -> null
+            !userInitiated -> null
             else -> handle
         }
-
-        internal fun shouldAutoReconnectAfterClose(
-            lastInteractionMs: Long,
-            nowMs: Long,
-            idleWindowMs: Long = IDLE_RECONNECT_WINDOW_MS,
-        ): Boolean = nowMs - lastInteractionMs < idleWindowMs
     }
 }
 

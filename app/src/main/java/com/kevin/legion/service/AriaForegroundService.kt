@@ -27,7 +27,6 @@ import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
-import com.kevin.legion.ai.OnboardingState
 import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.engine.dates.DatesAgenda
@@ -158,10 +157,9 @@ class AriaForegroundService : Service() {
         // IngestScanner construction used to happen here (ticket 05), then moved to
         // LedgerIngestService (ticket 08) - both are deleted now (backend-erp ticket 25).
 
-        // Pre-open a warm Gemini Live socket so the driver's first tap doesn't pay
-        // the connect + setup handshake. Only once onboarding is done, so we don't
-        // open a cloud connection while the companion is still being set up.
-        if (OnboardingState.isComplete(this)) sessionController.prewarm()
+        // No Gemini Live socket is opened here (Kevin, 2026-11-05: "stop keeping a voice session
+        // open while idle; only open one when you tap or say the wake word"). The first tap pays
+        // one cold connect instead; see LiveSessionController's class doc.
 
         // Live data sources Zero reads from (used to be inited by MainActivity):
         // the media session for now-playing, and GPS for location/arrival. Both
@@ -391,8 +389,9 @@ class AriaForegroundService : Service() {
         }
 
         // Greet once first-run onboarding has just finished (the opener launched in
-        // onCreate was suppressed while onboarding was still in progress). Warm a
-        // socket first so the greeting (and the driver's first tap) is instant.
+        // onCreate was suppressed while onboarding was still in progress). Any idle
+        // socket is closed first so the greeting uses the voice just chosen; the
+        // greeting opens its own (2026-11-05: none is held open in advance).
         // If this intent arrived during the same startup, onCreate's opener is
         // still pending (1.5s delay) - let it speak; launching another here would
         // double-fire and clobber the first-run self-introduction.
@@ -1158,8 +1157,10 @@ class AriaForegroundService : Service() {
         /**
          * The driver switched cars (car manager, 2026-07-16). Voice is per-car now,
          * so a warm socket is holding the PREVIOUS car's voice - the same shape as
-         * the "default voice after onboarding" field bug. Re-prewarm to pick up the
-         * new car's voice.
+         * the "default voice after onboarding" field bug. Closes an idle socket so the
+         * next one picks up the new car's voice; opens nothing (2026-11-05: an OBD dongle
+         * flapping in a parked car fired this every connect and disconnect, and each one
+         * used to prewarm a socket).
          */
         const val ACTION_CAR_SWITCHED = "com.kevin.legion.CAR_SWITCHED"
 
