@@ -1071,6 +1071,13 @@ class GeminiLiveSession(
     fun readThroughToolTouchedThisTurn(): Boolean = mailToolCalledThisTurn
 
     /**
+     * What the user has said (or typed) so far in the current turn - [userTurnText], read-only, the
+     * same shape as [readThroughToolTouchedThisTurn]. `clear_codes`' yes-check reads it (2026-11-05):
+     * a destructive confirmed call needs the user's own words to be a yes, not the model's.
+     */
+    fun userTextThisTurn(): String = userTurnText.toString()
+
+    /**
      * Ticket 23: the turn number [LiveSessionController.handleToolCall] tags a tool call's
      * [com.kevin.legion.data.local.ConversationAudit] row with, so it lands in the same group as
      * the USER/COMPANION rows [auditConversationTurn] writes when this turn completes. Read-only

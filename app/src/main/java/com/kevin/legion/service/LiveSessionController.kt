@@ -156,7 +156,7 @@ class LiveSessionController(context: Context) {
         isCrisis = CrisisDetector::detect,
         systemParts = { listOf(brain.buildTextInstruction(), brain.buildLiveContext()) },
         declarations = { LiveToolbox.textDeclarations() },
-        runTool = { name, args, readThrough, turnSeq ->
+        runTool = { name, args, readThrough, turnSeq, userText ->
             val auditId = typedAudit.toolCall(name, args)
             val response = if (name in LiveToolbox.VOICE_SESSION_TOOLS) {
                 // Not declared to the text model; refused in words if it is called anyway, because
@@ -165,7 +165,7 @@ class LiveSessionController(context: Context) {
             } else {
                 typedToolStarted()
                 try {
-                    runToolBounded(name, args, readThrough)
+                    runToolBounded(name, args, readThrough, userText)
                 } finally {
                     typedToolFinished()
                 }
@@ -1303,7 +1303,7 @@ class LiveSessionController(context: Context) {
                 // `remember`'s dispatch branch gates on - read here, off the live session, rather
                 // than dispatch reaching back into GeminiLiveSession itself.
                 val response: JSONObject =
-                    runToolBounded(call.name, call.args, s.readThroughToolTouchedThisTurn())
+                    runToolBounded(call.name, call.args, s.readThroughToolTouchedThisTurn(), s.userTextThisTurn())
                 // The panel's tool line: only for a tool that came back with an explicit `success`
                 // (see [ChatTranscript.tool]) - a result that says nothing about success gets no
                 // line rather than a "done" nobody checked. Failure detail is the tool's own words.
@@ -1373,8 +1373,13 @@ class LiveSessionController(context: Context) {
      * as `success: false` with the reason in words. Shared by the voice path ([handleToolCall]) and
      * typed chat ([typedChat]).
      */
-    private suspend fun runToolBounded(name: String, args: JSONObject, readThrough: Boolean): JSONObject = try {
-        withTimeoutOrNull(toolTimeoutFor(name)) { runTool(name, args, readThrough) }
+    private suspend fun runToolBounded(
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        userText: String? = null,
+    ): JSONObject = try {
+        withTimeoutOrNull(toolTimeoutFor(name)) { runTool(name, args, readThrough, userText) }
             ?: JSONObject()
                 .put("success", false)
                 .put("message", "That took too long and timed out.")
@@ -1389,7 +1394,7 @@ class LiveSessionController(context: Context) {
      * second implementation that can drift). Extracted from [handleToolCall] unchanged 2026-10-27.
      */
     @Suppress("CyclomaticComplexMethod", "LongMethod")
-    private suspend fun runTool(name: String, args: JSONObject, readThrough: Boolean): JSONObject =
+    private suspend fun runTool(name: String, args: JSONObject, readThrough: Boolean, userText: String?): JSONObject =
         when (name) {
             // Session/UI-scoped tools the toolbox returns null for - we
             // own the session, the capture controller, and the activity.
@@ -1471,7 +1476,7 @@ class LiveSessionController(context: Context) {
             // reaching back into GeminiLiveSession itself.
             else -> {
                 val startedAt = System.currentTimeMillis()
-                val out = LiveToolbox.dispatch(appContext, name, args, readThrough)
+                val out = LiveToolbox.dispatch(appContext, name, args, readThrough, userText)
                     ?: JSONObject().put("success", true)
                 // A tool inside a dispatcher can put up the codes card (2026-11-03); bring the
                 // app forward for it the way show_agenda_modal does, or it only "pops up" the

@@ -86,7 +86,7 @@ class TypedChatTest {
             isCrisis = { it.contains("end it all") },
             systemParts = { listOf("BASE") },
             declarations = { JSONArray() },
-            runTool = { name, _, _, _ -> toolRuns.add(name); toolResult(name) },
+            runTool = { name, _, _, _, _ -> toolRuns.add(name); toolResult(name) },
             speakerName = { "Alfred" },
             onCrisis = { crises++ },
             onInFlightChanged = { inFlightEvents.add(it) },

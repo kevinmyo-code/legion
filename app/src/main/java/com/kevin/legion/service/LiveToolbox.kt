@@ -328,16 +328,16 @@ object LiveToolbox {
                 "ECU. This also wipes the freeze frame and RESETS THE EMISSIONS READINESS MONITORS, " +
                 "so the car will fail an inspection until it has driven enough to reset them. " +
                 "Destructive and not reversible. ALWAYS call this first with confirmed=false - it " +
-                "previews what would be erased and returns the exact warning to recite to the user; only " +
-                "call it again with confirmed=true after the user says yes in the very next turn. " +
-                "After sending, this re-reads the codes and reports what actually came back - only " +
-                "ever say 'cleared' if that is what this tool's own result says, never assume the " +
-                "send alone means it worked. Use ONLY when the user asks to clear, reset or erase codes; " +
-                "to read or ask about codes, use ask_fleet. Reads the OBD dongle in the car it is " +
-                "plugged into right now. Cannot answer for any other car.",
+                "returns the exact warning and question to recite; say it, then STOP and wait. Call " +
+                "again with confirmed=true only when the user's next words are a plain yes to that " +
+                "question - \"try again\", a question, or anything else is not a yes; ask again. The " +
+                "app checks the user's own words and refuses a confirmed call without a yes. Only " +
+                "say 'cleared' if this tool's result says so. Use ONLY when the user asks to clear, " +
+                "reset or erase codes; to read or ask about codes, use ask_fleet. Reads the OBD " +
+                "dongle in the car it is plugged into right now. Cannot answer for any other car.",
             params = obj(
                 "confirmed" to schema("boolean", "False on the first call to read the codes and get " +
-                    "the confirm warning to recite. True only after the user has just confirmed."),
+                    "the confirm question. True only after the user answered it with a plain yes."),
             ),
             required = listOf("confirmed"),
         ))
@@ -2722,6 +2722,9 @@ object LiveToolbox {
         name: String,
         args: JSONObject,
         touchedReadThroughToolThisTurn: Boolean = false,
+        // What the user said (or typed) in the turn that called this tool - null when the caller
+        // has no turn to read it from. Only clear_codes' yes-check reads it (2026-11-05).
+        userText: String? = null,
     ): JSONObject? {
         MidnightEvents.toolDispatched(name)
         // Category A guard (ticket 01 §0): if a live-hardware tool got handed a
@@ -2888,7 +2891,7 @@ object LiveToolbox {
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
             "check_readiness" -> checkReadiness()
-            "clear_codes" -> clearCodes(context, args)
+            "clear_codes" -> clearCodes(context, args, userText)
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
@@ -5665,14 +5668,33 @@ object LiveToolbox {
         return out
     }
 
-    private suspend fun clearCodes(context: Context, args: JSONObject): JSONObject {
+    private suspend fun clearCodes(context: Context, args: JSONObject, userText: String?): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
-        if (!ObdBluetoothManager.isConnected) {
-            return result(false, "The OBD adapter isn't connected, so I can't clear anything.")
+        val connected = ObdBluetoothManager.isConnected
+        // 2026-11-05: confirmed=true is the model's word, so the user's own words this turn must be
+        // a yes to the question the unconfirmed call put (ClearCodesVoiceGate). Refused before
+        // anything is read from or sent to the car.
+        val gate = DtcClearController.voiceGate
+        val refusal = when {
+            !connected -> "The OBD adapter isn't connected, so I can't clear anything."
+            confirmed -> gate.checkConfirmed(userText)
+            else -> null
+        }
+        if (refusal != null) {
+            return result(false, refusal).apply { if (connected) put("needsConfirmation", true) }
         }
         val vehicle = VehicleController.currentVehicle(context)
         val r = DtcClearController.dispatchAndRecord(context, vehicle, confirmed)
-        return result(success = r.outcome == DtcClearController.ClearOutcome.CLEARED, message = r.message)
+        val out = result(success = r.outcome == DtcClearController.ClearOutcome.CLEARED, message = r.message)
+        if (r.outcome == null) {
+            // The confirm question: remember it was asked, and tell the model to ask and wait.
+            gate.asked(userText)
+            out.put("needsConfirmation", true)
+                .put("instruction", com.kevin.legion.vehicle.ClearCodesVoiceGate.ASK_AND_WAIT)
+        } else {
+            gate.reset()
+        }
+        return out
     }
 
     // ---------------------------------------------------------------- notes / lists / calendar

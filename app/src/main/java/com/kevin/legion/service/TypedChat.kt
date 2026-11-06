@@ -39,7 +39,14 @@ class TypedChat(
     private val isCrisis: (String) -> Boolean,
     private val systemParts: suspend () -> List<String>,
     private val declarations: () -> JSONArray,
-    private val runTool: suspend (name: String, args: JSONObject, readThrough: Boolean, turnSeq: Long) -> JSONObject,
+    /** [userText] is the typed message of the turn - `clear_codes`' yes-check reads it. */
+    private val runTool: suspend (
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        turnSeq: Long,
+        userText: String,
+    ) -> JSONObject,
     private val speakerName: () -> String?,
     private val onCrisis: () -> Unit,
     /** True when a typed turn starts, false when it ends: the controller's phase hook. */
@@ -87,7 +94,7 @@ class TypedChat(
                     history = history,
                     message = typed,
                     declarations = declarations(),
-                    executor = { name, args, readThrough -> runTool(name, args, readThrough, turnSeq) },
+                    executor = { name, args, readThrough -> runTool(name, args, readThrough, turnSeq, typed) },
                     onToolResult = { name, response -> showToolLine(name, response) },
                 )
             } catch (e: CancellationException) {

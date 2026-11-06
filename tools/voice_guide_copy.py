@@ -94,7 +94,7 @@ COPY = {
     # --- The cars ---
     "get_codes": ("Any trouble codes?", "Reads fault codes stored in the car right now, with the freeze frame saved for each, and pops up the codes card.", "Fleet tab, trouble-code panel."),
     "diagnose_codes": ("What's wrong with the car?", "Digs into the stored codes and explains them. Takes a few seconds.", "Fleet tab, code diagnosis drilldown."),
-    "clear_codes": ("Clear the codes", "Clears stored fault codes. Asks you to confirm first.", "Fleet tab, clear-codes action, confirm-gated."),
+    "clear_codes": ("Clear the codes", "Clears stored fault codes. Asks you to confirm first and waits for a plain yes; anything else is not a yes.", "Fleet tab, clear-codes action, confirm-gated."),
     "get_code_history": ("Show me the freeze frames", "The history of faults this car has thrown, each with its freeze frame (engine speed, coolant, speed, load, fuel trims and more, or 'no snapshot was saved'). A codes card pops up on screen; tap a code to see its snapshot.", "Fleet tab, Faults page, 'Codes card with freeze frames'."),
     "triage_symptom": ("It's making a whining noise on turns", "Describe how the car is behaving and it works from that, not from a code.", "Voice only - a free-text symptom description has no form equivalent."),
     "check_readiness": ("Is it ready for emissions?", "Whether the car's self-tests have run - the emissions readiness monitors.", "Fleet tab, readiness/emissions panel."),
