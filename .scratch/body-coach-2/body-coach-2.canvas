@@ -81,6 +81,16 @@
       "color": "1"
     },
     {
+      "id": "fa6d8df30c774363",
+      "type": "file",
+      "file": ".scratch/body-coach-2/issues/13-the-plan.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0e4c2d351a159dc2",
       "type": "file",
       "file": ".scratch/body-coach-2/issues/04-engine-programme-proposals.md",
@@ -225,6 +235,13 @@
       "fromNode": "00440d39d624e0ca",
       "fromSide": "right",
       "toNode": "457f778f9f2b930e",
+      "toSide": "left"
+    },
+    {
+      "id": "e4e6dae8bfe60781",
+      "fromNode": "00440d39d624e0ca",
+      "fromSide": "right",
+      "toNode": "fa6d8df30c774363",
       "toSide": "left"
     }
   ]

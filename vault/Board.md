@@ -124,6 +124,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[03-engine-catalog-and-templates\|03]] | build | Engine: catalog, templates, sessions a week, gym or home |
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[05-engine-meal-suggestions\|05]] | build | Engine: what to eat from what's left |
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[08-engine-weekly-adaptation\|08]] | build | Engine: the calorie adaptation on four weekly points |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[13-the-plan\|13]] | build | The plan: draft with Alfred, lock it in, adjust as he goes; Alfred sets the target |
 | [[.scratch/books/map\|books]] | [[02-build-books\|02]] | build | Build: Books chip, sheet, folder scan, reader (EPUB/PDF/comics), read-aloud, voice tool |
 | [[.scratch/books/map\|books]] | [[04-build-pdf-convert-server\|04]] | build | Build: server PDF to EPUB conversion, pass-through, nothing stored |
 | [[.scratch/books/map\|books]] | [[06-build-reader-comfort\|06]] | build | Build: reader full screen, a one-tap Day/Night toggle that reaches PDFs, and a warm filter |
@@ -421,7 +422,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/async-lookups/map\|async-lookups]] | 8 | 6 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
-| [[.scratch/body-coach-2/map\|body-coach-2]] | 12 | 10 | [[.scratch/body-coach-2/body-coach-2.canvas\|open]] |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | 13 | 11 | [[.scratch/body-coach-2/body-coach-2.canvas\|open]] |
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
