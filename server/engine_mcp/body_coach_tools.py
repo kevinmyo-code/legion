@@ -105,7 +105,52 @@ def get_energy_estimate(request, args):
             f"Pending proposal {proposal['id']}: {proposal['words']} Accept or dismiss it only "
             f"when the person says so."
         )
+    plan = data.get("plan")
+    if plan and plan["status"] == "draft":
+        lines.append(
+            "A draft plan is waiting; 'lock it in' is lock_body_plan, never a meal target."
+        )
+    facts = profile_words(data.get("profile"))
+    if facts:
+        lines.append(facts)
+    lines.append(COACH_SAY)
     return ok(" ".join(lines), structured=data)
+
+
+# Kevin's first coach voice session (2026-11-06): a routine calorie answer came back with "not
+# medical advice ... consult a healthcare professional", and "I'm 32, 200 lb, 5 ft 10" got the same
+# estimate read again instead of a check against the profile. Said beside the figures, per result.
+COACH_SAY = (
+    "Say 'estimate' and nothing more: no medical disclaimer on a routine figure. 'See a "
+    "professional' is only for pain, injury, a medical condition or medication, a target at or "
+    "below 800 kcal, or signs of disordered eating."
+)
+
+
+def profile_words(profile: dict | None) -> str:
+    """The profile the estimate was built on, and what to do when the person states a different
+    fact: say what the profile holds, offer to update it, write only after a yes."""
+    if not profile:
+        return ""
+    held = [
+        f"height {profile['height_ft_in']} ({profile['height_cm']:g} cm)"
+        if profile.get("height_cm") is not None
+        else None,
+        f"born {profile['birth_year']} (about {profile['age_about']})"
+        if profile.get("birth_year") is not None
+        else None,
+        profile.get("sex"),
+        f"activity {profile['activity_level']}" if profile.get("activity_level") else None,
+    ]
+    said = ", ".join(h for h in held if h)
+    if not said:
+        return ""
+    return (
+        f"Built on the profile: {said}. If the person states a height, age, sex or activity that "
+        "differs, say what the profile holds and ask whether to update it; update only after a "
+        "yes (set_body_profile), then read the estimate again. A different weight is a weigh-in "
+        "to log, on a yes."
+    )
 
 
 def get_weight_trend(request, args):

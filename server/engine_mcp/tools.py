@@ -3415,8 +3415,8 @@ TOOLS: tuple[EngineTool, ...] = (
         title="Lock in the body plan",
         description=(
             "Locks in the draft plan (or the one with this id): its target, rate and training go "
-            "live. Only on the person's yes (\"lock it in\"). Say what changed only from this "
-            "result." + _WRITE_NOTE
+            "live, replacing today's meal target. Only on the person's yes (\"lock it in\", "
+            "\"lock that in\"). Say what changed only from this result." + _WRITE_NOTE
         ),
         input_schema=_object({"id": _UUID}),
         handler=coach.lock_body_plan,

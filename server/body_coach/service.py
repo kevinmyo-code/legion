@@ -10,6 +10,7 @@ Days are household-local (the household's zone, UTC when it has none).
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -19,10 +20,12 @@ from django.utils import timezone
 
 from body_coach import adaptation, energy, trend, weekly
 from body_coach.models import (
+    PLAN_DRAFT,
     STATUS_ACCEPTED,
     STATUS_DISMISSED,
     STATUS_EXPIRED,
     STATUS_PENDING,
+    TARGET_BY_ALFRED,
     BodyProfile,
     EnergyProposal,
     WaistLog,
@@ -351,6 +354,8 @@ def maybe_propose(request, e: adaptation.Evidence, target_rate_bp: int, target: 
 def energy_body(request, *, propose: bool = True) -> dict:
     """`propose=False` (body coach 2's meal options) reads the estimate without making the
     two-weekly calorie proposal, so a read about food never writes one."""
+    from body_coach import plans
+
     profile = own_profile(request)
     inputs = profile_inputs(profile)
     data = TrendData(request)
@@ -358,7 +363,15 @@ def energy_body(request, *, propose: bool = True) -> dict:
     target = current_target(request, data.today)
     rate_bp = energy.clamp_rate_bp((inputs or energy.ProfileInputs()).target_rate_bp)
     if propose:
+        # The adaptation follows the live rate (the profile takes the plan's on a lock); a draft
+        # is not live, so it never drives a proposal.
         maybe_propose(request, e, rate_bp, target)
+    # ONE number (Kevin's first voice session, 2026-11-06): the screen showed the draft's target at
+    # 0.5% a week while this read said the profile's old 0.75% one. The estimate is said at the
+    # plan's rate: the draft's while one waits, else the locked plan's, else the profile's.
+    plan = plans.draft(request) or plans.active(request)
+    if plan is not None and inputs is not None:
+        inputs = replace(inputs, target_rate_bp=plan.rate_bp)
 
     if len(data.daily) >= 2:
         weight, source = data.latest_trend_lbs, "trend"
@@ -382,7 +395,54 @@ def energy_body(request, *, propose: bool = True) -> dict:
     )
     body["current_target"] = target_dict(target)
     body["proposal"] = proposal_dict(pending_proposal(request))
+    body["plan"] = _plan_for_energy(plan)
+    if (
+        plan is not None
+        and plan.status == PLAN_DRAFT
+        and plan.target_set_by == TARGET_BY_ALFRED
+        and plan.kcal_target is not None
+    ):
+        # A waiting draft IS the suggestion: the same figure the checklist line shows, even when
+        # a weigh-in since has moved maintenance a little. Locking it is what makes it live.
+        body["suggested_target_kcal"] = plan.kcal_target
+        if plan.protein_g is not None:
+            body["protein_g"] = plan.protein_g
+        body["words"] += (
+            f" Your draft plan, not locked in yet: about {plan.kcal_target} kcal"
+            f"{f' and {plan.protein_g} g protein' if plan.protein_g is not None else ''} a day."
+        )
+    body["profile"] = _profile_facts(profile, data.today.year)
     return body
+
+
+def _plan_for_energy(plan) -> dict | None:
+    if plan is None:
+        return None
+    return {
+        "id": str(plan.id),
+        "status": plan.status,
+        "kcal_target": plan.kcal_target,
+        "protein_g": plan.protein_g,
+        "rate_pct": round(plan.rate_bp / 100, 2),
+        "target_set_by": plan.target_set_by,
+    }
+
+
+def _profile_facts(row: BodyProfile | None, this_year: int) -> dict | None:
+    """What the estimate was built on, so a stated fact that differs can be noticed and offered
+    as an update (never changed without a yes). Height in cm and in feet and inches."""
+    if row is None:
+        return None
+    height_in = row.height_mm / 25.4 if row.height_mm is not None else None
+    feet, inches = (divmod(round(height_in), 12) if height_in is not None else (None, None))
+    return {
+        "height_cm": round(row.height_mm / 10, 1) if row.height_mm is not None else None,
+        "height_ft_in": f"{feet} ft {inches} in" if feet is not None else None,
+        "sex": row.sex,
+        "birth_year": row.birth_year,
+        "age_about": this_year - row.birth_year if row.birth_year is not None else None,
+        "activity_level": row.activity_level,
+    }
 
 
 def trend_body(request, days: int) -> dict:
@@ -589,10 +649,11 @@ def dismiss(request, proposal: EnergyProposal) -> None:
 def set_today_target(request, *, kcal: int, protein_g: float) -> MealTarget:
     """Today's meal target becomes `kcal` and `protein_g` (body coach 2: locking a plan). Copied
     forward like `accept`: a row already dated today is updated in place (a tombstoned one brought
-    back), carbs and fat carried from the target before (they are not targets, Kevin's ruling)."""
+    back). Carbs and fat are written 0, "not set": kcal and protein are the targets (Kevin's
+    ruling), and carrying an old target's carbs and fat made a locked plan read back as
+    "200g carbs, 70g fat" nobody chose (first coach voice session, 2026-11-06)."""
     today = today_of(request)
     with transaction.atomic():
-        carried = current_target(request, today)
         same_day = (
             scoped(MealTarget, request)
             .select_for_update()
@@ -601,7 +662,12 @@ def set_today_target(request, *, kcal: int, protein_g: float) -> MealTarget:
         )
         if same_day is not None:
             MealTarget.objects.filter(pk=same_day.pk).update(
-                calories_kcal=kcal, protein_g=protein_g, deleted_at=None, updated_at=Now()
+                calories_kcal=kcal,
+                protein_g=protein_g,
+                carbs_g=0.0,
+                fat_g=0.0,
+                deleted_at=None,
+                updated_at=Now(),
             )
             return MealTarget.objects.get(pk=same_day.pk)
         row = MealTarget.objects.create(
@@ -609,8 +675,8 @@ def set_today_target(request, *, kcal: int, protein_g: float) -> MealTarget:
             household=household_of(request),
             calories_kcal=kcal,
             protein_g=protein_g,
-            carbs_g=carried.carbs_g if carried else 0.0,
-            fat_g=carried.fat_g if carried else 0.0,
+            carbs_g=0.0,
+            fat_g=0.0,
             effective_from_date=today,
             provenance=Provenance.USER,
             created_at=Now(),
