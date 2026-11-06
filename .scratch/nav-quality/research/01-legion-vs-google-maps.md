@@ -33,7 +33,7 @@ Tags (CLAUDE.md sec 8):
 | Fuzzy / spoken names | `QueryText.normalize` strips filler and articles; saved places match exact or contains; no typo tolerance, no "X near Y" | traced |
 | Ranking | Mapbox's own order; local sources sort by distance; no recency, frequency or open-now | traced |
 | Recents / favourites | none (mapbox-plus ticket 03, open) | traced |
-| Routing | `applyDefaultNavigationOptions()` + `alternatives(true)`; profile `driving-traffic`, annotations `congestion_numeric`, `maxspeed`, `closure`, `enableRefresh` set | tested (`RouteOptionsExtensions` bytecode) |
+| Routing | `applyDefaultNavigationOptions()` + `alternatives(true)`; profile `driving-traffic`, annotations `congestion_numeric`, `maxspeed`, `closure`; `enableRefresh(...)` is called but its argument was not read | tested (`RouteOptionsExtensions` bytecode); refresh value reasoned |
 | Live re-ETA | SDK route refresh every 5 min when `enableRefresh` is true; continuous alternatives every 5 min by default | sourced (MB-REROUTE) |
 | Faster-route offer | none in LEGION; MB-REROUTE documents no faster-route API | traced; sourced |
 | Lanes | not shown; the SDK ships `MapboxLaneIconsApi`, `Lane`, `LaneIndicator` in `tripdata` | traced; tested |

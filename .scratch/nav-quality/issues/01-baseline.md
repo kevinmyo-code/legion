@@ -23,8 +23,10 @@ Every later ticket claims a number moved. This records the number before anythin
    that window.
 3. Pull the batches from the engine (`manage.py device_logs --reason conversation`, raw), or capture
    `adb logcat -v threadtime -s NAV_AUDIT > nav.txt`.
-4. Run `python tools/nav_audit_report.py nav.txt --json > .scratch/nav-quality/research/baseline-2026-11.json`.
-   That file holds counts and query text Kevin said, and no Mapbox result content.
+4. Run `python tools/nav_audit_report.py nav.txt --json` and keep the output OFF the repo (the
+   scratchpad, or the engine). **This repo is public and Pages serves `.scratch/`**, and the JSON's
+   `zero_result` list is Kevin's own spoken phrases, which can be a street address or a person's
+   name. Only the numbers go into this ticket.
 
 ## Record
 
@@ -35,5 +37,7 @@ Every later ticket claims a number moved. This records the number before anythin
 
 ## Done when
 
-The JSON is committed and the map's ranked table has a "before" column filled from it.
+The numbers below are filled in (counts and percentiles only, no phrases), and the map's ranked
+table has a "before" column taken from them. The zero-result phrases stay off the repo; later
+tickets replay them from the uncommitted capture.
 Fewer than 20 searches or 5 arrivals is too thin: extend the window.

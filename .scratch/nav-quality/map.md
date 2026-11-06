@@ -90,6 +90,12 @@ term lets LEGION borrow.
 - **D6 (ticket 11): Google Places.** Recommended closed: 14.2, plus a new billed Google key, plus
   ADR 0054.
 - **D7: how long the engine keeps NAV_AUDIT batches.** Same as conversation batches unless ruled.
+- **D8: the upload at trip end.** `trip_end` calls `ConversationLog.uploadSoon()`, so a hand-started
+  trip's lines reach the engine without waiting for the next voice session. The other choice is to
+  let them ride along with the next upload.
+- **D9: contact addresses in `resolve` reasons.** A contact whose address cannot be geocoded logs a
+  not-found sentence that quotes the address text. That is the household's own contact data, but it
+  is a third party's address in a log. Keep it, or log the label only.
 - **Standing, from mapbox-nav: TomTom.** `TOMTOM_API_KEY` is still baked and almost unused. Retire it.
 
 ## Not yet specified
