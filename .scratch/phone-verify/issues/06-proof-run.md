@@ -27,6 +27,7 @@ Needs the phone awake, unlocked and on wireless debugging. A locked phone is Kev
 
 `adb devices -l` at 19:38 CDT: SM_A256U on wireless debugging. Read-only: versionCode 263092342,
 versionName 2026-11-05-c353bcf, `fast` (no DEBUGGABLE), battery 52% not charging, screen off,
-keyguard showing, LEGION's MainActivity resumed. Nothing was tapped or captured while it was
+keyguard showing, LEGION's MainActivity resumed. One `uiautomator dump` to learn its format (it
+returned the keyguard's tree; deleted from the phone, nothing kept). Nothing was tapped while it was
 locked. It then left adb and mDNS (wireless debugging drops when the phone sleeps) and did not come
 back by 20:20; `tools/phone connect` to its last address timed out. No step above ran.
