@@ -1653,6 +1653,24 @@ def test_every_mcp_tool_is_scoped_by_household(
 
     assert SavedMeal.objects.filter(household=household_user.household).count() == 1
     assert BodyProfile.objects.get().household_id == user_b.household.id
+    # Workouts (2026-11-06): A's running workout is not B's to read, tick or finish.
+    alpha_workout = token_a.post(
+        "/api/body/coach/workout/start/", {}, format="json"
+    )
+    assert alpha_workout.status_code == 201, alpha_workout.data
+    a_marks = (*a_marks, alpha_workout.data["session"]["id"])
+    assert "in progress" not in b_reads("get_todays_workout", {})
+    b_writes("finish_workout", {}, lands_in_b=False)
+    b_writes("tick_workout_set", {"exercise": "bench", "reps": 8, "weight_lbs": 135}, lands_in_b=True)
+    b_writes("start_workout", {}, lands_in_b=True)
+    b_writes("swap_exercise", {"exercise": "squats"}, lands_in_b=True)
+    from body_coach.models import TrainingProgramme, WorkoutSession, WorkoutSet
+
+    alpha_sets = WorkoutSet.objects.filter(session_id=alpha_workout.data["session"]["id"])
+    assert not alpha_sets.filter(done=True).exists()
+    assert alpha_sets.filter(exercise_key="back_squat").exists()
+    assert TrainingProgramme.objects.get(household=household_user.household).swaps == {}
+    assert WorkoutSession.objects.filter(household=user_b.household).count() == 1
     assert _feed(token_a) == a_before
     from purchases.models import Purchase
 

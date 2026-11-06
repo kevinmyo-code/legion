@@ -260,3 +260,164 @@ class EnergyProposal(models.Model):
 
     def __str__(self) -> str:
         return f"energy proposal {self.id}"
+
+
+# =============================================================================
+# The workout programme (workouts map, 2026-11-06). Rules in `body_coach/programme.py`.
+# =============================================================================
+#
+# Three tables, shared in the household like every body table (map ruling 6: only Kevin logs;
+# a second member training needs an owner column first). **Every target is stored beside what
+# was done** (CLAUDE.md section 4 rule 8 in spirit): a session's set rows hold the rule's output
+# (target weight, range, the rule's name) and the actuals, so a progression can be re-derived and
+# audited from the rows alone. The model never writes a target; the views call the rules.
+
+SESSION_IN_PROGRESS = "in_progress"
+SESSION_FINISHED = "finished"
+SESSION_CANCELLED = "cancelled"
+SESSION_STATUSES: tuple[str, ...] = (SESSION_IN_PROGRESS, SESSION_FINISHED, SESSION_CANCELLED)
+WORKOUT_WEIGHT_LBS_MAX = 2000
+WORKOUT_REPS_MAX = 1000
+
+
+class TrainingProgramme(models.Model):
+    """The household's one active programme: which template, which weekdays, which swaps."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    template = models.TextField(default="full_body_ab")
+    # Comma-separated weekday keys (`mon,wed,fri`); its length is the sessions a week.
+    training_days = models.TextField(default="mon,wed,fri")
+    # Slot key -> exercise key, for slots whose exercise was swapped for an alternative.
+    swaps = models.JSONField(default=dict, blank=True)
+    active = models.BooleanField(default=True)
+    started_on = models.DateField()
+    created_at = models.DateTimeField(db_default=Now())
+    updated_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "training_programmes"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household"],
+                condition=models.Q(active=True),
+                name="training_programmes_one_active",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(training_days=""), name="training_programmes_days_given"
+            ),
+        ]
+
+    def day_list(self) -> list[str]:
+        return [d for d in self.training_days.split(",") if d]
+
+    def __str__(self) -> str:
+        return f"training programme {self.id}"
+
+
+class WorkoutSession(models.Model):
+    """One workout. The id may be minted by the phone, so a start queued offline is idempotent."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    programme = models.ForeignKey(TrainingProgramme, on_delete=models.PROTECT, related_name="sessions")
+    day_key = models.TextField()
+    # 1-based count of this programme's sessions, cancelled ones excluded; decides the deload.
+    session_number = models.IntegerField()
+    deload = models.BooleanField(default=False)
+    session_date = models.DateField()
+    status = models.TextField(default=SESSION_IN_PROGRESS)
+    started_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "workout_sessions"
+        indexes = [
+            models.Index(fields=["household", "session_date"], name="workout_sessions_day_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=SESSION_STATUSES), name="workout_sessions_status_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(day_key__in=("A", "B")), name="workout_sessions_day_key_valid"
+            ),
+            models.UniqueConstraint(
+                fields=["household"],
+                condition=models.Q(status=SESSION_IN_PROGRESS),
+                name="workout_sessions_one_in_progress",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(session_number__gte=1), name="workout_sessions_number_positive"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"workout session {self.id}"
+
+
+class WorkoutSet(models.Model):
+    """One planned set: the rule's target and, once ticked, what was actually done."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    session = models.ForeignKey(WorkoutSession, on_delete=models.CASCADE, related_name="sets")
+    slot_key = models.TextField()
+    slot_order = models.SmallIntegerField()
+    exercise_key = models.TextField()
+    exercise_name = models.TextField()
+    kind = models.TextField()
+    set_number = models.SmallIntegerField()
+    reps_low = models.SmallIntegerField()
+    reps_high = models.SmallIntegerField()
+    target_weight_lbs = models.FloatField(null=True, blank=True)
+    rule = models.TextField()
+    rule_words = models.TextField(default="")
+    done = models.BooleanField(default=False)
+    reps_done = models.IntegerField(null=True, blank=True)
+    weight_lbs = models.FloatField(null=True, blank=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "workout_sets"
+        ordering = ["slot_order", "set_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "exercise_key", "set_number"], name="workout_sets_one_per_number"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    rule__in=("calibrate", "add", "hold", "reset", "deload", "reps", "extra")
+                ),
+                name="workout_sets_rule_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(reps_low__gt=0) & models.Q(reps_high__gte=models.F("reps_low")),
+                name="workout_sets_range_ordered",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(set_number__gte=1), name="workout_sets_number_positive"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(reps_done__isnull=True)
+                | (models.Q(reps_done__gte=0) & models.Q(reps_done__lte=WORKOUT_REPS_MAX)),
+                name="workout_sets_reps_range",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(weight_lbs__isnull=True)
+                | (models.Q(weight_lbs__gte=0) & models.Q(weight_lbs__lt=WORKOUT_WEIGHT_LBS_MAX)),
+                name="workout_sets_weight_range",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(target_weight_lbs__isnull=True)
+                | (
+                    models.Q(target_weight_lbs__gt=0)
+                    & models.Q(target_weight_lbs__lt=WORKOUT_WEIGHT_LBS_MAX)
+                ),
+                name="workout_sets_target_range",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"workout set {self.id}"

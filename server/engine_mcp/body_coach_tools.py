@@ -331,3 +331,54 @@ def dismiss_energy_proposal(request, args):
     if response.status_code != 200:
         return _not_done(response, "dismissed")
     return ok(response.data["words"], structured=response.data)
+
+
+# =============================================================================
+# The workout programme (workouts, 2026-11-06). Every target is the rules' (`programme.py`);
+# these tools carry what was said and done, never a number of their own.
+# =============================================================================
+
+WORKOUT = f"{BASE}/workout"
+
+
+def get_todays_workout(request, args):
+    from engine_mcp.tools import ok
+
+    data, error = _read(request, f"{WORKOUT}/")
+    if error:
+        return error
+    return ok(
+        data["words"] + " Every target comes from the programme's rules; never change a number.",
+        structured=data,
+    )
+
+
+def _workout_write(request, path: str, args: dict, verb: str, ok_codes=(200, 201)):
+    from engine_mcp.tools import ok
+
+    response = call_route(request, "POST", path, args)
+    if response.status_code not in ok_codes:
+        return _not_done(response, verb)
+    return ok(f"{response.data['words']} The engine committed it.", structured=response.data)
+
+
+def start_workout(request, args):
+    return _workout_write(request, f"{WORKOUT}/start/", {}, "started")
+
+
+def log_workout_set_to_session(request, args):
+    body = {"exercise": args.get("exercise"), "reps": args.get("reps")}
+    if args.get("weight_lbs") is not None:
+        body["weight_lbs"] = args["weight_lbs"]
+    return _workout_write(request, f"{WORKOUT}/log/", body, "logged")
+
+
+def swap_exercise(request, args):
+    body = {"exercise": args.get("exercise")}
+    if args.get("to"):
+        body["to"] = args["to"]
+    return _workout_write(request, f"{WORKOUT}/swap/", body, "swapped")
+
+
+def finish_workout(request, args):
+    return _workout_write(request, f"{WORKOUT}/finish/", {}, "finished")

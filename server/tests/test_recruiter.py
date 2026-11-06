@@ -156,6 +156,9 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
         "get_energy_estimate", "get_weight_trend", "list_saved_meals", "set_body_profile",
         "log_waist", "save_meal", "delete_saved_meal", "log_saved_meal",
         "accept_energy_proposal", "dismiss_energy_proposal",
+        # Workouts (2026-11-06).
+        "get_todays_workout", "start_workout", "tick_workout_set", "swap_exercise",
+        "finish_workout",
     }
     assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest", *memory, *body}
     assert surface.BODY_COACH_TOOLS == body

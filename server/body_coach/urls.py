@@ -2,6 +2,17 @@
 
 from django.urls import path
 
+from body_coach.workout_views import (
+    WorkoutCancelView,
+    WorkoutFinishView,
+    WorkoutLogView,
+    WorkoutProgrammeView,
+    WorkoutSetsView,
+    WorkoutStartView,
+    WorkoutSwapView,
+    WorkoutTodayView,
+)
+
 from body_coach.views import (
     EnergyView,
     ProfileView,
@@ -44,4 +55,13 @@ urlpatterns = [
         name="body-coach-proposal-dismiss",
     ),
     path("weekly-line/", WeeklyLineView.as_view(), name="body-coach-weekly-line"),
+    # workouts (2026-11-06): the deterministic programme (`body_coach/programme.py`).
+    path("workout/", WorkoutTodayView.as_view(), name="body-coach-workout"),
+    path("workout/programme/", WorkoutProgrammeView.as_view(), name="body-coach-workout-programme"),
+    path("workout/start/", WorkoutStartView.as_view(), name="body-coach-workout-start"),
+    path("workout/sets/", WorkoutSetsView.as_view(), name="body-coach-workout-sets"),
+    path("workout/log/", WorkoutLogView.as_view(), name="body-coach-workout-log"),
+    path("workout/swap/", WorkoutSwapView.as_view(), name="body-coach-workout-swap"),
+    path("workout/finish/", WorkoutFinishView.as_view(), name="body-coach-workout-finish"),
+    path("workout/cancel/", WorkoutCancelView.as_view(), name="body-coach-workout-cancel"),
 ]

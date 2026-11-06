@@ -3189,6 +3189,74 @@ TOOLS: tuple[EngineTool, ...] = (
         handler=coach.dismiss_energy_proposal,
         writes=True,
     ),
+    # workouts (2026-11-06): the deterministic programme. Targets come from
+    # `body_coach/programme.py`; the model may explain or swap, never set a number.
+    EngineTool(
+        name="get_todays_workout",
+        title="Today's workout",
+        description=(
+            "Today's workout: each exercise with sets x reps @ weight from the programme's rules "
+            "(\"your pick\" in a calibration session), what is ticked, and this week's sessions "
+            "done of planned. Explain a target with its rule's words; never invent or change one."
+        ),
+        input_schema=_object({}),
+        handler=coach.get_todays_workout,
+    ),
+    EngineTool(
+        name="start_workout",
+        title="Start the workout",
+        description=(
+            "Starts today's workout (\"start my workout\"), or reports the one already running."
+            + _WRITE_NOTE
+        ),
+        input_schema=_object({}),
+        handler=coach.start_workout,
+        writes=True,
+    ),
+    EngineTool(
+        name="tick_workout_set",
+        title="Tick a workout set",
+        description=(
+            "Ticks the next open set of an exercise in today's workout with what was done "
+            "(\"bench 135 for 8\": exercise bench, reps 8, weight_lbs 135). Starts the workout "
+            "if none is running." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "exercise": {"type": "string", "minLength": 1, "maxLength": 80},
+                "reps": {"type": "integer", "minimum": 0, "maximum": 1000},
+                "weight_lbs": {"type": "number", "minimum": 0, "maximum": 1999},
+            },
+            ("exercise", "reps"),
+        ),
+        handler=coach.log_workout_set_to_session,
+        writes=True,
+    ),
+    EngineTool(
+        name="swap_exercise",
+        title="Swap an exercise",
+        description=(
+            "Swaps a programme exercise for one of its listed alternatives (\"swap squats\"; "
+            "`to` names one, else the next). Its target comes from the rules." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "exercise": {"type": "string", "minLength": 1, "maxLength": 80},
+                "to": {"type": "string", "maxLength": 80},
+            },
+            ("exercise",),
+        ),
+        handler=coach.swap_exercise,
+        writes=True,
+    ),
+    EngineTool(
+        name="finish_workout",
+        title="Finish the workout",
+        description=("Finishes and logs today's workout." + _WRITE_NOTE),
+        input_schema=_object({}),
+        handler=coach.finish_workout,
+        writes=True,
+    ),
     # procedures ticket 12 (ADR 0070). `writes=False` ON PURPOSE: `run_engine_tool`
     # checks the write fence on this STATIC flag before the handler, so `True`
     # would refuse every procedure to a read-scoped token, read-only ones

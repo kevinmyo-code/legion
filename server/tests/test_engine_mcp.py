@@ -313,6 +313,11 @@ def _write_calls(checklist_id, item_id, event_id, purchase_id):
         "log_saved_meal": {"name": "usual breakfast"},
         "accept_energy_proposal": {},
         "dismiss_energy_proposal": {},
+        # Workouts (2026-11-06).
+        "start_workout": {},
+        "tick_workout_set": {"exercise": "bench", "reps": 8, "weight_lbs": 135},
+        "swap_exercise": {"exercise": "squat"},
+        "finish_workout": {},
     }
 
 

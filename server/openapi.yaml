@@ -1217,6 +1217,240 @@ paths:
               schema:
                 $ref: '#/components/schemas/WeeklyLine'
           description: ''
+  /api/body/coach/workout/:
+    get:
+      operationId: api_body_coach_workout
+      description: The programme, this week's sessions done of planned, today's session
+        (running or finished) or the next plan with every target from the programme's
+        rules, and words.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+  /api/body/coach/workout/cancel/:
+    post:
+      operationId: api_body_coach_workout_cancel
+      description: Drops the running workout. Nothing is logged and it does not count.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/finish/:
+    post:
+      operationId: api_body_coach_workout_finish
+      description: 'Finishes the workout and logs it: done sets become `workout_set_logs`
+        rows, once. A replay of a finished workout changes nothing.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/log/:
+    post:
+      operationId: api_body_coach_workout_log
+      description: 'Logs one set of a named exercise into today''s workout (starting
+        it when none is running): `exercise`, `reps`, optional `weight_lbs`.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/programme/:
+    put:
+      operationId: api_body_coach_workout_programme
+      description: Creates the programme (3 full-body days, A and B) or sets its training_days.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/sets/:
+    patch:
+      operationId: api_body_coach_workout_sets
+      description: 'Ticks or edits sets: `sets` is a list of {exercise_key, set_number,
+        done, reps, weight_lbs}. Only what was done; a target is never taken from
+        a client.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/start/:
+    post:
+      operationId: api_body_coach_workout_start
+      description: Starts today's workout from the programme's rules, or returns the
+        one already running. `id` (a UUID the phone minted) makes a replay idempotent.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          description: Started.
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/swap/:
+    post:
+      operationId: api_body_coach_workout_swap
+      description: Swaps `exercise` for `to` (one of its listed alternatives) or for
+        the next alternative. Kept on the programme; a running workout changes too
+        if that exercise has no ticked set. The new exercise's target comes from the
+        rules (calibration if new).
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/body/meal_logs/:
     get:
       operationId: api_body_meal_logs_list

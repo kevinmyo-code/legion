@@ -171,6 +171,11 @@ RECRUITER_EXCLUDED: dict[str, str] = {
             "log_saved_meal",
             "accept_energy_proposal",
             "dismiss_energy_proposal",
+            "get_todays_workout",
+            "start_workout",
+            "tick_workout_set",
+            "swap_exercise",
+            "finish_workout",
         )
     },
 }

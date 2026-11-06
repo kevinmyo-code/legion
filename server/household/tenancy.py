@@ -76,6 +76,11 @@ TENANT_TABLES: tuple[str, ...] = (
     "waist_logs",
     "saved_meals",
     "energy_proposals",
+    # workouts (2026-11-06): the deterministic programme, its sessions and their sets
+    # (`body_coach/programme.py`). Shared in the household like every body table (ruling 6).
+    "training_programmes",
+    "workout_sessions",
+    "workout_sets",
     # memory
     "memories",
     "memory_audit",
@@ -254,6 +259,9 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "waist_logs",
         "saved_meals",
         "energy_proposals",
+        "training_programmes",
+        "workout_sessions",
+        "workout_sets",
     }
 )
 
