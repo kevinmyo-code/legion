@@ -499,6 +499,8 @@ def cmd_open(phone: Phone, args) -> int:
             result["marker"] = f"text {s.marker!r} NOT seen within {args.timeout:.0f}s - screenshot and look"
             print(json.dumps(result))
             return 1
+    if not s.marker and not s.activity:
+        result["marker"] = "none in the map: arrival NOT proven - dump or screenshot and look"
     result["focus"] = phone.state()["focus"]
     log_action("open", result)
     print(json.dumps(result))

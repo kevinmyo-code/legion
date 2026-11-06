@@ -305,8 +305,8 @@ class OpeningFake(FakeAdb):
 
 def test_open_a_route_is_one_deep_link_and_no_taps():
     fake = FakeAdb("data_privacy.xml")
-    assert run(["open", "settings/memory"], fake) == 0
-    assert any("am start -n com.kevin.legion/.ui.MainActivity --es route 'settings/memory'" in c
+    assert run(["open", "settings/data-privacy"], fake) == 0
+    assert any("am start -n com.kevin.legion/.ui.MainActivity --es route 'settings/data-privacy'" in c
                for c in fake.calls)
     assert fake.taps() == []
 
@@ -324,3 +324,23 @@ def test_open_unknown_screen_fails_without_touching_the_phone():
     fake = FakeAdb("data_privacy.xml")
     assert run(["open", "settings/nope"], fake) == 1
     assert not any("am start" in c for c in fake.calls)
+
+
+def test_wakefulness_reads_the_word_not_the_number():
+    power = "  mWakefulness=1\n  mWakefulness=Awake\n"
+    assert padb.parse_screen("", power)["awake"] is True
+    assert padb.parse_screen("", "mWakefulness=0\nmWakefulness=Asleep\n")["awake"] is False
+
+
+def test_vault_back_with_its_icon_desc_twice_is_still_back():
+    rails.check_tap(["Back", "Back"], VAULT, confirmed=False)
+    with pytest.raises(rails.Refusal):
+        rails.check_tap(["Back", "Show"], VAULT, confirmed=False)
+    with pytest.raises(rails.Refusal):
+        rails.check_tap([], VAULT, confirmed=False)
+
+
+def test_open_reports_when_the_header_never_shows(capsys):
+    fake = FakeAdb("data_privacy.xml")          # Memory's header text is not in this dump
+    assert run(["open", "settings/memory", "--timeout", "0"], fake) == 1
+    assert "NOT seen" in capsys.readouterr().out

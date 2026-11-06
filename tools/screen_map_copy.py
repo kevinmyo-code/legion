@@ -59,6 +59,7 @@ SELECTORS = """
 ROUTES = {
     "home": dict(
         name="Home",
+        marker="More",
         what="What LEGION opens to: the today card, the Money panel, the panel buttons (More, Books, "
              "Games) and the chat button. In Matrix mode this route shows Matrix HOME instead "
              "(`matrix/home`).",
@@ -69,20 +70,22 @@ ROUTES = {
             ("desc", "Chat with ^", "opens the typed chat panel (`tools/phone say` uses it)"),
         ],
     ),
-    "calendar": dict(name="Calendar", what="Month grid and day view; reminders and events.",
+    "calendar": dict(name="Calendar", what="Month grid and day view; reminders and events.", marker="Calendar",
                      needs="", voice=[]),
-    "checklists": dict(name="Lists", what="Checklists and to-dos; the Bought log is in its top bar."),
+    "checklists": dict(name="Lists", what="Checklists and to-dos; the Bought log is in its top bar.",
+                       marker="Bought log"),
     "bought": dict(name="Bought log", what="What the household bought (purchase-log).",
                    parent="checklists", reach=[("text", "Bought log")], voice=["bought_log"]),
     "money": dict(
         name="Money",
         what="One Money view, swiping between months: budget bars, categories, transactions.",
+        marker="Money",
         parent="home", reach=[("text", "More"), ("text", "Money")],
         controls=[("text", "Groceries", "opens the pantry under Money")],
     ),
     "money/details": dict(name="Money (details alias)",
                           what="The same Money view as `money`, kept as a route so older deep links land. "
-                               "Not reached by a tap of its own.",
+                               "Not reached by a tap of its own.", marker="Money",
                           parent="home", reach=[("text", "More"), ("text", "Money")]),
     "money/pantry": dict(name="Pantry", what="Groceries and pantry stock, under Money.",
                          parent="money", reach=[("text", "Groceries")], voice=[]),
@@ -132,6 +135,7 @@ ROUTES = {
         name="Settings",
         what="LEGION settings. From the Soft home: the gear, then LEGION settings. In Matrix mode the "
              "gear is not drawn, so `open` uses the deep link.",
+        marker="SETUP",
         parent="home", reach=[("desc", "Settings"), ("text", "LEGION settings")],
     ),
     "settings/assistant": dict(name="Assistant settings", what="Companion, playbooks, wake word, what it can do."),
@@ -160,6 +164,7 @@ ROUTES = {
         name="Memory",
         what="What LEGION remembers about the member, from the engine (ADR 0075). Each row can be "
              "shared or forgotten; forgetting is a hard delete.",
+        marker="What it remembers",
         controls=[
             ("tag", "memory-message", "the status line (loading, offline, empty)"),
             ("tag", "memory-", "one memory row (`memory-<id>`)"),

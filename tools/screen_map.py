@@ -392,6 +392,8 @@ def build(copy=None) -> tuple[dict[str, Screen], list[str]]:
                                 "app/src/main contains any more - the control was renamed or removed")
             elif kind == "tag" and not any(value == t or value in t for t in all_tags()):
                 problems.append(f'screen "{s.id}" taps tag "{value}", which no testTag in app/src/main sets')
+        if s.marker and not selector_exists(s.marker):
+            problems.append(f'screen "{s.id}" waits for text "{s.marker}", which no string literal has any more')
         for kind, value, _why in s.controls:
             if kind in ("text", "desc") and not selector_exists(value):
                 problems.append(f'screen "{s.id}" lists control {kind} "{value}", which no string literal has')

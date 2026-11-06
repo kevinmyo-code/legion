@@ -91,7 +91,8 @@ def check_tap(words: list[str], focus: str, confirmed: bool) -> None:
         raise Refusal(f"'{tags[0]}' reveals or copies an ID vault value (ADR 0076).", absolute=True)
     if in_vault:
         joined = _words(words).strip()
-        if joined not in VAULT_ALLOWED:
+        # Back's desc can sit on the button and on its icon too: every word must be an allowed one.
+        if not words or not {w.strip().casefold() for w in words} <= set(VAULT_ALLOWED):
             raise Refusal(
                 f"the ID vault is in front and the only tap allowed there is Back (got '{joined[:60]}'). "
                 "Read the labels from a screenshot or dump instead.",

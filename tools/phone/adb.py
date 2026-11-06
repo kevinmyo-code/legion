@@ -149,7 +149,8 @@ def parse_battery(dumpsys_battery: str) -> dict:
 
 
 def parse_screen(dumpsys_window: str, dumpsys_power: str) -> dict:
-    awake = re.search(r"mWakefulness=(\w+)", dumpsys_power)
+    # `dumpsys power` prints both `mWakefulness=Awake` and a numeric `mWakefulness=1`; read the word.
+    awake = re.search(r"mWakefulness=(Awake|Asleep|Dreaming|Dozing)", dumpsys_power)
     kg = re.search(r"isKeyguardShowing=(\w+)", dumpsys_window) or re.search(
         r"mShowingLockscreen=(\w+)", dumpsys_window)
     return {

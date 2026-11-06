@@ -135,6 +135,7 @@ Month grid and day view; reminders and events.
 - **Id:** `calendar` (`LegionRoute.CALENDAR`)
 - **Code:** `ui/CalendarScreen.kt`
 - **Open:** `python tools/phone open calendar` (deep link `route=calendar`)
+- **On screen when open:** text `Calendar`
 - **From launch:** HOME > text `Calendar` *(last step read from code)*
 
 <a id="s-checklists"></a>
@@ -145,6 +146,7 @@ Checklists and to-dos; the Bought log is in its top bar.
 - **Id:** `checklists` (`LegionRoute.CHECKLISTS`)
 - **Code:** `ui/checklists/ChecklistsScreen.kt`
 - **Open:** `python tools/phone open checklists` (deep link `route=checklists`)
+- **On screen when open:** text `Bought log`
 - **From launch:** HOME > text `Lists` *(last step read from code)*
 
 <a id="s-claude-session"></a>
@@ -266,6 +268,7 @@ What LEGION opens to: the today card, the Money panel, the panel buttons (More, 
 - **Id:** `home` (`LegionRoute.HOME`)
 - **Code:** `ui/home/HomeScreen.kt`
 - **Open:** `python tools/phone open home` (deep link `route=home`)
+- **On screen when open:** text `More`
 - **From launch:** HOME (launch lands here)
 - **Key controls:**
   - text `More`: opens the More sheet: Money, Body, Fleet, Recordings, News, Reports, Claude session
@@ -281,6 +284,7 @@ One Money view, swiping between months: budget bars, categories, transactions.
 - **Id:** `money` (`LegionRoute.MONEY`)
 - **Code:** `ui/LedgerScreen.kt`
 - **Open:** `python tools/phone open money` (deep link `route=money`)
+- **On screen when open:** text `Money`
 - **From launch:** HOME > text `More` > text `Money`
 - **Key controls:**
   - text `Groceries`: opens the pantry under Money
@@ -293,6 +297,7 @@ The same Money view as `money`, kept as a route so older deep links land. Not re
 - **Id:** `money/details` (`LegionRoute.MONEY_DETAILS`)
 - **Code:** `ui/LedgerScreen.kt`
 - **Open:** `python tools/phone open money/details` (deep link `route=money/details`)
+- **On screen when open:** text `Money`
 - **From launch:** HOME > text `More` > text `Money`
 
 <a id="s-money-pantry"></a>
@@ -348,6 +353,7 @@ LEGION settings. From the Soft home: the gear, then LEGION settings. In Matrix m
 - **Id:** `settings` (`LegionRoute.SETTINGS`)
 - **Code:** `ui/SettingsScreen.kt`
 - **Open:** `python tools/phone open settings` (deep link `route=settings`)
+- **On screen when open:** text `SETUP`
 - **From launch:** HOME > desc `Settings` > text `LEGION settings`
 
 <a id="s-settings-assistant"></a>
@@ -469,6 +475,7 @@ What LEGION remembers about the member, from the engine (ADR 0075). Each row can
 - **Id:** `settings/memory` (`LegionRoute.SETTINGS_MEMORY`)
 - **Code:** `ui/companions/MemoryScreen.kt`
 - **Open:** `python tools/phone open settings/memory` (deep link `route=settings/memory`)
+- **On screen when open:** text `What it remembers`
 - **From launch:** HOME > desc `Settings` > text `LEGION settings` > text `Data and privacy` > text `Memory` *(last step read from code)*
 - **Test tags:** `confirm-forget`, `forget-<id>`, `memory-<id>`, `memory-message`, `share-<id>`
 - **Key controls:**
