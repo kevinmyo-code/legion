@@ -208,7 +208,18 @@ object VehicleController {
         } else {
             // Existing row: a targeted identity write, not a rebuild - see the
             // function doc and FleetEngineStore.setIdentity for why.
-            FleetEngineStore.setIdentity(context, vehicleId, year, make, model, trim.ifBlank { existing.trim }, name, now)
+            //
+            // The row count is CHECKED (2026-11-05). It used to be discarded, and on Kevin's phone
+            // the Jeep had no engine record (a pulled car - see FleetEngineStore.ensureEngineVehicleId),
+            // so setIdentity wrote nothing and this still answered "Got it, this is the 1998 Jeep
+            // Cherokee now" - after which set_odometer failed exactly as before. CLAUDE.md §7.
+            val written = FleetEngineStore.setIdentity(context, vehicleId, year, make, model, trim.ifBlank { existing.trim }, name, now)
+            if (written == 0) {
+                return WriteOutcome(
+                    false,
+                    "I couldn't save the $year $make $model to this car's record, so nothing changed.",
+                )
+            }
             if (engine.isNotBlank()) FleetEngineStore.setEngine(context, vehicleId, engine, now)
         }
 
