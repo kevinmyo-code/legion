@@ -1,0 +1,182 @@
+{
+  "nodes": [
+    {
+      "id": "0ddaec2153c0bee5",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/01-baseline.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "de79ae746121c152",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/02-what-the-audit-may-keep.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "77c324f5d3d4c172",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/11-google-places-closed.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9cf736a66ed88c78",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/12-engine-render.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "bfb5de9675806466",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/03-search-in-one-request.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "28ca784be6aee71b",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/04-spoken-name-matching.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "386fe77103fd60aa",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/05-recents-and-frequents.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "fb292b3f45377491",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/06-entrance-and-arrival-quality.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "57eab9e0abd928f8",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/07-faster-route-and-incidents.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ae77703f25d21bd2",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/09-lanes-and-missed-turns.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "cd6c989d1d996922",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/10-a-second-poi-source.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3cdff9a54540693e",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/08-open-now-and-rating.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "a0ac9c69195ee239",
+      "fromNode": "0ddaec2153c0bee5",
+      "fromSide": "right",
+      "toNode": "bfb5de9675806466",
+      "toSide": "left"
+    },
+    {
+      "id": "d61d4ccb8bb25d0e",
+      "fromNode": "0ddaec2153c0bee5",
+      "fromSide": "right",
+      "toNode": "28ca784be6aee71b",
+      "toSide": "left"
+    },
+    {
+      "id": "04ac0b17cb681f82",
+      "fromNode": "de79ae746121c152",
+      "fromSide": "right",
+      "toNode": "386fe77103fd60aa",
+      "toSide": "left"
+    },
+    {
+      "id": "dcb317232fcb4d02",
+      "fromNode": "0ddaec2153c0bee5",
+      "fromSide": "right",
+      "toNode": "fb292b3f45377491",
+      "toSide": "left"
+    },
+    {
+      "id": "8e09eb091fd78fa5",
+      "fromNode": "0ddaec2153c0bee5",
+      "fromSide": "right",
+      "toNode": "57eab9e0abd928f8",
+      "toSide": "left"
+    },
+    {
+      "id": "653acc54ddb12ca2",
+      "fromNode": "bfb5de9675806466",
+      "fromSide": "right",
+      "toNode": "3cdff9a54540693e",
+      "toSide": "left"
+    },
+    {
+      "id": "2157ed9b8e90828a",
+      "fromNode": "0ddaec2153c0bee5",
+      "fromSide": "right",
+      "toNode": "ae77703f25d21bd2",
+      "toSide": "left"
+    },
+    {
+      "id": "7b8595ef2c082f76",
+      "fromNode": "0ddaec2153c0bee5",
+      "fromSide": "right",
+      "toNode": "cd6c989d1d996922",
+      "toSide": "left"
+    }
+  ]
+}
