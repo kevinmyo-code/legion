@@ -7357,3 +7357,74 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   thrust and leg press, 5 lb for the rest.
 - **Meals (item 4):** the Today card already had Saved meals and Log meal; the quick-log Meal
   dialog now lists saved meals as one-tap logs above the free-text field.
+
+## 2026-11-06 - Body coach 2: change the plan by asking, and what to eat from what's left (Kevin)
+
+- **Kevin, by voice:** *"will i be able to tell it like hey i wanna change the workouts. recommend
+  me alternatives etc and change it accordingly"*, *"or ask it what to eat based on what i have
+  left calorie and macro wise etc?"*, *"that aligns with my weight goals"*. He said go. Map
+  `.scratch/body-coach-2/`.
+- **Later the same day:** *"i dont really need detailed screens for this. i just want a simple
+  checklist of workouts to do and calories and macroes ive consumed + whats remaining. most of it
+  ill do by voice for recommenations and changes. the goal is to use less screens"*. The planned
+  Change plan and Suggest a meal sheets are dropped; voice is the primary path, and the engine
+  answers in a voice-friendly shape. How ADR 0035 applies is open.
+- **Calls taken while charting, open to Kevin** (all sixteen in
+  `.scratch/body-coach-2/issues/01-decisions.md`): plan-level changes are proposals he accepts or
+  dismisses, an in-workout swap stays immediate; the model passes structured choices only and the
+  engine builds every exercise and number (ADR 0078 holds); full body and upper/lower on 2 to 4
+  days, full body the default for 2 or 3 and upper/lower for 4; default days Mon/Thu, Mon/Wed/Fri,
+  Mon/Tue/Thu/Fri; equipment and joint tags filter the catalog, a slot with nothing left is paused
+  and named, and "it hurts" always adds that persisting pain is one for a doctor or physio;
+  progression carries wherever an exercise survives; accept changes the programme in place;
+  meal options are saved meals and groceries bought in the last 14 days **as bought, never
+  divided into a portion**; ranking fits what is left, protein per kcal first; never a push under
+  800 kcal or to skip food; "log that" logs by option id with the engine's figures.
+
+## 2026-11-06 - The Body interview: Alfred designs, tracks and recommends; the engine owns every number (Kevin)
+
+- **Vision, Kevin's words:** *"i want alfred to be able to design track and recommend workouts
+  diets meals etc for me and advise me"*. *"i dont really need detailed screens... simple
+  checklist of workouts to do and calories and macroes ive consumed + whats remaining. most of it
+  ill do by voice... the goal is to use less screens"*.
+- **1. Who decides: C.** The model designs freely (exercise choice, split, meal ideas, advice); the
+  engine's deterministic rules produce every number (kcal, protein, sets, reps, weights,
+  progression, adjustments). The model picks from the catalog and options the engine returns and
+  never invents a number. ADR 0078 amended.
+- **2. Hands path: A**, a minimal Body amendment to ADR 0035: the Body screen is a checklist of
+  today's workout (tick a set inline, tap the numbers to edit what was done), kcal and protein
+  consumed and remaining (carbs and fat when known), meal log and saved-meal log, and any pending
+  proposal as one line with Accept and Dismiss. **No sheets or menus** for plan changes, meal
+  suggestions or meal plans; those are voice only. Folding the direction-2 session screen into the
+  checklist is to be raised, not done silently.
+- **3. Food: B.** Alfred makes a weekly meal plan that hits the targets and turns it into a grocery
+  list in Pantry. In-the-moment "what should I eat" from what is left, saved meals and pantry stays.
+- **4. Workouts.** Lifting 1 to 3 years; sessions about 60 minutes. **Days are flexible**: a
+  sessions-a-week target, no fixed weekdays; "next session" is the next in the rotation. **The
+  lower body defaults to knee-friendly** work (split squats, wall sits and other quad isometrics,
+  hip hinges); no heavy deep back squat unless he asks; if it hurts, Alfred swaps the exercise; no
+  diagnosis, a physio if pain persists. (His reason is a personal health detail and is kept out of
+  this public repo, in the spirit of fat-loss ruling 10.) **Where he trains:** a commercial gym, or
+  home with calisthenics and sometimes a kettlebell; "I'm at home today" switches that session to
+  home variants. **Cardio: walking**; no watch, so what the phone can count is to be checked;
+  Health Connect stays parked.
+- **5. Unprompted nudges: b, c and d only**, each passing the section 7 compulsion test and
+  silenced by one sentence: (b) an evening protein shortfall; (c) the Monday check-in, which asks
+  for the weekly weigh-in first, then gives the trend, sessions done, and next week's meal plan and
+  grocery list; (d) plan adjustment proposals (a stall or deload, a kcal change). **No
+  workout-due or "you haven't trained" nudge.**
+- **6. Macros: A.** Targets are kcal and protein only; carbs and fat are shown when known, with no
+  target (*"im not too particular or strict about macros"*).
+- **7. Weigh-ins: C, weekly.** No waist, no photos; extra weigh-ins still count. The calorie
+  adaptation needs **at least 4 weekly points (about 28 days)**, not 14 days.
+- **8. Tone: B, coach-style.** Short, the reason in one clause; "more detail" gets the full why.
+  Goes in the coach prompt rules and the BIO playbook.
+- **9. Edges, all yes.** Supplements: evidence-backed basics only (protein powder, creatine), never
+  fat burners. Eating out: suggest what to order with estimated kcal and protein, labelled
+  estimates. Off days: one neutral factual line (*"over by 600 today, the week still averages on
+  target"*); no guilt, never characterise a lapse.
+- **Built the same day on `feat/body-coach-2`:** sessions a week instead of weekdays, the
+  knee-friendly default lower body, gym and home variants per session, the walking finisher,
+  programme change proposals, the alternatives read, "what should I eat" with kcal and protein only
+  and the off-day week line, and the 28-day four-weekly-point adaptation. The rest is ticketed in
+  `.scratch/body-coach-2/`.

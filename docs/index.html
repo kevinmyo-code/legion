@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>360 tickets open</h1>
+<h1>370 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 54 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 79 are waiting on another ticket first. <b>209 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 55 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 85 are waiting on another ticket first. <b>213 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">360</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">370</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">58</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">209</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">79</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">213</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">85</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">11</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">126</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">132</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">14</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -373,6 +373,26 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">19</span><span class="body"><span class="tt">Laptop worker: procedures for the Claude session</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #12</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">20</span><span class="body"><span class="tt">Build: distillation proposals and approval in the inspector</span></span><span class="chip c-build">build</span><span class="state">waiting on #08, #13, #14</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">21</span><span class="body"><span class="tt">Build: replay recorded asks against procedures vs free routing</span></span><span class="chip c-build">build</span><span class="state">waiting on #10, #15</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>body-coach-2</h2>
+<span class="counts"><span class="k">10</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
+<span class="bar"><i style="flex:4"></i><b style="flex:6"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">Engine: catalog, templates, sessions a week, gym or home</span><span class="det">built 2026-11-06 on feat/body-coach-2: equipment and joint tags, kettlebell and home variants, upper/lower, sessions a week, knee-friendly defaults, walking finisher, per-exercise ranges; tests/test_body_coach_2.py; owed: engine deploy with body_coach 0004</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Engine: programme change proposals, accept and dismiss, alternatives read</span><span class="det">built 2026-11-06 on feat/body-coach-2: programme_proposals, routes, four engine tools, alternatives read; owed: engine deploy with body_coach 0004</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">Engine: what to eat from what&#x27;s left</span><span class="det">built 2026-11-06 on feat/body-coach-2: suggest.py, meal_options.py, GET meal-options/, POST meal-options/log/, suggest_meal and log_meal_option; kcal and protein only, off-day week line; owed: engine deploy</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">08</span><span class="body"><span class="tt">Engine: the calorie adaptation on four weekly points</span><span class="det">built 2026-11-06 on feat/body-coach-2: 28-day window, a weigh-in in each of four weeks, 22 intake days; tests/test_body_coach.py moved; owed: engine deploy</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Web: the same Body checklist</span><span class="det">ready; lower value than the phone (Kevin trains with the phone); folds in fat-loss ticket 26</span></span><span class="chip c-build">build</span><span class="state">waiting on #03, #04, #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Phone: the Body checklist, the reads behind ask_body, voice</span><span class="det">ready: engine tickets 03-05 built and origin/fix/workout-reads landed; build after merging fix/workout-reads (its whole-programme read)</span></span><span class="chip c-build">build</span><span class="state">waiting on #03, #04, #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">Weekly meal plan that hits the targets, and its grocery list in Pantry</span><span class="det">Kevin ruled B (a weekly plan and a grocery list); how the engine gets the numbers for a meal Alfred designs needs one ruling</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #01</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Nudges: evening protein shortfall, the Monday check-in, plan adjustment proposals</span><span class="det">ready on the engine (facts routes); the phone raises follow ticket 07; the Monday check-in&#x27;s meal plan part waits for ticket 09</span></span><span class="chip c-build">build</span><span class="state">waiting on #05, #08</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">What the phone can count for walking, with no watch and no Health Connect</span><span class="det">Kevin&#x27;s cardio is walking; Health Connect stays parked (fat-loss ticket 18)</span></span><span class="chip c-research">research</span><span class="state">waiting on </span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">Phone: coach tone, supplements, eating out and off days in the coach rules</span><span class="det">ready; prompt text only (BioPlaybook and the body coach prompt rules), no UI</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
 </ul>
 </section>
 <section class="map">

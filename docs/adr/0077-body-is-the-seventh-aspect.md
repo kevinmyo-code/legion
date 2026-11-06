@@ -42,3 +42,15 @@ trend and proposals to it. Kevin, 2026-11-05, to the question whether Body is th
 - Everything on Body that is not measured (calorie and protein figures, maintenance, a suggested
   target) is an estimate and says so (CLAUDE.md section 4 rule 5).
 - No Health Connect, scale or watch integration until Kevin has one (parked in the map).
+
+## Amendment, 2026-11-06: weekly weigh-ins, kcal and protein only, coach tone
+
+Kevin's Body interview (`decisions.md` 2026-11-06). **Weigh-ins are weekly**; no waist, no photos
+(the waist log stays in the schema, unasked). **The calorie adaptation needs four weekly points**:
+a 28-day window with a weigh-in in each of its weeks and 22 days of logged intake, where it was 14
+days. **Targets are kcal and protein only**; carbs and fat are shown when known and never targeted.
+Alfred is coach-style (short, the reason in one clause). Unprompted, only three things: an evening
+protein shortfall, the Monday check-in (weigh-in first, then trend, sessions done, next week's meal
+plan and grocery list), and plan adjustment proposals; never a workout-due or "you haven't
+trained" nudge. An off day is one neutral line. Supplements: protein powder and creatine only,
+never fat burners. Map `.scratch/body-coach-2/`.

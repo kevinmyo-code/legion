@@ -40,3 +40,25 @@ can check, and progression only works if next week's weight follows from this we
   or a workout plan.
 - A new template is a code change with tests, not a prompt.
 - Training days, units (pounds) and increments are settled in code; changing them is a ruling.
+
+## Amendment, 2026-11-06: Alfred designs from the catalog; sessions a week; gym or home
+
+Kevin: *"i want alfred to be able to design track and recommend workouts diets meals etc for me and
+advise me"*. **The model may now design** (exercise choice, split, swaps, advice), but only by
+choosing from what the engine returns: the catalog's exercises, its two templates and the
+alternatives a slot lists. **Every number is still the rules'.** A plan-level change is a
+**programme change proposal** (`server/body_coach/programme_change.py`) built by the engine from
+structured choices and applied only when Kevin accepts it; an in-workout swap stays immediate.
+
+- **Sessions a week, not weekdays** (2 to 4). The next session is the next in the rotation; the
+  weekdays stored on the programme are inert. "Training days are settled in code" above now reads
+  "the sessions-a-week target is settled by an accepted proposal".
+- **Templates:** full body (A, B) and upper / lower (Upper 1, Lower 1, Upper 2, Lower 2); full body
+  by default for 2 or 3 sessions, upper / lower for 4.
+- **The lower body defaults to knee-friendly work** (split squats, wall sits, hip hinges); a heavy
+  deep squat only when he asks.
+- **Equipment and joints filter the catalog**; a slot with nothing allowed is paused and named,
+  never filled with a guess. **A session is at the gym or at home** (a kettlebell and bodyweight).
+- **A walking finisher** is optional, in minutes.
+- Progression is read per exercise across all finished sessions, so it survives any change where
+  the exercise survives; a new exercise calibrates. Map `.scratch/body-coach-2/`.

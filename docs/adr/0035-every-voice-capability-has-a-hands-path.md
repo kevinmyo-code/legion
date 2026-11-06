@@ -49,3 +49,13 @@ unmeasured, and measuring it is the first work, not a survey to be skipped -
 
 Going forward the feature-add checklist carries the rule, so a new voice tool arriving without a
 hands path is caught at the point it is written rather than found later.
+
+## Amendment, 2026-11-06: Body's hands path is a checklist, not a mirror of every voice ability
+
+Kevin: *"i dont really need detailed screens... the goal is to use less screens"*. **For Body
+only**, the hands path is deliberately minimal: today's workout as a checklist (tick a set inline,
+tap the numbers to edit what was done), kcal and protein consumed and remaining (carbs and fat when
+known), meal log and saved-meal log, and a pending proposal as one line with Accept and Dismiss.
+**Plan changes, meal suggestions and meal plans are voice only**, with no sheet or menu. What a
+voice failure costs is bounded: nothing changes without the Accept the screen does carry, and
+logging and ticking stay reachable by hand. Every other aspect keeps the rule as written.

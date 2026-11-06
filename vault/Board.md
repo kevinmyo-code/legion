@@ -33,6 +33,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[31-phase-6-deletions\|31]] | build | Phase 6 deletions: the mirror, SyncEngine, and the dead notes-era tables |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[07-obd-rollup-and-retention\|07]] | build | obd_samples: roll up per drive, keep 90 days raw |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[12-canvas-submitted-on-the-phone\|12]] | build | The phone shows what Canvas says beside each coursework task (Android terminal) |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[09-weekly-meal-plan\|09]] | decision | Weekly meal plan that hits the targets, and its grocery list in Pantry |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[11-walking-on-the-phone\|11]] | research | What the phone can count for walking, with no watch and no Health Connect |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[12-coach-tone-and-advice\|12]] | build | Phone: coach tone, supplements, eating out and off days in the coach rules |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
@@ -117,6 +120,9 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[20-the-reminder-default-made-the-retraction-delete-appointments\|20]] | decision | 20-the-reminder-default-made-the-retraction-delete-appointments |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[01-job-runner-and-freshness\|01]] | build | Job runner, ingest_runs, freshness endpoint, deploy/crontab |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[11-canvas-submitted-on-the-web\|11]] | build | The web app shows what Canvas says beside each coursework task |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[03-engine-catalog-and-templates\|03]] | build | Engine: catalog, templates, sessions a week, gym or home |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[05-engine-meal-suggestions\|05]] | build | Engine: what to eat from what's left |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[08-engine-weekly-adaptation\|08]] | build | Engine: the calorie adaptation on four weekly points |
 | [[.scratch/books/map\|books]] | [[02-build-books\|02]] | build | Build: Books chip, sheet, folder scan, reader (EPUB/PDF/comics), read-aloud, voice tool |
 | [[.scratch/books/map\|books]] | [[04-build-pdf-convert-server\|04]] | build | Build: server PDF to EPUB conversion, pass-through, nothing stored |
 | [[.scratch/books/map\|books]] | [[06-build-reader-comfort\|06]] | build | Build: reader full screen, a one-tap Day/Night toggle that reaches PDFs, and a warm filter |
@@ -247,6 +253,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-etl/map\|backend-etl]] | [[13-bofa-activity-csv-server-side\|13]] | build | BofA activity CSVs on the server: deterministic readers, the rule 7 writer, watcher routing  waiting on [[06-drive-statements-watcher\|06]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[14-ledger-rows-reach-the-phone\|14]] | build | Ledger rows reach the phone: categorised at insert, mirrored whole, deletions honoured  waiting on [[06-drive-statements-watcher\|06]], [[13-bofa-activity-csv-server-side\|13]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[15-rent-counts-in-the-month-it-pays-for\|15]] | build | Rent counts in the month it pays for: a late-month Housing charge moves to the next month  waiting on [[14-ledger-rows-reach-the-phone\|14]] |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[04-engine-programme-proposals\|04]] | build | Engine: programme change proposals, accept and dismiss, alternatives read  waiting on [[03-engine-catalog-and-templates\|03]] |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[06-web-hands-paths\|06]] | build | Web: the same Body checklist  waiting on [[03-engine-catalog-and-templates\|03]], [[04-engine-programme-proposals\|04]], [[05-engine-meal-suggestions\|05]] |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[07-phone\|07]] | build | Phone: the Body checklist, the reads behind ask_body, voice  waiting on [[03-engine-catalog-and-templates\|03]], [[04-engine-programme-proposals\|04]], [[05-engine-meal-suggestions\|05]] |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[10-nudges\|10]] | build | Nudges: evening protein shortfall, the Monday check-in, plan adjustment proposals  waiting on [[05-engine-meal-suggestions\|05]], [[08-engine-weekly-adaptation\|08]] |
 | [[.scratch/books/map\|books]] | [[05-build-pdf-convert-phone\|05]] | build | Build: phone converts every PDF in the background and reads the EPUB copy  waiting on [[04-build-pdf-convert-server\|04]] |
 | [[.scratch/books/map\|books]] | [[09-build-reading-sync-phone\|09]] | build | Build: the phone syncs reading position and bookmarks with the engine  waiting on [[08-build-reading-sync-engine\|08]] |
 | [[.scratch/books/map\|books]] | [[10-build-web-reader\|10]] | build | Build: a Books page in the web app that reads a laptop folder, synced with the phone  waiting on [[08-build-reading-sync-engine\|08]] |
@@ -410,6 +420,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/async-lookups/map\|async-lookups]] | 8 | 6 | [[.scratch/async-lookups/async-lookups.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 32 | 19 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/backend-etl/map\|backend-etl]] | 15 | 13 | [[.scratch/backend-etl/backend-etl.canvas\|open]] |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | 12 | 10 | [[.scratch/body-coach-2/body-coach-2.canvas\|open]] |
 | [[.scratch/books/map\|books]] | 10 | 7 | [[.scratch/books/books.canvas\|open]] |
 | [[.scratch/canvas-integration/map\|canvas-integration]] | 1 | 1 | [[.scratch/canvas-integration/canvas-integration.canvas\|open]] |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | 6 | 5 | [[.scratch/chief-of-staff/chief-of-staff.canvas\|open]] |
