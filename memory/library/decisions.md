@@ -7357,3 +7357,21 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   thrust and leg press, 5 lb for the rest.
 - **Meals (item 4):** the Today card already had Saved meals and Log meal; the quick-log Meal
   dialog now lists saved meals as one-tap logs above the free-text field.
+
+## 2026-11-06 - The head unit updates itself too (Kevin)
+
+- **Asked:** *"can the headunit also receive updates like this instead of me having to install a
+  new apk everytime"*, then *"yes"*. This un-parks the head unit bullet of
+  `.scratch/alfred-ota/issues/08-later.md` (KIV 2026-11-05, "least important").
+- **Ruled:** the head unit gets the phone's updater (ADR 0072 half B): engine release
+  `app=headunit`, sha256 and signer verified, never a downgrade, never installed without Kevin's
+  tap. Built on `feat/headunit-ota`, ticket `.scratch/alfred-ota/issues/09-head-unit-updater.md`.
+- **Decided in the build, open to Kevin** (design calls, not his rulings yet):
+  - The consent is a tap (Cruise chip "UPDATE READY · TAP TO INSTALL", or Settings, System,
+    Updates). No voice ask and no `app_update` tool on the head unit.
+  - Never prompted or installed while the car moves (OBD speed or fix speed above 5 km/h in the
+    last 2 minutes). No speed source at all reads as parked.
+  - Downloads are allowed on a metered network by default, unlike the phone, because the unit's
+    internet is the phone's hotspot; a toggle switches it to Wi-Fi only. The APK is 16.7 MB.
+  - Same debug-key pin as the phone (`deploy/release/signer.sha256`): the head unit's `fast` is
+    debug-signed; its own `release.jks` signs only `assembleRelease`, which is not on the car.

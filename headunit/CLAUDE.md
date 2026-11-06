@@ -196,6 +196,7 @@ New tool checklist: snake_case verb_noun, one responsibility, updated in this ta
 | Arrival monitor | 20s | Places check-in; reminder proactives (waits up to 30s for busy conv) |
 | Weather | 30min / 60s retry | Warm cache for proactive context |
 | Drive log | 1min snapshot, 3min upload, 60s after start | `diag/DriveLogLoop`: logcat -> bounded on-disk log (`diag/DriveLog`, ~2 MB); uploads to the engine at service start, every 3 minutes (`periodic`, 2026-10-24: the ignition is cut at the stop, so `drive_end` never arrived), at drive end, and from Settings > System > Drive logs. Deleted only on a 2xx; offline keeps it (2026-10-15). The conversation audit has its own spool (2026-10-28, phone parity: `diag/ConvoAudit` LIVE_AUDIT and `diag/ConvoLatency` LIVE_LATENCY lines in the phone's formats, `DriveLog.conversationStore`, `filesDir/convolog`, ~2 MB), written straight to disk and never to logcat or Crashlytics; it uploads as `conversation` at session end, on the 3-minute tick, at start, at drive end and from the Settings button, and `manage.py device_logs --reason conversation --render` reads it |
+| App updates | 20s after start, then 6h | `update/UpdateGraph.run` (alfred-ota ticket 09, 2026-11-06): asks the engine for the newest `headunit` release on the device token, downloads it (metered allowed by default: the hotspot), verifies sha256, package, signer, higher versionCode and ABI, then waits for Kevin's tap on the Cruise chip or Settings, System, Updates. Never prompts or installs while the car moves (`update/DrivingState`: OBD 010D or fix speed over 5 km/h in the last 2 min). PackageInstaller session; a tap mid-conversation installs when it ends |
 
 Proactive lines route through ProactiveBus. Gated on onboarding done, not busy, not in-call.
 
@@ -575,7 +576,7 @@ Lights Out: dim amber numerals + dim magenta trim on pure black, backlight 4%, m
 | ScreenSaverScreen | Idle Ken Burns wallpaper + breathing avatar card + track bar (configurable timeout) |
 | CarsScreen / ObdSheet | Reachable again 2026-10-14 from Settings > Your car: **Cars** (roster: switch active car, add, archive) and **OBD data** (`ObdSheet`: LIVE / HISTORY with the drive corrector, full drive list for every install / CODES = `DtcContent`, read-only / MANAGE). They lost their only entry point when the 2026-09-27 Cruise slim pass removed the Cruise tabs and dock tile, which left the car roster, OBD history and drive reassignment unreachable by hand. `DtcSheet` (wrapper) and `GarageSheet` were deleted 2026-10-14: the code list is ObdSheet's CODES tab (`ui/DtcContent.kt`), and the Shelly relay is Settings > Your car > Garage & gate (`GarageSettings`). Logbook and saved places are Settings > Your car rows; OBD pairing is Settings > Your car > OBD adapter |
 | LogbookScreen | Opened from Settings > Your car > Logbook. Binder tabs LOG / MODS / SPECS / ALBUM / RECAP / MIX / DUE. Aged-paper HorizontalPager. SpendGate. Polaroid composable for build photos. MIX = Mixtape Manager: desk/drawer of imported files, shelf of driver-assembled tapes. DUE = the severe-service schedule: OVERDUE / COMING UP / UNKNOWN, tap a row to hand-correct a last-done, REFRESH SCHEDULE re-runs the interval lookup (preserving every anchor). Where a section holds both mileage- and time-based items they are split under "by mileage" / "by time" labels rather than one list, because ordering across the two axes would need a rate estimate |
-| ControlPanelScreen | Two-pane Settings (2026-10-11, `ui/SettingsTwoPane.kt`): a category rail with live statuses, rows on the right. Rail: Phones & audio, Music, Engine, Companion, Your car, Look, System. Also hosts media and Bluetooth diagnostics |
+| ControlPanelScreen | Two-pane Settings (2026-10-11, `ui/SettingsTwoPane.kt`): a category rail with live statuses, rows on the right. Rail: Phones & audio, Music, Engine, Companion, Your car, Look, System. Also hosts media and Bluetooth diagnostics. System > Updates (2026-11-06, `ui/UpdatesEntry.kt`): installed version and ABI, newest release, Check now, Install, Allow installs, hotspot toggle; the same controller drives the Cruise "UPDATE READY · TAP TO INSTALL" chip in the console column, hidden while the car moves |
 | OnboardingManager | Guided companion setup, per step: speak, tap or type (voice only when a key and mic are available). Optional, opened from Cruise's setup prompt or Settings > Companion. There is no first-run gate: a fresh install seeds defaults and lands on Cruise (`MainActivity`). FirstRunScreen, ConversationalOnboardingScreen and the typed OnboardingScreen no longer exist |
 
 Hardware HOME returns to Cruise. Launcher takeover via `CATEGORY_HOME + CATEGORY_DEFAULT` manifest; `LauncherSettings.kt` for live state + escape-to-OS.
@@ -647,6 +648,8 @@ Kevin declining ADB setup on the Oppo on 2026-07-28, so check before assuming it
 - Lights Out backlight drop
 - Recall proactive announce
 - Full-duplex audio
+- The OTA updater (2026-11-06, ticket `.scratch/alfred-ota/issues/09-*.md`): the first OTA after the
+  one manual install, whether Android 14 shows its own confirm, Cruise coming back after the replace
 - Everything since 2026-09: the engine sign-in and `ask_engine`, the two-phone switcher, the REAR
   camera handoff, Spotify playlist pins and voice music parity, two-pane Settings, the `fast` build
   (Waze intents and split-screen were dropped from this list: both features are gone, §8)
@@ -710,6 +713,7 @@ app/src/main/java/com/kevin/midnightai/
 │   ├── SpotifyPlaylists.kt / SpotifyPins.kt / SpotifyScopes.kt   playlists, Cruise pins, the one scope list
 │   └── MediaHomeState.kt, MediaDiagnostics.kt, VolumeController.kt
 ├── location/                           LocationController, PlaceController, ReminderController, Beacon* (UDP beacon)
+├── update/                             OTA updater (ADR 0072, alfred-ota ticket 09): UpdateRules (pure), UpdateController, UpdateAndroid (engine backend, downloader, PackageInstaller), UpdateGraph (loop, receivers), DrivingState; UI in ui/UpdatesEntry.kt
 ├── fleetupload/                        FleetUploader (OBD samples, code events, drives -> engine /api/fleet/), FleetUploadWire, stores; triggers ride diag/DriveLogLoop
 ├── weather/                            WeatherController (Open-Meteo)
 ├── data/local/                         CarDatabase, Migrations (5->6 ... 11->12), entities + DAOs (§5)
@@ -734,7 +738,11 @@ app/src/main/java/com/kevin/midnightai/
 - `gradlew assembleDebug` - debug. `gradlew assembleFast` - the head-unit sideload build (not
   debuggable, debug-signed so it installs over a debug install). `gradlew assembleRelease` needs the
   `RELEASE_*` keys.
-- ABI splits are on, no universal APK: one `arm64-v8a` and one `armeabi-v7a` APK per build.
+- ABI splits are on, no universal APK: one `arm64-v8a` and one `armeabi-v7a` APK per build. Since
+  the native libraries left (sherpa-onnx, Mapbox) the two are byte-identical (16.7 MB `fast`,
+  2026-11-06); publish the arm64 one.
+- `fast` and `release` take versionCode `yyDDDHHmm` UTC (the updater installs only a higher one);
+  `debug` is 1 and never updates itself. Publish with `tools/release_apk.py --app headunit` (ticket 09).
 - `-Pnokey` bakes an empty Gemini key.
 - `gradlew testDebugUnitTest` - JVM unit tests (`app/src/test`). Read totals from the JUnit XML
   under `app/build/test-results/`, not the console.

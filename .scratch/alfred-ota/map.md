@@ -4,8 +4,8 @@ title: "Patch Alfred over the internet: wording from the engine, the app updates
 charted: 2026-11-05
 charted-by: "Kevin + Opus"
 effort: "`.scratch/alfred-ota/`"
-tickets: 8
-open: 8
+tickets: 9
+open: 9
 status: open
 tags: [map]
 ---
@@ -96,6 +96,7 @@ It closes the "Alfred improves Alfred" loop with the worker's `legion-chores` sk
 | 06 | [Updates by voice and on a screen](issues/06-voice-and-screen.md) | B | build (phone) | 05 |
 | 07 | [Acceptance run on the A25](issues/07-acceptance-run.md) | A+B | device run (Kevin) | 02, 06 |
 | 08 | [Later: shrink the APK, head unit, worker publish](issues/08-later.md) | B | backlog | 07 |
+| 09 | [Head unit updater: check, download, verify, tap to install](issues/09-head-unit-updater.md) | B | build (head unit + tools) | 04 |
 
 Order: 01, 02 and 04 can run in parallel (server, phone and tools are separate files; one Gradle at
 a time). Then 03 and 05, then 06, then Kevin's run (07). ADR 0072 is written with 01 and 05, once
