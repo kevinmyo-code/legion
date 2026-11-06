@@ -144,5 +144,7 @@ data class ProfileWire(
     @SerialName("target_rate_pct") val targetRatePct: Double? = null,
     @SerialName("protein_g_per_kg") val proteinGPerKg: Double? = null,
     @SerialName("weekly_line_on") val weeklyLineOn: Boolean = true,
+    /** The member's goal or milestone weight (G1): the engine's fallback when no goals row is there. */
+    @SerialName("goal_weight_lbs") val goalWeightLbs: Double? = null,
     val missing: List<String> = emptyList(),
 )

@@ -37,6 +37,14 @@ class BodyCoachWrites(private val backend: () -> CoachWriteBackend?) {
     suspend fun putProfile(fields: JsonObject): CoachWrite =
         send("PUT", "$ROOT/profile/", fields.toString(), "Profile saved.")
 
+    /**
+     * Copies a weight goal onto the engine profile (fat-loss ticket 14, G1). The phone's goal rows do
+     * not reach the engine, so the profile's `goal_weight_lbs` is what the engine's milestone and
+     * protein read. Best effort: the caller never claims it.
+     */
+    suspend fun putGoalWeight(lbs: Double?): CoachWrite =
+        putProfile(buildJsonObject { if (lbs == null) put("goal_weight_lbs", null as Double?) else put("goal_weight_lbs", lbs) })
+
     suspend fun logWaist(waistIn: Double): CoachWrite =
         send("POST", "$ROOT/waist/", buildJsonObject { put("waist_in", waistIn) }.toString(), "Waist logged.")
 

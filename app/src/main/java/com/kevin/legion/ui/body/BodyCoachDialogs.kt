@@ -142,6 +142,7 @@ fun BodyProfileDialog(current: ProfileWire?, onDismiss: () -> Unit, onDone: () -
     var rate by remember { mutableStateOf(current?.targetRatePct?.toString() ?: "0.75") }
     var protein by remember { mutableStateOf(current?.proteinGPerKg?.toString() ?: "2.0") }
     var weeklyOn by remember { mutableStateOf(current?.weeklyLineOn ?: true) }
+    var goalWeight by remember { mutableStateOf(current?.goalWeightLbs?.let { "%.1f".format(it) } ?: "") }
     var busy by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<String?>(null) }
     val editable = !busy && result == null
@@ -163,6 +164,7 @@ fun BodyProfileDialog(current: ProfileWire?, onDismiss: () -> Unit, onDone: () -
                 ChoiceChips(ACTIVITY, activity, editable) { activity = it }
                 OutlinedTextField(rate, { rate = it }, label = { Text("Rate, % of bodyweight a week (0.25-1.0)") }, enabled = editable, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 8.dp))
                 OutlinedTextField(protein, { protein = it }, label = { Text("Protein, g per kg (1.6-2.2)") }, enabled = editable, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 8.dp))
+                OutlinedTextField(goalWeight, { goalWeight = it }, label = { Text("Goal or milestone weight (lb)") }, enabled = editable, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.padding(top = 8.dp))
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Monday weight line", style = MaterialTheme.typography.bodyMedium, color = SoftColors.text)
@@ -184,6 +186,7 @@ fun BodyProfileDialog(current: ProfileWire?, onDismiss: () -> Unit, onDone: () -
                         activity?.let { put("activity_level", it) }
                         parseNumber(rate)?.let { put("target_rate_pct", it) }
                         parseNumber(protein)?.let { put("protein_g_per_kg", it) }
+                        parseNumber(goalWeight)?.takeIf { it > 0 }?.let { put("goal_weight_lbs", it) }
                         put("weekly_line_on", weeklyOn)
                     }
                     scope.launch {
