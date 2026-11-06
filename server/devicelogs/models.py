@@ -65,6 +65,11 @@ REASONS: tuple[str, ...] = (
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 # Rows older than this are deleted when their household next uploads.
 RETENTION_DAYS = 60
+# The phone's NAV_AUDIT lines (navigation search, routes, trips) are kept this long (Kevin,
+# 2026-11-06, nav-quality decision D7). They ride in `conversation` batches next to LIVE_AUDIT, so a
+# batch holding any is not deleted at RETENTION_DAYS: its other lines are dropped then and only the
+# NAV_AUDIT lines stay, until this many days. A batch with none goes at RETENTION_DAYS as before.
+NAV_AUDIT_RETENTION_DAYS = 90
 # A recruiter visit's conversation records (`demo_visitor`): deleted by the hourly
 # `manage.py prune_demo_visitors` this long after they arrived, whether or not the visit ended.
 VISIT_RETENTION_DAYS = 30
@@ -104,6 +109,10 @@ class DeviceLog(models.Model):
     # Web conversations only: server clock minus the browser's, measured at the mint, so the
     # browser's transcript lines and the engine's tool lines share one clock.
     clock_offset_ms = models.BigIntegerField(null=True, blank=True)
+    # How many NAV_AUDIT lines the body holds, counted at upload. Above zero, the row is kept
+    # NAV_AUDIT_RETENTION_DAYS; past RETENTION_DAYS its body is cut to these lines (then
+    # line_count == nav_audit_lines, so it is cut once).
+    nav_audit_lines = models.IntegerField(default=0)
 
     class Meta:
         db_table = "device_logs"

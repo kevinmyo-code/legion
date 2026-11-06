@@ -18,7 +18,7 @@ from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from devicelogs.models import MAX_UPLOAD_BYTES, RETENTION_DAYS, DeviceLog
+from devicelogs.models import MAX_UPLOAD_BYTES, NAV_AUDIT_RETENTION_DAYS, RETENTION_DAYS, DeviceLog
 
 pytestmark = pytest.mark.django_db
 
@@ -152,6 +152,56 @@ def test_an_upload_prunes_this_households_old_batches_only(token_a, token_b, hou
     assert not DeviceLog.objects.filter(pk=stale_a.pk).exists()
     # B's own retention runs when B uploads, never as a side effect of A's.
     assert DeviceLog.objects.filter(pk=stale_b.pk).exists()
+
+
+_NAV = (
+    "11-06 08:00:00.000  101  202 I NAV_AUDIT: search id=s1 origin=voice verdict=resolved query=\"a cafe\"\n"
+    "11-06 08:00:01.000  101  202 I LIVE_AUDIT: transcript_in text=\"take me to a cafe\"\n"
+    "11-06 08:00:02.000  101  202 I NAV_AUDIT: trip_end trip=t1 reason=arrived\n"
+)
+
+
+def _aged(household, text: str, days: int, nav: bool) -> DeviceLog:
+    raw = text.encode()
+    row = DeviceLog.objects.create(
+        household=household, batch_id=uuid.uuid4(), device_label="Phone", reason="conversation",
+        raw_bytes=len(raw), line_count=raw.count(b"\n"), body_gz=gzip.compress(raw),
+        nav_audit_lines=2 if nav else 0,
+    )
+    DeviceLog.objects.filter(pk=row.pk).update(received_at=timezone.now() - datetime.timedelta(days=days))
+    return row
+
+
+def test_an_upload_counts_its_nav_audit_lines(token_a):
+    assert token_a.post(URL, _payload(_NAV, reason="conversation"), format="multipart").status_code == 201
+    row = DeviceLog.objects.get()
+    assert (row.line_count, row.nav_audit_lines) == (3, 2)
+
+
+def test_nav_audit_is_kept_ninety_days_and_the_rest_of_its_batch_goes_at_sixty(token_a, household_a):
+    """Nav-quality decision D7 (Kevin, 2026-11-06): NAV_AUDIT 90 days, conversation lines still 60."""
+    assert NAV_AUDIT_RETENTION_DAYS == 90
+    young_nav = _aged(household_a, _NAV, RETENTION_DAYS - 1, nav=True)
+    old_nav = _aged(household_a, _NAV, RETENTION_DAYS + 1, nav=True)
+    expired_nav = _aged(household_a, _NAV, NAV_AUDIT_RETENTION_DAYS + 1, nav=True)
+    old_plain = _aged(household_a, "11-06 08:00:00.000  1  2 I LIVE_AUDIT: x\n", RETENTION_DAYS + 1, nav=False)
+
+    assert token_a.post(URL, _payload(), format="multipart").status_code == 201
+
+    assert not DeviceLog.objects.filter(pk__in=[expired_nav.pk, old_plain.pk]).exists()
+    young_nav.refresh_from_db()
+    assert gzip.decompress(bytes(young_nav.body_gz)).decode() == _NAV, "under 60 days, untouched"
+    old_nav.refresh_from_db()
+    body = gzip.decompress(bytes(old_nav.body_gz)).decode()
+    assert "LIVE_AUDIT" not in body and "take me to" not in body, "the conversation lines went at 60"
+    assert body.count("NAV_AUDIT") == 2
+    assert (old_nav.line_count, old_nav.nav_audit_lines, old_nav.raw_bytes) == (2, 2, len(body.encode()))
+
+    # A second upload leaves the cut row alone: cut once.
+    cut_bytes = bytes(old_nav.body_gz)
+    assert token_a.post(URL, _payload(), format="multipart").status_code == 201
+    old_nav.refresh_from_db()
+    assert bytes(old_nav.body_gz) == cut_bytes
 
 
 def test_the_cap_constant_is_five_megabytes():
