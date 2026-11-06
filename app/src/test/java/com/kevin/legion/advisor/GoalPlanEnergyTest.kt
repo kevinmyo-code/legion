@@ -2,7 +2,6 @@ package com.kevin.legion.advisor
 
 import com.kevin.legion.bodycoach.EnergyWire
 import com.kevin.legion.finance.FinanceRead
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -26,12 +25,12 @@ class GoalPlanEnergyTest {
     )
 
     @Test
-    fun `with an estimate the engine's kcal and protein replace the model's`() {
+    fun `even with an estimate the plan generator writes no meal target - the body plan owns it`() {
+        // Body coach 2 (Kevin, 2026-11-06): "i want alfred to set my calorie target"; one owner.
         val plan = GoalPlanAgent.applyEnergy(modelPlan, FinanceRead.Fresh(estimate))
-        assertEquals(2200, plan.mealTarget!!.caloriesKcal)
-        assertEquals(175.0, plan.mealTarget!!.proteinG, 0.0)
-        assertEquals("carbs kept from the model", 180.0, plan.mealTarget!!.carbsG, 0.0)
-        assertTrue(plan.refusals.isEmpty())
+        assertNull(plan.mealTarget)
+        val note = plan.refusals.single()
+        assertTrue(note, note.startsWith("meal target") && note.contains("body plan"))
     }
 
     @Test
@@ -53,9 +52,10 @@ class GoalPlanEnergyTest {
     }
 
     @Test
-    fun `the context block states the numbers or forbids a meal target`() {
+    fun `the context block states the numbers for the rationale and always forbids a meal target`() {
         val with = GoalPlanAgent.energyContext(FinanceRead.Fresh(estimate))
-        assertTrue(with, with.contains("target 2200 kcal") && with.contains("protein 175 g"))
+        assertTrue(with, with.contains("about 2200 kcal") && with.contains("175 g protein"))
+        assertTrue(with, with.contains("Do NOT propose a mealTarget"))
         val without = GoalPlanAgent.energyContext(FinanceRead.Fresh(EnergyWire(missing = listOf("sex"))))
         assertTrue(without, without.contains("Do NOT propose a mealTarget"))
     }

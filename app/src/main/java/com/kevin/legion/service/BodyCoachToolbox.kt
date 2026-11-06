@@ -3,6 +3,7 @@ package com.kevin.legion.service
 import android.content.Context
 import com.kevin.legion.bodycoach.BodyCoachController
 import com.kevin.legion.bodycoach.BodyCoachText
+import com.kevin.legion.bodycoach.CoachTwoText
 import com.kevin.legion.bodycoach.WorkoutSessionController
 import com.kevin.legion.bodycoach.WorkoutText
 import java.time.LocalDate
@@ -37,6 +38,8 @@ object BodyCoachToolbox {
     val NAMES = listOf(
         "get_energy_estimate", "get_weight_trend", "list_saved_meals", "get_todays_workout",
         "get_workout_programme",
+        // body coach 2 (2026-11-06): what to eat from what's left, and alternatives to an exercise.
+        "suggest_meal", "get_exercise_alternatives",
     )
 
     fun declarations(): JSONArray = JSONArray()
@@ -93,6 +96,31 @@ object BodyCoachToolbox {
             ),
         )
 
+        .put(
+            fn(
+                name = "suggest_meal",
+                description = "'What should I eat?': kcal and protein left today, the time, and up to " +
+                    "five ranked options from the user's saved meals and groceries bought in the last 14 " +
+                    "days, each with an option_id. Every figure is an ESTIMATE; grocery figures are for the " +
+                    "whole item as bought. Suggest only from these options. To log one, ask_engine with " +
+                    "intent record, log_meal_option with its option_id; never pass a figure.",
+            ),
+        )
+        .put(
+            fnWith(
+                name = "get_exercise_alternatives",
+                description = "The alternatives to one exercise in the user's programme ('what can I do " +
+                    "instead of bench'), each with its equipment, whether the programme allows it and why " +
+                    "not. Recommend only from these; a plan change is ask_engine's " +
+                    "propose_programme_change, read back and accepted only on a yes.",
+                params = JSONObject().put(
+                    "exercise",
+                    JSONObject().put("type", "string").put("description", "The exercise, e.g. bench, squats."),
+                ),
+                required = listOf("exercise"),
+            ),
+        )
+
     // `name = "..."` written out at each call, not via NAMES: tools/voice_guide.py and
     // VoiceGuideDataTest find tool names by scanning for that exact shape.
     private fun fn(name: String, description: String): JSONObject =
@@ -104,9 +132,23 @@ object BodyCoachToolbox {
                 JSONObject().put("type", "object").put("properties", JSONObject()).put("required", JSONArray()),
             )
 
+    private fun fnWith(name: String, description: String, params: JSONObject, required: List<String>): JSONObject =
+        JSONObject()
+            .put("name", name)
+            .put("description", description)
+            .put("parameters", JSONObject().put("type", "object").put("properties", params).put("required", JSONArray(required)))
+
     /** Null when [name] is not one of these tools, so [LiveToolbox.dispatch] can fall through. */
-    suspend fun dispatch(context: Context, name: String): JSONObject? {
+    suspend fun dispatch(context: Context, name: String, args: JSONObject = JSONObject()): JSONObject? {
         if (name !in NAMES) return null
+        if (name == "suggest_meal") return CoachTwoText.mealOptionsResult(controllerFactory(context).mealOptions())
+        if (name == "get_exercise_alternatives") {
+            val exercise = args.optString("exercise").trim()
+            if (exercise.isEmpty()) {
+                return JSONObject().put("success", false).put("message", "Nothing was read. Say which exercise.")
+            }
+            return CoachTwoText.alternativesResult(controllerFactory(context).alternatives(exercise))
+        }
         if (name == "get_todays_workout") return WorkoutText.todayResult(workoutFactory(context).today(), phoneDate())
         // Workout reads, 2026-11-06: the same engine read as today's, said as the whole programme.
         if (name == "get_workout_programme") return WorkoutText.programmeResult(workoutFactory(context).today(), phoneDate())

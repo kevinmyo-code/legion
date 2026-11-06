@@ -323,20 +323,21 @@ class GoalPlanAgent(
          * are fixed; [applyEnergy] makes that true whatever it writes.
          */
         internal fun energyContext(energy: FinanceRead<EnergyWire>): String {
+            // Body coach 2 (Kevin, 2026-11-06: "i want alfred to set my calorie target"): the
+            // calorie and protein target has ONE owner, the body plan Alfred drafts and Kevin locks
+            // in (`server/body_coach/plans.py`). This generator no longer proposes one.
             val e = energy.valueOrNull
             val target = e?.suggestedTargetKcal
             val protein = e?.proteinG
+            val forbid = "Do NOT propose a mealTarget: the calorie and protein target belongs to the body " +
+                "plan, which Alfred drafts and the user locks in."
             if (e == null || target == null || protein == null) {
-                return "ENERGY ESTIMATE: none. ${missingSentence(energy)} Do NOT propose a mealTarget " +
-                    "and do not pick any calorie or protein number yourself."
+                return "ENERGY ESTIMATE: none. ${missingSentence(energy)} $forbid"
             }
-            val basis = basisWords(e)
-            return "ENERGY ESTIMATE (computed by the app, an estimate, from $basis): maintenance " +
-                "${e.maintenanceKcal ?: "unknown"} kcal, target $target kcal a day at " +
-                "${e.targetRatePct ?: "their chosen"}% of bodyweight a week, protein $protein g a day. " +
-                "Use exactly these for mealTarget.caloriesKcal and mealTarget.proteinG; never choose " +
-                "your own. Carbs and fat are optional: give 0 for either if the goal does not call " +
-                "for it. Say in the rationale that the target is an estimate from $basis."
+            return "ENERGY ESTIMATE (computed by the app, an estimate, from ${basisWords(e)}): " +
+                "maintenance ${e.maintenanceKcal ?: "unknown"} kcal, about $target kcal a day and " +
+                "$protein g protein at ${e.targetRatePct ?: "their chosen"}% of bodyweight a week. For the " +
+                "rationale only. $forbid"
         }
 
         private fun basisWords(e: EnergyWire): String =
@@ -346,7 +347,7 @@ class GoalPlanAgent(
                 "the Mifflin-St Jeor formula and their activity level"
             }
 
-        private const val TREND_DAYS = 14
+        private const val TREND_DAYS = 28
 
         /** "The estimate needs height and birth year." or the engine's own reason. */
         internal fun missingSentence(energy: FinanceRead<EnergyWire>): String {
@@ -371,23 +372,13 @@ class GoalPlanAgent(
          * target (map decision 5).
          */
         internal fun applyEnergy(plan: GoalPlan, energy: FinanceRead<EnergyWire>): GoalPlan {
-            val e = energy.valueOrNull
-            val target = e?.suggestedTargetKcal
-            val protein = e?.proteinG
-            if (e == null || target == null || protein == null) {
-                val ask = "meal target: not proposed, because the app will not guess one. " +
-                    missingSentence(energy) + " Tell me those, or enter them on the Body page, and ask again."
-                return plan.copy(
-                    mealTarget = null,
-                    refusals = plan.refusals.filterNot { it.startsWith("meal target") } + ask,
-                )
-            }
-            if (target <= HARD_FLOOR_CALORIES_KCAL) return plan.copy(mealTarget = null)
-            val carbs = plan.mealTarget?.carbsG ?: 0.0
-            val fat = plan.mealTarget?.fatG ?: 0.0
+            // Body coach 2: never a meal target from here, whatever the model wrote; one owner.
+            val missing = if (energy.valueOrNull?.suggestedTargetKcal == null) " " + missingSentence(energy) else ""
+            val note = "meal target: not set here. The calorie and protein target belongs to your body " +
+                "plan: ask Alfred to draft it, then lock it in.$missing"
             return plan.copy(
-                mealTarget = GoalPlanMealTarget(caloriesKcal = target, proteinG = protein.toDouble(), carbsG = carbs, fatG = fat),
-                refusals = plan.refusals.filterNot { it.startsWith("meal target") },
+                mealTarget = null,
+                refusals = plan.refusals.filterNot { it.startsWith("meal target") } + note,
             )
         }
 

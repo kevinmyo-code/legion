@@ -2268,6 +2268,8 @@ object LiveToolbox {
             "get_todays_workout",
             // workout reads, 2026-11-06: the whole programme, Day A and B, and the sessions ahead.
             "get_workout_programme",
+            // body coach 2, 2026-11-06: what to eat from what's left; alternatives to an exercise.
+            "suggest_meal", "get_exercise_alternatives",
         ),
         "goals" to listOf("list_goals", "ask_advisor"),
         // manage_grocery came BACK OUT of this list on 2026-08-18 and was declared directly to the
@@ -2761,7 +2763,7 @@ object LiveToolbox {
         AppUpdateToolbox.dispatch(context, name, args)?.let { return it }
         MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         VaultToolbox.dispatch(context, name, args)?.let { return it }
-        BodyCoachToolbox.dispatch(context, name)?.let { return it }
+        BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)

@@ -116,8 +116,9 @@ object WorkoutText {
         val out = JSONObject()
             .put("success", true)
             .put("words", w.programmeWords)
-            .put("programme", "Full body, Day A and Day B alternating")
-            .put("training_days", JSONArray(w.week.trainingDays.map { weekdayName(it) }))
+            // Body coach 2 (Kevin, 2026-11-06): days are flexible, a sessions-a-week target with no
+            // fixed weekdays; an older engine still sends weekdays, said as its usual days.
+            .put("programme", w.programme?.summary?.ifBlank { null } ?: "Full body, Day A and Day B alternating")
             .put("sessions_per_week", w.week.planned)
             .put("sessions_done_this_week", w.week.done)
             .put("sessions_planned_this_week", w.week.planned)
@@ -137,7 +138,7 @@ object WorkoutText {
         for (d in w.days) {
             days.put(
                 JSONObject()
-                    .put("day", "Day ${d.dayKey}")
+                    .put("day", d.dayLabel.ifBlank { "Day ${d.dayKey}" })
                     .put("exercises", JSONArray(d.exercises.map { target(it) }))
                     .put("next_on", d.nextOn?.let { "${d.nextWeekday.orEmpty()} $it".trim() } ?: JSONObject.NULL)
                     .put("calibrating", d.calibrating),
@@ -160,26 +161,19 @@ object WorkoutText {
             else -> ""
         }
         val deload = if (u.deload) " (deload: lighter, one set fewer)" else ""
-        return "Day ${u.dayKey}, $whenSaid${u.weekday} ${u.date}".replace("  ", " ").trim() + deload
+        val label = u.dayLabel.ifBlank { "Day ${u.dayKey}" }
+        // No date from an engine with flexible days: the session's place in the rotation is all.
+        if (on == null) return label + (if (u.isToday) ", the next one, due now" else "") + deload
+        return "$label, $whenSaid${u.weekday} ${u.date}".replace("  ", " ").trim() + deload
     }
 
+    // Body coach 2: days are flexible, so "rest" means this week's sessions are done.
     private val TODAY_STATUS = mapOf(
-        "rest" to "rest day",
-        "not_started" to "training day, not done yet",
-        "in_progress" to "training day, workout in progress",
+        "rest" to "this week's sessions are done",
+        "not_started" to "a session is due",
+        "in_progress" to "workout in progress",
         "done" to "today's workout is done",
     )
-
-    private fun weekdayName(key: String): String = when (key.lowercase().take(3)) {
-        "mon" -> "Monday"
-        "tue" -> "Tuesday"
-        "wed" -> "Wednesday"
-        "thu" -> "Thursday"
-        "fri" -> "Friday"
-        "sat" -> "Saturday"
-        "sun" -> "Sunday"
-        else -> key
-    }
 
     /** "This week: 2 of 3 sessions." */
     fun weekLine(week: WeekWire): String = "${week.done} of ${week.planned} sessions"

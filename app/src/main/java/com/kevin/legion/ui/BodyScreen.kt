@@ -551,6 +551,8 @@ private fun BodyCardList(
     var showSavedMeals by remember { mutableStateOf(false) }
     var proposalBusy by remember { mutableStateOf(false) }
     var proposalResult by remember { mutableStateOf<String?>(null) }
+    var planBusy by remember { mutableStateOf(false) }
+    var planResult by remember { mutableStateOf<String?>(null) }
 
     val today = todayIntake(state)
     val fallback = state.latestBodyweight?.let { "Latest weigh-in: ${formatWeight(it.weightValue, it.weightUnit)}, ${shortDate(it.loggedAt)}." }
@@ -576,6 +578,44 @@ private fun BodyCardList(
                 message = workoutMessage,
                 onStart = startWorkout,
                 onOpen = { onOpenPane(BodyDrilldown.Workout) },
+                // Body coach 2: a programme change Alfred proposed, accepted or dismissed by hand.
+                proposalBusy = planBusy,
+                proposalResult = planResult,
+                onAcceptProposal = { id ->
+                    planBusy = true
+                    scope.launch {
+                        planResult = BodyCoachWrites.forApp(context).acceptProgrammeProposal(id).sentence
+                        planBusy = false
+                        onDataChanged()
+                    }
+                },
+                onDismissProposal = { id ->
+                    planBusy = true
+                    scope.launch {
+                        planResult = BodyCoachWrites.forApp(context).dismissProgrammeProposal(id).sentence
+                        planBusy = false
+                        onDataChanged()
+                    }
+                },
+                onLockPlan = { id ->
+                    planBusy = true
+                    scope.launch {
+                        val out = BodyCoachWrites.forApp(context).lockPlan(id)
+                        planResult = out.sentence
+                        // The new target is an engine row; pull it into Room so the Today bars use it.
+                        if (out.ok) runCatching { com.kevin.legion.backend.BodySync.pullNow(context) }
+                        planBusy = false
+                        onDataChanged()
+                    }
+                },
+                onDiscardPlan = { id ->
+                    planBusy = true
+                    scope.launch {
+                        planResult = BodyCoachWrites.forApp(context).discardPlan(id).sentence
+                        planBusy = false
+                        onDataChanged()
+                    }
+                },
             )
         }
         item(key = "trend") {

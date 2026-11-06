@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
+import com.kevin.legion.bodycoach.CoachTwoText
 import com.kevin.legion.bodycoach.PlanWire
 import com.kevin.legion.bodycoach.SessionWire
 import com.kevin.legion.bodycoach.SetWire
@@ -84,19 +85,29 @@ internal fun BodyWorkoutCard(
     message: String?,
     onStart: () -> Unit,
     onOpen: () -> Unit,
+    proposalBusy: Boolean = false,
+    proposalResult: String? = null,
+    onAcceptProposal: (String) -> Unit = {},
+    onDismissProposal: (String) -> Unit = {},
+    onLockPlan: (String) -> Unit = {},
+    onDiscardPlan: (String) -> Unit = {},
 ) {
     BodyCard(Modifier.border(2.dp, AreaAccent.BODY.container, RoundedCornerShape(20.dp))) {
         val session = today?.session
         val plan = today?.next
+        // Body coach 2 (Kevin, 2026-11-06): days are flexible, so it is the next session in the
+        // rotation, never "a rest day"; the label is the engine's ("Upper 1"), and home shows.
         val title = when {
             today == null -> "Workout"
-            session != null || today.trainingDay -> "Today's workout"
-            else -> "Next workout"
+            session != null -> "Today's workout"
+            else -> "Next session"
         }
-        val dayKey = session?.dayKey ?: plan?.dayKey
+        val dayLabel = session?.dayLabel?.ifBlank { null } ?: plan?.dayLabel?.ifBlank { null }
+            ?: (session?.dayKey ?: plan?.dayKey)?.let { "Day $it" }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = SoftColors.text, fontWeight = FontWeight.SemiBold)
-            dayKey?.let { DayTag("Day $it") }
+            dayLabel?.let { DayTag(it) }
+            if (session?.location == "home") DayTag("Home")
             Spacer(Modifier.weight(1f))
             val aside = when {
                 session != null -> "${session.setsDone} of ${session.setCount} sets"
@@ -121,6 +132,67 @@ internal fun BodyWorkoutCard(
         message?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2, modifier = Modifier.padding(top = 8.dp))
         }
+        // The plan (Kevin, 2026-11-06): a draft is locked in by its Accept; a change by its own.
+        today?.planDraft?.let { d ->
+            DecisionLine(CoachTwoText.draftLine(d), d.id, "Lock in", proposalBusy, onLockPlan, onDiscardPlan)
+        }
+        today?.proposal?.let { p ->
+            DecisionLine(CoachTwoText.proposalLine(p), p.id, "Accept", proposalBusy, onAcceptProposal, onDismissProposal)
+        }
+        proposalResult?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
+/**
+ * A plan draft or a pending programme change as one line with Accept and Dismiss (ADR 0035 as
+ * amended for Body, Kevin 2026-11-06): the plan is shaped by voice; the screen lets him say yes or no.
+ */
+@Composable
+private fun DecisionLine(
+    line: String,
+    id: String,
+    acceptLabel: String,
+    busy: Boolean,
+    onAccept: (String) -> Unit,
+    onDismiss: (String) -> Unit,
+) {
+    Column(
+        Modifier
+            .padding(top = 12.dp)
+            .fillMaxWidth()
+            .background(SoftColors.cardHighest, RoundedCornerShape(14.dp))
+            .padding(12.dp),
+    ) {
+        Text(line, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text)
+        Text("Nothing changes until you accept. Figures are estimates.", style = MaterialTheme.typography.labelSmall, color = SoftColors.text3)
+        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton(acceptLabel, primary = true, enabled = !busy) { onAccept(id) }
+            PillButton("Dismiss", primary = false, enabled = !busy) { onDismiss(id) }
+        }
+    }
+}
+
+@Composable
+private fun PillButton(label: String, primary: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .background(if (primary) SoftColors.primaryContainer else SoftColors.card, RoundedCornerShape(50))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 22.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = when {
+                !enabled -> SoftColors.text3
+                primary -> SoftColors.onPrimaryContainer
+                else -> SoftColors.text
+            },
+        )
     }
 }
 

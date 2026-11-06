@@ -67,6 +67,20 @@ class BodyCoachWrites(private val backend: () -> CoachWriteBackend?) {
     suspend fun dismissProposal(id: String): CoachWrite =
         send("POST", "$ROOT/proposals/$id/dismiss/", "{}", "Proposal dismissed; the target is unchanged.")
 
+    /** Body coach 2: a pending programme change, accepted or dismissed by hand (ADR 0035 for Body). */
+    suspend fun acceptProgrammeProposal(id: String): CoachWrite =
+        send("POST", "$ROOT/workout/proposals/$id/accept/", "{}", "Plan changed.")
+
+    suspend fun dismissProgrammeProposal(id: String): CoachWrite =
+        send("POST", "$ROOT/workout/proposals/$id/dismiss/", "{}", "Dismissed; the plan is unchanged.")
+
+    /** The plan draft locked in by hand: the engine writes the target and programme, then says so. */
+    suspend fun lockPlan(id: String): CoachWrite =
+        send("POST", "$ROOT/plan/$id/lock/", "{}", "Plan locked in.")
+
+    suspend fun discardPlan(id: String): CoachWrite =
+        send("POST", "$ROOT/plan/$id/discard/", "{}", "Draft discarded; nothing changed.")
+
     @Suppress("ReturnCount")
     private suspend fun send(method: String, path: String, json: String?, done: String): CoachWrite {
         val engine = backend() ?: return CoachWrite(false, "Nothing was saved. " + FinanceWords.NO_ENGINE)

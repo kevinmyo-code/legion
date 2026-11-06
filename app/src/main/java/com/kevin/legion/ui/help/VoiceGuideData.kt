@@ -156,7 +156,9 @@ object VoiceGuideData {
                 Entry(name = "list_recent_workouts", say = "What did I train this week?", does = "Recent workouts.", hands = "Body tab, workout history."),
                 Entry(name = "get_workout_gap", say = "How's my training this week?", does = "Workouts finished this week against the three your programme plans.", hands = "Body tab, This week card."),
                 Entry(name = "get_todays_workout", say = "What's my workout today?", does = "Today's workout from your programme: each exercise as sets x reps at a weight, and why a weight went up or held. The numbers come from the programme's rules, never made up.", hands = "Body tab, Today's workout card."),
-                Entry(name = "get_workout_programme", say = "What's on Day B? When's my next workout?", does = "Your whole programme: Day A and Day B with every exercise as sets x reps at a weight, your training days, whether today is a training day and done, and the next sessions with their dates. The numbers come from the programme's rules, never made up.", hands = "Body tab: Today's workout shows the next day's exercises and This week your training days. A screen with both days side by side is still to come."),
+                Entry(name = "get_workout_programme", say = "What's on Day B? What's my next session?", does = "Your whole programme: every day with each exercise as sets x reps at a weight, sessions a week, and the next sessions in order. Days are flexible, so there are no fixed weekdays. The numbers come from the programme's rules, never made up.", hands = "Body tab: the workout card shows the next session's exercises and This week your sessions done."),
+                Entry(name = "get_exercise_alternatives", say = "What can I do instead of bench?", does = "The alternatives to an exercise in your programme, and which ones your equipment and joints rule out. Pick one and Alfred proposes the change for you to accept.", hands = "Voice only, by Kevin's ruling (fewer screens); a proposed change shows on the workout card with Accept and Dismiss."),
+                Entry(name = "suggest_meal", say = "What should I eat?", does = "What's left today in calories and protein, and up to five options from your saved meals and groceries you bought recently, best fit first. Every figure is an estimate. Say \"log that\" to log one.", hands = "Voice only, by Kevin's ruling (fewer screens); the Body tab's Today card shows what's eaten and what's left."),
                 Entry(name = "log_bodyweight", say = "I'm eighty-two kilos", does = "Logs your bodyweight.", hands = "Body tab, log-bodyweight dialog."),
                 Entry(name = "log_sleep", say = "I slept six hours, woke up twice", does = "Logs a night's sleep.", hands = "Body tab, log-sleep dialog."),
                 Entry(name = "list_recent_sleep", say = "How have I been sleeping?", does = "Recent sleep.", hands = "Body tab, sleep history."),
@@ -286,6 +288,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 134 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 134
+    /** Total entries across every group above - 136 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 136
 }

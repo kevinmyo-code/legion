@@ -60,6 +60,20 @@ class BodyCoachController(
     suspend fun weeklyLine(): FinanceRead<WeeklyLineWire> =
         read("weekly", "$ROOT/weekly-line/", WeeklyLineWire.serializer())
 
+    /** Body coach 2: "what should I eat", ranked from what is left today. */
+    suspend fun mealOptions(): FinanceRead<MealOptionsWire> =
+        read("meal_options", "$ROOT/meal-options/", MealOptionsWire.serializer())
+
+    /** Body coach 2: the alternatives to one programme exercise, filtered by the programme. */
+    suspend fun alternatives(exercise: String): FinanceRead<AlternativesWire> {
+        val segment = java.net.URLEncoder.encode(exercise.trim(), "UTF-8").replace("+", "%20")
+        return read(
+            "alternatives:${exercise.trim().lowercase()}",
+            "$ROOT/workout/alternatives/$segment/",
+            AlternativesWire.serializer(),
+        )
+    }
+
     /** The last saved energy answer, without touching the network (the digest never blocks). */
     fun savedEnergy(): FinanceRead<EnergyWire> = saved(KEY_ENERGY, EnergyWire.serializer(), NOT_READ_YET)
 

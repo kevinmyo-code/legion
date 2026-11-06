@@ -115,10 +115,11 @@ class WorkoutProgrammeReadTest {
         val p = call("get_workout_programme")
         assertTrue(p.getBoolean("success"))
         assertEquals(3, p.getInt("sessions_per_week"))
-        assertEquals("[\"Monday\",\"Wednesday\",\"Friday\"]", p.getJSONArray("training_days").toString())
+        // Body coach 2 (Kevin, 2026-11-06): days are flexible, so no weekday list is said as a schedule.
+        assertFalse(p.has("training_days"))
         // today is a training day and Day A is not done yet, so the next session counts today...
         assertEquals("Day A, today, Friday 2026-11-06", p.getString("next_session"))
-        assertEquals("training day, not done yet", p.getJSONObject("today").getString("status"))
+        assertEquals("a session is due", p.getJSONObject("today").getString("status"))
         // ...and the next day after today is Day B on Monday, which is what Kevin asked
         assertEquals("Day B, Monday 2026-11-09", p.getString("next_session_after_today"))
     }

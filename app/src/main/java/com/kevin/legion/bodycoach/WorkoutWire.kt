@@ -29,11 +29,15 @@ data class WorkoutTodayWire(
     /** One week of coming sessions, counting today while today's is not done. */
     val upcoming: List<UpcomingWire> = emptyList(),
     @SerialName("programme_words") val programmeWords: String = "",
+    // Body coach 2 (2026-11-06): a programme change and a plan draft waiting for Accept.
+    val proposal: ProgrammeProposalWire? = null,
+    @SerialName("plan_draft") val planDraft: PlanDraftLineWire? = null,
 )
 
 @Serializable
 data class ProgrammeDayWire(
     @SerialName("day_key") val dayKey: String,
+    @SerialName("day_label") val dayLabel: String = "",
     @SerialName("next_on") val nextOn: String? = null,
     @SerialName("next_weekday") val nextWeekday: String? = null,
     val calibrating: Boolean = false,
@@ -43,6 +47,8 @@ data class ProgrammeDayWire(
 @Serializable
 data class UpcomingWire(
     @SerialName("day_key") val dayKey: String,
+    /** Body coach 2: "Upper 1", "Day B". Days are flexible, so [date] is empty from that engine on. */
+    @SerialName("day_label") val dayLabel: String = "",
     val date: String,
     val weekday: String = "",
     @SerialName("session_number") val sessionNumber: Int = 0,
@@ -56,6 +62,10 @@ data class ProgrammeWire(
     val template: String = "",
     @SerialName("training_days") val trainingDays: List<String> = emptyList(),
     @SerialName("days_per_week") val daysPerWeek: Int = 3,
+    // Body coach 2: the target is sessions a week (the weekdays above are inert), and a summary.
+    @SerialName("sessions_per_week") val sessionsPerWeek: Int = 0,
+    @SerialName("template_name") val templateName: String = "",
+    val summary: String = "",
     val swaps: Map<String, String> = emptyMap(),
     @SerialName("started_on") val startedOn: String = "",
 )
@@ -75,6 +85,7 @@ data class WeekSessionWire(val date: String = "", @SerialName("day_key") val day
 @Serializable
 data class PlanWire(
     @SerialName("day_key") val dayKey: String = "A",
+    @SerialName("day_label") val dayLabel: String = "",
     @SerialName("session_number") val sessionNumber: Int = 1,
     val deload: Boolean = false,
     val calibrating: Boolean = false,
@@ -103,6 +114,9 @@ data class TargetWire(
 data class SessionWire(
     val id: String,
     @SerialName("day_key") val dayKey: String = "A",
+    @SerialName("day_label") val dayLabel: String = "",
+    /** "gym" or "home" (body coach 2). */
+    val location: String = "gym",
     @SerialName("session_number") val sessionNumber: Int = 1,
     val deload: Boolean = false,
     val status: String = STATUS_IN_PROGRESS,
