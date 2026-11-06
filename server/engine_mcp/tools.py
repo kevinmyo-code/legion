@@ -3195,9 +3195,11 @@ TOOLS: tuple[EngineTool, ...] = (
         name="get_todays_workout",
         title="Today's workout",
         description=(
-            "Today's workout: each exercise with sets x reps @ weight from the programme's rules "
-            "(\"your pick\" in a calibration session), what is ticked, and this week's sessions "
-            "done of planned. Explain a target with its rule's words; never invent or change one."
+            "Today's workout and the whole programme: each exercise of Day A and Day B with sets "
+            "x reps @ weight from the programme's rules (\"your pick\" in a calibration session), "
+            "what is ticked, the training days, the next sessions with their dates, and this "
+            "week's sessions done of planned. Explain a target with its rule's words; never "
+            "invent or change one."
         ),
         input_schema=_object({}),
         handler=coach.get_todays_workout,

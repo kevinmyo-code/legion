@@ -5,6 +5,7 @@ bridge, tenancy and the engine tools. Synthetic weights only; nobody's real numb
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 import pytest
 
@@ -146,6 +147,45 @@ def test_the_template_is_three_compounds_and_two_accessories_a_day():
         for slot in slots:
             for key in slot.choices():
                 assert key in rules.CATALOG
+
+
+FRI = date(2026, 11, 6)  # a Friday; synthetic, any Friday would do
+
+
+def _cal(today=FRI, days=("mon", "wed", "fri"), key="A", today_open=True, number=1, count=3):
+    return [
+        (u.day_key, u.on.isoformat(), u.weekday_name, u.is_today)
+        for u in rules.upcoming_sessions(
+            today, days, key, today_open=today_open, first_number=number, count=count
+        )
+    ]
+
+
+def test_upcoming_counts_today_when_todays_session_is_not_done():
+    assert _cal() == [
+        ("A", "2026-11-06", "Friday", True),
+        ("B", "2026-11-09", "Monday", False),
+        ("A", "2026-11-11", "Wednesday", False),
+    ]
+
+
+def test_upcoming_starts_tomorrow_once_today_is_done_or_a_rest_day():
+    assert _cal(key="B", today_open=False, count=2) == [
+        ("B", "2026-11-09", "Monday", False),
+        ("A", "2026-11-11", "Wednesday", False),
+    ]
+    assert _cal(today=date(2026, 11, 7), today_open=False, count=1) == [("A", "2026-11-09", "Monday", False)]
+
+
+def test_upcoming_follows_the_programmes_own_training_days():
+    assert [c[2] for c in _cal(days=("tue", "thu", "sat"), today_open=False)] == ["Saturday", "Tuesday", "Thursday"]
+
+
+def test_upcoming_carries_the_deload_flag_of_each_session_number():
+    sessions = rules.upcoming_sessions(FRI, ["mon", "wed", "fri"], "A", today_open=True, first_number=15, count=5)
+    assert [(u.session_number, u.deload) for u in sessions] == [
+        (15, False), (16, True), (17, True), (18, True), (19, False)
+    ]
 
 
 # =============================================================================
@@ -363,6 +403,73 @@ def test_the_deload_session_comes_from_the_session_count(auth_client, household_
     assert (squat["weight_lbs"], squat["sets"], squat["rule"]) == (90, 2, "deload")
 
 
+@pytest.fixture
+def friday(monkeypatch):
+    """Today is Friday 2026-11-06 for the workout reads (`today_of` is imported by name)."""
+    monkeypatch.setattr("body_coach.workouts.today_of", lambda request: FRI)
+    return FRI
+
+
+def test_the_read_carries_both_days_the_calendar_and_todays_status(auth_client, friday):
+    """The first real voice session (2026-11-06, a Friday): "what's the next day", "what are the
+    workouts on all three sessions", "Day B". Every answer has to be in the one read."""
+    data = auth_client.get(f"{BASE}/").data
+    assert data["today_status"] == "not_started" and data["today_weekday"] == "Friday"
+    assert [d["day_key"] for d in data["days"]] == ["A", "B"]
+    a, b = data["days"]
+    assert [e["name"] for e in a["exercises"]] == [
+        "Back squat", "Bench press", "Barbell row", "Lateral raise", "Plank"
+    ]
+    assert [e["name"] for e in b["exercises"]] == [
+        "Romanian deadlift", "Overhead press", "Lat pulldown", "Dumbbell lunge", "Hanging knee raise"
+    ]
+    rdl = b["exercises"][0]
+    assert (rdl["sets"], rdl["reps_low"], rdl["reps_high"], rdl["weight_lbs"], rdl["calibrating"]) == (3, 8, 10, None, True)
+    assert (a["next_on"], b["next_on"], b["next_weekday"]) == ("2026-11-06", "2026-11-09", "Monday")
+    assert [(u["day_key"], u["date"], u["is_today"]) for u in data["upcoming"]] == [
+        ("A", "2026-11-06", True), ("B", "2026-11-09", False), ("A", "2026-11-11", False)
+    ]
+    words = data["programme_words"]
+    assert "3 sessions a week on Monday, Wednesday and Friday" in words
+    assert "Day B: Romanian deadlift 3 x 8-10 @ your pick" in words
+    assert "Day A, not done yet" in words
+    assert "Day B Monday 2026-11-09" in words
+    assert "This week: 0 of 3 sessions done" in words
+    assert TrainingProgramme.objects.count() == 0
+
+
+def test_once_todays_session_is_done_the_next_one_is_the_next_training_day(auth_client, friday):
+    s = auth_client.post(f"{BASE}/start/", {}, format="json").data["session"]
+    running = auth_client.get(f"{BASE}/").data
+    assert running["today_status"] == "in_progress"
+    assert running["upcoming"][0] == {**running["upcoming"][0], "day_key": "A", "is_today": True}
+    _tick_all(auth_client, s, weight=100.0)
+    auth_client.post(f"{BASE}/finish/", {"session_id": s["id"]}, format="json")
+    data = auth_client.get(f"{BASE}/").data
+    assert data["today_status"] == "done"
+    assert [(u["day_key"], u["weekday"], u["date"]) for u in data["upcoming"]] == [
+        ("B", "Monday", "2026-11-09"), ("A", "Wednesday", "2026-11-11"), ("B", "Friday", "2026-11-13")
+    ]
+    a = data["days"][0]
+    squat = next(e for e in a["exercises"] if e["exercise_key"] == "back_squat")
+    assert (squat["weight_lbs"], squat["rule"]) == (110, "add")
+    assert a["next_on"] == "2026-11-11"
+
+
+def test_a_rest_day_says_so_and_points_at_the_next_training_day(auth_client, monkeypatch):
+    monkeypatch.setattr("body_coach.workouts.today_of", lambda request: date(2026, 11, 7))
+    data = auth_client.get(f"{BASE}/").data
+    assert data["today_status"] == "rest" and not data["training_day"]
+    assert data["upcoming"][0] == {**data["upcoming"][0], "day_key": "A", "weekday": "Monday", "is_today": False}
+    assert "a rest day" in data["programme_words"]
+
+
+def test_the_days_follow_a_swap(auth_client, friday):
+    auth_client.post(f"{BASE}/swap/", {"exercise": "rdl", "to": "hip thrust"}, format="json")
+    b = auth_client.get(f"{BASE}/").data["days"][1]
+    assert b["exercises"][0]["name"] == "Hip thrust"
+
+
 # =============================================================================
 # Tenancy and recruiters
 # =============================================================================
@@ -407,6 +514,7 @@ def _call(client, name, arguments=None):
 def test_the_tools_say_the_rules_numbers_and_commit_through_the_views(mcp):
     is_error, text, _ = _call(mcp, "get_todays_workout")
     assert not is_error and "Day A" in text and "never change a number" in text
+    assert "Day B: Romanian deadlift" in text and "Next sessions:" in text
     is_error, text, _ = _call(mcp, "tick_workout_set", {"exercise": "bench", "reps": 8, "weight_lbs": 135})
     assert not is_error and "Ticked Bench press set 1" in text and "committed" in text
     is_error, text, _ = _call(mcp, "swap_exercise", {"exercise": "squats"})

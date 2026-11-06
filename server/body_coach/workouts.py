@@ -569,15 +569,117 @@ def today_body(request) -> dict:
             else _default_plan(request)
         ).as_dict()
     words = _today_words(running, finished_today, plan, week, training_day)
+    if running is not None:
+        status = TODAY_IN_PROGRESS
+        first_key, first_number = running.day_key, running.session_number
+    else:
+        status = TODAY_DONE if finished_today else TODAY_NOT_STARTED if training_day else TODAY_REST
+        first_key, first_number = plan["day_key"], plan["session_number"]
+    upcoming = rules.upcoming_sessions(
+        today,
+        week["training_days"],
+        first_key,
+        today_open=status in (TODAY_IN_PROGRESS, TODAY_NOT_STARTED),
+        first_number=first_number,
+        count=max(2, len(week["training_days"])),
+    )
+    days = programme_days(request, programme, upcoming)
+    upcoming_list = [upcoming_dict(u) for u in upcoming]
     return {
         "programme": programme_dict(programme),
         "today": today.isoformat(),
+        "today_weekday": rules.WEEKDAY_NAMES[today.weekday()],
         "training_day": training_day,
+        "today_status": status,
         "week": week,
         "session": session_dict(running or finished_today),
         "next": plan,
+        "days": days,
+        "upcoming": upcoming_list,
         "words": words,
+        "programme_words": _programme_words(today, status, week, days, upcoming_list),
     }
+
+
+# =============================================================================
+# The whole programme, and the calendar ahead (workout reads, 2026-11-06)
+# =============================================================================
+
+TODAY_REST = "rest"
+TODAY_NOT_STARTED = "not_started"
+TODAY_IN_PROGRESS = "in_progress"
+TODAY_DONE = "done"
+
+
+def programme_days(request, programme: TrainingProgramme | None, upcoming: list[rules.Upcoming]) -> list[dict]:
+    """Every day of the programme (A and B) with the rules' current targets, and the date each
+    one next comes round. A deload is not applied here: `next` and `upcoming` say which session is
+    one, and its lighter targets are the rules' when that session starts."""
+    template = programme.template if programme else rules.DEFAULT_TEMPLATE
+    swaps = programme.swaps if programme else {}
+    out = []
+    for day in rules.DAY_KEYS:
+        targets = [
+            rules.target_for(slot, ex, history_for(request, ex))
+            for slot, ex in rules.slots_for(template, day, swaps)
+        ]
+        when = next((u for u in upcoming if u.day_key == day), None)
+        out.append(
+            {
+                "day_key": day,
+                "next_on": when.on.isoformat() if when else None,
+                "next_weekday": when.weekday_name if when else None,
+                "calibrating": any(t.calibrating for t in targets),
+                "exercises": [target_dict(t) for t in targets],
+            }
+        )
+    return out
+
+
+def upcoming_dict(u: rules.Upcoming) -> dict:
+    return {
+        "day_key": u.day_key,
+        "date": u.on.isoformat(),
+        "weekday": u.weekday_name,
+        "session_number": u.session_number,
+        "deload": u.deload,
+        "is_today": u.is_today,
+    }
+
+
+def _when(u: dict) -> str:
+    return f"today ({u['weekday']} {u['date']})" if u["is_today"] else f"{u['weekday']} {u['date']}"
+
+
+def _programme_words(today: date, status: str, week: dict, days: list[dict], upcoming: list[dict]) -> str:
+    names = [rules.WEEKDAY_NAMES[rules.WEEKDAYS.index(d)] for d in week["training_days"]]
+    on = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    parts = [
+        f"Programme: full body, Day A and Day B alternating, {len(names)} sessions a week on {on}."
+    ]
+    for d in days:
+        parts.append(f"Day {d['day_key']}: " + "; ".join(describe_target(t) for t in d["exercises"]) + ".")
+    if any(d["calibrating"] for d in days):
+        parts.append(
+            "Where it says your pick, it is a calibration: choose a weight you could lift for 2 "
+            "more reps than the top of the range."
+        )
+    lead = f"Today is {rules.WEEKDAY_NAMES[today.weekday()]} {today.isoformat()}"
+    first = upcoming[0]
+    if status == TODAY_IN_PROGRESS:
+        parts.append(f"{lead}: Day {first['day_key']} is in progress.")
+    elif status == TODAY_NOT_STARTED:
+        parts.append(f"{lead}, a training day: Day {first['day_key']}, not done yet.")
+    elif status == TODAY_DONE:
+        parts.append(f"{lead}: today's workout is done.")
+    else:
+        parts.append(f"{lead}, a rest day.")
+    sessions = "; ".join(
+        f"Day {u['day_key']} {_when(u)}" + (" (deload)" if u["deload"] else "") for u in upcoming
+    )
+    parts.append(f"Next sessions: {sessions}.")
+    parts.append(f"This week: {week['done']} of {week['planned']} sessions done.")
+    return " ".join(parts)
 
 
 def _default_plan(request) -> Plan:

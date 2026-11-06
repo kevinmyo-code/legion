@@ -41,6 +41,7 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 KIND_WEIGHTED = "weighted"
 KIND_BODYWEIGHT = "bodyweight"
@@ -359,6 +360,69 @@ def slots_for(template: str, day_key: str, swaps: dict[str, str] | None = None) 
 
 def next_day_key(last_day_key: str | None) -> str:
     return "B" if last_day_key == "A" else "A"
+
+
+WEEKDAY_NAMES: tuple[str, ...] = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
+
+
+@dataclass(frozen=True)
+class Upcoming:
+    """One coming session on the calendar: which day of the programme, and when."""
+
+    day_key: str
+    on: date
+    session_number: int
+    deload: bool
+    is_today: bool
+
+    @property
+    def weekday(self) -> str:
+        return WEEKDAYS[self.on.weekday()]
+
+    @property
+    def weekday_name(self) -> str:
+        return WEEKDAY_NAMES[self.on.weekday()]
+
+
+def upcoming_sessions(
+    today: date,
+    training_days: list[str] | tuple[str, ...],
+    first_day_key: str,
+    *,
+    today_open: bool,
+    first_number: int,
+    count: int,
+) -> list[Upcoming]:
+    """The next `count` sessions on the calendar, from today's date.
+
+    Today is the first candidate only when `today_open` (today is a training day with nothing
+    finished yet, or a session is running). After that, each training weekday takes the next
+    session, the day keys alternating from `first_day_key` (A, B, A...) the same way
+    `next_day_key` alternates finished sessions, and the session number counting up from
+    `first_number` so the deload flag is the one `is_deload` will give that session.
+    """
+    days = [d for d in training_days if d in WEEKDAYS] or list(DEFAULT_TRAINING_DAYS)
+    per_week = len(days)
+    out: list[Upcoming] = []
+    key = first_day_key
+    number = first_number
+    day = today if today_open else today + timedelta(days=1)
+    while len(out) < count:
+        is_today = day == today
+        if is_today and today_open or not is_today and WEEKDAYS[day.weekday()] in days:
+            out.append(Upcoming(key, day, number, is_deload(number, per_week), is_today))
+            key = next_day_key(key)
+            number += 1
+        day += timedelta(days=1)
+    return out
 
 
 def normalise(text: str) -> str:

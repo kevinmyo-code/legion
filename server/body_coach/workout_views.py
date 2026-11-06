@@ -2,7 +2,7 @@
 
 | Route | Does |
 |---|---|
-| `GET workout/` | the programme, this week (done of planned), today's session or the next plan, `words` |
+| `GET workout/` | the programme and every day of it, this week (done of planned), today's status, the sessions ahead with dates, today's session or the next plan, `words` |
 | `PUT workout/programme/` | create the programme, or change its training days (`training_days`) |
 | `POST workout/start/` | start today's workout (`id` may be minted by the phone), or return the running one |
 | `PATCH workout/sets/` | tick or edit sets by `(exercise_key, set_number)`; a replay changes nothing |
