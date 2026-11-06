@@ -492,6 +492,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/body/coach/meal-options/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description kcal and protein left today (carbs and fat when the meal target sets them), the household-local time, and up to five options from saved meals and groceries bought in the last 14 days (as bought, never divided), ranked to fit what is left and protein per kcal first. Every figure is an estimate. A read; nothing is written. */
+        get: operations["api_body_coach_meal_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/meal-options/log/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Logs one meal option now by `option_id` (from `GET meal-options/`): one meal_logs row whose estimated figures are recomputed from the saved meal or groceries. No figure is taken from the request. */
+        post: operations["api_body_coach_meal_options_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/body/coach/profile/": {
         parameters: {
             query?: never;
@@ -679,6 +713,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/body/coach/workout/alternatives/{exercise}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The other choices for the named exercise's slot (`alternatives/bench/`), each with its equipment, joints, whether the programme's filters allow it and why not, and whether its progress would carry. A read; nothing changes. */
+        get: operations["api_body_coach_workout_alternatives"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/body/coach/workout/cancel/": {
         parameters: {
             query?: never;
@@ -747,6 +798,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/body/coach/workout/proposals/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The pending programme change proposal, or `proposal: null`. */
+        get: operations["api_body_coach_workout_proposal"];
+        put?: never;
+        /** @description Builds a programme change from structured choices only: sessions_per_week (2 to 4), split (full_body, upper_lower, other), without_equipment / with_equipment (barbell, dumbbell, machine, kettlebell, bodyweight), avoid / clear_avoid (shoulder, knee, lower_back), cardio, swap_exercise and swap_to (one of its slot's choices). Every exercise and number comes from the programme's templates and catalog. Stored pending; nothing changes until it is accepted. An older pending proposal expires. */
+        post: operations["api_body_coach_workout_propose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/workout/proposals/{proposal_id}/accept/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Applies the proposal to the programme. Refused, with nothing changed, when the programme moved since it was made. A running workout is left as it is. */
+        post: operations["api_body_coach_workout_proposal_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/workout/proposals/{proposal_id}/dismiss/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Dismisses the proposal; the programme stays as it is. */
+        post: operations["api_body_coach_workout_proposal_dismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/body/coach/workout/sets/": {
         parameters: {
             query?: never;
@@ -773,7 +876,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Starts today's workout from the programme's rules, or returns the one already running. `id` (a UUID the phone minted) makes a replay idempotent. */
+        /** @description Starts the next session from the programme's rules, or returns the one already running. `id` (a UUID the phone minted) makes a replay idempotent. `location` home builds it from home variants (kettlebell and bodyweight); a running session with nothing ticked is rebuilt for the location asked. */
         post: operations["api_body_coach_workout_start"];
         delete?: never;
         options?: never;
@@ -10134,6 +10237,58 @@ export interface operations {
             };
         };
     };
+    api_body_coach_meal_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What is left and the ranked options. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    api_body_coach_meal_options_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logged. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_body_coach_profile_retrieve: {
         parameters: {
             query?: never;
@@ -10524,6 +10679,42 @@ export interface operations {
             };
         };
     };
+    api_body_coach_workout_alternatives: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workout body, with `words`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_body_coach_workout_cancel: {
         parameters: {
             query?: never;
@@ -10655,6 +10846,154 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workout body, with `words`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_workout_proposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workout body, with `words`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    api_body_coach_workout_propose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proposed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_workout_proposal_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workout body, with `words`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_workout_proposal_dismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

@@ -31,7 +31,7 @@ from body_coach.trend import lbs_to_kg
 
 KCAL_PER_KG = 7700
 FLOOR_KCAL = 800
-BASIS_DAYS = 14
+BASIS_DAYS = 28
 
 MISSING_HEIGHT = "height"
 MISSING_SEX = "sex"
@@ -40,7 +40,7 @@ MISSING_ACTIVITY = "activity level"
 MISSING_WEIGH_IN = "a weigh-in"
 
 FORMULA_WORDS = "from the Mifflin-St Jeor formula and your activity level"
-TREND_WORDS = "from your own trend, 14 days"
+TREND_WORDS = "from your own trend, 28 days"
 
 
 @dataclass(frozen=True)

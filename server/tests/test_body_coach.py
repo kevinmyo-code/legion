@@ -283,8 +283,9 @@ def test_the_milestone_gives_no_eta_while_flagged_or_moving_away():
 def _evidence(**overrides):
     base = dict(
         window=adaptation.window_for(date(2026, 3, 1)),
-        intake_days=14,
-        weigh_in_days=14,
+        intake_days=28,
+        weigh_in_days=28,
+        weigh_in_weeks=4,
         mean_intake_kcal=2500.0,
         first_weigh_in=date(2026, 1, 1),
         trend_start_lbs=200.0,
@@ -294,18 +295,21 @@ def _evidence(**overrides):
     return adaptation.Evidence(**base)
 
 
-def test_the_window_is_the_14_days_ending_yesterday():
+def test_the_window_is_the_28_days_ending_yesterday_in_four_weeks():
+    # Kevin, 2026-11-06: weekly weigh-ins, so four weekly points (about 28 days).
     w = adaptation.window_for(date(2026, 3, 15))
-    assert (w.start, w.end) == (date(2026, 3, 1), date(2026, 3, 14))
-    assert len(w.days()) == 14
+    assert (w.start, w.end) == (date(2026, 2, 15), date(2026, 3, 14))
+    assert len(w.days()) == 28
+    assert w.weeks()[0] == (date(2026, 2, 15), date(2026, 2, 21))
+    assert w.weeks()[-1] == (date(2026, 3, 8), date(2026, 3, 14))
 
 
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"intake_days": 10},
-        {"weigh_in_days": 7},
-        {"first_weigh_in": date(2026, 2, 12)},  # window starts 2026-02-15: under 7 days after
+        {"intake_days": 21},
+        {"weigh_in_weeks": 3},
+        {"first_weigh_in": date(2026, 1, 28)},  # window starts 2026-02-01: under 7 days after
     ],
 )
 def test_under_the_gate_there_is_no_proposal(overrides):
@@ -324,8 +328,8 @@ def test_no_proposal_without_a_target_or_within_14_days_of_the_last():
 
 
 def test_in_band_there_is_no_proposal():
-    # 200 -> 197.2 lbs over 14 days is 0.7% a week.
-    e = _evidence(trend_end_lbs=197.2)
+    # 200 -> 194.4 lbs over 28 days is 0.7% a week.
+    e = _evidence(trend_end_lbs=194.4)
     assert adaptation.observed_rate_pct(e) == pytest.approx(-0.7)
     assert adaptation.propose(e, target_rate_bp=75, current_target_kcal=2200,
                               made_recently=False) is None
@@ -338,12 +342,12 @@ def test_off_band_both_ways_is_clamped_to_150():
     assert down.proposed_target_kcal == 2050
     assert down.observed_maintenance_kcal == 2500
     assert down.observed_rate_bp == 0
-    fast = _evidence(mean_intake_kcal=1800.0, trend_end_lbs=192.0)  # 2% a week
+    fast = _evidence(mean_intake_kcal=1800.0, trend_end_lbs=184.0)  # 2% a week
     up = adaptation.propose(fast, target_rate_bp=75, current_target_kcal=1800,
                             made_recently=False)
     assert up.proposed_target_kcal == 1950
-    # Maintenance = 1800 + 8 lbs in kg x 7700 / 14.
-    assert up.observed_maintenance_kcal == round(1800 + 8 * trend.KG_PER_LB * 7700 / 14)
+    # Maintenance = 1800 + 16 lbs in kg x 7700 / 28.
+    assert up.observed_maintenance_kcal == round(1800 + 16 * trend.KG_PER_LB * 7700 / 28)
 
 
 def test_a_proposal_at_or_below_800_is_never_made():
@@ -617,14 +621,14 @@ def _off_band_flat(household):
 def test_an_off_band_trend_makes_one_proposal_with_its_evidence(auth_client, household_a):
     _off_band_flat(household_a)
     body = auth_client.get(f"{BASE}/energy/").data
-    assert body["basis"] == "trend" and body["basis_days"] == 14
+    assert body["basis"] == "trend" and body["basis_days"] == 28
     assert body["observed_maintenance_kcal"] == 2500 == body["maintenance_kcal"]
-    assert "own trend, 14 days" in body["basis_words"]
+    assert "own trend, 28 days" in body["basis_words"]
     proposal = body["proposal"]
     assert proposal["current_target_kcal"] == 2200
     assert proposal["proposed_target_kcal"] == 2050
     assert proposal["observed_rate_pct"] == 0.0
-    assert proposal["intake_days"] == 14 and proposal["weigh_in_days"] == 14
+    assert proposal["intake_days"] == 28 and proposal["weigh_in_days"] == 28
     assert proposal["window_end"] == (today() - timedelta(days=1)).isoformat()
     assert "estimate" in proposal["words"]
     row = EnergyProposal.objects.get()

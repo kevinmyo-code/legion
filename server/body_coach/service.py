@@ -261,6 +261,9 @@ def evidence(request, data: TrendData) -> adaptation.Evidence:
         window=window,
         intake_days=intake_days,
         weigh_in_days=data.weigh_in_days_between(window.start, window.end),
+        weigh_in_weeks=sum(
+            1 for first, last in window.weeks() if data.weigh_in_days_between(first, last)
+        ),
         mean_intake_kcal=sum(by_day.values()) / intake_days if intake_days else None,
         first_weigh_in=data.first_day,
         trend_start_lbs=trend.trend_on(data.points, window.start - timedelta(days=1)),
@@ -345,14 +348,17 @@ def maybe_propose(request, e: adaptation.Evidence, target_rate_bp: int, target: 
 # =============================================================================
 
 
-def energy_body(request) -> dict:
+def energy_body(request, *, propose: bool = True) -> dict:
+    """`propose=False` (body coach 2's meal options) reads the estimate without making the
+    two-weekly calorie proposal, so a read about food never writes one."""
     profile = own_profile(request)
     inputs = profile_inputs(profile)
     data = TrendData(request)
     e = evidence(request, data)
     target = current_target(request, data.today)
     rate_bp = energy.clamp_rate_bp((inputs or energy.ProfileInputs()).target_rate_bp)
-    maybe_propose(request, e, rate_bp, target)
+    if propose:
+        maybe_propose(request, e, rate_bp, target)
 
     if len(data.daily) >= 2:
         weight, source = data.latest_trend_lbs, "trend"

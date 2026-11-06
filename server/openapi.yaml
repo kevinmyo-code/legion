@@ -868,6 +868,48 @@ paths:
               schema:
                 $ref: '#/components/schemas/Energy'
           description: ''
+  /api/body/coach/meal-options/:
+    get:
+      operationId: api_body_coach_meal_options
+      description: kcal and protein left today (carbs and fat when the meal target
+        sets them), the household-local time, and up to five options from saved meals
+        and groceries bought in the last 14 days (as bought, never divided), ranked
+        to fit what is left and protein per kcal first. Every figure is an estimate.
+        A read; nothing is written.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: What is left and the ranked options.
+  /api/body/coach/meal-options/log/:
+    post:
+      operationId: api_body_coach_meal_options_log
+      description: 'Logs one meal option now by `option_id` (from `GET meal-options/`):
+        one meal_logs row whose estimated figures are recomputed from the saved meal
+        or groceries. No figure is taken from the request.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          description: Logged.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/body/coach/profile/:
     get:
       operationId: api_body_coach_profile_retrieve
@@ -1231,6 +1273,38 @@ paths:
       responses:
         '200':
           description: The workout body, with `words`.
+  /api/body/coach/workout/alternatives/{exercise}/:
+    get:
+      operationId: api_body_coach_workout_alternatives
+      description: The other choices for the named exercise's slot (`alternatives/bench/`),
+        each with its equipment, joints, whether the programme's filters allow it
+        and why not, and whether its progress would carry. A read; nothing changes.
+      parameters:
+      - in: path
+        name: exercise
+        schema:
+          type: string
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/body/coach/workout/cancel/:
     post:
       operationId: api_body_coach_workout_cancel
@@ -1353,6 +1427,129 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/body/coach/workout/proposals/:
+    get:
+      operationId: api_body_coach_workout_proposal
+      description: 'The pending programme change proposal, or `proposal: null`.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+    post:
+      operationId: api_body_coach_workout_propose
+      description: 'Builds a programme change from structured choices only: sessions_per_week
+        (2 to 4), split (full_body, upper_lower, other), without_equipment / with_equipment
+        (barbell, dumbbell, machine, kettlebell, bodyweight), avoid / clear_avoid
+        (shoulder, knee, lower_back), cardio, swap_exercise and swap_to (one of its
+        slot''s choices). Every exercise and number comes from the programme''s templates
+        and catalog. Stored pending; nothing changes until it is accepted. An older
+        pending proposal expires.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          description: Proposed.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/proposals/{proposal_id}/accept/:
+    post:
+      operationId: api_body_coach_workout_proposal_accept
+      description: Applies the proposal to the programme. Refused, with nothing changed,
+        when the programme moved since it was made. A running workout is left as it
+        is.
+      parameters:
+      - in: path
+        name: proposal_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/workout/proposals/{proposal_id}/dismiss/:
+    post:
+      operationId: api_body_coach_workout_proposal_dismiss
+      description: Dismisses the proposal; the programme stays as it is.
+      parameters:
+      - in: path
+        name: proposal_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: The workout body, with `words`.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/body/coach/workout/sets/:
     patch:
       operationId: api_body_coach_workout_sets
@@ -1388,8 +1585,10 @@ paths:
   /api/body/coach/workout/start/:
     post:
       operationId: api_body_coach_workout_start
-      description: Starts today's workout from the programme's rules, or returns the
-        one already running. `id` (a UUID the phone minted) makes a replay idempotent.
+      description: Starts the next session from the programme's rules, or returns
+        the one already running. `id` (a UUID the phone minted) makes a replay idempotent.
+        `location` home builds it from home variants (kettlebell and bodyweight);
+        a running session with nothing ticked is rebuilt for the location asked.
       tags:
       - body-coach
       security:
