@@ -1668,9 +1668,30 @@ def test_every_mcp_tool_is_scoped_by_household(
 
     alpha_sets = WorkoutSet.objects.filter(session_id=alpha_workout.data["session"]["id"])
     assert not alpha_sets.filter(done=True).exists()
-    assert alpha_sets.filter(exercise_key="back_squat").exists()
+    assert alpha_sets.filter(exercise_key="split_squat").exists()
     assert TrainingProgramme.objects.get(household=household_user.household).swaps == {}
     assert WorkoutSession.objects.filter(household=user_b.household).count() == 1
+    # Body coach 2 (2026-11-06): A's programme proposal is not B's to accept or dismiss, and
+    # B's meal options never list A's saved meal.
+    alpha_proposal = token_a.post(
+        "/api/body/coach/workout/proposals/", {"sessions_per_week": 4}, format="json"
+    )
+    assert alpha_proposal.status_code == 201, alpha_proposal.data
+    alpha_proposal_id = alpha_proposal.data["proposal"]["id"]
+    b_writes("accept_programme_change", {"id": alpha_proposal_id}, lands_in_b=False)
+    b_writes("dismiss_programme_change", {"id": alpha_proposal_id}, lands_in_b=False)
+    b_writes("propose_programme_change", {"sessions_per_week": 2}, lands_in_b=True)
+    b_reads("get_exercise_alternatives", {"exercise": "bench"})
+    b_reads("suggest_meal", {})
+    b_writes(
+        "log_meal_option", {"option_id": f"saved_meal:{alpha_meal.data['id']}"}, lands_in_b=False
+    )
+    from body_coach.models import ProgrammeProposal
+
+    assert ProgrammeProposal.objects.get(pk=alpha_proposal_id).status == "pending"
+    assert TrainingProgramme.objects.get(household=household_user.household).template == (
+        "full_body_ab"
+    )
     assert _feed(token_a) == a_before
     from purchases.models import Purchase
 

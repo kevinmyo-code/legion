@@ -32,6 +32,13 @@ exercise can be swapped for one of its alternatives; the swap is kept on the pro
 5. Bodyweight and timed exercises carry no weight: the target is the range, and the words say to
    add reps (or seconds) until every set reaches the top.
 
+## Body coach 2 (2026-11-06)
+
+Two templates (full body A/B; upper / lower in four days), each run on 2 to 4 days a week; every
+exercise carries the equipment it needs and the joints it loads most, so a programme's filters
+pick a slot's exercise (`resolve_day`); an optional cardio finisher in minutes. Changing any of it
+is a proposal Kevin accepts (`programme_change.py`).
+
 Weights are pounds. Nothing about a real person is in this file.
 """
 
@@ -45,6 +52,8 @@ from dataclasses import dataclass, field
 KIND_WEIGHTED = "weighted"
 KIND_BODYWEIGHT = "bodyweight"
 KIND_TIMED = "timed"
+# Body coach 2 (2026-11-06): the walking finisher; its range is in minutes.
+KIND_CARDIO = "cardio"
 
 RULE_CALIBRATE = "calibrate"
 RULE_ADD = "add"
@@ -64,12 +73,40 @@ RULES: tuple[str, ...] = (
 )
 
 DEFAULT_TEMPLATE = "full_body_ab"
+UPPER_LOWER = "upper_lower"
 DEFAULT_TRAINING_DAYS: tuple[str, ...] = ("mon", "wed", "fri")
 WEEKDAYS: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 DELOAD_EVERY_BLOCKS = 6
 RESET_FACTOR = 0.9
 ROUND_TO_LBS = 5.0
 CALIBRATION_RIR = 2
+
+# Body coach 2 (`.scratch/body-coach-2/`, Kevin's rulings 2026-11-06): the equipment an exercise
+# can be done with (any one of them; cables count as machine) and the joints it loads most, so
+# "no barbell", "I'm at home today" and "my knee hurts" filter this catalog instead of asking the
+# model for an exercise.
+BARBELL, DUMBBELL, MACHINE, KETTLEBELL, BODYWEIGHT = (
+    "barbell",
+    "dumbbell",
+    "machine",
+    "kettlebell",
+    "bodyweight",
+)
+EQUIPMENT: tuple[str, ...] = (BARBELL, DUMBBELL, MACHINE, KETTLEBELL, BODYWEIGHT)
+# Kevin: a commercial gym, or home with calisthenics and a kettlebell sometimes.
+LOCATION_GYM, LOCATION_HOME = "gym", "home"
+LOCATIONS: tuple[str, ...] = (LOCATION_GYM, LOCATION_HOME)
+HOME_EQUIPMENT: frozenset[str] = frozenset({KETTLEBELL, BODYWEIGHT})
+SHOULDER, KNEE, LOWER_BACK = "shoulder", "knee", "lower_back"
+JOINTS: tuple[str, ...] = (SHOULDER, KNEE, LOWER_BACK)
+JOINT_WORDS = {SHOULDER: "shoulder", KNEE: "knee", LOWER_BACK: "lower back"}
+EQUIPMENT_WORDS = {
+    BARBELL: "a barbell",
+    DUMBBELL: "dumbbells",
+    MACHINE: "a machine or cable",
+    KETTLEBELL: "a kettlebell",
+    BODYWEIGHT: "bodyweight",
+}
 
 
 @dataclass(frozen=True)
@@ -79,6 +116,8 @@ class Exercise:
     kind: str = KIND_WEIGHTED
     increment_lbs: float = 5.0
     aliases: tuple[str, ...] = ()
+    equipment: tuple[str, ...] = (DUMBBELL,)
+    joints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,76 +128,265 @@ class Slot:
     reps_low: int
     reps_high: int
     alternatives: tuple[str, ...] = ()
+    # (exercise key, low, high) for a choice whose range differs from the slot's (a timed hold
+    # among rep exercises).
+    ranges: tuple[tuple[str, int, int], ...] = ()
 
     def choices(self) -> tuple[str, ...]:
         return (self.exercise, *self.alternatives)
 
+    def range_for(self, exercise_key: str) -> tuple[int, int]:
+        for key, low, high in self.ranges:
+            if key == exercise_key:
+                return low, high
+        return self.reps_low, self.reps_high
+
 
 _E = Exercise
+# Bodyweight, and the home kettlebell: one bell, so these progress by reps, not by weight.
+_BW = {"kind": KIND_BODYWEIGHT, "increment_lbs": 0, "equipment": (BODYWEIGHT,)}
+_KB = {"kind": KIND_BODYWEIGHT, "increment_lbs": 0, "equipment": (KETTLEBELL,)}
+_HOLD = {"kind": KIND_TIMED, "increment_lbs": 0, "equipment": (BODYWEIGHT,)}
+_WALK = {"kind": KIND_CARDIO, "increment_lbs": 0}
 CATALOG: dict[str, Exercise] = {
     e.key: e
     for e in (
-        _E("back_squat", "Back squat", increment_lbs=10, aliases=("squat", "back squat")),
-        _E("goblet_squat", "Goblet squat", aliases=("goblet squat",)),
-        _E("leg_press", "Leg press", increment_lbs=10, aliases=("leg press",)),
-        _E("bench_press", "Bench press", aliases=("bench", "bench press")),
+        # Knee-dominant. Kevin's ruling: the default lower body is knee-friendly (split squats,
+        # wall sits, hip hinges); a heavy deep squat only when he asks for it.
+        _E("back_squat", "Back squat", increment_lbs=10, aliases=("squat", "back squat"),
+           equipment=(BARBELL,), joints=(KNEE, LOWER_BACK)),
+        _E("goblet_squat", "Goblet squat", aliases=("goblet squat",),
+           equipment=(DUMBBELL, KETTLEBELL), joints=(KNEE,)),
+        _E("leg_press", "Leg press", increment_lbs=10, aliases=("leg press",),
+           equipment=(MACHINE,), joints=(KNEE,)),
+        _E("split_squat", "Bulgarian split squat",
+           aliases=("split squat", "bulgarian split squat", "bulgarian"),
+           equipment=(DUMBBELL, KETTLEBELL, BODYWEIGHT)),
+        _E("dumbbell_lunge", "Dumbbell lunge", aliases=("lunge", "lunges", "dumbbell lunge"),
+           joints=(KNEE,)),
+        _E("leg_extension", "Leg extension", aliases=("leg extension",), equipment=(MACHINE,),
+           joints=(KNEE,)),
+        _E("wall_sit", "Wall sit", aliases=("wall sit", "wall sits"), **_HOLD),
+        # Hinge.
+        _E("romanian_deadlift", "Romanian deadlift", increment_lbs=10,
+           aliases=("rdl", "romanian deadlift", "deadlift"), equipment=(BARBELL,),
+           joints=(LOWER_BACK,)),
+        _E("dumbbell_rdl", "Dumbbell Romanian deadlift", aliases=("dumbbell rdl", "db rdl"),
+           joints=(LOWER_BACK,)),
+        _E("single_leg_rdl", "Single-leg Romanian deadlift",
+           aliases=("single leg rdl", "single leg deadlift"),
+           equipment=(DUMBBELL, KETTLEBELL, BODYWEIGHT)),
+        _E("kettlebell_swing", "Kettlebell swing", aliases=("swing", "kettlebell swing", "kb swing"),
+           joints=(LOWER_BACK,), **_KB),
+        _E("hip_thrust", "Hip thrust", increment_lbs=10, aliases=("hip thrust",),
+           equipment=(BARBELL,)),
+        _E("glute_bridge", "Glute bridge", aliases=("glute bridge", "bridge"), **_BW),
+        _E("leg_curl", "Leg curl", aliases=("leg curl", "hamstring curl"), equipment=(MACHINE,)),
+        # Horizontal push.
+        _E("bench_press", "Bench press", aliases=("bench", "bench press"), equipment=(BARBELL,),
+           joints=(SHOULDER,)),
         _E("dumbbell_bench_press", "Dumbbell bench press", aliases=("dumbbell bench", "db bench")),
-        _E("push_up", "Push-up", kind=KIND_BODYWEIGHT, increment_lbs=0, aliases=("push up", "pushup")),
-        _E("barbell_row", "Barbell row", aliases=("row", "barbell row", "bent over row")),
+        _E("machine_chest_press", "Machine chest press", aliases=("chest press", "machine press"),
+           equipment=(MACHINE,)),
+        _E("incline_dumbbell_press", "Incline dumbbell press",
+           aliases=("incline press", "incline dumbbell press", "incline db press")),
+        _E("push_up", "Push-up", aliases=("push up", "pushup"), **_BW),
+        _E("kettlebell_floor_press", "Kettlebell floor press",
+           aliases=("floor press", "kettlebell floor press"), **_KB),
+        # Vertical push.
+        _E("overhead_press", "Overhead press",
+           aliases=("ohp", "overhead press", "shoulder press", "press"), equipment=(BARBELL,),
+           joints=(SHOULDER, LOWER_BACK)),
+        _E("dumbbell_shoulder_press", "Dumbbell shoulder press",
+           aliases=("dumbbell shoulder press", "db shoulder press", "dumbbell press"),
+           joints=(SHOULDER,)),
+        _E("machine_shoulder_press", "Machine shoulder press", aliases=("machine shoulder press",),
+           equipment=(MACHINE,), joints=(SHOULDER,)),
+        _E("pike_push_up", "Pike push-up", aliases=("pike push up", "pike pushup"),
+           joints=(SHOULDER,), **_BW),
+        _E("kettlebell_press", "Kettlebell press", aliases=("kettlebell press", "kb press"),
+           joints=(SHOULDER,), **_KB),
+        # Pull.
+        _E("barbell_row", "Barbell row", aliases=("row", "barbell row", "bent over row"),
+           equipment=(BARBELL,), joints=(LOWER_BACK,)),
         _E("dumbbell_row", "Dumbbell row", aliases=("dumbbell row", "db row", "one arm row")),
-        _E("seated_cable_row", "Seated cable row", aliases=("cable row", "seated row")),
-        _E("lateral_raise", "Lateral raise", aliases=("lateral raise", "side raise", "laterals")),
-        _E("cable_lateral_raise", "Cable lateral raise", aliases=("cable lateral raise",)),
-        _E("plank", "Plank", kind=KIND_TIMED, increment_lbs=0, aliases=("plank",)),
-        _E("side_plank", "Side plank", kind=KIND_TIMED, increment_lbs=0, aliases=("side plank",)),
-        _E(
-            "romanian_deadlift",
-            "Romanian deadlift",
-            increment_lbs=10,
-            aliases=("rdl", "romanian deadlift", "deadlift"),
-        ),
-        _E("dumbbell_rdl", "Dumbbell Romanian deadlift", aliases=("dumbbell rdl", "db rdl")),
-        _E("hip_thrust", "Hip thrust", increment_lbs=10, aliases=("hip thrust",)),
-        _E("overhead_press", "Overhead press", aliases=("ohp", "overhead press", "shoulder press", "press")),
-        _E(
-            "dumbbell_shoulder_press",
-            "Dumbbell shoulder press",
-            aliases=("dumbbell shoulder press", "db shoulder press", "dumbbell press"),
-        ),
-        _E("lat_pulldown", "Lat pulldown", aliases=("pulldown", "lat pulldown", "lat pull down")),
-        _E("chin_up", "Chin-up", kind=KIND_BODYWEIGHT, increment_lbs=0, aliases=("chin up", "chinup", "pull up", "pullup")),
-        _E("dumbbell_lunge", "Dumbbell lunge", aliases=("lunge", "lunges", "dumbbell lunge")),
-        _E("split_squat", "Split squat", aliases=("split squat", "bulgarian split squat")),
-        _E(
-            "hanging_knee_raise",
-            "Hanging knee raise",
-            kind=KIND_BODYWEIGHT,
-            increment_lbs=0,
-            aliases=("knee raise", "hanging knee raise", "leg raise"),
-        ),
-        _E("cable_crunch", "Cable crunch", aliases=("cable crunch", "crunch")),
+        _E("seated_cable_row", "Seated cable row", aliases=("cable row", "seated row"),
+           equipment=(MACHINE,)),
+        _E("inverted_row", "Inverted row", aliases=("inverted row", "body row"), **_BW),
+        _E("kettlebell_row", "Kettlebell row", aliases=("kettlebell row", "kb row"), **_KB),
+        _E("lat_pulldown", "Lat pulldown", aliases=("pulldown", "lat pulldown", "lat pull down"),
+           equipment=(MACHINE,)),
+        _E("chin_up", "Chin-up", aliases=("chin up", "chinup", "pull up", "pullup"), **_BW),
+        # Shoulders and arms.
+        _E("lateral_raise", "Lateral raise", aliases=("lateral raise", "side raise", "laterals"),
+           joints=(SHOULDER,)),
+        _E("cable_lateral_raise", "Cable lateral raise", aliases=("cable lateral raise",),
+           equipment=(MACHINE,), joints=(SHOULDER,)),
+        _E("face_pull", "Face pull", aliases=("face pull",), equipment=(MACHINE,)),
+        _E("reverse_fly", "Reverse fly", aliases=("reverse fly", "rear delt fly")),
+        _E("dumbbell_curl", "Dumbbell curl", aliases=("curl", "bicep curl", "dumbbell curl")),
+        _E("cable_curl", "Cable curl", aliases=("cable curl",), equipment=(MACHINE,)),
+        _E("triceps_pushdown", "Triceps pushdown",
+           aliases=("pushdown", "tricep pushdown", "triceps pushdown"), equipment=(MACHINE,)),
+        _E("overhead_triceps_extension", "Overhead triceps extension",
+           aliases=("overhead extension", "tricep extension"), joints=(SHOULDER,)),
+        _E("close_grip_push_up", "Close-grip push-up", aliases=("close grip push up", "diamond push up"),
+           **_BW),
+        _E("bench_dip", "Bench dip", aliases=("dip", "bench dip"), joints=(SHOULDER,), **_BW),
+        # Core.
+        _E("plank", "Plank", aliases=("plank",), **_HOLD),
+        _E("side_plank", "Side plank", aliases=("side plank",), **_HOLD),
+        _E("hanging_knee_raise", "Hanging knee raise",
+           aliases=("knee raise", "hanging knee raise", "leg raise"), **_BW),
+        _E("cable_crunch", "Cable crunch", aliases=("cable crunch", "crunch"),
+           equipment=(MACHINE,)),
+        _E("dead_bug", "Dead bug", aliases=("dead bug",), **_BW),
+        # Cardio. Kevin: walking.
+        _E("incline_walk", "Incline walk", aliases=("incline walk", "treadmill"),
+           equipment=(MACHINE,), **_WALK),
+        _E("brisk_walk", "Brisk walk", aliases=("walk", "brisk walk", "walking"),
+           equipment=(BODYWEIGHT,), **_WALK),
+        _E("bike", "Bike", aliases=("bike", "cycling", "stationary bike"), equipment=(MACHINE,),
+           **_WALK),
+        _E("elliptical", "Elliptical", aliases=("elliptical",), equipment=(MACHINE,), **_WALK),
     )
 }
 
+_S = Slot
+_HOLD_RANGE = (30, 60)
 TEMPLATES: dict[str, dict[str, tuple[Slot, ...]]] = {
     DEFAULT_TEMPLATE: {
         "A": (
-            Slot("squat", "back_squat", 3, 6, 8, ("goblet_squat", "leg_press")),
-            Slot("push", "bench_press", 3, 6, 8, ("dumbbell_bench_press", "push_up")),
-            Slot("row", "barbell_row", 3, 8, 10, ("dumbbell_row", "seated_cable_row")),
-            Slot("shoulders", "lateral_raise", 2, 12, 15, ("cable_lateral_raise",)),
-            Slot("core_a", "plank", 2, 30, 45, ("side_plank",)),
+            _S("squat", "split_squat", 3, 8, 10,
+               ("wall_sit", "goblet_squat", "leg_press", "back_squat"),
+               ranges=(("wall_sit", *_HOLD_RANGE), ("back_squat", 6, 8))),
+            _S("push", "bench_press", 3, 6, 8,
+               ("dumbbell_bench_press", "machine_chest_press", "push_up", "kettlebell_floor_press"),
+               ranges=(("push_up", 8, 15), ("kettlebell_floor_press", 10, 15))),
+            _S("row", "barbell_row", 3, 8, 10,
+               ("dumbbell_row", "seated_cable_row", "kettlebell_row", "inverted_row"),
+               ranges=(("kettlebell_row", 10, 15),)),
+            _S("shoulders", "lateral_raise", 2, 12, 15,
+               ("cable_lateral_raise", "face_pull", "reverse_fly")),
+            _S("core_a", "plank", 2, 30, 45, ("side_plank", "dead_bug"),
+               ranges=(("dead_bug", 8, 12),)),
         ),
         "B": (
-            Slot("hinge", "romanian_deadlift", 3, 8, 10, ("dumbbell_rdl", "hip_thrust")),
-            Slot("press", "overhead_press", 3, 6, 8, ("dumbbell_shoulder_press",)),
-            Slot("pull", "lat_pulldown", 3, 8, 10, ("chin_up", "seated_cable_row")),
-            Slot("legs", "dumbbell_lunge", 2, 10, 12, ("split_squat",)),
-            Slot("core_b", "hanging_knee_raise", 2, 10, 15, ("cable_crunch",)),
+            _S("hinge", "romanian_deadlift", 3, 8, 10,
+               ("dumbbell_rdl", "single_leg_rdl", "hip_thrust", "kettlebell_swing", "glute_bridge"),
+               ranges=(("kettlebell_swing", 12, 20), ("glute_bridge", 12, 15))),
+            _S("press", "overhead_press", 3, 6, 8,
+               ("dumbbell_shoulder_press", "machine_shoulder_press", "incline_dumbbell_press",
+                "kettlebell_press", "pike_push_up"),
+               ranges=(("kettlebell_press", 8, 12), ("pike_push_up", 6, 12))),
+            _S("pull", "lat_pulldown", 3, 8, 10, ("chin_up", "seated_cable_row", "inverted_row"),
+               ranges=(("chin_up", 5, 10),)),
+            _S("legs", "wall_sit", 2, 30, 60,
+               ("split_squat", "dumbbell_lunge", "leg_press", "glute_bridge"),
+               ranges=(("split_squat", 8, 10), ("dumbbell_lunge", 10, 12), ("leg_press", 10, 12),
+                       ("glute_bridge", 12, 15))),
+            _S("core_b", "hanging_knee_raise", 2, 10, 15, ("cable_crunch", "dead_bug")),
         ),
-    }
+    },
+    UPPER_LOWER: {
+        "A": (
+            _S("u1_push", "bench_press", 3, 6, 8,
+               ("dumbbell_bench_press", "machine_chest_press", "push_up", "kettlebell_floor_press"),
+               ranges=(("push_up", 8, 15), ("kettlebell_floor_press", 10, 15))),
+            _S("u1_row", "barbell_row", 3, 8, 10,
+               ("dumbbell_row", "seated_cable_row", "kettlebell_row", "inverted_row"),
+               ranges=(("kettlebell_row", 10, 15),)),
+            _S("u1_press", "overhead_press", 2, 8, 10,
+               ("dumbbell_shoulder_press", "machine_shoulder_press", "incline_dumbbell_press",
+                "kettlebell_press", "pike_push_up")),
+            _S("u1_pull", "lat_pulldown", 3, 8, 10, ("chin_up", "inverted_row"),
+               ranges=(("chin_up", 5, 10),)),
+            _S("u1_biceps", "dumbbell_curl", 2, 10, 12, ("cable_curl", "chin_up"),
+               ranges=(("chin_up", 5, 10),)),
+            _S("u1_triceps", "triceps_pushdown", 2, 10, 12,
+               ("overhead_triceps_extension", "close_grip_push_up", "bench_dip")),
+        ),
+        "B": (
+            _S("l1_squat", "split_squat", 3, 8, 10, ("goblet_squat", "leg_press", "back_squat"),
+               ranges=(("back_squat", 6, 8),)),
+            _S("l1_hinge", "romanian_deadlift", 3, 8, 10,
+               ("dumbbell_rdl", "single_leg_rdl", "kettlebell_swing", "hip_thrust"),
+               ranges=(("kettlebell_swing", 12, 20),)),
+            _S("l1_quad", "wall_sit", 3, 30, 60, ("leg_press", "leg_extension", "goblet_squat"),
+               ranges=(("leg_press", 10, 12), ("leg_extension", 12, 15), ("goblet_squat", 8, 10))),
+            _S("l1_curl", "leg_curl", 2, 10, 12, ("single_leg_rdl", "glute_bridge"),
+               ranges=(("glute_bridge", 12, 15),)),
+            _S("l1_core", "plank", 2, 30, 45, ("side_plank", "dead_bug"),
+               ranges=(("dead_bug", 8, 12),)),
+        ),
+        "C": (
+            _S("u2_push", "incline_dumbbell_press", 3, 8, 10,
+               ("dumbbell_bench_press", "machine_chest_press", "push_up", "kettlebell_floor_press"),
+               ranges=(("push_up", 8, 15), ("kettlebell_floor_press", 10, 15))),
+            _S("u2_pull", "chin_up", 3, 5, 10, ("lat_pulldown", "inverted_row"),
+               ranges=(("lat_pulldown", 8, 10), ("inverted_row", 8, 12))),
+            _S("u2_row", "dumbbell_row", 3, 8, 12, ("seated_cable_row", "kettlebell_row", "inverted_row")),
+            _S("u2_shoulders", "lateral_raise", 3, 12, 15,
+               ("cable_lateral_raise", "face_pull", "reverse_fly")),
+            _S("u2_rear", "face_pull", 2, 12, 15, ("reverse_fly",)),
+        ),
+        "D": (
+            _S("l2_hinge", "hip_thrust", 3, 8, 10,
+               ("glute_bridge", "kettlebell_swing", "dumbbell_rdl", "romanian_deadlift"),
+               ranges=(("glute_bridge", 12, 15), ("kettlebell_swing", 12, 20))),
+            _S("l2_single", "single_leg_rdl", 3, 8, 10, ("dumbbell_rdl", "kettlebell_swing"),
+               ranges=(("kettlebell_swing", 12, 20),)),
+            _S("l2_lunge", "split_squat", 2, 8, 10, ("dumbbell_lunge", "goblet_squat"),
+               ranges=(("dumbbell_lunge", 10, 12),)),
+            _S("l2_quad", "wall_sit", 2, 30, 60, ("leg_extension", "leg_press"),
+               ranges=(("leg_extension", 12, 15), ("leg_press", 10, 12))),
+            _S("l2_core", "hanging_knee_raise", 2, 10, 15, ("cable_crunch", "dead_bug")),
+        ),
+    },
 }
-DAY_KEYS: tuple[str, ...] = ("A", "B")
+# The walking finisher, appended to every session when the programme has cardio on.
+CARDIO_SLOT = Slot(
+    "cardio", "incline_walk", 1, 10, 20, ("brisk_walk", "bike", "elliptical")
+)
+DAY_KEYS: tuple[str, ...] = tuple(TEMPLATES[DEFAULT_TEMPLATE])
+ALL_DAY_KEYS: tuple[str, ...] = ("A", "B", "C", "D")
+TEMPLATE_NAMES = {DEFAULT_TEMPLATE: "full body", UPPER_LOWER: "upper / lower"}
+DAY_LABELS: dict[str, dict[str, str]] = {
+    DEFAULT_TEMPLATE: {"A": "Day A", "B": "Day B"},
+    UPPER_LOWER: {"A": "Upper 1", "B": "Lower 1", "C": "Upper 2", "D": "Lower 2"},
+}
+# Kevin's ruling: days are flexible, a sessions-a-week target with no fixed weekdays; the next
+# session is the next one in the rotation. The weekdays stored on the programme are inert,
+# kept so an older phone build still shows a week.
+MIN_SESSIONS, MAX_SESSIONS = 2, 4
+INERT_DAYS_FOR: dict[int, tuple[str, ...]] = {
+    2: ("mon", "thu"),
+    3: DEFAULT_TRAINING_DAYS,
+    4: ("mon", "tue", "thu", "fri"),
+}
+
+
+def default_template_for(sessions_per_week: int) -> str:
+    """Full body for 2 or 3 sessions a week, upper / lower for 4."""
+    return UPPER_LOWER if sessions_per_week >= 4 else DEFAULT_TEMPLATE
+
+
+def day_label(template: str, day_key: str) -> str:
+    return DAY_LABELS.get(template, {}).get(day_key, f"Day {day_key}")
+
+
+def find_slot(template: str, slot_key: str) -> Slot | None:
+    if slot_key == CARDIO_SLOT.key:
+        return CARDIO_SLOT
+    for day in TEMPLATES.get(template, {}).values():
+        for slot in day:
+            if slot.key == slot_key:
+                return slot
+    return None
+
+
+def unit_of(kind: str) -> str:
+    return {KIND_TIMED: "seconds", KIND_CARDIO: "minutes"}.get(kind, "reps")
 
 
 # =============================================================================
@@ -207,7 +435,7 @@ class Target:
 
     @property
     def unit(self) -> str:
-        return "seconds" if self.kind == KIND_TIMED else "reps"
+        return unit_of(self.kind)
 
 
 # =============================================================================
@@ -270,7 +498,8 @@ def target_for(
 ) -> Target:
     """The next target for one exercise in one slot, from its finished history (newest first)."""
     ex = CATALOG[exercise_key]
-    sets, low, high = slot.sets, slot.reps_low, slot.reps_high
+    sets = slot.sets
+    low, high = slot.range_for(exercise_key)
     alternatives = tuple(CATALOG[k].name for k in slot.choices() if k != exercise_key)
 
     def make(weight, rule, words, n_sets=sets, r_low=low, r_high=high) -> Target:
@@ -288,7 +517,7 @@ def target_for(
             alternatives=alternatives,
         )
 
-    unit = "seconds" if ex.kind == KIND_TIMED else "reps"
+    unit = unit_of(ex.kind)
     if ex.kind != KIND_WEIGHTED:
         if deload:
             return make(
@@ -298,6 +527,8 @@ def target_for(
                 n_sets=max(1, sets - 1),
                 r_high=low,
             )
+        if ex.kind == KIND_CARDIO:
+            return make(None, RULE_REPS, f"Add minutes until it reaches {high}.")
         return make(None, RULE_REPS, f"Add {unit} until every set reaches {high}.")
 
     real = [p for p in history if not p.deload and working_weight(p) is not None]
@@ -347,18 +578,123 @@ def target_for(
 # =============================================================================
 
 
-def slots_for(template: str, day_key: str, swaps: dict[str, str] | None = None) -> list[tuple[Slot, str]]:
-    """The day's slots with the exercise each one holds after the programme's swaps."""
+@dataclass(frozen=True)
+class Filters:
+    """What the programme filters the catalog by (body coach 2): equipment he does not have,
+    joints to go easy on, and whether each session ends with the walking finisher. A home
+    session adds every piece of equipment but a kettlebell and bodyweight (`at_home`)."""
+
+    exclude_equipment: frozenset[str] = frozenset()
+    avoid: frozenset[str] = frozenset()
+    cardio: bool = False
+
+    def allows(self, exercise_key: str) -> bool:
+        return self.why_not(exercise_key) is None
+
+    def why_not(self, exercise_key: str) -> str | None:
+        ex = CATALOG[exercise_key]
+        if all(e in self.exclude_equipment for e in ex.equipment):
+            return "needs " + " or ".join(EQUIPMENT_WORDS[e] for e in ex.equipment)
+        hit = [JOINT_WORDS[j] for j in ex.joints if j in self.avoid]
+        if hit:
+            return f"loads the {' and '.join(hit)}"
+        return None
+
+
+NO_FILTERS = Filters()
+
+
+def at_home(filters: Filters) -> Filters:
+    """Kevin: "I'm at home today" switches that session to home variants."""
+    return Filters(
+        filters.exclude_equipment | (frozenset(EQUIPMENT) - HOME_EQUIPMENT),
+        filters.avoid,
+        filters.cardio,
+    )
+
+
+@dataclass(frozen=True)
+class Resolved:
+    """One slot of one day after swaps and filters: the exercise it holds, or paused and why."""
+
+    slot: Slot
+    exercise: str | None
+    paused_because: str | None = None
+
+
+def resolve_day(
+    template: str,
+    day_key: str,
+    swaps: dict[str, str] | None = None,
+    filters: Filters = NO_FILTERS,
+) -> list[Resolved]:
+    """The day's slots in order. A slot holds its swap when the swap passes the filters, else the
+    first of its choices that passes and is not already in the day; with none, it is paused (never
+    filled with a guess; decision 6). The cardio finisher comes last when the programme has it."""
     swaps = swaps or {}
+    slots = list(TEMPLATES[template][day_key])
+    if filters.cardio:
+        slots.append(CARDIO_SLOT)
+    used: set[str] = set()
     out = []
-    for slot in TEMPLATES[template][day_key]:
-        chosen = swaps.get(slot.key)
-        out.append((slot, chosen if chosen in slot.choices() else slot.exercise))
+    for slot in slots:
+        wanted = swaps.get(slot.key)
+        order = list(slot.choices())
+        if wanted in order:
+            order.remove(wanted)
+            order.insert(0, wanted)
+        pick = next((k for k in order if k not in used and filters.allows(k)), None)
+        if pick is None:
+            reasons = sorted({filters.why_not(k) or "already in the day" for k in slot.choices()})
+            out.append(Resolved(slot, None, "; ".join(reasons)))
+            continue
+        used.add(pick)
+        out.append(Resolved(slot, pick))
     return out
 
 
-def next_day_key(last_day_key: str | None) -> str:
-    return "B" if last_day_key == "A" else "A"
+def slots_for(
+    template: str,
+    day_key: str,
+    swaps: dict[str, str] | None = None,
+    filters: Filters = NO_FILTERS,
+) -> list[tuple[Slot, str]]:
+    """The day's slots that hold an exercise, with the exercise each one holds."""
+    return [(r.slot, r.exercise) for r in resolve_day(template, day_key, swaps, filters) if r.exercise]
+
+
+def day_keys(template: str) -> tuple[str, ...]:
+    return tuple(TEMPLATES[template])
+
+
+def next_day_key(last_day_key: str | None, template: str = DEFAULT_TEMPLATE) -> str:
+    """The template's days in turn (A, B for full body; A to D for upper / lower). A last day the
+    template does not have starts it from its first day."""
+    keys = day_keys(template)
+    if last_day_key not in keys:
+        return keys[0]
+    return keys[(keys.index(last_day_key) + 1) % len(keys)]
+
+
+def alternatives_for(slot: Slot, current: str, filters: Filters = NO_FILTERS) -> list[dict]:
+    """Every choice of a slot except the current one, each with whether the programme's filters
+    allow it and why not (decision 11: "alternatives to bench" is a read)."""
+    out = []
+    for key in slot.choices():
+        if key == current:
+            continue
+        ex = CATALOG[key]
+        out.append(
+            {
+                "exercise_key": key,
+                "name": ex.name,
+                "equipment": list(ex.equipment),
+                "joints": list(ex.joints),
+                "allowed": filters.allows(key),
+                "why_not": filters.why_not(key),
+            }
+        )
+    return out
 
 
 def normalise(text: str) -> str:

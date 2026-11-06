@@ -127,11 +127,12 @@ def test_names_match_loosely_but_never_ambiguously():
 
 
 def test_a_swap_lands_on_a_listed_alternative_only():
-    assert rules.swap_choice(SQUAT, "back_squat", None) == "goblet_squat"
+    # Body coach 2: the squat slot leads with the knee-friendly split squat (Kevin, 2026-11-06).
+    assert rules.swap_choice(SQUAT, "split_squat", None) == "wall_sit"
     assert rules.swap_choice(SQUAT, "goblet_squat", None) == "leg_press"
-    assert rules.swap_choice(SQUAT, "leg_press", None) == "back_squat"
-    assert rules.swap_choice(SQUAT, "back_squat", "leg press") == "leg_press"
-    assert rules.swap_choice(SQUAT, "back_squat", "bench press") is None
+    assert rules.swap_choice(SQUAT, "back_squat", None) == "split_squat"
+    assert rules.swap_choice(SQUAT, "split_squat", "leg press") == "leg_press"
+    assert rules.swap_choice(SQUAT, "split_squat", "bench press") is None
 
 
 def test_days_alternate_a_and_b():
@@ -184,7 +185,7 @@ def test_a_full_session_progresses_the_next_time_that_day_comes_round(auth_clien
     done = auth_client.post(f"{BASE}/finish/", {"session_id": s["id"]}, format="json")
     assert done.status_code == 200 and done.data["finished"]
     assert "Next workout is Day B" in done.data["words"]
-    assert "Back squat to 110 lb" in done.data["words"]
+    assert "Bulgarian split squat to 105 lb" in done.data["words"]
 
     b = auth_client.post(f"{BASE}/start/", {}, format="json").data["session"]
     assert b["day_key"] == "B"
@@ -192,9 +193,9 @@ def test_a_full_session_progresses_the_next_time_that_day_comes_round(auth_clien
 
     a2 = auth_client.get(f"{BASE}/").data["next"]
     assert a2["day_key"] == "A" and not a2["calibrating"]
-    squat = next(e for e in a2["exercises"] if e["exercise_key"] == "back_squat")
+    squat = next(e for e in a2["exercises"] if e["exercise_key"] == "split_squat")
     bench = next(e for e in a2["exercises"] if e["exercise_key"] == "bench_press")
-    assert (squat["weight_lbs"], squat["rule"]) == (110, "add")
+    assert (squat["weight_lbs"], squat["rule"]) == (105, "add")
     assert (bench["weight_lbs"], bench["rule"]) == (105, "add")
     plank = next(e for e in a2["exercises"] if e["exercise_key"] == "plank")
     assert plank["weight_lbs"] is None and plank["unit"] == "seconds"
@@ -233,10 +234,10 @@ def test_a_tick_never_takes_a_target_from_the_client(auth_client):
     s = auth_client.post(f"{BASE}/start/", {}, format="json").data["session"]
     auth_client.patch(
         f"{BASE}/sets/",
-        {"session_id": s["id"], "sets": [{"exercise_key": "back_squat", "set_number": 1, "reps": 8, "weight_lbs": 50, "target_weight_lbs": 999}]},
+        {"session_id": s["id"], "sets": [{"exercise_key": "split_squat", "set_number": 1, "reps": 8, "weight_lbs": 50, "target_weight_lbs": 999}]},
         format="json",
     )
-    row = WorkoutSet.objects.get(exercise_key="back_squat", set_number=1)
+    row = WorkoutSet.objects.get(exercise_key="split_squat", set_number=1)
     assert row.target_weight_lbs is None and row.weight_lbs == 50
 
 
@@ -285,11 +286,11 @@ def test_swap_keeps_on_the_programme_and_changes_an_untouched_running_exercise(a
     s = auth_client.post(f"{BASE}/start/", {}, format="json").data["session"]
     r = auth_client.post(f"{BASE}/swap/", {"exercise": "squats"}, format="json")
     assert r.status_code == 200, r.data
-    assert "Swapped Back squat for Goblet squat" in r.data["words"]
+    assert "Swapped Bulgarian split squat for Goblet squat" in r.data["words"]
     keys = {x["exercise_key"] for x in r.data["session"]["sets"]}
-    assert "goblet_squat" in keys and "back_squat" not in keys
+    assert "goblet_squat" in keys and "split_squat" not in keys
     assert TrainingProgramme.objects.get().swaps == {"squat": "goblet_squat"}
-    r = auth_client.post(f"{BASE}/swap/", {"exercise": "goblet squat", "to": "back squat"}, format="json")
+    r = auth_client.post(f"{BASE}/swap/", {"exercise": "goblet squat", "to": "split squat"}, format="json")
     assert TrainingProgramme.objects.get().swaps == {}
     r = auth_client.post(f"{BASE}/swap/", {"exercise": "squat", "to": "bench press"}, format="json")
     assert r.status_code == 400 and "can be swapped for" in r.data["detail"]
@@ -304,8 +305,8 @@ def test_finish_writes_the_legacy_history_once(auth_client):
     rows = WorkoutSetLog.objects.filter(origin_guid__startswith=f"workout:{s['id']}")
     # four weighted exercises, one (reps, weight) group each; the plank is timed and skipped
     assert rows.count() == 4
-    squat = rows.get(exercise="Back squat")
-    assert (squat.sets, squat.reps, squat.weight_value, squat.weight_unit) == (3, 8, 100, "lbs")
+    squat = rows.get(exercise="Bulgarian split squat")
+    assert (squat.sets, squat.reps, squat.weight_value, squat.weight_unit) == (3, 10, 100, "lbs")
 
 
 def test_a_cancelled_session_logs_nothing_and_does_not_count(auth_client):
@@ -359,7 +360,7 @@ def test_the_deload_session_comes_from_the_session_count(auth_client, household_
         )
     nxt = auth_client.get(f"{BASE}/").data["next"]
     assert nxt["session_number"] == 16 and nxt["deload"]
-    squat = next(e for e in nxt["exercises"] if e["exercise_key"] == "back_squat")
+    squat = next(e for e in nxt["exercises"] if e["exercise_key"] == "split_squat")
     assert (squat["weight_lbs"], squat["sets"], squat["rule"]) == (90, 2, "deload")
 
 

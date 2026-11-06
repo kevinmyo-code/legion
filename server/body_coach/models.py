@@ -290,6 +290,14 @@ class TrainingProgramme(models.Model):
     training_days = models.TextField(default="mon,wed,fri")
     # Slot key -> exercise key, for slots whose exercise was swapped for an alternative.
     swaps = models.JSONField(default=dict, blank=True)
+    # Body coach 2 (2026-11-06): the filters a slot's exercise is picked by
+    # (`programme.resolve_day`): equipment he does not have, joints to go easy on, the cardio
+    # finisher. Set only by accepting a programme proposal.
+    exclude_equipment = models.JSONField(default=list, blank=True)
+    avoid = models.JSONField(default=list, blank=True)
+    cardio = models.BooleanField(default=False)
+    # When the template last changed: the day after it starts from the template's first day.
+    template_since = models.DateTimeField(null=True, blank=True)
     active = models.BooleanField(default=True)
     started_on = models.DateField()
     created_at = models.DateTimeField(db_default=Now())
@@ -325,6 +333,8 @@ class WorkoutSession(models.Model):
     # 1-based count of this programme's sessions, cancelled ones excluded; decides the deload.
     session_number = models.IntegerField()
     deload = models.BooleanField(default=False)
+    # Body coach 2 (Kevin, 2026-11-06): a commercial gym, or home with a kettlebell and bodyweight.
+    location = models.TextField(default="gym")
     session_date = models.DateField()
     status = models.TextField(default=SESSION_IN_PROGRESS)
     started_at = models.DateTimeField()
@@ -341,7 +351,8 @@ class WorkoutSession(models.Model):
                 condition=models.Q(status__in=SESSION_STATUSES), name="workout_sessions_status_valid"
             ),
             models.CheckConstraint(
-                condition=models.Q(day_key__in=("A", "B")), name="workout_sessions_day_key_valid"
+                condition=models.Q(day_key__in=("A", "B", "C", "D")),
+                name="workout_sessions_day_key_any_template",
             ),
             models.UniqueConstraint(
                 fields=["household"],
@@ -350,6 +361,10 @@ class WorkoutSession(models.Model):
             ),
             models.CheckConstraint(
                 condition=models.Q(session_number__gte=1), name="workout_sessions_number_positive"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(location__in=("gym", "home")),
+                name="workout_sessions_location_valid",
             ),
         ]
 
@@ -421,3 +436,58 @@ class WorkoutSet(models.Model):
 
     def __str__(self) -> str:
         return f"workout set {self.id}"
+
+
+# =============================================================================
+# Programme change proposals (body coach 2, 2026-11-06). Rules in `body_coach/programme_change.py`.
+# =============================================================================
+
+PROPOSAL_PENDING = STATUS_PENDING
+PROGRAMME_PROPOSAL_STATUSES = PROPOSAL_STATUSES
+
+
+class ProgrammeProposal(models.Model):
+    """One proposed change to the household's programme, built by the engine from structured
+    choices (never an exercise or a number the model wrote). Kevin accepts or dismisses it, like an
+    `EnergyProposal`. **The programme before and after are stored beside the request**, so what
+    an acceptance did can be read back from this row alone."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    programme = models.ForeignKey(
+        TrainingProgramme, on_delete=models.PROTECT, related_name="proposals"
+    )
+    # The structured choices it was asked for, as the engine read them.
+    request = models.JSONField(default=dict)
+    # {template, training_days, swaps, exclude_equipment, avoid, cardio}
+    before = models.JSONField()
+    after = models.JSONField()
+    # kept / dropped / added / paused exercises, and whether the split changed.
+    diff = models.JSONField(default=dict)
+    words = models.TextField()
+    status = models.TextField(default=STATUS_PENDING)
+    created_at = models.DateTimeField(db_default=Now())
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        db_table = "programme_proposals"
+        indexes = [
+            models.Index(fields=["household", "created_at"], name="programme_proposals_made_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=PROPOSAL_STATUSES),
+                name="programme_proposals_status_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["household"],
+                condition=models.Q(status=STATUS_PENDING),
+                name="programme_proposals_one_pending",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"programme proposal {self.id}"

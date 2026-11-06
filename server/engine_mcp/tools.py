@@ -2348,6 +2348,19 @@ def _object(properties: dict, required: tuple[str, ...] = ()) -> dict:
 
 
 _UUID = {"type": "string", "format": "uuid"}
+_EQUIPMENT_LIST = {
+    "type": "array",
+    "items": {
+        "type": "string",
+        "enum": ["barbell", "dumbbell", "machine", "kettlebell", "bodyweight"],
+    },
+    "minItems": 1,
+}
+_JOINT_LIST = {
+    "type": "array",
+    "items": {"type": "string", "enum": ["shoulder", "knee", "lower_back"]},
+    "minItems": 1,
+}
 # The scope half is true of a device token only; the web door
 # (`assistant/surface.py`) drops it from what a browser session's model is told.
 WRITE_SCOPE_SENTENCE = (
@@ -3206,10 +3219,11 @@ TOOLS: tuple[EngineTool, ...] = (
         name="start_workout",
         title="Start the workout",
         description=(
-            "Starts today's workout (\"start my workout\"), or reports the one already running."
-            + _WRITE_NOTE
+            "Starts the next session (\"start my workout\"), or reports the one already running. "
+            "location home (\"I'm at home today\") builds it from kettlebell and bodyweight "
+            "variants, and rebuilds a running one with nothing ticked." + _WRITE_NOTE
         ),
-        input_schema=_object({}),
+        input_schema=_object({"location": {"type": "string", "enum": ["gym", "home"]}}),
         handler=coach.start_workout,
         writes=True,
     ),
@@ -3255,6 +3269,103 @@ TOOLS: tuple[EngineTool, ...] = (
         description=("Finishes and logs today's workout." + _WRITE_NOTE),
         input_schema=_object({}),
         handler=coach.finish_workout,
+        writes=True,
+    ),
+    # body coach 2 (2026-11-06): change the plan by asking. The model maps what was said to
+    # CHOICES; the engine builds the programme from its templates and catalog (ADR 0078).
+    EngineTool(
+        name="get_exercise_alternatives",
+        title="Alternatives to an exercise",
+        description=(
+            "The alternatives to one programme exercise (\"what can I do instead of bench\"): "
+            "each with its equipment, the joints it loads, whether the programme's filters "
+            "allow it and whether its progress carries. Recommend only from these."
+        ),
+        input_schema=_object(
+            {"exercise": {"type": "string", "minLength": 1, "maxLength": 80}}, ("exercise",)
+        ),
+        handler=coach.get_exercise_alternatives,
+    ),
+    EngineTool(
+        name="propose_programme_change",
+        title="Propose a workout plan change",
+        description=(
+            "Proposes a change to the workout programme from what the person asked, as choices "
+            "only: sessions_per_week (\"4 sessions a week\"; days are flexible, never weekdays), "
+            "split (\"different split\" is other), without_equipment (\"no barbell\"), "
+            "with_equipment, "
+            "avoid (\"my shoulder hurts\"), clear_avoid (\"it's better\"), cardio (\"add "
+            "cardio\"), swap_exercise and swap_to (an alternative it lists). The engine builds "
+            "every exercise and number and stores it pending; nothing changes until "
+            "accept_programme_change. Read its words back and ask." + _WRITE_NOTE
+        ),
+        input_schema={
+            **_object(
+                {
+                    "sessions_per_week": {"type": "integer", "minimum": 2, "maximum": 4},
+                    "split": {"type": "string", "enum": ["full_body", "upper_lower", "other"]},
+                    "without_equipment": _EQUIPMENT_LIST,
+                    "with_equipment": _EQUIPMENT_LIST,
+                    "avoid": _JOINT_LIST,
+                    "clear_avoid": _JOINT_LIST,
+                    "cardio": {"type": "boolean"},
+                    "swap_exercise": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "swap_to": {"type": "string", "minLength": 1, "maxLength": 80},
+                }
+            ),
+            "minProperties": 1,
+        },
+        handler=coach.propose_programme_change,
+        writes=True,
+    ),
+    EngineTool(
+        name="accept_programme_change",
+        title="Accept the workout plan change",
+        description=(
+            "Accepts the pending workout programme proposal (or the one with this id). Only when "
+            "the person says yes to the proposal just read." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID}),
+        handler=coach.accept_programme_change,
+        writes=True,
+    ),
+    EngineTool(
+        name="dismiss_programme_change",
+        title="Dismiss the workout plan change",
+        description=(
+            "Dismisses the pending workout programme proposal (or the one with this id); the "
+            "programme stays as it is." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID}),
+        handler=coach.dismiss_programme_change,
+        writes=True,
+    ),
+    # body coach 2 (2026-11-06): what to eat from what's left. The options ARE the result, so
+    # the model suggests from them; logging one recomputes its figures on the engine.
+    EngineTool(
+        name="suggest_meal",
+        title="What should I eat",
+        description=(
+            "\"What should I eat?\": kcal and protein left today, the time, and up to five "
+            "ranked options from saved meals and groceries bought in the last 14 days, each with "
+            "an option_id. Every figure is an ESTIMATE; grocery figures are for the whole item "
+            "as bought. Suggest only from the listed options; never push under 800 kcal or "
+            "toward skipping food."
+        ),
+        input_schema=_object({}),
+        handler=coach.suggest_meal,
+    ),
+    EngineTool(
+        name="log_meal_option",
+        title="Log a suggested meal",
+        description=(
+            "Logs one option from suggest_meal by its option_id (\"log that\", \"I'll have the "
+            "second one\"). The engine recomputes the figures; pass no numbers." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {"option_id": {"type": "string", "minLength": 3, "maxLength": 120}}, ("option_id",)
+        ),
+        handler=coach.log_meal_option,
         writes=True,
     ),
     # procedures ticket 12 (ADR 0070). `writes=False` ON PURPOSE: `run_engine_tool`

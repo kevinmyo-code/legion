@@ -157,6 +157,13 @@ RECRUITER_DENIED: dict[str, str] = {
     "body_coach.workout_views.WorkoutSwapView": _BODY,
     "body_coach.workout_views.WorkoutFinishView": _BODY,
     "body_coach.workout_views.WorkoutCancelView": _BODY,
+    # body coach 2 (2026-11-06)
+    "body_coach.workout_views.ProgrammeProposalsView": _BODY,
+    "body_coach.workout_views.ProgrammeProposalAcceptView": _BODY,
+    "body_coach.workout_views.ProgrammeProposalDismissView": _BODY,
+    "body_coach.workout_views.WorkoutAlternativesView": _BODY,
+    "body_coach.meal_option_views.MealOptionsView": _BODY,
+    "body_coach.meal_option_views.MealOptionLogView": _BODY,
     "api.memory.MemoryViewSet": _MEMORY,
     "api.memory.CompanionMemoryViewSet": _MEMORY,
     "api.memory.MemoryAuditViewSet": _MEMORY,

@@ -81,6 +81,8 @@ TENANT_TABLES: tuple[str, ...] = (
     "training_programmes",
     "workout_sessions",
     "workout_sets",
+    # body coach 2 (2026-11-06): a proposed programme change, shared like the programme.
+    "programme_proposals",
     # memory
     "memories",
     "memory_audit",
@@ -262,6 +264,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "training_programmes",
         "workout_sessions",
         "workout_sets",
+        "programme_proposals",
     }
 )
 

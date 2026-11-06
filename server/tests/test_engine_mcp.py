@@ -318,6 +318,11 @@ def _write_calls(checklist_id, item_id, event_id, purchase_id):
         "tick_workout_set": {"exercise": "bench", "reps": 8, "weight_lbs": 135},
         "swap_exercise": {"exercise": "squat"},
         "finish_workout": {},
+        # Body coach 2 (2026-11-06).
+        "propose_programme_change": {"sessions_per_week": 4},
+        "accept_programme_change": {},
+        "dismiss_programme_change": {},
+        "log_meal_option": {"option_id": "saved_meal:00000000-0000-0000-0000-000000000001"},
     }
 
 

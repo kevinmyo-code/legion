@@ -176,6 +176,13 @@ RECRUITER_EXCLUDED: dict[str, str] = {
             "tick_workout_set",
             "swap_exercise",
             "finish_workout",
+            # body coach 2 (2026-11-06)
+            "get_exercise_alternatives",
+            "propose_programme_change",
+            "accept_programme_change",
+            "dismiss_programme_change",
+            "suggest_meal",
+            "log_meal_option",
         )
     },
 }

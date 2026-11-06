@@ -363,7 +363,8 @@ def _workout_write(request, path: str, args: dict, verb: str, ok_codes=(200, 201
 
 
 def start_workout(request, args):
-    return _workout_write(request, f"{WORKOUT}/start/", {}, "started")
+    body = {"location": args["location"]} if args.get("location") else {}
+    return _workout_write(request, f"{WORKOUT}/start/", body, "started")
 
 
 def log_workout_set_to_session(request, args):
@@ -382,3 +383,126 @@ def swap_exercise(request, args):
 
 def finish_workout(request, args):
     return _workout_write(request, f"{WORKOUT}/finish/", {}, "finished")
+
+
+# =============================================================================
+# Programme change proposals (body coach 2, 2026-11-06). The model passes CHOICES; the engine
+# builds every exercise and number from `programme.py` and says what changes in words.
+# =============================================================================
+
+PROPOSAL_CHOICES = (
+    "sessions_per_week",
+    "split",
+    "without_equipment",
+    "with_equipment",
+    "avoid",
+    "clear_avoid",
+    "cardio",
+    "swap_exercise",
+    "swap_to",
+)
+
+
+def propose_programme_change(request, args):
+    from engine_mcp.tools import ok
+
+    body = {k: args[k] for k in PROPOSAL_CHOICES if args.get(k) is not None}
+    response = call_route(request, "POST", f"{WORKOUT}/proposals/", body)
+    if response.status_code != 201:
+        return _not_done(response, "proposed")
+    return ok(
+        f"{response.data['words']} Read this proposal back as it is and ask whether to accept it; "
+        f"name no exercise, set, rep or weight that is not in it. The engine stored it pending; "
+        f"the programme has not changed.",
+        structured=response.data,
+    )
+
+
+def _programme_proposal_id(request, args, verb: str):
+    from engine_mcp.tools import refused
+
+    if args.get("id"):
+        return args["id"], None
+    data, error = _read(request, f"{WORKOUT}/proposals/")
+    if error:
+        return None, error
+    if not data["proposal"]:
+        return None, refused(
+            f"Nothing was {verb}. There is no pending programme proposal; the programme is as it "
+            f"was."
+        )
+    return data["proposal"]["id"], None
+
+
+def accept_programme_change(request, args):
+    from engine_mcp.tools import ok
+
+    proposal_id, error = _programme_proposal_id(request, args, "accepted")
+    if error:
+        return error
+    response = call_route(request, "POST", f"{WORKOUT}/proposals/{proposal_id}/accept/")
+    if response.status_code != 200:
+        return _not_done(response, "accepted")
+    return ok(f"{response.data['words']} The engine committed it.", structured=response.data)
+
+
+def dismiss_programme_change(request, args):
+    from engine_mcp.tools import ok
+
+    proposal_id, error = _programme_proposal_id(request, args, "dismissed")
+    if error:
+        return error
+    response = call_route(request, "POST", f"{WORKOUT}/proposals/{proposal_id}/dismiss/")
+    if response.status_code != 200:
+        return _not_done(response, "dismissed")
+    return ok(response.data["words"], structured=response.data)
+
+
+def get_exercise_alternatives(request, args):
+    from engine_mcp.tools import ok, refused
+
+    exercise = str(args.get("exercise") or "").strip()
+    response = call_route(request, "GET", f"{WORKOUT}/alternatives/{exercise}/")
+    if response.status_code == 404:
+        return refused(_detail(response))
+    if response.status_code != 200:
+        return _not_done(response, "read")
+    return ok(
+        f"{response.data['words']} Recommend only from these; never name another exercise.",
+        structured=response.data,
+    )
+
+
+# =============================================================================
+# What to eat from what's left (body coach 2, 2026-11-06). `body_coach/suggest.py`.
+# =============================================================================
+
+
+def suggest_meal(request, args):
+    from engine_mcp.tools import ok
+
+    data, error = _read(request, f"{BASE}/meal-options/")
+    if error:
+        return error
+    ids = "; ".join(f"{o['rank']} = {o['id']}" for o in data["options"])
+    tail = (
+        f" Suggest only from these numbered options, with their figures as estimates; to log "
+        f"one, call log_meal_option with its option_id ({ids})."
+        if data["options"]
+        else ""
+    )
+    return ok(data["words"] + tail, structured=data)
+
+
+def log_meal_option(request, args):
+    from engine_mcp.tools import ok
+
+    response = call_route(
+        request, "POST", f"{BASE}/meal-options/log/", {"option_id": args.get("option_id")}
+    )
+    if response.status_code != 201:
+        return _not_done(response, "logged")
+    return ok(
+        f"{response.data['words']} The engine committed one meal entry.",
+        structured=response.data,
+    )

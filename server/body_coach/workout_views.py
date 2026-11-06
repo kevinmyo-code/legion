@@ -10,6 +10,9 @@
 | `POST workout/swap/` | swap an exercise for one of its listed alternatives |
 | `POST workout/finish/` | finish and log (`workout_set_logs` rows from the actuals, once) |
 | `POST workout/cancel/` | drop the running workout; nothing is logged |
+| `GET/POST workout/proposals/` | the pending programme change, or propose one from structured choices |
+| `POST workout/proposals/<id>/accept/`, `.../dismiss/` | apply it to the programme, or not |
+| `GET workout/alternatives/<exercise>/` | a slot's other choices, filtered by the programme |
 
 **Every target comes from `body_coach/programme.py`.** Nothing here accepts a target weight from
 a client: a tick carries only what was done. Authentication is the API default; a recruiter is
@@ -102,13 +105,8 @@ class WorkoutProgrammeView(APIView):
                 programme.save(update_fields=["training_days"])
         except svc.WorkoutRefused as exc:
             return _refusal(exc)
-        days = ", ".join(programme.day_list())
-        return Response(
-            {
-                "programme": svc.programme_dict(programme),
-                "words": f"Programme saved: full body, A and B alternating, on {days}.",
-            }
-        )
+        body = svc.programme_dict(programme)
+        return Response({"programme": body, "words": f"Programme saved: {body['summary']}."})
 
 
 class WorkoutStartView(APIView):
@@ -117,29 +115,37 @@ class WorkoutStartView(APIView):
         tags=TAGS,
         request=None,
         responses={201: OpenApiResponse(description="Started."), **_OK, **_REFUSED},
-        description="Starts today's workout from the programme's rules, or returns the one "
-        "already running. `id` (a UUID the phone minted) makes a replay idempotent.",
+        description="Starts the next session from the programme's rules, or returns the one "
+        "already running. `id` (a UUID the phone minted) makes a replay idempotent. `location` "
+        "home builds it from home variants (kettlebell and bodyweight); a running session with "
+        "nothing ticked is rebuilt for the location asked.",
     )
     def post(self, request):
         try:
             data = _body(request)
             session, created = svc.start(
-                request, _uuid(data.get("id"), "id", "started"), data.get("day_key")
+                request,
+                _uuid(data.get("id"), "id", "started"),
+                data.get("day_key"),
+                data.get("location"),
             )
         except svc.WorkoutRefused as exc:
             return _refusal(exc)
         d = svc.session_dict(session)
         if created:
-            words = f"Started Day {d['day_key']}: " + "; ".join(
-                _exercise_lines(d)
-            ) + "."
+            where = " at home" if d["location"] == "home" else ""
+            words = f"Started {d['day_label']}{where}: " + "; ".join(_exercise_lines(d)) + "."
             if d["calibrating"]:
                 words += (
                     " Calibration: where there is no weight, pick one you could lift for 2 more "
                     "reps than the top of the range."
                 )
         elif session.status == "in_progress":
-            words = f"Day {d['day_key']} is already in progress: {d['sets_done']} of {d['set_count']} sets ticked."
+            where = " (home)" if d["location"] == "home" else ""
+            words = (
+                f"{d['day_label']}{where} is already in progress: {d['sets_done']} of "
+                f"{d['set_count']} sets ticked."
+            )
         else:
             words = f"That workout is already {session.status}."
         return Response(
@@ -208,7 +214,7 @@ class WorkoutLogView(APIView):
         d = svc.session_dict(session)
         unit = "seconds" if row.kind == "timed" else "reps"
         at = f" at {row.weight_lbs:g} lb" if row.weight_lbs is not None else ""
-        lead = f"Started Day {d['day_key']}. " if started else ""
+        lead = f"Started {d['day_label']}. " if started else ""
         extra = " (an extra set past the plan)" if row.rule == "extra" else ""
         words = (
             f"{lead}Ticked {row.exercise_name} set {row.set_number}: {row.reps_done} {unit}{at}"
@@ -281,3 +287,104 @@ class WorkoutCancelView(APIView):
         return Response(
             {"session": svc.session_dict(session), "words": "Workout cancelled. Nothing was logged."}
         )
+
+
+# =============================================================================
+# Programme change proposals (body coach 2, 2026-11-06). `body_coach/programme_change.py`.
+# =============================================================================
+
+
+class ProgrammeProposalsView(APIView):
+    @extend_schema(
+        operation_id="api_body_coach_workout_proposal",
+        tags=TAGS,
+        responses=_OK,
+        description="The pending programme change proposal, or `proposal: null`.",
+    )
+    def get(self, request):
+        row = svc.pending_proposal(request)
+        words = row.words if row else "No programme change is waiting."
+        return Response({"proposal": svc.proposal_dict(row), "words": words})
+
+    @extend_schema(
+        operation_id="api_body_coach_workout_propose",
+        tags=TAGS,
+        request=None,
+        responses={201: OpenApiResponse(description="Proposed."), **_REFUSED},
+        description="Builds a programme change from structured choices only: sessions_per_week "
+        "(2 to 4), split (full_body, upper_lower, other), without_equipment / with_equipment "
+        "(barbell, dumbbell, machine, kettlebell, bodyweight), avoid / clear_avoid (shoulder, "
+        "knee, lower_back), cardio, swap_exercise and swap_to (one of its slot's choices). Every "
+        "exercise and number comes from the programme's templates and catalog. Stored pending; "
+        "nothing changes until it is accepted. An older pending proposal expires.",
+    )
+    def post(self, request):
+        try:
+            row = svc.propose(request, _body(request))
+        except svc.WorkoutRefused as exc:
+            return _refusal(exc)
+        return Response(
+            {"proposal": svc.proposal_dict(row), "words": row.words},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ProgrammeProposalAcceptView(APIView):
+    @extend_schema(
+        operation_id="api_body_coach_workout_proposal_accept",
+        tags=TAGS,
+        request=None,
+        responses={**_OK, **_REFUSED},
+        description="Applies the proposal to the programme. Refused, with nothing changed, when "
+        "the programme moved since it was made. A running workout is left as it is.",
+    )
+    def post(self, request, proposal_id):
+        try:
+            row, programme = svc.accept_proposal(request, proposal_id)
+        except svc.WorkoutRefused as exc:
+            return _refusal(exc)
+        return Response(
+            {
+                "proposal": svc.proposal_dict(row),
+                "programme": svc.programme_dict(programme),
+                "words": svc.accept_words(request, programme),
+            }
+        )
+
+
+class ProgrammeProposalDismissView(APIView):
+    @extend_schema(
+        operation_id="api_body_coach_workout_proposal_dismiss",
+        tags=TAGS,
+        request=None,
+        responses={**_OK, **_REFUSED},
+        description="Dismisses the proposal; the programme stays as it is.",
+    )
+    def post(self, request, proposal_id):
+        try:
+            row = svc.dismiss_proposal(request, proposal_id)
+        except svc.WorkoutRefused as exc:
+            return _refusal(exc)
+        return Response(
+            {
+                "proposal": svc.proposal_dict(row),
+                "words": "Dismissed. The programme stays as it was.",
+            }
+        )
+
+
+class WorkoutAlternativesView(APIView):
+    @extend_schema(
+        operation_id="api_body_coach_workout_alternatives",
+        tags=TAGS,
+        responses={**_OK, 400: DetailSerializer, 404: DetailSerializer},
+        description="The other choices for the named exercise's slot (`alternatives/bench/`), each with "
+        "its equipment, joints, whether the programme's filters allow it and why not, and "
+        "whether its progress would carry. A read; nothing changes.",
+    )
+    def get(self, request, exercise):
+        try:
+            body = svc.alternatives_body(request, exercise)
+        except svc.WorkoutRefused as exc:
+            return _refusal(exc)
+        return Response(body)
