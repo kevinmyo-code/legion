@@ -16,6 +16,7 @@ from api.spend import (
     Month,
     Txn,
     analyze_transfers,
+    budget_month_of_row,
     budget_month_rows,
     household_spend,
 )
@@ -76,4 +77,13 @@ class Ledger:
         return [
             r for r in self.rows
             if r["currency"] == currency and start <= r["txn_date"] <= end
+        ]
+
+    def rows_in_budget_month(self, month: Month, currency: str) -> list[dict]:
+        """The rows whose budget month (`budget_month_of`) is `month`: a Housing
+        outflow in the previous month's last 3 days is in, one in this month's
+        last 3 days is not."""
+        return [
+            r for r in self.rows
+            if r["currency"] == currency and budget_month_of_row(r) == month
         ]

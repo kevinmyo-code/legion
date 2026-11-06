@@ -64,7 +64,8 @@ def budgets(request, household, month: Month, today: dt.date) -> dict:
     body = ledger.month(month, CURRENCY)
     days = month.last.day
     elapsed = days_elapsed(month, today)
-    rows = ledger.rows_between(month.first, month.last, CURRENCY)
+    # The budget month, not calendar dates: rent paid on the 30th is next month's.
+    rows = ledger.rows_in_budget_month(month, CURRENCY)
     pending: dict[str | None, list[int]] = {}
     for row in rows:
         if row.get("bank_pending") and row["amount_cents"] < 0:
