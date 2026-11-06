@@ -692,53 +692,17 @@ class GeminiLiveSession(
         }
     }
 
-    private fun buildSetup(systemInstruction: String, functionDeclarations: JSONArray): JSONObject {
-        val tools = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
-        if (functionDeclarations.length() > 0) {
-            tools.put(JSONObject().put("functionDeclarations", functionDeclarations))
-        }
-
-        val setup = JSONObject().apply {
-            put("model", MODEL)
-            put("generationConfig", JSONObject().apply {
-                put("responseModalities", JSONArray().put("AUDIO"))
-                put("speechConfig", JSONObject().put(
-                    "voiceConfig",
-                    JSONObject().put(
-                        "prebuiltVoiceConfig",
-                        JSONObject().put("voiceName", voiceName.ifBlank { VOICE })
-                    )
-                ))
-            })
-            put("systemInstruction", JSONObject().put(
-                "parts", JSONArray().put(JSONObject().put("text", systemInstruction))
-            ))
-            put("tools", tools)
-            // Opt into the driver's input transcript: lets us detect that the
-            // driver has started replying (cancels the idle-timeout) and feeds
-            // the mic-capture diagnostic log (see userTurnText).
-            put("inputAudioTranscription", JSONObject())
-            // Zero's own speech transcript, only when the debug subtitle toggle
-            // is on (it adds output-transcription tokens, so off by default).
-            if (subtitles) put("outputAudioTranscription", JSONObject())
-            // Conversation mode lets Gemini's server VAD run turn-taking;
-            // speak-only mode disables it (the mic never opens anyway).
-            put("realtimeInputConfig", JSONObject().put(
-                "automaticActivityDetection",
-                JSONObject().apply {
-                    put("disabled", !vadMode)
-                    if (vadMode) {
-                        // Give the driver room to pause mid-sentence before the turn
-                        // ends (see VAD_SILENCE_MS). Only in conversation mode - the
-                        // speak-only path has no mic and never runs VAD.
-                        put("silenceDurationMs", VAD_SILENCE_MS)
-                        put("prefixPaddingMs", VAD_PREFIX_PADDING_MS)
-                    }
-                },
-            ))
-        }
-        return JSONObject().put("setup", setup)
-    }
+    /** The pure builder is [LiveSetup.buildSetupJson] (3.8 wire rules there, pinned by LiveSetupTest). */
+    private fun buildSetup(systemInstruction: String, functionDeclarations: JSONArray): JSONObject =
+        LiveSetup.buildSetupJson(
+            systemInstruction = systemInstruction,
+            functionDeclarations = functionDeclarations,
+            voiceName = voiceName.ifBlank { VOICE },
+            vadMode = vadMode,
+            subtitles = subtitles,
+            silenceDurationMs = VAD_SILENCE_MS,
+            prefixPaddingMs = VAD_PREFIX_PADDING_MS,
+        )
 
     private fun sendRealtimeInput(body: JSONObject) {
         val ok = webSocket?.send(JSONObject().put("realtimeInput", body).toString()) ?: false
@@ -772,13 +736,14 @@ class GeminiLiveSession(
         root.optJSONObject("toolCallCancellation")?.let { handleToolCallCancellation(it) }
         root.optJSONObject("goAway")?.let { handleGoAway(it) }
         // sessionResumptionUpdate is ignored in this version.
-        // 2026-10-27: the phone's gemini-3.8-live sends a root voiceActivity ACTIVITY_START at
-        // speech onset, long before the one inputTranscription at the end of the utterance. The
-        // same cancel here, harmless if this model never sends it.
+        // gemini-3.8-live (this unit's model since 2026-11-06) sends a root voiceActivity
+        // ACTIVITY_START at speech onset, long before the one inputTranscription at the end of the
+        // utterance (phone A25 spike, 2026-10-27). It cancels the idle timer exactly as the
+        // transcript branch does; that branch stays as the fallback.
         root.optJSONObject("voiceActivity")?.let { va ->
             val type = va.optString("type")
             MidnightEvents.voiceTurnDecision("voiceActivity $type audioOffset=${va.optString("audioOffset")}")
-            if (type == "ACTIVITY_START") idleJob?.cancel()
+            if (LiveSetup.isActivityStart(root)) idleJob?.cancel()
             // The server's own activity events: this unit runs server VAD and sends none.
             when (type) {
                 "ACTIVITY_START" -> audit.activityStart()
@@ -1901,8 +1866,9 @@ class GeminiLiveSession(
             "wss://generativelanguage.googleapis.com/ws/" +
                 "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
-        // Live-capable model. Swap here if Google promotes a newer Live model.
-        private const val MODEL = "models/gemini-3.1-flash-live-preview"
+        // Live model: the phone's 3.8-live (2026-11-06, from gemini-3.1-flash-live-preview). Not a
+        // drop-in swap: read LiveSetup's doc before changing it.
+        private const val MODEL = LiveSetup.MODEL
 
         // Prebuilt Gemini voice. Deeper/informative reads suit the Zero persona;
         // other options include Puck, Kore, Fenrir, Aoede. Swap freely.
