@@ -135,7 +135,7 @@ def early_water(first_day: date | None, today: date) -> bool:
 
 @dataclass(frozen=True)
 class Milestone:
-    goal_id: str
+    goal_id: str | None
     statement: str
     target_lbs: float
     start_lbs: float
@@ -146,7 +146,7 @@ class Milestone:
 
 def milestone(
     *,
-    goal_id: str,
+    goal_id: str | None,
     statement: str,
     target_lbs: float,
     start_lbs: float,

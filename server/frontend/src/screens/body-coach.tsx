@@ -214,7 +214,7 @@ function TrendBody({ trend }: { trend: Trend }) {
           )}
         </Stat>
         {stone && (
-          <Stat label="Goal" note={stone.statement}>
+          <Stat label="Goal" note={stone.goal_id === null ? 'From your profile' : stone.statement}>
             <span className="text-[0.9375rem] tabular-nums">
               {formatNumber(stone.remaining_lbs)} lbs to go to {formatNumber(stone.target_lbs)} lbs
               {stone.weeks_to_go !== null && `, about ${formatNumber(stone.weeks_to_go, 0)} weeks`}
@@ -460,6 +460,7 @@ interface ProfileValues {
   target_rate_pct: string
   protein_g_per_kg: string
   weekly_line_on: boolean
+  goal_weight_lbs: string
 }
 
 function valuesOf(profile: CoachProfile): ProfileValues {
@@ -471,6 +472,7 @@ function valuesOf(profile: CoachProfile): ProfileValues {
     target_rate_pct: String(profile.target_rate_pct),
     protein_g_per_kg: String(profile.protein_g_per_kg),
     weekly_line_on: profile.weekly_line_on,
+    goal_weight_lbs: profile.goal_weight_lbs === null ? '' : String(profile.goal_weight_lbs),
   }
 }
 
@@ -490,6 +492,8 @@ function ProfileForm({ profile }: { profile: CoachProfile }) {
       target_rate_pct: Number(values.target_rate_pct),
       protein_g_per_kg: Number(values.protein_g_per_kg),
       weekly_line_on: values.weekly_line_on,
+      // Blank clears it: the coach then aims at no weight unless a goal is on the engine.
+      goal_weight_lbs: values.goal_weight_lbs.trim() === '' ? null : Number(values.goal_weight_lbs),
     }
     if (values.height_cm.trim() !== '') body.height_cm = Number(values.height_cm)
     if (values.sex) body.sex = values.sex as CoachProfileUpdate['sex']
@@ -527,6 +531,10 @@ function ProfileForm({ profile }: { profile: CoachProfile }) {
         <div className="flex flex-col gap-1">
           <Label htmlFor="coach-protein">Protein, g per kg (1.6 to 2.2)</Label>
           <Input id="coach-protein" type="number" step="0.1" min="1.6" max="2.2" value={values.protein_g_per_kg} onChange={(e) => set('protein_g_per_kg', e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="coach-goal">Goal weight (lb)</Label>
+          <Input id="coach-goal" type="number" step="0.1" min="1" max="999" value={values.goal_weight_lbs} onChange={(e) => set('goal_weight_lbs', e.target.value)} />
         </div>
       </div>
       <div className="flex items-center gap-3">

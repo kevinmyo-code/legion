@@ -49,6 +49,7 @@ PROTEIN_TENTHS_MIN, PROTEIN_TENTHS_MAX = 16, 22
 HEIGHT_MM_MIN, HEIGHT_MM_MAX = 1000, 2500
 BIRTH_YEAR_MIN, BIRTH_YEAR_MAX = 1900, 2100
 WAIST_MM_MAX = 3000
+GOAL_WEIGHT_LBS_MAX = 1000
 
 STATUS_PENDING = "pending"
 STATUS_ACCEPTED = "accepted"
@@ -87,6 +88,9 @@ class BodyProfile(models.Model):
     protein_tenths_g_per_kg = models.SmallIntegerField(default=PROTEIN_TENTHS_DEFAULT)
     # Map ruling 7: the Monday line is on until one instruction turns it off.
     weekly_line_on = models.BooleanField(default=True)
+    # The member's own goal or milestone weight, in lbs. Used when no active `goals` row with
+    # `metric_key = bodyweight_lbs` is on the engine (the phone's goals do not sync to it).
+    goal_weight_lbs = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
     updated_at = models.DateTimeField(db_default=Now())
 
@@ -122,6 +126,14 @@ class BodyProfile(models.Model):
             models.CheckConstraint(
                 condition=_null_or_between("birth_year", BIRTH_YEAR_MIN, BIRTH_YEAR_MAX),
                 name="body_profiles_birth_year_range",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(goal_weight_lbs__isnull=True)
+                | (
+                    models.Q(goal_weight_lbs__gt=0)
+                    & models.Q(goal_weight_lbs__lt=GOAL_WEIGHT_LBS_MAX)
+                ),
+                name="body_profiles_goal_weight_range",
             ),
         ]
 

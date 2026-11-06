@@ -887,8 +887,8 @@ paths:
     put:
       operationId: api_body_coach_profile_update
       description: Partial update of the caller's own profile; creates it on first
-        use. height_cm or height_in. weekly_line_on false stops the Monday weight
-        line.
+        use. height_cm or height_in; goal_weight_lbs or goal_weight_kg (null clears
+        it). weekly_line_on false stops the Monday weight line.
       tags:
       - body-coach
       requestBody:
@@ -15378,6 +15378,8 @@ components:
       properties:
         goal_id:
           type: string
+          nullable: true
+          description: Null when the target is the profile's own goal weight.
         statement:
           type: string
         target_lbs:
@@ -17348,6 +17350,12 @@ components:
           description: 1.6 to 2.2.
         weekly_line_on:
           type: boolean
+        goal_weight_lbs:
+          type: number
+          format: double
+          nullable: true
+          description: The member's own goal or milestone weight. An active bodyweight_lbs
+            goal on the engine wins over it.
         missing:
           type: array
           items:
@@ -17358,6 +17366,7 @@ components:
       - activity_level
       - birth_year
       - exists
+      - goal_weight_lbs
       - height_cm
       - missing
       - protein_g_per_kg
@@ -17387,6 +17396,16 @@ components:
           format: double
         weekly_line_on:
           type: boolean
+        goal_weight_lbs:
+          type: number
+          format: double
+          nullable: true
+          description: null clears it.
+        goal_weight_kg:
+          type: number
+          format: double
+          nullable: true
+          description: Converted to lbs; null clears it.
     ProgressRequest:
       type: object
       properties:

@@ -36,6 +36,7 @@ export function emptyProfile(): Profile {
     target_rate_pct: 0.75,
     protein_g_per_kg: 2.0,
     weekly_line_on: true,
+    goal_weight_lbs: null,
     missing: ['height', 'sex', 'birth year', 'activity level', 'a weigh-in'],
   }
 }
@@ -182,7 +183,7 @@ export function handleCoach(state: CoachState, method: string, pathname: string,
     }
     const next = { ...state.profile, exists: true }
     if (typeof sent.height_cm === 'number') next.height_cm = Math.round(sent.height_cm * 10) / 10
-    for (const key of ['sex', 'birth_year', 'activity_level', 'target_rate_pct', 'protein_g_per_kg', 'weekly_line_on'] as const) {
+    for (const key of ['sex', 'birth_year', 'activity_level', 'target_rate_pct', 'protein_g_per_kg', 'weekly_line_on', 'goal_weight_lbs'] as const) {
       if (key in sent) (next as Record<string, unknown>)[key] = sent[key]
     }
     next.missing = state.profile.missing.filter(

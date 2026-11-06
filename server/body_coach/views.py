@@ -36,6 +36,7 @@ from body_coach.models import (
     ACTIVITY_LEVELS,
     BIRTH_YEAR_MIN,
     ESTIMATE_HELP,
+    GOAL_WEIGHT_LBS_MAX,
     HEIGHT_MM_MAX,
     HEIGHT_MM_MIN,
     PROTEIN_TENTHS_MAX,
@@ -50,7 +51,7 @@ from body_coach.models import (
     SavedMeal,
     WaistLog,
 )
-from body_coach.trend import MM_PER_INCH
+from body_coach.trend import LBS_PER_KG, MM_PER_INCH
 from household.tenancy import household_of, scoped
 from legacy.models.pantry import MealLog
 
@@ -114,6 +115,11 @@ class ProfileSerializer(serializers.Serializer):
     target_rate_pct = serializers.FloatField(help_text="Percent of bodyweight a week, 0.25 to 1.0.")
     protein_g_per_kg = serializers.FloatField(help_text="1.6 to 2.2.")
     weekly_line_on = serializers.BooleanField()
+    goal_weight_lbs = serializers.FloatField(
+        allow_null=True,
+        help_text="The member's own goal or milestone weight. An active bodyweight_lbs goal on "
+        "the engine wins over it.",
+    )
     missing = serializers.ListField(
         child=serializers.CharField(),
         help_text="What the calculator still needs, in words: height, sex, birth year, "
@@ -130,6 +136,12 @@ class ProfileUpdateSerializer(serializers.Serializer):
     target_rate_pct = serializers.FloatField(required=False)
     protein_g_per_kg = serializers.FloatField(required=False)
     weekly_line_on = serializers.BooleanField(required=False)
+    goal_weight_lbs = serializers.FloatField(
+        required=False, allow_null=True, help_text="null clears it."
+    )
+    goal_weight_kg = serializers.FloatField(
+        required=False, allow_null=True, help_text="Converted to lbs; null clears it."
+    )
 
 
 PROFILE_FIELDS = tuple(ProfileUpdateSerializer().fields)
@@ -205,6 +217,23 @@ def profile_changes(data, this_year: int) -> dict:
                 f"{data['weekly_line_on']!r}."
             )
         out["weekly_line_on"] = data["weekly_line_on"]
+    if "goal_weight_lbs" in data and "goal_weight_kg" in data:
+        raise Refused("Nothing was saved. Give goal_weight_lbs or goal_weight_kg, not both.")
+    for name, lbs_per_unit in (("goal_weight_lbs", 1.0), ("goal_weight_kg", LBS_PER_KG)):
+        if name not in data:
+            continue
+        value = _number(data, name)
+        if value is None:
+            out["goal_weight_lbs"] = None
+            continue
+        lbs = value * lbs_per_unit
+        if not 0 < lbs < GOAL_WEIGHT_LBS_MAX:
+            raise Refused(
+                f"Nothing was saved. A goal weight must be more than 0 and under "
+                f"{GOAL_WEIGHT_LBS_MAX} lbs ({GOAL_WEIGHT_LBS_MAX / LBS_PER_KG:.0f} kg); got "
+                f"{value} via {name}."
+            )
+        out["goal_weight_lbs"] = lbs
     return out
 
 
@@ -225,7 +254,8 @@ class ProfileView(APIView):
         responses={200: ProfileSerializer, 400: DetailSerializer},
         description=(
             "Partial update of the caller's own profile; creates it on first use. height_cm or "
-            "height_in. weekly_line_on false stops the Monday weight line."
+            "height_in; goal_weight_lbs or goal_weight_kg (null clears it). weekly_line_on false "
+            "stops the Monday weight line."
         ),
     )
     def put(self, request):
@@ -331,7 +361,9 @@ class BandSerializer(serializers.Serializer):
 
 
 class MilestoneSerializer(serializers.Serializer):
-    goal_id = serializers.CharField()
+    goal_id = serializers.CharField(
+        allow_null=True, help_text="Null when the target is the profile's own goal weight."
+    )
     statement = serializers.CharField()
     target_lbs = serializers.FloatField()
     start_lbs = serializers.FloatField()

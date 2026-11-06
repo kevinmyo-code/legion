@@ -111,6 +111,7 @@ describe('profile', () => {
     fireEvent.change(screen.getByLabelText('Sex (the formula needs it)'), { target: { value: 'male' } })
     fireEvent.change(screen.getByLabelText('Birth year'), { target: { value: '1996' } })
     fireEvent.change(screen.getByLabelText('Activity'), { target: { value: 'moderate' } })
+    fireEvent.change(screen.getByLabelText('Goal weight (lb)'), { target: { value: '190' } })
     fireEvent.click(screen.getByRole('switch', { name: 'Monday weight line' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save profile' }))
     await waitFor(() => expect(engine.coach.profile.exists).toBe(true))
@@ -123,7 +124,9 @@ describe('profile', () => {
       target_rate_pct: 0.75,
       protein_g_per_kg: 2,
       weekly_line_on: false,
+      goal_weight_lbs: 190,
     })
+    expect(engine.coach.profile.goal_weight_lbs).toBe(190)
     expect(await screen.findByText('Saved.')).toBeInTheDocument()
   })
 
