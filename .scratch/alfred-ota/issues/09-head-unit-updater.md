@@ -116,6 +116,16 @@ what goes on the car. The publisher now also refuses an APK whose package is not
    source" for Midnight AI.
 3. Confirm Settings, Engine shows signed in (the update check uses that token).
 
+If step 1 fails with a signature mismatch, the car's current build was not signed with this
+laptop's debug key (reasoned, not checked: there is no adb on the car). Then the only way in is
+an uninstall, which wipes the Keystore secrets, sign-ins and the Room database. Stop and decide
+before uninstalling.
+
+**Open question for Kevin:** this APK was built without `-Pnokey`, as every car build so far, so
+it carries the dev Gemini key from `local.properties` as the fallback when no key is saved in
+Settings. Publishing it puts that key in the private bucket. If the car has its own key saved
+(Settings, Companion, AI power & plan), build releases with `assembleFast -Pnokey` instead.
+
 ## Verification
 
 - JVM: `UpdateRulesTest` (12), `UpdateControllerTest` (12), `UpdateAndroidTest` (3, Robolectric
