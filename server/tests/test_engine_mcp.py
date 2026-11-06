@@ -305,6 +305,14 @@ def _write_calls(checklist_id, item_id, event_id, purchase_id):
         "archive_checklist": {"checklist_id": checklist_id},
         "rename_place": {"from": "home", "to": "cottage"},
         "skip_event_occurrence": {"id": event_id, "date": "2026-10-05"},
+        # The body coach (fat-loss ticket 08).
+        "set_body_profile": {"weekly_line_on": False},
+        "log_waist": {"waist_in": 34},
+        "save_meal": {"name": "usual breakfast", "calories_kcal": 500, "protein_g": 30},
+        "delete_saved_meal": {"name": "usual breakfast"},
+        "log_saved_meal": {"name": "usual breakfast"},
+        "accept_energy_proposal": {},
+        "dismiss_energy_proposal": {},
     }
 
 

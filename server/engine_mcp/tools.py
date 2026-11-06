@@ -67,6 +67,7 @@ from diagrams.catalogue import ALL_VIEW_IDS as DIAGRAM_VIEW_IDS
 from diagrams.catalogue import HIGHLIGHT_MAX as DIAGRAM_HIGHLIGHT_MAX
 from diagrams.catalogue import VIEWS as DIAGRAM_VIEWS
 from diagrams.catalogue import view_words as diagram_view_words
+from engine_mcp import body_coach_tools as coach
 from engine_mcp import cards
 from engine_mcp.dispatch import RouteNotFound, call_route
 from engine_mcp.models import Outcome
@@ -3033,6 +3034,159 @@ TOOLS: tuple[EngineTool, ...] = (
         handler=_forget_memory,
         writes=True,
         destructive=True,
+    ),
+    # The body coach (fat-loss ticket 08). Every one calls the routed view
+    # (`engine_mcp/body_coach_tools.py`); none is open to a recruiter.
+    EngineTool(
+        name="get_energy_estimate",
+        title="Energy estimate",
+        description=(
+            "Maintenance calories, the suggested daily target, protein, the current meal target "
+            "and any pending proposal, from the person's own numbers. Every figure is an "
+            "ESTIMATE and must be said as one; repeat the basis words. Names what is missing "
+            "instead of guessing it."
+        ),
+        input_schema=_object({}),
+        handler=coach.get_energy_estimate,
+    ),
+    EngineTool(
+        name="get_weight_trend",
+        title="Weight trend",
+        description=(
+            "The smoothed weight trend (lbs), its rate over 14 days against the 0.5 to 1.0% a "
+            "week band, goal progress and the waist log. The trend is an estimate; early water "
+            "loss is flagged, not projected."
+        ),
+        input_schema=_object({}),
+        handler=coach.get_weight_trend,
+    ),
+    EngineTool(
+        name="list_saved_meals",
+        title="Saved meals",
+        description=(
+            "The household's saved meals (\"usual breakfast\") with estimated kcal and protein, "
+            "each with its id."
+        ),
+        input_schema=_object({}),
+        handler=coach.list_saved_meals,
+    ),
+    EngineTool(
+        name="set_body_profile",
+        title="Set the body profile",
+        description=(
+            "Sets any of the person's own profile fields: height (height_cm or height_in), sex, "
+            "birth_year, activity_level, target_rate_pct (percent of bodyweight a week), "
+            "protein_g_per_kg, weekly_line_on. \"Stop the weekly weight line\" is "
+            "weekly_line_on false." + _WRITE_NOTE
+        ),
+        input_schema={
+            **_object(
+                {
+                    "height_cm": {"type": "number", "minimum": 100, "maximum": 250},
+                    "height_in": {"type": "number", "minimum": 40, "maximum": 98},
+                    "sex": {"type": "string", "enum": ["male", "female"]},
+                    "birth_year": {"type": "integer", "minimum": 1900, "maximum": 2100},
+                    "activity_level": {
+                        "type": "string",
+                        "enum": ["sedentary", "light", "moderate", "very"],
+                    },
+                    "target_rate_pct": {"type": "number", "minimum": 0.25, "maximum": 1.0},
+                    "protein_g_per_kg": {"type": "number", "minimum": 1.6, "maximum": 2.2},
+                    "weekly_line_on": {"type": "boolean"},
+                }
+            ),
+            "minProperties": 1,
+        },
+        handler=coach.set_body_profile,
+        writes=True,
+    ),
+    EngineTool(
+        name="log_waist",
+        title="Log a waist measurement",
+        description=(
+            "Logs a waist measurement in inches (waist_in) or cm (waist_cm); measured_on "
+            "(YYYY-MM-DD) defaults to today." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "waist_in": {"type": "number", "exclusiveMinimum": 0, "maximum": 118},
+                "waist_cm": {"type": "number", "exclusiveMinimum": 0, "maximum": 300},
+                "measured_on": {"type": "string", "format": "date"},
+            }
+        ),
+        handler=coach.log_waist,
+        writes=True,
+    ),
+    EngineTool(
+        name="save_meal",
+        title="Save a meal",
+        description=(
+            "Saves a named meal with its ESTIMATED calories_kcal and protein_g (carbs_g, fat_g "
+            "optional), or copies a logged meal's estimate with from_meal_log (its origin_guid). "
+            "Saving does not log it as eaten." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "name": {"type": "string", "minLength": 1, "maxLength": 80},
+                "description": {"type": "string", "maxLength": 500},
+                "calories_kcal": {"type": "integer", "minimum": 0, "maximum": 10000},
+                "protein_g": {"type": "number", "minimum": 0, "maximum": 1000},
+                "carbs_g": {"type": "number", "minimum": 0, "maximum": 2000},
+                "fat_g": {"type": "number", "minimum": 0, "maximum": 1000},
+                "from_meal_log": {"type": "string", "minLength": 1, "maxLength": 100},
+            },
+            ("name",),
+        ),
+        handler=coach.save_meal,
+        writes=True,
+    ),
+    EngineTool(
+        name="delete_saved_meal",
+        title="Delete a saved meal",
+        description=(
+            "Deletes a saved meal by id or name. Meals already logged from it stay." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {"id": _UUID, "name": {"type": "string", "minLength": 1, "maxLength": 80}}
+        ),
+        handler=coach.delete_saved_meal,
+        writes=True,
+        destructive=True,
+    ),
+    EngineTool(
+        name="log_saved_meal",
+        title="Log a saved meal",
+        description=(
+            "Logs a saved meal as eaten now (\"log my usual breakfast\"), by id or a loose name "
+            "match: one meal entry with its estimated macros." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {"id": _UUID, "name": {"type": "string", "minLength": 1, "maxLength": 80}}
+        ),
+        handler=coach.log_saved_meal,
+        writes=True,
+    ),
+    EngineTool(
+        name="accept_energy_proposal",
+        title="Accept the calorie proposal",
+        description=(
+            "Accepts the pending calorie-target proposal (or the one with this id): today's meal "
+            "target becomes the proposed calories. Only when the person says yes." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID}),
+        handler=coach.accept_energy_proposal,
+        writes=True,
+    ),
+    EngineTool(
+        name="dismiss_energy_proposal",
+        title="Dismiss the calorie proposal",
+        description=(
+            "Dismisses the pending calorie-target proposal (or the one with this id); the meal "
+            "target stays as it is." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID}),
+        handler=coach.dismiss_energy_proposal,
+        writes=True,
     ),
     # procedures ticket 12 (ADR 0070). `writes=False` ON PURPOSE: `run_engine_tool`
     # checks the write fence on this STATIC flag before the handler, so `True`

@@ -156,7 +156,31 @@ RECRUITER_EXCLUDED: dict[str, str] = {
     "list_memories": RECRUITER_DENIED["member_memory.views.MemoryListCreateView"],
     "remember": RECRUITER_DENIED["member_memory.views.MemoryListCreateView"],
     "forget_memory": RECRUITER_DENIED["member_memory.views.MemoryDetailView"],
+    # The body coach (fat-loss ticket 08): the body aspect is not part of the demo, the visit's
+    # REST fence's own reason, and its routes refuse a recruiter a second time.
+    **{
+        name: RECRUITER_DENIED["body_coach.views.EnergyView"]
+        for name in (
+            "get_energy_estimate",
+            "get_weight_trend",
+            "list_saved_meals",
+            "set_body_profile",
+            "log_waist",
+            "save_meal",
+            "delete_saved_meal",
+            "log_saved_meal",
+            "accept_energy_proposal",
+            "dismiss_energy_proposal",
+        )
+    },
 }
+
+# The body coach's engine tools, named once for the tests and for anyone reading the fence.
+BODY_COACH_TOOLS: frozenset[str] = frozenset(
+    name
+    for name, reason in RECRUITER_EXCLUDED.items()
+    if reason == RECRUITER_DENIED["body_coach.views.EnergyView"]
+)
 
 # The aspects whose tables the record tools may read, write or delete for a
 # recruiter: ledger, fleet, pantry, places, and voice notes (Kevin's ruling 4,

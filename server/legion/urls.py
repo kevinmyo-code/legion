@@ -41,6 +41,8 @@ urlpatterns = [
     # `checklists.urls` nests item/tick routes under its own `<checklist_id>`
     # prefix and reads more plainly mounted at its own `api/checklists/`
     # root than folded into `api.urls` alongside `events`/`changes`.
+    # fat-loss map: ahead of `api/` so no generated `api/body/<table>/` route is tried first.
+    path("api/body/coach/", include("body_coach.urls")),
     path("api/", include("api.urls")),
     path("api/checklists/", include("checklists.urls")),
     # Ticket 03 (django-engine map): the section 4 gate. Its own mount rather

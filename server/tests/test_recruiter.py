@@ -151,13 +151,20 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
     daily brief (procedures ticket 15), which the visit's routes refuse too, and
     memory v2's four (ADR 0075: a member's memory is not part of the demo)."""
     memory = {"recall_memory", "list_memories", "remember", "forget_memory"}
-    assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest", *memory}
+    # The body coach (fat-loss ticket 08): the body aspect is not part of the demo (ruling 3).
+    body = {
+        "get_energy_estimate", "get_weight_trend", "list_saved_meals", "set_body_profile",
+        "log_waist", "save_meal", "delete_saved_meal", "log_saved_meal",
+        "accept_energy_proposal", "dismiss_energy_proposal",
+    }
+    assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest", *memory, *body}
+    assert surface.BODY_COACH_TOOLS == body
     assert (
         RECRUITER_EXCLUDED["brief_latest"]
         == RECRUITER_DENIED["brief.views.BriefLatestView"]
     )
     for tool in TOOLS:
-        if tool.writes and tool.name not in memory:
+        if tool.writes and tool.name not in memory | body:
             assert tool.name in RECRUITER_TOOLS, tool.name
     assert "about_kevin" in RECRUITER_TOOLS
     assert "about_kevin" not in surface.WEB_TOOL_NAMES
