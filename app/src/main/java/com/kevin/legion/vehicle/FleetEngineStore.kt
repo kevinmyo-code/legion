@@ -270,6 +270,47 @@ object FleetEngineStore {
     private suspend fun engineVehicleId(db: CarDatabase, mac: String): Long? =
         db.engineRecordDao().getByGuid(FleetRecordBridge.vehicleGuid(mac))?.id
 
+    /**
+     * The engine `Vehicle` record id for [mac], **creating it from the legacy row when the car is
+     * on file but has no engine record** - null only when there is no legacy row either.
+     *
+     * **Why (2026-11-05, Kevin's Jeep, build 263092342).** [com.kevin.legion.backend.FleetSync]'s
+     * pull rebuilds a server car as a legacy row + sidecar + replica and never writes an engine
+     * record, and [com.kevin.legion.engine.migration.EngineDataMigrationWave4] (the only other
+     * creator) is one-shot, so it never sees a car pulled after it ran. Every identity writer below
+     * looked the engine record up with [engineVehicleId] and returned 0 when it was missing: the car
+     * the voice tools resolved and named ("1998 Jeep Cherokee") could not take an odometer
+     * reading, and `register_vehicle`'s identity write wrote nothing while it said "Got it". The
+     * field map is [FleetRecordBridge.vehicleFieldValues], the same one [createVehicle] writes, so a
+     * healed record is indistinguishable from one written at create.
+     */
+    private suspend fun ensureEngineVehicleId(
+        db: CarDatabase,
+        recordStore: RecordStore,
+        schema: FleetAspectSeeder.Schema,
+        mac: String,
+    ): Long? {
+        val existing = engineVehicleId(db, mac)
+        val legacy = if (existing == null) db.vehicleDao().getByMac(mac) else null
+        if (existing != null || legacy == null) return existing
+        val result = recordStore.create(
+            recordTypeId = schema.vehicle.recordTypeId,
+            fieldValues = FleetRecordBridge.vehicleFieldValues(legacy, schema.vehicle.fieldIds),
+            provenance = RecordProvenance.USER,
+            guid = FleetRecordBridge.vehicleGuid(mac),
+        )
+        return when (result) {
+            is RecordStore.WriteResult.Success -> {
+                Log.i("FleetEngineStore", "engine Vehicle record backfilled for $mac (car was on file without one)")
+                result.recordId
+            }
+            // A concurrent writer may have created the same guid between the lookup and the create.
+            is RecordStore.WriteResult.Failure -> engineVehicleId(db, mac).also {
+                if (it == null) Log.w("FleetEngineStore", "engine Vehicle backfill failed for $mac: ${result.reason}")
+            }
+        }
+    }
+
     /** Test seam: settable so a [FleetBackend] fake can be injected without touching
      * [SupabaseClientProvider] - same shape as
      * [com.kevin.legion.location.PlaceController.backendOverride]. */
@@ -495,7 +536,7 @@ object FleetEngineStore {
         val db = CarDatabase.getDatabase(context)
         val schema = FleetAspectSeeder.ensureSeeded(context)
         val recordStore = store(db)
-        val engineId = engineVehicleId(db, mac) ?: return 0
+        val engineId = ensureEngineVehicleId(db, recordStore, schema, mac) ?: return 0
         db.withTransaction {
             val result = recordStore.update(
                 engineId,
@@ -520,7 +561,7 @@ object FleetEngineStore {
         val db = CarDatabase.getDatabase(context)
         val schema = FleetAspectSeeder.ensureSeeded(context)
         val recordStore = store(db)
-        val engineId = engineVehicleId(db, mac) ?: return 0
+        val engineId = ensureEngineVehicleId(db, recordStore, schema, mac) ?: return 0
         db.withTransaction {
             val result = recordStore.update(engineId, mapOf(schema.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_ENGINE) to engine), now)
             if (result is RecordStore.WriteResult.Failure) throw EngineWriteFailedException(result.reason)
@@ -534,7 +575,7 @@ object FleetEngineStore {
         val db = CarDatabase.getDatabase(context)
         val schema = FleetAspectSeeder.ensureSeeded(context)
         val recordStore = store(db)
-        val engineId = engineVehicleId(db, mac) ?: return 0
+        val engineId = ensureEngineVehicleId(db, recordStore, schema, mac) ?: return 0
         db.withTransaction {
             val result = recordStore.update(
                 engineId,
@@ -584,7 +625,7 @@ object FleetEngineStore {
         val db = CarDatabase.getDatabase(context)
         val schema = FleetAspectSeeder.ensureSeeded(context)
         val recordStore = store(db)
-        val engineId = engineVehicleId(db, mac) ?: return 0
+        val engineId = ensureEngineVehicleId(db, recordStore, schema, mac) ?: return 0
         db.withTransaction {
             val result = recordStore.update(
                 engineId,

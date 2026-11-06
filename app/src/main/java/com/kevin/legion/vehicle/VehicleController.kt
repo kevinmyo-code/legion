@@ -187,7 +187,9 @@ object VehicleController {
         // the `&& it != "this car"` half of this check is dead weight now, same as AriaBrain's -
         // removed rather than left to rot.
         val name = existing?.name?.takeIf { it.isNotBlank() } ?: model
-        if (existing == null) {
+        // Rows the identity write touched. A create always lands (FleetEngineStore.createVehicle
+        // falls back to the mirror rather than dropping it); an existing row's count is CHECKED.
+        val written = if (existing == null) {
             // Genuinely new row - nothing to preserve, a real INSERT (cutover 4: engine-native,
             // FleetEngineStore.createVehicle writes both the engine record and its legacy mirror).
             FleetEngineStore.createVehicle(
@@ -205,18 +207,28 @@ object VehicleController {
                     confirmed = true,
                 )
             )
+            1
         } else {
             // Existing row: a targeted identity write, not a rebuild - see the
             // function doc and FleetEngineStore.setIdentity for why.
+            //
+            // The row count is CHECKED (2026-11-05). It used to be discarded, and on Kevin's phone
+            // the Jeep had no engine record (a pulled car - see FleetEngineStore.ensureEngineVehicleId),
+            // so setIdentity wrote nothing and this still answered "Got it, this is the 1998 Jeep
+            // Cherokee now" - after which set_odometer failed exactly as before. CLAUDE.md §7.
             FleetEngineStore.setIdentity(context, vehicleId, year, make, model, trim.ifBlank { existing.trim }, name, now)
-            if (engine.isNotBlank()) FleetEngineStore.setEngine(context, vehicleId, engine, now)
+                .also { if (it > 0 && engine.isNotBlank()) FleetEngineStore.setEngine(context, vehicleId, engine, now) }
         }
 
-        return WriteOutcome(
-            true,
-            "Got it, this is the $year $make $model now. No maintenance schedule on file yet - " +
-                "populate it from the factory recommendation whenever you're ready.",
-        )
+        return if (written == 0) {
+            WriteOutcome(false, "I couldn't save the $year $make $model to this car's record, so nothing changed.")
+        } else {
+            WriteOutcome(
+                true,
+                "Got it, this is the $year $make $model now. No maintenance schedule on file yet - " +
+                    "populate it from the factory recommendation whenever you're ready.",
+            )
+        }
     }
 
     /**

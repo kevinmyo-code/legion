@@ -25,6 +25,11 @@ import org.json.JSONArray
  */
 object DtcClearController {
 
+    /** The voice path's yes-check (2026-11-05) - see [ClearCodesVoiceGate]. One per process: a
+     * pending confirm question belongs to the conversation, not to a call. The screen dialog never
+     * touches it. */
+    val voiceGate = ClearCodesVoiceGate()
+
     /**
      * D2's five states, exhaustive. `Command sent?`: NOTHING_TO_CLEAR/REFUSED = no,
      * CLEARED/RETURNED/UNVERIFIED = yes - see [recordOutcome] for why only the latter three ever

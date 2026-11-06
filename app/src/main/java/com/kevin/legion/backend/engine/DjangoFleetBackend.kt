@@ -94,6 +94,10 @@ private fun fleetJsonOrNull(text: String?): JsonElement = text?.let { fleetJson(
  * advertise. `fetchChassisQuirks`/`fetchVehicleSpecs` are unconditional full fetches in the
  * interface too, so nothing is lost.
  *
+ * **NARROWED 2026-11-05: [upsertVehicle] now UPDATES a car the engine already holds, through that
+ * row's own `origin_guid` (the address memory-and-vault ticket 13 settled for the plate); only an
+ * INSERT is still refused, for the reason below.** The original gap, as written:
+ *
  * **THE ONE GAP, stated here rather than buried: [upsertVehicle] and [upsertServiceHistory] cannot
  * be served by this transport and refuse in words.** Those two interface functions are keyed on
  * [VehicleUpload.serverId] / [ServiceHistoryUpload.serverId] - a `vehicles.id` uuid, null meaning
@@ -182,9 +186,48 @@ class DjangoFleetBackend(private val http: EngineHttp) : FleetBackend {
             true
         }
 
-    /** Refused without sending anything - see this class's own doc comment, "THE ONE GAP". */
-    override suspend fun upsertVehicle(vehicle: VehicleUpload): Result<RemoteVehicle> =
-        Result.failure(EngineHttpException(EngineFailure.Refused(HTTP_NOT_FOUND, LIVE_VEHICLE_REFUSAL)))
+    /**
+     * An INSERT (`serverId == null`) is refused without sending anything - see this class's own doc
+     * comment, "THE ONE GAP". An UPDATE of a car the engine already holds goes to that row's own
+     * `origin_guid`, the address memory-and-vault ticket 13 settled for the plate
+     * ([DjangoVehiclePlateBackend]): read the engine's live rows, find this car by its server id,
+     * and `PUT` the upload's fields to the guid the engine handed back. Never to a guid the engine
+     * did not hand back (the route INSERTS on an unknown one), and a car with no `origin_guid` is
+     * refused in [DjangoVehiclePlateBackend.NO_GUID]'s words. `plate` is not named, so the engine
+     * keeps the stored one (`VehicleSerializer.plate`: optional, no default).
+     *
+     * **Why (2026-11-05).** This refused every call, and [com.kevin.legion.vehicle.FleetEngineStore]
+     * serves a synced car from the replica that only this write refreshes, so on the Django
+     * transport an odometer reading or an identity change landed on the phone's own tables and every
+     * read went on showing the old value.
+     */
+    override suspend fun upsertVehicle(vehicle: VehicleUpload): Result<RemoteVehicle> {
+        val serverId = vehicle.serverId
+            ?: return Result.failure(EngineHttpException(EngineFailure.Refused(HTTP_NOT_FOUND, LIVE_VEHICLE_REFUSAL)))
+        return translatingEngineCall("save that vehicle") {
+            val row = vehicles.fetchActive().firstOrNull { it.id == serverId }
+                ?: throw EngineHttpException(EngineFailure.Refused(HTTP_NOT_FOUND, UNKNOWN_VEHICLE_REFUSAL))
+            val guid = row.originGuid?.takeIf { it.isNotBlank() }
+                ?: throw EngineHttpException(EngineFailure.Refused(HTTP_NOT_FOUND, DjangoVehiclePlateBackend.NO_GUID))
+            val body = engineSyncedJson.encodeToString(
+                DjangoVehicleWrite.serializer(),
+                DjangoVehicleWrite(
+                    name = vehicle.name,
+                    make = vehicle.make,
+                    model = vehicle.model,
+                    year = vehicle.year,
+                    trim = vehicle.trim,
+                    engine = vehicle.engine,
+                    confirmed = vehicle.confirmed,
+                    odometerBaseline = vehicle.odometerBaseline,
+                    odometerBaselineAt = vehicle.odometerBaselineAtMs?.let { fleetTs(it) },
+                    archived = vehicle.archived,
+                    lastObdMac = vehicle.lastObdMac,
+                ),
+            )
+            vehicles.put(guid, body).toRemote()
+        }
+    }
 
     override suspend fun fetchActiveServiceHistory(): Result<List<RemoteServiceHistory>> =
         translatingEngineCall("load your service history") {
@@ -660,6 +703,9 @@ class DjangoFleetBackend(private val http: EngineHttp) : FleetBackend {
         internal fun maintenancePath(vehicleServerId: String, serviceName: String): String =
             MAINTENANCE_PATH + vehicleServerId.encodeURLPathPart() + "/" +
                 serviceName.encodeURLPathPart() + "/"
+
+        internal const val UNKNOWN_VEHICLE_REFUSAL =
+            "The engine has no live car with this one's id, so nothing was sent and no vehicle was saved."
 
         internal const val LIVE_VEHICLE_REFUSAL =
             "The engine addresses a vehicle by its origin_guid and this write carries only a " +
