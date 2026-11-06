@@ -3,8 +3,8 @@ map: phone-verify
 ticket: "05"
 title: "verify-on-phone and maintain-screen-map skills; agent defs use them"
 type: build
-status: built
-status-detail: "built 2026-11-05 on feat/phone-verify"
+status: resolved
+status-detail: "proven on the phone 2026-11-05 20:31-20:34 CDT, ticket 06"
 blockers: []
 blocked-by: []
 tags: [ticket]

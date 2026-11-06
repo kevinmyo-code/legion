@@ -3,8 +3,8 @@ map: phone-verify
 ticket: "03"
 title: "docs/screen-map.md, generated, drift fails"
 type: build
-status: built
-status-detail: "built 2026-11-05 on feat/phone-verify; drift tests green; in the commit hook"
+status: resolved
+status-detail: "proven on the phone 2026-11-05 20:31-20:34 CDT, ticket 06"
 blockers: []
 blocked-by: []
 tags: [ticket]

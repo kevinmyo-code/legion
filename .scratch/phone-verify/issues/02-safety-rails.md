@@ -3,8 +3,8 @@ map: phone-verify
 ticket: "02"
 title: "The rails: vault, sends, system settings, artifacts"
 type: build
-status: built
-status-detail: "built 2026-11-05 on feat/phone-verify; refusals tested with fake adb (a refused tap sends nothing)"
+status: resolved
+status-detail: "proven on the phone 2026-11-05 20:31-20:34 CDT, ticket 06"
 blockers: []
 blocked-by: []
 tags: [ticket]

@@ -62,9 +62,9 @@ gets results, not homework. The rails that keep it safe on his real phone are co
 
 | # | Ticket | Status |
 |---|---|---|
-| 01 | [[01-phone-cli]] | built |
-| 02 | [[02-safety-rails]] | built |
-| 03 | [[03-screen-map]] | built |
+| 01 | [[01-phone-cli]] | resolved |
+| 02 | [[02-safety-rails]] | resolved |
+| 03 | [[03-screen-map]] | resolved |
 | 04 | [[04-test-tags-as-ids]] | built |
-| 05 | [[05-skills-and-agents]] | built |
-| 06 | [[06-proof-run]] | open |
+| 05 | [[05-skills-and-agents]] | resolved |
+| 06 | [[06-proof-run]] | resolved |

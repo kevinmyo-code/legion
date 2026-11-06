@@ -185,11 +185,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/one-today/map\|one-today]] | [[05-maintenance-has-no-date-axis\|05]] | build | MAINTENANCE 0 DUE is computed against nothing |
 | [[.scratch/one-today/map\|one-today]] | [[07-what-becomes-of-todayscreen\|07]] | build | TodayScreen is half-emptied. Rehome the survivors, then delete it. |
 | [[.scratch/one-today/map\|one-today]] | [[10-everything-is-a-checklist\|10]] | build | Retire the persistent list and the grocery trip: everything is a checklist |
-| [[.scratch/phone-verify/map\|phone-verify]] | [[01-phone-cli\|01]] | build | tools/phone: drive LEGION over adb |
-| [[.scratch/phone-verify/map\|phone-verify]] | [[02-safety-rails\|02]] | build | The rails: vault, sends, system settings, artifacts |
-| [[.scratch/phone-verify/map\|phone-verify]] | [[03-screen-map\|03]] | build | docs/screen-map.md, generated, drift fails |
 | [[.scratch/phone-verify/map\|phone-verify]] | [[04-test-tags-as-ids\|04]] | build | Test tags visible to uiautomator |
-| [[.scratch/phone-verify/map\|phone-verify]] | [[05-skills-and-agents\|05]] | build | verify-on-phone and maintain-screen-map skills; agent defs use them |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[13-silent-after-focus-loss\|13]] | bug | It speaks and you hear nothing, once Spotify takes audio focus |
@@ -315,7 +311,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[13-phone-vehicle-plate\|13]] | build | Phone: plate on the vehicle  waiting on [[06-vehicle-plate\|06]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[14-acceptance-run\|14]] | test | Acceptance run  waiting on [[08-worker-memory-tools\|08]], [[09-phone-memory-on-engine\|09]], [[10-phone-upload-and-retire\|10]], [[11-phone-memory-screen\|11]], [[12-phone-id-vault\|12]], [[13-phone-vehicle-plate\|13]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
-| [[.scratch/phone-verify/map\|phone-verify]] | [[06-proof-run\|06]] | test | Proof run on the phone, no install  waiting on [[01-phone-cli\|01]], [[02-safety-rails\|02]], [[03-screen-map\|03]], [[05-skills-and-agents\|05]] |
 | [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[13-build-run-traces\|13]] |
 | [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[12-build-runner-and-tool\|12]] |
 | [[.scratch/procedures/map\|procedures]] | [[16-build-phone\|16]] | build | Build: phone declares run_procedure (direct, non-blocking when read-only)  waiting on [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
@@ -431,7 +426,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
-| [[.scratch/phone-verify/map\|phone-verify]] | 6 | 6 | [[.scratch/phone-verify/phone-verify.canvas\|open]] |
+| [[.scratch/phone-verify/map\|phone-verify]] | 6 | 1 | [[.scratch/phone-verify/phone-verify.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/procedures/map\|procedures]] | 21 | 11 | [[.scratch/procedures/procedures.canvas\|open]] |

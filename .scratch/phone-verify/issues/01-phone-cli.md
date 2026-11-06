@@ -3,8 +3,8 @@ map: phone-verify
 ticket: "01"
 title: "tools/phone: drive LEGION over adb"
 type: build
-status: built
-status-detail: "built 2026-11-05 on feat/phone-verify; pytest green with fake adb"
+status: resolved
+status-detail: "proven on the phone 2026-11-05 20:31-20:34 CDT, ticket 06"
 blockers: []
 blocked-by: []
 tags: [ticket]
