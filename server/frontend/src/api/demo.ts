@@ -97,7 +97,7 @@ export interface DemoContent {
   }
   experience: { when: string; title: string; bullets: string[] }[]
   links: { linkedin: string; github: string; email: string }
-  assets: { report: string | null; resume: string | null }
+  assets: { report: string | null; resume: string | null; resume_image?: string | null }
 }
 
 export type ContentResult = { kind: 'ok'; content: DemoContent } | { kind: 'not-set-up' }

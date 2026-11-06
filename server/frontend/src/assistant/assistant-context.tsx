@@ -86,6 +86,7 @@ export function AssistantProvider({
   children,
   deps,
   openingTurn,
+  continueTurn,
   sessionLimit,
   copy,
   defaultOpen = false,
@@ -94,6 +95,8 @@ export function AssistantProvider({
   deps?: LiveDeps
   /** Opt-in: a hidden first turn so the assistant speaks first (`LiveOptions.openingTurn`). */
   openingTurn?: string
+  /** Opt-in: what a later conversation on the same page starts with instead (`LiveOptions.continueTurn`). */
+  continueTurn?: string
   /** Opt-in: end each conversation when its token expires, with this sentence (`LiveOptions.sessionLimit`). */
   sessionLimit?: string
   /** Opt-in: the chat's subtitle, intro and first questions, wherever it opens (dock or sheet). */
@@ -118,6 +121,10 @@ export function AssistantProvider({
   useEffect(() => {
     openingRef.current = openingTurn
   }, [openingTurn])
+  const continueRef = useRef(continueTurn)
+  useEffect(() => {
+    continueRef.current = continueTurn
+  }, [continueTurn])
   const limitRef = useRef(sessionLimit)
   useEffect(() => {
     limitRef.current = sessionLimit
@@ -127,6 +134,7 @@ export function AssistantProvider({
       new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',
         openingTurn: () => openingRef.current ?? null,
+        continueTurn: () => continueRef.current ?? null,
         sessionLimit: () => limitRef.current ?? null,
       }),
   )

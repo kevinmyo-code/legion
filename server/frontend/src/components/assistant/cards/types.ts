@@ -123,7 +123,29 @@ export interface DiagramCard extends Common {
   nodes: { id: string; label: string }[]
 }
 
-export type Card = BarsCard | TimelineCard | CarCard | StepsCard | ChecklistCard | DiagramCard
+/**
+ * Kevin's one-page resume (`show_resume`, `server/demo/tools.py`, recruiters only). Links, never
+ * bytes: `image` is the page as a PNG (Android Chrome draws no PDF in a page), null when only the
+ * PDF is loaded; `pdf` is the download. Both are the visitor's own content version's files.
+ */
+export interface ResumeCard extends Common {
+  card: 'resume'
+  image: string | null
+  pdf: string
+  alt: string
+}
+
+export type Card = BarsCard | TimelineCard | CarCard | StepsCard | ChecklistCard | DiagramCard | ResumeCard
+
+/** The cards that open over the whole page (`screen-modal.tsx`) as well as drawing in the chat. */
+export type ModalCard = DiagramCard | ResumeCard
+
+export function isModalCard(card: Card | undefined): card is ModalCard {
+  return card?.card === 'diagram' || card?.card === 'resume'
+}
+
+/** Only an engine path: the card's links must stay on this origin's asset door. */
+const ASSET_PATH = /^\/api\/demo\/asset\/[a-z_]+$/
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -160,6 +182,13 @@ export function asCard(value: unknown): Card | undefined {
         value.highlight.every((h) => typeof h === 'string') &&
         isList(value.nodes)
         ? (value as unknown as DiagramCard)
+        : undefined
+    case 'resume':
+      return typeof value.pdf === 'string' &&
+        ASSET_PATH.test(value.pdf) &&
+        (value.image === null || (typeof value.image === 'string' && ASSET_PATH.test(value.image))) &&
+        typeof value.alt === 'string'
+        ? (value as unknown as ResumeCard)
         : undefined
     default:
       return undefined

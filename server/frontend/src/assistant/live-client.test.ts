@@ -553,6 +553,75 @@ describe('an opening turn (opt-in, for a page that wants the assistant to speak 
   })
 })
 
+describe('a continue turn (demo-modals: a later conversation on the same page is not greeted again)', () => {
+  const OPENING = '(The visitor just joined the demo.)'
+  const CONTINUE = '(The visitor started another conversation on the same visit.)'
+
+  function buildWithContinue() {
+    const audio = new FakeAudio()
+    const deps: LiveDeps = {
+      startSession: async () => SESSION,
+      runTool: async () => ({ success: true, text: '', forward: { success: true, message: '' } }),
+      openSocket: (url) => new FakeLiveSocket(url),
+      audio: () => audio,
+      now: () => Date.now(),
+      utcOffsetMinutes: () => -300,
+    }
+    const client = new LiveClient(deps, {
+      endOnHidden: () => true,
+      openingTurn: () => OPENING,
+      continueTurn: () => CONTINUE,
+    })
+    client.attach()
+    return { client }
+  }
+
+  it('the first conversation opens with the greeting cue, the next with the continue line and the last question', async () => {
+    const { client } = buildWithContinue()
+    const first = await liveVoice(client)
+    expect(JSON.stringify(first.sentOf('clientContent'))).toContain(OPENING)
+    first.serve({ serverContent: { inputTranscription: { text: 'What did he do at Quanex?' } } })
+    first.serve({ serverContent: { turnComplete: true } })
+    await settle()
+    client.reset()
+    const second = await liveVoice(client)
+    const sent = second.sentOf('clientContent')
+    expect(JSON.stringify(sent)).not.toContain(OPENING)
+    expect(sent).toEqual([
+      {
+        clientContent: {
+          turns: [{ role: 'user', parts: [{ text: `${CONTINUE} Their last question was: "What did he do at Quanex?"` }] }],
+          turnComplete: true,
+        },
+      },
+    ])
+    // Never shown as a line: the visitor did not say it.
+    expect(client.getState().lines).toEqual([])
+  })
+
+  it('a typed start on a later conversation sends the line as context, then the question as the turn', async () => {
+    const { client } = buildWithContinue()
+    await liveVoice(client)
+    client.reset()
+    const second = await live(client, 'Show me its architecture')
+    const sent = second.sentOf('clientContent') as { clientContent: { turnComplete: boolean; turns: unknown[] } }[]
+    expect(sent).toHaveLength(2)
+    expect(JSON.stringify(sent[0])).toContain(CONTINUE)
+    expect(sent[0].clientContent.turnComplete).toBe(false)
+    expect(JSON.stringify(sent[1])).toContain('Show me its architecture')
+    expect(sent[1].clientContent.turnComplete).toBe(true)
+  })
+
+  it('a first conversation started by typing counts as greeted', async () => {
+    const { client } = buildWithContinue()
+    await live(client, 'Hello')
+    client.reset()
+    const second = await liveVoice(client)
+    expect(JSON.stringify(second.sentOf('clientContent'))).toContain(CONTINUE)
+    expect(JSON.stringify(second.sentOf('clientContent'))).toContain('Their last question was: \\"Hello\\"')
+  })
+})
+
 describe('a session limit (opt-in, for a page whose sessions are capped short)', () => {
   const LIMIT = 'Demo sessions last 5 minutes. Start another any time.'
   const FIVE_MINUTES = 5 * 60_000

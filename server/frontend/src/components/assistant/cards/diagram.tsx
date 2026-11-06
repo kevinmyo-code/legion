@@ -1,34 +1,39 @@
-import { Maximize2, Minus, Plus } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
+import { Maximize2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
-
+import { FitView, type Size } from './fit-view'
+import { usePresenter } from './presenter-context'
 import type { DiagramCard } from './types'
 
 /**
  * An architecture diagram (`show_diagram`): the engine's pre-rendered SVG, drawn on its own
  * light panel so its edge labels read the same in the dark dock and on the typeset page
  * (`server/diagrams/render.py` BACKGROUND). The parts the assistant names are outlined, and
- * said in words under the picture, never by colour alone. The caption is the picture in words.
+ * said in words beside the picture, never by colour alone. The caption is the picture in words.
  *
- * Tap to open it full screen, where a pinch, the wheel or the buttons zoom it.
+ * In the chat it is a small thumbnail; the picture itself opens over the whole page, fitted to
+ * it (`screen-modal.tsx`, demo-modals: Kevin 2026-11-05, "the diagrams should kinda like pop up
+ * over the whole page as a modal"). The modal opens by itself when the card arrives, and the
+ * thumbnail opens it again.
  */
 
-const PANEL = '#f7f7f5'
+export const PANEL = '#f7f7f5'
 const HIGHLIGHT_CLASS = 'dg-hl'
-const ZOOM_MIN = 0.5
-const ZOOM_MAX = 4
 
 // Outlines the highlighted parts. `!important` because Mermaid's own rules carry the svg's id.
-const HIGHLIGHT_CSS = `
+// `non-scaling-stroke` keeps the outline 3 screen pixels wide however small the fit makes the
+// picture, so a highlighted part stays visible on a phone (demo-modals).
+export const HIGHLIGHT_CSS = `
 [data-diagram] [data-node].${HIGHLIGHT_CLASS} :is(rect, polygon, circle, ellipse, path):not(.arrowMarkerPath) {
   stroke: #b45309 !important;
   stroke-width: 3px !important;
+  vector-effect: non-scaling-stroke;
 }
 [data-diagram] [data-node].${HIGHLIGHT_CLASS} > :is(rect, polygon, circle, ellipse, path):first-of-type {
   fill: #fdf0d5 !important;
 }
-[data-diagram] svg { height: auto; display: block; }
+[data-diagram] svg { display: block; }
+[data-diagram="inline"] svg { width: 100%; height: auto; }
 `
 
 /**
@@ -53,12 +58,21 @@ export function cleanSvg(svg: string): SVGSVGElement | null {
   return root as unknown as SVGSVGElement
 }
 
+/** The picture's own size, from its `viewBox` (Mermaid always writes one). */
+export function svgSize(svg: string): Size | null {
+  const box = /<svg\b[^>]*\bviewBox="([^"]+)"/.exec(svg)?.[1]
+  if (!box) return null
+  const [, , width, height] = box.trim().split(/[\s,]+/).map(Number)
+  return width > 0 && height > 0 ? { width, height } : null
+}
+
 /**
  * A callback ref for the element that holds the cleaned SVG, with the highlighted parts
- * outlined. A callback ref (not `useRef`) because the full-screen copy mounts in a portal
- * after its first render.
+ * outlined. A callback ref (not `useRef`) because the modal's copy mounts in a portal.
+ * `size` (the modal) pins the SVG to exactly that many pixels; without it the SVG fills the
+ * width (the thumbnail).
  */
-function useSvg(card: DiagramCard, zoom = 1) {
+function useSvg(card: DiagramCard, size?: Size) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
   const highlight = useMemo(() => new Set(card.highlight), [card.highlight])
   useEffect(() => {
@@ -69,27 +83,33 @@ function useSvg(card: DiagramCard, zoom = 1) {
     const imported = document.importNode(svg, true)
     imported.setAttribute('aria-hidden', 'true')
     imported.setAttribute('focusable', 'false')
+    imported.removeAttribute('width')
+    imported.removeAttribute('height')
+    imported.style.removeProperty('max-width')
     for (const node of Array.from(imported.querySelectorAll<SVGGElement>('[data-node]'))) {
       node.classList.toggle(HIGHLIGHT_CLASS, highlight.has(node.getAttribute('data-node') ?? ''))
     }
     host.appendChild(imported)
   }, [host, card.svg, highlight])
+  const width = size?.width
+  const height = size?.height
   useEffect(() => {
     const svg = host?.querySelector('svg')
-    if (!svg) return
-    svg.style.width = `${zoom * 100}%`
-    svg.style.maxWidth = zoom === 1 ? '' : 'none'
-  }, [host, zoom, card.svg])
+    if (!svg || width === undefined || height === undefined) return
+    svg.style.width = `${width}px`
+    svg.style.height = `${height}px`
+  }, [host, width, height, card.svg])
   return setHost
 }
 
-function highlightWords(card: DiagramCard): string {
+export function highlightWords(card: DiagramCard): string {
   const labels = new Map(card.nodes.map((n) => [n.id, n.label]))
   return card.highlight.map((id) => labels.get(id) ?? id).join(', ')
 }
 
+/** The thumbnail in the chat. Tapping it opens the diagram over the page. */
 export function DiagramView({ card }: { card: DiagramCard }) {
-  const [open, setOpen] = useState(false)
+  const presenter = usePresenter()
   const host = useSvg(card)
   const pointed = highlightWords(card)
   return (
@@ -98,16 +118,19 @@ export function DiagramView({ card }: { card: DiagramCard }) {
       <button
         type="button"
         data-card="diagram-open"
-        onClick={() => setOpen(true)}
-        aria-label={`Open the diagram full screen: ${card.title}`}
-        className="group relative block w-full cursor-zoom-in overflow-hidden rounded-md border border-outline-variant text-left focus-visible:outline-2"
+        onClick={() => presenter?.show(card)}
+        disabled={!presenter}
+        aria-label={`Open the diagram over the page: ${card.title}`}
+        className="group relative block w-full cursor-zoom-in overflow-hidden rounded-md border border-outline-variant text-left focus-visible:outline-2 disabled:cursor-default"
         style={{ background: PANEL }}
       >
-        <div ref={host} data-diagram="inline" className="max-h-[20rem] overflow-hidden p-2" />
-        <span className="absolute right-1.5 bottom-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[0.75rem] text-white">
-          <Maximize2 className="size-3" aria-hidden="true" />
-          Full screen
-        </span>
+        <div ref={host} data-diagram="inline" className="max-h-[12rem] overflow-hidden p-2" />
+        {presenter && (
+          <span className="absolute right-1.5 bottom-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[0.75rem] text-white">
+            <Maximize2 className="size-3" aria-hidden="true" />
+            Open
+          </span>
+        )}
       </button>
       <figcaption data-card="caption" className="text-[0.8125rem] text-muted-foreground">
         {card.caption}
@@ -117,78 +140,32 @@ export function DiagramView({ card }: { card: DiagramCard }) {
           Highlighted: {pointed}
         </p>
       )}
-      <Dialog open={open} onOpenChange={setOpen}>
-        {open && <FullScreen card={card} />}
-      </Dialog>
     </figure>
   )
 }
 
-function FullScreen({ card }: { card: DiagramCard }) {
-  const [zoom, setZoom] = useState(1)
-  const host = useSvg(card, zoom)
-  const pointers = useRef(new Map<number, { x: number; y: number }>())
-  const pinch = useRef<{ distance: number; zoom: number } | null>(null)
-  const clamp = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z))
-
-  const distance = () => {
-    const [a, b] = Array.from(pointers.current.values())
-    return Math.hypot(a.x - b.x, a.y - b.y)
-  }
-  const onPointerDown = (e: PointerEvent) => {
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    if (pointers.current.size === 2) pinch.current = { distance: distance(), zoom }
-  }
-  const onPointerMove = (e: PointerEvent) => {
-    if (!pointers.current.has(e.pointerId)) return
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    if (pointers.current.size === 2 && pinch.current && pinch.current.distance > 0) {
-      setZoom(clamp((pinch.current.zoom * distance()) / pinch.current.distance))
-    }
-  }
-  const onPointerUp = (e: PointerEvent) => {
-    pointers.current.delete(e.pointerId)
-    if (pointers.current.size < 2) pinch.current = null
-  }
-  const onWheel = (e: WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey && !e.altKey) return
-    setZoom((z) => clamp(z * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))
-  }
-
+/** The diagram in the modal: fitted to the space, highlighted parts outlined and named. */
+export function DiagramBody({ card }: { card: DiagramCard }) {
+  const natural = useMemo(() => svgSize(card.svg), [card.svg])
+  const pointed = highlightWords(card)
   return (
-    <DialogContent
-      data-card="diagram-full"
-      className="flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col gap-2 p-3 sm:max-w-none"
-    >
-      <div className="flex items-start gap-2 pr-10">
-        <div className="min-w-0 flex-1">
-          <DialogTitle className="text-base leading-tight">{card.title}</DialogTitle>
-          <DialogDescription className="text-[0.8125rem]">{card.caption}</DialogDescription>
-        </div>
-        <div className="flex flex-none items-center gap-1" role="group" aria-label="Zoom">
-          <button type="button" className="rounded border border-outline-variant p-1.5" onClick={() => setZoom((z) => clamp(z / 1.25))} aria-label="Zoom out">
-            <Minus className="size-4" aria-hidden="true" />
-          </button>
-          <span className="w-12 text-center text-[0.8125rem] tabular-nums" aria-live="polite">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button type="button" className="rounded border border-outline-variant p-1.5" onClick={() => setZoom((z) => clamp(z * 1.25))} aria-label="Zoom in">
-            <Plus className="size-4" aria-hidden="true" />
-          </button>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <style>{HIGHLIGHT_CSS}</style>
+      <div className="flex min-h-0 flex-1 flex-col rounded-md border border-outline-variant p-1" style={{ background: PANEL }}>
+        <FitView natural={natural} fit="contain" label={card.title} resetKey={`${card.project}/${card.view}`}>
+          {(size) => <PinnedSvg card={card} size={size} />}
+        </FitView>
       </div>
-      <div
-        ref={host}
-        data-diagram="full"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onWheel={onWheel}
-        className="min-h-0 flex-1 overflow-auto rounded-md border border-outline-variant p-2"
-        style={{ background: PANEL, touchAction: 'pan-x pan-y' }}
-      />
-      {card.highlight.length > 0 && <p className="text-[0.8125rem]">Highlighted: {highlightWords(card)}</p>}
-    </DialogContent>
+      {pointed && (
+        <p data-modal="highlighted" className="pt-1.5 text-[0.875rem]">
+          <span className="font-semibold">Highlighted:</span> {pointed}
+        </p>
+      )}
+    </div>
   )
+}
+
+function PinnedSvg({ card, size }: { card: DiagramCard; size: Size }) {
+  const host = useSvg(card, size)
+  return <div ref={host} data-diagram="full" />
 }

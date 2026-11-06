@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
 
 import { CAR_CARD, DAY_CARD, DIAGRAM_CARD, LIST_CARD, RECALLS_HALF, SERVICE_HALF, SPEND_CARD, STEPS_CARD, WEEK_CARD } from '@/test/cards-seed'
@@ -161,13 +161,8 @@ describe('diagram card', () => {
     expect(card.querySelectorAll('.dg-hl')).toHaveLength(0)
   })
 
-  test('tap opens it full screen with zoom', () => {
+  test('with no modal on the page the thumbnail opens nothing', () => {
     render(<ToolCard card={DIAGRAM_CARD} />)
-    fireEvent.click(screen.getByRole('button', { name: /Open the diagram full screen/ }))
-    const dialog = screen.getByRole('dialog', { name: 'Engine components, in layers' })
-    expect(within(dialog).getByText('100%')).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Zoom in' }))
-    expect(within(dialog).getByText('125%')).toBeInTheDocument()
-    expect(dialog.querySelectorAll('[data-diagram="full"] .dg-hl')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: /Open the diagram over the page/ })).toBeDisabled()
   })
 })

@@ -15,6 +15,9 @@ import {
 import { useMe } from '@/api/queries'
 import { AssistantProvider, UNNAMED, useAssistant, type ChatCopy } from '@/assistant/assistant-context'
 import { FamilyAssistant } from '@/components/assistant/family-assistant'
+import { AssistantModals } from '@/components/assistant/assistant-modals'
+import { usePresenter } from '@/components/assistant/cards/presenter-context'
+import { RESUME_ALT } from '@/components/assistant/cards/resume'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { useSurface } from '@/lib/surface'
@@ -48,6 +51,13 @@ import { PhoneSection } from '@/screens/try-phone'
 
 /** The hidden first turn that makes the assistant speak first to a visitor (ticket 05). */
 export const OPENING_TURN = '(The visitor just joined the demo.)'
+
+/**
+ * What a later conversation on the same visit starts with instead (demo-modals: the five-minute
+ * cap ended Kevin's first conversation and the next one greeted him again). The engine's prompt
+ * says what it means (`assistant/prompt.py` RECRUITER_CONTINUE); a server test pins the match.
+ */
+export const CONTINUE_TURN = '(The visitor started another conversation on the same visit.)'
 
 /** Ticket 05's suggested first questions. They name Kevin, never the assistant. */
 export const VISITOR_SUGGESTIONS = [
@@ -160,7 +170,7 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
  */
 function Shell({ children, assistant = false }: { children: ReactNode; assistant?: boolean }) {
   const desk = useSurface() === 'workbench'
-  return (
+  const page = (
     <div className="recruiter rc-layout">
       <div className="rc-column rc-prose">
         <div className="rc-inner">{children}</div>
@@ -169,6 +179,8 @@ function Shell({ children, assistant = false }: { children: ReactNode; assistant
       {assistant && desk && <AssistantDock pinned />}
     </div>
   )
+  // The diagrams and the resume open over the whole page (demo-modals), from the conversation.
+  return assistant ? <AssistantModals>{page}</AssistantModals> : page
 }
 
 function Gate({
@@ -250,6 +262,7 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
   return (
     <AssistantProvider
       openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}
+      continueTurn={mode === 'visitor' ? CONTINUE_TURN : undefined}
       sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
       copy={mode === 'visitor' ? VISITOR_COPY : PREVIEW_COPY}
     >
@@ -420,11 +433,7 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
         )}
 
         <Section id="experience" title="Experience">
-          {assets.resume && (
-            <p>
-              <a href={assets.resume}>Download the resume (PDF)</a>
-            </p>
-          )}
+          {assets.resume && <ResumeLinks pdf={assets.resume} image={assets.resume_image ?? null} />}
           <div className="rc-exp">
             {experience.map((job) => (
               <Job key={`${job.when}-${job.title}`} when={job.when} title={job.title} bullets={job.bullets} />
@@ -629,5 +638,30 @@ function Diagram({ svg, caption }: { svg: string; caption: string }) {
       </p>
       {caption && <figcaption className="rc-figcaption">{caption}</figcaption>}
     </figure>
+  )
+}
+
+/**
+ * The resume's hands path (ADR 0035: every voice capability has one). "See the resume" opens
+ * the same modal `show_resume` opens, through the same presenter; the PDF link stays.
+ */
+function ResumeLinks({ pdf, image }: { pdf: string; image: string | null }) {
+  const presenter = usePresenter()
+  return (
+    <p className="rc-resume-links">
+      {image && presenter && (
+        <>
+          <button
+            type="button"
+            className="rc-link-button"
+            onClick={() => presenter.show({ card: 'resume', title: "Kevin's resume", image, pdf, alt: RESUME_ALT })}
+          >
+            See the resume
+          </button>
+          {' · '}
+        </>
+      )}
+      <a href={pdf}>Download the resume (PDF)</a>
+    </p>
   )
 }

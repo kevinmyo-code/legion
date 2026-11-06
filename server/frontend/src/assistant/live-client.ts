@@ -141,6 +141,14 @@ export interface LiveOptions {
    */
   openingTurn?: () => string | null
   /**
+   * Opt-in, beside `openingTurn`: the hidden line a LATER conversation in the same page visit
+   * starts with instead of the opener, so the assistant does not greet again (Kevin's /try
+   * test, 2026-11-05: the five-minute cap ended the first conversation and the next one opened
+   * with the greeting and the recording notice a second time). It carries the visitor's last
+   * question, so the new conversation can carry on from it. Null sends the opener every time.
+   */
+  continueTurn?: () => string | null
+  /**
    * Opt-in: the sentence a conversation ends with when its token's `expiresAt`
    * arrives. After `expireTime` Google rejects the session's messages but only
    * "may" close the socket (API reference `AuthToken.expireTime`), so a page
@@ -197,6 +205,10 @@ export class LiveClient {
   private generation = 0
   private micGeneration = 0
   private queued: string[] = []
+  /** A conversation with the opener went live on this page: later ones send `continueTurn`. */
+  private greeted = false
+  /** The visitor's last words in an earlier conversation, for `continueTurn`. */
+  private lastAsked: string | null = null
   private playing = false
   private awaiting = false
   private pendingTools = 0
@@ -417,6 +429,7 @@ export class LiveClient {
 
   /** Throw the conversation away and go back to a blank one. Nothing is kept. */
   reset() {
+    this.rememberLastAsked()
     this.finishRecord('New conversation.')
     this.teardown()
     this.generation += 1
@@ -626,9 +639,9 @@ export class LiveClient {
     return true
   }
 
-  private sendTyped(text: string) {
+  private sendTyped(text: string, turnComplete = true) {
     this.write({
-      clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true },
+      clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete },
     })
   }
 
@@ -683,17 +696,44 @@ export class LiveClient {
     this.set({ phase: 'live' })
     const queued = this.queued
     this.queued = []
-    if (queued.length === 0) {
-      const opening = this.options.openingTurn?.()?.trim()
-      if (opening) {
-        // A voice start hears the greeting; a start with the mic off reads it.
+    const opening = this.options.openingTurn?.()?.trim()
+    const later = this.greeted ? this.continueLine() : null
+    if (opening) this.greeted = true
+    if (later) {
+      // Context only when a typed message is waiting (it is the turn that asks for an answer);
+      // otherwise the line itself is the turn, answered in a few words.
+      this.sendTyped(later, queued.length === 0)
+      if (queued.length === 0) {
         this.typedTurn = this.state.mic === 'off'
         this.awaiting = true
-        this.sendTyped(opening)
         this.refresh()
       }
+    } else if (queued.length === 0 && opening) {
+      // A voice start hears the greeting; a start with the mic off reads it.
+      this.typedTurn = this.state.mic === 'off'
+      this.awaiting = true
+      this.sendTyped(opening)
+      this.refresh()
     }
     for (const text of queued) this.sendTyped(text)
+  }
+
+  /** `continueTurn`, with the visitor's last question when there was one. */
+  private continueLine(): string | null {
+    const base = this.options.continueTurn?.()?.trim()
+    if (!base) return null
+    const asked = this.lastAsked?.replace(/\s+/g, ' ').trim().slice(0, 240)
+    return asked ? `${base} Their last question was: "${asked.replace(/"/g, "'")}"` : base
+  }
+
+  private rememberLastAsked() {
+    for (let i = this.state.lines.length - 1; i >= 0; i--) {
+      const line = this.state.lines[i]
+      if (line.kind === 'me' && line.text.trim()) {
+        this.lastAsked = line.text
+        return
+      }
+    }
   }
 
   private onContent(content: NonNullable<ServerMessage['serverContent']>) {

@@ -354,6 +354,23 @@
         color: var(--rc-accent);
         text-decoration-color: var(--rc-accent);
     }
+    /* "See the resume" (demo-modals): a button that opens the modal, set like the links. */
+    .recruiter .rc-link-button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        padding: 0.5rem 0;
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.18em;
+        text-decoration-color: var(--rc-meta);
+    }
+    .recruiter .rc-link-button:hover {
+        color: var(--rc-accent);
+        text-decoration-color: var(--rc-accent);
+    }
 
     .rc-layout {
         display: flex;

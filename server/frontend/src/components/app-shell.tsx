@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { AssistantProvider } from '@/assistant/assistant-context'
+import { AssistantModals } from '@/components/assistant/assistant-modals'
 import { DemoBanner } from '@/components/demo/demo-banner'
 import { EventSheetHost } from '@/components/event-sheet-host'
 import { FamilyShell } from '@/components/family-shell'
@@ -44,13 +45,15 @@ export function AppShell({
 
   return (
     <AssistantProvider defaultOpen>
-      <EventSheetHost>
-        {surface === 'workbench' ? (
-          <WorkbenchShell items={items}>{content}</WorkbenchShell>
-        ) : (
-          <FamilyShell items={items}>{content}</FamilyShell>
-        )}
-      </EventSheetHost>
+      <AssistantModals>
+        <EventSheetHost>
+          {surface === 'workbench' ? (
+            <WorkbenchShell items={items}>{content}</WorkbenchShell>
+          ) : (
+            <FamilyShell items={items}>{content}</FamilyShell>
+          )}
+        </EventSheetHost>
+      </AssistantModals>
     </AssistantProvider>
   )
 }
