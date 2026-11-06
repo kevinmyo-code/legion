@@ -46,6 +46,13 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[02-seventh-aspect-in-the-docs\|02]] | build | Body is the seventh aspect, in the docs |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[03-body-profile\|03]] | build | Engine: the body profile |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[07-saved-meals\|07]] | build | Engine: saved meals |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[15-meal-target-partial-and-honest-accept\|15]] | build | G2 and G3: partial meal targets, honest plan acceptance |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[16-routing-and-voice-guide\|16]] | build | G4 to G6: get_health to fleet, voice guide copy, body routing |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[17-coach-tone-and-appetite\|17]] | build | G7: answer the question asked; appetite and habits doctrine |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[19-body-screen-prototypes\|19]] | prototype | Body screens: two or three directions to pick from |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -261,6 +268,19 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[11-the-phone-bridges-engine-tools\|11]] | build | The phone bridges engine tools into its Live session  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[12-oauth-for-third-party-clients\|12]] | build | OAuth for third-party clients  waiting on [[10-the-engine-mcp-endpoint\|10]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[04-energy-calculator\|04]] | build | Engine: the energy estimate  waiting on [[03-body-profile\|03]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[05-trend-and-waist\|05]] | build | Engine: weight trend and the waist log  waiting on [[03-body-profile\|03]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[06-adaptation-proposals\|06]] | build | Engine: the two-weekly adjustment, proposed never applied  waiting on [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[08-engine-tools\|08]] | build | Engine: body coach tools for ask_engine and the web assistant  waiting on [[03-body-profile\|03]], [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[06-adaptation-proposals\|06]], [[07-saved-meals\|07]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[09-web-body\|09]] | build | Web /body: Energy card, profile, waist, saved meals, proposals  waiting on [[03-body-profile\|03]], [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[06-adaptation-proposals\|06]], [[07-saved-meals\|07]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[10-phone-coach-reads\|10]] | build | Phone: BodyCoachController, ask_body reads, saved meals in log_meal  waiting on [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[07-saved-meals\|07]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[11-plan-generator-uses-the-estimate\|11]] | build | Phone: the plan generator uses the estimate and will not invent one  waiting on [[10-phone-coach-reads\|10]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[12-digest-energy-and-protein\|12]] | build | Phone: BIO digest ENERGY line, INTAKE gains protein  waiting on [[10-phone-coach-reads\|10]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[13-monday-weekly-line\|13]] | build | Phone: the Monday 8 am weekly weight line  waiting on [[05-trend-and-waist\|05]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[14-weight-goal-tracked\|14]] | build | G1: the weight goal is shown and tracked  waiting on [[05-trend-and-waist\|05]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[20-pick-a-body-direction\|20]] | decision | Kevin picks a Body screen direction  waiting on [[19-body-screen-prototypes\|19]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[21-body-screen-build\|21]] | build | Phone: build the chosen Body screen  waiting on [[20-pick-a-body-direction\|20]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[22-ship-pass\|22]] | test | Ship pass: deploy, enter the profile, run it on the phone  waiting on [[02-seventh-aspect-in-the-docs\|02]], [[03-body-profile\|03]], [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[06-adaptation-proposals\|06]], [[07-saved-meals\|07]], [[08-engine-tools\|08]], [[09-web-body\|09]], [[10-phone-coach-reads\|10]], [[11-plan-generator-uses-the-estimate\|11]], [[12-digest-energy-and-protein\|12]], [[13-monday-weekly-line\|13]], [[14-weight-goal-tracked\|14]], [[15-meal-target-partial-and-honest-accept\|15]], [[16-routing-and-voice-guide\|16]], [[17-coach-tone-and-appetite\|17]], [[21-body-screen-build\|21]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[03-the-renderer\|03]] | build | The Compose renderer: validation, components, and worded failure  waiting on [[01-the-response-schema\|01]], [[02-the-tool-binding-contract\|02]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[05-the-phone-shell\|05]] | grilling | The phone shell: what home is, and what happens when voice fails  waiting on [[04-adr-0035-amendment\|04]] |
@@ -361,6 +381,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[03-mcp-for-claude-and-gemini\|03]] | build | Build: engine MCP server on the 2026-07-28 spec with OAuth, connected to Claude and the Gemini app |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[08-later\|08]] | build | Later: shrink the APK, head unit, worker publish |
 | [[.scratch/backend-etl/map\|backend-etl]] | [[05-webassign-read\|05]] | build | webassign_read, daily, completion only |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[18-health-connect\|18]] | build | Health Connect (parked) |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
@@ -402,6 +423,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | 22 | 21 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | 7 | 6 | [[.scratch/generated-ui/generated-ui.canvas\|open]] |
