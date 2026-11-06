@@ -566,6 +566,17 @@ def accept(request, proposal: EnergyProposal) -> MealTarget:
             decided_by=request.user,
             meal_target_origin_guid=row.origin_guid,
         )
+        # The plan (body coach 2): an accepted adjustment is the next version of a locked plan.
+        from body_coach import plans
+
+        plans.new_version(
+            request,
+            reason=(
+                f"calorie target {proposal.current_target_kcal} to "
+                f"{proposal.proposed_target_kcal} kcal, from four weeks of trend"
+            ),
+            kcal=proposal.proposed_target_kcal,
+        )
     return row
 
 
@@ -573,3 +584,39 @@ def dismiss(request, proposal: EnergyProposal) -> None:
     EnergyProposal.objects.filter(pk=proposal.pk).update(
         status=STATUS_DISMISSED, decided_at=Now(), decided_by=request.user
     )
+
+
+def set_today_target(request, *, kcal: int, protein_g: float) -> MealTarget:
+    """Today's meal target becomes `kcal` and `protein_g` (body coach 2: locking a plan). Copied
+    forward like `accept`: a row already dated today is updated in place (a tombstoned one brought
+    back), carbs and fat carried from the target before (they are not targets, Kevin's ruling)."""
+    today = today_of(request)
+    with transaction.atomic():
+        carried = current_target(request, today)
+        same_day = (
+            scoped(MealTarget, request)
+            .select_for_update()
+            .filter(effective_from_date=today)
+            .first()
+        )
+        if same_day is not None:
+            MealTarget.objects.filter(pk=same_day.pk).update(
+                calories_kcal=kcal, protein_g=protein_g, deleted_at=None, updated_at=Now()
+            )
+            return MealTarget.objects.get(pk=same_day.pk)
+        row = MealTarget.objects.create(
+            id=uuid.uuid4(),
+            household=household_of(request),
+            calories_kcal=kcal,
+            protein_g=protein_g,
+            carbs_g=carried.carbs_g if carried else 0.0,
+            fat_g=carried.fat_g if carried else 0.0,
+            effective_from_date=today,
+            provenance=Provenance.USER,
+            created_at=Now(),
+            updated_at=Now(),
+            deleted_at=None,
+            origin_guid=str(uuid.uuid4()),
+        )
+        row.refresh_from_db()
+        return row

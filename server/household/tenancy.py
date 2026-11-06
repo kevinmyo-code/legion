@@ -83,6 +83,8 @@ TENANT_TABLES: tuple[str, ...] = (
     "workout_sets",
     # body coach 2 (2026-11-06): a proposed programme change, shared like the programme.
     "programme_proposals",
+    # body coach 2: the versioned plan, private to its member like the profile.
+    "body_plans",
     # memory
     "memories",
     "memory_audit",
@@ -265,6 +267,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "workout_sessions",
         "workout_sets",
         "programme_proposals",
+        "body_plans",
     }
 )
 
@@ -441,6 +444,8 @@ OWNER_PATHS: dict[str, str] = {
     "vault_reveals": "owner_user",
     # fat-loss ticket 03: never null, so a member reads and writes their own profile only.
     "body_profiles": "owner_user",
+    # body coach 2: the plan is one member's, never null.
+    "body_plans": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

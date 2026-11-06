@@ -7475,3 +7475,29 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   programme change proposals, the alternatives read, "what should I eat" with kcal and protein only
   and the off-day week line, and the 28-day four-weekly-point adaptation. The rest is ticketed in
   `.scratch/body-coach-2/`.
+
+## 2026-11-06 - One plan, drafted with Alfred, locked in, adjusted as he goes; Alfred sets the calorie target (Kevin)
+
+- **The organising idea, Kevin's words:** *"basically formulating a plan, working together with
+  alfred, then locking it in and making adjustments as i go with alfred is the goal"*.
+- **And:** *"i want alfred to set my calorie target"*. His active meal target was a stale figure
+  from the old goal plan generator, and the engine's estimate was only a suggestion, so "what's
+  left" counted against the stale one.
+- **One plan per member, versioned** (`body_plans`): the kcal and protein target and the loss rate,
+  the workout programme (template, sessions a week, exercise choices, filters, the walking
+  finisher), the meal-plan approach, and the nudge settings.
+- **Draft.** Alfred and Kevin shape a draft by voice; Alfred proposes the pieces, the rules compute
+  every number. **Alfred sets the target inside the draft.** First plan only: with a complete
+  profile and no locked plan, Alfred builds the first draft straight away and asks him to lock it.
+- **Lock.** "Lock it in" makes the draft the active plan, the only point where a target and a
+  programme go live. The line about what changed is said only after the write succeeds (section 7).
+- **Adjust.** After locking, every change is a proposal against the locked plan, Alfred's (the
+  four-weigh-in adaptation, stalls, deloads) or Kevin's ("my knee hurts", "4 days now");
+  accepting one makes a new version with a one-line reason, so "what changed in my plan" reads
+  from the history.
+- **The rate:** Alfred picks it by rule. For "get lean, keep muscle" while lifting, **0.5% of
+  bodyweight a week**; the clamp is unchanged (0.25 to 1.0).
+- **Protein** stays the existing rule. **A target he sets himself by voice stays his** until he
+  says "let Alfred set it". **The goal plan generator no longer writes a meal target**: one owner.
+- **Screen (ruling A):** the checklist shows the locked plan's today; a pending draft or proposal
+  is one line with Accept and Dismiss, Accept on a draft being the lock.

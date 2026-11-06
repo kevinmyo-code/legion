@@ -323,6 +323,9 @@ def _write_calls(checklist_id, item_id, event_id, purchase_id):
         "accept_programme_change": {},
         "dismiss_programme_change": {},
         "log_meal_option": {"option_id": "saved_meal:00000000-0000-0000-0000-000000000001"},
+        "draft_body_plan": {"sessions_per_week": 4},
+        "lock_body_plan": {},
+        "discard_body_plan": {},
     }
 
 

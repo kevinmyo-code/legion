@@ -17,6 +17,11 @@ me and advise me"*, and *"i dont really need detailed screens... simple checklis
 and calories and macroes ive consumed + whats remaining. most of it ill do by voice... the goal is
 to use less screens"*. Goal unchanged from the fat-loss map: *"get lean, keep muscle"*.
 
+**The organising idea (Kevin, later the same day):** *"basically formulating a plan, working
+together with alfred, then locking it in and making adjustments as i go with alfred is the goal"*,
+and *"i want alfred to set my calorie target"*. One versioned plan per member: draft by voice,
+lock it in, then every change is a proposal that makes a new version (ticket 13).
+
 ## Destination
 
 - **By voice, Alfred designs and recommends**: changes the workout plan, recommends alternatives,
@@ -43,12 +48,13 @@ weekly points (C); coach tone (B); supplements basics, eating out with estimates
 | # | Ticket | Type | State |
 |---|---|---|---|
 | 01 | [Decisions](issues/01-decisions.md) | decision | resolved |
+| 13 | [The plan: draft, lock, adjust; Alfred sets the target](issues/13-the-plan.md) | build | built |
 | 02 | [Prototype](issues/02-prototype.md) | prototype | resolved; sheets dropped |
 | 03 | [Engine: catalog, templates, sessions a week, gym or home](issues/03-engine-catalog-and-templates.md) | build | built |
 | 04 | [Engine: programme change proposals](issues/04-engine-programme-proposals.md) | build | built |
 | 05 | [Engine: what to eat from what's left](issues/05-engine-meal-suggestions.md) | build | built |
 | 08 | [Engine: adaptation on four weekly points](issues/08-engine-weekly-adaptation.md) | build | built |
-| 07 | [Phone: the Body checklist, the reads, voice](issues/07-phone.md) | build | ready |
+| 07 | [Phone: the Body checklist, the reads, voice](issues/07-phone.md) | build | built (slice) |
 | 12 | [Phone: coach tone and the advice rules](issues/12-coach-tone-and-advice.md) | build | ready |
 | 10 | [Nudges: evening protein, Monday check-in, plan proposals](issues/10-nudges.md) | build | ready (engine), phone after 07 |
 | 09 | [Weekly meal plan and its grocery list](issues/09-weekly-meal-plan.md) | decision | open |

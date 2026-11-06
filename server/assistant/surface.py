@@ -183,6 +183,10 @@ RECRUITER_EXCLUDED: dict[str, str] = {
             "dismiss_programme_change",
             "suggest_meal",
             "log_meal_option",
+            "get_body_plan",
+            "draft_body_plan",
+            "lock_body_plan",
+            "discard_body_plan",
         )
     },
 }

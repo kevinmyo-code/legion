@@ -1686,9 +1686,20 @@ def test_every_mcp_tool_is_scoped_by_household(
     b_writes(
         "log_meal_option", {"option_id": f"saved_meal:{alpha_meal.data['id']}"}, lands_in_b=False
     )
-    from body_coach.models import ProgrammeProposal
+    from body_coach.models import BodyPlan, ProgrammeProposal
 
     assert ProgrammeProposal.objects.get(pk=alpha_proposal_id).status == "pending"
+    # The plan is private to its member: B cannot read, lock or discard A's draft.
+    alpha_plan = BodyPlan.objects.create(
+        household=household_user.household, owner_user=household_user, kcal_target=2100,
+        protein_g=150, programme={}, reason="alpha-plan",
+    )
+    a_marks = (*a_marks, str(alpha_plan.id), "alpha-plan")
+    b_reads("get_body_plan", {})
+    b_writes("lock_body_plan", {"id": str(alpha_plan.id)}, lands_in_b=False)
+    b_writes("discard_body_plan", {"id": str(alpha_plan.id)}, lands_in_b=False)
+    b_writes("draft_body_plan", {"sessions_per_week": 2}, lands_in_b=False)  # B's profile is not complete
+    assert BodyPlan.objects.get(pk=alpha_plan.pk).status == "draft"
     assert TrainingProgramme.objects.get(household=household_user.household).template == (
         "full_body_ab"
     )

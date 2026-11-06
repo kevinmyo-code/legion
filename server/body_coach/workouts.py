@@ -692,6 +692,8 @@ def today_body(request) -> dict:
         "upcoming": upcoming_list,
         # body coach 2: a programme change waiting for Accept or Dismiss, or None.
         "proposal": proposal_dict(pending_proposal(request)),
+        # The plan: a draft waiting to be locked in (the checklist's one line), or None.
+        "plan_draft": _plan_draft_line(request),
         "words": words,
         "programme_words": _programme_words(programme, status, week, days, upcoming_list),
     }
@@ -984,6 +986,12 @@ def accept_proposal(request, proposal_id) -> tuple[ProgrammeProposal, TrainingPr
         ProgrammeProposal.objects.filter(pk=row.pk).update(
             status=STATUS_ACCEPTED, decided_at=Now(), decided_by=request.user
         )
+        # The plan (body coach 2): an accepted change is the next version of a locked plan.
+        from body_coach import plans
+
+        plans.new_version(
+            request, reason=row.words.split(". ")[0].removesuffix("."), programme=after
+        )
     row.refresh_from_db()
     programme.refresh_from_db()
     return row, programme
@@ -1048,3 +1056,40 @@ def alternatives_body(request, exercise) -> dict:
         "options": options,
         "words": words,
     }
+
+
+def apply_state(request, state: change.State) -> TrainingProgramme:
+    """Set the programme to `state` (locking a plan). A change of template restarts the rotation
+    on its first day; a pending programme proposal made against the old state expires. A no-op
+    when nothing differs."""
+    programme = ensure_programme(request)
+    if state_of(programme) == state:
+        return programme
+    fields = ["template", "training_days", "swaps", "exclude_equipment", "avoid", "cardio", "updated_at"]
+    if state.template != programme.template:
+        programme.template_since = timezone.now()
+        fields.append("template_since")
+    programme.template = state.template
+    programme.training_days = ",".join(state.training_days)
+    programme.swaps = dict(state.swaps)
+    programme.exclude_equipment = sorted(state.exclude_equipment)
+    programme.avoid = sorted(state.avoid)
+    programme.cardio = state.cardio
+    programme.updated_at = Now()
+    programme.save(update_fields=fields)
+    scoped(ProgrammeProposal, request).filter(status=STATUS_PENDING).update(
+        status=STATUS_EXPIRED, decided_at=Now()
+    )
+    return programme
+
+
+def _plan_draft_line(request) -> dict | None:
+    """The plan draft for the checklist (Accept locks it). The first plan is drafted here too,
+    so the line shows as soon as the profile is complete."""
+    from body_coach import plans
+
+    plans.maybe_first_draft(request)
+    row = plans.draft(request)
+    if row is None:
+        return None
+    return {"id": str(row.id), "words": plans.draft_words(row), "summary": plans.summary(row)}

@@ -3,8 +3,8 @@ map: body-coach-2
 ticket: "07"
 title: "Phone: the Body checklist, the reads behind ask_body, voice"
 type: build
-status: open
-status-detail: "ready: engine tickets 03-05 built and origin/fix/workout-reads landed; build after merging fix/workout-reads (its whole-programme read)"
+status: built
+status-detail: "slice built 2026-11-06: the one-line Accept/Dismiss for a plan draft and a programme change on the workout card, engine day labels and Home, suggest_meal and get_exercise_alternatives behind ask_body, flexible-days programme read; the session screen fold is raised, not done; owed: install fast and the steps below"
 blockers: ["03", "04", "05"]
 blocked-by: ["[[03-engine-catalog-and-templates]]", "[[04-engine-programme-proposals]]", "[[05-engine-meal-suggestions]]"]
 tags: [ticket]

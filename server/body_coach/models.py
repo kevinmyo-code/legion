@@ -41,7 +41,8 @@ ACTIVITY_FACTORS: dict[str, float] = {
 }
 ACTIVITY_LEVELS: tuple[str, ...] = tuple(ACTIVITY_FACTORS)
 
-TARGET_RATE_BP_DEFAULT = 75
+# Kevin, 2026-11-06: for "get lean, keep muscle" while lifting, 0.5% of bodyweight a week.
+TARGET_RATE_BP_DEFAULT = 50
 TARGET_RATE_BP_MIN, TARGET_RATE_BP_MAX = 25, 100
 PROTEIN_TENTHS_DEFAULT = 20
 PROTEIN_TENTHS_MIN, PROTEIN_TENTHS_MAX = 16, 22
@@ -491,3 +492,94 @@ class ProgrammeProposal(models.Model):
 
     def __str__(self) -> str:
         return f"programme proposal {self.id}"
+
+
+# =============================================================================
+# The plan (body coach 2, Kevin 2026-11-06). Rules in `body_coach/plans.py`.
+# =============================================================================
+#
+# *"basically formulating a plan, working together with alfred, then locking it in and making
+# adjustments as i go with alfred is the goal"*. One row per VERSION of one member's plan: a draft
+# Alfred and he shape by voice, locked into the active version, superseded by the next version an
+# accepted proposal makes. **Private to its member** (`owner_user`, never null; `OWNER_PATHS`), like
+# the profile it is built from. The estimate's inputs are stored beside the figures they gave.
+
+PLAN_DRAFT = "draft"
+PLAN_ACTIVE = "active"
+PLAN_SUPERSEDED = "superseded"
+PLAN_DISCARDED = "discarded"
+PLAN_STATUSES: tuple[str, ...] = (PLAN_DRAFT, PLAN_ACTIVE, PLAN_SUPERSEDED, PLAN_DISCARDED)
+TARGET_BY_ALFRED = "alfred"
+TARGET_BY_MEMBER = "member"
+TARGET_SETTERS: tuple[str, ...] = (TARGET_BY_ALFRED, TARGET_BY_MEMBER)
+
+
+class BodyPlan(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    owner_user = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    # 1, 2, 3... once locked; a draft or a discarded draft has none.
+    version = models.IntegerField(null=True, blank=True)
+    status = models.TextField(default=PLAN_DRAFT)
+    kcal_target = models.IntegerField(null=True, blank=True, help_text=ESTIMATE_HELP)
+    protein_g = models.IntegerField(null=True, blank=True, help_text=ESTIMATE_HELP)
+    rate_bp = models.SmallIntegerField(default=TARGET_RATE_BP_DEFAULT)
+    # Alfred's, or a target the member set himself (kept until "let Alfred set it").
+    target_set_by = models.TextField(default=TARGET_BY_ALFRED)
+    # `programme_change.State.as_dict()`: template, sessions (as inert days), swaps, filters, cardio.
+    programme = models.JSONField(default=dict)
+    meal_approach = models.TextField(default="saved_meals")
+    nudges = models.JSONField(default=dict, blank=True)
+    # One line: why this version exists ("first plan", "calorie target 2100 to 1950 kcal: ...").
+    reason = models.TextField(default="")
+    # Maintenance, its basis, the weight and the deficit the figures were computed from.
+    inputs = models.JSONField(default=dict, blank=True)
+    # The `meal_targets` row locking wrote, so a later target can be told apart as his own.
+    meal_target_origin_guid = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(db_default=Now())
+    locked_at = models.DateTimeField(null=True, blank=True)
+    locked_by = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        db_table = "body_plans"
+        indexes = [
+            models.Index(fields=["household", "owner_user", "created_at"], name="body_plans_made_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=PLAN_STATUSES), name="body_plans_status_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(target_set_by__in=TARGET_SETTERS),
+                name="body_plans_target_set_by_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["household", "owner_user"],
+                condition=models.Q(status=PLAN_DRAFT),
+                name="body_plans_one_draft",
+            ),
+            models.UniqueConstraint(
+                fields=["household", "owner_user"],
+                condition=models.Q(status=PLAN_ACTIVE),
+                name="body_plans_one_active",
+            ),
+            models.UniqueConstraint(
+                fields=["household", "owner_user", "version"],
+                condition=models.Q(version__isnull=False),
+                name="body_plans_version_once",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kcal_target__isnull=True) | models.Q(kcal_target__gt=800),
+                name="body_plans_above_800_floor",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(rate_bp__gte=TARGET_RATE_BP_MIN)
+                & models.Q(rate_bp__lte=TARGET_RATE_BP_MAX),
+                name="body_plans_rate_range",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"body plan {self.id}"

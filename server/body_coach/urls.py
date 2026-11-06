@@ -3,6 +3,7 @@
 from django.urls import path
 
 from body_coach.meal_option_views import MealOptionLogView, MealOptionsView
+from body_coach.plan_views import PlanDiscardView, PlanDraftView, PlanLockView, PlanView
 from body_coach.views import (
     EnergyView,
     ProfileView,
@@ -59,6 +60,11 @@ urlpatterns = [
         name="body-coach-proposal-dismiss",
     ),
     path("weekly-line/", WeeklyLineView.as_view(), name="body-coach-weekly-line"),
+    # body coach 2 (2026-11-06): the plan, drafted, locked in, adjusted.
+    path("plan/", PlanView.as_view(), name="body-coach-plan"),
+    path("plan/draft/", PlanDraftView.as_view(), name="body-coach-plan-draft"),
+    path("plan/<uuid:plan_id>/lock/", PlanLockView.as_view(), name="body-coach-plan-lock"),
+    path("plan/<uuid:plan_id>/discard/", PlanDiscardView.as_view(), name="body-coach-plan-discard"),
     # body coach 2 (2026-11-06): what to eat from what's left.
     path("meal-options/", MealOptionsView.as_view(), name="body-coach-meal-options"),
     path("meal-options/log/", MealOptionLogView.as_view(), name="body-coach-meal-options-log"),

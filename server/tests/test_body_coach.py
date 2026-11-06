@@ -185,10 +185,11 @@ def test_the_suggested_target_and_rounding_once():
         goal_lbs=None,
         observed=None,
     )
-    # 1917.5 x 1.55 = 2972.125; 0.75% x 95 kg x 7700 / 7 / 100 = 783.75 -> 2188.375.
+    # 1917.5 x 1.55 = 2972.125; the default rate is 0.5% (Kevin, 2026-11-06):
+    # 0.5% x 95 kg x 7700 / 7 / 100 = 522.5 -> 2449.625.
     assert out["maintenance_kcal"] == 2972
-    assert out["suggested_target_kcal"] == 2188
-    assert out["target_rate_pct"] == 0.75
+    assert out["suggested_target_kcal"] == 2450
+    assert out["target_rate_pct"] == 0.5
     assert out["protein_g"] == 190
     assert out["protein_basis"] == "current weight"
 
@@ -414,7 +415,7 @@ def test_profile_starts_absent_and_names_what_is_missing(auth_client):
     body = auth_client.get(f"{BASE}/profile/").data
     assert body["exists"] is False
     assert body["missing"] == ["height", "sex", "birth year", "activity level", "a weigh-in"]
-    assert body["target_rate_pct"] == 0.75 and body["protein_g_per_kg"] == 2.0
+    assert body["target_rate_pct"] == 0.5 and body["protein_g_per_kg"] == 2.0
     assert body["weekly_line_on"] is True
     assert body["goal_weight_lbs"] is None
 
@@ -503,7 +504,7 @@ def test_energy_on_the_formula_from_a_kg_reading(auth_client, household_a):
     assert body["bmr_kcal"] == 1918
     assert body["formula_maintenance_kcal"] == 2972 == body["maintenance_kcal"]
     assert body["basis"] == "formula" and body["basis_days"] is None
-    assert body["suggested_target_kcal"] == 2188
+    assert body["suggested_target_kcal"] == 2450
     assert body["protein_g"] == 190 and body["protein_basis"] == "current weight"
     assert "estimate" in body["words"]
 
@@ -635,7 +636,7 @@ def test_an_off_band_trend_makes_one_proposal_with_its_evidence(auth_client, hou
     assert row.mean_intake_kcal == 2500.0
     assert row.trend_start_lbs == pytest.approx(200.0)
     assert row.trend_end_lbs == pytest.approx(200.0)
-    assert row.target_rate_bp == 75 and row.observed_maintenance_kcal == 2500
+    assert row.target_rate_bp == 50 and row.observed_maintenance_kcal == 2500
     # Idempotent: a second read makes nothing new.
     again = auth_client.get(f"{BASE}/energy/").data
     assert again["proposal"]["id"] == proposal["id"]

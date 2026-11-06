@@ -3370,6 +3370,66 @@ TOOLS: tuple[EngineTool, ...] = (
         handler=coach.log_meal_option,
         writes=True,
     ),
+    # body coach 2 (Kevin, 2026-11-06): "formulating a plan, working together with alfred, then
+    # locking it in and making adjustments as i go". The engine computes every figure.
+    EngineTool(
+        name="get_body_plan",
+        title="The body plan",
+        description=(
+            "The person's plan: the locked version (kcal and protein target, loss rate, training), "
+            "any draft waiting to be locked in, and the history with a reason per version "
+            "(\"what changed in my plan\"). Figures are estimates."
+        ),
+        input_schema=_object({}),
+        handler=coach.get_body_plan,
+    ),
+    EngineTool(
+        name="draft_body_plan",
+        title="Draft the body plan",
+        description=(
+            "Drafts the plan with Alfred's target (the engine's estimate) from choices only: the "
+            "programme's (as propose_programme_change), rate_pct (0.5 by rule for lean while "
+            "lifting), alfred_sets_target (\"let Alfred set it\"). Nothing is live until "
+            "lock_body_plan. Read the draft back and ask." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "sessions_per_week": {"type": "integer", "minimum": 2, "maximum": 4},
+                "split": {"type": "string", "enum": ["full_body", "upper_lower", "other"]},
+                "without_equipment": _EQUIPMENT_LIST,
+                "with_equipment": _EQUIPMENT_LIST,
+                "avoid": _JOINT_LIST,
+                "clear_avoid": _JOINT_LIST,
+                "cardio": {"type": "boolean"},
+                "swap_exercise": {"type": "string", "minLength": 1, "maxLength": 80},
+                "swap_to": {"type": "string", "minLength": 1, "maxLength": 80},
+                "rate_pct": {"type": "number", "minimum": 0.25, "maximum": 1.0},
+                "alfred_sets_target": {"type": "boolean"},
+            }
+        ),
+        handler=coach.draft_body_plan,
+        writes=True,
+    ),
+    EngineTool(
+        name="lock_body_plan",
+        title="Lock in the body plan",
+        description=(
+            "Locks in the draft plan (or the one with this id): its target, rate and training go "
+            "live. Only on the person's yes (\"lock it in\"). Say what changed only from this "
+            "result." + _WRITE_NOTE
+        ),
+        input_schema=_object({"id": _UUID}),
+        handler=coach.lock_body_plan,
+        writes=True,
+    ),
+    EngineTool(
+        name="discard_body_plan",
+        title="Discard the draft plan",
+        description=("Discards the draft plan; the locked plan stays as it is." + _WRITE_NOTE),
+        input_schema=_object({"id": _UUID}),
+        handler=coach.discard_body_plan,
+        writes=True,
+    ),
     # procedures ticket 12 (ADR 0070). `writes=False` ON PURPOSE: `run_engine_tool`
     # checks the write fence on this STATIC flag before the handler, so `True`
     # would refuse every procedure to a read-scoped token, read-only ones

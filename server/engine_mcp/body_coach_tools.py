@@ -511,3 +511,81 @@ def log_meal_option(request, args):
         f"{response.data['words']} The engine committed one meal entry.",
         structured=response.data,
     )
+
+
+# =============================================================================
+# The plan (body coach 2, Kevin 2026-11-06): draft with Alfred, lock it in, adjust as he goes.
+# =============================================================================
+
+PLAN = f"{BASE}/plan"
+PLAN_CHOICES = (*PROPOSAL_CHOICES, "rate_pct", "alfred_sets_target")
+
+
+def get_body_plan(request, args):
+    from engine_mcp.tools import ok
+
+    data, error = _read(request, f"{PLAN}/")
+    if error:
+        return error
+    tail = ""
+    if data["draft"]:
+        tail = (
+            " A draft is waiting: read it back and ask whether to lock it in; lock only on a yes "
+            "(lock_body_plan)."
+        )
+    return ok(
+        f"{data['words']} {data['history_words']}{tail} Every figure is the engine's and an "
+        f"estimate; never invent or change one.",
+        structured=data,
+    )
+
+
+def draft_body_plan(request, args):
+    from engine_mcp.tools import ok
+
+    body = {k: args[k] for k in PLAN_CHOICES if args.get(k) is not None}
+    response = call_route(request, "POST", f"{PLAN}/draft/", body)
+    if response.status_code != 201:
+        return _not_done(response, "drafted")
+    return ok(
+        f"{response.data['words']} Read this draft back and ask whether to lock it in. The "
+        f"engine stored a draft; nothing is live.",
+        structured=response.data,
+    )
+
+
+def _plan_id(request, args, verb: str):
+    from engine_mcp.tools import refused
+
+    if args.get("id"):
+        return args["id"], None
+    data, error = _read(request, f"{PLAN}/")
+    if error:
+        return None, error
+    if not data["draft"]:
+        return None, refused(f"Nothing was {verb}. There is no draft plan; the plan is as it was.")
+    return data["draft"]["id"], None
+
+
+def lock_body_plan(request, args):
+    from engine_mcp.tools import ok
+
+    plan_id, error = _plan_id(request, args, "locked")
+    if error:
+        return error
+    response = call_route(request, "POST", f"{PLAN}/{plan_id}/lock/")
+    if response.status_code != 200:
+        return _not_done(response, "locked")
+    return ok(f"{response.data['words']} The engine committed it.", structured=response.data)
+
+
+def discard_body_plan(request, args):
+    from engine_mcp.tools import ok
+
+    plan_id, error = _plan_id(request, args, "discarded")
+    if error:
+        return error
+    response = call_route(request, "POST", f"{PLAN}/{plan_id}/discard/")
+    if response.status_code != 200:
+        return _not_done(response, "discarded")
+    return ok(response.data["words"], structured=response.data)

@@ -162,6 +162,7 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
         # Body coach 2 (2026-11-06).
         "get_exercise_alternatives", "propose_programme_change", "accept_programme_change",
         "dismiss_programme_change", "suggest_meal", "log_meal_option",
+        "get_body_plan", "draft_body_plan", "lock_body_plan", "discard_body_plan",
     }
     assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest", *memory, *body}
     assert surface.BODY_COACH_TOOLS == body
