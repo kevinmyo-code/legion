@@ -94,6 +94,9 @@ def profile_body(request, row: BodyProfile | None = None) -> dict:
         "target_rate_pct": round(inputs.target_rate_bp / 100, 2),
         "protein_g_per_kg": round(inputs.protein_tenths_g_per_kg / 10, 1),
         "weekly_line_on": row.weekly_line_on if row else True,
+        "goal_weight_lbs": (
+            round(row.goal_weight_lbs, 1) if row and row.goal_weight_lbs is not None else None
+        ),
         "missing": energy.missing_inputs(profile_inputs(row), has_weigh_in(request)),
     }
 
@@ -156,14 +159,33 @@ def active_weight_goal(request):
     return None
 
 
-def milestone_for(request, data: TrendData):
+PROFILE_GOAL_STATEMENT = "Goal weight"
+
+
+def goal_weight(request, profile: BodyProfile | None = None):
+    """(goal_id or None, statement, target lbs) for the weight the coach aims at, or None.
+
+    The active `bodyweight_lbs` goal on the engine wins; else the caller's own profile goal
+    weight (private, like the rest of the profile). Today the phone's goals do not reach the
+    engine, so the profile is usually the source."""
     found = active_weight_goal(request)
+    if found is not None:
+        goal, lbs = found
+        return str(goal.id), goal.statement, lbs
+    profile = profile if profile is not None else own_profile(request)
+    if profile is not None and profile.goal_weight_lbs is not None:
+        return None, PROFILE_GOAL_STATEMENT, profile.goal_weight_lbs
+    return None
+
+
+def milestone_for(request, data: TrendData):
+    found = goal_weight(request)
     if found is None or not data.points:
         return None
-    goal, target_lbs = found
+    goal_id, statement, target_lbs = found
     return trend.milestone(
-        goal_id=str(goal.id),
-        statement=goal.statement,
+        goal_id=goal_id,
+        statement=statement,
         target_lbs=target_lbs,
         start_lbs=data.points[0].trend_lbs,
         current_lbs=data.latest_trend_lbs,
@@ -343,13 +365,13 @@ def energy_body(request) -> dict:
         if adaptation.evidence_met(e)
         else None
     )
-    goal = active_weight_goal(request)
+    goal = goal_weight(request, profile)
     body = energy.estimate(
         profile=inputs,
         this_year=data.today.year,
         weight_lbs=weight,
         weight_source=source,
-        goal_lbs=goal[1] if goal else None,
+        goal_lbs=goal[2] if goal else None,
         observed=observed,
     )
     body["current_target"] = target_dict(target)

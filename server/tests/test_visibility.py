@@ -712,3 +712,38 @@ def test_the_database_refuses_a_private_purchase_owned_by_a_non_member(household
         Purchase.objects.create(
             household=household_a, item="x", bought_on=20365, owner_user=outsider
         )
+
+
+# =============================================================================
+# fat-loss ticket 03: a body profile is private to its member
+# =============================================================================
+
+
+def test_a_body_profile_is_private_to_its_member(kevin_client, mia_client):
+    """`body_profiles.owner_user` is never null (`OWNER_PATHS`): each member reads and writes
+    their own profile only, and the estimate is built on the caller's own. Synthetic figures."""
+    from body_coach.models import BodyProfile
+
+    base = "/api/body/coach"
+    saved = kevin_client.put(
+        f"{base}/profile/",
+        {"height_cm": 178, "sex": "male", "activity_level": "moderate", "goal_weight_lbs": 190},
+        format="json",
+    )
+    assert saved.status_code == 200, saved.data
+    theirs = mia_client.get(f"{base}/profile/").data
+    assert theirs["exists"] is False
+    assert theirs["height_cm"] is None and theirs["goal_weight_lbs"] is None
+    assert mia_client.get(f"{base}/energy/").data["activity_level"] is None
+    mia_client.put(f"{base}/profile/", {"height_cm": 165, "sex": "female"}, format="json")
+    mine = kevin_client.get(f"{base}/profile/").data
+    assert mine["sex"] == "male" and mine["height_cm"] == 178.0 and mine["goal_weight_lbs"] == 190.0
+    assert BodyProfile.objects.count() == 2
+    assert mia_client.get(f"{base}/trend/").data["milestone"] is None
+
+
+def test_the_database_refuses_a_body_profile_owned_by_a_non_member(household_a, user_b):
+    from body_coach.models import BodyProfile
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        BodyProfile.objects.create(household=household_a, owner_user=user_b)

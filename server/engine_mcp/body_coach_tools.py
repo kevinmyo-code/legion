@@ -185,8 +185,13 @@ def set_body_profile(request, args):
         if row["weekly_line_on"] is False
         else " The weekly weight line is on."
     )
+    goal = (
+        f" Goal weight {row['goal_weight_lbs']} lbs."
+        if row.get("goal_weight_lbs") is not None
+        else ""
+    )
     return ok(
-        f"Saved the body profile ({said}). The engine committed it.{still}{line}",
+        f"Saved the body profile ({said}). The engine committed it.{still}{line}{goal}",
         structured={"profile": row},
     )
 

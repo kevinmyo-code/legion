@@ -3076,8 +3076,8 @@ TOOLS: tuple[EngineTool, ...] = (
         description=(
             "Sets any of the person's own profile fields: height (height_cm or height_in), sex, "
             "birth_year, activity_level, target_rate_pct (percent of bodyweight a week), "
-            "protein_g_per_kg, weekly_line_on. \"Stop the weekly weight line\" is "
-            "weekly_line_on false." + _WRITE_NOTE
+            "protein_g_per_kg, weekly_line_on, goal_weight_lbs (a goal or milestone weight). "
+            "\"Stop the weekly weight line\" is weekly_line_on false." + _WRITE_NOTE
         ),
         input_schema={
             **_object(
@@ -3093,6 +3093,7 @@ TOOLS: tuple[EngineTool, ...] = (
                     "target_rate_pct": {"type": "number", "minimum": 0.25, "maximum": 1.0},
                     "protein_g_per_kg": {"type": "number", "minimum": 1.6, "maximum": 2.2},
                     "weekly_line_on": {"type": "boolean"},
+                    "goal_weight_lbs": {"type": "number", "exclusiveMinimum": 0, "maximum": 999},
                 }
             ),
             "minProperties": 1,

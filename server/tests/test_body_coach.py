@@ -412,6 +412,7 @@ def test_profile_starts_absent_and_names_what_is_missing(auth_client):
     assert body["missing"] == ["height", "sex", "birth year", "activity level", "a weigh-in"]
     assert body["target_rate_pct"] == 0.75 and body["protein_g_per_kg"] == 2.0
     assert body["weekly_line_on"] is True
+    assert body["goal_weight_lbs"] is None
 
 
 def test_profile_put_is_partial_and_takes_inches(auth_client, household_a):
@@ -958,3 +959,69 @@ def test_tools_accept_and_dismiss_the_pending_proposal(mcp, household_a):
     MealTarget.objects.filter(effective_from_date=today()).update(calories_kcal=2200)
     is_error, text, _ = _call(mcp, "dismiss_energy_proposal")
     assert not is_error and "unchanged" in text
+
+
+# =============================================================================
+# The profile's own goal weight (the phone's goals do not reach the engine)
+# =============================================================================
+
+
+def test_protein_uses_the_profile_goal_when_there_is_no_goals_row(auth_client, household_a):
+    synthetic_man(auth_client)
+    weigh(household_a, 1, 95, unit="kg")
+    saved = auth_client.put(f"{BASE}/profile/", {"goal_weight_kg": 85}, format="json").data
+    assert saved["goal_weight_lbs"] == round(85 * trend.LBS_PER_KG, 1)
+    body = auth_client.get(f"{BASE}/energy/").data
+    assert body["protein_g"] == 170 and body["protein_basis"] == "goal weight"
+
+
+def test_the_milestone_from_the_profile_goal(auth_client, household_a):
+    series(household_a, 40, 220.0, -0.3)
+    auth_client.put(f"{BASE}/profile/", {"goal_weight_lbs": 200}, format="json")
+    stone = auth_client.get(f"{BASE}/trend/").data["milestone"]
+    assert stone["goal_id"] is None and stone["statement"] == "Goal weight"
+    assert stone["target_lbs"] == 200.0 and stone["start_lbs"] == 220.0
+    assert stone["remaining_lbs"] > 0 and stone["weeks_to_go"] is not None
+
+
+def test_a_goals_row_wins_over_the_profile(auth_client, household_a):
+    series(household_a, 40, 220.0, -0.3)
+    auth_client.put(f"{BASE}/profile/", {"goal_weight_lbs": 150}, format="json")
+    row = goal(household_a, 200, statement="reach a lighter weight")
+    stone = auth_client.get(f"{BASE}/trend/").data["milestone"]
+    assert stone["goal_id"] == str(row.id) and stone["target_lbs"] == 200.0
+
+
+def test_the_profile_goal_clears_with_null(auth_client, household_a):
+    series(household_a, 40, 220.0, -0.3)
+    auth_client.put(f"{BASE}/profile/", {"goal_weight_lbs": 200}, format="json")
+    cleared = auth_client.put(f"{BASE}/profile/", {"goal_weight_lbs": None}, format="json")
+    assert cleared.status_code == 200 and cleared.data["goal_weight_lbs"] is None
+    assert auth_client.get(f"{BASE}/trend/").data["milestone"] is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"goal_weight_lbs": 0}, {"goal_weight_lbs": 1000}, {"goal_weight_kg": 500},
+     {"goal_weight_lbs": "light"}, {"goal_weight_lbs": 180, "goal_weight_kg": 80}],
+)
+def test_goal_weight_refusals_are_in_words(auth_client, body):
+    response = auth_client.put(f"{BASE}/profile/", body, format="json")
+    assert response.status_code == 400
+    assert response.data["detail"].startswith("Nothing was saved.")
+    assert not BodyProfile.objects.exists()
+
+
+def test_a_profile_goal_is_private_to_its_member(auth_client, household_a):
+    series(household_a, 40, 220.0, -0.3)
+    auth_client.put(f"{BASE}/profile/", {"goal_weight_lbs": 200}, format="json")
+    mia = _client_for(_member(household_a, "mia@example.com"))
+    assert mia.get(f"{BASE}/trend/").data["milestone"] is None
+    assert mia.get(f"{BASE}/profile/").data["goal_weight_lbs"] is None
+
+
+def test_tool_sets_the_goal_weight(mcp, auth_client):
+    is_error, text, _ = _call(mcp, "set_body_profile", {"goal_weight_lbs": 190})
+    assert not is_error, text
+    assert "Goal weight 190.0 lbs" in text
+    assert auth_client.get(f"{BASE}/profile/").data["goal_weight_lbs"] == 190.0

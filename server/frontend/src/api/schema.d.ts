@@ -501,7 +501,7 @@ export interface paths {
         };
         /** @description The caller's own body profile. Private: no member reads another's. */
         get: operations["api_body_coach_profile_retrieve"];
-        /** @description Partial update of the caller's own profile; creates it on first use. height_cm or height_in. weekly_line_on false stops the Monday weight line. */
+        /** @description Partial update of the caller's own profile; creates it on first use. height_cm or height_in; goal_weight_lbs or goal_weight_kg (null clears it). weekly_line_on false stops the Monday weight line. */
         put: operations["api_body_coach_profile_update"];
         post?: never;
         delete?: never;
@@ -6757,7 +6757,8 @@ export interface components {
             origin_guid: string;
         };
         Milestone: {
-            goal_id: string;
+            /** @description Null when the target is the profile's own goal weight. */
+            goal_id: string | null;
             statement: string;
             /** Format: double */
             target_lbs: number;
@@ -7679,6 +7680,11 @@ export interface components {
              */
             protein_g_per_kg: number;
             weekly_line_on: boolean;
+            /**
+             * Format: double
+             * @description The member's own goal or milestone weight. An active bodyweight_lbs goal on the engine wins over it.
+             */
+            goal_weight_lbs: number | null;
             /** @description What the calculator still needs, in words: height, sex, birth year, activity level, a weigh-in. */
             missing: string[];
         };
@@ -7695,6 +7701,16 @@ export interface components {
             /** Format: double */
             protein_g_per_kg?: number;
             weekly_line_on?: boolean;
+            /**
+             * Format: double
+             * @description null clears it.
+             */
+            goal_weight_lbs?: number | null;
+            /**
+             * Format: double
+             * @description Converted to lbs; null clears it.
+             */
+            goal_weight_kg?: number | null;
         };
         ProgressRequest: {
             score: number;
