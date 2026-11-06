@@ -48,10 +48,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[03-body-profile\|03]] | build | Engine: the body profile |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[07-saved-meals\|07]] | build | Engine: saved meals |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[15-meal-target-partial-and-honest-accept\|15]] | build | G2 and G3: partial meal targets, honest plan acceptance |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[16-routing-and-voice-guide\|16]] | build | G4 to G6: get_health to fleet, voice guide copy, body routing |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[17-coach-tone-and-appetite\|17]] | build | G7: answer the question asked; appetite and habits doctrine |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[19-body-screen-prototypes\|19]] | prototype | Body screens: two or three directions to pick from |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -154,6 +150,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[06-matrix-rain\|06]] | build | Build: Matrix code rain (Home A background, live wallpaper, screensaver) |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[10-the-engine-mcp-endpoint\|10]] | build | The engine's MCP endpoint, read and write tools, and the tenancy leak test over it |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[15-meal-target-partial-and-honest-accept\|15]] | build | G2 and G3: partial meal targets, honest plan acceptance |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[16-routing-and-voice-guide\|16]] | build | G4 to G6: get_health to fleet, voice guide copy, body routing |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[17-coach-tone-and-appetite\|17]] | build | G7: answer the question asked; appetite and habits doctrine |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[21-body-screen-build\|21]] | build | Phone: build the chosen Body screen |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[08-daily-prescription-and-autolog\|08]] | build | The checklist prescribes a day, and a ticked day logs itself |
@@ -277,8 +277,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/fat-loss/map\|fat-loss]] | [[12-digest-energy-and-protein\|12]] | build | Phone: BIO digest ENERGY line, INTAKE gains protein  waiting on [[10-phone-coach-reads\|10]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[13-monday-weekly-line\|13]] | build | Phone: the Monday 8 am weekly weight line  waiting on [[05-trend-and-waist\|05]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[14-weight-goal-tracked\|14]] | build | G1: the weight goal is shown and tracked  waiting on [[05-trend-and-waist\|05]] |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[20-pick-a-body-direction\|20]] | decision | Kevin picks a Body screen direction  waiting on [[19-body-screen-prototypes\|19]] |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[21-body-screen-build\|21]] | build | Phone: build the chosen Body screen  waiting on [[20-pick-a-body-direction\|20]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[22-ship-pass\|22]] | test | Ship pass: deploy, enter the profile, run it on the phone  waiting on [[03-body-profile\|03]], [[04-energy-calculator\|04]], [[05-trend-and-waist\|05]], [[06-adaptation-proposals\|06]], [[07-saved-meals\|07]], [[08-engine-tools\|08]], [[09-web-body\|09]], [[10-phone-coach-reads\|10]], [[11-plan-generator-uses-the-estimate\|11]], [[12-digest-energy-and-protein\|12]], [[13-monday-weekly-line\|13]], [[14-weight-goal-tracked\|14]], [[15-meal-target-partial-and-honest-accept\|15]], [[16-routing-and-voice-guide\|16]], [[17-coach-tone-and-appetite\|17]], [[21-body-screen-build\|21]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[03-the-renderer\|03]] | build | The Compose renderer: validation, components, and worded failure  waiting on [[01-the-response-schema\|01]], [[02-the-tool-binding-contract\|02]] |
@@ -422,7 +420,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
-| [[.scratch/fat-loss/map\|fat-loss]] | 22 | 20 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
+| [[.scratch/fat-loss/map\|fat-loss]] | 22 | 18 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | 7 | 6 | [[.scratch/generated-ui/generated-ui.canvas\|open]] |
