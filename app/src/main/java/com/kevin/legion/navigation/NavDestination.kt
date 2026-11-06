@@ -18,6 +18,11 @@ data class NavDestination(
      * line's `to_src=`; null when it did not come through the resolver.
      */
     val source: String? = null,
+    /**
+     * A Mapbox search hit's `mapbox_id`, which ToS 2.7.6 lets LEGION store (map decision D1), for the
+     * `route_request` line's `to_id=`. Null for every other source.
+     */
+    val mapboxId: String? = null,
 ) {
     val point: GeoPoint get() = GeoPoint(latitude, longitude)
 }

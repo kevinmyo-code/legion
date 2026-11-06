@@ -293,7 +293,8 @@ class NavVoiceTools(
         }
         return when (val r = resolver.resolve(phrase, ctx, SearchOrigin.VOICE)) {
             is Resolution.NotFound -> {
-                audit.resolve(tool, slotName, ResolveVerdict.NOT_FOUND, null, 0, choice, null, r.message)
+                // The audit twin: a contact's or event's address text never reaches the log (D9).
+                audit.resolve(tool, slotName, ResolveVerdict.NOT_FOUND, null, 0, choice, null, r.auditMessage)
                 Pick.Stop(fail("${r.message} $unchanged"))
             }
             is Resolution.Resolved -> if (r.ambiguous) {

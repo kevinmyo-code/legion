@@ -29,7 +29,8 @@ class NavAuditTest {
     private val audit = NavAudit(sink = { lines += it }, nowMs = { now }, onTripEnd = { uploads++ })
 
     private val fix = GeoPoint(29.71234, -95.40876)
-    private val dest = NavDestination("Starbucks", 29.73456, -95.41234, "Coffee · 1 Main St", "search")
+    private val dest =
+        NavDestination("Starbucks", 29.73456, -95.41234, "Coffee · 1 Main St", "search", "dXJuOm1ieHBvaTpmYWtl")
 
     private fun route(
         durationS: Double = 1200.0,
@@ -49,8 +50,13 @@ class NavAuditTest {
             profile = profile,
         )
 
-    private fun candidate(name: String, source: SourceKind, distanceM: Double?, kind: PlaceKind = PlaceKind.POI) =
-        Candidate(name, "12 Secret Rd, Houston", 29.7, -95.4, distanceM, source, "coffee", kind)
+    private fun candidate(
+        name: String,
+        source: SourceKind,
+        distanceM: Double?,
+        kind: PlaceKind = PlaceKind.POI,
+        mapboxId: String? = null,
+    ) = Candidate(name, "12 Secret Rd, Houston", 29.7, -95.4, distanceM, source, "coffee", kind, mapboxId)
 
     @Test fun aSearchLineCarriesTheSourcesTheTopFiveAndTheQueryLast() {
         audit.search(
@@ -64,7 +70,7 @@ class NavAuditTest {
                 SourceTry(SourceKind.CALENDAR, 0, 0, SourceOutcome.UNREADABLE),
                 SourceTry(SourceKind.SEARCH, 812, 6, SourceOutcome.HITS),
             ),
-            top = (1..6).map { candidate("Starbucks $it", SourceKind.SEARCH, 1234.0 * it) },
+            top = (1..6).map { candidate("Starbucks $it", SourceKind.SEARCH, 1234.0 * it, mapboxId = "mbx$it") },
             totalMs = 820,
             query = "the Starbucks near work",
         )
@@ -76,18 +82,31 @@ class NavAuditTest {
         assertTrue("the free text is last", line.endsWith("query=\"the Starbucks near work\""))
         val top = f.getValue("top")
         assertEquals("five entries, not six", 5, Regex("\"r\":").findAll(top).count())
-        assertTrue(top, top.startsWith("[{\"r\":1,\"src\":\"search\",\"kind\":\"poi\",\"cat\":\"coffee\",\"m\":1230}"))
+        assertTrue(
+            top,
+            top.startsWith(
+                "[{\"r\":1,\"src\":\"search\",\"id\":\"mbx1\",\"kind\":\"poi\",\"cat\":\"coffee\",\"m\":1230}",
+            ),
+        )
     }
 
     @Test fun aMapboxHitIsNeverNamedAndNoSourceLogsItsAddress() {
         val top = NavAudit.topJson(
             listOf(
-                candidate("Blue Bottle Coffee", SourceKind.SEARCH, 500.0),
-                candidate("Mia's mom", SourceKind.CONTACTS, 9000.0, PlaceKind.OTHER),
+                candidate("Blue Bottle Coffee", SourceKind.SEARCH, 500.0, mapboxId = "dXJuOm1ieHBvaTpibHVl"),
+                // A contact's address that Mapbox geocoded: its id would point at the contact's address (D9).
+                candidate("Mia's mom", SourceKind.CONTACTS, 9000.0, PlaceKind.OTHER, mapboxId = "dXJuOmFkZHJlc3M"),
                 candidate("work", SourceKind.SAVED_PLACE, null, PlaceKind.OTHER),
+                candidate("No Id Diner", SourceKind.SEARCH, 700.0),
             ),
         )
         assertFalse("a Mapbox result name is never stored (ToS 2.7.2)", top.contains("Blue Bottle"))
+        assertTrue(
+            "a search hit carries its mapbox_id (ToS 2.7.6, D1)",
+            top.contains("\"id\":\"dXJuOm1ieHBvaTpibHVl\""),
+        )
+        assertFalse("a first-party hit never carries an id", top.contains("dXJuOmFkZHJlc3M"))
+        assertEquals("only the search hit that had one", 1, Regex("\"id\":").findAll(top).count())
         assertFalse("address text from any source never logs", top.contains("Secret Rd"))
         assertTrue(top, top.contains("\"name\":\"Mia's\\u0020mom\""))
         assertTrue(top, top.contains("\"name\":\"work\""))
@@ -103,8 +122,9 @@ class NavAuditTest {
         )
         val f = fields(lines.single())
         assertEquals("29.712,-95.409", f["from"])
-        assertEquals("29.735,-95.412", f["to"])
+        assertEquals("a search destination's point is a Mapbox geocode, never logged (D2)", "none", f["to"])
         assertEquals("search", f["to_src"])
+        assertEquals("dXJuOm1ieHBvaTpmYWtl", f["to_id"])
         assertEquals("true", f["traffic"])
         assertEquals("mapbox/driving-traffic", f["profile"])
         assertEquals("3", f["routes"])
@@ -115,6 +135,28 @@ class NavAuditTest {
         assertEquals("toll", f["avoid"])
         assertEquals("none", f["trip"])
         assertFalse("never the destination's name or address", lines.single().contains("Starbucks"))
+    }
+
+    @Test fun onlyASavedPlaceDestinationLogsItsPoint() {
+        fun to(source: String?, id: String? = "dXJuOmFkZHJlc3M"): Map<String, String> {
+            lines.clear()
+            audit.routeRequest(
+                id = "r3", purpose = RoutePurpose.PREVIEW, result = "ok", failure = null, ms = 500,
+                routes = listOf(route()), router = "ONLINE", origin = fix,
+                destination = NavDestination("x", 29.73456, -95.41234, null, source, id),
+                stops = 0, avoid = emptySet(), message = null,
+            )
+            return fields(lines.single())
+        }
+        val saved = to("saved_place", id = null)
+        assertEquals("the household's own GPS fix, rounded (D2)", "29.735,-95.412", saved["to"])
+        assertEquals("none", saved["to_id"])
+        for (geocoded in listOf("calendar", "suggestions", "contacts", null)) {
+            val f = to(geocoded)
+            assertEquals("$geocoded: a Mapbox geocode of address text is never logged", "none", f["to"])
+            assertEquals("$geocoded: an id only on a search destination", "none", f["to_id"])
+            assertTrue("crow distance stays", f.getValue("crow_m").toInt() > 0)
+        }
     }
 
     @Test fun aFailedRouteRequestScrubsAMapboxTokenOutOfItsMessage() {

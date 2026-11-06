@@ -156,6 +156,7 @@ class MapboxPlaceSearch : PlaceSearch {
                 source = SourceKind.SEARCH,
                 category = r.categories?.firstOrNull { it.isNotBlank() },
                 kind = kindOf(r),
+                mapboxId = r.mapboxId.takeIf { !it.isNullOrBlank() },
             )
         }
         return if (candidates.isEmpty()) SearchAnswer.NoMatch else SearchAnswer.Hits(candidates)

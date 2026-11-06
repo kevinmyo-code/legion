@@ -6,6 +6,7 @@ import com.kevin.legion.navigation.GeoPoint
 import com.kevin.legion.navigation.MapboxNavController
 import com.kevin.legion.navigation.audit.NavAudit
 import com.kevin.legion.navigation.audit.fields
+import com.kevin.legion.navigation.resolve.AddressToSearch
 import com.kevin.legion.navigation.resolve.Candidate
 import com.kevin.legion.navigation.resolve.DestinationResolver
 import com.kevin.legion.navigation.resolve.DestinationSource
@@ -93,6 +94,32 @@ class NavVoiceToolsAuditTest {
         assertEquals("navigate", f["tool"])
         assertEquals("destination", f["slot"])
         assertTrue(f.getValue("reason"), f.getValue("reason").contains("zzyzx"))
+    }
+
+    @Test fun aContactWhoseAddressFailsLogsTheLabelNeverTheAddress() = runBlocking {
+        // Fictional contact and address. Decision D9: the label only in NAV_AUDIT.
+        val contacts = object : DestinationSource {
+            override val kind = SourceKind.CONTACTS
+
+            override suspend fun lookup(query: String, ctx: LookupContext): SourceAnswer =
+                SourceAnswer.NeedsSearch(listOf(AddressToSearch("Aunt Example", "742 Evergreen Terrace")))
+        }
+        val voice = NavVoiceTools(
+            controller = controller,
+            resolver = DestinationResolver(listOf(nothingLocal, contacts), search, audit),
+            fix = { GeoPoint(29.6, -95.3) },
+            screen = { true },
+            nowMs = { 0L },
+            audit = audit,
+        )
+        val said = voice.navigate("aunt example")
+        assertFalse(said.success)
+        assertTrue("the user still hears which address failed", said.message.contains("742 Evergreen Terrace"))
+        val reason = fields(lineOf("resolve").single()).getValue("reason")
+        assertEquals("not_found", fields(lineOf("resolve").single())["verdict"])
+        assertTrue(reason, reason.contains("Aunt Example"))
+        assertFalse(reason, reason.contains("Evergreen"))
+        assertFalse("no line carries the address", lines.any { it.contains("Evergreen") })
     }
 
     @Test fun aChoiceOutOfRangeSaysSo() = runBlocking {

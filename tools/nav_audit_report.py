@@ -22,7 +22,8 @@ event, `<event> key=value ...`, the one free-text field last and JSON-quoted:
         choice= source= reason="..."
     route_request id= purpose=<preview|change> trip= result=<ok|empty|failed|canceled> fail= ms= routes=
         alternatives= distance_m= eta_s= typical_s= profile= traffic=<true|false|unknown> router= stops=
-        avoid= from=<lat,lng 3dp> to=<lat,lng 3dp> to_src= crow_m= message="..."
+        avoid= from=<lat,lng 3dp> to=<lat,lng 3dp, saved_place only, else none> to_src= to_id=<mapbox_id|none>
+        crow_m= message="..."
     trip_start trip= route= route_index= eta_s= distance_m= typical_s= stops= avoid= profile= traffic=
     trip_start trip=none result=failed message="..."
     route_update trip= reason=<reroute|refresh|alternative|new|...> routes= eta_s= distance_m= elapsed_s=
@@ -43,14 +44,15 @@ What the numbers mean:
   that never got its yes).
 - A trip with a `trip_start` and no `trip_end` is `unknown`: the process died, or the capture ended.
 - ETA error is `elapsed - first ETA` at arrival, so positive means later than first promised.
-- Mapbox search result names never appear (Mapbox ToS 2.7.2); `top=` carries only first-party labels.
+- Mapbox search result names never appear (Mapbox ToS 2.7.2); `top=` carries only first-party labels,
+  and a search hit's `mapbox_id` as `id` (ToS 2.7.6, map decision D1).
 
 Stdlib only. Self-test: python -m doctest tools/nav_audit_report.py
 
 >>> sample = r'''
-... 11-06 08:00:00.000  1  2 I NAV_AUDIT: search id=sa0 origin=voice along=false verdict=ambiguous source=search results=2 ms=900 tried=saved_place:3:0:no_match,search:880:2:hits top=[{"r":1,"src":"search","kind":"poi","m":1200},{"r":2,"src":"search","kind":"poi","m":5000}] query="the Starbucks near work"
+... 11-06 08:00:00.000  1  2 I NAV_AUDIT: search id=sa0 origin=voice along=false verdict=ambiguous source=search results=2 ms=900 tried=saved_place:3:0:no_match,search:880:2:hits top=[{"r":1,"src":"search","id":"dXJuOm1ieHBvaTphYmM","kind":"poi","m":1200},{"r":2,"src":"search","kind":"poi","m":5000}] query="the Starbucks near work"
 ... 11-06 08:00:05.000  1  2 I NAV_AUDIT: pick search=sa0 rank=2 how=voice source=search
-... 11-06 08:00:06.000  1  2 I NAV_AUDIT: route_request id=rb0 purpose=preview trip=none result=ok fail=none ms=650 routes=3 alternatives=2 distance_m=9000 eta_s=900 typical_s=850 profile=mapbox/driving-traffic traffic=true router=online stops=0 avoid=none from=29.700,-95.400 to=29.750,-95.450 to_src=search crow_m=7000 message=""
+... 11-06 08:00:06.000  1  2 I NAV_AUDIT: route_request id=rb0 purpose=preview trip=none result=ok fail=none ms=650 routes=3 alternatives=2 distance_m=9000 eta_s=900 typical_s=850 profile=mapbox/driving-traffic traffic=true router=online stops=0 avoid=none from=29.700,-95.400 to=none to_src=search to_id=dXJuOm1ieHBvaTpmYWtl crow_m=7000 message=""
 ... 11-06 08:00:07.000  1  2 I NAV_AUDIT: trip_start trip=tc0 route=r#0 route_index=1 eta_s=900 distance_m=9000 typical_s=850 stops=0 avoid=none profile=mapbox/driving-traffic traffic=true
 ... 11-06 08:05:00.000  1  2 I NAV_AUDIT: reroute trip=tc0 state=fetching reason=off_route
 ... 11-06 08:05:01.000  1  2 I NAV_AUDIT: reroute trip=tc0 state=fetched ms=700 message="ONLINE"

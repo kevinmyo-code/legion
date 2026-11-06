@@ -78,10 +78,14 @@ enum class CueOutcome(val token: String) {
  * `off_route`, `arrival`, `trip_end`. Cue outcomes are counted and ride on `trip_end`, never per cue.
  *
  * **What is never logged** (ToS 2.7.2 / 2.10.1, the rule `Candidate` and `NavDestination` carry): a
- * Mapbox search result's name or address. A `SEARCH` hit in `top=` is its rank, kind, category and
- * distance only; a first-party hit (saved place, calendar, suggestion, contact) carries its label, which
- * is the user's own data. No `detail` (address text) from any source. Coordinates are rounded to three
- * decimals (about 110 m). The query is the user's own words, which `LIVE_AUDIT` already logs.
+ * Mapbox search result's name or address. A `SEARCH` hit in `top=` is its rank, `mapbox_id` (ToS 2.7.6,
+ * map decision D1), kind, category and distance only; a first-party hit (saved place, calendar,
+ * suggestion, contact) carries its label, which is the user's own data, and no id. No `detail` (address
+ * text) from any source, and no contact's or event's address in a `resolve` reason (D9). A destination's
+ * coordinates are logged only for a saved place, whose point is the household's own GPS fix (D2); a
+ * search, calendar, suggestion or contact destination is a Mapbox geocode and logs `to=none`.
+ * Coordinates are rounded to three decimals (about 110 m). Distance and ETA are logged knowingly against
+ * 2.10.1 (D2, risk accepted in words). The query is the user's own words, which `LIVE_AUDIT` already logs.
  *
  * **Where it goes:** [sink] is `LiveLatency.audit` in production, so it follows the same two switches as
  * the conversation log (logcat mirror, and the spool uploaded to the household's own engine as
@@ -204,8 +208,9 @@ class NavAudit(
                 "typical_s=${first?.typicalDurationS?.let(::whole) ?: "none"} " +
                 "profile=${LiveAudit.token(profile ?: "none")} traffic=${trafficToken(profile)} " +
                 "router=${LiveAudit.token(router?.lowercase() ?: "none")} stops=$stops avoid=${avoidToken(avoid)} " +
-                "from=${point(origin)} to=${point(destination.point)} " +
+                "from=${point(origin)} to=${destinationPoint(destination)} " +
                 "to_src=${LiveAudit.token(destination.source ?: "unknown")} " +
+                "to_id=${destinationId(destination)} " +
                 "crow_m=${whole(Geo.distanceM(origin, destination.point))} " +
                 "message=${LiveAudit.quote(message.orEmpty())}",
         )
@@ -336,6 +341,18 @@ class NavAudit(
         /** Rounded to three decimals (about 110 m), latitude first, never more precise. */
         fun point(p: GeoPoint): String = String.format(Locale.US, "%.3f,%.3f", p.latitude, p.longitude)
 
+        /**
+         * The destination's rounded point only when it is first-party: a saved place, the household's own
+         * GPS fix (map decision D2). Every other source's point is a Mapbox geocode (ToS 2.7.2), and a
+         * contact's is a third party's address (D9): `none`.
+         */
+        fun destinationPoint(d: NavDestination): String =
+            if (d.source == sourceToken(SourceKind.SAVED_PLACE)) point(d.point) else "none"
+
+        /** A search destination's `mapbox_id` (ToS 2.7.6, D1), so the route can be tied to the pick; else `none`. */
+        fun destinationId(d: NavDestination): String =
+            d.mapboxId?.takeIf { d.source == sourceToken(SourceKind.SEARCH) }?.let(LiveAudit::token) ?: "none"
+
         /** `true` only when the route read back says it was planned on live traffic; `unknown` with no profile. */
         fun trafficToken(profile: String?): String = when {
             profile == null -> "unknown"
@@ -352,14 +369,19 @@ class NavAudit(
                 .ifEmpty { "none" }
 
         /**
-         * The top [TOP_N] as compact JSON, no whitespace. A Mapbox `SEARCH` hit has NO name (ToS 2.7.2);
-         * a first-party hit carries its label. No address text from any source. Distance to 10 m.
+         * The top [TOP_N] as compact JSON, no whitespace. A Mapbox `SEARCH` hit has NO name (ToS 2.7.2)
+         * and carries its `mapbox_id` as `id` when the SDK gave one (ToS 2.7.6, D1); a first-party hit
+         * carries its label and never an id. No address text from any source. Distance to 10 m.
          */
         fun topJson(top: List<Candidate>): String = top.take(TOP_N).mapIndexed { i, c ->
             val fields = buildList {
                 add("\"r\":${i + 1}")
                 add("\"src\":\"${sourceToken(c.source)}\"")
-                if (c.source != SourceKind.SEARCH) add("\"name\":${jsonString(c.name.take(MAX_NAME))}")
+                if (c.source == SourceKind.SEARCH) {
+                    c.mapboxId?.let { add("\"id\":${jsonString(it)}") }
+                } else {
+                    add("\"name\":${jsonString(c.name.take(MAX_NAME))}")
+                }
                 add("\"kind\":\"${c.kind.name.lowercase()}\"")
                 c.category?.let { add("\"cat\":${jsonString(it.take(MAX_NAME))}") }
                 val metres = c.distanceM?.let { whole((it / ROUND_DISTANCE_M).roundToLong() * ROUND_DISTANCE_M) }
