@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>338 tickets open</h1>
+<h1>344 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 52 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 77 are waiting on another ticket first. <b>190 are already built</b> and owe nothing but a run on the phone. 13 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 53 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 78 are waiting on another ticket first. <b>195 are already built</b> and owe nothing but a run on the phone. 13 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">338</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">344</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">58</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">190</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">77</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">195</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">78</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">11</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">124</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">125</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">13</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -635,6 +635,22 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Build: Matrix calendar and brief</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: Calendar on Matrix HOME shows today and 7 days; add an event (title, date, time) and see it; edit it; delete it with the second tap; tick a task; Brief shows engine sections with status and Unverified lines, Refresh works, a link opens the browser; with the engine unreachable the Brief says so in words and the saved copy is labelled.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">Build: Matrix notes and voice notes</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: LEGION &gt; Notes lists notes, write one, open it, edit its text, tick it, delete it with the second tap; LEGION &gt; Voice notes: Record shows Recording and a running clock, Stop says it is saved and being transcribed (not ready), the recording appears, opens with its AI-labelled summary and transcript, Play audio plays, Rename works, Delete asks twice; deny the microphone and see what the refusal says.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">Build: Matrix ledger, pantry and fleet</span><span class="det">Built 2026-10-24, suite green. Owed on the A25: LEGION &gt; Ledger shows balances with their as-of dates and the 20 newest transactions; an unverified or pending row says so in words on its own line; with the engine unreachable the screen says it is the phone copy; LEGION &gt; Pantry opens a receipt to printed prices and then separately labelled estimates; LEGION &gt; Fleet shows each car, its mileage and the next maintenance, matching the Fleet tab row. No writes exist on these three, so the one write for this ticket is none (read-only by scope).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>phone-verify</h2>
+<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">5</span> built<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 6 tickets</span></span>
+<span class="bar"><i style="flex:5"></i><b style="flex:1"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">tools/phone: drive LEGION over adb</span><span class="det">built 2026-11-05 on feat/phone-verify; pytest green with fake adb</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">The rails: vault, sends, system settings, artifacts</span><span class="det">built 2026-11-05 on feat/phone-verify; refusals tested with fake adb (a refused tap sends nothing)</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">docs/screen-map.md, generated, drift fails</span><span class="det">built 2026-11-05 on feat/phone-verify; drift tests green; in the commit hook</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Test tags visible to uiautomator</span><span class="det">built 2026-11-05 on feat/phone-verify; owed: a build with it on the phone, then `tools/phone dump` shows vault-message / chat-button as resource ids</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">verify-on-phone and maintain-screen-map skills; agent defs use them</span><span class="det">built 2026-11-05 on feat/phone-verify</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Proof run on the phone, no install</span><span class="det">charted 2026-11-05; phone dropped off wireless debugging during the build</span></span><span class="chip c-test">test</span><span class="state">waiting on #01, #02, #03, #05</span></li>
 </ul>
 </section>
 <section class="map">

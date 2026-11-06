@@ -1,0 +1,94 @@
+{
+  "nodes": [
+    {
+      "id": "cbb60a6b4108a679",
+      "type": "file",
+      "file": ".scratch/phone-verify/issues/01-phone-cli.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "eec5c4286f1d11eb",
+      "type": "file",
+      "file": ".scratch/phone-verify/issues/02-safety-rails.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2f69b80ff3697c88",
+      "type": "file",
+      "file": ".scratch/phone-verify/issues/03-screen-map.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e14e953adcbcf2c6",
+      "type": "file",
+      "file": ".scratch/phone-verify/issues/04-test-tags-as-ids.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e514540af4a22f08",
+      "type": "file",
+      "file": ".scratch/phone-verify/issues/05-skills-and-agents.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "045adca25a61860a",
+      "type": "file",
+      "file": ".scratch/phone-verify/issues/06-proof-run.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "f3187a580987a181",
+      "fromNode": "cbb60a6b4108a679",
+      "fromSide": "right",
+      "toNode": "045adca25a61860a",
+      "toSide": "left"
+    },
+    {
+      "id": "dab40bfa34ce971a",
+      "fromNode": "eec5c4286f1d11eb",
+      "fromSide": "right",
+      "toNode": "045adca25a61860a",
+      "toSide": "left"
+    },
+    {
+      "id": "226ed0365ebe925e",
+      "fromNode": "2f69b80ff3697c88",
+      "fromSide": "right",
+      "toNode": "045adca25a61860a",
+      "toSide": "left"
+    },
+    {
+      "id": "7d7ec774de4d4d02",
+      "fromNode": "e514540af4a22f08",
+      "fromSide": "right",
+      "toNode": "045adca25a61860a",
+      "toSide": "left"
+    }
+  ]
+}

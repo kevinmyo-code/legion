@@ -7256,3 +7256,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   consolidation reads only the person's words and tool-free replies; one filter keeps vault
   shapes out of memory; the work-laptop fence binds each worker token to its machine.
 - **Built 2026-11-05** (`feat/memory-vault-engine`, engine half). ADRs 0075 and 0076.
+
+## 2026-11-05 - Agents verify phone work on the real phone (Kevin)
+
+- **Asked:** *"yeah do the phone driving skill plus screen map"*, after a talk on trusting agents
+  (a skill to drive the real app, a feature map, a skill that keeps the map current). Map
+  `.scratch/phone-verify/`.
+- **Decided in the map, open to Kevin:** plain adb and Python stdlib, no Maestro or Appium (they
+  put a server on the phone); `open` uses the `EXTRA_ROUTE` deep link by default, taps on
+  request; the rails are code: no vault tap but Back, no system settings, sends/pays/deletes
+  only with `--confirmed-by-kevin` after his yes in chat, artifacts only under the gitignored
+  `.phone-artifacts/`; `say` on `fast` uses the typed chat panel; never toggle Matrix mode, never
+  unlock.
+- **Built 2026-11-05** (`feat/phone-verify`): `tools/phone/`, `tools/screen_map.py` and
+  `docs/screen-map.md` (in the commit hook), skills `verify-on-phone` and `maintain-screen-map`,
+  `testTagsAsResourceId` at the window roots.
