@@ -1,3 +1,6 @@
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 plugins {
@@ -145,6 +148,24 @@ android {
         getByName("androidTest") {
             assets.srcDirs("$projectDir/schemas")
         }
+    }
+}
+
+// Head unit OTA (alfred-ota ticket 08, ADR 0072): the updater only installs a HIGHER versionCode,
+// so `fast` and `release` take theirs from the UTC build time as `yyDDDHHmm` (two-digit year, day
+// of year, hour, minute), the phone's form (app/build.gradle.kts): 2026-11-06 12:00 UTC is
+// 263101200. Monotonic, under Android's 2,100,000,000 cap until 2099. Both ABI split outputs get
+// the same code. `debug` keeps 1 and never updates itself (update/UpdateRules.kt). versionName is
+// unchanged (`1.0+<sha>`), because `device_logs.app_version_name` already reads it.
+val otaVersionCode: Int = ZonedDateTime.now(ZoneOffset.UTC)
+    .format(DateTimeFormatter.ofPattern("yyDDDHHmm")).toInt()
+
+androidComponents {
+    onVariants(selector().withBuildType("fast")) { variant ->
+        variant.outputs.forEach { it.versionCode.set(otaVersionCode) }
+    }
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { it.versionCode.set(otaVersionCode) }
     }
 }
 

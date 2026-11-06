@@ -164,6 +164,7 @@ private enum class Section {
     SYSTEM_RESET,
     SYSTEM_LOGS,
     SYSTEM_DEVELOPER_TOOLS,
+    SYSTEM_UPDATES,
 }
 
 @Composable
@@ -273,6 +274,7 @@ fun ControlPanel(
             Section.SYSTEM_RESET -> ResetSection(context, onReset) { section = null }
             Section.SYSTEM_LOGS -> SystemLogsSection { section = null }
             Section.SYSTEM_DEVELOPER_TOOLS -> DeveloperToolsSection(context) { section = null }
+            Section.SYSTEM_UPDATES -> SystemUpdatesSection(context) { section = null }
         }
     } else {
         // key(): the toggle rows hold remembered state, and the same slot is reused
@@ -425,6 +427,7 @@ private fun settingsRows(
             openRow("Permissions", "Microphone, media access", Section.SYSTEM_PERMISSIONS),
             openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES),
             openRow("Drive logs", "Upload this unit's own log to your engine after each drive", Section.SYSTEM_LOGS),
+            openRow("Updates", "New versions from your engine, installed on your tap", Section.SYSTEM_UPDATES),
             openRow(
                 "Developer tools",
                 "Android Settings, Developer options, Wireless debugging, ADB status",

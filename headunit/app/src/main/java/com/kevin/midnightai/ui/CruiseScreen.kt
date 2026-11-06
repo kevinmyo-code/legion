@@ -200,6 +200,8 @@ fun CruiseScreen(
     // COMPACT and gets the restructure below. MEDIUM (phone landscape) rides
     // with EXPANDED for now - see ui/WindowSize.kt.
     val sizeClass = LocalSizeClass.current
+    // "UPDATE READY · TAP TO INSTALL" (alfred-ota ticket 08); null while the car is moving.
+    val updatePrompt = rememberUpdatePrompt()
 
     // Voice setup is now optional (2026-07-08 - see MainActivity) - this
     // prompt is the "tap a box" entry point until the driver either
@@ -578,6 +580,7 @@ fun CruiseScreen(
                         setupPrompt = if (showSetupPrompt) {
                             { SetupPromptChip(onStartVoiceSetup, dismissSetupPrompt, Modifier.fillMaxWidth()) }
                         } else null,
+                        updatePrompt = updatePrompt,
                         modifier = Modifier.width(u * 24f).fillMaxHeight(),
                     )
                     Spacer(Modifier.width(u * 1.8f))
@@ -839,6 +842,8 @@ private fun CruiseConsole(
     onRearCamera: () -> Unit,
     onRearCameraPicker: () -> Unit,
     setupPrompt: (@Composable () -> Unit)?,
+    // Head unit OTA (ui/UpdatesEntry.kt): null when no update waits or the car is moving.
+    updatePrompt: UpdatePrompt? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -872,6 +877,7 @@ private fun CruiseConsole(
         }
         Column(verticalArrangement = Arrangement.spacedBy(u * 0.8f)) {
             setupPrompt?.invoke()
+            updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth()) }
             TelemetryChips(u, telemetry)
             PhoneLinkChip(
                 onClick = onOpenPhoneLink,

@@ -63,7 +63,7 @@ Commands:
 
 ```
 ./gradlew assembleDebug            # debug
-./gradlew assembleFast             # sideload build for the head unit
+./gradlew assembleFast -Pnokey     # the car build (always -Pnokey: the car has its own key)
 ./gradlew assembleRelease          # needs the RELEASE_* keys
 ./gradlew assembleDebug -Pnokey    # no baked Gemini key
 ```
@@ -78,6 +78,14 @@ Build types:
 
 ABI splits are on and there is no universal APK. Each build writes two:
 `app-arm64-v8a-<type>.apk` and `app-armeabi-v7a-<type>.apk`. Pick the one matching the device.
+With no native libraries left they are byte-identical today.
+
+Updates over the air (2026-11-06): `fast` and `release` get a build-time versionCode, and the app
+installs a newer published release itself after a tap on the Cruise chip, never while the car
+moves. Publish from the repo root with
+`python tools/release_apk.py --app headunit --apk headunit/app/build/outputs/apk/fast/app-arm64-v8a-fast.apk --notes "..."`
+(see `.scratch/alfred-ota/issues/09-head-unit-updater.md`). The car needs one manual install of a
+build with the updater and the "Install unknown apps" grant for Midnight AI.
 
 Every Kotlin compile runs `openApiGenerate` first, generating the engine models into
 `app/build/openapi-generated/`. To change the contract, see [`openapi/README.md`](openapi/README.md).

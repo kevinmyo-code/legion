@@ -3,11 +3,17 @@
     python tools/release_apk.py --app phone --apk app/build/outputs/apk/fast/app-fast.apk \\
         --notes "fixes the double announce"
     python tools/release_apk.py --app phone --apk <path> --notes "..." --dry-run
+    python tools/release_apk.py --app headunit \\
+        --apk headunit/app/build/outputs/apk/fast/app-arm64-v8a-fast.apk --notes "..."
 
 It builds nothing. In order, it:
   1. checks the APK's signer certificate SHA-256 against `deploy/release/signer.sha256`
-     (apksigner, Android SDK build-tools); a different key is refused, because the phone could
-     never install it over the running app;
+     (apksigner, Android SDK build-tools); a different key is refused, because the device could
+     never install it over the running app. Both `fast` builds (phone and head unit) are signed
+     with this laptop's debug key, so one pin serves both; the head unit's `release.jks` signs
+     only `assembleRelease`, which is not what goes on the car;
+  1b. checks the APK's package is the one `--app` names (aapt2): the phone and head unit share
+     the debug key, so the signer alone cannot tell their APKs apart;
   2. reads the APK's versionCode and versionName (aapt2) and checks the code is higher than the
      newest release on the engine;
   3. computes the APK's sha256;
@@ -46,9 +52,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 PINNED_SIGNER = REPO / "deploy" / "release" / "signer.sha256"
 APPS = ("phone", "headunit")
+# The applicationId each app's APK must carry (app/ and headunit/app/build.gradle.kts).
+PACKAGES = {"phone": "com.kevin.legion", "headunit": "com.kevin.midnightai"}
 
 _SIGNER_RE = re.compile(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]{64,95})")
 _BADGING_RE = re.compile(r"versionCode='(\d+)'\s+versionName='([^']*)'")
+_PACKAGE_RE = re.compile(r"package: name='([^']+)'")
 
 
 class Refused(Exception):
@@ -85,6 +94,13 @@ def parse_badging(aapt2_output: str) -> tuple[int, str]:
     if not match:
         raise Refused("aapt2 printed no versionCode for this APK; is it an APK?")
     return int(match.group(1)), match.group(2)
+
+
+def parse_package(aapt2_output: str) -> str:
+    match = _PACKAGE_RE.search(aapt2_output)
+    if not match:
+        raise Refused("aapt2 printed no package name for this APK; is it an APK?")
+    return match.group(1)
 
 
 def sha256_of(path: Path) -> str:
@@ -205,10 +221,16 @@ def inspect(app: str, apk: Path, notes: str, pinned: str) -> Plan:
     if signers != {pinned}:
         raise Refused(
             f"{apk.name} is signed by {', '.join(sorted(signers))}, not the pinned key {pinned} "
-            f"(deploy/release/signer.sha256). The phone could not install it over the running "
+            f"(deploy/release/signer.sha256). The {app} could not install it over the running "
             f"app. Nothing was uploaded."
         )
-    version_code, version_name = parse_badging(aapt2_output(apk))
+    badging = aapt2_output(apk)
+    package = parse_package(badging)
+    if package != PACKAGES[app]:
+        raise Refused(
+            f"{apk.name} is {package}, not the {app} app ({PACKAGES[app]}). Nothing was uploaded."
+        )
+    version_code, version_name = parse_badging(badging)
     sha256 = sha256_of(apk)
     return Plan(
         app=app,

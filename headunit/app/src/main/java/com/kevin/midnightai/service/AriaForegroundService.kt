@@ -221,6 +221,9 @@ class AriaForegroundService : Service() {
         // Drive log (2026-10-15): periodic logcat snapshot + the startup upload; the drive-end
         // upload is fired from startDriveMonitor's stop branch.
         serviceScope.launch { com.kevin.midnightai.diag.DriveLogLoop.run(this@AriaForegroundService) }
+        // Head unit OTA (alfred-ota ticket 08): check, download and verify the newest release; the
+        // install waits for Kevin's tap on the Cruise chip, never while the car moves.
+        serviceScope.launch { com.kevin.midnightai.update.UpdateGraph.run(this@AriaForegroundService) }
 
         registerDebugTextInput()
 

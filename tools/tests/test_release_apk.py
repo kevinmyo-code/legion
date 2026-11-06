@@ -34,6 +34,11 @@ BADGING = (
     "package: name='com.kevin.legion' versionCode='263091200' versionName='2026-11-05-abc1234' "
     "platformBuildVersionName='16'\n"
 )
+# What aapt2 37.0.0 printed for the head unit's `fast` arm64-v8a split on 2026-11-06 (first line).
+HEADUNIT_BADGING = (
+    "package: name='com.kevin.midnightai' versionCode='263101556' versionName='1.0+72beee95' "
+    "platformBuildVersionName='16' platformBuildVersionCode='36'\n"
+)
 
 
 @pytest.fixture
@@ -54,9 +59,14 @@ def pin(tmp_path):
 def tools(monkeypatch):
     """Fake apksigner/aapt2/gcloud/engine. Returns the record of what was called."""
     calls = {"uploads": [], "requests": []}
-    state = {"signer_output": APKSIGNER_REAL, "latest": None, "post_status": 201}
+    state = {
+        "signer_output": APKSIGNER_REAL,
+        "latest": None,
+        "post_status": 201,
+        "badging": BADGING,
+    }
     monkeypatch.setattr(ra, "apksigner_output", lambda apk: state["signer_output"])
-    monkeypatch.setattr(ra, "aapt2_output", lambda apk: BADGING)
+    monkeypatch.setattr(ra, "aapt2_output", lambda apk: state["badging"])
     monkeypatch.setattr(ra, "upload", lambda apk, dest: calls["uploads"].append(dest))
 
     def _request(method, url, token, body=None):
@@ -197,3 +207,25 @@ def test_main_reports_a_refusal_and_exits_1(apk, pin, tools, capsys):
     )
     assert code == 1
     assert "Refused:" in capsys.readouterr().err
+
+
+def test_the_head_unit_publishes_on_the_same_debug_pin(apk, pin, tools):
+    """Both `fast` builds are signed with the laptop's debug key (headunit/app/build.gradle.kts)."""
+    tools["state"]["badging"] = HEADUNIT_BADGING
+    lines = []
+    assert ra.run(_args(apk, pin, app="headunit", dry_run=True), out=lines.append) == 0
+    text = "\n".join(lines)
+    assert f"signer       {PINNED} (matches the pin)" in text
+    assert "version      263101556 (1.0+72beee95)" in text
+    assert "headunit/263101556-" in text
+    assert tools["uploads"] == [] and tools["requests"] == []
+
+
+def test_an_apk_of_the_other_app_is_refused(apk, pin, tools):
+    """The phone and head unit share the debug key, so only the package tells them apart."""
+    with pytest.raises(ra.Refused, match="com.kevin.legion, not the headunit app"):
+        ra.run(_args(apk, pin, app="headunit", dry_run=True), out=lambda line: None)
+    tools["state"]["badging"] = HEADUNIT_BADGING
+    with pytest.raises(ra.Refused, match="com.kevin.midnightai, not the phone app"):
+        ra.run(_args(apk, pin, dry_run=True), out=lambda line: None)
+    assert tools["uploads"] == [] and tools["requests"] == []

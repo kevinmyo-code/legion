@@ -21,6 +21,16 @@
       "color": "1"
     },
     {
+      "id": "e63ca797248ac211",
+      "type": "file",
+      "file": ".scratch/alfred-ota/issues/09-head-unit-updater.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "e1415f72f65a5f0a",
       "type": "file",
       "file": ".scratch/alfred-ota/issues/02-phone-reads-the-pack.md",
