@@ -35,6 +35,8 @@ GENERATED = [
      "the ticket's YAML frontmatter under .scratch/*/issues/"),
     ("docs/voice.html", "python tools/voice_guide.py",
      "tools/voice_guide_copy.py (user-facing copy) or service/LiveToolbox.kt (the tool itself)"),
+    ("docs/screen-map.md", "python tools/screen_map.py",
+     "tools/screen_map_copy.py (descriptions, reach steps, voice tools) or the app's routes themselves"),
     ("docs/devlog.html", "python tools/devlog.py",
      "nothing - it is built from git log; the commit message is the source"),
     ("docs/adr/adr-index.md", "python tools/obsidian_sync.py",
