@@ -94,10 +94,14 @@ describe('the page modal', () => {
     expect(modal()).toBeNull()
   })
 
-  test('the back gesture closes it, and opening it pushed exactly one entry', () => {
+  test('the back gesture closes it, and opening it pushed exactly one entry', async () => {
     const before = window.history.length
     const { rerender } = render(<Harness lines={[]} />)
     rerender(<Harness lines={[tool(1, DIAGRAM_CARD)]} />)
+    // The push waits a tick (StrictMode runs the effect twice).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
     expect(window.history.length).toBe(before + 1)
     expect((window.history.state as { legionModal?: boolean }).legionModal).toBe(true)
     act(() => {

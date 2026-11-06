@@ -424,3 +424,16 @@ def test_the_page_sends_the_same_continue_line():
     text = try_tsx.read_text(encoding="utf-8")
     assert f"export const CONTINUE_TURN = '{RECRUITER_CONTINUE}'" in text
     assert f"export const OPENING_TURN = '{RECRUITER_OPENER}'" in text
+
+
+def test_legion_docs_over_mcp_never_points_at_show_diagram(settings, household_user):
+    """`/mcp` callers (the phone, the head unit, Claude Code) have no show_diagram, so the
+    nudge to show one is for the web door alone."""
+    from tests.test_engine_mcp import call, client_with
+
+    settings.LEGION_MCP = True
+    query = {"query": "Go one level deeper, what runs where"}
+    is_error, text, structured = call(client_with(household_user), "legion_docs", query)
+    assert is_error is False
+    assert "show_diagram" not in text
+    assert "diagrams" not in (structured or {})

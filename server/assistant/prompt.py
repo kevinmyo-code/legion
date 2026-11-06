@@ -149,8 +149,8 @@ RECRUITER_CONTINUE = "(The visitor started another conversation on the same visi
 RECRUITER_CONTINUE_RULE = (
     f"The line {RECRUITER_CONTINUE} is also sent by the page, never said by the visitor: they "
     "were already greeted and told about recording, so do not greet them again or repeat the "
-    "recording notice. If it names their last question, carry on from it; otherwise say in a "
-    "few words that you are ready. "
+    "recording notice. If it names their last question, do not answer it again: say in a few "
+    "words that you can pick up from there; otherwise say in a few words that you are ready. "
 )
 
 RECRUITER_FRAME = (

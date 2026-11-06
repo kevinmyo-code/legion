@@ -69,14 +69,19 @@ export function ScreenModalProvider({
   const pushed = useRef(false)
   useEffect(() => {
     if (!open) return
-    pushModalEntry()
-    pushed.current = true
+    // Deferred a tick: React's StrictMode runs this effect, its cleanup, and it again; pushing
+    // at once would have the first cleanup's back() land after the second push and close it.
+    const timer = setTimeout(() => {
+      pushModalEntry()
+      pushed.current = true
+    }, 0)
     const onPop = () => {
       pushed.current = false
       setShown(null)
     }
     window.addEventListener('popstate', onPop)
     return () => {
+      clearTimeout(timer)
       window.removeEventListener('popstate', onPop)
       if (pushed.current) {
         pushed.current = false

@@ -2093,12 +2093,16 @@ def _legion_docs(request, args) -> ToolResult:
 
     body = "\n\n".join(f"[{i}] {p.label}\n{p.text}" for i, p in enumerate(passages, 1))
     structured = {"query": query, "passages": [p.as_dict() for p in passages]}
-    views = suggested_views(passages, query)
+    # `/mcp` callers (the phone, the head unit, Claude Code) have no show_diagram
+    # (`engine_mcp.server.SCREEN_ONLY_TOOLS`): never point them at it.
+    on_screen = not str(getattr(request, "path", "") or "").startswith("/mcp")
+    views = suggested_views(passages, query) if on_screen else []
     if views:
         structured["diagrams"] = [{"project": p, "view": v} for p, v in views]
+    nudge = suggestion_words(passages, query) if on_screen else ""
     return ok(
         f"{len(passages)} passage(s) from LEGION's design docs for {query!r}. {DOCS_CONTRACT}"
-        f"{suggestion_words(passages, query)}\n\n{body}",
+        f"{nudge}\n\n{body}",
         structured,
     )
 
