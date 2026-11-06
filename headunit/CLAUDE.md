@@ -76,7 +76,7 @@ tier, paywall copy, conversion line, the $0.17/trial arithmetic) is history: ful
 | Layer | Choice | Notes |
 |---|---|---|
 | Platform | Android, Kotlin, Compose | Head unit is our home screen |
-| Voice AI | Gemini Live WebSocket STS | Server VAD, half-duplex, ~2s latency, 3min warm-idle |
+| Voice AI | Gemini Live WebSocket STS, `models/gemini-3.8-live` (the phone's, since 2026-11-06) | Server VAD, half-duplex, ~2s latency, 3min warm-idle. 3.8 is not a drop-in: every tool declaration is stamped `BLOCKING`, and `thinkingConfig` / `proactivity` / `enableAffectiveDialog` are never sent (`service/LiveSetup.kt`, `LiveSetupTest`) |
 | Sub-agents | Gemini Flash REST | One-shot workers via SubAgent.kt; investigate-loop for the four car agents |
 | BYO key | FirstRunScreen paste + 1-token ping | KeyVault (Keystore AES/GCM), direct-to-Google only |
 | Local DB | Room v13 (`midnight_ai_database`) | Additive migrations from v6 onward (exportSchema + `schemas/` + MigrationTest); v6 added the mixtape tables, v10 added `drive_reassignments` + `vehicles.archived`, v12 added `maintenance_items.neverDone`, v13 added `drives` |
@@ -114,7 +114,7 @@ Half-duplex. Server VAD ends turns. Talk = tap Cruise avatar (or long-press in L
 class SubAgent(
     systemInstruction: String = "",
     useSearch: Boolean = true,
-    model: String = DEFAULT_MODEL,  // "gemini-3.5-flash-lite" (bumped 2026-07-22)
+    model: String = DEFAULT_MODEL,  // "gemini-3.5-flash-lite" (bumped 2026-07-22); one retry on FALLBACK_MODEL "gemini-3.8-flash" after a 429 or 500/503 (2026-11-06, the phone's fallback)
 )
 suspend fun ask(context: String, question: String): String?
 suspend fun investigate(...): AgentResult  // bounded function-calling loop
@@ -735,8 +735,10 @@ app/src/main/java/com/kevin/midnightai/
 ```
 
 **Build** (see `README.md` for setup and the `local.properties` keys):
-- `gradlew assembleDebug` - debug. `gradlew assembleFast` - the head-unit sideload build (not
-  debuggable, debug-signed so it installs over a debug install). `gradlew assembleRelease` needs the
+- `gradlew assembleDebug` - debug. `gradlew assembleFast -Pnokey` - the car build (not
+  debuggable, debug-signed so it installs over a debug install). **Always `-Pnokey` for the car
+  (Kevin, 2026-11-06):** the car has its own Gemini key saved in Settings, and a car build is what
+  gets published to the engine's bucket, so it must carry no dev key. `gradlew assembleRelease` needs the
   `RELEASE_*` keys.
 - ABI splits are on, no universal APK: one `arm64-v8a` and one `armeabi-v7a` APK per build. Since
   the native libraries left (sherpa-onnx, Mapbox) the two are byte-identical (16.7 MB `fast`,

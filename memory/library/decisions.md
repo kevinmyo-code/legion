@@ -7375,3 +7375,21 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
     internet is the phone's hotspot; a toggle switches it to Wi-Fi only. The APK is 16.7 MB.
   - Same debug-key pin as the phone (`deploy/release/signer.sha256`): the head unit's `fast` is
     debug-signed; its own `release.jks` signs only `assembleRelease`, which is not on the car.
+
+## 2026-11-06 - Head unit car builds carry no Gemini key; the head unit moves to the phone's models (Kevin)
+
+- **Ruled (Kevin):** the car has its own Gemini key saved in Settings, so **every car build is
+  `assembleFast -Pnokey`**. A car build is what `tools/release_apk.py --app headunit` publishes to
+  the engine's bucket, and it must carry no dev key. Written into ticket
+  `.scratch/alfred-ota/issues/09-head-unit-updater.md`, `headunit/CLAUDE.md` section 15 and
+  `headunit/README.md`.
+- **Asked:** *"seemed the car build had outdated models? can u check"*. It had: Live ran
+  `gemini-3.1-flash-live-preview`; the phone moved to `gemini-3.8-live` on 2026-09-27 (`29057645`).
+- **Built on `feat/headunit-ota`:** Live on `models/gemini-3.8-live` with the phone's 3.8 rules
+  (every declaration `BLOCKING`; no `thinkingConfig`, `proactivity` or `enableAffectiveDialog`;
+  root `voiceActivity` ACTIVITY_START cancels the idle timer), in `service/LiveSetup.kt`.
+  SubAgent keeps `gemini-3.5-flash-lite` (the phone's default too; still the newest Flash-Lite)
+  and gains the phone's one retry on `gemini-3.8-flash` after a 429 or 500/503. The key check
+  stays on `gemini-3.5-flash-lite`.
+- **Not the phone's, on purpose:** the head unit has no NON_BLOCKING read tools (ADR 0065 is the
+  phone's), and its fallback is per POST, not per call.

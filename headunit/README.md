@@ -63,7 +63,7 @@ Commands:
 
 ```
 ./gradlew assembleDebug            # debug
-./gradlew assembleFast             # sideload build for the head unit
+./gradlew assembleFast -Pnokey     # the car build (always -Pnokey: the car has its own key)
 ./gradlew assembleRelease          # needs the RELEASE_* keys
 ./gradlew assembleDebug -Pnokey    # no baked Gemini key
 ```

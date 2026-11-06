@@ -4,7 +4,7 @@ ticket: "09"
 title: "Head unit updater: check, download, verify, tap to install"
 type: build
 status: built
-status-detail: "built 2026-11-06 on feat/headunit-ota, 27 JVM tests green, fast APK built, publisher dry-run passed. Owed: Kevin's one manual install and the Install-unknown-apps grant on the car; the first real publish; the on-device run below"
+status-detail: "built 2026-11-06 on feat/headunit-ota with the Live move to gemini-3.8-live, 39 targeted JVM tests green, fast -Pnokey APK 263101640 built, publisher dry-run passed. Owed: Kevin's one manual install and the Install-unknown-apps grant on the car; the first real publish; the on-device run below"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -80,7 +80,7 @@ The `fast` build is what goes on the car. Both ABI splits are byte-identical tod
 libraries), so publish the arm64 one. From the repo root:
 
 ```
-cd headunit && ./gradlew assembleFast && cd ..
+cd headunit && ./gradlew assembleFast -Pnokey && cd ..
 python tools/release_apk.py --app headunit \
     --apk headunit/app/build/outputs/apk/fast/app-arm64-v8a-fast.apk \
     --notes "what this release fixes, one line"
@@ -89,17 +89,18 @@ python tools/release_apk.py --app headunit \
 with `LEGION_ENGINE_URL`, `LEGION_ENGINE_TOKEN` (an owner's token) and `LEGION_APK_BUCKET` set
 (ticket 04). Add `--dry-run` to check the file only.
 
-Dry run, 2026-11-06, against the APK built at `72beee95`:
+Dry run, 2026-11-06, against the `-Pnokey` APK built at `6ba0998f` (updater plus the Live move to
+`gemini-3.8-live`):
 
 ```
 signer       fd819ada7fdbf98f4b072b511d2dff33cb3dc68b720b8a9a0ff862ebd03aac01 (matches the pin)
-version      263101556 (1.0+72beee95)
-sha256       984d670a0273b55fd7d22b12d7217c99e4b45fc8969a667a7082fc47c2f214d9
-size         16745089 bytes
+version      263101640 (1.0+6ba0998f)
+sha256       81353012f77cc09b9abdbc943888bb7a2f84a6ed47813b507e57291ea8163669
+size         16744577 bytes
 --dry-run: the file checks above ran; nothing below did.
 [skipped] the engine's newest release was not read, so the versionCode is unchecked
-[would]   gcloud storage cp headunit\app\build\outputs\apk\fast\app-arm64-v8a-fast.apk gs://<LEGION_APK_BUCKET>/headunit/263101556-984d670a0273.apk
-[would]   POST <LEGION_ENGINE_URL>/api/releases/ {'app': 'headunit', 'version_code': 263101556, 'version_name': '1.0+72beee95', 'sha256': '984d670a0273b55fd7d22b12d7217c99e4b45fc8969a667a7082fc47c2f214d9', 'size_bytes': 16745089, 'object_name': 'headunit/263101556-984d670a0273.apk', 'notes': 'first OTA build of the head unit', 'signer_sha256': 'fd819ada7fdbf98f4b072b511d2dff33cb3dc68b720b8a9a0ff862ebd03aac01'}
+[would]   gcloud storage cp headunit\app\build\outputs\apk\fast\app-arm64-v8a-fast.apk gs://<LEGION_APK_BUCKET>/headunit/263101640-81353012f77c.apk
+[would]   POST <LEGION_ENGINE_URL>/api/releases/ {'app': 'headunit', 'version_code': 263101640, 'version_name': '1.0+6ba0998f', 'sha256': '81353012f77cc09b9abdbc943888bb7a2f84a6ed47813b507e57291ea8163669', 'size_bytes': 16744577, 'object_name': 'headunit/263101640-81353012f77c.apk', 'notes': 'head unit OTA updater; Live on gemini-3.8-live', 'signer_sha256': 'fd819ada7fdbf98f4b072b511d2dff33cb3dc68b720b8a9a0ff862ebd03aac01'}
 ```
 
 The signer pin is the phone's (`deploy/release/signer.sha256`): the head unit's `fast` is signed
@@ -110,7 +111,7 @@ what goes on the car. The publisher now also refuses an APK whose package is not
 ## Kevin, once, on the car
 
 1. Copy `app-arm64-v8a-fast.apk` from this branch's build to the car and install it by hand, as
-   today. It is the last manual install. The installed build must be version 263101556 or later;
+   today. It is the last manual install. The installed build must be version 263101640 or later;
    the car's current build is versionCode 1 and never updates itself.
 2. Settings, System, Updates, Allow installs, OPEN ANDROID SETTING: switch on "Allow from this
    source" for Midnight AI.
@@ -121,10 +122,21 @@ laptop's debug key (reasoned, not checked: there is no adb on the car). Then the
 an uninstall, which wipes the Keystore secrets, sign-ins and the Room database. Stop and decide
 before uninstalling.
 
-**Open question for Kevin:** this APK was built without `-Pnokey`, as every car build so far, so
-it carries the dev Gemini key from `local.properties` as the fallback when no key is saved in
-Settings. Publishing it puts that key in the private bucket. If the car has its own key saved
-(Settings, Companion, AI power & plan), build releases with `assembleFast -Pnokey` instead.
+**Car builds are `-Pnokey` (Kevin, 2026-11-06):** the car has its own Gemini key saved in
+Settings, so a car build carries no dev key, and no published APK puts one in the bucket. Without
+`-Pnokey` a build bakes the `local.properties` key in as the fallback when none is saved.
+
+## Also on this branch: the phone's models (Kevin, 2026-11-06)
+
+*"seemed the car build had outdated models? can u check"*, so Kevin's one manual install carries
+both. Live moved from `gemini-3.1-flash-live-preview` to `models/gemini-3.8-live` with the phone's
+3.8 rules (`service/LiveSetup.kt`): every declaration `BLOCKING`, no `thinkingConfig` /
+`proactivity` / `enableAffectiveDialog`, root `voiceActivity` ACTIVITY_START cancels the idle
+timer. SubAgent keeps `gemini-3.5-flash-lite` (the phone's default too) and retries once on
+`gemini-3.8-flash` after a 429 or 500/503. `GeminiKeyValidator` stays on `gemini-3.5-flash-lite`.
+Tests: `LiveSetupTest` (6), `SubAgentFallbackTest` (6). On-device owed: 3.8-live accepts the setup
+on the car, holds the session and speaks an opener; a tool call (say `get_health`) answers after its
+result, not before.
 
 ## Verification
 
@@ -133,7 +145,10 @@ Settings. Publishing it puts that key in the private bucket. If the car has its 
   sends the token and resumes with Range). 27 tests, 0 failures, from the JUnit XML.
 - Publisher: `tools/tests/test_release_apk.py`, 14 passed (2 new: the head unit on the debug pin,
   the wrong app refused).
-- `assembleFast`: both splits 16,745,089 bytes, versionCode 263101556, signer `fd819ada...aac01`.
+- `assembleFast -Pnokey`: both splits 16,744,577 bytes and byte-identical, versionCode 263101640,
+  signer `fd819ada...aac01`. No dev key inside: `BuildConfig.GEMINI_API_KEY` is empty in the dex,
+  and no zip entry contains the `local.properties` key (the one key-shaped string, in
+  `resources.arsc`, is the Firebase key from `google-services.json`).
 - **On-device, owed (Kevin):**
   1. The manual install above, the grant, then publish a second build.
   2. Parked, ignition on: within a minute of start the Cruise chip reads UPDATE READY. Tap it.
