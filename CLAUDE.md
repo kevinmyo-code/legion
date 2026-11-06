@@ -111,9 +111,11 @@ device model in a prompt had three separate agents reporting work on a phone tha
   clock is a UTC offset, the place comes from `LocationController`, and with no fix it says the
   location is unknown rather than guessing one.
 - **Aspects:** fleet (OBD, car, maintenance, drives), ledger (money), pantry (groceries and
-  macros), notes, dates, places. Six domains, and the list is a decision - a seventh is a ruling,
-  not a refactor. **Where each one stores its data is not recorded here**; it has moved twice and
-  this table was wrong both times. Read the controller.
+  macros), notes, dates, places, and **body** (weight, food, sleep, training; Kevin, 2026-11-05,
+  ADR 0077). Seven domains, and the list is a decision - an eighth is a ruling, not a refactor.
+  Body's rows are household-shared because only Kevin logs them (*"8 no"*); a second member
+  logging needs an owner column first. **Where each one stores its data is not recorded here**; it
+  has moved twice and this table was wrong both times. Read the controller.
 - **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.

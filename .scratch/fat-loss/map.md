@@ -88,7 +88,8 @@ against his goal, and one sentence stops it forever. The Body tab shows this at 
 
 All under `/api/body/coach/`, household-scoped, device token or session. Weights on the wire are
 **lbs** (kg readings converted, never averaged raw); lengths on the wire are cm and inches, stored
-as integer millimetres; rates are percent of bodyweight per week as decimal strings. Every
+as integer millimetres; kcal and grams are integers, weights and lengths JSON numbers to 1 dp,
+rates percent of bodyweight per week to 2 dp. Every
 estimate carries `"estimate": true` and a `basis` word; every number a figure is built from is
 returned beside it.
 

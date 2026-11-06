@@ -1,0 +1,44 @@
+---
+status: accepted
+decided: 2026-11-05
+decided-by: Kevin
+supersedes: []
+source: "[[decisions#2026-11-05 - The fat-loss loop; Body is the seventh aspect (Kevin)]]"
+tags: [adr]
+---
+
+# 77. Body is the seventh aspect
+
+## Standing
+
+ACCEPTED 2026-11-05. Map `.scratch/fat-loss/`. CLAUDE.md section 1 lists seven aspects.
+
+## Context
+
+CLAUDE.md section 1 listed six domains (fleet, ledger, pantry, notes, dates, places) and said a
+seventh is a ruling, not a refactor. Body (bodyweight, meals, sleep, workouts and the BIO goals)
+has had its own tab, tables, advisor and plan generator since August without being on that list,
+so documents disagreed about whether it was an aspect at all (the 2026-08-24 cutover said Body had
+"no engine-native aspect yet"). The fat-loss loop adds a profile, an energy estimate, a weight
+trend and proposals to it. Kevin, 2026-11-05, to the question whether Body is the seventh aspect:
+*"10 ok"*.
+
+## Decision
+
+- **Body is an aspect** with the six others. Its tables are on the engine; its business rules
+  (energy estimate, trend, adjustment proposals, the weekly line's facts) live in Django once
+  (`server/body_coach/`), and the phone reads them.
+- **Its rows are household-shared**, like the other aspects' hand-made rows (ADR 0052), because
+  only Kevin logs body data (Kevin, 2026-11-05, *"8 no"* to his wife using it). **This rests on that
+  ruling**: before a second member logs weight, meals or waist, those tables need an owner column.
+  The body profile (height, sex, birth year, activity) is one row per member, private to that
+  member, from the start.
+- **What reaches a model:** weight, steps, sleep and daily totals may go to the engine and Gemini.
+  Heart rate never does.
+
+## Consequences
+
+- The section 1 list is seven, and an eighth is again a ruling.
+- Everything on Body that is not measured (calorie and protein figures, maintenance, a suggested
+  target) is an estimate and says so (CLAUDE.md section 4 rule 5).
+- No Health Connect, scale or watch integration until Kevin has one (parked in the map).

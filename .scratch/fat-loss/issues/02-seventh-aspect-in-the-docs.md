@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "02"
 title: "Body is the seventh aspect, in the docs"
 type: build
-status: open
-status-detail: ""
+status: resolved
+status-detail: "CLAUDE.md section 1, ADR 0077, decisions.md, glossary and cutover5 corrected 2026-11-05; docs_check shows only the two pre-existing ADR 0061 paths"
 blockers: []
 blocked-by: []
 tags: [ticket]

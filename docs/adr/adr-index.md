@@ -82,6 +82,7 @@ Format and the test for whether something deserves an ADR:
 | 0074 | [[0074-alfred-builds-alfred\|Alfred builds Alfred: one yes ships a change]] | accepted | 2026-11-05 | - |
 | 0075 | [[0075-memory-lives-on-the-engine\|Memory lives on the engine, private to the member it is about]] | accepted | 2026-11-05 | - |
 | 0076 | [[0076-the-id-vault\|The ID vault: phone only, behind the fingerprint]] | accepted | 2026-11-05 | - |
+| 0077 | [[0077-body-is-the-seventh-aspect\|Body is the seventh aspect]] | accepted | 2026-11-05 | - |
 
 ## Superseded
 

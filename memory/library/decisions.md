@@ -7271,3 +7271,23 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Built 2026-11-05** (`feat/phone-verify`): `tools/phone/`, `tools/screen_map.py` and
   `docs/screen-map.md` (in the commit hook), skills `verify-on-phone` and `maintain-screen-map`,
   `testTagsAsResourceId` at the window roots.
+
+## 2026-11-05 - The fat-loss loop; Body is the seventh aspect (Kevin)
+
+- **Asked:** the goal *"get lean, keep muscle"*; an inventory and proposal for the Body side, and
+  Kevin's answers to its twelve questions the same day. Later: *"revamp body screens too then,
+  today it has a bunch of checklists and the visuals are a bit hard to understand"*. Map
+  `.scratch/fat-loss/`.
+- **Ruled:** Body is the seventh CLAUDE.md section 1 aspect (*"10 ok"*); no syncing scale, no watch
+  (*"4 no"*), so no Health Connect now (parked); food logging *"mostly voice + saved meals"*, kcal and
+  protein only, carbs and fat optional; gym access, three full-body strength days by default;
+  *"i can follow any kind of diet i dont have food preferences"*; his wife won't use it (*"8 no"*),
+  so the body tables stay household-shared and **that rests on this ruling**; a Monday 8 am trend
+  line, on, silenceable in one instruction; weight, steps, sleep and daily totals may go to the
+  engine and Gemini, never heart rate; no medical condition or medication (*"12 no"*). A weekly
+  waist measurement is a second anchor. **His personal numbers stay out of the public repo.**
+- **Decided in the map, open to Kevin:** a new Django-managed `body_coach` app; the calculator,
+  trend, adaptation and weekly-line facts live on the engine once; voice writes ride `ask_engine`
+  (engine tools), not `ask_body`, because writes came out of the dispatchers on 2026-08-18; the plan
+  generator never picks a calorie number; the Body screen waits for Kevin's pick of a prototype.
+  ADR 0077.

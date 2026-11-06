@@ -16,7 +16,7 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 
 | Term | Gloss | Defined in |
 |---|---|---|
-| **aspect** | a life domain LEGION keeps records for. Not "module", not "feature". CLAUDE.md §1 owns the list; the sync layer's `ASPECT_*` keys are a wider, differently-named set and are not it | CLAUDE.md §1, `backend/engine/EngineBackends.kt` |
+| **aspect** | a life domain LEGION keeps records for, seven of them since body joined (2026-11-05). Not "module", not "feature". CLAUDE.md §1 owns the list; the sync layer's `ASPECT_*` keys are a wider, differently-named set and are not it | CLAUDE.md §1, `backend/engine/EngineBackends.kt` |
 | **LEGION** | the app. **Not** the assistant's name | CLAUDE.md §1, [[0020-companion-identity-per-profile]] |
 | **companion** | the thing you talk to. User-named per profile. Never hardcode a name | [[0020-companion-identity-per-profile]] |
 | **register band** | "Alfred/JARVIS" names a *tone*, not a character. `ai/Personas.kt` holds the copy | CLAUDE.md §1 |
