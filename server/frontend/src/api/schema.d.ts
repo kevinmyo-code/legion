@@ -1401,7 +1401,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The report (HTML, sandboxed) or the resume (PDF, a download) */
+        /** The report (HTML, sandboxed), the resume (PDF, a download) or its page (PNG) */
         get: operations["api_demo_asset_retrieve"];
         put?: never;
         post?: never;
@@ -7675,6 +7675,8 @@ export interface components {
             report: string | null;
             /** @description `/api/demo/asset/resume`, or null when none is loaded. */
             resume: string | null;
+            /** @description `/api/demo/asset/resume_image` (the resume's page as a PNG, for the resume modal), or null when none is loaded. */
+            resume_image: string | null;
         };
         RecruiterExperience: {
             when: string;
@@ -11729,13 +11731,13 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                kind: "report" | "resume";
+                kind: "report" | "resume" | "resume_image";
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description `report`: the stored HTML, with `Content-Security-Policy: sandbox allow-scripts` and `X-Content-Type-Options: nosniff`. `resume`: the stored PDF, as an attachment named "Kevin-Win-Resume.pdf". */
+            /** @description `report`: the stored HTML, with `Content-Security-Policy: sandbox allow-scripts` and `X-Content-Type-Options: nosniff`. `resume`: the stored PDF, as an attachment named "Kevin-Win-Resume.pdf". `resume_image`: the page of the resume as a PNG, shown inline. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11743,6 +11745,7 @@ export interface operations {
                 content: {
                     "text/html": string;
                     "application/pdf": string;
+                    "image/png": string;
                 };
             };
             /** @description Neither a recruiter's visit nor a household owner. */

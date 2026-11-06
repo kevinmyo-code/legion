@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from demo.tools import ABOUT_KEVIN
+from demo.tools import ABOUT_KEVIN, SHOW_RESUME
 from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE
 from household.models import is_recruiter
 from household.recruiter_routes import RECRUITER_DENIED
@@ -53,7 +53,7 @@ WEB_TOOL_NAMES: tuple[str, ...] = tuple(t.name for t in TOOLS if t.name not in E
 
 # The member web surface less what a recruiter's visit may not reach (ADR
 # 0069): every read and write over the household's own rows, in registry
-# order, plus `about_kevin`.
+# order, plus `about_kevin` and `show_resume`.
 #
 # Every registry tool NOT named here is refused for a recruiter. Each one is
 # also named in `RECRUITER_EXCLUDED` below with the reason, and
@@ -67,9 +67,9 @@ WEB_TOOL_NAMES: tuple[str, ...] = tuple(t.name for t in TOOLS if t.name not in E
 # (`household.recruiter_routes`). A tool that reached any of them would be
 # refused here by default.
 #
-# `about_kevin` (ticket 10) is the one tool here that is NOT in the registry:
-# it is for strangers reading about Kevin, so `/mcp` and members' web never
-# list it (`RECRUITER_ONLY_TOOLS`, `demo/tools.py`). `find_track` (ticket 11)
+# `about_kevin` (ticket 10) and `show_resume` (demo-modals) are the tools here
+# NOT in the registry: they are for strangers reading about Kevin, so `/mcp` and
+# members' web never list them (`RECRUITER_ONLY_TOOLS`, `demo/tools.py`). `find_track` (ticket 11)
 # is not built and joins this tuple in its own ticket.
 RECRUITER_TOOLS: tuple[str, ...] = (
     "read_records",
@@ -132,11 +132,14 @@ RECRUITER_TOOLS: tuple[str, ...] = (
     # (`procedures/runner.py`), so a procedure never reaches past this list.
     "run_procedure",
     "about_kevin",
+    # Kevin's one-page resume over the page (demo-modals, Kevin 2026-11-05). Recruiter-only like
+    # `about_kevin`: the files are the visitor's own content version's (`demo/tools.py`).
+    "show_resume",
 )
 
 # Tools a recruiter's assistant may call that no other door has. The tool
 # door runs them through `engine_mcp.tools.run_engine_tool` (`tool_for`).
-RECRUITER_ONLY_TOOLS = {ABOUT_KEVIN.name: ABOUT_KEVIN}
+RECRUITER_ONLY_TOOLS = {ABOUT_KEVIN.name: ABOUT_KEVIN, SHOW_RESUME.name: SHOW_RESUME}
 
 RECRUITER_EXCLUDED: dict[str, str] = {
     "list_tables": (

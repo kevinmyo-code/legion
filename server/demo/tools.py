@@ -67,3 +67,82 @@ ABOUT_KEVIN = EngineTool(
     },
     handler=_about_kevin,
 )
+
+
+# =============================================================================
+# show_resume: Kevin's one-page resume over the page (demo-modals, Kevin 2026-11-05: "asking for
+# the resume should pop up a modal thats scrollable showing my 1 page resume")
+#
+# Recruiters only, like `about_kevin`, and for the same reason. The card carries LINKS, never
+# bytes: the page image and the PDF are `RecruiterContent` files of the visitor's own content
+# version, served by `GET /api/demo/asset/<kind>` behind the same fence as the page. The image
+# is there because Android Chrome draws no PDF inside a page; the PDF stays the download.
+# A version that loaded no resume (the LinkedIn one) is refused in words, and draws nothing.
+# =============================================================================
+
+RESUME_TITLE = "Kevin's resume"
+RESUME_ALT = (
+    "Kevin's one-page resume, as an image of the page. Download the PDF for the same page with "
+    "selectable text."
+)
+
+NO_RESUME = (
+    "Nothing was shown. This version of the page has no resume to show. Say Kevin can share his "
+    "resume directly, and do not describe one."
+)
+
+SHOW_RESUME_DESCRIPTION = (
+    "Opens Kevin's one-page resume over the page, scrollable, with a Download PDF button. Call it "
+    "whenever the visitor asks for, or to see, Kevin's resume or CV. You cannot read it: never "
+    "describe what is on it from this tool; for facts about Kevin, use about_kevin. Say only "
+    "what the result says."
+)
+
+
+def resume_card(row) -> dict | None:
+    """The `resume` card for a content row, or None when it holds no resume at all."""
+    if row is None or row.resume is None:
+        return None
+    return {
+        "card": "resume",
+        "title": RESUME_TITLE,
+        "image": "/api/demo/asset/resume_image" if row.resume_image is not None else None,
+        "pdf": "/api/demo/asset/resume",
+        "alt": RESUME_ALT,
+    }
+
+
+def _show_resume(request, arguments: dict) -> ToolResult:
+    from demo.models import RecruiterContent
+
+    card = resume_card(RecruiterContent.for_user(getattr(request, "user", None)))
+    if card is None:
+        return refused(NO_RESUME)
+    if card["image"] is None:
+        text = (
+            "A box with a Download PDF button for Kevin's resume is open over the page; no image "
+            "of the page is loaded on this engine, so the visitor downloads it to read it. Say so "
+            "in a sentence, and never describe what is on it."
+        )
+    else:
+        text = (
+            "Kevin's one-page resume is on the screen now, over the page, with a Download PDF "
+            "button. Say so in a sentence and offer to answer questions about his experience. You "
+            "cannot see the page: never quote or describe it; facts about Kevin come from "
+            "about_kevin."
+        )
+    return ok(text, {"image": card["image"] is not None}, card=card)
+
+
+SHOW_RESUME = EngineTool(
+    name="show_resume",
+    title="Show Kevin's resume",
+    description=SHOW_RESUME_DESCRIPTION,
+    input_schema={
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False,
+    },
+    handler=_show_resume,
+)

@@ -169,6 +169,12 @@ class RecruiterContent(models.Model):
     resume = models.BinaryField(null=True, blank=True)
     resume_content_type = models.CharField(max_length=100, blank=True, default="")
     resume_filename = models.CharField(max_length=200, blank=True, default="")
+    # The resume's one page as a PNG (demo-modals, Kevin 2026-11-05): Android Chrome draws no PDF
+    # inside a page, so the resume modal shows this and keeps the PDF for the download. Rendered
+    # in Kevin's private folder beside resume.pdf, never in the repo.
+    resume_image = models.BinaryField(null=True, blank=True)
+    resume_image_content_type = models.CharField(max_length=100, blank=True, default="")
+    resume_image_filename = models.CharField(max_length=200, blank=True, default="")
     loaded_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
@@ -196,7 +202,7 @@ class RecruiterContent(models.Model):
         return cls.current()
 
     def asset(self, kind: str) -> tuple[bytes, str, str] | None:
-        """(bytes, content type, filename) for `report` or `resume`, or None
+        """(bytes, content type, filename) for `report`, `resume` or `resume_image`, or None
         when that file was not loaded."""
         data = getattr(self, kind)
         if data is None:

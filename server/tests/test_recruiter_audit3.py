@@ -53,7 +53,9 @@ def test_a_procedure_that_reads_nhtsa_gets_time_for_it():
 
 def test_the_recruiter_frame_covers_the_five_answers():
     assert '"Report samples"' in RECRUITER_FRAME  # "I don't have a tool for that report."
-    assert "Download resume" in RECRUITER_FRAME
+    # demo-modals (Kevin, 2026-11-05): the resume opens over the page instead of "it is on the
+    # page"; `tests/test_demo_modals.py` pins the rule.
+    assert "call show_resume" in RECRUITER_FRAME
     assert "last month's figure" in RECRUITER_FRAME  # November had no categorised spend yet
     assert '"unverified" included' in RECRUITER_FRAME  # the caveat it dropped
     assert "no medical disclaimer" in RECRUITER_FRAME  # "Not medical advice or diagnosis."

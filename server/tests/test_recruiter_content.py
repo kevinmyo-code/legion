@@ -268,7 +268,11 @@ def test_content_is_served_without_the_profile(recruiter, tmp_path):
     response = recruiter.get("/api/demo/content")
     assert response.status_code == 200
     expected = {k: v for k, v in fake_content().items() if k != "profile"}
-    expected["assets"] = {"report": "/api/demo/asset/report", "resume": "/api/demo/asset/resume"}
+    expected["assets"] = {
+        "report": "/api/demo/asset/report",
+        "resume": "/api/demo/asset/resume",
+        "resume_image": None,
+    }
     assert response.json() == expected
     assert "pretend work" not in response.content.decode()
 
@@ -285,7 +289,8 @@ def test_name_and_phone_are_served_without_the_profile(recruiter, tmp_path):
 
 def test_assets_are_null_when_not_loaded(recruiter, tmp_path):
     load_fake(tmp_path, report=False, resume=False)
-    assert recruiter.get("/api/demo/content").json()["assets"] == {"report": None, "resume": None}
+    assets = recruiter.get("/api/demo/content").json()["assets"]
+    assert assets == {"report": None, "resume": None, "resume_image": None}
     missing = recruiter.get("/api/demo/asset/resume")
     assert missing.status_code == 404
     assert missing.data["detail"].startswith("Nothing was read.")
@@ -568,7 +573,7 @@ def test_a_labelled_code_reads_its_own_version_and_the_resume_code_the_full(db, 
     page = stranger.get("/api/demo/content")
     assert page.status_code == 200
     assert "work" not in page.data
-    assert page.data["assets"] == {"report": None, "resume": None}
+    assert page.data["assets"] == {"report": None, "resume": None, "resume_image": None}
     assert stranger.get("/api/demo/asset/resume").status_code == 404
     assert stranger.get("/api/demo/asset/report").status_code == 404
     about = _tool(stranger, "about_kevin").data["text"]

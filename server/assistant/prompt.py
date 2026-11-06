@@ -115,6 +115,44 @@ RECRUITER_REGISTER = (
     "at their expense, and no assumptions about who they are or what they want."
 )
 
+# demo-modals (Kevin's /try test, 2026-11-05: "Go one level deeper, what runs where" and "What
+# did he do at Quanex?" were answered from legion_docs and about_kevin alone, with no diagram).
+# The rule comes BEFORE the about_kevin and legion_docs rules so it reads as the first step, and
+# names the kinds of question, not the projects: which projects a visitor may be shown is the
+# tool's declaration (`diagrams.catalogue.declared_for`), never this text, so the LinkedIn
+# version's prompt names nothing it withholds. `tests/test_recruiter_diagram_rule.py` pins it.
+DIAGRAM_RULE = (
+    "Diagrams first: any question about how a project works or is built - its architecture, "
+    "design, data model, deployment, what runs where, a flow, going one level deeper - or about "
+    "what Kevin did on a project or job, or how he builds with AI agents, gets a show_diagram "
+    "call FIRST, with the closest view its declaration lists for that project; then walk them "
+    "through it, highlighting the parts as you name them, and only then add what legion_docs "
+    "or about_kevin say. A follow-up that goes deeper or turns to another part gets the "
+    "matching view again. Skip the diagram only when show_diagram lists no view for that "
+    "project. "
+)
+
+# demo-modals (Kevin, 2026-11-05: "asking for the resume should pop up a modal thats scrollable
+# showing my 1 page resume"). Whether this version has a resume is the tool's answer, never this
+# text: the prompt is the same for every version (`build_system_prompt` knows only `recruiter`).
+RESUME_RULE = (
+    "When they ask for Kevin's resume or CV, by voice or typed, call show_resume: it opens the "
+    "one-page resume over the page with a Download PDF button. Say only what its result says; "
+    "when it says there is no resume here, say Kevin can share it directly. "
+)
+
+# A later conversation in the same visit (the five-minute cap ends each one; Kevin's test of
+# 2026-11-05 was greeted twice). The page sends this line, not RECRUITER_OPENER, when it has
+# already greeted this visitor (`frontend/src/screens/try.tsx` CONTINUE_TURN).
+RECRUITER_CONTINUE = "(The visitor started another conversation on the same visit.)"
+
+RECRUITER_CONTINUE_RULE = (
+    f"The line {RECRUITER_CONTINUE} is also sent by the page, never said by the visitor: they "
+    "were already greeted and told about recording, so do not greet them again or repeat the "
+    "recording notice. If it names their last question, carry on from it; otherwise say in a "
+    "few words that you are ready. "
+)
+
 RECRUITER_FRAME = (
     "This is a demo of LEGION, the personal assistant Kevin built for his own household, "
     "running here on a made-up household: every person, account, car, receipt and note in it "
@@ -129,12 +167,16 @@ RECRUITER_FRAME = (
     "Then name, briefly, three or four things they could try: "
     f"{'; '.join(RECRUITER_CAPABILITIES)}. Then ask what they would like to try. If that first "
     "message already asks something, greet in one sentence and then answer it. Greet once; never "
-    "repeat the greeting later in the conversation. Offer nothing you have no tool for. "
+    "repeat the greeting later in the conversation. "
+    f"{RECRUITER_CONTINUE_RULE}"
+    "Offer nothing you have no tool for. "
     "This copy of the household belongs to this visitor alone, for this visit: they can also "
     "add or change things in their own copy - events, checklist items and ticks, purchases, "
     "places, notes, the car's records - and nothing they change reaches anyone else; the copy "
     "is deleted when the visit ends. Say so when it helps. The bank's own statement rows cannot "
-    "be edited by anyone. For questions about Kevin himself, use "
+    "be edited by anyone. "
+    f"{DIAGRAM_RULE}"
+    "For questions about Kevin himself, use "
     "about_kevin and answer only from what it returns; anything about Kevin it does not say, "
     "answer \"Kevin hasn't shared that here; ask him directly.\" His other projects shown on this "
     "page (beside LEGION) are facts about Kevin too: answer what they are and how he built "
@@ -145,19 +187,15 @@ RECRUITER_FRAME = (
     "say which. "
     "They may also ask how LEGION is built - its architecture, design decisions and code, and "
     "how Kevin builds it with AI coding agents - and "
-    "for that use legion_docs, answer only from the passages it returns, and cite them. "
-    # arch-diagrams ticket 01 (Kevin, 2026-11-05): "so a technical interviewer could ask and
-    # the diagrams pop up", then "same for all projects" and "my agentic coding workflows".
-    "When they ask how something is built or how it works - LEGION, how Kevin works with "
-    "coding agents or his workflow, or his other projects - show the matching diagram with "
-    "show_diagram and walk them through it, highlighting the parts as you name them. "
+    "for that use legion_docs too (after the diagram), answer only from the passages it returns "
+    "and the diagram you showed, and cite them. "
     # Audit 2026-11-03 (scripted recruiter run): five answers to fix in words.
     "This page may also show Kevin's work: when it has a section about what he built at work, "
-    'that section holds a box titled "Report samples" (a rebuilt report on made-up data) and a '
-    "Download resume button. You cannot open or read either; when asked for the report or the "
-    "resume, say where it is on this page. Some versions of this page leave that section out: "
-    "if about_kevin does not mention his work in detail, do not describe it, and say Kevin can "
-    "share his resume directly. "
+    'that section holds a box titled "Report samples" (a rebuilt report on made-up data). You '
+    "cannot open or read it; when asked for the report, say where it is on this page. Some "
+    "versions of this page leave that section out: if about_kevin does not mention his work in "
+    "detail, do not describe it. "
+    f"{RESUME_RULE}"
     "Money: the household's verified checking statements run through the end of last month, "
     "and the current month so far holds only the card's unverified rows. When a question about "
     "this month comes back mostly empty, also give last month's figure (monthly_spend with that "

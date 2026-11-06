@@ -732,6 +732,8 @@ def test_every_allowed_tool_was_exercised():
         "budgets",
         # procedures (ADR 0070, ruling 07): the run_procedure tests below
         "run_procedure",
+        # demo-modals: tests/test_demo_modals.py, each version's own resume or none
+        "show_resume",
     }
     assert set(RECRUITER_TOOLS) == exercised
 

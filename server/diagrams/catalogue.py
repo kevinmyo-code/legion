@@ -24,6 +24,7 @@ version strips all Quanex work, and "leave midcon out of the linkedin one"). `WI
 from __future__ import annotations
 
 import json
+import re
 from functools import cache
 from pathlib import Path
 
@@ -74,6 +75,46 @@ VIEWS: dict[str, dict[str, str]] = {
     },
 }
 
+# How visitors ask for each view, in a few words (demo-modals, Kevin's /try test of 2026-11-05:
+# "Go one level deeper, what runs where" and "What did he do at Quanex?" got no diagram). Said
+# after the view in the tool's description, so the model can match a phrasing to a view. Kept
+# short: every word rides in each recruiter's Live setup. Filtered with the views
+# (`view_words`), so a project a caller is not shown is never named here either.
+ASKS: dict[str, dict[str, tuple[str, ...]]] = {
+    "legion": {
+        "context": ("what is LEGION", "the big picture", "who uses it"),
+        "containers": (
+            "go one level deeper",
+            "what runs where",
+            "deployment",
+            "hosting",
+            "the servers",
+        ),
+        "components": ("the architecture", "walk me through it", "the layers", "the codebase"),
+        "voice_turn": ("what happens when someone talks to it", "the voice loop"),
+        "recruiter_visit": ("how this demo works",),
+        "alfred_builds": ("how Alfred builds Alfred", "self-updates"),
+        "ingestion_gate": ("how bank data gets in", "reconciliation", "verified figures"),
+        "data_model": ("how the data is modeled", "the database", "the schema"),
+        "claude_task_states": ("a Claude task's lifecycle",),
+    },
+    "workflow": {
+        "loop": ("how Kevin builds with AI agents", "his workflow", "his process"),
+        "roles": ("who does what", "the agents' roles"),
+        "knowledge": ("how the agents remember", "rules and docs"),
+        "ticket_to_phone": ("one change from his request to his phone",),
+    },
+    "midcon": {
+        "context": ("the Midcon dashboard", "what it is"),
+        "containers": ("its architecture", "how it is deployed"),
+        "po_status_voice": ("asking about an order by voice",),
+    },
+    "quanex": {
+        "data_flow": ("what he did at Quanex", "his internship", "the data platform"),
+        "publish_gate": ("how a report is checked before it publishes",),
+    },
+}
+
 PUBLIC_PROJECTS = ("legion", "workflow")
 PRIVATE_PROJECTS = ("midcon", "quanex")
 ALL_VIEW_IDS: tuple[str, ...] = tuple(sorted({v for views in VIEWS.values() for v in views}))
@@ -84,12 +125,17 @@ WITHHELD: dict[str, frozenset[str]] = {"linkedin": frozenset({"quanex", "midcon"
 HIGHLIGHT_MAX = 12
 
 
+def _asks(project: str, view: str) -> str:
+    asks = ASKS.get(project, {}).get(view, ())
+    return " (asked as: " + ", ".join(f'"{a}"' for a in asks) + ")" if asks else ""
+
+
 def view_words(views: dict[str, list[str]] | None = None) -> str:
     """The projects' views in words, for the tool's description: every view, or `views`."""
     views = views if views is not None else {p: list(v) for p, v in VIEWS.items()}
     return " ".join(
         f"{project} ({PROJECT_NAMES[project]}): "
-        + "; ".join(f"{view} - {VIEWS[project][view]}" for view in names)
+        + "; ".join(f"{view} - {VIEWS[project][view]}{_asks(project, view)}" for view in names)
         + "."
         for project, names in views.items()
         if names
@@ -284,9 +330,33 @@ ADR_VIEWS: dict[str, tuple[str, str]] = {
 }
 
 
-def suggested_views(passages) -> list[tuple[str, str]]:
-    """The views that draw what these passages describe, best passage first, each once."""
+# The question's own words, checked before the passages (demo-modals: "Go one level deeper, what
+# runs where" found passages about the compose host, and no diagram was shown). First match wins.
+CONTAINERS = ("legion", "containers")
+QUESTION_VIEWS: tuple[tuple[re.Pattern, tuple[str, str]], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), pick)
+    for pattern, pick in (
+        (r"runs? where|deploy|hosting|hosted|\bservers?\b|cloud run|level deeper", CONTAINERS),
+        (r"data model|modell?ed|\bschema|database|\btables?\b|entit", ("legion", "data_model")),
+        (r"talks? to it|\bspeaks?\b|voice (loop|turn)|wake word", ("legion", "voice_turn")),
+        (r"alfred builds? alfred|self.?updat|builds? itself", ("legion", "alfred_builds")),
+        (r"reconcil|ingest|bank (data|feed)", ("legion", "ingestion_gate")),
+        (r"recruiter|this demo|demo visit", ("legion", "recruiter_visit")),
+        (r"request to (his|the) phone|one change", ("workflow", "ticket_to_phone")),
+        (r"\bagents?\b|workflow|claude code|how (does )?kevin build", ("workflow", "loop")),
+        (r"architecture|\blayers\b|codebase|components", ("legion", "components")),
+    )
+)
+
+
+def suggested_views(passages, question: str = "") -> list[tuple[str, str]]:
+    """The views that draw what this question and these passages describe: the question's own
+    words first, then the best passage's, each once, at most two."""
     out: list[tuple[str, str]] = []
+    for pattern, pick in QUESTION_VIEWS:
+        if question and pattern.search(question) and pick in public_views():
+            out.append(pick)
+            break
     for p in passages:
         adr = getattr(p, "adr", None)
         pick = ADR_VIEWS.get(str(adr["number"]).zfill(4)) if adr else PATH_VIEWS.get(p.path)
@@ -295,12 +365,12 @@ def suggested_views(passages) -> list[tuple[str, str]]:
     return out[:2]
 
 
-def suggestion_words(passages) -> str:
-    views = suggested_views(passages)
+def suggestion_words(passages, question: str = "") -> str:
+    views = suggested_views(passages, question)
     if not views:
         return ""
     calls = " or ".join(f'show_diagram(project="{p}", view="{v}")' for p, v in views)
     return (
-        f" A diagram draws this: {calls}. Show it while you explain, and highlight the parts you "
-        f"name."
+        f" A diagram draws this: {calls}. If you have not shown it yet, show it now, before you "
+        f"answer, and highlight the parts you name."
     )

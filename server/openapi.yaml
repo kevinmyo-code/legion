@@ -3390,7 +3390,8 @@ paths:
   /api/demo/asset/{kind}:
     get:
       operationId: api_demo_asset_retrieve
-      summary: The report (HTML, sandboxed) or the resume (PDF, a download)
+      summary: The report (HTML, sandboxed), the resume (PDF, a download) or its page
+        (PNG)
       parameters:
       - in: path
         name: kind
@@ -3399,6 +3400,7 @@ paths:
           enum:
           - report
           - resume
+          - resume_image
         required: true
       tags:
       - demo
@@ -3416,9 +3418,14 @@ paths:
               schema:
                 type: string
                 format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
           description: '`report`: the stored HTML, with `Content-Security-Policy:
             sandbox allow-scripts` and `X-Content-Type-Options: nosniff`. `resume`:
-            the stored PDF, as an attachment named "Kevin-Win-Resume.pdf".'
+            the stored PDF, as an attachment named "Kevin-Win-Resume.pdf". `resume_image`:
+            the page of the resume as a PNG, shown inline.'
         '403':
           content:
             application/json:
@@ -17392,9 +17399,15 @@ components:
           type: string
           nullable: true
           description: '`/api/demo/asset/resume`, or null when none is loaded.'
+        resume_image:
+          type: string
+          nullable: true
+          description: '`/api/demo/asset/resume_image` (the resume''s page as a PNG,
+            for the resume modal), or null when none is loaded.'
       required:
       - report
       - resume
+      - resume_image
     RecruiterExperience:
       type: object
       properties:

@@ -6,7 +6,7 @@ recruiter-demo tickets 07 and 10 (ADR 0068).
   Recruiters only.
 - `GET /api/demo/content`: the page, from `demo.models.RecruiterContent`,
   without `profile` (that is `about_kevin`'s alone).
-- `GET /api/demo/asset/<report|resume>`: the stored bytes.
+- `GET /api/demo/asset/<report|resume|resume_image>`: the stored bytes.
 
 The last two are read by a recruiter's visit AND by a household owner, so
 Kevin can preview the page signed in as himself. A plain member is refused:
@@ -160,6 +160,13 @@ class RecruiterAssetsSerializer(serializers.Serializer):
     resume = serializers.CharField(
         allow_null=True, help_text="`/api/demo/asset/resume`, or null when none is loaded."
     )
+    resume_image = serializers.CharField(
+        allow_null=True,
+        help_text=(
+            "`/api/demo/asset/resume_image` (the resume's page as a PNG, for the resume modal), "
+            "or null when none is loaded."
+        ),
+    )
 
 
 class RecruiterPageSerializer(serializers.Serializer):
@@ -236,7 +243,7 @@ class DemoContentView(APIView):
 _ASSET_200 = (
     "`report`: the stored HTML, with `Content-Security-Policy: sandbox allow-scripts` and "
     f'`X-Content-Type-Options: nosniff`. `resume`: the stored PDF, as an attachment named '
-    f'"{RESUME_DOWNLOAD_NAME}".'
+    f'"{RESUME_DOWNLOAD_NAME}". `resume_image`: the page of the resume as a PNG, shown inline.'
 )
 
 
@@ -247,7 +254,7 @@ class DemoAssetView(APIView):
     @extend_schema(
         tags=DEMO_TAGS,
         operation_id="api_demo_asset_retrieve",
-        summary="The report (HTML, sandboxed) or the resume (PDF, a download)",
+        summary="The report (HTML, sandboxed), the resume (PDF, a download) or its page (PNG)",
         parameters=[
             OpenApiParameter(
                 "kind", OpenApiTypes.STR, OpenApiParameter.PATH, enum=list(ASSET_KINDS)
@@ -258,6 +265,7 @@ class DemoAssetView(APIView):
             (200, "application/pdf"): OpenApiResponse(
                 OpenApiTypes.BINARY, description=_ASSET_200
             ),
+            (200, "image/png"): OpenApiResponse(OpenApiTypes.BINARY, description=_ASSET_200),
             403: OpenApiResponse(
                 DemoRefusalSerializer,
                 description="Neither a recruiter's visit nor a household owner.",
@@ -279,6 +287,7 @@ class DemoAssetView(APIView):
             # as the visitor. Same-origin framing so the page can embed it.
             response["Content-Security-Policy"] = REPORT_CSP
             response["X-Frame-Options"] = "SAMEORIGIN"
-        else:
+        elif kind == "resume":
             response["Content-Disposition"] = f'attachment; filename="{RESUME_DOWNLOAD_NAME}"'
+        # `resume_image` is drawn inline by the resume modal: no disposition.
         return response

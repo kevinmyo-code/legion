@@ -1,7 +1,7 @@
 """The recruiter page's content: its schema, its check, and loading it.
 
 recruiter-demo tickets 07 and 10. Kevin writes `content.json` (and optionally
-`report.html` and `resume.pdf`) in a private folder outside the repo;
+`report.html`, `resume.pdf` and its page as `resume.png`) in a private folder outside the repo;
 `manage.py load_recruiter_content <dir>` checks it against `CONTENT_SCHEMA`
 and upserts `demo.models.RecruiterContent`. Nothing here holds real content.
 
@@ -142,12 +142,17 @@ CONTENT_SCHEMA: dict = _obj(
 
 _VALIDATOR = Draft202012Validator(CONTENT_SCHEMA)
 
-ASSET_KINDS = ("report", "resume")
+ASSET_KINDS = ("report", "resume", "resume_image")
 # (file in the folder, content type it is served with)
 ASSET_FILES = {
     "report": ("report.html", "text/html; charset=utf-8"),
     "resume": ("resume.pdf", "application/pdf"),
+    # The resume's page as an image, for the resume modal (demo-modals): rendered from
+    # resume.pdf in the private folder by Kevin's generator, never committed.
+    "resume_image": ("resume.png", "image/png"),
 }
+
+PNG_MAGIC = bytes([0x89]) + b"PNG" + bytes([0x0D, 0x0A, 0x1A, 0x0A])
 
 
 class ContentInvalid(ValueError):
@@ -221,6 +226,16 @@ def read_folder(folder: Path) -> tuple[dict, dict[str, bytes]]:
             files[kind] = path.read_bytes()
     if "resume" in files and not files["resume"].startswith(b"%PDF-"):
         raise ContentInvalid("Nothing was loaded. resume.pdf does not start like a PDF.")
+    if "resume_image" in files:
+        if not files["resume_image"].startswith(PNG_MAGIC):
+            raise ContentInvalid("Nothing was loaded. resume.png does not start like a PNG.")
+        if "resume" not in files:
+            # The image is a picture OF resume.pdf; alone it would be a resume nobody can
+            # download, and possibly an older one.
+            raise ContentInvalid(
+                "Nothing was loaded. resume.png is in the folder without resume.pdf; render it "
+                "from the PDF beside it, or remove it."
+            )
     return content, files
 
 

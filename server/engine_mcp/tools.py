@@ -2093,12 +2093,12 @@ def _legion_docs(request, args) -> ToolResult:
 
     body = "\n\n".join(f"[{i}] {p.label}\n{p.text}" for i, p in enumerate(passages, 1))
     structured = {"query": query, "passages": [p.as_dict() for p in passages]}
-    views = suggested_views(passages)
+    views = suggested_views(passages, query)
     if views:
         structured["diagrams"] = [{"project": p, "view": v} for p, v in views]
     return ok(
         f"{len(passages)} passage(s) from LEGION's design docs for {query!r}. {DOCS_CONTRACT}"
-        f"{suggestion_words(passages)}\n\n{body}",
+        f"{suggestion_words(passages, query)}\n\n{body}",
         structured,
     )
 
@@ -2907,11 +2907,15 @@ TOOLS: tuple[EngineTool, ...] = (
         name="show_diagram",
         title="Show an architecture diagram",
         description=(
-            "Shows one of Kevin's prepared architecture diagrams on the person's screen, as a "
-            "card beside the conversation, and highlights the parts you name. Use it whenever "
-            "someone asks how something is built or how it works - LEGION's architecture, its "
-            "deployment, the voice loop, the data model, how Kevin works with AI coding agents - "
-            "and walk through it while you explain, naming the parts you highlight. You cannot "
+            "Shows one of Kevin's prepared architecture diagrams over the person's screen and "
+            "highlights the parts you name. Call it FIRST, before any other tool, for every "
+            "question about how a project works or is built - its architecture, design, data "
+            "model, deployment, a flow, what runs where, going a level deeper - and for what "
+            "Kevin did on a project or job listed below, or how he works with AI coding agents. "
+            "Pick the closest view (the phrasings after each view are how people ask for it), "
+            "then walk through it while you explain, naming the parts you highlight. A follow-up "
+            "that goes deeper or asks about another part gets the matching view, shown again. "
+            "You cannot "
             "draw or change a diagram: pick `project` and one of that project's views below. The "
             "result lists the view's part ids; to point at parts, call it again with the same "
             "view and `highlight` set to those ids. If a project or view is not available, say "
