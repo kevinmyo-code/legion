@@ -82,7 +82,7 @@ enum class CueOutcome(val token: String) {
  * map decision D1), kind, category and distance only; a first-party hit (saved place, calendar,
  * suggestion, contact) carries its label, which is the user's own data, and no id. No `detail` (address
  * text) from any source, and no contact's or event's address in a `resolve` reason (D9). A destination's
- * coordinates are logged only for a saved place, whose point is the household's own GPS fix (D2); a
+ * coordinates are logged only for a saved or recent place, whose point is the household's own GPS fix (D2); a
  * search, calendar, suggestion or contact destination is a Mapbox geocode and logs `to=none`.
  * Coordinates are rounded to three decimals (about 110 m). Distance and ETA are logged knowingly against
  * 2.10.1 (D2, risk accepted in words). The query is the user's own words, which `LIVE_AUDIT` already logs.
@@ -342,12 +342,14 @@ class NavAudit(
         fun point(p: GeoPoint): String = String.format(Locale.US, "%.3f,%.3f", p.latitude, p.longitude)
 
         /**
-         * The destination's rounded point only when it is first-party: a saved place, the household's own
-         * GPS fix (map decision D2). Every other source's point is a Mapbox geocode (ToS 2.7.2), and a
-         * contact's is a third party's address (D9): `none`.
+         * The destination's rounded point only when it is first-party: a saved place or a recent place,
+         * both the household's own GPS fix (map decision D2). Every other source's point is a Mapbox
+         * geocode (ToS 2.7.2), and a contact's is a third party's address (D9): `none`.
          */
         fun destinationPoint(d: NavDestination): String =
-            if (d.source == sourceToken(SourceKind.SAVED_PLACE)) point(d.point) else "none"
+            if (d.source in FIRST_PARTY_POINTS) point(d.point) else "none"
+
+        private val FIRST_PARTY_POINTS = setOf(sourceToken(SourceKind.SAVED_PLACE), sourceToken(SourceKind.RECENT))
 
         /** A search destination's `mapbox_id` (ToS 2.7.6, D1), so the route can be tied to the pick; else `none`. */
         fun destinationId(d: NavDestination): String =

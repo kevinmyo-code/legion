@@ -59,6 +59,8 @@ class MapboxNavController(
     private val fix: () -> GeoPoint?,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
     private val audit: NavAudit = NavAudit.OFF,
+    /** An arrival, with the destination and the phone's own fix then: recent places keep it (ticket 13). */
+    private val onArrived: (NavDestination?, GeoPoint?) -> Unit = { _, _ -> },
 ) : NavSdkListener {
     private val guard = NavTripGuard()
     private var sdk: NavSdk? = null
@@ -787,6 +789,7 @@ class MapboxNavController(
         val s = _state.value
         if (!guard.arrived()) return
         audit.arrived()
+        onArrived(s.destination, fix())
         epoch++
         teardown()
         val sentence = "You have arrived at ${s.destination?.name}. ${NavFormat.NOTHING_NAVIGATING}"

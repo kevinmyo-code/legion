@@ -59,7 +59,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/nav-quality/map\|nav-quality]] | [[01-baseline\|01]] | test | Test: a NAV_AUDIT baseline from two weeks on the A25 |
 | [[.scratch/nav-quality/map\|nav-quality]] | [[12-engine-render\|12]] | build | Build: NAV_AUDIT in the engine's device_logs render |
-| [[.scratch/nav-quality/map\|nav-quality]] | [[13-recents-by-arrival-fix\|13]] | build | Build: recent and frequent destinations, kept by the arrival fix |
 | [[.scratch/one-home/map\|one-home]] | [[09-sync-the-feed-subscriptions\|09]] | decision | Decide whether feed subscriptions sync, and build the leg if they do |
 | [[.scratch/one-today/map\|one-today]] | [[02-ticking-an-appointment\|02]] | build | You cannot cross off a calendar item, and the field is not what is missing |
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | Delete what the audit found dead in the day-to-day area |
@@ -194,6 +193,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[01-member-memory-table-and-rest\|01]] | build | Member memory: table and REST |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[05-id-vault-engine\|05]] | build | ID vault on the engine |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[06-vehicle-plate\|06]] | build | Vehicle plate |
+| [[.scratch/nav-quality/map\|nav-quality]] | [[13-recents-by-arrival-fix\|13]] | build | Build: recent and frequent destinations, kept by the arrival fix |
 | [[.scratch/one-home/map\|one-home]] | [[02-rehome-the-orphans\|02]] | build | Rehome the orphans before anything is deleted - the Ask panel first |
 | [[.scratch/one-home/map\|one-home]] | [[03-calendar-becomes-home\|03]] | build | CALENDAR becomes HOME |
 | [[.scratch/one-home/map\|one-home]] | [[05-the-advisor-writes-a-checklist\|05]] | build | An advisor proposes the day's workout list and it lands as a recurring checklist |
@@ -351,6 +351,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/nav-quality/map\|nav-quality]] | [[07-faster-route-and-incidents\|07]] | build | Build: a faster route and incidents ahead, mid-trip  waiting on [[01-baseline\|01]] |
 | [[.scratch/nav-quality/map\|nav-quality]] | [[08-open-now-and-rating\|08]] | build | Build: open now and rating in near-me ranking  waiting on [[03-search-in-one-request\|03]] |
 | [[.scratch/nav-quality/map\|nav-quality]] | [[09-lanes-and-missed-turns\|09]] | build | Build: lanes on the banner, measured by missed turns  waiting on [[01-baseline\|01]] |
+| [[.scratch/nav-quality/map\|nav-quality]] | [[14-recents-voice-and-engine\|14]] | build | Build: forget recent places by voice, and decide their engine copy  waiting on [[13-recents-by-arrival-fix\|13]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
 | [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[13-build-run-traces\|13]] |
 | [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[12-build-runner-and-tool\|12]] |
@@ -467,7 +468,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/matrix-open/map\|matrix-open]] | 6 | 6 | [[.scratch/matrix-open/matrix-open.canvas\|open]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | 15 | 15 | [[.scratch/memory-and-vault/memory-and-vault.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
-| [[.scratch/nav-quality/map\|nav-quality]] | 13 | 10 | [[.scratch/nav-quality/nav-quality.canvas\|open]] |
+| [[.scratch/nav-quality/map\|nav-quality]] | 14 | 11 | [[.scratch/nav-quality/nav-quality.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |

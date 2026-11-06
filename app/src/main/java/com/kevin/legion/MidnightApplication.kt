@@ -143,15 +143,22 @@ class MidnightApplication : Application() {
             sdkFactory = { MapboxNavSdk(this, navMapFeed) },
             fix = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
             audit = navAudit,
+            onArrived = { destination, fix -> recentPlaces.arrived(destination, fix) },
         )
     }
 
-    /** Destination lookup in ticket 03's order: saved places, calendar, calendar suggestions
-     * (2026-10-09), contacts, then Mapbox search. */
+    /** Places searched for and arrived at, by the arrival fix (nav-quality ticket 13). Phone only. */
+    val recentPlaces: com.kevin.legion.navigation.resolve.RecentPlaces by lazy {
+        com.kevin.legion.navigation.resolve.RecentPlaces(com.kevin.legion.navigation.resolve.PrefsRecentPlacesIo(this))
+    }
+
+    /** Destination lookup in ticket 03's order: saved places, recent places (nav-quality ticket 13),
+     * calendar, calendar suggestions (2026-10-09), contacts, then Mapbox search. */
     val navResolver: DestinationResolver by lazy {
         DestinationResolver(
             sources = listOf(
                 SavedPlaceSource(PhonePlacesReader(this)),
+                com.kevin.legion.navigation.resolve.RecentSource(recentPlaces),
                 CalendarSource(PhoneEvents(this)),
                 SuggestionSource(PhoneSuggestions(this)),
                 ContactSource(PhoneContacts(this)),

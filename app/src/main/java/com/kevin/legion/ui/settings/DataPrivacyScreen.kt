@@ -45,6 +45,9 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
 
     // Null until the phone has a copy of the engine's list: "not read yet" is not "nothing remembered".
     var storedMemoryCount by remember { mutableStateOf<Int?>(null) }
+    // Nav-quality ticket 13: places searched for and arrived at, kept on this phone only.
+    val recents = remember { (context.applicationContext as com.kevin.legion.MidnightApplication).recentPlaces }
+    var recentCount by remember { mutableStateOf(recents.all().size) }
     var reloadNonce by remember { mutableStateOf(0) }
 
     // Memory v2 lives on the engine (memory-and-vault ticket 11); this reads the phone's copy of its
@@ -107,6 +110,21 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                     label = "ID vault",
                     status = "Passport, SSN and account numbers, behind your fingerprint",
                     onClick = { com.kevin.legion.ui.vault.VaultActivity.open(context, label = null) },
+                )
+
+                // Nav-quality ticket 13 (decision D4): the hands path to "forget my recent places". One
+                // tap forgets them all; they rebuild from the next arrivals, so a mis-tap costs little.
+                SettingsNavRow(
+                    label = "Recent places",
+                    status = if (recentCount == 0) {
+                        "None kept. Places you search for and arrive at are kept on this phone"
+                    } else {
+                        "$recentCount kept on this phone, by where you arrived. Tap to forget them all"
+                    },
+                    onClick = {
+                        recents.forget()
+                        recentCount = 0
+                    },
                 )
 
                 // Recordings moved off this screen 2026-09-04 (Kevin: "it needs a place on the

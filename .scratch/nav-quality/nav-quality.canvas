@@ -121,6 +121,16 @@
       "color": "1"
     },
     {
+      "id": "afff5b59e556d22b",
+      "type": "file",
+      "file": ".scratch/nav-quality/issues/14-recents-voice-and-engine.md",
+      "x": 520,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "3cdff9a54540693e",
       "type": "file",
       "file": ".scratch/nav-quality/issues/08-open-now-and-rating.md",
@@ -186,6 +196,13 @@
       "fromNode": "0ddaec2153c0bee5",
       "fromSide": "right",
       "toNode": "cd6c989d1d996922",
+      "toSide": "left"
+    },
+    {
+      "id": "a76526d45a830a97",
+      "fromNode": "d99396302c72a88e",
+      "fromSide": "right",
+      "toNode": "afff5b59e556d22b",
       "toSide": "left"
     }
   ]

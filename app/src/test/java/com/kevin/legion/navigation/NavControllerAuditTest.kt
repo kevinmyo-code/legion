@@ -55,6 +55,30 @@ class NavControllerAuditTest {
         assertEquals("2345", last("route_request")["ms"])
     }
 
+    @Test fun anArrivalHandsTheDestinationAndThePhonesOwnFixToRecents() = runBlocking {
+        // Nav-quality ticket 13: the recents store keeps the arrival fix, never the route's point.
+        val arrivals = mutableListOf<Pair<NavDestination?, GeoPoint?>>()
+        val c = MapboxNavController(
+            tokens = tokens,
+            sdkFactory = { sdk },
+            fix = { GeoPoint(29.6, -95.3) },
+            nowMs = { now },
+            audit = audit,
+            onArrived = { d, fix -> arrivals += d to fix },
+        )
+        assertTrue(c.navigate(bank).ok)
+        c.onArrival()
+        c.onArrival() // the progress backup firing too must not record twice
+        assertEquals(1, arrivals.size)
+        assertEquals("Bank", arrivals.single().first?.name)
+        assertEquals(GeoPoint(29.6, -95.3), arrivals.single().second)
+    }
+
+    @Test fun aRecentPlaceLogsItsPointLikeASavedOne() = runBlocking {
+        assertTrue(controller.preview(NavDestination("blue door cafe", 29.7, -95.4, source = "recent")).ok)
+        assertEquals("29.700,-95.400", last("route_request")["to"])
+    }
+
     @Test fun aFailedRequestSaysWhy() = runBlocking {
         sdk.autoReply = { RouteRequestResult.Failed(RouteFailure.OFFLINE, "no network") }
         assertTrue(!controller.preview(home).ok)

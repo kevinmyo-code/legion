@@ -16,6 +16,7 @@ import kotlin.math.sqrt
 /** Where an answer came from, in the order the resolver tries them (ticket 03). */
 enum class SourceKind(val label: String) {
     SAVED_PLACE("saved places"),
+    RECENT("recent places"),
     CALENDAR("calendar"),
     SUGGESTIONS("calendar suggestions"),
     CONTACTS("contacts"),
@@ -49,6 +50,8 @@ data class Candidate(
     val mapboxId: String? = null,
     /** Drive time from the live fix in minutes, when the search was asked for it ("nearest"); else null. */
     val etaMinutes: Double? = null,
+    /** The user's words that found it, normalised, set by the resolver; recents key on them (ticket 13). */
+    val asked: String? = null,
 ) {
     /** The line under the name: its category (when known) and its address, so a hit can be told apart. */
     fun subtitle(): String? =
@@ -56,7 +59,7 @@ data class Candidate(
             .joinToString(" · ").ifEmpty { null }
 
     fun toDestination() =
-        NavDestination(name, latitude, longitude, subtitle(), NavAudit.sourceToken(source), mapboxId)
+        NavDestination(name, latitude, longitude, subtitle(), NavAudit.sourceToken(source), mapboxId, asked)
 }
 
 /** What a lookup knows about the world: the live fix (for proximity) and, for a via, the route so far. */
@@ -150,7 +153,8 @@ sealed interface Resolution {
 
 /**
  * Turns words into a destination (mapbox-nav ticket 03). Sources are tried in order: saved places,
- * calendar, contacts (injected, so this class is unit-tested with fakes), then Mapbox search through
+ * recent places (nav-quality ticket 13), calendar, contacts (injected, so this class is unit-tested
+ * with fakes), then Mapbox search through
  * [placeSearch]. **The first source that MATCHES decides**: one clear match goes, several is
  * ambiguous and asks. A source that matched nothing or could not be read falls through, and the
  * unreadable ones are remembered so a miss is never reported as "nothing there".
@@ -232,9 +236,11 @@ class DestinationResolver(
                         answer.auditWhy,
                     )
                 is SourceAnswer.Hits -> if (answer.candidates.isNotEmpty()) {
+                    val asked = QueryText.normalize(query)
+                    val candidates = answer.candidates.map { it.copy(asked = asked) }
                     return Resolution.Resolved(
-                        destination = answer.candidates.first().toDestination(),
-                        candidates = answer.candidates,
+                        destination = candidates.first().toDestination(),
+                        candidates = candidates,
                         ambiguous = answer.ambiguous,
                         source = source.kind,
                         notes = reports.filter { it.unreadable }.map { noteFor(it) },

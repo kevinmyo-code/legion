@@ -4,8 +4,8 @@ title: "Search and routing close to Google Maps, measured"
 charted: 2026-11-06
 charted-by: "Kevin + Opus"
 effort: "`.scratch/nav-quality/`"
-tickets: 13
-open: 10
+tickets: 14
+open: 11
 status: open
 tags: [map]
 ---
@@ -64,6 +64,7 @@ term lets LEGION borrow.
 | 04 | build | Spoken-name matching: fuzzy, brand, "X near a place I know" | 01 |
 | 05 | decision | Recent and frequent destinations: what is stored, and how | 02 |
 | 13 | build | Recent and frequent destinations, kept by the arrival fix | - |
+| 14 | build | Forget recents by voice; decide their engine copy | 13 |
 | 06 | build | Route to the entrance, and measure wrong picks | 01 |
 | 07 | build | A faster route and incidents ahead, mid-trip | 01 |
 | 08 | build | Open now and rating in "near me" ranking | 03 |

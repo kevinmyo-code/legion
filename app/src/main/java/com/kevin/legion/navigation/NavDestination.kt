@@ -23,6 +23,8 @@ data class NavDestination(
      * `route_request` line's `to_id=`. Null for every other source.
      */
     val mapboxId: String? = null,
+    /** The user's words that found it, normalised; an arrival keeps them as a recent place (ticket 13). */
+    val asked: String? = null,
 ) {
     val point: GeoPoint get() = GeoPoint(latitude, longitude)
 }
