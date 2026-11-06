@@ -120,3 +120,8 @@ docs/design/canvas/*.html
 # The repo is public; the recordings must never be committed.
 .venv-wake/
 wake-samples/
+
+# Phone verification (tools/phone/, phone-verify map): screenshots, uiautomator dumps and logcat
+# from Kevin's real phone. They hold his messages, money, memories and contacts. The repo is
+# public; these never get committed. tools/tests/test_phone_cli.py asserts this line exists.
+.phone-artifacts/

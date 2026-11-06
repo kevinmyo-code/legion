@@ -1,0 +1,10 @@
+Packages:
+  Package [com.kevin.legion] (8f3e2a1):
+    appId=10412
+    pkg=Package{5e1b0c com.kevin.legion}
+    versionCode=263092342 minSdk=24 targetSdk=34
+    versionName=2026-11-05-c353bcf
+    flags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE ]
+    lastUpdateTime=2026-11-05 19:37:45
+    install permissions:
+        android.permission.POST_NOTIFICATIONS: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED]
