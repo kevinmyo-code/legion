@@ -34,11 +34,19 @@ import java.net.URL
  * REST endpoint as the maintenance-schedule lookup that used to live in
  * [AriaBrain.structuredQuery], which now delegates here).
  */
-class SubAgent(
-    private val systemInstruction: String = "",
-    private val useSearch: Boolean = true,
-    private val model: String = DEFAULT_MODEL,
+class SubAgent internal constructor(
+    private val systemInstruction: String,
+    private val useSearch: Boolean,
+    private val model: String,
+    /** Test seam: replaces the HTTP POST of one body to one model. Null in production. */
+    private val transport: (suspend (model: String, body: JSONObject) -> HttpOutcome)?,
 ) {
+    constructor(
+        systemInstruction: String = "",
+        useSearch: Boolean = true,
+        model: String = DEFAULT_MODEL,
+    ) : this(systemInstruction, useSearch, model, null)
+
     /**
      * One-shot worker. [context] is the domain data block the caller assembled;
      * [question] is what to answer about it. Returns the worker's text, or null
@@ -204,17 +212,37 @@ class SubAgent(
         }
     }
 
-    private sealed class HttpOutcome {
+    internal sealed class HttpOutcome {
         class Ok(val json: String) : HttpOutcome()
         class HttpError(val code: Int, val body: String) : HttpOutcome()
         object Network : HttpOutcome()
     }
 
-    /** POST the body, retrying once after a 1s pause on a transport failure. */
-    private suspend fun postRaw(body: JSONObject): HttpOutcome {
+    /**
+     * Every POST goes through here. A 429 or a 500/503 ([fallbackReason]) is retried ONCE, same
+     * body, on [FALLBACK_MODEL] (the phone's async-lookups ticket 03, ported 2026-11-06). Never on
+     * a bad key, never a second fallback, and never when this agent already runs on
+     * [FALLBACK_MODEL]. The body carries no `temperature` and no `thinkingConfig`, which
+     * `gemini-3.8-flash` rejects (phone commit 29057645), so it is safe to resend as is.
+     *
+     * Unlike the phone, the fallback is per POST, not per call: an [investigate] round after a
+     * fallback tries [model] first again. One extra failing request per round in a rate-limit
+     * storm, in exchange for no per-call state.
+     */
+    internal suspend fun postRaw(body: JSONObject): HttpOutcome {
+        val first = send(model, body)
+        val reason = (first as? HttpOutcome.HttpError)?.let(::fallbackReason)
+        if (reason == null || model == FALLBACK_MODEL) return first
+        Log.w(TAG, "SubAgent $model answered $reason; retrying once on $FALLBACK_MODEL")
+        return send(FALLBACK_MODEL, body)
+    }
+
+    /** One body to one model, retrying once after a 1s pause on a transport failure. */
+    private suspend fun send(model: String, body: JSONObject): HttpOutcome {
+        transport?.let { return it(model, body) }
         var attempt = 0
         while (true) {
-            val outcome = postOnce(body)
+            val outcome = postOnce(model, body)
             if (outcome is HttpOutcome.Network && attempt == 0) {
                 attempt++
                 delay(1_000)
@@ -224,7 +252,7 @@ class SubAgent(
         }
     }
 
-    private fun postOnce(body: JSONObject): HttpOutcome {
+    private fun postOnce(model: String, body: JSONObject): HttpOutcome {
         val url = URL("$API_URL/$model:generateContent?key=${GeminiKeyProvider.key()}")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -296,6 +324,21 @@ class SubAgent(
         // 2026-07-22 from gemini-3.1-flash-lite to the newer 3.5 generation,
         // same Flash-Lite tier (not the pricier full 3.6 Flash - that would
         // trade this class's whole cost/latency reason for existing).
+        // Still the phone's default (2026-11-06): Flash-Lite 3.5 is the newest Flash-Lite, and
+        // the phone kept it when it moved Live to 3.8 (commit 29057645).
         const val DEFAULT_MODEL = "gemini-3.5-flash-lite"
+
+        /**
+         * Where one POST goes after [DEFAULT_MODEL] answers 429 or 500/503 ([postRaw]). The phone's
+         * `SubAgent.FALLBACK_MODEL`; paid for only on a failure that would otherwise be spoken.
+         */
+        const val FALLBACK_MODEL = "gemini-3.8-flash"
+
+        /** `"RateLimited"` for a 429, `"Overloaded"` for a 500 or 503, null for anything else. */
+        internal fun fallbackReason(e: HttpOutcome.HttpError): String? = when (e.code) {
+            429 -> "RateLimited"
+            500, 503 -> "Overloaded"
+            else -> null
+        }
     }
 }
