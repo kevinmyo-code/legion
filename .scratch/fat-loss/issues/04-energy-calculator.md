@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "04"
 title: "Engine: the energy estimate"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss-engine (merged into feat/fat-loss); server suite 2917 run, 2 failures pre-existing on base (persona copy test); owed: engine deploy, then the estimate read on the phone and web"
 blockers: ["03"]
 blocked-by: ["[[03-body-profile]]"]
 tags: [ticket]

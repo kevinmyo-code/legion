@@ -46,8 +46,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[03-body-profile\|03]] | build | Engine: the body profile |
-| [[.scratch/fat-loss/map\|fat-loss]] | [[07-saved-meals\|07]] | build | Engine: saved meals |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -150,6 +148,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[06-matrix-rain\|06]] | build | Build: Matrix code rain (Home A background, live wallpaper, screensaver) |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[09-read-only-spike-for-claude-code\|09]] | build | Read-only spike, Claude Code queries the engine through a stdio adapter |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[10-the-engine-mcp-endpoint\|10]] | build | The engine's MCP endpoint, read and write tools, and the tenancy leak test over it |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[03-body-profile\|03]] | build | Engine: the body profile |
+| [[.scratch/fat-loss/map\|fat-loss]] | [[07-saved-meals\|07]] | build | Engine: saved meals |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[15-meal-target-partial-and-honest-accept\|15]] | build | G2 and G3: partial meal targets, honest plan acceptance |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[16-routing-and-voice-guide\|16]] | build | G4 to G6: get_health to fleet, voice guide copy, body routing |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[17-coach-tone-and-appetite\|17]] | build | G7: answer the question asked; appetite and habits doctrine |

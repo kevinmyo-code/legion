@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "07"
 title: "Engine: saved meals"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss-engine (merged into feat/fat-loss); server suite 2917 run, 2 failures pre-existing on base (persona copy test); owed: engine deploy, a saved meal logged by voice"
 blockers: ["01"]
 blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]

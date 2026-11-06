@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "06"
 title: "Engine: the two-weekly adjustment, proposed never applied"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-05 on feat/fat-loss-engine (merged into feat/fat-loss); server suite 2917 run, 2 failures pre-existing on base (persona copy test); owed: a first proposal after 14 days of logs, accepted or dismissed by Kevin"
 blockers: ["04", "05"]
 blocked-by: ["[[04-energy-calculator]]", "[[05-trend-and-waist]]"]
 tags: [ticket]
