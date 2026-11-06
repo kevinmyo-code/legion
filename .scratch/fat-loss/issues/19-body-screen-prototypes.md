@@ -3,8 +3,8 @@ map: fat-loss
 ticket: "19"
 title: "Body screens: two or three directions to pick from"
 type: prototype
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-11-05: three directions (A one scroll of cards, B big trend + tabs, C today first) rendered as PNGs in the orchestrator's scratchpad, synthetic numbers; the phone was locked, so today's tab was read from code. Kevin's pick is ticket 20"
 blockers: ["01"]
 blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]

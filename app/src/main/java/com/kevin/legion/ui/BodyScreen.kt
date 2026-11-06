@@ -30,7 +30,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
+import com.kevin.legion.bodycoach.BodyCoachController
+import com.kevin.legion.bodycoach.BodyCoachWrites
+import com.kevin.legion.bodycoach.EnergyWire
+import com.kevin.legion.bodycoach.ProfileWire
+import com.kevin.legion.bodycoach.SavedMealWire
+import com.kevin.legion.bodycoach.TrendWire
 import com.kevin.legion.data.local.BodyweightLog
+import com.kevin.legion.finance.noteOrNull
+import com.kevin.legion.finance.valueOrNull
+import com.kevin.legion.ui.body.BodyEnergyCard
+import com.kevin.legion.ui.body.BodyMoreList
+import com.kevin.legion.ui.body.BodyProfileDialog
+import com.kevin.legion.ui.body.BodyQuickLogRow
+import com.kevin.legion.ui.body.BodyTodayCard
+import com.kevin.legion.ui.body.BodyTrendCard
+import com.kevin.legion.ui.body.BodyWeekCard
+import com.kevin.legion.ui.body.LogWaistDialog
+import com.kevin.legion.ui.body.SavedMealsDialog
+import com.kevin.legion.ui.body.TodayIntake
+import com.kevin.legion.workouts.buildWeeklyWorkoutGap
+import com.kevin.legion.workouts.weekEndEpoch
+import com.kevin.legion.workouts.weekStartEpoch
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MealLog
 import com.kevin.legion.data.local.SleepLog
@@ -171,6 +195,26 @@ data class BodyUiState(
     val massSparkline: List<Float?> = emptyList(),
     val intakeSparkline: List<Float?> = emptyList(),
     val sleepSparkline: List<Float?> = emptyList(),
+    // fat-loss ticket 21: training this week, for the "This week" card. Null planned = no plan.
+    val sessionsDone: Int? = null,
+    val sessionsPlanned: Int? = null,
+)
+
+/**
+ * The engine's body-coach figures for direction A's cards (fat-loss ticket 21), loaded AFTER the
+ * Room state so the screen never waits on the network to show what the phone already has. Each
+ * read is fresh, the saved copy with its age ([trendNote] and friends, in words), or absent with
+ * the reason - never a blank standing in for a failure.
+ */
+data class BodyCoachUi(
+    val loaded: Boolean = false,
+    val trend: TrendWire? = null,
+    val trendNote: String? = null,
+    val energy: EnergyWire? = null,
+    val energyNote: String? = null,
+    val savedMeals: List<SavedMealWire> = emptyList(),
+    val savedMealsNote: String? = null,
+    val profile: ProfileWire? = null,
 )
 
 /**
@@ -188,6 +232,12 @@ internal sealed class BodyDrilldown {
     object Intake : BodyDrilldown()
     object Sleep : BodyDrilldown()
     object TrainingExercises : BodyDrilldown()
+
+    /** fat-loss ticket 21: the checklist, moved off the main view into "More" (Kevin's ask). */
+    object Plan : BodyDrilldown()
+
+    /** fat-loss ticket 21: the BIO goals panel, moved into "More". */
+    object Goals : BodyDrilldown()
     data class TrainingProgression(val exercise: String) : BodyDrilldown()
 }
 
@@ -232,8 +282,17 @@ fun BodyScreen(onBack: () -> Unit = {}) {
         // Hours, not minutes - the sparkline is a silhouette, and a driver reads sleep in hours.
         val sleepSparkline = bucketSleepMinutesDaily(sleepNights, sevenDayStart, now).map { it?.let { m -> m / 60f } }
 
+        val weekStart = weekStartEpoch(now)
+        val plan = CarDatabase.getDatabase(context).workoutPlanDao().currentPlan(weekStart)
+        val weekGap = plan?.let {
+            val sets = CarDatabase.getDatabase(context).workoutSetLogDao().forWindow(weekStart, weekEndEpoch(now))
+            buildWeeklyWorkoutGap(it.sessionsPerWeek, sets)
+        }
+
         state = BodyUiState(
             loading = false,
+            sessionsDone = weekGap?.actual,
+            sessionsPlanned = weekGap?.target,
             mealGap = MealController.dayGap(context, now),
             hasMealTarget = mealTarget != null,
             mealTargetKcal = mealTarget?.caloriesKcal,
@@ -250,6 +309,26 @@ fun BodyScreen(onBack: () -> Unit = {}) {
             massSparkline = massSparkline,
             intakeSparkline = intakeSparkline,
             sleepSparkline = sleepSparkline,
+        )
+    }
+
+    // fat-loss ticket 21: the engine's figures, after Room, on the same reload key.
+    var coach by remember { mutableStateOf(BodyCoachUi()) }
+    LaunchedEffect(reloadKey) {
+        val controller = BodyCoachController.forApp(context)
+        val trend = controller.trend()
+        val energy = controller.energy()
+        val saved = controller.savedMeals()
+        val profile = controller.profile()
+        coach = BodyCoachUi(
+            loaded = true,
+            trend = trend.valueOrNull,
+            trendNote = trend.noteOrNull,
+            energy = energy.valueOrNull,
+            energyNote = energy.noteOrNull,
+            savedMeals = saved.valueOrNull?.results.orEmpty(),
+            savedMealsNote = saved.noteOrNull,
+            profile = profile.valueOrNull,
         )
     }
 
@@ -289,7 +368,8 @@ fun BodyScreen(onBack: () -> Unit = {}) {
         val now = System.currentTimeMillis()
         val from = deckRangeStartMs(range, now)
         when (val current = drilldown) {
-            null -> {}
+            // Plan and Goals load their own panels (fat-loss ticket 21).
+            null, BodyDrilldown.Plan, BodyDrilldown.Goals -> {}
             BodyDrilldown.Mass -> {
                 drilldownLoading = true
                 val samples = WorkoutController.bodyweightHistory(context, from, now)
@@ -351,7 +431,19 @@ fun BodyScreen(onBack: () -> Unit = {}) {
 
     SoftTheme {
     when (val current = drilldown) {
-        null -> BodyContent(state, onOpenPane = { drilldown = it }, onDataChanged = { reloadKey++ }, onBack = onBack)
+        null -> BodyContent(state, coach, onOpenPane = { drilldown = it }, onDataChanged = { reloadKey++ }, onBack = onBack)
+        BodyDrilldown.Plan -> BodyPanelDrilldown(title = "Today's plan", onBack = { drilldown = null }) {
+            var showLogSet by remember { mutableStateOf(false) }
+            com.kevin.legion.ui.goals.GoalChecklistPanel(
+                compact = false,
+                onLogSet = { showLogSet = true },
+                onOpenTrainingDrilldown = { drilldown = BodyDrilldown.TrainingExercises },
+            )
+            if (showLogSet) LogWorkoutSetDialog(onDismiss = { showLogSet = false }, onDone = { showLogSet = false; reloadKey++ })
+        }
+        BodyDrilldown.Goals -> BodyPanelDrilldown(title = "Goals", onBack = { drilldown = null }) {
+            com.kevin.legion.ui.goals.GoalsPanel(aspect = "bio")
+        }
         BodyDrilldown.Mass -> BodyMassDrilldown(
             latest = state.latestBodyweight,
             series = massSeries,
@@ -374,6 +466,8 @@ fun BodyScreen(onBack: () -> Unit = {}) {
             onDeleted = { reloadKey++ },
         )
         BodyDrilldown.Sleep -> BodySleepDrilldown(
+            sleepTargetMinutes = state.sleepTargetMinutes,
+            onDataChanged = { reloadKey++ },
             bars = sleepBars,
             history = sleepHistory,
             range = range,
@@ -417,6 +511,7 @@ fun BodyScreen(onBack: () -> Unit = {}) {
 @Composable
 internal fun BodyContent(
     state: BodyUiState,
+    coach: BodyCoachUi = BodyCoachUi(),
     onOpenPane: (BodyDrilldown) -> Unit = {},
     onDataChanged: () -> Unit = {},
     onBack: () -> Unit = {},
@@ -440,161 +535,118 @@ internal fun BodyContent(
             if (state.loading) {
                 Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))
             } else {
-                BodyPanelList(state, onOpenPane, onDataChanged)
+                BodyCardList(state, coach, onOpenPane, onDataChanged)
             }
         }
     }
 }
 
 /**
- * Ticket 03: the `+ LOG ...`/`EDIT TARGET` affordances below are the ONLY place this file calls a
- * controller write directly (each dialog does, from `ui/body/BodyWriteDialogs.kt`) - everything
- * else in [BodyPanelList] stays the plain read this file's doc comment describes.
- * [GoalsPanel]/[GoalChecklistPanel] already break that same "read-only" posture on purpose (see
- * this file's own doc comment on why GOALS is "the one panel on this screen that is read-AND-edit"),
- * so this is the second deliberate exception, not the first - both exist because ADR 0035 makes a
- * voice-only write a defect, not a feature. **`+ LOG SET` used to be a third exception, here on a
- * TRAINING pane - ticket 08 moved its affordance into [com.kevin.legion.ui.goals.GoalChecklistPanel]
- * instead** (via the `onLogSet`/`onOpenTrainingDrilldown` callbacks below), so [showLogSet]'s dialog
- * still lives HERE (this file is still the one state holder, per its own doc comment - the CALL SITE
- * of the affordance moved, not where the write happens) but nothing in this file's own panel list
- * renders the button that opens it any more.
+ * Direction A of the fat-loss revamp (Kevin picked it 2026-11-05, tickets 20 and 21): one scroll of
+ * cards. Quick log, Trend, Today, Energy, This week, More. The checklist, sleep, goals and the raw
+ * histories moved behind "More" rows (Kevin: "today it has a bunch of checklists and the visuals are
+ * a bit hard to understand"). Every write here is a dialog that calls the same controller or engine
+ * route its voice tool does (ADR 0035); the dialogs are siblings of the list, not items.
  */
 @Composable
-private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit, onDataChanged: () -> Unit) {
-    val sem = LocalLegionSemantics.current
+private fun BodyCardList(
+    state: BodyUiState,
+    coach: BodyCoachUi,
+    onOpenPane: (BodyDrilldown) -> Unit,
+    onDataChanged: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showLogWeight by remember { mutableStateOf(false) }
     var showLogMeal by remember { mutableStateOf(false) }
     var showEditMealTarget by remember { mutableStateOf(false) }
-    var showLogSleep by remember { mutableStateOf(false) }
-    var showEditSleepTarget by remember { mutableStateOf(false) }
     var showLogSet by remember { mutableStateOf(false) }
+    var showWaist by remember { mutableStateOf(false) }
+    var showProfile by remember { mutableStateOf(false) }
+    var showSavedMeals by remember { mutableStateOf(false) }
+    var proposalBusy by remember { mutableStateOf(false) }
+    var proposalResult by remember { mutableStateOf<String?>(null) }
+
+    val today = todayIntake(state)
+    val fallback = state.latestBodyweight?.let { "Latest weigh-in: ${formatWeight(it.weightValue, it.weightUnit)}, ${shortDate(it.loggedAt)}." }
+
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // ---------------------------------------------------------------- MASS
-        item(key = "pane-mass") {
-            DeckPane(header = "Mass", modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Mass) }) {
-                val latest = state.latestBodyweight
-                if (latest == null) {
-                    GapEmptyRow(
-                        label = "Bodyweight",
-                        message = "Nothing logged yet.",
-                        actionLabel = "Log weight",
-                        onAction = { showLogWeight = true },
-                        voiceHint = "log my weight",
-                    )
-                } else {
-                    Column(Modifier.padding(vertical = 4.dp)) {
-                        // MASS's hero is a plain value: primary text under the soft palette
-                        // (`sem.data` is SoftColors.text here), never an accent.
-                        Text(formatWeight(latest.weightValue, latest.weightUnit), style = MaterialTheme.typography.displaySmall, color = sem.data)
-                        Text(bodyweightTrendText(latest, state.previousBodyweight) ?: shortDate(latest.loggedAt), style = MaterialTheme.typography.bodySmall, color = sem.faint)
-                    }
-                    // Three states, not two (command-center ticket 13 finding 4). "No readings"
-                    // and "not enough readings to have a shape yet" are different facts and get
-                    // different sentences - the same empty-vs-unreadable rule CLAUDE.md sec 1
-                    // states for a refused permission versus a clear day. Saying "No readings
-                    // yet" under a hero that is currently printing a reading would be a plain lie.
-                    val massPoints = state.massSparkline.count { it != null }
-                    if (deckSparklineHasShape(state.massSparkline)) {
-                        DeckSparkline(state.massSparkline)
-                    } else {
-                        Text(
-                            if (massPoints == 0) "No readings yet"
-                            else "Trend needs $DECK_SPARKLINE_MIN_POINTS readings, $massPoints so far",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = sem.faint,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
-                    }
-                }
-                if (latest != null) {
-                    BodyAction("Log weight", onClick = { showLogWeight = true }, modifier = Modifier.padding(top = 8.dp))
-                }
-            }
-        }
-
-        // ------------------------------------------------------ INTAKE / SLEEP (HALF tiles)
-        // Both panels share one row via EqualHeightRow - the same mechanism HOME's tile row uses
-        // (see that composable's own doc for why a bare `Row(IntrinsicSize.Min)` crashes on a
-        // pane child). MASS stays full-width above (the surface's hero). Tap-through is
-        // unchanged: each tile still opens the exact drilldown its old FULL panel did.
-        item(key = "tile-row-intake-sleep") {
-            val intakeTile = buildIntakeTile(state.mealGap, state.hasMealTarget)
-            val sleepTile = buildSleepTile(state.sleepGap, state.hasSleepTarget)
-            // CLAUDE.md section 4 rule 5: the calorie figure is an LLM estimate, so the word travels
-            // with it on this surface. `buildIntakeTile` (shared with other screens, not editable
-            // here) captions a logged day "OF 2200 KCAL"; this restates it as a sentence that
-            // names the estimate. The empty-state captions are plain sentences already.
-            val intakeCaption = when (val gap = state.mealGap) {
-                is DailyMealGap.Logged -> "kcal estimate, of ${gap.gap.target.caloriesKcal} target"
-                DailyMealGap.NotLogged -> softSentence(intakeTile.caption)
-            }
-            EqualHeightRow(Modifier.fillMaxWidth(), horizontalGap = 10.dp) {
-                HalfTile(
-                    header = "Intake",
-                    hero = softSentence(intakeTile.hero),
-                    caption = intakeCaption,
-                    modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Intake) },
-                ) {
-                    if (deckSparklineHasShape(state.intakeSparkline)) {
-                        DeckSparkline(state.intakeSparkline)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    BodyAction("Log meal", onClick = { showLogMeal = true })
-                    BodyAction("Edit target", onClick = { showEditMealTarget = true }, quiet = true, modifier = Modifier.padding(top = 6.dp))
-                }
-                HalfTile(
-                    header = "Sleep",
-                    hero = softSentence(sleepTile.hero),
-                    caption = softSentence(sleepTile.caption),
-                    modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Sleep) },
-                ) {
-                    if (deckSparklineHasShape(state.sleepSparkline)) {
-                        DeckSparkline(state.sleepSparkline)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    BodyAction("Log sleep", onClick = { showLogSleep = true })
-                    BodyAction("Edit target", onClick = { showEditSleepTarget = true }, quiet = true, modifier = Modifier.padding(top = 6.dp))
-                }
-            }
-        }
-
-        // ---------------------------------------------------------------- CHECKLIST
-        // Ticket 04, `goal-plans` (Kevin: "revamp of BIO/body tab..."). Full mode - every line,
-        // plus the recent-completion record, PLUS (ticket 08) the relocated TRAINING affordances -
-        // self-contained the same way GOALS below is (its own LaunchedEffect; not part of
-        // BodyUiState's batched load). Placed where TRAINING used to sit and before GOALS: the
-        // checklist is the day-to-day habit surface derived FROM the targets and goals above it,
-        // read top-to-bottom as "here's where you stand, here's today's list, here's the standing
-        // goal it all points at". `onLogSet`/`onOpenTrainingDrilldown` are this file's own
-        // `showLogSet` dialog and `onOpenPane(BodyDrilldown.TrainingExercises)` top-level swap -
-        // GoalChecklistPanel never gets a controller reference or a DAO of its own for these, it
-        // only triggers the SAME write/navigation this file already owned (see the file doc
-        // comment on why the swap itself stays here).
-        item(key = "pane-checklist") {
-            com.kevin.legion.ui.goals.GoalChecklistPanel(
-                compact = false,
-                onLogSet = { showLogSet = true },
-                onOpenTrainingDrilldown = { onOpenPane(BodyDrilldown.TrainingExercises) },
+        item(key = "quick-log") {
+            BodyQuickLogRow(
+                onWeight = { showLogWeight = true },
+                onMeal = { showLogMeal = true },
+                onWaist = { showWaist = true },
+                onWorkout = { showLogSet = true },
             )
         }
-
-        // ---------------------------------------------------------------- GOALS
-        // Ticket 19: the one panel on this screen that is read-AND-edit, by design - see
-        // GoalsPanel's own doc comment for why it breaks this file's "voice writes, screen reads"
-        // posture and why it manages its own load rather than joining BodyUiState's batch fetch.
-        item(key = "pane-goals") {
-            com.kevin.legion.ui.goals.GoalsPanel(aspect = "bio")
+        item(key = "trend") {
+            BodyTrendCard(
+                trend = coach.trend,
+                note = if (coach.loaded) coach.trendNote else "Reading the trend...",
+                fallback = fallback,
+                onOpenHistory = { onOpenPane(BodyDrilldown.Mass) },
+            )
+        }
+        item(key = "today") {
+            BodyTodayCard(
+                today = today,
+                onSavedMeals = { showSavedMeals = true },
+                onLogMeal = { showLogMeal = true },
+                onEditTarget = { showEditMealTarget = true },
+            )
+        }
+        item(key = "energy") {
+            BodyEnergyCard(
+                energy = coach.energy,
+                note = if (coach.loaded) coach.energyNote else "Reading the estimate...",
+                busy = proposalBusy,
+                result = proposalResult,
+                onAccept = { id ->
+                    proposalBusy = true
+                    scope.launch {
+                        val out = BodyCoachWrites.forApp(context).acceptProposal(id)
+                        proposalResult = out.sentence
+                        // The new target is an engine row; pull it into Room now so the bars use it.
+                        if (out.ok) runCatching { com.kevin.legion.backend.BodySync.pullNow(context) }
+                        proposalBusy = false
+                        onDataChanged()
+                    }
+                },
+                onDismiss = { id ->
+                    proposalBusy = true
+                    scope.launch {
+                        proposalResult = BodyCoachWrites.forApp(context).dismissProposal(id).sentence
+                        proposalBusy = false
+                        onDataChanged()
+                    }
+                },
+                onEditProfile = { showProfile = true },
+            )
+        }
+        item(key = "week") {
+            BodyWeekCard(
+                sessionsDone = state.sessionsDone,
+                sessionsPlanned = state.sessionsPlanned,
+                waistIn = coach.trend?.waist?.firstOrNull()?.waistIn,
+                waistChange28d = coach.trend?.waistChangeIn28d,
+                onOpenTraining = { onOpenPane(BodyDrilldown.TrainingExercises) },
+            )
+        }
+        item(key = "more") {
+            BodyMoreList(
+                onPlan = { onOpenPane(BodyDrilldown.Plan) },
+                onSleep = { onOpenPane(BodyDrilldown.Sleep) },
+                onGoals = { onOpenPane(BodyDrilldown.Goals) },
+                onWeighIns = { onOpenPane(BodyDrilldown.Mass) },
+                onMeals = { onOpenPane(BodyDrilldown.Intake) },
+            )
         }
     }
 
-    // Rendered as siblings of the LazyColumn, not list items - an AlertDialog paints into its own
-    // window regardless of where in the composition it is called from, so nesting these inside a
-    // scrolling `item {}` would only have made them scroll offscreen with the list for no benefit.
     if (showLogWeight) LogBodyweightDialog(onDismiss = { showLogWeight = false }, onDone = { showLogWeight = false; onDataChanged() })
     if (showLogMeal) LogMealDialog(onDismiss = { showLogMeal = false }, onDone = { showLogMeal = false; onDataChanged() })
     if (showEditMealTarget) {
@@ -607,15 +659,46 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
             onDone = { showEditMealTarget = false; onDataChanged() },
         )
     }
-    if (showLogSleep) LogSleepDialog(onDismiss = { showLogSleep = false }, onDone = { showLogSleep = false; onDataChanged() })
-    if (showEditSleepTarget) {
-        SetSleepTargetDialog(
-            currentHours = state.sleepTargetMinutes?.let { it / 60.0 },
-            onDismiss = { showEditSleepTarget = false },
-            onDone = { showEditSleepTarget = false; onDataChanged() },
+    if (showLogSet) LogWorkoutSetDialog(onDismiss = { showLogSet = false }, onDone = { showLogSet = false; onDataChanged() })
+    if (showWaist) LogWaistDialog(onDismiss = { showWaist = false }, onDone = { showWaist = false; onDataChanged() })
+    if (showProfile) BodyProfileDialog(current = coach.profile, onDismiss = { showProfile = false }, onDone = { showProfile = false; onDataChanged() })
+    if (showSavedMeals) {
+        SavedMealsDialog(
+            meals = coach.savedMeals,
+            note = coach.savedMealsNote,
+            onDismiss = { showSavedMeals = false },
+            onChanged = onDataChanged,
         )
     }
-    if (showLogSet) LogWorkoutSetDialog(onDismiss = { showLogSet = false }, onDone = { showLogSet = false; onDataChanged() })
+}
+
+/** Today's kcal and protein against the target, from Room. Nothing logged is null, never 0. */
+internal fun todayIntake(state: BodyUiState): TodayIntake = when (val gap = state.mealGap) {
+    is DailyMealGap.Logged -> TodayIntake(
+        kcalEaten = gap.gap.actual.caloriesKcal,
+        kcalTarget = gap.gap.target.caloriesKcal.takeIf { state.hasMealTarget },
+        proteinEaten = gap.gap.actual.proteinG.roundToInt(),
+        proteinTarget = gap.gap.target.proteinG.takeIf { state.hasMealTarget && it > 0 }?.roundToInt(),
+    )
+    DailyMealGap.NotLogged -> TodayIntake(
+        kcalEaten = null,
+        kcalTarget = state.mealTargetKcal,
+        proteinEaten = null,
+        proteinTarget = state.mealTargetProteinG?.takeIf { it > 0 }?.roundToInt(),
+    )
+}
+
+/** A "More" row's destination: a header and one panel in a scroll, nothing else. */
+@Composable
+private fun BodyPanelDrilldown(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+    Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
+        Column(Modifier.fillMaxSize()) {
+            DrilldownHeader(title = title, onBack = onBack, accent = AreaAccent.BODY)
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = BODY_LIST_PADDING) {
+                item(key = "panel") { content() }
+            }
+        }
+    }
 }
 
 // ------------------------------------------------------------------- drilldowns
@@ -759,6 +842,8 @@ private fun BodyIntakeDrilldown(
  */
 @Composable
 private fun BodySleepDrilldown(
+    sleepTargetMinutes: Int?,
+    onDataChanged: () -> Unit,
     bars: List<DeckBar?>,
     history: List<SleepLog>,
     range: DeckRange,
@@ -773,6 +858,21 @@ private fun BodySleepDrilldown(
     Surface(modifier = Modifier.fillMaxSize(), color = SoftColors.ground) {
         Column(Modifier.fillMaxSize()) {
             DrilldownHeader(title = "Sleep", onBack = onBack, accent = AreaAccent.BODY)
+            // fat-loss ticket 21: the Sleep tile's two actions moved here with it (ADR 0035).
+            var showLogSleep by remember { mutableStateOf(false) }
+            var showTarget by remember { mutableStateOf(false) }
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BodyAction("Log sleep", onClick = { showLogSleep = true })
+                BodyAction("Sleep target", onClick = { showTarget = true }, quiet = true)
+            }
+            if (showLogSleep) LogSleepDialog(onDismiss = { showLogSleep = false }, onDone = { showLogSleep = false; onDataChanged() })
+            if (showTarget) {
+                SetSleepTargetDialog(
+                    currentHours = sleepTargetMinutes?.let { it / 60.0 },
+                    onDismiss = { showTarget = false },
+                    onDone = { showTarget = false; onDataChanged() },
+                )
+            }
             BodyRangeChips(selected = range, onSelect = onRangeChange, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             when {
                 loading -> Text("Loading...", style = MaterialTheme.typography.bodyMedium, color = sem.ghost, modifier = Modifier.padding(16.dp))

@@ -639,6 +639,17 @@ object BodySync {
      * when Supabase is not configured or nobody is signed in, same posture as
      * [EventsSync.maybeAutoPull].
      */
+    /**
+     * One pull now, unthrottled, for a write the ENGINE just made (fat-loss ticket 21: accepting a
+     * proposal writes a `meal_targets` row there), so the Body screen's bars use the new target at
+     * once. A no-op without a configured body backend; failures are the caller's to swallow.
+     */
+    suspend fun pullNow(context: Context): PullReport? {
+        val app = context.applicationContext
+        val backend = EngineBackends(app).bodyBackend() ?: return null
+        return pull(app, backend)
+    }
+
     fun maybeAutoPull(context: Context) {
         val now = System.currentTimeMillis()
         if (now - lastAutoPullAt < AUTO_PULL_MIN_INTERVAL_MS) return

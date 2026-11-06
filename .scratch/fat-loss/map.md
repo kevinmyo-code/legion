@@ -106,9 +106,15 @@ returned beside it.
 
 The formulas, gates and words are in tickets 04 to 07.
 
+## Decisions so far
+
+- [Kevin's rulings](issues/01-kevins-rulings.md) - the ten rulings above.
+- [Body is the seventh aspect](issues/02-seventh-aspect-in-the-docs.md) - CLAUDE.md, ADR 0077.
+- [Body screen direction](issues/20-pick-a-body-direction.md) - Kevin picked **A, one scroll of
+  cards**, 2026-11-05.
+
 ## Not yet specified
 
-- **Which Body screen direction** (ticket 20, Kevin's pick).
 - **Whether the phone replicates the four new tables into Room.** Today it reads them through the
   engine with a saved copy; waist and saved-meal writes need the engine. Revisit if offline logging
   of a waist measurement turns out to matter.
