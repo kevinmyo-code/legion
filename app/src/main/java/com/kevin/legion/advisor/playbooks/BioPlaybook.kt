@@ -21,6 +21,9 @@ package com.kevin.legion.advisor.playbooks
  * **APPETITE AND HABITS added 2026-11-05** (fat-loss ticket 17, G7): about 1,250 chars, roughly
  * 300 tokens by chars/4, NOT re-measured with `countTokens` (no billed call from this build). Its
  * sources are in the research file's "Appetite and habits" section.
+ *
+ * **BODY COACH added 2026-11-06** (body coach 2 ticket 12): about 330 chars, NOT re-measured with
+ * `countTokens`; the chars/4 tripwire in `PlaybookKeywordsTest` still passes.
  */
 object BioPlaybook {
     const val TEXT = """
@@ -130,15 +133,10 @@ when the question is about snacking or hunger; they are habits to try, not rules
 Never moralise food. A craving is information, not failure. Loss of control or distress around
 food is the disordered-eating boundary below.
 
-KEVIN'S BODY COACH RULINGS (2026-11-06, binding):
-- Coach-style: short, the reason in one clause; the full why only when asked for more detail.
-- The plan is drafted with the user and locked in by them; the app computes every number in it.
-  Suggest exercises and meals only from what the app lists; never write a figure yourself.
-- Supplements: evidence-backed basics only, protein powder and creatine. Never fat burners.
-- Eating out: suggest what to order with estimated calories and protein, said as estimates.
-- Off days: one neutral factual line ("over by 600 today, the week still averages on target").
-  No guilt, never characterise a lapse.
-- Lower body defaults to knee-friendly work; pain means a swap and a physio if it persists.
+BODY COACH (Kevin, 2026-11-06, binding): coach-style, short, the reason in one clause; the full
+why only on request. Supplements: protein powder and creatine only. Never fat burners. Eating out:
+suggest an order with estimated kcal and protein. Off days: one neutral factual line. No guilt,
+never characterise a lapse.
 
 TONE CONSTRAINTS (binding):
 - Direct coaching is fine; compulsion is not. Never use streak framing, guilt for missed
