@@ -1626,6 +1626,33 @@ def test_every_mcp_tool_is_scoped_by_household(
     b_writes("forget_memory", {"id": alpha_memory_id}, lands_in_b=False)
     b_writes("remember", {"text": "bravo gym is on Elm"}, lands_in_b=True)
     assert "alpha-memory gym" in call(mcp_a, "recall_memory", {"query": "gym"})[1]
+    # The body coach (fat-loss ticket 08): A's saved meal, waist and profile are not B's.
+    alpha_meal = token_a.post(
+        "/api/body/coach/saved-meals/",
+        {"name": "alpha-meal", "calories_kcal": 500, "protein_g": 30},
+        format="json",
+    )
+    assert alpha_meal.status_code == 201, alpha_meal.data
+    assert token_a.post(
+        "/api/body/coach/waist/", {"waist_cm": 91.7}, format="json"
+    ).status_code == 201
+    a_marks = (*a_marks, alpha_meal.data["id"], "91.7")
+    assert "No saved meals" in b_reads("list_saved_meals", {})
+    assert "a weigh-in" in b_reads("get_energy_estimate", {})
+    assert "No weigh-ins yet" in b_reads("get_weight_trend", {})
+    b_writes("delete_saved_meal", {"name": "alpha-meal"}, lands_in_b=False)
+    b_writes("log_saved_meal", {"name": "alpha-meal"}, lands_in_b=False)
+    b_writes("accept_energy_proposal", {}, lands_in_b=False)
+    b_writes("dismiss_energy_proposal", {}, lands_in_b=False)
+    b_writes("save_meal", {"name": "bravo meal", "calories_kcal": 400, "protein_g": 20},
+             lands_in_b=True)
+    b_writes("log_waist", {"waist_cm": 88}, lands_in_b=True)
+    b_writes("set_body_profile", {"weekly_line_on": False}, lands_in_b=True)
+    assert "alpha-meal" in call(mcp_a, "list_saved_meals", {})[1]
+    from body_coach.models import BodyProfile, SavedMeal
+
+    assert SavedMeal.objects.filter(household=household_user.household).count() == 1
+    assert BodyProfile.objects.get().household_id == user_b.household.id
     assert _feed(token_a) == a_before
     from purchases.models import Purchase
 
