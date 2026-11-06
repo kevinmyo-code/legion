@@ -3,6 +3,8 @@ package com.kevin.legion.bodycoach
 import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.finance.noteOrNull
 import com.kevin.legion.finance.valueOrNull
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -47,7 +49,7 @@ object WorkoutText {
     }
 
     /** `get_todays_workout`'s result: the engine's words, a saved copy's age, and the session. */
-    fun todayResult(read: FinanceRead<WorkoutTodayWire>): JSONObject {
+    fun todayResult(read: FinanceRead<WorkoutTodayWire>, today: LocalDate = LocalDate.now()): JSONObject {
         val w = read.valueOrNull
             ?: return JSONObject()
                 .put("success", false)
@@ -81,7 +83,102 @@ object WorkoutText {
                 out.put("exercises", arr)
             }
         }
+        // Workout reads (2026-11-06): "and the one after?" is answerable from this read too.
+        w.upcoming.firstOrNull { !it.isToday }?.let { out.put("next_session_after_today", session(it, today)) }
         return out
+    }
+
+    /**
+     * `get_workout_programme`'s result (workout reads, 2026-11-06): every day of the programme, the
+     * training days, today's status, the sessions ahead with their dates, and the week. Kevin's
+     * first voice session asked "what's the next day", "what are the three sessions" and "Day B",
+     * and a today-only read made Alfred say there was no Day B. Every number and date is the
+     * engine's; [today] only turns a date into "today" or "tomorrow".
+     *
+     * **Not sent is not absent.** An engine older than this read sends no `days`; the result then
+     * fails in words that say the programme is unknown here, never that a day does not exist.
+     */
+    fun programmeResult(read: FinanceRead<WorkoutTodayWire>, today: LocalDate = LocalDate.now()): JSONObject {
+        val w = read.valueOrNull
+            ?: return JSONObject()
+                .put("success", false)
+                .put("message", (read.noteOrNull ?: "The workout programme could not be read.") + " Nothing is known about the programme.")
+        if (w.days.isEmpty() || w.upcoming.isEmpty()) {
+            return JSONObject()
+                .put("success", false)
+                .put(
+                    "message",
+                    "The engine did not send the whole programme (it may need an update), so the other " +
+                        "days and the sessions ahead are unknown here, not missing. Never say a day does " +
+                        "not exist. Today's read: ${w.words}",
+                )
+        }
+        val out = JSONObject()
+            .put("success", true)
+            .put("words", w.programmeWords)
+            .put("programme", "Full body, Day A and Day B alternating")
+            .put("training_days", JSONArray(w.week.trainingDays.map { weekdayName(it) }))
+            .put("sessions_per_week", w.week.planned)
+            .put("sessions_done_this_week", w.week.done)
+            .put("sessions_planned_this_week", w.week.planned)
+            .put(
+                "today",
+                JSONObject()
+                    .put("date", w.today)
+                    .put("weekday", w.todayWeekday)
+                    .put("training_day", w.trainingDay)
+                    .put("status", TODAY_STATUS[w.todayStatus] ?: w.todayStatus),
+            )
+            .put("next_session", session(w.upcoming.first(), today))
+            .put("rule", "Every target and date comes from the programme's rules. Say them as given; never invent or change one. 'Your pick' is a calibration: a weight they could lift for 2 more reps than the top of the range.")
+        w.upcoming.firstOrNull { !it.isToday }?.let { out.put("next_session_after_today", session(it, today)) }
+        out.put("upcoming", JSONArray(w.upcoming.map { session(it, today) }))
+        val days = JSONArray()
+        for (d in w.days) {
+            days.put(
+                JSONObject()
+                    .put("day", "Day ${d.dayKey}")
+                    .put("exercises", JSONArray(d.exercises.map { target(it) }))
+                    .put("next_on", d.nextOn?.let { "${d.nextWeekday.orEmpty()} $it".trim() } ?: JSONObject.NULL)
+                    .put("calibrating", d.calibrating),
+            )
+        }
+        out.put("days", days)
+        read.noteOrNull?.let { out.put("saved_copy", it) }
+        return out
+    }
+
+    /** "Day B, Monday 2026-11-09", "Day A, today, Friday 2026-11-06", "Day B, tomorrow, ...". */
+    fun session(u: UpcomingWire, today: LocalDate): String {
+        val on = runCatching { LocalDate.parse(u.date) }.getOrNull()
+        val gap = on?.let { ChronoUnit.DAYS.between(today, it) }
+        val whenSaid = when {
+            gap == null -> ""
+            gap == 0L -> "today, "
+            gap == 1L -> "tomorrow, "
+            gap < 0L -> "a date already past (this copy is out of date), "
+            else -> ""
+        }
+        val deload = if (u.deload) " (deload: lighter, one set fewer)" else ""
+        return "Day ${u.dayKey}, $whenSaid${u.weekday} ${u.date}".replace("  ", " ").trim() + deload
+    }
+
+    private val TODAY_STATUS = mapOf(
+        "rest" to "rest day",
+        "not_started" to "training day, not done yet",
+        "in_progress" to "training day, workout in progress",
+        "done" to "today's workout is done",
+    )
+
+    private fun weekdayName(key: String): String = when (key.lowercase().take(3)) {
+        "mon" -> "Monday"
+        "tue" -> "Tuesday"
+        "wed" -> "Wednesday"
+        "thu" -> "Thursday"
+        "fri" -> "Friday"
+        "sat" -> "Saturday"
+        "sun" -> "Sunday"
+        else -> key
     }
 
     /** "This week: 2 of 3 sessions." */
