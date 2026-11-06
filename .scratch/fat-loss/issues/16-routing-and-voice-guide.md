@@ -5,8 +5,8 @@ title: "G4 to G6: get_health to fleet, voice guide copy, body routing"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
+blockers: ["01"]
+blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]
 ---
 # G4 to G6: get_health to fleet, voice guide copy, body routing

@@ -5,8 +5,8 @@ title: "Engine: the body profile"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
+blockers: ["01"]
+blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]
 ---
 # Engine: the body profile

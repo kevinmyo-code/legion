@@ -5,8 +5,8 @@ title: "Engine: saved meals"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
+blockers: ["01"]
+blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]
 ---
 # Engine: saved meals

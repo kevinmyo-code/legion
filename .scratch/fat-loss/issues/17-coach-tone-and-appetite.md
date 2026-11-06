@@ -5,8 +5,8 @@ title: "G7: answer the question asked; appetite and habits doctrine"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
+blockers: ["01"]
+blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]
 ---
 # G7: answer the question asked; appetite and habits doctrine

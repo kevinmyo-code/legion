@@ -11,11 +11,21 @@
       "color": "4"
     },
     {
+      "id": "dce1a10b0a28a4fb",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/18-health-connect.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "205b2066284eaa80",
       "type": "file",
       "file": ".scratch/fat-loss/issues/02-seventh-aspect-in-the-docs.md",
-      "x": 0,
-      "y": 150,
+      "x": 520,
+      "y": 0,
       "width": 320,
       "height": 110,
       "color": "4"
@@ -24,8 +34,8 @@
       "id": "5840e61b2472e0a4",
       "type": "file",
       "file": ".scratch/fat-loss/issues/03-body-profile.md",
-      "x": 0,
-      "y": 300,
+      "x": 520,
+      "y": 150,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -34,8 +44,8 @@
       "id": "ca93eb629c3f0176",
       "type": "file",
       "file": ".scratch/fat-loss/issues/07-saved-meals.md",
-      "x": 0,
-      "y": 450,
+      "x": 520,
+      "y": 300,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -44,8 +54,8 @@
       "id": "8ebb7a33f8dffa65",
       "type": "file",
       "file": ".scratch/fat-loss/issues/15-meal-target-partial-and-honest-accept.md",
-      "x": 0,
-      "y": 600,
+      "x": 520,
+      "y": 450,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -54,8 +64,8 @@
       "id": "4cfcbbb0d8d55649",
       "type": "file",
       "file": ".scratch/fat-loss/issues/16-routing-and-voice-guide.md",
-      "x": 0,
-      "y": 750,
+      "x": 520,
+      "y": 600,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -64,18 +74,8 @@
       "id": "4e30b93d4dcf7199",
       "type": "file",
       "file": ".scratch/fat-loss/issues/17-coach-tone-and-appetite.md",
-      "x": 0,
-      "y": 900,
-      "width": 320,
-      "height": 110,
-      "color": "1"
-    },
-    {
-      "id": "dce1a10b0a28a4fb",
-      "type": "file",
-      "file": ".scratch/fat-loss/issues/18-health-connect.md",
-      "x": 0,
-      "y": 1050,
+      "x": 520,
+      "y": 750,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -84,8 +84,8 @@
       "id": "5c3c6ff0314772ea",
       "type": "file",
       "file": ".scratch/fat-loss/issues/19-body-screen-prototypes.md",
-      "x": 0,
-      "y": 1200,
+      "x": 520,
+      "y": 900,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -94,7 +94,7 @@
       "id": "7c0f2cf0011a3401",
       "type": "file",
       "file": ".scratch/fat-loss/issues/04-energy-calculator.md",
-      "x": 520,
+      "x": 1040,
       "y": 0,
       "width": 320,
       "height": 110,
@@ -104,7 +104,7 @@
       "id": "2d9a512ba514a5c4",
       "type": "file",
       "file": ".scratch/fat-loss/issues/05-trend-and-waist.md",
-      "x": 520,
+      "x": 1040,
       "y": 150,
       "width": 320,
       "height": 110,
@@ -114,7 +114,7 @@
       "id": "e28bfc5e2d1491a1",
       "type": "file",
       "file": ".scratch/fat-loss/issues/20-pick-a-body-direction.md",
-      "x": 520,
+      "x": 1040,
       "y": 300,
       "width": 320,
       "height": 110,
@@ -124,7 +124,7 @@
       "id": "0e8a35c48cf6e5bb",
       "type": "file",
       "file": ".scratch/fat-loss/issues/06-adaptation-proposals.md",
-      "x": 1040,
+      "x": 1560,
       "y": 0,
       "width": 320,
       "height": 110,
@@ -134,7 +134,7 @@
       "id": "edb629244f7d13e5",
       "type": "file",
       "file": ".scratch/fat-loss/issues/10-phone-coach-reads.md",
-      "x": 1040,
+      "x": 1560,
       "y": 150,
       "width": 320,
       "height": 110,
@@ -144,7 +144,7 @@
       "id": "b2b67f279abf2946",
       "type": "file",
       "file": ".scratch/fat-loss/issues/13-monday-weekly-line.md",
-      "x": 1040,
+      "x": 1560,
       "y": 300,
       "width": 320,
       "height": 110,
@@ -154,7 +154,7 @@
       "id": "d52475628d996680",
       "type": "file",
       "file": ".scratch/fat-loss/issues/14-weight-goal-tracked.md",
-      "x": 1040,
+      "x": 1560,
       "y": 450,
       "width": 320,
       "height": 110,
@@ -164,7 +164,7 @@
       "id": "43ec7a2485394230",
       "type": "file",
       "file": ".scratch/fat-loss/issues/21-body-screen-build.md",
-      "x": 1040,
+      "x": 1560,
       "y": 600,
       "width": 320,
       "height": 110,
@@ -174,7 +174,7 @@
       "id": "92fa774b08d8eda0",
       "type": "file",
       "file": ".scratch/fat-loss/issues/08-engine-tools.md",
-      "x": 1560,
+      "x": 2080,
       "y": 0,
       "width": 320,
       "height": 110,
@@ -184,7 +184,7 @@
       "id": "ad7b99ebf00a1c3a",
       "type": "file",
       "file": ".scratch/fat-loss/issues/09-web-body.md",
-      "x": 1560,
+      "x": 2080,
       "y": 150,
       "width": 320,
       "height": 110,
@@ -194,7 +194,7 @@
       "id": "5a9b94234bbe6705",
       "type": "file",
       "file": ".scratch/fat-loss/issues/11-plan-generator-uses-the-estimate.md",
-      "x": 1560,
+      "x": 2080,
       "y": 300,
       "width": 320,
       "height": 110,
@@ -204,7 +204,7 @@
       "id": "19b0e43fa51e55b3",
       "type": "file",
       "file": ".scratch/fat-loss/issues/12-digest-energy-and-protein.md",
-      "x": 1560,
+      "x": 2080,
       "y": 450,
       "width": 320,
       "height": 110,
@@ -214,7 +214,7 @@
       "id": "761f3ad53b9b600d",
       "type": "file",
       "file": ".scratch/fat-loss/issues/22-ship-pass.md",
-      "x": 2080,
+      "x": 2600,
       "y": 0,
       "width": 320,
       "height": 110,
@@ -222,6 +222,20 @@
     }
   ],
   "edges": [
+    {
+      "id": "0e3e9d986fcff0d8",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "205b2066284eaa80",
+      "toSide": "left"
+    },
+    {
+      "id": "dcbcdf78c9d1ea9a",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "5840e61b2472e0a4",
+      "toSide": "left"
+    },
     {
       "id": "14e015d799d21201",
       "fromNode": "5840e61b2472e0a4",
@@ -248,6 +262,13 @@
       "fromNode": "2d9a512ba514a5c4",
       "fromSide": "right",
       "toNode": "0e8a35c48cf6e5bb",
+      "toSide": "left"
+    },
+    {
+      "id": "3f2598d20f22c637",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "ca93eb629c3f0176",
       "toSide": "left"
     },
     {
@@ -367,6 +388,34 @@
       "fromNode": "2d9a512ba514a5c4",
       "fromSide": "right",
       "toNode": "d52475628d996680",
+      "toSide": "left"
+    },
+    {
+      "id": "27a36a29b9437777",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "8ebb7a33f8dffa65",
+      "toSide": "left"
+    },
+    {
+      "id": "7f858c3e33c3d3aa",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "4cfcbbb0d8d55649",
+      "toSide": "left"
+    },
+    {
+      "id": "e517abf023642c77",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "4e30b93d4dcf7199",
+      "toSide": "left"
+    },
+    {
+      "id": "dfefb42cad19c53e",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "5c3c6ff0314772ea",
       "toSide": "left"
     },
     {

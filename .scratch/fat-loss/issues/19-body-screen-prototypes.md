@@ -5,8 +5,8 @@ title: "Body screens: two or three directions to pick from"
 type: prototype
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
+blockers: ["01"]
+blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]
 ---
 # Body screens: two or three directions to pick from

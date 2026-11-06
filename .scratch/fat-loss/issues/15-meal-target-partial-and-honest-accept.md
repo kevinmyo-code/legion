@@ -5,8 +5,8 @@ title: "G2 and G3: partial meal targets, honest plan acceptance"
 type: build
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
+blockers: ["01"]
+blocked-by: ["[[01-kevins-rulings]]"]
 tags: [ticket]
 ---
 # G2 and G3: partial meal targets, honest plan acceptance
