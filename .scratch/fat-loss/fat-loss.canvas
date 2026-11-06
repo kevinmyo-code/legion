@@ -1,0 +1,555 @@
+{
+  "nodes": [
+    {
+      "id": "e1f8a2f1ccd9493a",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/01-kevins-rulings.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "dce1a10b0a28a4fb",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/18-health-connect.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "205b2066284eaa80",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/02-seventh-aspect-in-the-docs.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "5840e61b2472e0a4",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/03-body-profile.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ca93eb629c3f0176",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/07-saved-meals.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8ebb7a33f8dffa65",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/15-meal-target-partial-and-honest-accept.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4cfcbbb0d8d55649",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/16-routing-and-voice-guide.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4e30b93d4dcf7199",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/17-coach-tone-and-appetite.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5c3c6ff0314772ea",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/19-body-screen-prototypes.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "7c0f2cf0011a3401",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/04-energy-calculator.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2d9a512ba514a5c4",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/05-trend-and-waist.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e28bfc5e2d1491a1",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/20-pick-a-body-direction.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0e8a35c48cf6e5bb",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/06-adaptation-proposals.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "edb629244f7d13e5",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/10-phone-coach-reads.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b2b67f279abf2946",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/13-monday-weekly-line.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d52475628d996680",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/14-weight-goal-tracked.md",
+      "x": 1560,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "43ec7a2485394230",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/21-body-screen-build.md",
+      "x": 1560,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "92fa774b08d8eda0",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/08-engine-tools.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ad7b99ebf00a1c3a",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/09-web-body.md",
+      "x": 2080,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5a9b94234bbe6705",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/11-plan-generator-uses-the-estimate.md",
+      "x": 2080,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "19b0e43fa51e55b3",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/12-digest-energy-and-protein.md",
+      "x": 2080,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "761f3ad53b9b600d",
+      "type": "file",
+      "file": ".scratch/fat-loss/issues/22-ship-pass.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "0e3e9d986fcff0d8",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "205b2066284eaa80",
+      "toSide": "left"
+    },
+    {
+      "id": "dcbcdf78c9d1ea9a",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "5840e61b2472e0a4",
+      "toSide": "left"
+    },
+    {
+      "id": "14e015d799d21201",
+      "fromNode": "5840e61b2472e0a4",
+      "fromSide": "right",
+      "toNode": "7c0f2cf0011a3401",
+      "toSide": "left"
+    },
+    {
+      "id": "6f796c13250a9edc",
+      "fromNode": "5840e61b2472e0a4",
+      "fromSide": "right",
+      "toNode": "2d9a512ba514a5c4",
+      "toSide": "left"
+    },
+    {
+      "id": "b95998b02412149f",
+      "fromNode": "7c0f2cf0011a3401",
+      "fromSide": "right",
+      "toNode": "0e8a35c48cf6e5bb",
+      "toSide": "left"
+    },
+    {
+      "id": "d2851463f97de07e",
+      "fromNode": "2d9a512ba514a5c4",
+      "fromSide": "right",
+      "toNode": "0e8a35c48cf6e5bb",
+      "toSide": "left"
+    },
+    {
+      "id": "3f2598d20f22c637",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "ca93eb629c3f0176",
+      "toSide": "left"
+    },
+    {
+      "id": "892303b256f134cc",
+      "fromNode": "5840e61b2472e0a4",
+      "fromSide": "right",
+      "toNode": "92fa774b08d8eda0",
+      "toSide": "left"
+    },
+    {
+      "id": "223718be1351245d",
+      "fromNode": "7c0f2cf0011a3401",
+      "fromSide": "right",
+      "toNode": "92fa774b08d8eda0",
+      "toSide": "left"
+    },
+    {
+      "id": "90af55b5bb0b4042",
+      "fromNode": "2d9a512ba514a5c4",
+      "fromSide": "right",
+      "toNode": "92fa774b08d8eda0",
+      "toSide": "left"
+    },
+    {
+      "id": "82fc970858ce6609",
+      "fromNode": "0e8a35c48cf6e5bb",
+      "fromSide": "right",
+      "toNode": "92fa774b08d8eda0",
+      "toSide": "left"
+    },
+    {
+      "id": "036babf0f1b350ea",
+      "fromNode": "ca93eb629c3f0176",
+      "fromSide": "right",
+      "toNode": "92fa774b08d8eda0",
+      "toSide": "left"
+    },
+    {
+      "id": "f317feca24a52075",
+      "fromNode": "5840e61b2472e0a4",
+      "fromSide": "right",
+      "toNode": "ad7b99ebf00a1c3a",
+      "toSide": "left"
+    },
+    {
+      "id": "c4dadf0d9fc6679a",
+      "fromNode": "7c0f2cf0011a3401",
+      "fromSide": "right",
+      "toNode": "ad7b99ebf00a1c3a",
+      "toSide": "left"
+    },
+    {
+      "id": "af1e99e74e1c04f6",
+      "fromNode": "2d9a512ba514a5c4",
+      "fromSide": "right",
+      "toNode": "ad7b99ebf00a1c3a",
+      "toSide": "left"
+    },
+    {
+      "id": "766cccf1aea2bea4",
+      "fromNode": "0e8a35c48cf6e5bb",
+      "fromSide": "right",
+      "toNode": "ad7b99ebf00a1c3a",
+      "toSide": "left"
+    },
+    {
+      "id": "c81712e79ae81995",
+      "fromNode": "ca93eb629c3f0176",
+      "fromSide": "right",
+      "toNode": "ad7b99ebf00a1c3a",
+      "toSide": "left"
+    },
+    {
+      "id": "91889722bff77969",
+      "fromNode": "7c0f2cf0011a3401",
+      "fromSide": "right",
+      "toNode": "edb629244f7d13e5",
+      "toSide": "left"
+    },
+    {
+      "id": "f671c861854e013d",
+      "fromNode": "2d9a512ba514a5c4",
+      "fromSide": "right",
+      "toNode": "edb629244f7d13e5",
+      "toSide": "left"
+    },
+    {
+      "id": "9faa73a59cecee2c",
+      "fromNode": "ca93eb629c3f0176",
+      "fromSide": "right",
+      "toNode": "edb629244f7d13e5",
+      "toSide": "left"
+    },
+    {
+      "id": "345226e9faaffd61",
+      "fromNode": "edb629244f7d13e5",
+      "fromSide": "right",
+      "toNode": "5a9b94234bbe6705",
+      "toSide": "left"
+    },
+    {
+      "id": "4405ba9f33271a20",
+      "fromNode": "edb629244f7d13e5",
+      "fromSide": "right",
+      "toNode": "19b0e43fa51e55b3",
+      "toSide": "left"
+    },
+    {
+      "id": "a1b33fd672270ecb",
+      "fromNode": "2d9a512ba514a5c4",
+      "fromSide": "right",
+      "toNode": "b2b67f279abf2946",
+      "toSide": "left"
+    },
+    {
+      "id": "4870417b1c469649",
+      "fromNode": "2d9a512ba514a5c4",
+      "fromSide": "right",
+      "toNode": "d52475628d996680",
+      "toSide": "left"
+    },
+    {
+      "id": "27a36a29b9437777",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "8ebb7a33f8dffa65",
+      "toSide": "left"
+    },
+    {
+      "id": "7f858c3e33c3d3aa",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "4cfcbbb0d8d55649",
+      "toSide": "left"
+    },
+    {
+      "id": "e517abf023642c77",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "4e30b93d4dcf7199",
+      "toSide": "left"
+    },
+    {
+      "id": "dfefb42cad19c53e",
+      "fromNode": "e1f8a2f1ccd9493a",
+      "fromSide": "right",
+      "toNode": "5c3c6ff0314772ea",
+      "toSide": "left"
+    },
+    {
+      "id": "2318f66728a9d694",
+      "fromNode": "5c3c6ff0314772ea",
+      "fromSide": "right",
+      "toNode": "e28bfc5e2d1491a1",
+      "toSide": "left"
+    },
+    {
+      "id": "bdd90c0ed679b654",
+      "fromNode": "e28bfc5e2d1491a1",
+      "fromSide": "right",
+      "toNode": "43ec7a2485394230",
+      "toSide": "left"
+    },
+    {
+      "id": "46d07083fd2c32c7",
+      "fromNode": "205b2066284eaa80",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "4a30222babe586c5",
+      "fromNode": "5840e61b2472e0a4",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "887b6087a756f240",
+      "fromNode": "7c0f2cf0011a3401",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "e9388910b140383f",
+      "fromNode": "2d9a512ba514a5c4",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "4552833ef22b56c6",
+      "fromNode": "0e8a35c48cf6e5bb",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "29378c29f83566c7",
+      "fromNode": "ca93eb629c3f0176",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "49dab048ce6c828f",
+      "fromNode": "92fa774b08d8eda0",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "3d74bd61e12884c7",
+      "fromNode": "ad7b99ebf00a1c3a",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "cd86237ff815c175",
+      "fromNode": "edb629244f7d13e5",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "5c2a3313fc8a6017",
+      "fromNode": "5a9b94234bbe6705",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "53cc7142101b2d5f",
+      "fromNode": "19b0e43fa51e55b3",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "9135cf2f70c9a315",
+      "fromNode": "b2b67f279abf2946",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "14b1f356684abf4c",
+      "fromNode": "d52475628d996680",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "54cb3f5f841e8437",
+      "fromNode": "8ebb7a33f8dffa65",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "3c5c25a1413cf5d6",
+      "fromNode": "4cfcbbb0d8d55649",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "09d64fd01ee7f704",
+      "fromNode": "4e30b93d4dcf7199",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    },
+    {
+      "id": "440e37fcf79ef659",
+      "fromNode": "43ec7a2485394230",
+      "fromSide": "right",
+      "toNode": "761f3ad53b9b600d",
+      "toSide": "left"
+    }
+  ]
+}

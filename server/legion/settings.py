@@ -176,6 +176,10 @@ INSTALLED_APPS = [
     # memory-and-vault map (ADR 0076): the ID vault, sealed under LEGION_VAULT_KEY, opened only
     # on a member's phone behind the fingerprint (`public.vault_items`, `public.vault_reveals`).
     "id_vault",
+    # fat-loss map (tickets 03 to 07): the body profile (private to its member), the waist log,
+    # saved meals and the two-weekly energy proposals (`public.body_profiles`, `waist_logs`,
+    # `saved_meals`, `energy_proposals`), and the pure estimate/trend math beside them.
+    "body_coach",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).

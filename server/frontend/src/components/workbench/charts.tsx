@@ -4,7 +4,8 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YA
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 
 /**
- * The only three chart shapes the web uses: a sparkline, bars, and a meter.
+ * The only three chart shapes the web uses: a sparkline (with its readings as
+ * dots, for the weight trend), bars, and a meter.
  * No donuts, no pies (the phone's frozen chart vocabulary, and the ruling that
  * a share-of-a-whole ring says less than the number beside it).
  *
@@ -53,6 +54,81 @@ export function Sparkline({
             stroke="var(--color-value)"
             strokeWidth={2.5}
             dot={{ r: 3, fill: 'var(--color-value)', strokeWidth: 0 }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ChartContainer>
+    </figure>
+  )
+}
+
+export interface TrendPoint {
+  label: string
+  /** The smoothed trend; always present. */
+  trend: number
+  /** The day's own reading; null on a day with none (no dot, never a zero). */
+  raw: number | null
+}
+
+const TREND_CONFIG = {
+  trend: { label: 'Trend', color: 'var(--primary)' },
+  raw: { label: 'Reading', color: 'var(--outline)' },
+} satisfies ChartConfig
+
+/** A sparkline with its readings: the smoothed trend as the line, each day's own
+ * reading as a dot beside it. Same vocabulary as `Sparkline`, one more series. */
+export function TrendLine({
+  points,
+  description,
+  unit,
+  reference,
+  referenceLabel,
+}: {
+  points: readonly TrendPoint[]
+  description: string
+  unit: string
+  /** One reference line, e.g. a goal weight someone set. */
+  reference?: number
+  referenceLabel?: string
+}) {
+  const values = points.flatMap((point) => (point.raw === null ? [point.trend] : [point.trend, point.raw]))
+  const low = Math.min(...values, reference ?? Infinity)
+  const high = Math.max(...values, reference ?? -Infinity)
+  const pad = Math.max((high - low) * 0.1, 0.5)
+  return (
+    <figure role="img" aria-label={description} className="m-0">
+      <ChartContainer config={TREND_CONFIG} className="aspect-auto h-56 w-full">
+        <LineChart data={[...points]} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+          <CartesianGrid vertical={false} stroke="var(--outline-variant)" />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={6} minTickGap={24} />
+          <YAxis
+            domain={[Math.floor(low - pad), Math.ceil(high + pad)]}
+            width={40}
+            tickLine={false}
+            axisLine={false}
+          />
+          <ChartTooltip content={<ChartTooltipContent formatter={(value) => `${value} ${unit}`} />} />
+          {reference !== undefined && (
+            <ReferenceLine
+              y={reference}
+              stroke="var(--outline)"
+              strokeDasharray="4 4"
+              label={{ value: referenceLabel ?? '', position: 'insideTopRight', fill: 'var(--muted-foreground)', fontSize: 12 }}
+            />
+          )}
+          <Line
+            dataKey="raw"
+            stroke="none"
+            dot={{ r: 2.5, fill: 'var(--color-raw)', strokeWidth: 0 }}
+            activeDot={false}
+            isAnimationActive={false}
+          />
+          <Line
+            dataKey="trend"
+            type="monotone"
+            stroke="var(--color-trend)"
+            strokeWidth={2.5}
+            dot={false}
             isAnimationActive={false}
           />
         </LineChart>

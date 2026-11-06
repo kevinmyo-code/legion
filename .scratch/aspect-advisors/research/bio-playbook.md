@@ -194,3 +194,21 @@ Research summaries (open access):
 Licensing note: all figures above are restated facts and ranges from open-access position stands
 and US government publications (public domain for the federal ones). No program templates, set/rep
 schemes, or prose were copied from any commercial or paywalled source.
+
+## Appetite and habits (added 2026-11-05, fat-loss ticket 17)
+
+Shipped in `BioPlaybook.kt` as "APPETITE AND HABITS". Kevin asked for help with boredom eating;
+the section offers evidence-based basics, never rules. **The citations below were written from
+memory by the building agent on 2026-11-05 and were not re-fetched;** check each before quoting
+it as authority.
+
+| Claim in the playbook | Source |
+|---|---|
+| Protein is the most satiating macronutrient | Leidy HJ et al., "The role of protein in weight loss and maintenance", *Am J Clin Nutr* 2015;101(6):1320S-1329S |
+| Fibre and low energy density lower intake | Rolls BJ, "The relationship between dietary energy density and energy intake", *Physiol Behav* 2009;97(5):609-615; Reynolds A et al., "Carbohydrate quality and human health", *Lancet* 2019;393:434-445 |
+| Water before meals modestly aids loss | Dennis EA et al., "Water consumption increases weight loss during a hypocaloric diet intervention in middle-aged and older adults", *Obesity* 2010;18(2):300-307 |
+| Self-monitoring predicts loss | Burke LE et al., "Self-monitoring in weight loss: a systematic review of the literature", *J Am Diet Assoc* 2011;111(1):92-102 |
+| Boredom drives eating to escape the bored self | Moynihan AB et al., "Eaten up by boredom: consuming food to escape awareness of the bored self", *Front Psychol* 2015;6:369 |
+| Portion, package and tableware size change intake | Hollands GJ et al., "Portion, package or tableware size for changing selection and consumption of food, alcohol and tobacco", *Cochrane Database Syst Rev* 2015, CD011045 |
+| Ultra-processed diets increase intake (about 500 kcal/day in a controlled trial) | Hall KD et al., "Ultra-processed diets cause excess calorie intake and weight gain", *Cell Metab* 2019;30(1):67-77 |
+| Short sleep raises next-day intake | Al Khatib HK et al., "The effects of partial sleep deprivation on energy balance: a systematic review and meta-analysis", *Eur J Clin Nutr* 2017;71(5):614-624 |

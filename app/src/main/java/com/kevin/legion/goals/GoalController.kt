@@ -2,6 +2,11 @@ package com.kevin.legion.goals
 
 import android.content.Context
 import com.kevin.legion.backend.LastAspectsWriteThrough
+import com.kevin.legion.bodycoach.BodyCoachWrites
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
 import java.util.UUID
@@ -116,6 +121,7 @@ object GoalController {
             // enqueues in sync_outbox on failure) the moment this goal is created locally. See
             // LastAspectsWriteThrough's own class doc.
             val stored = LastAspectsWriteThrough.addGoal(context, goal)
+            mirrorWeightGoal(context, stored)
             return SetOutcome.Created(stored)
         }
 
@@ -138,8 +144,34 @@ object GoalController {
         )
         // live-sync ticket: write-through, same reasoning as the Created branch above.
         val stored = LastAspectsWriteThrough.addGoal(context, revision)
+        mirrorWeightGoal(context, stored)
         return SetOutcome.Revised(stored, target)
     }
+
+    /**
+     * fat-loss ticket 14 (G1): a weight goal's target goes to the engine profile as
+     * `goal_weight_lbs`, because the engine's trend milestone and protein figure read it there and
+     * this phone's goal rows never reach the engine. Fire and forget on the app's IO scope, so a slow
+     * or absent engine never delays the goal write; nothing is claimed about it. kg is converted.
+     */
+    private fun mirrorWeightGoal(context: Context, goal: Goal) {
+        val lbs = weightGoalLbs(goal) ?: return
+        val app = context.applicationContext
+        mirrorScope.launch { runCatching { BodyCoachWrites.forApp(app).putGoalWeight(lbs) } }
+    }
+
+    /** A weight goal's target in lbs, or null for any other goal. */
+    internal fun weightGoalLbs(goal: Goal): Double? {
+        val value = goal.targetValue ?: return null
+        return when {
+            goal.metricKey == "bodyweight_lbs" -> if (goal.unit.equals("kg", ignoreCase = true)) value * LBS_PER_KG else value
+            goal.metricKey == "bodyweight_kg" -> value * LBS_PER_KG
+            else -> null
+        }
+    }
+
+    private const val LBS_PER_KG = 2.20462
+    private val mirrorScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Every currently-active goal for [aspect] - the panel's read, and `list_goals`'s single-aspect form. */
     suspend fun currentGoals(context: Context, aspect: String): List<Goal> =

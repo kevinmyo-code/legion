@@ -92,9 +92,11 @@ merely looked like its output. Running the real thing means the suite proves
 the migration; `tests/test_tenancy.py` holds the hand-written expectation
 (`REKEYED`, `UNTOUCHED`) so the planner is not checked only against itself.
 
-**Four tenant tables are still absent from this mirror entirely** - `goals`,
+**Three tenant tables are still absent from this mirror entirely** -
 `conversation_audit`, `item_lists` and `list_items`. Nothing has ever written
-to them through this server, so nothing here has ever needed them.
+to them through this server, so nothing here has ever needed them. `goals`
+joined the mirror with the fat-loss map: the engine's energy estimate and
+weight trend read the active `bodyweight_lbs` goal (`body_coach/`).
 `tests/test_tenancy.TABLES_ABSENT_FROM_THE_TEST_MIRROR` names them and
 asserts the absence, so adding one without its column fails rather than
 passing quietly.
@@ -207,6 +209,27 @@ create table if not exists public.meal_targets (
     deleted_at                timestamptz,
     origin_guid               text        not null unique,
     constraint meal_targets_effective_from_date_unique unique (effective_from_date)
+);
+
+-- GOALS (20260902000500_aspect_last.sql), verbatim. Read by `body_coach/` (fat-loss map).
+create table if not exists public.goals (
+    id               uuid primary key default gen_random_uuid(),
+    lineage_id       bigint      not null,
+    aspect           text        not null,
+    statement        text        not null,
+    target_value     double precision,
+    unit             text,
+    metric_key       text,
+    deadline_epoch   timestamptz,
+    status           text        not null default 'active',
+    supersedes_guid  text,
+    closed_at        timestamptz,
+    created_at_client timestamptz not null,
+    provenance       public.provenance not null default 'USER',
+    created_at       timestamptz not null default now(),
+    updated_at       timestamptz not null default now(),
+    deleted_at       timestamptz,
+    origin_guid      text        not null unique
 );
 
 create table if not exists public.sleep_logs (
@@ -337,7 +360,7 @@ declare
 begin
     foreach tbl in array array[
         'places', 'voice_notes',
-        'bodyweight_logs', 'meal_logs', 'meal_targets', 'sleep_logs', 'sleep_targets',
+        'bodyweight_logs', 'meal_logs', 'meal_targets', 'goals', 'sleep_logs', 'sleep_targets',
         'workout_plans', 'workout_plan_items', 'workout_set_logs',
         'memories', 'companion_memories', 'memory_audit'
     ]

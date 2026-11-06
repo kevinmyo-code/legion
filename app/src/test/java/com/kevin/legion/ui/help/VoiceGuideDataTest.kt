@@ -53,7 +53,8 @@ class VoiceGuideDataTest {
                 nameRe.findAll(read("ClaudeSessionToolbox.kt")) +
                 nameRe.findAll(read("AppUpdateToolbox.kt")) +
                 nameRe.findAll(read("MemoryToolbox.kt")) +
-                nameRe.findAll(read("VaultToolbox.kt"))
+                nameRe.findAll(read("VaultToolbox.kt")) +
+                nameRe.findAll(read("BodyCoachToolbox.kt"))
         )
             .map { it.groupValues[1] }
             .toSet()

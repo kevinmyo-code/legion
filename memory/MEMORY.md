@@ -22,6 +22,14 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Fat-loss loop and Body screen - 2026-11-05
+
+- `feat/fat-loss` (pushed, not merged): map `.scratch/fat-loss/`, Body is the seventh aspect (ADR
+  0077); engine `body_coach` app + web `/body`; phone reads, plan uses the estimate, Monday line,
+  Body screen in direction A (Kevin's pick). `fast` 263100519 built, not installed.
+- Owed by Kevin: engine deploy with the `body_coach` migration; his profile on web `/body` or the
+  phone (his numbers never in the repo); a `bodyweight_lbs` goal with his milestone; install `fast`.
+
 ## Phone verification - 2026-11-05
 
 - `feat/phone-verify`: `python tools/phone` drives the phone with rails;

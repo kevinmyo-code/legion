@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Seventy-four names (count it with len(); this line was stale three times before).
+# Eighty-three names (count it with len(); this line was stale four times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -69,6 +69,13 @@ TENANT_TABLES: tuple[str, ...] = (
     "workout_plan_items",
     "workout_set_logs",
     "goals",
+    # fat-loss map (tickets 03 to 07): Django-managed and born tenanted like `member_memories`
+    # (`body_coach/models.py`). A profile is private to its member (`OWNER_PATHS`); the waist log,
+    # saved meals and energy proposals are shared in the household (map ruling 6).
+    "body_profiles",
+    "waist_logs",
+    "saved_meals",
+    "energy_proposals",
     # memory
     "memories",
     "memory_audit",
@@ -243,6 +250,10 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "memory_consolidations",
         "vault_items",
         "vault_reveals",
+        "body_profiles",
+        "waist_logs",
+        "saved_meals",
+        "energy_proposals",
     }
 )
 
@@ -417,6 +428,8 @@ OWNER_PATHS: dict[str, str] = {
     # ADR 0076: never null, so `visible()` gives a member their own vault items and no one else's.
     "vault_items": "owner_user",
     "vault_reveals": "owner_user",
+    # fat-loss ticket 03: never null, so a member reads and writes their own profile only.
+    "body_profiles": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

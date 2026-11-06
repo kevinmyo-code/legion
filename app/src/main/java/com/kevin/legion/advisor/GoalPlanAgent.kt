@@ -4,6 +4,11 @@ import android.content.Context
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.StructuredOutputRequest
 import com.kevin.legion.ai.SubAgent
+import com.kevin.legion.bodycoach.BodyCoachController
+import com.kevin.legion.bodycoach.EnergyWire
+import com.kevin.legion.finance.FinanceRead
+import com.kevin.legion.finance.noteOrNull
+import com.kevin.legion.finance.valueOrNull
 import com.kevin.legion.goals.GoalController
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.sleep.SleepController
@@ -17,6 +22,12 @@ import org.json.JSONObject
  * straight through, once the user accepts, with no translation.
  */
 data class GoalPlanMealTarget(val caloriesKcal: Int, val proteinG: Double, val carbsG: Double, val fatG: Double)
+
+/**
+ * What one write of an accepted plan actually did, from the writer's own flag and sentence
+ * (fat-loss ticket 15, G3): the dialog says this, never "set" on its own authority.
+ */
+data class GoalPlanWrite(val succeeded: Boolean, val message: String)
 
 /** A nightly sleep target, shaped to match `set_sleep_target`'s own single `hours` param. */
 data class GoalPlanSleepTarget(val hours: Double)
@@ -83,6 +94,10 @@ data class GoalPlan(
     val workoutPlanSucceeded: Boolean? = null,
     val goals: List<GoalPlanGoal> = emptyList(),
     val refusals: List<String> = emptyList(),
+    /** The meal target write's real outcome; null until [GoalPlanAgent.acceptWholePlan] ran it. */
+    val mealTargetWrite: GoalPlanWrite? = null,
+    /** The sleep target write's real outcome; null until [GoalPlanAgent.acceptWholePlan] ran it. */
+    val sleepTargetWrite: GoalPlanWrite? = null,
     /**
      * The workout goal sentence [GoalPlanAgent.parse] read off the model's response - a PROPOSAL,
      * still awaiting the [WorkoutController.generatePlan] call that [GoalPlanAgent.accept] makes
@@ -129,8 +144,15 @@ sealed class GoalPlanResult {
  *   [WorkoutController.generatePlan] directly when the model proposes a workout goal sentence,
  *   rather than [GoalPlanAgent] building its own exercise/sets table. This is the one target that
  *   is already written by the time [generate] returns - see [GoalPlan]'s doc comment.
- * - **Protein is always against total bodyweight.** No body-fat input anywhere in this path -
- *   never requested, never estimated, never guessed from anything else in the goal text.
+ * - **No body-fat input anywhere in this path** - never requested, never estimated, never guessed
+ *   from anything else in the goal text.
+ * - **The calorie and protein numbers are the engine's, never the model's** (fat-loss ticket 11,
+ *   map decision 5, Kevin 2026-11-05). [generate] reads the energy estimate first
+ *   ([energyProvider], `server/body_coach/energy.py`): with one, [applyEnergy] sets the meal
+ *   target's kcal and protein from it whatever the model wrote (LLM advises, app computes); with
+ *   none (no profile, no weigh-in, engine never read), no meal target is proposed and a refusal
+ *   names the missing inputs and asks for them. Protein is 2.0 g/kg of goal weight or current
+ *   weight, whichever is lower, which supersedes this file's old "always against total bodyweight".
  * - **A boundary refuses its OWN target, never the whole plan.** See [parse]'s doc comment for
  *   the one boundary ([HARD_FLOOR_CALORIES_KCAL]) enforced in Kotlin rather than left to prose.
  * - **BIO-only.** `goals` may only carry `aspect = "bio"` for now - generalising to cred/log/fleet
@@ -147,6 +169,13 @@ class GoalPlanAgent(
      */
     private val subAgentFactory: (systemInstruction: String) -> SubAgent =
         { systemInstruction -> SubAgent(systemInstruction = systemInstruction, useSearch = false) },
+    /**
+     * The engine's energy estimate (fat-loss ticket 11): fresh, else this phone's saved copy, else
+     * the reason there is none. A seam so a test hands one in without a network.
+     */
+    private val energyProvider: suspend (Context) -> FinanceRead<EnergyWire> = { ctx ->
+        BodyCoachController.forApp(ctx).energy()
+    },
 ) {
     /**
      * Generates one plan for [goalText] (the user's own words). Reads [PrimingTopic.BIO] and
@@ -174,14 +203,15 @@ class GoalPlanAgent(
     suspend fun generate(context: Context, goalText: String): GoalPlanResult {
         val combinedDoctrine = Priming.combinedText(context, listOf(PrimingTopic.BIO, PrimingTopic.PLAN))
             ?: return GoalPlanResult.Failed
-        val promptContext = composeContext(combinedDoctrine)
+        val energy = energyProvider(context)
+        val promptContext = composeContext(combinedDoctrine) + "\n\n" + energyContext(energy)
 
         val outcome = when (val result = subAgentFactory(SYSTEM_INSTRUCTION).askTyped(
             context = promptContext,
             question = goalText,
             structuredOutput = StructuredOutputRequest(responseSchema()),
         )) {
-            is AgentResult.Success -> parse(result.text)?.let { GoalPlanResult.Success(it) }
+            is AgentResult.Success -> parse(result.text)?.let { GoalPlanResult.Success(applyEnergy(it, energy)) }
                 ?: GoalPlanResult.ParseFailed(result.text)
             AgentResult.RateLimited -> GoalPlanResult.RateLimited
             AgentResult.KeyInvalid -> GoalPlanResult.KeyInvalid
@@ -249,22 +279,22 @@ class GoalPlanAgent(
      * nothing left here to derive.
      */
     suspend fun acceptWholePlan(context: Context, plan: GoalPlan): GoalPlan {
-        // The meal/sleep target outcomes are still discarded here, exactly as they were before
-        // those two calls returned one - this function's contract is "make every write the plan
-        // proposed", and nothing downstream has a field to render a per-target refusal into. That
-        // is a real gap (GoalPlanDialog's AcceptedPlanBody says "Meal target set" unconditionally)
-        // and it is NOT what the 2026-09-07 outcome-flag fix closed; it needs its own ticket.
-        plan.mealTarget?.let {
+        // fat-loss ticket 15 (G3): each write's own outcome is kept and shown. GoalPlanDialog used
+        // to say "Meal target set" unconditionally, so a refused target read as applied.
+        val mealWrite = plan.mealTarget?.let {
             MealController.setTarget(context, it.caloriesKcal, it.proteinG, it.carbsG, it.fatG)
+                .let { o -> GoalPlanWrite(o.success, o.message) }
         }
-        plan.sleepTarget?.let { SleepController.setTarget(context, it.hours) }
+        val sleepWrite = plan.sleepTarget?.let {
+            SleepController.setTarget(context, it.hours).let { o -> GoalPlanWrite(o.success, o.message) }
+        }
         plan.goals.forEach { g ->
             GoalController.setGoal(
                 context, aspect = g.aspect, statement = g.statement, targetValue = g.targetValue,
                 unit = g.unit, metricKey = g.metricKey, deadlineEpoch = parseDeadline(g.deadline),
             )
         }
-        val accepted = accept(context, plan)
+        val accepted = accept(context, plan).copy(mealTargetWrite = mealWrite, sleepTargetWrite = sleepWrite)
         // `GoalChecklistSync.materializeToday(context)` used to run here, deriving today's lines
         // from the targets just written. Deleted 2026-09-10 (one-home ticket 05): the advisor now
         // composes the list itself and writes it as a real recurring checklist through
@@ -286,6 +316,80 @@ class GoalPlanAgent(
          * edit could route around.
          */
         const val HARD_FLOOR_CALORIES_KCAL = 800
+
+        /**
+         * The context block naming the engine's estimate (fat-loss ticket 11), or saying in words
+         * that there is none and that no meal target may be proposed. The model is told the numbers
+         * are fixed; [applyEnergy] makes that true whatever it writes.
+         */
+        internal fun energyContext(energy: FinanceRead<EnergyWire>): String {
+            val e = energy.valueOrNull
+            val target = e?.suggestedTargetKcal
+            val protein = e?.proteinG
+            if (e == null || target == null || protein == null) {
+                return "ENERGY ESTIMATE: none. ${missingSentence(energy)} Do NOT propose a mealTarget " +
+                    "and do not pick any calorie or protein number yourself."
+            }
+            val basis = basisWords(e)
+            return "ENERGY ESTIMATE (computed by the app, an estimate, from $basis): maintenance " +
+                "${e.maintenanceKcal ?: "unknown"} kcal, target $target kcal a day at " +
+                "${e.targetRatePct ?: "their chosen"}% of bodyweight a week, protein $protein g a day. " +
+                "Use exactly these for mealTarget.caloriesKcal and mealTarget.proteinG; never choose " +
+                "your own. Carbs and fat are optional: give 0 for either if the goal does not call " +
+                "for it. Say in the rationale that the target is an estimate from $basis."
+        }
+
+        private fun basisWords(e: EnergyWire): String =
+            if (e.basis == "trend") {
+                "their own weight trend, ${e.basisDays ?: TREND_DAYS} days"
+            } else {
+                "the Mifflin-St Jeor formula and their activity level"
+            }
+
+        private const val TREND_DAYS = 14
+
+        /** "The estimate needs height and birth year." or the engine's own reason. */
+        internal fun missingSentence(energy: FinanceRead<EnergyWire>): String {
+            val missing = energy.valueOrNull?.missing.orEmpty()
+            return when {
+                missing.isNotEmpty() -> "The estimate needs ${joinWords(missing)}."
+                energy.valueOrNull != null -> "The engine could not make an estimate from what it has."
+                else -> energy.noteOrNull ?: "The engine's estimate could not be read."
+            }
+        }
+
+        private fun joinWords(items: List<String>): String = when (items.size) {
+            1 -> items[0]
+            2 -> "${items[0]} and ${items[1]}"
+            else -> items.dropLast(1).joinToString(", ") + " and " + items.last()
+        }
+
+        /**
+         * The plan with the engine's numbers in it: kcal and protein from [energy], carbs and fat
+         * kept from the model (0 if it gave none). With no estimate there is no meal target, and a
+         * refusal says what is missing and asks for it - the generator never invents a calorie
+         * target (map decision 5).
+         */
+        internal fun applyEnergy(plan: GoalPlan, energy: FinanceRead<EnergyWire>): GoalPlan {
+            val e = energy.valueOrNull
+            val target = e?.suggestedTargetKcal
+            val protein = e?.proteinG
+            if (e == null || target == null || protein == null) {
+                val ask = "meal target: not proposed, because the app will not guess one. " +
+                    missingSentence(energy) + " Tell me those, or enter them on the Body page, and ask again."
+                return plan.copy(
+                    mealTarget = null,
+                    refusals = plan.refusals.filterNot { it.startsWith("meal target") } + ask,
+                )
+            }
+            if (target <= HARD_FLOOR_CALORIES_KCAL) return plan.copy(mealTarget = null)
+            val carbs = plan.mealTarget?.carbsG ?: 0.0
+            val fat = plan.mealTarget?.fatG ?: 0.0
+            return plan.copy(
+                mealTarget = GoalPlanMealTarget(caloriesKcal = target, proteinG = protein.toDouble(), carbsG = carbs, fatG = fat),
+                refusals = plan.refusals.filterNot { it.startsWith("meal target") },
+            )
+        }
 
         /**
          * The text marker a stored `CompanionMemory` row must start with for [withConstraints] to
@@ -344,8 +448,12 @@ class GoalPlanAgent(
             turn a goal into this plan's shape, how to hedge, and when to refuse. Reason from both,
             never from outside knowledge, and never contradict a boundary either one names.
 
-            Never ask for or estimate body fat, anywhere in this process - protein and calorie
-            targets are always against total bodyweight.
+            Never ask for or estimate body fat, anywhere in this process. The calorie and protein
+            numbers are not yours to choose: the ENERGY ESTIMATE block below the goal states them,
+            or says there is none, in which case propose no mealTarget at all.
+
+            Unless the goal says otherwise, the workout goal is three full-body strength days a
+            week with gym access. A bodyweight goal uses metricKey "bodyweight_lbs", unit "lbs".
 
             HONESTY (binding): every number you propose is a starting point, not a measurement.
             Say so exactly ONCE, inside "rationale", in your own words close to: "Starting at

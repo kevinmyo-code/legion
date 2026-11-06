@@ -1025,7 +1025,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "log_bodyweight",
             description = "Log the user's current bodyweight, e.g. 'I weigh 180 today'. A plain " +
-                "reported measurement, separate from any workout log.",
+                "reported measurement, separate from any workout log. Not a waist size.",
             params = obj(
                 "weight" to schema("number", "The bodyweight value."),
                 "weight_unit" to schema("string", "Unit for the weight.", enum = listOf("lbs", "kg")),
@@ -1062,15 +1062,17 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "set_meal_target",
-            description = "Set the user's daily calorie and macro target. Use when the user " +
-                "states a goal, e.g. 'I want to hit 2200 calories and 150 grams of protein a day'.",
+            // fat-loss ticket 15 (G2): partial updates. Only what the user states is passed; the
+            // rest is carried from the current target (MealController.setTarget).
+            description = "Set the user's daily calorie and macro target, e.g. 'I want to hit 2200 " +
+                "calories and 150 grams of protein a day'. Pass only what they state; the rest is kept.",
             params = obj(
                 "calories" to schema("integer", "Daily calorie target."),
                 "protein_g" to schema("number", "Daily protein target in grams."),
                 "carbs_g" to schema("number", "Daily carb target in grams."),
                 "fat_g" to schema("number", "Daily fat target in grams."),
             ),
-            required = listOf("calories", "protein_g", "carbs_g", "fat_g"),
+            required = listOf(),
         ))
 
         // The counterpart to set_meal_target, and it exists because the UI
@@ -2029,7 +2031,7 @@ object LiveToolbox {
                 "metric_key" to schema(
                     "string",
                     "Optional known metric this goal tracks for automatic progress math, e.g. " +
-                        "'bodyweight_kg', 'savings_balance_cents', 'odometer_miles'. Leave unset " +
+                        "'bodyweight_lbs', 'savings_balance_cents', 'odometer_miles'. Leave unset " +
                         "for a goal with no app-tracked metric - most goals should leave this unset.",
                 ),
                 "deadline" to schema("string", "Optional deadline, month/day/year, e.g. 08/07/2026."),
@@ -2193,6 +2195,10 @@ object LiveToolbox {
             required = listOf("id"),
         ))
 
+        // fat-loss ticket 10: the body coach's three READ tools, hidden behind ask_body (DISPATCHED).
+        val bodyCoachDecls = BodyCoachToolbox.declarations()
+        for (i in 0 until bodyCoachDecls.length()) fns.put(bodyCoachDecls.getJSONObject(i))
+
         return fns
     }
 
@@ -2257,10 +2263,15 @@ object LiveToolbox {
             "get_code_history", "check_readiness", "check_cold_start", "get_mpg", "get_specs",
             "lookup_vin", "check_recalls", "list_vehicles", "get_next_service", "ask_maintenance",
             "triage_symptom", "list_build_history", "get_trend",
+            // fat-loss ticket 16 (G4): the CAR's OBD health snapshot. It sat under "body" because of
+            // its name, so "is the car okay" routed to the health specialist, which had no car.
+            "get_health",
         ),
         "body" to listOf(
             "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
-            "list_recent_workouts", "get_workout_gap", "get_health",
+            "list_recent_workouts", "get_workout_gap",
+            // fat-loss ticket 10: reads only (BodyCoachToolbox). The writes ride ask_engine.
+            "get_energy_estimate", "get_weight_trend", "list_saved_meals",
         ),
         "goals" to listOf("list_goals", "ask_advisor"),
         // manage_grocery came BACK OUT of this list on 2026-08-18 and was declared directly to the
@@ -2343,12 +2354,15 @@ object LiveToolbox {
         ))
         fns.put(fn(
             name = "ask_body",
-            description = "READING BACK the user's own body and training: recent meals, sleep, " +
-                "workouts or bodyweight, and how today or this week compares to target. " +
-                "Read-only - it records NOTHING. Anything the user phrases as having just " +
-                "eaten, slept, lifted or weighed in is a RECORD and goes to the named tool for " +
-                "it - log_meal, log_sleep, log_workout_set, log_bodyweight, create_workout_plan - " +
-                "never here, including when they frame it as progress toward a goal. Ask a " +
+            // fat-loss ticket 16 (G6): calorie, protein and maintenance questions route HERE (the
+            // energy estimate is behind it), and the body-coach writes go to ask_engine. Reworded
+            // token-neutral against LiveSetupPayloadSizeTest (-2 chars with the edits below).
+            description = "READING BACK the user's own body and training: meals, sleep, workouts, " +
+                "weight trend, waist, and estimates of maintenance, calorie target and protein " +
+                "('is my target right'). Read-only - it records NOTHING. Anything the user just " +
+                "ate, slept, lifted or weighed is a RECORD for its named tool - log_meal, " +
+                "log_sleep, log_workout_set, log_bodyweight, create_workout_plan - never here. " +
+                "Recording a body profile, waist or saved meal is ask_engine. Ask a " +
                 "plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
@@ -2360,7 +2374,7 @@ object LiveToolbox {
                 "about progress and what to do next. Advice and reading only - it records NOTHING. " +
                 "A workout, meal, sleep or weigh-in is a RECORD and goes to its own named log tool " +
                 "(log_workout_set, log_meal, log_sleep, log_bodyweight) even when the user " +
-                "mentions a goal in the same breath; reading about the cars goes to ask_fleet; " +
+                "mentions a goal in the same breath; calories, protein or maintenance go to ask_body; " +
                 "groceries to manage_checklist (list=Groceries); and setting or closing a goal is " +
                 "set_goal/close_goal, not this. Ask a " +
                 "plain-English question; raw results come back to relay.",
@@ -2743,6 +2757,7 @@ object LiveToolbox {
         AppUpdateToolbox.dispatch(context, name, args)?.let { return it }
         MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         VaultToolbox.dispatch(context, name, args)?.let { return it }
+        BodyCoachToolbox.dispatch(context, name)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
@@ -3036,8 +3051,11 @@ object LiveToolbox {
                     .let { result(it.success, it.message) }
             "set_meal_target" ->
                 MealController.setTarget(
-                    context, args.optInt("calories"), args.optDouble("protein_g"),
-                    args.optDouble("carbs_g"), args.optDouble("fat_g"),
+                    context,
+                    caloriesKcal = args.optIntOrNull("calories"),
+                    proteinG = args.optDoubleOrNull("protein_g"),
+                    carbsG = args.optDoubleOrNull("carbs_g"),
+                    fatG = args.optDoubleOrNull("fat_g"),
                 ).let { result(it.success, it.message) }
             "set_budget" -> setBudget(context, args)
             "list_budget_categories" -> listBudgetCategories(context)
@@ -8681,3 +8699,11 @@ object LiveToolbox {
         JSONObject().put("type", type).put("description", description)
             .apply { if (enum != null) put("enum", JSONArray(enum)) }
 }
+
+/** A number argument, or null when the model left it out (`optInt` would say 0). fat-loss 15. */
+private fun JSONObject.optIntOrNull(key: String): Int? =
+    if (has(key) && !isNull(key)) optDouble(key).takeIf { !it.isNaN() }?.let { Math.round(it).toInt() } else null
+
+/** A number argument, or null when the model left it out (`optDouble` would say NaN). fat-loss 15. */
+private fun JSONObject.optDoubleOrNull(key: String): Double? =
+    if (has(key) && !isNull(key)) optDouble(key).takeIf { !it.isNaN() } else null

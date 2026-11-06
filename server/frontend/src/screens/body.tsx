@@ -6,6 +6,7 @@ import { CrudPanel } from '@/components/workbench/crud-panel'
 import { Loaded } from '@/components/workbench/loaded'
 import { PageHeader } from '@/components/workbench/page'
 import type { FieldSpec, Values } from '@/components/workbench/record-form'
+import { CoachTab } from '@/screens/body-coach'
 import { MealsTab } from '@/screens/body-food'
 import { WorkoutsTab } from '@/screens/body-workouts'
 import { inForceOn } from '@/lib/body'
@@ -324,17 +325,21 @@ export function BodyScreen() {
     <div>
       <PageHeader
         title="Body"
-        subtitle="Weight, sleep, meals against the targets you set, and workouts."
+        subtitle="Weight, the coach's estimates, sleep, meals against the targets you set, and workouts."
       />
       <Tabs defaultValue="weight">
         <TabsList aria-label="Body sections">
           <TabsTrigger value="weight">Weight</TabsTrigger>
+          <TabsTrigger value="coach">Coach</TabsTrigger>
           <TabsTrigger value="sleep">Sleep</TabsTrigger>
           <TabsTrigger value="meals">Meals</TabsTrigger>
           <TabsTrigger value="workouts">Workouts</TabsTrigger>
         </TabsList>
         <TabsContent value="weight">
           <WeightPanel />
+        </TabsContent>
+        <TabsContent value="coach">
+          <CoachTab />
         </TabsContent>
         <TabsContent value="sleep">
           <SleepPanel />

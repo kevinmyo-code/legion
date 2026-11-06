@@ -141,10 +141,10 @@ object VoiceGuideData {
                 Entry(name = "import_receipt", say = "Scan this receipt", does = "Opens the camera to photograph a grocery receipt.", hands = "Money > Pantry sub-route, scan flow."),
                 Entry(name = "list_recent_groceries", say = "What did I buy last shop?", does = "Recent grocery purchases.", hands = "Money > Pantry sub-route."),
                 Entry(name = "get_grocery_spend", say = "How much on groceries this month?", does = "Grocery spending.", hands = "Money > Pantry sub-route, spend panel."),
-                Entry(name = "log_meal", say = "I had chicken and rice", does = "Logs a meal. Calories and macros are estimates from the description, not measurements.", hands = "Body tab, log-a-meal dialog."),
+                Entry(name = "log_meal", say = "Log my usual breakfast", does = "Logs a meal. Name a saved meal and its saved estimate is logged; otherwise calories and macros are estimates from the description, not measurements.", hands = "Body tab, log-a-meal dialog; saved meals on the web Body page."),
                 Entry(name = "list_recent_meals", say = "What have I eaten today?", does = "Recent meals.", hands = "Body tab, meal history."),
-                Entry(name = "get_meal_gap", say = "When did I last eat?", does = "How long since your last logged meal.", hands = "Body tab, meal-gap indicator."),
-                Entry(name = "set_meal_target", say = "Set my protein target to 180", does = "Sets a daily nutrition target.", hands = "Body tab, meal-target dialog."),
+                Entry(name = "get_meal_gap", say = "How am I doing on calories today?", does = "Today's logged calories and protein against your target, as estimates. Says so when nothing is logged yet, never zero.", hands = "Body tab, intake panel."),
+                Entry(name = "set_meal_target", say = "Set my protein target to 180", does = "Sets your daily calorie and protein target. Only what you say changes; carbs and fat are optional.", hands = "Body tab, meal-target dialog."),
                 Entry(name = "ask_pantry", say = "Ask the pantry what I'm low on", does = "Sends a harder food question to the pantry specialist.", hands = "Is itself a read-only dispatcher; the Pantry sub-route already shows what it would answer."),
             ),
         ),
@@ -154,14 +154,17 @@ object VoiceGuideData {
             entries = listOf(
                 Entry(name = "log_workout_set", say = "Squats, five at a hundred kilos", does = "Logs a set.", hands = "Body tab, log-a-set dialog."),
                 Entry(name = "list_recent_workouts", say = "What did I train this week?", does = "Recent workouts.", hands = "Body tab, workout history."),
-                Entry(name = "get_workout_gap", say = "When did I last train legs?", does = "How long since you trained.", hands = "Body tab, workout-gap indicator."),
+                Entry(name = "get_workout_gap", say = "How's my training this week?", does = "Sessions done against sessions planned this week.", hands = "Body tab, checklist panel."),
                 Entry(name = "create_workout_plan", say = "Make me a plan to get stronger", does = "Builds a training plan from a goal you describe.", hands = "Voice only - a generated plan has no form equivalent; the closest hands step is reviewing and accepting one on the Goals panel."),
                 Entry(name = "log_bodyweight", say = "I'm eighty-two kilos", does = "Logs your bodyweight.", hands = "Body tab, log-bodyweight dialog."),
                 Entry(name = "log_sleep", say = "I slept six hours, woke up twice", does = "Logs a night's sleep.", hands = "Body tab, log-sleep dialog."),
                 Entry(name = "list_recent_sleep", say = "How have I been sleeping?", does = "Recent sleep.", hands = "Body tab, sleep history."),
-                Entry(name = "get_sleep_gap", say = "When did I last log sleep?", does = "How long since your last sleep entry.", hands = "Body tab, sleep-gap indicator."),
+                Entry(name = "get_sleep_gap", say = "Did I hit my sleep target?", does = "Last night's logged sleep against your nightly target. Says so when nothing is logged.", hands = "Body tab, sleep panel."),
                 Entry(name = "set_sleep_target", say = "I want eight hours a night", does = "Sets your nightly sleep target.", hands = "Body tab, sleep-target dialog."),
-                Entry(name = "ask_body", say = "Ask the coach about my recovery", does = "Sends a harder training or nutrition question to the coach.", hands = "Is itself a read-only dispatcher; the Body tab already shows what it would answer."),
+                Entry(name = "get_energy_estimate", say = "What's my maintenance?", does = "Your maintenance calories, a daily target for the rate you chose, and protein, all estimates, and what they are based on: the formula, or your own weight trend. Names anything it still needs, like your height. A suggested change is only offered, never applied.", hands = "Web Body page, Energy card (the phone's Body screen gets one in the revamp)."),
+                Entry(name = "get_weight_trend", say = "Am I losing weight?", does = "Your smoothed weight trend, how fast it is moving each week, how far to your goal, and your waist. The first week's water drop is flagged, not projected.", hands = "Web Body page, trend chart; Body tab, mass panel."),
+                Entry(name = "list_saved_meals", say = "What are my saved meals?", does = "Your saved meals and their estimated calories and protein. Say a name to log one.", hands = "Web Body page, saved meals."),
+                Entry(name = "ask_body", say = "How much should I eat to lose fat?", does = "Answers questions about your food, training, sleep, weight trend and calorie and protein estimates. Read-only.", hands = "Is itself a read-only dispatcher; the Body tab and the web Body page show what it would answer."),
             ),
         ),
         Group(
@@ -282,6 +285,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 130 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 130
+    /** Total entries across every group above - 133 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 133
 }

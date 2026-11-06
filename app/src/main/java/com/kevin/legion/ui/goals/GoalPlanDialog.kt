@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.advisor.GoalPlan
@@ -212,9 +213,13 @@ private fun ProposedPlanBody(plan: GoalPlan) {
 @Composable
 private fun AcceptedPlanBody(plan: GoalPlan) {
     Column {
-        Text("Plan applied.", style = MaterialTheme.typography.bodyMedium)
-        plan.mealTarget?.let { Text("Meal target set: ${it.caloriesKcal} kcal / ${formatOneDecimal(it.proteinG)}g protein", style = LegionType.stamp, modifier = Modifier.padding(top = 8.dp)) }
-        plan.sleepTarget?.let { Text("Sleep target set: ${formatOneDecimal(it.hours)}h", style = LegionType.stamp, modifier = Modifier.padding(top = 4.dp)) }
+        val anyRefused = plan.mealTargetWrite?.succeeded == false || plan.sleepTargetWrite?.succeeded == false ||
+            plan.workoutPlanSucceeded == false
+        Text(if (anyRefused) "Plan applied in part. What did not go through says so below." else "Plan applied.", style = MaterialTheme.typography.bodyMedium)
+        // fat-loss ticket 15 (G3): each target's line is its writer's own sentence, so a refused
+        // target never reads as set.
+        plan.mealTargetWrite?.let { Text(it.message, style = LegionType.stamp, color = if (it.succeeded) Color.Unspecified else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+        plan.sleepTargetWrite?.let { Text(it.message, style = LegionType.stamp, color = if (it.succeeded) Color.Unspecified else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp)) }
         plan.workoutPlanMessage?.let { Text(it, style = LegionType.stamp, modifier = Modifier.padding(top = 4.dp)) }
         if (plan.goals.isNotEmpty()) {
             Text("${plan.goals.size} goal(s) set.", style = LegionType.stamp, modifier = Modifier.padding(top = 4.dp))

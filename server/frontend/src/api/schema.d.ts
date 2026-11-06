@@ -475,6 +475,193 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/body/coach/energy/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The energy estimate: BMR, maintenance (formula, or the person's own 14-day trend once there is enough of it), suggested target and protein, all estimates. Makes the two-weekly proposal when the evidence calls for one (idempotent). */
+        get: operations["api_body_coach_energy_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/profile/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own body profile. Private: no member reads another's. */
+        get: operations["api_body_coach_profile_retrieve"];
+        /** @description Partial update of the caller's own profile; creates it on first use. height_cm or height_in; goal_weight_lbs or goal_weight_kg (null clears it). weekly_line_on false stops the Monday weight line. */
+        put: operations["api_body_coach_profile_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/proposals/{proposal_id}/accept/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Accepts a pending proposal: a meal target effective today with the proposed calories, protein, carbs and fat carried from the current target. */
+        post: operations["api_body_coach_proposal_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/proposals/{proposal_id}/dismiss/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Dismisses a pending proposal. The meal target is not touched. */
+        post: operations["api_body_coach_proposal_dismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/saved-meals/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's saved meals by name. Every macro is an estimate. */
+        get: operations["api_body_coach_saved_meals_list"];
+        put?: never;
+        /** @description Saves a meal by name (unique per household, any case) with its estimated macros, or copies a logged meal's estimate with from_meal_log. */
+        post: operations["api_body_coach_saved_meals_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/saved-meals/{meal_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["api_body_coach_saved_meals_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/saved-meals/{meal_id}/log/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Logs the saved meal now: one meal_logs row with its estimated macros. */
+        post: operations["api_body_coach_saved_meals_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/trend/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_body_coach_trend_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/waist/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The household's waist measurements, latest first, at most 52. */
+        get: operations["api_body_coach_waist_list"];
+        put?: never;
+        /** @description waist_in or waist_cm; measured_on defaults to today in the household's zone. */
+        post: operations["api_body_coach_waist_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/waist/{waist_id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["api_body_coach_waist_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/coach/weekly-line/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The Monday weight line: trend, rate against the 0.5 to 1.0% band, distance to the goal, waist change. say is false when the line is off or the trend is too thin. */
+        get: operations["api_body_coach_weekly_line_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/body/meal_logs/": {
         parameters: {
             query?: never;
@@ -4228,6 +4415,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Accept: {
+            accepted: boolean;
+            meal_target: components["schemas"]["MealTarget"];
+            words: string;
+        };
+        /**
+         * @description * `sedentary` - sedentary
+         *     * `light` - light
+         *     * `moderate` - moderate
+         *     * `very` - very
+         * @enum {string}
+         */
+        ActivityLevelEnum: "sedentary" | "light" | "moderate" | "very";
         /**
          * @description * `phone` - phone
          *     * `headunit` - headunit
@@ -4377,6 +4577,12 @@ export interface components {
             usd_cents: number;
             sgd_cents: number;
         };
+        Band: {
+            /** Format: double */
+            low_pct: number;
+            /** Format: double */
+            high_pct: number;
+        };
         BankAccount: {
             name: string | null;
             mask: string | null;
@@ -4415,6 +4621,12 @@ export interface components {
             slot_warning: string;
             is_owner: boolean;
         };
+        /**
+         * @description * `formula` - formula
+         *     * `trend` - trend
+         * @enum {string}
+         */
+        BasisEnum: "formula" | "trend";
         Bill: {
             label: string;
             /** Format: date */
@@ -5414,6 +5626,13 @@ export interface components {
          * @enum {string}
          */
         CurrencyEnum: "USD" | "SGD";
+        CurrentTarget: {
+            calories_kcal: number;
+            /** Format: double */
+            protein_g: number;
+            /** Format: date */
+            effective_from: string;
+        };
         DemoEnterRequest: {
             code: string;
             /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
@@ -5470,6 +5689,10 @@ export interface components {
             last_seen_at: string | null;
             /** @description True for the token that made this request, so a client can avoid revoking the device it is running on by accident. */
             current: boolean;
+        };
+        Dismiss: {
+            dismissed: boolean;
+            words: string;
         };
         DownloadLink: {
             /** @description Fetch with GET, no header. Valid for `expires_in` seconds. */
@@ -5543,6 +5766,34 @@ export interface components {
             readonly updated_at: string;
             /** Format: date-time */
             readonly deleted_at: string | null;
+        };
+        Energy: {
+            /** @description Always true: every figure is an estimate. */
+            estimate: boolean;
+            basis: (components["schemas"]["BasisEnum"] | components["schemas"]["NullEnum"]) | null;
+            basis_days: number | null;
+            basis_words: string;
+            missing: string[];
+            /** Format: double */
+            weight_lbs: number | null;
+            weight_source: (components["schemas"]["WeightSourceEnum"] | components["schemas"]["NullEnum"]) | null;
+            bmr_kcal: number | null;
+            activity_level: string | null;
+            /** Format: double */
+            activity_factor: number | null;
+            formula_maintenance_kcal: number | null;
+            observed_maintenance_kcal: number | null;
+            maintenance_kcal: number | null;
+            /** Format: double */
+            target_rate_pct: number;
+            suggested_target_kcal: number | null;
+            protein_g: number | null;
+            /** Format: double */
+            protein_g_per_kg: number;
+            protein_basis: (components["schemas"]["ProteinBasisEnum"] | components["schemas"]["NullEnum"]) | null;
+            current_target: components["schemas"]["CurrentTarget"] | null;
+            proposal: components["schemas"]["Proposal"] | null;
+            words: string;
         };
         Event: {
             /** Format: uuid */
@@ -6505,6 +6756,23 @@ export interface components {
             /** Format: uuid */
             origin_guid: string;
         };
+        Milestone: {
+            /** @description Null when the target is the profile's own goal weight. */
+            goal_id: string | null;
+            statement: string;
+            /** Format: double */
+            target_lbs: number;
+            /** Format: double */
+            start_lbs: number;
+            /** Format: double */
+            remaining_lbs: number;
+            progress_pct: number;
+            /**
+             * Format: double
+             * @description An estimate.
+             */
+            weeks_to_go: number | null;
+        };
         /**
          * @description * `create` - create
          *     * `update` - update
@@ -7394,6 +7662,56 @@ export interface components {
             /** Format: date-time */
             last_run_at: string | null;
         };
+        Profile: {
+            exists: boolean;
+            /** Format: double */
+            height_cm: number | null;
+            sex: (components["schemas"]["SexEnum"] | components["schemas"]["NullEnum"]) | null;
+            birth_year: number | null;
+            activity_level: (components["schemas"]["ActivityLevelEnum"] | components["schemas"]["NullEnum"]) | null;
+            /**
+             * Format: double
+             * @description Percent of bodyweight a week, 0.25 to 1.0.
+             */
+            target_rate_pct: number;
+            /**
+             * Format: double
+             * @description 1.6 to 2.2.
+             */
+            protein_g_per_kg: number;
+            weekly_line_on: boolean;
+            /**
+             * Format: double
+             * @description The member's own goal or milestone weight. An active bodyweight_lbs goal on the engine wins over it.
+             */
+            goal_weight_lbs: number | null;
+            /** @description What the calculator still needs, in words: height, sex, birth year, activity level, a weigh-in. */
+            missing: string[];
+        };
+        ProfileUpdate: {
+            /** Format: double */
+            height_cm?: number;
+            /** Format: double */
+            height_in?: number;
+            sex?: components["schemas"]["SexEnum"];
+            birth_year?: number;
+            activity_level?: components["schemas"]["ActivityLevelEnum"];
+            /** Format: double */
+            target_rate_pct?: number;
+            /** Format: double */
+            protein_g_per_kg?: number;
+            weekly_line_on?: boolean;
+            /**
+             * Format: double
+             * @description null clears it.
+             */
+            goal_weight_lbs?: number | null;
+            /**
+             * Format: double
+             * @description Converted to lbs; null clears it.
+             */
+            goal_weight_kg?: number | null;
+        };
         ProgressRequest: {
             score: number;
             lines: number;
@@ -7408,6 +7726,32 @@ export interface components {
             /** @description Optional. The live board, 220 characters (see `Player.board`); left as it was when omitted. */
             board?: string;
         };
+        Proposal: {
+            /** Format: uuid */
+            id: string;
+            current_target_kcal: number;
+            proposed_target_kcal: number;
+            /** @description An estimate. */
+            observed_maintenance_kcal: number;
+            /**
+             * Format: double
+             * @description Percent of bodyweight a week over the window; negative is losing.
+             */
+            observed_rate_pct: number;
+            /** Format: date */
+            window_start: string;
+            /** Format: date */
+            window_end: string;
+            intake_days: number;
+            weigh_in_days: number;
+            words: string;
+        };
+        /**
+         * @description * `goal weight` - goal weight
+         *     * `current weight` - current weight
+         * @enum {string}
+         */
+        ProteinBasisEnum: "goal weight" | "current weight";
         /**
          * @description * `DETERMINISTIC` - Deterministic
          *     * `LLM_RECONCILED` - Llm Reconciled
@@ -7946,6 +8290,63 @@ export interface components {
             top_up_by?: string | null;
             top_up_reason?: string | null;
         };
+        SavedMeal: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5). */
+            calories_kcal: number;
+            /**
+             * Format: double
+             * @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5).
+             */
+            protein_g: number;
+            /**
+             * Format: double
+             * @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5).
+             */
+            carbs_g: number | null;
+            /**
+             * Format: double
+             * @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5).
+             */
+            fat_g: number | null;
+            /** @description Always true: the macros are estimates. */
+            estimate: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SavedMealCreate: {
+            name: string;
+            description?: string;
+            /** @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5). */
+            calories_kcal?: number;
+            /**
+             * Format: double
+             * @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5).
+             */
+            protein_g?: number;
+            /**
+             * Format: double
+             * @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5).
+             */
+            carbs_g?: number | null;
+            /**
+             * Format: double
+             * @description An estimate, not a measurement: nothing on a plate states its calories or macros (CLAUDE.md section 4 rule 5).
+             */
+            fat_g?: number | null;
+            /** @description A logged meal's origin_guid or id: save what was just eaten, its estimate copied. */
+            from_meal_log?: string;
+        };
+        SavedMealList: {
+            results: components["schemas"]["SavedMeal"][];
+        };
+        SavedMealLog: {
+            meal_log: components["schemas"]["MealLog"];
+            words: string;
+        };
         Scenario: {
             months: components["schemas"]["RunwayMonth"][];
             floor_crossing_month: string | null;
@@ -8030,6 +8431,12 @@ export interface components {
          * @enum {string}
          */
         SessionSourceEnum: "canvas" | "webassign" | "drive";
+        /**
+         * @description * `male` - male
+         *     * `female` - female
+         * @enum {string}
+         */
+        SexEnum: "male" | "female";
         /**
          * @description `POST /api/auth/signup`.
          *
@@ -8415,6 +8822,42 @@ export interface components {
             /** @description Singapore liquid's lowest point after the transfer, SGD. */
             sg_side_lowest_after_cents: number | null;
         };
+        Trend: {
+            unit: string;
+            points: components["schemas"]["TrendPoint"][];
+            /** Format: double */
+            latest_trend_lbs: number | null;
+            /**
+             * Format: double
+             * @description Negative is losing.
+             */
+            rate_pct_per_week: number | null;
+            /**
+             * Format: double
+             * @description Negative is losing.
+             */
+            rate_lbs_per_week: number | null;
+            rate_days: number;
+            band: components["schemas"]["Band"];
+            in_band: boolean | null;
+            early_water: boolean;
+            milestone: components["schemas"]["Milestone"] | null;
+            waist: components["schemas"]["Waist"][];
+            /** Format: double */
+            waist_change_in_28d: number | null;
+            words: string;
+        };
+        TrendPoint: {
+            /** Format: date */
+            day: string;
+            /**
+             * Format: double
+             * @description The day's mean; null on a gap.
+             */
+            weight_lbs: number | null;
+            /** Format: double */
+            trend_lbs: number;
+        };
         /**
          * @description * `next_income` - next_income
          *     * `30_days` - 30_days
@@ -8633,6 +9076,39 @@ export interface components {
          * @enum {string}
          */
         VoiceNoteProvenanceEnum: "LLM_DERIVED";
+        Waist: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            measured_on: string;
+            /** Format: double */
+            waist_in: number;
+            /** Format: double */
+            waist_cm: number;
+        };
+        WaistCreate: {
+            /** Format: double */
+            waist_in?: number;
+            /** Format: double */
+            waist_cm?: number;
+            /** Format: date */
+            measured_on?: string;
+        };
+        WaistList: {
+            results: components["schemas"]["Waist"][];
+        };
+        WeeklyLine: {
+            say: boolean;
+            facts: string;
+            /** @description Why not, when say is false. */
+            reason: string;
+        };
+        /**
+         * @description * `trend` - trend
+         *     * `latest` - latest
+         * @enum {string}
+         */
+        WeightSourceEnum: "trend" | "latest";
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -9499,6 +9975,397 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_energy_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Energy"];
+                };
+            };
+        };
+    };
+    api_body_coach_profile_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+        };
+    };
+    api_body_coach_profile_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProfileUpdate"];
+                "multipart/form-data": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_proposal_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Accept"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_proposal_dismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dismiss"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_saved_meals_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedMealList"];
+                };
+            };
+        };
+    };
+    api_body_coach_saved_meals_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedMealCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["SavedMealCreate"];
+                "multipart/form-data": components["schemas"]["SavedMealCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedMeal"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_saved_meals_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preset is deleted; logged meals are untouched. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_saved_meals_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedMealLog"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_trend_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Days of points, 7 to 730. */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trend"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_waist_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaistList"];
+                };
+            };
+        };
+    };
+    api_body_coach_waist_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WaistCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["WaistCreate"];
+                "multipart/form-data": components["schemas"]["WaistCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Waist"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_waist_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                waist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted for good. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_body_coach_weekly_line_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyLine"];
                 };
             };
         };

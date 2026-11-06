@@ -849,6 +849,374 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/body/coach/energy/:
+    get:
+      operationId: api_body_coach_energy_retrieve
+      description: 'The energy estimate: BMR, maintenance (formula, or the person''s
+        own 14-day trend once there is enough of it), suggested target and protein,
+        all estimates. Makes the two-weekly proposal when the evidence calls for one
+        (idempotent).'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Energy'
+          description: ''
+  /api/body/coach/profile/:
+    get:
+      operationId: api_body_coach_profile_retrieve
+      description: 'The caller''s own body profile. Private: no member reads another''s.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+          description: ''
+    put:
+      operationId: api_body_coach_profile_update
+      description: Partial update of the caller's own profile; creates it on first
+        use. height_cm or height_in; goal_weight_lbs or goal_weight_kg (null clears
+        it). weekly_line_on false stops the Monday weight line.
+      tags:
+      - body-coach
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/proposals/{proposal_id}/accept/:
+    post:
+      operationId: api_body_coach_proposal_accept
+      description: 'Accepts a pending proposal: a meal target effective today with
+        the proposed calories, protein, carbs and fat carried from the current target.'
+      parameters:
+      - in: path
+        name: proposal_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Accept'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/proposals/{proposal_id}/dismiss/:
+    post:
+      operationId: api_body_coach_proposal_dismiss
+      description: Dismisses a pending proposal. The meal target is not touched.
+      parameters:
+      - in: path
+        name: proposal_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dismiss'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/saved-meals/:
+    get:
+      operationId: api_body_coach_saved_meals_list
+      description: The household's saved meals by name. Every macro is an estimate.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedMealList'
+          description: ''
+    post:
+      operationId: api_body_coach_saved_meals_create
+      description: Saves a meal by name (unique per household, any case) with its
+        estimated macros, or copies a logged meal's estimate with from_meal_log.
+      tags:
+      - body-coach
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedMealCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SavedMealCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SavedMealCreate'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedMeal'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/saved-meals/{meal_id}/:
+    delete:
+      operationId: api_body_coach_saved_meals_destroy
+      parameters:
+      - in: path
+        name: meal_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: The preset is deleted; logged meals are untouched.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/saved-meals/{meal_id}/log/:
+    post:
+      operationId: api_body_coach_saved_meals_log
+      description: 'Logs the saved meal now: one meal_logs row with its estimated
+        macros.'
+      parameters:
+      - in: path
+        name: meal_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedMealLog'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/trend/:
+    get:
+      operationId: api_body_coach_trend_retrieve
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
+        description: Days of points, 7 to 730.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trend'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/waist/:
+    get:
+      operationId: api_body_coach_waist_list
+      description: The household's waist measurements, latest first, at most 52.
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaistList'
+          description: ''
+    post:
+      operationId: api_body_coach_waist_create
+      description: waist_in or waist_cm; measured_on defaults to today in the household's
+        zone.
+      tags:
+      - body-coach
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaistCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WaistCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WaistCreate'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Waist'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/waist/{waist_id}/:
+    delete:
+      operationId: api_body_coach_waist_destroy
+      parameters:
+      - in: path
+        name: waist_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted for good.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/body/coach/weekly-line/:
+    get:
+      operationId: api_body_coach_weekly_line_retrieve
+      description: 'The Monday weight line: trend, rate against the 0.5 to 1.0% band,
+        distance to the goal, waist change. say is false when the line is off or the
+        trend is too thin.'
+      tags:
+      - body-coach
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyLine'
+          description: ''
   /api/body/meal_logs/:
     get:
       operationId: api_body_meal_logs_list
@@ -10080,6 +10448,31 @@ paths:
             message.
 components:
   schemas:
+    Accept:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+        meal_target:
+          $ref: '#/components/schemas/MealTarget'
+        words:
+          type: string
+      required:
+      - accepted
+      - meal_target
+      - words
+    ActivityLevelEnum:
+      enum:
+      - sedentary
+      - light
+      - moderate
+      - very
+      type: string
+      description: |-
+        * `sedentary` - sedentary
+        * `light` - light
+        * `moderate` - moderate
+        * `very` - very
     AppEnum:
       enum:
       - phone
@@ -10392,6 +10785,18 @@ components:
       - months
       - sgd_cents
       - usd_cents
+    Band:
+      type: object
+      properties:
+        low_pct:
+          type: number
+          format: double
+        high_pct:
+          type: number
+          format: double
+      required:
+      - high_pct
+      - low_pct
     BankAccount:
       type: object
       properties:
@@ -10494,6 +10899,14 @@ components:
       - needs_sign_in
       - sentence
       - slot_warning
+    BasisEnum:
+      enum:
+      - formula
+      - trend
+      type: string
+      description: |-
+        * `formula` - formula
+        * `trend` - trend
     Bill:
       type: object
       properties:
@@ -12690,6 +13103,21 @@ components:
       description: |-
         * `USD` - USD
         * `SGD` - SGD
+    CurrentTarget:
+      type: object
+      properties:
+        calories_kcal:
+          type: integer
+        protein_g:
+          type: number
+          format: double
+        effective_from:
+          type: string
+          format: date
+      required:
+      - calories_kcal
+      - effective_from
+      - protein_g
     DemoEnterRequest:
       type: object
       properties:
@@ -12794,6 +13222,16 @@ components:
       - id
       - last_seen_at
       - name
+    Dismiss:
+      type: object
+      properties:
+        dismissed:
+          type: boolean
+        words:
+          type: string
+      required:
+      - dismissed
+      - words
     DownloadLink:
       type: object
       properties:
@@ -12936,6 +13374,103 @@ components:
       - to_at
       - updated_at
       - vehicle_id
+    Energy:
+      type: object
+      properties:
+        estimate:
+          type: boolean
+          description: 'Always true: every figure is an estimate.'
+        basis:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/BasisEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        basis_days:
+          type: integer
+          nullable: true
+        basis_words:
+          type: string
+        missing:
+          type: array
+          items:
+            type: string
+        weight_lbs:
+          type: number
+          format: double
+          nullable: true
+        weight_source:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/WeightSourceEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        bmr_kcal:
+          type: integer
+          nullable: true
+        activity_level:
+          type: string
+          nullable: true
+        activity_factor:
+          type: number
+          format: double
+          nullable: true
+        formula_maintenance_kcal:
+          type: integer
+          nullable: true
+        observed_maintenance_kcal:
+          type: integer
+          nullable: true
+        maintenance_kcal:
+          type: integer
+          nullable: true
+        target_rate_pct:
+          type: number
+          format: double
+        suggested_target_kcal:
+          type: integer
+          nullable: true
+        protein_g:
+          type: integer
+          nullable: true
+        protein_g_per_kg:
+          type: number
+          format: double
+        protein_basis:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ProteinBasisEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        current_target:
+          allOf:
+          - $ref: '#/components/schemas/CurrentTarget'
+          nullable: true
+        proposal:
+          allOf:
+          - $ref: '#/components/schemas/Proposal'
+          nullable: true
+        words:
+          type: string
+      required:
+      - activity_factor
+      - activity_level
+      - basis
+      - basis_days
+      - basis_words
+      - bmr_kcal
+      - current_target
+      - estimate
+      - formula_maintenance_kcal
+      - maintenance_kcal
+      - missing
+      - observed_maintenance_kcal
+      - proposal
+      - protein_basis
+      - protein_g
+      - protein_g_per_kg
+      - suggested_target_kcal
+      - target_rate_pct
+      - weight_lbs
+      - weight_source
+      - words
     Event:
       type: object
       properties:
@@ -14838,6 +15373,39 @@ components:
       - provenance
       - substring
       - updated_at
+    Milestone:
+      type: object
+      properties:
+        goal_id:
+          type: string
+          nullable: true
+          description: Null when the target is the profile's own goal weight.
+        statement:
+          type: string
+        target_lbs:
+          type: number
+          format: double
+        start_lbs:
+          type: number
+          format: double
+        remaining_lbs:
+          type: number
+          format: double
+        progress_pct:
+          type: integer
+        weeks_to_go:
+          type: number
+          format: double
+          nullable: true
+          description: An estimate.
+      required:
+      - goal_id
+      - progress_pct
+      - remaining_lbs
+      - start_lbs
+      - statement
+      - target_lbs
+      - weeks_to_go
     ModeEnum:
       enum:
       - create
@@ -16750,6 +17318,94 @@ components:
       - source
       - version
       - writes
+    Profile:
+      type: object
+      properties:
+        exists:
+          type: boolean
+        height_cm:
+          type: number
+          format: double
+          nullable: true
+        sex:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/SexEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        birth_year:
+          type: integer
+          nullable: true
+        activity_level:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ActivityLevelEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        target_rate_pct:
+          type: number
+          format: double
+          description: Percent of bodyweight a week, 0.25 to 1.0.
+        protein_g_per_kg:
+          type: number
+          format: double
+          description: 1.6 to 2.2.
+        weekly_line_on:
+          type: boolean
+        goal_weight_lbs:
+          type: number
+          format: double
+          nullable: true
+          description: The member's own goal or milestone weight. An active bodyweight_lbs
+            goal on the engine wins over it.
+        missing:
+          type: array
+          items:
+            type: string
+          description: 'What the calculator still needs, in words: height, sex, birth
+            year, activity level, a weigh-in.'
+      required:
+      - activity_level
+      - birth_year
+      - exists
+      - goal_weight_lbs
+      - height_cm
+      - missing
+      - protein_g_per_kg
+      - sex
+      - target_rate_pct
+      - weekly_line_on
+    ProfileUpdate:
+      type: object
+      properties:
+        height_cm:
+          type: number
+          format: double
+        height_in:
+          type: number
+          format: double
+        sex:
+          $ref: '#/components/schemas/SexEnum'
+        birth_year:
+          type: integer
+        activity_level:
+          $ref: '#/components/schemas/ActivityLevelEnum'
+        target_rate_pct:
+          type: number
+          format: double
+        protein_g_per_kg:
+          type: number
+          format: double
+        weekly_line_on:
+          type: boolean
+        goal_weight_lbs:
+          type: number
+          format: double
+          nullable: true
+          description: null clears it.
+        goal_weight_kg:
+          type: number
+          format: double
+          nullable: true
+          description: Converted to lbs; null clears it.
     ProgressRequest:
       type: object
       properties:
@@ -16782,6 +17438,54 @@ components:
       - level
       - lines
       - score
+    Proposal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        current_target_kcal:
+          type: integer
+        proposed_target_kcal:
+          type: integer
+        observed_maintenance_kcal:
+          type: integer
+          description: An estimate.
+        observed_rate_pct:
+          type: number
+          format: double
+          description: Percent of bodyweight a week over the window; negative is losing.
+        window_start:
+          type: string
+          format: date
+        window_end:
+          type: string
+          format: date
+        intake_days:
+          type: integer
+        weigh_in_days:
+          type: integer
+        words:
+          type: string
+      required:
+      - current_target_kcal
+      - id
+      - intake_days
+      - observed_maintenance_kcal
+      - observed_rate_pct
+      - proposed_target_kcal
+      - weigh_in_days
+      - window_end
+      - window_start
+      - words
+    ProteinBasisEnum:
+      enum:
+      - goal weight
+      - current weight
+      type: string
+      description: |-
+        * `goal weight` - goal weight
+        * `current weight` - current weight
     ProvenanceEnum:
       enum:
       - DETERMINISTIC
@@ -18027,6 +18731,107 @@ components:
           nullable: true
       required:
       - available
+    SavedMeal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        calories_kcal:
+          type: integer
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        protein_g:
+          type: number
+          format: double
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        carbs_g:
+          type: number
+          format: double
+          nullable: true
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        fat_g:
+          type: number
+          format: double
+          nullable: true
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        estimate:
+          type: boolean
+          description: 'Always true: the macros are estimates.'
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - calories_kcal
+      - carbs_g
+      - description
+      - estimate
+      - fat_g
+      - id
+      - name
+      - protein_g
+      - updated_at
+    SavedMealCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        description:
+          type: string
+        calories_kcal:
+          type: integer
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        protein_g:
+          type: number
+          format: double
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        carbs_g:
+          type: number
+          format: double
+          nullable: true
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        fat_g:
+          type: number
+          format: double
+          nullable: true
+          description: 'An estimate, not a measurement: nothing on a plate states
+            its calories or macros (CLAUDE.md section 4 rule 5).'
+        from_meal_log:
+          type: string
+          description: 'A logged meal''s origin_guid or id: save what was just eaten,
+            its estimate copied.'
+      required:
+      - name
+    SavedMealList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedMeal'
+      required:
+      - results
+    SavedMealLog:
+      type: object
+      properties:
+        meal_log:
+          $ref: '#/components/schemas/MealLog'
+        words:
+          type: string
+      required:
+      - meal_log
+      - words
     Scenario:
       type: object
       properties:
@@ -18207,6 +19012,14 @@ components:
         * `canvas` - Canvas
         * `webassign` - WebAssign
         * `drive` - Google Drive
+    SexEnum:
+      enum:
+      - male
+      - female
+      type: string
+      description: |-
+        * `male` - male
+        * `female` - female
     SignupRequest:
       type: object
       description: |-
@@ -18985,6 +19798,84 @@ components:
       - sg_side_lowest_after_cents
       - sgd_cents
       - usd_cents
+    Trend:
+      type: object
+      properties:
+        unit:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+        latest_trend_lbs:
+          type: number
+          format: double
+          nullable: true
+        rate_pct_per_week:
+          type: number
+          format: double
+          nullable: true
+          description: Negative is losing.
+        rate_lbs_per_week:
+          type: number
+          format: double
+          nullable: true
+          description: Negative is losing.
+        rate_days:
+          type: integer
+        band:
+          $ref: '#/components/schemas/Band'
+        in_band:
+          type: boolean
+          nullable: true
+        early_water:
+          type: boolean
+        milestone:
+          allOf:
+          - $ref: '#/components/schemas/Milestone'
+          nullable: true
+        waist:
+          type: array
+          items:
+            $ref: '#/components/schemas/Waist'
+        waist_change_in_28d:
+          type: number
+          format: double
+          nullable: true
+        words:
+          type: string
+      required:
+      - band
+      - early_water
+      - in_band
+      - latest_trend_lbs
+      - milestone
+      - points
+      - rate_days
+      - rate_lbs_per_week
+      - rate_pct_per_week
+      - unit
+      - waist
+      - waist_change_in_28d
+      - words
+    TrendPoint:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+        weight_lbs:
+          type: number
+          format: double
+          nullable: true
+          description: The day's mean; null on a gap.
+        trend_lbs:
+          type: number
+          format: double
+      required:
+      - day
+      - trend_lbs
+      - weight_lbs
     UntilReasonEnum:
       enum:
       - next_income
@@ -19414,6 +20305,69 @@ components:
       - LLM_DERIVED
       type: string
       description: '* `LLM_DERIVED` - LLM_DERIVED'
+    Waist:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        measured_on:
+          type: string
+          format: date
+        waist_in:
+          type: number
+          format: double
+        waist_cm:
+          type: number
+          format: double
+      required:
+      - id
+      - measured_on
+      - waist_cm
+      - waist_in
+    WaistCreate:
+      type: object
+      properties:
+        waist_in:
+          type: number
+          format: double
+        waist_cm:
+          type: number
+          format: double
+        measured_on:
+          type: string
+          format: date
+    WaistList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Waist'
+      required:
+      - results
+    WeeklyLine:
+      type: object
+      properties:
+        say:
+          type: boolean
+        facts:
+          type: string
+        reason:
+          type: string
+          description: Why not, when say is false.
+      required:
+      - facts
+      - reason
+      - say
+    WeightSourceEnum:
+      enum:
+      - trend
+      - latest
+      type: string
+      description: |-
+        * `trend` - trend
+        * `latest` - latest
     WorkoutPlan:
       type: object
       description: |-

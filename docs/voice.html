@@ -25,7 +25,7 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <main>
 <h1>Talking to LEGION</h1>
 <p class="intro">LEGION is a voice assistant for the phone. Tap the mic, or say "hey" and your companion's name if the wake phrase is switched on, then just talk. It waits for you to finish a thought rather than cutting in at the first pause, and on the phone's own speaker you can talk over it to stop it. Say "that will be all" when you are done. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing.</p>
-<p class="count">130 things it can do by voice.</p>
+<p class="count">133 things it can do by voice.</p>
 <section><h2>Getting started</h2>
 <p class="blurb">The first things worth trying.</p>
 <dl>
@@ -120,10 +120,10 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <dt>&ldquo;Scan this receipt&rdquo;</dt><dd>Opens the camera to photograph a grocery receipt.<span class="hands">By hand: Money &gt; Pantry sub-route, scan flow.</span></dd>
 <dt>&ldquo;What did I buy last shop?&rdquo;</dt><dd>Recent grocery purchases.<span class="hands">By hand: Money &gt; Pantry sub-route.</span></dd>
 <dt>&ldquo;How much on groceries this month?&rdquo;</dt><dd>Grocery spending.<span class="hands">By hand: Money &gt; Pantry sub-route, spend panel.</span></dd>
-<dt>&ldquo;I had chicken and rice&rdquo;</dt><dd>Logs a meal. Calories and macros are estimates from the description, not measurements.<span class="hands">By hand: Body tab, log-a-meal dialog.</span></dd>
+<dt>&ldquo;Log my usual breakfast&rdquo;</dt><dd>Logs a meal. Name a saved meal and its saved estimate is logged; otherwise calories and macros are estimates from the description, not measurements.<span class="hands">By hand: Body tab, log-a-meal dialog; saved meals on the web Body page.</span></dd>
 <dt>&ldquo;What have I eaten today?&rdquo;</dt><dd>Recent meals.<span class="hands">By hand: Body tab, meal history.</span></dd>
-<dt>&ldquo;When did I last eat?&rdquo;</dt><dd>How long since your last logged meal.<span class="hands">By hand: Body tab, meal-gap indicator.</span></dd>
-<dt>&ldquo;Set my protein target to 180&rdquo;</dt><dd>Sets a daily nutrition target.<span class="hands">By hand: Body tab, meal-target dialog.</span></dd>
+<dt>&ldquo;How am I doing on calories today?&rdquo;</dt><dd>Today&#x27;s logged calories and protein against your target, as estimates. Says so when nothing is logged yet, never zero.<span class="hands">By hand: Body tab, intake panel.</span></dd>
+<dt>&ldquo;Set my protein target to 180&rdquo;</dt><dd>Sets your daily calorie and protein target. Only what you say changes; carbs and fat are optional.<span class="hands">By hand: Body tab, meal-target dialog.</span></dd>
 <dt>&ldquo;Ask the pantry what I&#x27;m low on&rdquo;</dt><dd>Sends a harder food question to the pantry specialist.<span class="hands">By hand: Is itself a read-only dispatcher; the Pantry sub-route already shows what it would answer.</span></dd>
 </dl></section>
 <section><h2>Training and sleep</h2>
@@ -131,14 +131,17 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <dl>
 <dt>&ldquo;Squats, five at a hundred kilos&rdquo;</dt><dd>Logs a set.<span class="hands">By hand: Body tab, log-a-set dialog.</span></dd>
 <dt>&ldquo;What did I train this week?&rdquo;</dt><dd>Recent workouts.<span class="hands">By hand: Body tab, workout history.</span></dd>
-<dt>&ldquo;When did I last train legs?&rdquo;</dt><dd>How long since you trained.<span class="hands">By hand: Body tab, workout-gap indicator.</span></dd>
+<dt>&ldquo;How&#x27;s my training this week?&rdquo;</dt><dd>Sessions done against sessions planned this week.<span class="hands">By hand: Body tab, checklist panel.</span></dd>
 <dt>&ldquo;Make me a plan to get stronger&rdquo;</dt><dd>Builds a training plan from a goal you describe.<span class="hands">By hand: Voice only - a generated plan has no form equivalent; the closest hands step is reviewing and accepting one on the Goals panel.</span></dd>
 <dt>&ldquo;I&#x27;m eighty-two kilos&rdquo;</dt><dd>Logs your bodyweight.<span class="hands">By hand: Body tab, log-bodyweight dialog.</span></dd>
 <dt>&ldquo;I slept six hours, woke up twice&rdquo;</dt><dd>Logs a night&#x27;s sleep.<span class="hands">By hand: Body tab, log-sleep dialog.</span></dd>
 <dt>&ldquo;How have I been sleeping?&rdquo;</dt><dd>Recent sleep.<span class="hands">By hand: Body tab, sleep history.</span></dd>
-<dt>&ldquo;When did I last log sleep?&rdquo;</dt><dd>How long since your last sleep entry.<span class="hands">By hand: Body tab, sleep-gap indicator.</span></dd>
+<dt>&ldquo;Did I hit my sleep target?&rdquo;</dt><dd>Last night&#x27;s logged sleep against your nightly target. Says so when nothing is logged.<span class="hands">By hand: Body tab, sleep panel.</span></dd>
 <dt>&ldquo;I want eight hours a night&rdquo;</dt><dd>Sets your nightly sleep target.<span class="hands">By hand: Body tab, sleep-target dialog.</span></dd>
-<dt>&ldquo;Ask the coach about my recovery&rdquo;</dt><dd>Sends a harder training or nutrition question to the coach.<span class="hands">By hand: Is itself a read-only dispatcher; the Body tab already shows what it would answer.</span></dd>
+<dt>&ldquo;What&#x27;s my maintenance?&rdquo;</dt><dd>Your maintenance calories, a daily target for the rate you chose, and protein, all estimates, and what they are based on: the formula, or your own weight trend. Names anything it still needs, like your height. A suggested change is only offered, never applied.<span class="hands">By hand: Web Body page, Energy card (the phone&#x27;s Body screen gets one in the revamp).</span></dd>
+<dt>&ldquo;Am I losing weight?&rdquo;</dt><dd>Your smoothed weight trend, how fast it is moving each week, how far to your goal, and your waist. The first week&#x27;s water drop is flagged, not projected.<span class="hands">By hand: Web Body page, trend chart; Body tab, mass panel.</span></dd>
+<dt>&ldquo;What are my saved meals?&rdquo;</dt><dd>Your saved meals and their estimated calories and protein. Say a name to log one.<span class="hands">By hand: Web Body page, saved meals.</span></dd>
+<dt>&ldquo;How much should I eat to lose fat?&rdquo;</dt><dd>Answers questions about your food, training, sleep, weight trend and calorie and protein estimates. Read-only.<span class="hands">By hand: Is itself a read-only dispatcher; the Body tab and the web Body page show what it would answer.</span></dd>
 </dl></section>
 <section><h2>Goals and advice</h2>
 <p class="blurb">Longer-term things, and the per-aspect advisors.</p>

@@ -2,6 +2,10 @@ package com.kevin.legion.meals
 
 import android.content.Context
 import com.kevin.legion.backend.BodyWriteThrough
+import com.kevin.legion.bodycoach.BodyCoachController
+import com.kevin.legion.bodycoach.BodyCoachText
+import com.kevin.legion.bodycoach.SavedMealWire
+import com.kevin.legion.finance.valueOrNull
 import com.kevin.legion.backend.WriteThroughOutcome
 import com.kevin.legion.backend.queuedSentence
 import com.kevin.legion.data.local.CarDatabase
@@ -37,6 +41,9 @@ object MealController {
      * unconditionally, same as [com.kevin.legion.workouts.WorkoutController.logSet].
      */
     suspend fun logMeal(context: Context, spokenDescription: String): WriteOutcome {
+        // fat-loss ticket 10 (map decision 4): "log my usual breakfast" names a saved meal. Its saved
+        // estimate is logged through the same write path, never re-guessed by the model.
+        savedMealFor(context, spokenDescription)?.let { return logSavedMeal(context, it) }
         val estimate = MealAgent.estimateFromDescription(spokenDescription)
         val now = System.currentTimeMillis()
         val description = estimate?.description ?: spokenDescription
@@ -78,17 +85,92 @@ object MealController {
         return WriteOutcome(true, spoken)
     }
 
-    /** D26: sets the driver's daily calorie/macro target, effective from today (D2's "copy forward"). */
+    /**
+     * The saved meal [spokenDescription] names, or null. This phone's saved copy of the list is tried
+     * first, with no network; only a description with a marker word ("my usual...", "the saved...")
+     * that matches nothing there asks the engine for a fresh list, so an ordinary meal never waits
+     * on the engine. Null on any failure: an unreadable list falls back to the ordinary estimate
+     * rather than refusing the meal.
+     */
+    private suspend fun savedMealFor(context: Context, spokenDescription: String): SavedMealWire? {
+        val controller = BodyCoachController.forApp(context)
+        controller.savedSavedMeals().valueOrNull?.results
+            ?.let { BodyCoachText.matchSavedMeal(spokenDescription, it) }
+            ?.let { return it }
+        if (!BodyCoachText.namesASavedMeal(spokenDescription)) return null
+        val fresh = controller.savedMeals().valueOrNull?.results ?: return null
+        return BodyCoachText.matchSavedMeal(spokenDescription, fresh)
+    }
+
+    /** One saved meal logged as an ordinary [MealLog]: REPORTED, its saved macros, an estimate. */
+    internal suspend fun logSavedMeal(context: Context, meal: SavedMealWire): WriteOutcome {
+        val now = System.currentTimeMillis()
+        val description = meal.description?.takeIf { it.isNotBlank() } ?: meal.name
+        val outcome = BodyWriteThrough.addMealLog(
+            context,
+            MealLog(
+                description = description,
+                caloriesKcal = meal.caloriesKcal,
+                proteinG = meal.proteinG,
+                carbsG = meal.carbsG,
+                fatG = meal.fatG,
+                loggedAt = now,
+                sourceImagePath = null,
+                trustTier = TrustTier.REPORTED,
+                guid = UUID.randomUUID().toString(),
+                updatedAtMs = now,
+            ),
+        )
+        if (outcome is WriteThroughOutcome.Refused) {
+            return WriteOutcome(false, "That meal didn't go through: ${outcome.message}")
+        }
+        val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
+        return WriteOutcome(true, savedMealSentence(meal) + queuedNote)
+    }
+
+    /** "Usual breakfast logged from your saved meals - roughly 520 kcal and 38g protein (estimate)." */
+    internal fun savedMealSentence(meal: SavedMealWire): String {
+        val figures = listOfNotNull(
+            meal.caloriesKcal?.let { "$it kcal" },
+            meal.proteinG?.let { "${formatGrams(it)}g protein" },
+        )
+        return if (figures.isEmpty()) {
+            "${meal.name} logged from your saved meals - it has no calorie estimate saved."
+        } else {
+            "${meal.name} logged from your saved meals - roughly ${figures.joinToString(" and ")} (estimate)."
+        }
+    }
+
+    private fun formatGrams(g: Double): String = if (g % 1.0 == 0.0) g.toLong().toString() else "%.1f".format(g)
+
+    /**
+     * D26: sets the driver's daily calorie/macro target, effective from today (D2's "copy forward").
+     *
+     * **Partial since fat-loss ticket 15 (G2):** a null field is carried from the current target, so
+     * "set protein to 170" changes protein alone. Kevin tracks kcal and protein only (ruling 3):
+     * with no current target, calories are required and a missing carbs/fat is stored as 0, the
+     * columns' legal floor, and never read back as a target ([DailyMealGap] shows only what is set).
+     */
+    @Suppress("ReturnCount")
     suspend fun setTarget(
         context: Context,
-        caloriesKcal: Int,
-        proteinG: Double,
-        carbsG: Double,
-        fatG: Double,
+        caloriesKcal: Int?,
+        proteinG: Double?,
+        carbsG: Double?,
+        fatG: Double?,
     ): WriteOutcome {
         val now = System.currentTimeMillis()
         val dayStart = dayStartEpoch(now)
         val db = CarDatabase.getDatabase(context)
+        if (caloriesKcal == null && proteinG == null && carbsG == null && fatG == null) {
+            return WriteOutcome(false, "No target was set: no calorie or macro figure was given.")
+        }
+        val current = db.mealTargetDao().currentTarget(dayStart)
+        val kcal = caloriesKcal ?: current?.caloriesKcal
+            ?: return WriteOutcome(false, "No target was set: there is no current target to keep the calories from, so say a calorie figure too.")
+        val protein = proteinG ?: current?.proteinG ?: 0.0
+        val carbs = carbsG ?: current?.carbsG ?: 0.0
+        val fat = fatG ?: current?.fatG ?: 0.0
         // Reuse the existing row's guid on a same-day re-set - see MealTargetDao.getByEffectiveDate's
         // own doc comment for why a fresh guid here would orphan a server row.
         val guid = db.mealTargetDao().getByEffectiveDate(dayStart)?.guid ?: UUID.randomUUID().toString()
@@ -96,7 +178,7 @@ object MealController {
         val outcome = BodyWriteThrough.setMealTarget(
             context,
             MealTarget(
-                caloriesKcal = caloriesKcal, proteinG = proteinG, carbsG = carbsG, fatG = fatG,
+                caloriesKcal = kcal, proteinG = protein, carbsG = carbs, fatG = fat,
                 effectiveFromDateEpoch = dayStart, updatedAt = now,
                 guid = guid,
             ),
@@ -105,10 +187,16 @@ object MealController {
             return WriteOutcome(false, "That target didn't go through: ${outcome.message}")
         }
         val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
-        return WriteOutcome(
-            true,
-            "Daily target set: $caloriesKcal kcal, ${proteinG}g protein, ${carbsG}g carbs, ${fatG}g fat.$queuedNote",
-        )
+        return WriteOutcome(true, targetSentence(kcal, protein, carbs, fat) + queuedNote)
+    }
+
+    /** "Daily target set: 2400 kcal, 160g protein." Carbs and fat only when they are set (above 0). */
+    internal fun targetSentence(kcal: Int, protein: Double, carbs: Double, fat: Double): String {
+        val parts = mutableListOf("$kcal kcal")
+        if (protein > 0) parts += "${formatGrams(protein)}g protein"
+        if (carbs > 0) parts += "${formatGrams(carbs)}g carbs"
+        if (fat > 0) parts += "${formatGrams(fat)}g fat"
+        return "Daily target set: ${parts.joinToString(", ")}."
     }
 
     /** D27's gap, computed impossible-to-misread by construction - see [DailyMealGap]'s doc comment. */

@@ -377,10 +377,13 @@ class LiveToolboxDeclarationSetTest {
                 "get_code_history", "check_readiness", "check_cold_start", "get_mpg", "get_specs",
                 "lookup_vin", "check_recalls", "list_vehicles", "get_next_service", "ask_maintenance",
                 "triage_symptom", "list_build_history", "get_trend",
+                // fat-loss ticket 16 (G4): the car's OBD health snapshot belongs to fleet.
+                "get_health",
             ),
             "body" to listOf(
                 "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
-                "list_recent_workouts", "get_workout_gap", "get_health",
+                "list_recent_workouts", "get_workout_gap",
+                "get_energy_estimate", "get_weight_trend", "list_saved_meals",
             ),
             "goals" to listOf("list_goals", "ask_advisor"),
             "pantry" to listOf("list_recent_groceries", "get_grocery_spend"),
