@@ -3,6 +3,7 @@ import type { components } from '../api/schema'
 import type { Changes, Checklist, ChecklistItem, ChecklistTick, Event, EventSkip, Purchase } from '../api/types'
 import { defaultAssistant, handleAssistant, type AssistantState } from './engine-assistant'
 import { defaultBooks, handleBooks, type BooksState } from './engine-books'
+import { defaultCoach, handleCoach, type CoachState } from './engine-body-coach'
 import {
   defaultDemo,
   handleDemo,
@@ -91,6 +92,8 @@ export interface EngineOptions {
   procedures?: Partial<ProceduresState>
   /** The Claude session's tasks, newest first (`GET /api/claude/tasks/`); none when absent. */
   claude?: components['schemas']['ClaudeTaskRow'][]
+  /** The body coach (`engine-body-coach.ts`): no profile, no figures, when absent. */
+  coach?: Partial<CoachState>
 }
 
 export type Member = components['schemas']['HouseholdMember']
@@ -133,6 +136,8 @@ export interface Engine {
   procedures: ProceduresState
   /** The Claude session's tasks (claude-session ticket 09). */
   claude: components['schemas']['ClaudeTaskRow'][]
+  /** The body coach's answers (`engine-body-coach.ts`). */
+  coach: CoachState
   /** Awaited before a request is answered: hold one page back to see a screen
    * while a paged read is half done. Resolve to let it through. */
   delay?: (method: string, pathname: string, search: URLSearchParams) => Promise<void> | undefined
@@ -389,6 +394,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
     demo: { ...defaultDemo(), ...options.demo },
     procedures: { ...defaultProcedures(), ...options.procedures },
     claude: options.claude ?? [],
+    coach: { ...defaultCoach(), ...options.coach },
     failingTables: new Set(),
     refusals: {},
     down: false,
@@ -734,6 +740,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
       if (method === 'GET' && pathname === '/api/claude/tasks/') {
         return { status: 200, body: engine.claude }
       }
+
+      const coachReply = handleCoach(engine.coach, method, pathname, body)
+      if (coachReply) return coachReply
 
       const proceduresReply = handleProcedures(engine, method, pathname, search)
       if (proceduresReply) return proceduresReply
