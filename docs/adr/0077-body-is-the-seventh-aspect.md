@@ -54,3 +54,16 @@ protein shortfall, the Monday check-in (weigh-in first, then trend, sessions don
 plan and grocery list), and plan adjustment proposals; never a workout-due or "you haven't
 trained" nudge. An off day is one neutral line. Supplements: protein powder and creatine only,
 never fat burners. Map `.scratch/body-coach-2/`.
+
+## Amendment, 2026-11-06: one plan, locked in; Alfred sets the target
+
+Kevin: *"basically formulating a plan, working together with alfred, then locking it in and making
+adjustments as i go with alfred is the goal"*, and *"i want alfred to set my calorie target"*.
+**A target and a programme go live only by locking a version of the member's plan**
+(`body_plans`, private to its member; `server/body_coach/plans.py`). Alfred drafts it, setting the
+kcal and protein target from the engine's estimate at 0.5% of bodyweight a week for "get lean, keep
+muscle" while lifting; Kevin locks it in. **Every later change is a proposal** (the four-weigh-in
+adaptation, a stall or deload, "my knee hurts") whose acceptance makes the next version with a
+one-line reason. A target he sets himself stays his until he says "let Alfred set it". The goal
+plan generator no longer writes a meal target.
+
