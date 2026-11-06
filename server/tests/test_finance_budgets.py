@@ -132,3 +132,91 @@ def test_the_route_and_the_tool(world, token_a, token_b, settings):
     _, caller = world
     is_error, text, _ = call(client_with(caller.user), "budgets", {"month": "2026-10"})
     assert not is_error and "Subscriptions 10.00 USD of 50.00 USD (20%)" in text
+
+
+# --- The fixed lines read the budget month (Kevin, 2026-11-05: November showed rent unpaid).
+# Rent charged on Oct 31 is November's. ---
+
+RENT = 100_000
+
+
+@pytest.fixture
+def bare(household_a, household_user):
+    """The policy (Housing, Utilities, Insurance fixed) and a Housing cap, no rows."""
+    make_household(household_a)
+    budget(household_a, "Housing", 100_000)
+    return household_a, Caller(household_user)
+
+
+def fixed_of(caller, household, month: Month) -> dict:
+    body = budgets(caller, household, month, dt.date(2026, 11, 15))
+    return {f["category"]: f for f in body["fixed"]}
+
+
+def test_rent_paid_on_the_31st_is_paid_in_november_and_not_october(bare):
+    household, caller = bare
+    bank_row(household, CARD_LAST4, dt.date(2026, 10, 31), -RENT, "LANDLORD CO", "Housing")
+    november = fixed_of(caller, household, NOVEMBER)["Housing"]
+    assert (november["paid"], november["paid_cents"]) == (True, RENT)
+    october = fixed_of(caller, household, Month(2026, 10))["Housing"]
+    assert (october["paid"], october["paid_cents"]) == (False, 0)
+
+
+def test_rent_paid_on_the_1st_is_paid_in_november(bare):
+    household, caller = bare
+    bank_row(household, CARD_LAST4, dt.date(2026, 11, 1), -RENT, "LANDLORD CO", "Housing")
+    assert fixed_of(caller, household, NOVEMBER)["Housing"]["paid_cents"] == RENT
+    assert fixed_of(caller, household, Month(2026, 10))["Housing"]["paid"] is False
+
+
+def test_a_utility_paid_on_the_31st_stays_in_october(bare):
+    """Only Housing moves (`EARLY_CHARGE_CATEGORY`)."""
+    household, caller = bare
+    bank_row(household, CARD_LAST4, dt.date(2026, 10, 31), -10_000, "POWER CO", "Utilities")
+    assert fixed_of(caller, household, Month(2026, 10))["Utilities"]["paid_cents"] == 10_000
+    assert fixed_of(caller, household, NOVEMBER)["Utilities"]["paid"] is False
+
+
+@pytest.mark.parametrize(
+    ("day", "counted_in"),
+    [
+        # November has 30 days: the 28th, 29th and 30th are December's, the 27th is not.
+        (dt.date(2026, 11, 27), Month(2026, 11)),
+        (dt.date(2026, 11, 28), Month(2026, 12)),
+        (dt.date(2026, 11, 30), Month(2026, 12)),
+        # February 2026 has 28 days: the 26th to the 28th are March's, the 25th is not.
+        (dt.date(2026, 2, 25), Month(2026, 2)),
+        (dt.date(2026, 2, 26), Month(2026, 3)),
+        (dt.date(2026, 2, 28), Month(2026, 3)),
+    ],
+)
+def test_the_last_three_days_of_a_short_month(bare, day, counted_in):
+    household, caller = bare
+    bank_row(household, CARD_LAST4, day, -RENT, "LANDLORD CO", "Housing")
+    calendar = Month.of(day)
+    other = calendar if counted_in != calendar else calendar.plus(1)
+    assert fixed_of(caller, household, counted_in)["Housing"]["paid_cents"] == RENT
+    assert fixed_of(caller, household, other)["Housing"]["paid"] is False
+
+
+def test_an_uncategorised_rent_row_moves_once_an_override_says_housing(bare):
+    """A rent row stored with no category: the month shift reads the EFFECTIVE
+    category, so it moves only once an override says Housing. A category rule alone does not
+    reach a stored row; `manage.py apply_category_rules` writes the override."""
+    import uuid
+
+    from django.utils import timezone
+
+    from legacy.models.ledger import LedgerTransaction, LedgerTransactionCategory
+
+    household, caller = bare
+    bank_row(household, CARD_LAST4, dt.date(2026, 10, 31), -RENT,
+             "LANDLORD CO")
+    assert fixed_of(caller, household, NOVEMBER)["Housing"]["paid"] is False
+    LedgerTransactionCategory.objects.create(
+        id=uuid.uuid4(), household=household,
+        transaction=LedgerTransaction.objects.get(household=household, txn_date="2026-10-31"),
+        category="Housing", source="rule", created_at=timezone.now(), updated_at=timezone.now(),
+    )
+    assert fixed_of(caller, household, NOVEMBER)["Housing"]["paid_cents"] == RENT
+    assert fixed_of(caller, household, Month(2026, 10))["Housing"]["paid"] is False

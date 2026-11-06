@@ -231,6 +231,20 @@ def budget_month_of(txn: Txn) -> Month:
     return month.plus(1) if counts_in_next_month(txn) else month
 
 
+def budget_month_of_row(row: dict) -> Month:
+    """`budget_month_of` for a ledger row dict (`effective_category` is its category)."""
+    return budget_month_of(
+        Txn(
+            id=0,
+            account_id=row["account_last4"],
+            amount_cents=row["amount_cents"],
+            txn_date=row["txn_date"],
+            category=row["effective_category"],
+            currency=row["currency"],
+        )
+    )
+
+
 def budget_month_rows(
     rows: Sequence[Txn], currency: str, month: Month, pairing_days: int = PAIRING_WINDOW_DAYS
 ) -> tuple[list[Txn], list[Txn]]:

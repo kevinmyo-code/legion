@@ -131,23 +131,14 @@ def spend_for(request, month, currency: str) -> dict:
 
 def internal_disclosure(internal: list[tuple[dict, object]], month, currency: str) -> dict:
     """The household-internal outflows of one budget month, in one currency."""
-    from api.spend import Txn, budget_month_of
-
-    def in_month(row):
-        txn = Txn(
-            id=0,
-            account_id=row["account_last4"],
-            amount_cents=row["amount_cents"],
-            txn_date=row["txn_date"],
-            category=row["effective_category"],
-            currency=row["currency"],
-        )
-        return budget_month_of(txn) == month
+    from api.spend import budget_month_of_row
 
     out = [
         (row, mark)
         for row, mark in internal
-        if row["currency"] == currency and row["amount_cents"] < 0 and in_month(row)
+        if row["currency"] == currency
+        and row["amount_cents"] < 0
+        and budget_month_of_row(row) == month
     ]
     reasons: dict[str, int] = {}
     for row, mark in out:
