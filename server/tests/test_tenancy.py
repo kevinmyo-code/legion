@@ -36,7 +36,7 @@ one fewer case.
 
 ## What is deliberately NOT covered, and why
 
-`goals`, `conversation_audit`, `item_lists` and `list_items` carry the column
+`conversation_audit`, `item_lists` and `list_items` carry the column
 but have no route and no rows in the test database - they are not in
 `tests/legacy_test_schema.py`'s mirror at all, because nothing has ever
 written to them through this server. `TABLES_ABSENT_FROM_THE_TEST_MIRROR`
@@ -69,10 +69,11 @@ pytestmark = pytest.mark.django_db
 
 EPOCH = "1970-01-01T00:00:00Z"
 
-# See this module's own doc comment. Four tenant tables with no route, no
-# writer and no rows anywhere in this suite.
+# See this module's own doc comment. Three tenant tables with no route, no
+# writer and no rows anywhere in this suite. (`goals` joined the mirror with the
+# fat-loss map: `body_coach/` reads the weight goal.)
 TABLES_ABSENT_FROM_THE_TEST_MIRROR = frozenset(
-    {"goals", "conversation_audit", "item_lists", "list_items"}
+    {"conversation_audit", "item_lists", "list_items"}
 )
 
 
