@@ -190,7 +190,7 @@ object MealController {
         return WriteOutcome(true, targetSentence(kcal, protein, carbs, fat) + queuedNote)
     }
 
-    /** "Daily target set: 2000 kcal, 150g protein." Carbs and fat only when they are set (above 0). */
+    /** "Daily target set: 2400 kcal, 160g protein." Carbs and fat only when they are set (above 0). */
     internal fun targetSentence(kcal: Int, protein: Double, carbs: Double, fat: Double): String {
         val parts = mutableListOf("$kcal kcal")
         if (protein > 0) parts += "${formatGrams(protein)}g protein"

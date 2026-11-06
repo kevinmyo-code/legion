@@ -7291,3 +7291,5 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   (engine tools), not `ask_body`, because writes came out of the dispatchers on 2026-08-18; the plan
   generator never picks a calorie number; the Body screen waits for Kevin's pick of a prototype.
   ADR 0077.
+- **Ruled later the same day:** Body screen direction **A**, one scroll of cards (relayed by the
+  orchestrator); built on `feat/fat-loss`.
