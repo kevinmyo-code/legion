@@ -112,8 +112,13 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- alfred-ota ticket 05 (ADR 0072): LEGION installs its own published updates through
-         PackageInstaller, after Kevin's yes. He grants "Install unknown apps" once. -->
+         PackageInstaller, after Kevin's yes. He grants "Install unknown apps" once.
+         UPDATE_PACKAGES_WITHOUT_USER_ACTION (normal, API 31+) is the last condition Android 12+
+         checks before honouring the session's USER_ACTION_NOT_REQUIRED on a self-update; without
+         it Android shows its own confirm after Kevin's yes (Kevin, 2026-11-06: "phone update
+         prompt yes"). Kevin's in-app yes stays the consent. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- Matrix home's big clock opens AlarmClock.ACTION_SHOW_ALARMS (ADR 0062). Samsung's clock
          guards that intent with SET_ALARM and refuses the launch without it, logging a Permission

@@ -7357,3 +7357,14 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   thrust and leg press, 5 lb for the rest.
 - **Meals (item 4):** the Today card already had Saved meals and Log meal; the quick-log Meal
   dialog now lists saved meals as one-tap logs above the free-text field.
+
+## 2026-11-06 - Phone OTA skips Android's own confirm (Kevin)
+
+- **Asked:** whether phone updates could install without Android's system prompt, after the head
+  unit OTA work found the phone manifest lacked `UPDATE_PACKAGES_WITHOUT_USER_ACTION`. Kevin:
+  *"phone update prompt yes"*.
+- **Ruled:** the phone declares `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, so the PackageInstaller
+  session's existing `USER_ACTION_NOT_REQUIRED` is honoured on Android 12+ self-updates. Kevin's
+  in-app yes stays the consent (ADR 0072 unchanged); only the second, system confirm goes.
+- **Owed:** on-device check on the next OTA after this build is installed; Android may still
+  confirm if the installer of record is not LEGION itself (the first one after an adb install).
