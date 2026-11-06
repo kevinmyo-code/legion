@@ -40,6 +40,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
 import com.kevin.legion.service.ChatEntry
+import com.kevin.legion.ui.common.exposeTestTags
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 
@@ -122,7 +124,8 @@ internal fun ChatButton(chat: TypedChatUi, modifier: Modifier = Modifier) {
             .clip(PillShape)
             .border(1.dp, SoftColors.outline, PillShape)
             .clickable(role = Role.Button, onClickLabel = label, onClick = chat.onOpenChat)
-            .semantics { contentDescription = label },
+            .semantics { contentDescription = label }
+            .testTag("chat-button"),
         contentAlignment = Alignment.Center,
     ) {
         MsIcon(R.drawable.ms_chat, contentDescription = null, tint = SoftColors.text)
@@ -154,7 +157,8 @@ internal fun ChatPanelSheet(chat: TypedChatUi, onTalk: () -> Unit, onClose: () -
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = SoftColors.ground,
     ) {
-        ChatPanelContent(chat, onTalk, onClose, Modifier.fillMaxHeight(PANEL_HEIGHT_FRACTION))
+        // The sheet is its own window, so it exposes its own tags (phone-verify ticket 04).
+        ChatPanelContent(chat, onTalk, onClose, Modifier.fillMaxHeight(PANEL_HEIGHT_FRACTION).exposeTestTags())
     }
 }
 
@@ -267,7 +271,8 @@ internal fun TypedMessageField(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
-                    .semantics { contentDescription = hint },
+                    .semantics { contentDescription = hint }
+                    .testTag("chat-input"),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = SoftColors.text),
                 cursorBrush = SolidColor(SoftColors.primary),
                 maxLines = INPUT_MAX_LINES,
@@ -296,7 +301,8 @@ internal fun TypedMessageField(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(PillShape)
-                    .clickable(role = Role.Button, onClickLabel = "Send", onClick = { submit() }),
+                    .clickable(role = Role.Button, onClickLabel = "Send", onClick = { submit() })
+                    .testTag("chat-send"),
                 contentAlignment = Alignment.Center,
             ) {
                 MsIcon(R.drawable.ms_send, contentDescription = "Send", tint = SoftColors.primary)

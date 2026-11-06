@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
+import com.kevin.legion.ui.common.exposeTestTags
 import com.kevin.legion.vault.VaultController
 import com.kevin.legion.vault.VaultItem
 import com.kevin.legion.ui.theme.soft.MsIcon
@@ -60,7 +61,9 @@ data class VaultCallbacks(
  */
 @Composable
 fun VaultContent(state: VaultUiState, callbacks: VaultCallbacks) {
-    Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
+    // The vault is its own window, so it exposes its own tags (phone-verify ticket 04). `tools/phone`
+    // reads vault-show/vault-copy to REFUSE them; the tags are how the rail finds the reveal path.
+    Column(Modifier.fillMaxSize().background(SoftColors.ground).exposeTestTags()) {
         Row(
             Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -149,12 +152,16 @@ private fun ItemRow(item: VaultItem, state: VaultUiState, callbacks: VaultCallba
                 color = SoftColors.text3,
             )
             Row {
-                TextButton(onClick = callbacks.onCopy) { Text("Copy") }
+                TextButton(onClick = callbacks.onCopy, modifier = Modifier.testTag("vault-copy")) { Text("Copy") }
                 TextButton(onClick = callbacks.onHide) { Text("Hide") }
             }
         } else {
             Row {
-                TextButton(onClick = { callbacks.onReveal(item) }, enabled = !state.busy) { Text("Show") }
+                TextButton(
+                    onClick = { callbacks.onReveal(item) },
+                    enabled = !state.busy,
+                    modifier = Modifier.testTag("vault-show"),
+                ) { Text("Show") }
                 TextButton(onClick = { callbacks.onEdit(item) }, enabled = !state.busy) { Text("Edit") }
                 TextButton(onClick = { callbacks.onDelete(item) }, enabled = !state.busy) { Text("Delete") }
             }

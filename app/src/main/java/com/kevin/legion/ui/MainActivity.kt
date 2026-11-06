@@ -54,6 +54,7 @@ import com.kevin.legion.ui.assistant.AssistantStrip
 import com.kevin.legion.ui.bought.BoughtScreen
 import com.kevin.legion.ui.checklists.ChecklistsScreen
 import com.kevin.legion.ui.common.StatusLine
+import com.kevin.legion.ui.common.exposeTestTags
 import com.kevin.legion.ui.companions.MemoryScreen
 import com.kevin.legion.ui.companions.PlaybookScreen
 import com.kevin.legion.ui.media.MediaScreen
@@ -706,7 +707,8 @@ private fun LegionShell(
     // LAST - on top of the Scaffold's bottom bar and whatever destination is
     // showing - rather than occupying a slot inside the layout flow. Boot is
     // a full-screen takeover (ticket 04 answer #1), not a panel.
-    Box(Modifier.fillMaxSize()) {
+    // exposeTestTags: test tags reach uiautomator as resource-ids (phone-verify ticket 04).
+    Box(Modifier.fillMaxSize().exposeTestTags()) {
         // DeckBezel REMOVED (home-launcher ticket 02, ADR 0051). It was the one global
         // mission-control frame, wired here by mission-control ticket 14 ("the whole Scaffold -
         // content AND the pinned status line / Alfred strip / hard-key row inside it - sits
