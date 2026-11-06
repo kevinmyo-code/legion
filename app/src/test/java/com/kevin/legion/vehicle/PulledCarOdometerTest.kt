@@ -112,7 +112,8 @@ class PulledCarOdometerTest {
         assertTrue(again.message, again.success)
         assertEquals(229_750, db.vehicleDao().getByMac(dongle)!!.odometerBaseline)
 
-        assertEquals("register_vehicle must not fork a phone-local duplicate", 1, db.vehicleDao().getAllIncludingArchived().size)
+        val rows = db.vehicleDao().getAllIncludingArchived().size
+        assertEquals("register_vehicle must not fork a phone-local duplicate", 1, rows)
     }
 
     @Test

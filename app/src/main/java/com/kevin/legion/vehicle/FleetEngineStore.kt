@@ -290,8 +290,9 @@ object FleetEngineStore {
         schema: FleetAspectSeeder.Schema,
         mac: String,
     ): Long? {
-        engineVehicleId(db, mac)?.let { return it }
-        val legacy = db.vehicleDao().getByMac(mac) ?: return null
+        val existing = engineVehicleId(db, mac)
+        val legacy = if (existing == null) db.vehicleDao().getByMac(mac) else null
+        if (existing != null || legacy == null) return existing
         val result = recordStore.create(
             recordTypeId = schema.vehicle.recordTypeId,
             fieldValues = FleetRecordBridge.vehicleFieldValues(legacy, schema.vehicle.fieldIds),
