@@ -48,11 +48,21 @@ Say in your report which build you left on the phone.
 - **Export `MSYS_NO_PATHCONV=1`** or Git Bash rewrites every `/data/...` path.
 - Baseline before you change anything. "It still works" needs a before.
 
+## Drive it with `tools/phone`
+
+Follow the `verify-on-phone` skill: `python tools/phone preflight`, `open <screen>` from
+`docs/screen-map.md`, `tap`, `screenshot`, `logcat`. Its rails refuse vault reveals, sends,
+payments, deletes, installs and system settings in code, and it writes screenshots and dumps only
+under the gitignored `.phone-artifacts/`. Reach for raw `adb` or the `mobile` tools only for what
+it has no command for (an install, a database pull), and keep its rules when you do.
+
 ## When the screen fights you
 
-Wireless ADB drops on sleep and the screen locks fast. A black screencap is the keyguard, not a
-crash. `uiautomator dump` serves stale content here — screenshot, read it, tap real coordinates,
-and re-screenshot between steps rather than queueing taps against a layout that may have moved.
+Wireless ADB drops on sleep and the screen locks fast (`python tools/phone connect` reconnects).
+A black screencap is the keyguard or FLAG_SECURE, not a crash. A `uiautomator dump` file left on the
+phone reads exactly like the current screen, which is how "dump serves stale content" happened here:
+`tools/phone` deletes it and re-dumps before every selector action. Re-screenshot between steps
+rather than queueing taps against a layout that may have moved.
 
 **Stop and hand back rather than tapping blind**, especially near Settings. A wrong tap on a real
 device is not free.
@@ -60,5 +70,6 @@ device is not free.
 ## Report
 
 What you ran, what the device actually returned, and what remains unproven. Tag every claim
-`on-device`, `tested`, or `reasoned`. If the phone became unreachable, say where you stopped and
+`on-device`, `tested`, or `reasoned`. Name each screenshot by its path and say what you saw on it
+after opening it. If the phone became unreachable, say where you stopped and
 what state you left it in — that matters more than the result you were chasing.

@@ -45,6 +45,13 @@ what it used to claim; a comment that quietly disappears takes its history with 
 
 Build and run the tests. Read counts from the JUnit XML, not the console summary.
 
+**A phone change is checked on the phone by you, not handed back as "owed on device".** If the
+change has a device step and `python tools/phone preflight` passes, run it with the
+`verify-on-phone` skill and tag what you saw `on-device`. Do not install a build unless the brief
+says to; if the installed build is older than your change, say that. If preflight fails, report its
+one-line reason ("phone locked", "not attached") as what is still owed. A reach path you changed
+also changes `docs/screen-map.md`: the `maintain-screen-map` skill.
+
 End with an assumptions ledger: every non-trivial claim tagged `built` (it compiles), `tested`
 (a test exercised it), `traced` (you followed the path), `reasoned` (you inferred it), `on-device`.
 **A `reasoned` correctness claim must be labelled, never stated as fact.** Then `SKILL:` lines for
