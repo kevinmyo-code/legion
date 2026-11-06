@@ -129,10 +129,10 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                 )
 
                 // Data-source credits. These are LICENCE TERMS, not courtesy: Open-Meteo ships
-                // under CC BY 4.0, which requires a visible attribution with a link, and TomTom's
-                // developer terms require the traffic credit. Neither appeared anywhere a user
-                // could see until hardening ticket 07; every mention in the codebase was a code
-                // comment. The repo is public, so this was visible.
+                // under CC BY 4.0, which requires a visible attribution with a link. It appeared
+                // nowhere a user could see until hardening ticket 07; every mention in the codebase
+                // was a code comment. The repo is public, so this was visible. (TomTom's traffic
+                // credit went with TomTom, retired 2026-11-06: no TomTom data is shown.)
                 //
                 // Placed here rather than on a route of its own because this screen already
                 // answers "where does what you see come from, and what is kept". Anything added
@@ -147,12 +147,6 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Weather data by Open-Meteo.com, used under CC BY 4.0.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = sem.faint,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Traffic flow data (c) TomTom.",
                     style = MaterialTheme.typography.bodySmall,
                     color = sem.faint,
                 )

@@ -38,20 +38,13 @@ val localProps: Properties = Properties().apply {
 val geminiApiKey: String =
     if (project.hasProperty("nokey")) "" else localProps.getProperty("GEMINI_API_KEY", "")
 
-// TomTom, for traffic and ETA (location-intelligence map, settled decision 4). Same convenience-
-// key shape as GEMINI_API_KEY and for the same reason: local.properties is gitignored, so a real
-// key never reaches a public repo, and -Pnokey exercises the honest no-key path.
-//
-// **This is the DEV convenience key, not the shipping path.** Clone-and-run means a stranger has
-// no key here, so the product path is BYO through KeyVault on the Setup screen, exactly like the
-// Gemini and Spotify keys. A build with no TomTom key must degrade in words - "I can't check
-// traffic without a TomTom key" - never fail silently.
-val tomtomApiKey: String =
-    if (project.hasProperty("nokey")) "" else localProps.getProperty("TOMTOM_API_KEY", "")
+// No TomTom key: retired 2026-11-06 (Kevin; memory/library/decisions.md, "Navigation quality").
+// Nothing read it, and Mapbox's driving-traffic routing answers the same question.
 
 // Mapbox public access token (`pk.*`), for Navigation SDK v3 (`.scratch/mapbox-nav/`, ADR 0054,
 // ticket 08). Gradle property first (user `~/.gradle/gradle.properties`, so every worktree sees it),
-// then local.properties. Same convenience-key shape as TOMTOM_API_KEY above and for the same reason.
+// then local.properties. Same convenience-key shape as GEMINI_API_KEY above and for the same reason:
+// local.properties is gitignored, so a real key never reaches a public repo.
 //
 // **This is the DEV convenience token, not the shipping path.** Clone-and-run means a stranger has
 // none, so the product path is BYO per phone through KeyVault on Setup (ticket 08; NOT built in the
@@ -112,7 +105,6 @@ android {
         }
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
-        buildConfigField("String", "TOMTOM_API_KEY", "\"$tomtomApiKey\"")
         buildConfigField("String", "AIRNOW_API_KEY", "\"$airnowApiKey\"")
         buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$mapboxAccessToken\"")
 
