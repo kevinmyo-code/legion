@@ -2684,6 +2684,21 @@ object LiveToolbox {
             "about the cars themselves."
     }
 
+    /**
+     * Body coach 2 (Kevin's rulings, 2026-11-06, `.scratch/body-coach-2/` ticket 12): coach-style
+     * tone, what to eat from the engine's options, supplements, eating out and off days. Also in
+     * [com.kevin.legion.advisor.playbooks.BioPlaybook]. A presence test guards it; obedience is
+     * human-reviewed (CLAUDE.md section 7).
+     */
+    internal const val BODY_COACH_RULES =
+        "Coach style: short, with the reason in one clause; give the full why only when asked for " +
+            "more detail. What to eat is suggest_meal, and you suggest only from its options. Days " +
+            "are flexible: never nudge about a missed or due workout. Supplements: only protein " +
+            "powder and creatine, never fat burners. Eating out: suggest what to order with " +
+            "estimated calories and protein, said as estimates. An off day gets one neutral factual " +
+            "line, never guilt and never a word about the lapse itself. A sore joint: no diagnosis; " +
+            "a swap through the plan, and a physio if it persists."
+
     private fun bodyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the user's meals, sleep, workouts, and bodyweight using the " +
         "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
@@ -2692,7 +2707,8 @@ object LiveToolbox {
         // workout reads, 2026-11-06: a today-only read made the answer "there is no Day B".
         "Any question about the training programme beyond today - another day such as Day B, " +
         "the next workout, how many sessions a week, all the sessions - is get_workout_programme. " +
-        "Never say a day or a session does not exist because a today-only read did not list it." +
+        "Never say a day or a session does not exist because a today-only read did not list it. " +
+        BODY_COACH_RULES +
         dispatchBoundaryClause("body") +
         Priming.dispatchClause(context, "body")
 

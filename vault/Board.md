@@ -35,7 +35,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-etl/map\|backend-etl]] | [[12-canvas-submitted-on-the-phone\|12]] | build | The phone shows what Canvas says beside each coursework task (Android terminal) |
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[09-weekly-meal-plan\|09]] | decision | Weekly meal plan that hits the targets, and its grocery list in Pantry |
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[11-walking-on-the-phone\|11]] | research | What the phone can count for walking, with no watch and no Health Connect |
-| [[.scratch/body-coach-2/map\|body-coach-2]] | [[12-coach-tone-and-advice\|12]] | build | Phone: coach tone, supplements, eating out and off days in the coach rules |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[01-is-career-a-seventh-aspect\|01]] | decision | Is career a seventh aspect, and what falsifiable data would anchor it |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[02-what-a-net-worth-may-be\|02]] | decision | What a net worth is allowed to be: components, provenance, and how the unverified part is said |
 | [[.scratch/chief-of-staff/map\|chief-of-staff]] | [[03-assets-and-liabilities\|03]] | build | Assets and liabilities |
@@ -124,6 +123,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[03-engine-catalog-and-templates\|03]] | build | Engine: catalog, templates, sessions a week, gym or home |
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[05-engine-meal-suggestions\|05]] | build | Engine: what to eat from what's left |
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[08-engine-weekly-adaptation\|08]] | build | Engine: the calorie adaptation on four weekly points |
+| [[.scratch/body-coach-2/map\|body-coach-2]] | [[12-coach-tone-and-advice\|12]] | build | Phone: coach tone, supplements, eating out and off days in the coach rules |
 | [[.scratch/body-coach-2/map\|body-coach-2]] | [[13-the-plan\|13]] | build | The plan: draft with Alfred, lock it in, adjust as he goes; Alfred sets the target |
 | [[.scratch/books/map\|books]] | [[02-build-books\|02]] | build | Build: Books chip, sheet, folder scan, reader (EPUB/PDF/comics), read-aloud, voice tool |
 | [[.scratch/books/map\|books]] | [[04-build-pdf-convert-server\|04]] | build | Build: server PDF to EPUB conversion, pass-through, nothing stored |

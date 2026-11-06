@@ -55,7 +55,7 @@ weekly points (C); coach tone (B); supplements basics, eating out with estimates
 | 05 | [Engine: what to eat from what's left](issues/05-engine-meal-suggestions.md) | build | built |
 | 08 | [Engine: adaptation on four weekly points](issues/08-engine-weekly-adaptation.md) | build | built |
 | 07 | [Phone: the Body checklist, the reads, voice](issues/07-phone.md) | build | built (slice) |
-| 12 | [Phone: coach tone and the advice rules](issues/12-coach-tone-and-advice.md) | build | ready |
+| 12 | [Phone: coach tone and the advice rules](issues/12-coach-tone-and-advice.md) | build | built |
 | 10 | [Nudges: evening protein, Monday check-in, plan proposals](issues/10-nudges.md) | build | ready (engine), phone after 07 |
 | 09 | [Weekly meal plan and its grocery list](issues/09-weekly-meal-plan.md) | decision | open |
 | 06 | [Web: the same checklist](issues/06-web-hands-paths.md) | build | ready |

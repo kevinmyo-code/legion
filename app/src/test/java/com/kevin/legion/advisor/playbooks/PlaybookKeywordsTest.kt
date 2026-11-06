@@ -35,6 +35,19 @@ class PlaybookKeywordsTest {
     }
 
     @Test
+    fun `bio playbook carries Kevin's body coach rulings`() {
+        // Body coach 2, 2026-11-06 (ticket 12): coach tone, supplements, eating out, off days.
+        val text = BioPlaybook.TEXT
+        assertTrue("coach style", text.contains("reason in one clause"))
+        assertTrue("supplements", text.contains("protein powder and creatine") && text.contains("Never fat burners"))
+        assertTrue("eating out", text.contains("Eating out"))
+        assertTrue("off days", text.contains("No guilt, never characterise a lapse"))
+        val body = com.kevin.legion.service.LiveToolbox.BODY_COACH_RULES
+        assertTrue(body.contains("reason in one clause") && body.contains("never fat burners"))
+        assertTrue(body.contains("never nudge about a missed or due workout"))
+    }
+
+    @Test
     fun `cred playbook is non-blank and carries its referral boundaries`() {
         val text = CredPlaybook.TEXT
         assertFalse(text.isBlank())

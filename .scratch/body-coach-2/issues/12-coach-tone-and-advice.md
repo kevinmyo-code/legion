@@ -3,8 +3,8 @@ map: body-coach-2
 ticket: "12"
 title: "Phone: coach tone, supplements, eating out and off days in the coach rules"
 type: build
-status: open
-status-detail: "ready; prompt text only (BioPlaybook and the body coach prompt rules), no UI"
+status: built
+status-detail: "built 2026-11-06: BioPlaybook section and LiveToolbox.BODY_COACH_RULES in the body sub-agent grounding; PlaybookKeywordsTest guards presence; obedience is human-reviewed on the phone"
 blockers: ["01"]
 blocked-by: ["[[01-decisions]]"]
 tags: [ticket]
