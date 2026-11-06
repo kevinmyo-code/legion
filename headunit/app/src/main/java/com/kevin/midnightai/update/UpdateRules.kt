@@ -31,7 +31,7 @@ object UpdateRules {
     /**
      * The download gate. Unlike the phone this defaults to allowing a metered network: the unit's
      * internet is normally the phone's hotspot, which Android reports as metered, so a Wi-Fi-only
-     * default would never download at all. A split APK is about 70-90 MB. Null when it may start.
+     * default would never download at all. The `fast` APK was 16.7 MB on 2026-11-06. Null when it may start.
      */
     fun downloadRefusal(online: Boolean, unmetered: Boolean, allowMetered: Boolean): String? = when {
         !online -> "Not downloaded: this unit is offline."

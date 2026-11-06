@@ -212,7 +212,7 @@ internal fun SystemUpdatesSection(context: Context, onBack: () -> Unit) {
         Spacer(Modifier.height(AriaDimens.s1))
         Text(
             "On: updates download on any network, including the phone's hotspot, which uses the " +
-                "phone's data (an update is about 70-90 MB). Off: Wi-Fi without a meter only.",
+                "phone's data (an update was about 17 MB in November 2026). Off: Wi-Fi without a meter only.",
             style = RowSubtitle,
             color = AriaColors.TextDim,
         )

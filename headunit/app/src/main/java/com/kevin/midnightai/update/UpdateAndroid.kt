@@ -68,7 +68,7 @@ class DjangoUpdateBackend(private val http: EngineHttp) : UpdateBackend {
 
 /**
  * Streams the signed Cloud Storage URL to a file, resuming with `Range`. **Never the engine's
- * client:** the URL is Google's, so no `Authorization: Token` may go with it, and an 80 MB APK
+ * client:** the URL is Google's, so no `Authorization: Token` may go with it, and a whole APK
  * must not be read into one ByteArray.
  */
 class OkHttpApkDownloader(
