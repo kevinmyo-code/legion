@@ -386,6 +386,8 @@ class NavAudit(
                 c.category?.let { add("\"cat\":${jsonString(it.take(MAX_NAME))}") }
                 val metres = c.distanceM?.let { whole((it / ROUND_DISTANCE_M).roundToLong() * ROUND_DISTANCE_M) }
                 add("\"m\":${metres ?: "null"}")
+                // Drive minutes when asked for ("nearest", ticket 03); kept with the risk accepted (D2).
+                c.etaMinutes?.let { add("\"eta_min\":${it.roundToLong()}") }
             }
             "{" + fields.joinToString(",") + "}"
         }.joinToString(",", prefix = "[", postfix = "]")

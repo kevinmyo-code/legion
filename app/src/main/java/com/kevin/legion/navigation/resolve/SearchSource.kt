@@ -6,7 +6,8 @@ import com.kevin.legion.navigation.GeoPoint
  * One search the Mapbox Search SDK is asked to run. [category] is a canonical Mapbox category id
  * when the phrase was "nearest X" and X is one we know; [alongRoute] makes the search favour
  * results near that route (a `via`). [near] is the live fix: **always passed, because Search Box's
- * proximity defaults to the device's IP when omitted** (research 01).
+ * proximity defaults to the device's IP when omitted** (research 01). [nearest] asks for a drive-time
+ * ETA per result, so "nearest" means nearest by drive, not by line (nav-quality ticket 03).
  */
 data class SearchQuery(
     val text: String,
@@ -14,6 +15,7 @@ data class SearchQuery(
     val near: GeoPoint? = null,
     val alongRoute: List<GeoPoint>? = null,
     val limit: Int = 5,
+    val nearest: Boolean = false,
 )
 
 sealed interface SearchAnswer {
@@ -112,6 +114,13 @@ object SearchAmbiguity {
         }
     }
 
+    /**
+     * "Nearest" by drive (nav-quality ticket 03): hits with a drive-time ETA first, shortest first, the
+     * rest after in the order Mapbox gave. Stable, so equal ETAs keep Mapbox's order.
+     */
+    fun byDriveTime(hits: List<Candidate>): List<Candidate> =
+        hits.sortedWith(compareBy(nullsLast()) { it.etaMinutes })
+
     fun isAmbiguous(parsed: ParsedSearch, alongRoute: Boolean, hits: List<Candidate>): Boolean {
         val names = hits.map { QueryText.normalize(it.name) }
         val top = names.firstOrNull()
@@ -139,7 +148,13 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
         // forward text search), so a via tries the phrase as a category id before falling back.
         val category = parsed.category ?: if (along != null) parsed.term.replace(' ', '_') else null
         val answer = search.search(
-            SearchQuery(text = parsed.term, category = category, near = ctx.fix, alongRoute = along),
+            SearchQuery(
+                text = parsed.term,
+                category = category,
+                near = ctx.fix,
+                alongRoute = along,
+                nearest = parsed.nearest,
+            ),
         )
         return when (answer) {
             is SearchAnswer.Failed -> SourceAnswer.Unreadable("search couldn't be reached: ${answer.why}")
@@ -150,7 +165,8 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
                         c.copy(distanceM = c.distanceM ?: Geo.distanceM(fix, GeoPoint(c.latitude, c.longitude)))
                     }
                 } ?: answer.candidates
-                val comparable = SearchAmbiguity.comparable(query, hits)
+                val ordered = if (parsed.nearest) SearchAmbiguity.byDriveTime(hits) else hits
+                val comparable = SearchAmbiguity.comparable(query, ordered)
                 SourceAnswer.Hits(comparable, SearchAmbiguity.isAmbiguous(parsed, along != null, comparable))
             }
         }

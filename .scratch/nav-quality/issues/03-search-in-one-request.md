@@ -3,7 +3,8 @@ map: nav-quality
 ticket: "03"
 title: "Build: one request for text search, five results, ETA per result"
 type: build
-status: open
+status: built
+status-detail: "2026-11-06 on feat/nav-audit: forward, batched-select fallback, drive ETA for nearest; needs the phone"
 blockers: ["01"]
 blocked-by: ["[[01-baseline]]"]
 open-blockers: 1
@@ -42,3 +43,29 @@ far inside either.
 - Ambiguous rate: does not rise. More candidates must not mean more questions.
 
 Verify on the phone: a typed "Starbucks", a spoken "nearest gas station", an address.
+
+## Built (2026-11-06, `feat/nav-audit`)
+
+Kevin's "all of it" (2026-11-06) ordered the build ahead of ticket 01's baseline. **Record ticket 01's
+baseline on a build without this change before merging it**, or the "before" these numbers are judged
+against is lost.
+
+- `MapboxPlaceSearch.textSearch`: one `SearchEngine.forward` with proximity from the live fix and the
+  query's limit (five). On an empty answer only: one suggest, then ONE `select(List<SearchSuggestion>)`
+  over the batch-resolvable suggestions. A transport failure returns as before, no fallback.
+- "Nearest": `SearchQuery.nearest` asks for a drive-time ETA. Text: `navigationOptions(DRIVING,
+  EtaType.NAVIGATION)` plus `origin`. Category: `origin`, `navigationProfile(DRIVING)` and
+  `unsafeParameters(eta_type=navigation)`, because the category builder has no ETA type (reasoned from
+  the Search Box reference; not observed). `SearchAmbiguity.byDriveTime` orders hits by ETA, those
+  without one last. `Candidate.etaMinutes`; `top=` carries `eta_min`.
+- Tests (tested): the nearest ask sets `nearest`, ETA order wins over line distance, a plain search
+  keeps Mapbox's order; `eta_min` in `top=`. The SDK path itself needs its native library, so no unit
+  test constructs `MapboxPlaceSearch`.
+
+### Owed on the phone
+
+- A typed "Starbucks": the `search` line's `search` entry in `tried=` near one round trip (well under
+  the old four), `results=5` where five exist.
+- A spoken "nearest gas station": `eta_min` on the `top=` entries. **If it is missing, the category
+  `eta_type` pass-through did not take**; the text path's ETA is SDK-native.
+- An address: resolves as before, one request.

@@ -7,13 +7,17 @@ import com.kevin.legion.navigation.RouteFailure
 import com.mapbox.geojson.Point
 import com.mapbox.search.ApiType
 import com.mapbox.search.CategorySearchOptions
+import com.mapbox.search.EtaType
+import com.mapbox.search.ForwardSearchOptions
 import com.mapbox.search.ResponseInfo
 import com.mapbox.search.SearchCallback
 import com.mapbox.search.SearchEngine
 import com.mapbox.search.SearchEngineSettings
+import com.mapbox.search.SearchMultipleSelectionCallback
+import com.mapbox.search.SearchNavigationOptions
 import com.mapbox.search.SearchOptions
-import com.mapbox.search.SearchSelectionCallback
 import com.mapbox.search.common.AsyncOperationTask
+import com.mapbox.search.common.NavigationProfile
 import com.mapbox.search.result.SearchResult
 import com.mapbox.search.result.SearchResultType
 import com.mapbox.search.result.SearchSuggestion
@@ -30,6 +34,12 @@ import com.mapbox.search.RouteOptions as SearchRouteOptions
  *
  * Proximity is always passed from the live fix (Search Box otherwise defaults to the IP). Nothing
  * returned is kept past the caller. Main-thread: the SDK delivers its callbacks on the main looper.
+ *
+ * **Text search is one `forward` request** (nav-quality ticket 03, Kevin's decision D3: billed per
+ * request, 25,000 free a month, instead of per session). It returns full results with coordinates, up
+ * to the limit. Only when it finds nothing does a suggest run, and then ONE batched select resolves
+ * its suggestions, never one select after another. A "nearest" ask adds a drive-time ETA per result
+ * (`eta_type=navigation` from the live fix, billed as Matrix elements).
  *
  * Verified by compiling against the 2.32 jars and, for behaviour, on the phone: the SDK needs its
  * native library so no unit test constructs this. The resolver above it is tested with a fake.
@@ -64,6 +74,14 @@ class MapboxPlaceSearch : PlaceSearch {
             query.near?.let { proximity(it.toPoint()) }
             limit(query.limit)
             routeOptionsFor(query)?.let { routeOptions(it) }
+            // The category builder has origin and profile but no ETA type; Search Box's own
+            // `eta_type` parameter rides through unsafeParameters (reasoned from the API reference,
+            // to be confirmed on the phone by an `eta_min` in the NAV_AUDIT top=).
+            etaOrigin(query)?.let {
+                origin(it)
+                navigationProfile(NavigationProfile.DRIVING)
+                unsafeParameters(mapOf(ETA_TYPE to ETA_NAVIGATION))
+            }
         }.build()
         tasks += engine.search(
             query.category.orEmpty(),
@@ -81,14 +99,44 @@ class MapboxPlaceSearch : PlaceSearch {
         return done.await()
     }
 
-    @Suppress("ReturnCount") // transport error, no suggestion, then the picked results
+    /** One `forward` request; a suggest and one batched select only when it found nothing. */
     private suspend fun textSearch(query: SearchQuery, tasks: MutableList<AsyncOperationTask>): SearchAnswer {
+        val done = CompletableDeferred<SearchAnswer>()
+        val options = ForwardSearchOptions.Builder().apply {
+            query.near?.let { proximity(it.toPoint()) }
+            limit(query.limit)
+            etaOrigin(query)?.let {
+                origin(it)
+                navigationOptions(SearchNavigationOptions(NavigationProfile.DRIVING, EtaType.NAVIGATION))
+            }
+            // No routeOptions: a via's phrase is tried as a category first (SearchSource), which honours
+            // the route; text search stays proximity-biased, as before.
+        }.build()
+        tasks += engine.forward(
+            query.text,
+            options,
+            object : SearchCallback {
+                override fun onResults(results: List<SearchResult>, responseInfo: ResponseInfo) {
+                    done.complete(hitsOf(results.take(query.limit)))
+                }
+
+                override fun onError(e: Exception) {
+                    done.complete(failed(e))
+                }
+            },
+        )
+        // A transport failure would fail the suggest too: only an empty answer earns the fallback.
+        val forward = done.await()
+        return if (forward is SearchAnswer.NoMatch) suggestThenSelect(query, tasks) else forward
+    }
+
+    /** The fallback: one suggest, then every suggestion resolved in ONE batched select. */
+    @Suppress("ReturnCount") // transport error, no suggestion, then the selected results
+    private suspend fun suggestThenSelect(query: SearchQuery, tasks: MutableList<AsyncOperationTask>): SearchAnswer {
         val answer = CompletableDeferred<Pair<List<SearchSuggestion>, Exception?>>()
         val options = SearchOptions.Builder().apply {
             query.near?.let { proximity(it.toPoint()) }
             limit(query.limit)
-            // No routeOptions here: the SDK marks along-route as unsupported for forward text search,
-            // so a via whose phrase is not a category degrades to a proximity-biased search.
         }.build()
         tasks += engine.search(
             query.text,
@@ -105,42 +153,27 @@ class MapboxPlaceSearch : PlaceSearch {
         )
         val (found, error) = answer.await()
         if (error != null) return failed(error)
-        if (found.isEmpty()) return SearchAnswer.NoMatch
-        val results = mutableListOf<SearchResult>()
-        for (suggestion in found.take(query.limit.coerceAtMost(MAX_SELECTS))) {
-            val picked = CompletableDeferred<List<SearchResult>>()
-            tasks += engine.select(
-                suggestion,
-                object : SearchSelectionCallback {
-                    // A suggestion that needs refining instead of resolving: nothing to use, never hang on it.
-                    override fun onSuggestions(suggestions: List<SearchSuggestion>, responseInfo: ResponseInfo) {
-                        picked.complete(emptyList())
-                    }
+        // A suggestion that only refines the query (a category, a "query" type) cannot be selected in a batch.
+        val selectable = found.filter { it.isBatchResolveSupported }.take(query.limit)
+        if (selectable.isEmpty()) return SearchAnswer.NoMatch
+        val picked = CompletableDeferred<List<SearchResult>>()
+        tasks += engine.select(
+            selectable,
+            object : SearchMultipleSelectionCallback {
+                override fun onResult(
+                    suggestions: List<SearchSuggestion>,
+                    results: List<SearchResult>,
+                    responseInfo: ResponseInfo,
+                ) {
+                    picked.complete(results)
+                }
 
-                    override fun onResult(
-                        suggestion: SearchSuggestion,
-                        result: SearchResult,
-                        responseInfo: ResponseInfo,
-                    ) {
-                        picked.complete(listOf(result))
-                    }
-
-                    override fun onResults(
-                        suggestion: SearchSuggestion,
-                        results: List<SearchResult>,
-                        responseInfo: ResponseInfo,
-                    ) {
-                        picked.complete(results)
-                    }
-
-                    override fun onError(e: Exception) {
-                        picked.complete(emptyList())
-                    }
-                },
-            )
-            results += picked.await()
-            if (results.size >= query.limit) break
-        }
+                override fun onError(e: Exception) {
+                    picked.complete(emptyList())
+                }
+            },
+        )
+        val results = picked.await()
         return if (results.isEmpty()) SearchAnswer.NoMatch else hitsOf(results.take(query.limit))
     }
 
@@ -157,6 +190,7 @@ class MapboxPlaceSearch : PlaceSearch {
                 category = r.categories?.firstOrNull { it.isNotBlank() },
                 kind = kindOf(r),
                 mapboxId = r.mapboxId.takeIf { !it.isNullOrBlank() },
+                etaMinutes = r.etaMinutes,
             )
         }
         return if (candidates.isEmpty()) SearchAnswer.NoMatch else SearchAnswer.Hits(candidates)
@@ -187,9 +221,13 @@ class MapboxPlaceSearch : PlaceSearch {
 
     private fun GeoPoint.toPoint(): Point = Point.fromLngLat(longitude, latitude)
 
+    /** The live fix as the ETA origin, only for a "nearest" ask (ticket 03); null otherwise. */
+    private fun etaOrigin(query: SearchQuery): Point? = query.near?.takeIf { query.nearest }?.toPoint()
+
     private companion object {
         const val TAG = "MapboxPlaceSearch"
-        const val MAX_SELECTS = 3
+        const val ETA_TYPE = "eta_type"
+        const val ETA_NAVIGATION = "navigation"
         const val MAX_ROUTE_POINTS = 100
         const val MAX_DETOUR_MIN = 10L
     }

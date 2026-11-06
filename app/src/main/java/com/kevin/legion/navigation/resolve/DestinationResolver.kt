@@ -47,6 +47,8 @@ data class Candidate(
      * point at the contact's address (decision D9).
      */
     val mapboxId: String? = null,
+    /** Drive time from the live fix in minutes, when the search was asked for it ("nearest"); else null. */
+    val etaMinutes: Double? = null,
 ) {
     /** The line under the name: its category (when known) and its address, so a hit can be told apart. */
     fun subtitle(): String? =

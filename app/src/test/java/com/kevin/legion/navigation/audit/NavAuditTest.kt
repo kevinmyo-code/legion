@@ -114,6 +114,17 @@ class NavAuditTest {
         assertFalse("one whitespace-free token", top.contains(' '))
     }
 
+    @Test fun aHitWithADriveTimeCarriesItInWholeMinutes() {
+        val top = NavAudit.topJson(
+            listOf(
+                candidate("Fast Fuel", SourceKind.SEARCH, 2_500.0).copy(etaMinutes = 4.4),
+                candidate("Slow Fuel", SourceKind.SEARCH, 800.0),
+            ),
+        )
+        assertTrue(top, top.contains("\"m\":2500,\"eta_min\":4}"))
+        assertEquals("only the hit that had one", 1, Regex("eta_min").findAll(top).count())
+    }
+
     @Test fun aRouteRequestIsRoundedToAboutAHundredMetresAndSaysWhetherTrafficWasUsed() {
         audit.routeRequest(
             id = "r1", purpose = RoutePurpose.PREVIEW, result = "ok", failure = null, ms = 640,

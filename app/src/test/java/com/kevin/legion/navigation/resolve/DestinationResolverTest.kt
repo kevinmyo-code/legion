@@ -307,6 +307,38 @@ class DestinationResolverTest {
         assertTrue(r.sentence().contains("away"))
     }
 
+    @Test fun nearestIsNearestByDriveWhenTheSearchGaveDriveTimes() {
+        // Ticket 03: the line-of-sight closest can be the longer drive (a river, a freeway exit).
+        search.reply = {
+            SearchAnswer.Hits(
+                listOf(
+                    hit("Across The Bayou", distanceM = 800.0).copy(etaMinutes = 14.0),
+                    hit("No Eta Station", distanceM = 900.0),
+                    hit("Down The Road", distanceM = 2_500.0).copy(etaMinutes = 4.0),
+                ),
+            )
+        }
+        val r = resolve("nearest gas station") as Resolution.Resolved
+        assertTrue("a nearest ask asks for drive times", search.queries.single().nearest)
+        assertEquals(listOf("Down The Road", "Across The Bayou", "No Eta Station"), r.candidates.map { it.name })
+        assertEquals("Down The Road", r.destination.name)
+        assertFalse(r.ambiguous)
+    }
+
+    @Test fun aPlainSearchAsksForNoDriveTimesAndKeepsMapboxOrder() {
+        search.reply = {
+            SearchAnswer.Hits(
+                listOf(
+                    hit("Blue Door Cafe", distanceM = 5_000.0).copy(etaMinutes = 20.0),
+                    hit("Blue Door Cafe", distanceM = 900.0).copy(etaMinutes = 3.0),
+                ),
+            )
+        }
+        val r = resolve("blue door cafe") as Resolution.Resolved
+        assertFalse(search.queries.single().nearest)
+        assertEquals(5_000.0, r.candidates.first().distanceM!!, 0.0)
+    }
+
     @Test fun nearestWithNoFixSaysSoInsteadOfGuessingAPlace() {
         val r = resolve("nearest gas station", LookupContext(null)) as Resolution.NotFound
         assertTrue(r.message.contains("I don't have your location yet"))
