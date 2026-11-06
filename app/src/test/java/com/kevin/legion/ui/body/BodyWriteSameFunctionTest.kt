@@ -124,6 +124,55 @@ class BodyWriteSameFunctionTest {
         assertFalse("an unset carb target is never read back", result.getString("message").contains("carbs"))
     }
 
+    /**
+     * Kevin's first coach voice session (2026-11-06): "1808 calories" read back as "1808 kcal, 180g
+     * protein, 200g carbs, 70g fat", every field but calories carried from a months-old target.
+     * kcal and protein are the targets; a calories-only change takes protein from the rule.
+     */
+    @Test
+    fun `a calories-only target takes protein from the rule and carries no old carbs or fat`() = runBlocking {
+        val today = dayStartEpoch(System.currentTimeMillis())
+        CarDatabase.getDatabase(context).mealTargetDao().upsert(
+            com.kevin.legion.data.local.MealTarget(
+                caloriesKcal = 2300, proteinG = 180.0, carbsG = 200.0, fatG = 70.0,
+                effectiveFromDateEpoch = today - 40L * 86_400_000L, updatedAt = 1L, guid = "old-target",
+            ),
+        )
+        val rule = MealController.proteinRule
+        MealController.proteinRule = { 165 }
+        try {
+            val result = LiveToolbox.dispatch(context, "set_meal_target", JSONObject().put("calories", 1777))!!
+            val row = CarDatabase.getDatabase(context).mealTargetDao().currentTarget(today)!!
+            assertEquals(1777, row.caloriesKcal)
+            assertEquals("protein from the rule, not the old row", 165.0, row.proteinG, 0.0)
+            assertEquals(0.0, row.carbsG, 0.0)
+            assertEquals(0.0, row.fatG, 0.0)
+            val said = result.getString("message")
+            assertTrue(said, said.startsWith("Daily target set: 1777 kcal, 165g protein."))
+            assertFalse(said, said.contains("carbs") || said.contains("fat"))
+            assertTrue(said, said.contains("rule's estimate"))
+
+            MealController.proteinRule = { null }
+            val unset = LiveToolbox.dispatch(context, "set_meal_target", JSONObject().put("calories", 1888))!!
+            assertEquals(0.0, CarDatabase.getDatabase(context).mealTargetDao().currentTarget(today)!!.proteinG, 0.0)
+            assertTrue(unset.getString("message").contains("Protein is not set"))
+        } finally {
+            MealController.proteinRule = rule
+        }
+    }
+
+    /** The same session: "Okay, lock it in. Lock that in." reached set_meal_target. It writes nothing. */
+    @Test
+    fun `lock it in refuses set_meal_target and writes nothing`() = runBlocking {
+        val refused = LiveToolbox.dispatch(
+            context, "set_meal_target", JSONObject().put("calories", 1777),
+            userText = "Okay, lock lock it in. Lock that in.",
+        )!!
+        assertFalse(refused.getBoolean("success"))
+        assertTrue(refused.getString("message").contains("lock_body_plan"))
+        assertNull(CarDatabase.getDatabase(context).mealTargetDao().currentTarget(dayStartEpoch(System.currentTimeMillis())))
+    }
+
     @Test
     fun `set_meal_target with nothing and no current target refuses in words`() = runBlocking {
         val none = LiveToolbox.dispatch(context, "set_meal_target", JSONObject())!!

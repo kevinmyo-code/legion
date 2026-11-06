@@ -175,6 +175,31 @@ object WorkoutText {
         "done" to "today's workout is done",
     )
 
+    /** One programme day on the card's "See all workouts": its label and each exercise's target. */
+    data class DayView(val label: String, val calibrating: Boolean, val rows: List<Pair<String, String>>)
+
+    /** Every day of the programme and the sessions ahead, for the card's expander. */
+    data class AllWorkoutsView(val days: List<DayView>, val next: List<String>)
+
+    /**
+     * What the Body card's "See all workouts" shows (Kevin, 2026-11-06: "i cant see all the
+     * workouts on the screen, i only see day A"): every day of the locked programme, each exercise
+     * as sets x reps @ weight or "your pick" (calibration), then the next sessions. Null when the
+     * engine sent no days (an older engine), so the card shows no expander rather than one day.
+     * The same engine read `get_workout_programme` says by voice; every number is the rules'.
+     */
+    fun allWorkouts(w: WorkoutTodayWire?, today: LocalDate, sessionsShown: Int = 4): AllWorkoutsView? {
+        if (w == null || w.days.isEmpty()) return null
+        val days = w.days.map { d ->
+            DayView(
+                label = d.dayLabel.ifBlank { "Day ${d.dayKey}" },
+                calibrating = d.calibrating || d.exercises.any { it.calibrating },
+                rows = d.exercises.map { t -> t.name to target(t).removePrefix(t.name).trim() },
+            )
+        }
+        return AllWorkoutsView(days, w.upcoming.take(sessionsShown).map { session(it, today) })
+    }
+
     /** "This week: 2 of 3 sessions." */
     fun weekLine(week: WeekWire): String = "${week.done} of ${week.planned} sessions"
 }

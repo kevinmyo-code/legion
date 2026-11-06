@@ -42,6 +42,32 @@ data class EnergyWire(
     @SerialName("current_target") val currentTarget: CurrentTargetWire? = null,
     val proposal: ProposalWire? = null,
     val words: String = "",
+    // Coach voice fixes (2026-11-06). Absent from an older engine: null means NOT SENT.
+    /** The plan the estimate is said at: a waiting draft, else the locked plan. */
+    val plan: EnergyPlanWire? = null,
+    /** The profile the estimate stands on, so a stated fact that differs can be offered as an update. */
+    val profile: EnergyProfileWire? = null,
+)
+
+@Serializable
+data class EnergyPlanWire(
+    val id: String = "",
+    /** "draft" or "active". */
+    val status: String = "",
+    @SerialName("kcal_target") val kcalTarget: Int? = null,
+    @SerialName("protein_g") val proteinG: Int? = null,
+    @SerialName("rate_pct") val ratePct: Double? = null,
+    @SerialName("target_set_by") val targetSetBy: String = "",
+)
+
+@Serializable
+data class EnergyProfileWire(
+    @SerialName("height_cm") val heightCm: Double? = null,
+    @SerialName("height_ft_in") val heightFtIn: String? = null,
+    val sex: String? = null,
+    @SerialName("birth_year") val birthYear: Int? = null,
+    @SerialName("age_about") val ageAbout: Int? = null,
+    @SerialName("activity_level") val activityLevel: String? = null,
 )
 
 @Serializable

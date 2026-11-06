@@ -249,7 +249,8 @@ class AskEngine(
 
         /** The one declaration, in the same shape as the five `ask_*` dispatchers. */
         const val DESCRIPTION = "Ask or change records only the household ENGINE (the server) " +
-            "holds: what is due, checklists, places, body, ledger, pantry, fleet history. Use " +
+            "holds: what is due, checklists, places, body and its plan ('lock it in'), ledger, " +
+            "pantry, fleet history. Use " +
             "when no named tool or other ask_* fits. If the engine is unreachable it says " +
             "nothing was read or written. Answer comes back as text to speak."
 

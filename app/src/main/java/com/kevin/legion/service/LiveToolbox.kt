@@ -6,6 +6,7 @@ import com.kevin.legion.MidnightEvents
 import com.kevin.legion.finance.noteOrNull
 import com.kevin.legion.finance.valueOrNull
 import com.kevin.legion.ai.AgentResult
+import com.kevin.legion.bodycoach.BodyCoachText
 import com.kevin.legion.ai.AgentTool
 import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.CompanionProfile
@@ -1054,15 +1055,15 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "set_meal_target",
-            // fat-loss ticket 15 (G2): partial updates. Only what the user states is passed; the
-            // rest is carried from the current target (MealController.setTarget).
-            description = "Set the user's daily calorie and macro target, e.g. 'I want to hit 2200 " +
-                "calories and 150 grams of protein a day'. Pass only what they state; the rest is kept.",
+            // Coach voice fixes (2026-11-06): "lock it in" reached this with the estimate's figure.
+            // Only a number the user says as his own; kcal and protein only (Kevin's ruling), so
+            // carbs and fat are not offered. CoachRouting.setMealTargetRefusal backs the wording.
+            description = "Set a calorie or protein target the user SAYS as their own number, e.g. " +
+                "'make it 2200 calories'. Never to lock or accept a plan: 'lock it in' is " +
+                "ask_engine (lock_body_plan).",
             params = obj(
                 "calories" to schema("integer", "Daily calorie target."),
                 "protein_g" to schema("number", "Daily protein target in grams."),
-                "carbs_g" to schema("number", "Daily carb target in grams."),
-                "fat_g" to schema("number", "Daily fat target in grams."),
             ),
             required = listOf(),
         ))
@@ -1519,7 +1520,7 @@ object LiveToolbox {
             description = "Bring up today's due items - reminders, appointments, and any to-do " +
                 "with a date today - as an on-screen list. Does not include checklist lines (a " +
                 "plain to-do, or a routine like \"bio\") - use manage_checklist for those. Use for " +
-                "'show me my agenda', 'what's on today', 'pull up today's list'.",
+                "'show me my agenda', 'what's on today'. Never for Day A/B or 'DA' (ask_body).",
             params = obj(),
             required = listOf(),
         ))
@@ -2355,9 +2356,9 @@ object LiveToolbox {
             // fat-loss ticket 16 (G6): calorie, protein and maintenance questions route HERE (the
             // energy estimate is behind it), and the body-coach writes go to ask_engine. Reworded
             // token-neutral against LiveSetupPayloadSizeTest (-2 chars with the edits below).
-            description = "READING BACK the user's own body and training: meals, sleep, workouts, " +
-                "weight trend, waist, and estimates of maintenance, calorie target and protein " +
-                "('is my target right'). Read-only - it records NOTHING. Anything the user just " +
+            description = "READING BACK the user's own body and training: meals, sleep, workouts " +
+                "and the programme (Day A/B, sessions), weight trend, waist, and estimates of " +
+                "maintenance, calorie target and protein. Read-only - it records NOTHING. Anything the user just " +
                 "ate, slept, lifted or weighed is a RECORD for its named tool - log_meal, " +
                 "log_sleep, log_workout_set, log_bodyweight - never here. Recording a " +
                 "body profile, waist or saved meal, or starting, swapping or finishing a workout, " +
@@ -2370,13 +2371,11 @@ object LiveToolbox {
             name = "ask_goals",
             description = "The user's long-term goals and a domain advisor's coaching, and " +
                 "nothing else: listing the goals currently set, or asking an advisor to reason " +
-                "about progress and what to do next. Advice and reading only - it records NOTHING. " +
-                "A workout, meal, sleep or weigh-in is a RECORD and goes to its own named log tool " +
-                "(log_workout_set, log_meal, log_sleep, log_bodyweight) even when the user " +
-                "mentions a goal in the same breath; calories, protein or maintenance go to ask_body; " +
-                "groceries to manage_checklist (list=Groceries); and setting or closing a goal is " +
-                "set_goal/close_goal, not this. Ask a " +
-                "plain-English question; raw results come back to relay.",
+                "about progress. Records NOTHING: a workout, meal, sleep or weigh-in goes to " +
+                "log_workout_set, log_meal, log_sleep, log_bodyweight. Workouts, sessions, the " +
+                "programme, calories or protein go to " +
+                "ask_body; groceries to manage_checklist; setting or closing a goal is " +
+                "set_goal/close_goal. Ask a plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2860,34 +2859,26 @@ object LiveToolbox {
                     )
                 }
             }
-            "ask_body" -> agentResult(
-                "Could not reach the health specialist. Try again shortly.",
-                requireMutation = wantsWrite(args),
-                lookupName = "health lookup",
-            ) {
-                probedRoute(name) { probe ->
-                    SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
-                        question = args.optString("question"),
-                        tools = agentToolsFor("body", context),
-                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                        mutatingToolNames = mutatingToolsFor("body"),
-                        probe = probe,
-                    )
-                }
-            }
-            "ask_goals" -> agentResult(
-                "Could not reach the goals specialist. Try again shortly.",
-                requireMutation = wantsWrite(args),
-                lookupName = "goals lookup",
-            ) {
-                probedRoute(name) { probe ->
-                    SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
-                        question = args.optString("question"),
-                        tools = agentToolsFor("goals", context),
-                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
-                        mutatingToolNames = mutatingToolsFor("goals"),
-                        probe = probe,
-                    )
+            "ask_body" -> askBody(context, name, args)
+            // Coach voice fixes (2026-11-06): "how about my workouts?" reached ask_goals and came
+            // back with an old goal. A training question is the body route's, whatever was called.
+            "ask_goals" -> if (CoachRouting.isWorkoutQuestion(args.optString("question"))) {
+                askBody(context, "ask_body", args)
+            } else {
+                agentResult(
+                    "Could not reach the goals specialist. Try again shortly.",
+                    requireMutation = wantsWrite(args),
+                    lookupName = "goals lookup",
+                ) {
+                    probedRoute(name) { probe ->
+                        SubAgent(systemInstruction = goalsDispatchGrounding(context)).route(
+                            question = args.optString("question"),
+                            tools = agentToolsFor("goals", context),
+                            budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                            mutatingToolNames = mutatingToolsFor("goals"),
+                            probe = probe,
+                        )
+                    }
                 }
             }
             "ask_pantry" -> agentResult(
@@ -3068,14 +3059,23 @@ object LiveToolbox {
             "log_meal" ->
                 MealController.logMeal(context, args.optString("description"))
                     .let { result(it.success, it.message) }
-            "set_meal_target" ->
-                MealController.setTarget(
-                    context,
-                    caloriesKcal = args.optIntOrNull("calories"),
-                    proteinG = args.optDoubleOrNull("protein_g"),
-                    carbsG = args.optDoubleOrNull("carbs_g"),
-                    fatG = args.optDoubleOrNull("fat_g"),
-                ).let { result(it.success, it.message) }
+            "set_meal_target" -> {
+                // Coach voice fixes (2026-11-06): "lock it in" is the plan's lock, never this.
+                val refusal = CoachRouting.setMealTargetRefusal(userText, args.optIntOrNull("calories"))
+                if (refusal != null) {
+                    result(false, refusal)
+                } else {
+                    // kcal and protein are the targets (Kevin's ruling): carbs and fat are not
+                    // taken from a voice call, and a missing protein comes from the rule.
+                    MealController.setTarget(
+                        context,
+                        caloriesKcal = args.optIntOrNull("calories"),
+                        proteinG = args.optDoubleOrNull("protein_g"),
+                        carbsG = null,
+                        fatG = null,
+                    ).let { result(it.success, it.message) }
+                }
+            }
             "set_budget" -> setBudget(context, args)
             "list_budget_categories" -> listBudgetCategories(context)
             "get_monthly_spend" -> getMonthlySpend(context, args.optString("month"))
@@ -6851,6 +6851,34 @@ object LiveToolbox {
      * then writes its `route_ms=` LIVE_LATENCY line (async-lookups ticket 03). A line per call, the
      * failures included, so a capture can say which stage a slow or failed lookup spent its time in.
      */
+    /**
+     * `ask_body`'s route, also run for a training question that reached `ask_goals`
+     * ([CoachRouting.isWorkoutQuestion]). Its answer carries [BodyCoachText.COACH_SAY] beside the
+     * figures ([withCoachNote]).
+     */
+    private suspend fun askBody(context: Context, name: String, args: JSONObject): JSONObject =
+        agentResult(
+            "Could not reach the health specialist. Try again shortly.",
+            requireMutation = wantsWrite(args),
+            lookupName = "health lookup",
+        ) {
+            withCoachNote(
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = bodyDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("body", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("body"),
+                        probe = probe,
+                    )
+                },
+            )
+        }
+
+    /** A body answer with the coach's way of saying it appended (coach voice fixes, 2026-11-06). */
+    internal fun withCoachNote(r: AgentResult): AgentResult =
+        if (r is AgentResult.Success) r.copy(text = r.text + "\n" + BodyCoachText.COACH_SAY) else r
+
     private suspend fun probedRoute(
         tool: String,
         run: suspend (com.kevin.legion.ai.LookupProbe) -> AgentResult,
@@ -6885,6 +6913,9 @@ object LiveToolbox {
         // Logged per call so a LIVE_LATENCY capture says which model served it: the probe's model,
         // which is the fallback's when one fired (async-lookups ticket 03), not the one asked for.
         val model = DebugSettings.askEngineModel(context)
+        // Coach voice fixes (2026-11-06): a lock by voice wrote today's target on the engine while
+        // the phone kept answering "what's left" from its own copy. Pull once after such a write.
+        val movedTheTarget = java.util.concurrent.atomic.AtomicBoolean(false)
         return AskEngine(
             client = client,
             runAgent = { instruction, question, tools ->
@@ -6916,8 +6947,13 @@ object LiveToolbox {
                     else -> Unit
                 }
             },
-            onToolResult = ToolCards::engineResult,
-        ).ask(args.optString("question"), wantsWrite(args), touchedReadThroughTool).toJson()
+            onToolResult = { answer ->
+                ToolCards.engineResult(answer)
+                if (CoachRouting.movesTheMealTarget(answer)) movedTheTarget.set(true)
+            },
+        ).ask(args.optString("question"), wantsWrite(args), touchedReadThroughTool)
+            .also { if (movedTheTarget.get()) runCatching { com.kevin.legion.backend.BodySync.pullNow(context) } }
+            .toJson()
     }
 
     /**

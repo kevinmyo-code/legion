@@ -146,7 +146,7 @@ COPY = {
     "log_meal": ("Log my usual breakfast", "Logs a meal. Name a saved meal and its saved estimate is logged; otherwise calories and macros are estimates from the description, not measurements.", "Body tab, log-a-meal dialog; saved meals on the web Body page."),
     "list_recent_meals": ("What have I eaten today?", "Recent meals.", "Body tab, meal history."),
     "get_meal_gap": ("How am I doing on calories today?", "Today's logged calories and protein against your target, as estimates. Says so when nothing is logged yet, never zero.", "Body tab, intake panel."),
-    "set_meal_target": ("Set my protein target to 180", "Sets your daily calorie and protein target. Only what you say changes; carbs and fat are optional.", "Body tab, meal-target dialog."),
+    "set_meal_target": ("Set my protein target to 180", "Sets a daily calorie or protein target you say as your own number. Calories alone take protein from the rule. To lock in the plan you made with the assistant, say \"lock it in\" instead.", "Body tab, meal-target dialog."),
     "ask_pantry": ("Ask the pantry what I'm low on", "Sends a harder food question to the pantry specialist.", "Is itself a read-only dispatcher; the Pantry sub-route already shows what it would answer."),
 
     # --- Training and sleep ---

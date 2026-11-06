@@ -59,9 +59,50 @@ object BodyCoachText {
                     .put("how_to_accept", acceptHint(p.id)),
             )
         }
+        e.plan?.let { plan ->
+            val p = JSONObject()
+                .put("status", if (plan.status == "draft") "draft, not locked in yet" else "locked in")
+                .put("kcal_target", plan.kcalTarget ?: JSONObject.NULL)
+                .put("protein_g", plan.proteinG ?: JSONObject.NULL)
+                .put("rate_pct_bodyweight_per_week", plan.ratePct ?: JSONObject.NULL)
+            if (plan.status == "draft") p.put("how_to_lock", LOCK_HINT)
+            out.put("plan", p)
+        }
+        e.profile?.let { f ->
+            val held = JSONObject()
+            f.heightFtIn?.let { held.put("height", "$it (${f.heightCm} cm)") }
+            f.birthYear?.let { held.put("birth_year", it).put("age_about", f.ageAbout ?: JSONObject.NULL) }
+            f.sex?.let { held.put("sex", it) }
+            f.activityLevel?.let { held.put("activity_level", it) }
+            if (held.length() > 0) out.put("profile", held).put("if_user_states_different_facts", PROFILE_CHECK)
+        }
         read.noteOrNull?.let { out.put("note", it) }
         return out
     }
+
+    /**
+     * Kevin's first coach voice session (2026-11-06): "okay, lock it in" became `set_meal_target`
+     * with the estimate's figure, which made it HIS target and bypassed the plan.
+     */
+    const val LOCK_HINT = "\"Lock it in\" locks this draft: ask_engine, intent record, lock_body_plan. " +
+        "Never set_meal_target: that is only for a number the user says as their own."
+
+    /** The same session: "I'm 32, 200 lb, about 5 ft 10" got the estimate re-read, not a check. */
+    const val PROFILE_CHECK = "If the user states a height, age, sex or activity that differs from this " +
+        "profile, say what the profile holds and ask whether to update it. Update only after a yes " +
+        "(ask_engine, intent record, set_body_profile), then read the estimate again. A different " +
+        "weight is a weigh-in to log (log_bodyweight), on a yes."
+
+    /**
+     * The same session: a routine calorie answer came back with "not medical advice ... consult a
+     * healthcare professional". The model's own boilerplate (no prompt or playbook says it), so the
+     * rule rides beside every `ask_body` result ([com.kevin.legion.service.LiveToolbox]), billed per
+     * result, never the Live setup.
+     */
+    const val COACH_SAY = "Coach style, short. Say \"estimate\" and nothing more: no medical " +
+        "disclaimer and no \"consult a professional\" on a routine figure. That is only for pain, " +
+        "injury, a medical condition or medication, a target at or below 800 kcal, or signs of " +
+        "disordered eating."
 
     /** `get_weight_trend`'s result: the summary and the last [recentPoints] days, never 90 rows. */
     fun trendResult(read: FinanceRead<TrendWire>, recentPoints: Int = 14): JSONObject {

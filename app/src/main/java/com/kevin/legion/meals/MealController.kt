@@ -144,12 +144,24 @@ object MealController {
     private fun formatGrams(g: Double): String = if (g % 1.0 == 0.0) g.toLong().toString() else "%.1f".format(g)
 
     /**
+     * The engine's protein figure for the user (the rule: g per kg, the plan's while one waits), or
+     * null when it cannot be read. A test seam; production reads the energy estimate.
+     */
+    internal var proteinRule: suspend (Context) -> Int? = { ctx ->
+        BodyCoachController.forApp(ctx).energy().valueOrNull?.proteinG
+    }
+
+    /**
      * D26: sets the driver's daily calorie/macro target, effective from today (D2's "copy forward").
      *
-     * **Partial since fat-loss ticket 15 (G2):** a null field is carried from the current target, so
-     * "set protein to 170" changes protein alone. Kevin tracks kcal and protein only (ruling 3):
-     * with no current target, calories are required and a missing carbs/fat is stored as 0, the
-     * columns' legal floor, and never read back as a target ([DailyMealGap] shows only what is set).
+     * **kcal and protein are the targets; carbs and fat are not (Kevin's ruling, body coach 2).**
+     * Since the first coach voice session (2026-11-06), nothing is carried from an older row except
+     * the calories of a protein-only change ("set protein to 170"):
+     * - carbs and fat are written as given, else 0, the columns' legal floor, read as "not set"
+     *   ([DailyMealGap] shows only what is set). Carrying them made "1808 calories" read back as
+     *   "1808 kcal, 180g protein, 200g carbs, 70g fat" from a target months old.
+     * - a calories-only change takes protein from the rule ([proteinRule]), never the old row;
+     *   with no figure on hand it is left unset and the sentence says so.
      */
     @Suppress("ReturnCount")
     suspend fun setTarget(
@@ -168,9 +180,14 @@ object MealController {
         val current = db.mealTargetDao().currentTarget(dayStart)
         val kcal = caloriesKcal ?: current?.caloriesKcal
             ?: return WriteOutcome(false, "No target was set: there is no current target to keep the calories from, so say a calorie figure too.")
-        val protein = proteinG ?: current?.proteinG ?: 0.0
-        val carbs = carbsG ?: current?.carbsG ?: 0.0
-        val fat = fatG ?: current?.fatG ?: 0.0
+        val ruleProtein = if (proteinG == null && caloriesKcal != null) proteinRule(context) else null
+        val protein = when {
+            proteinG != null -> proteinG
+            caloriesKcal != null -> ruleProtein?.toDouble() ?: 0.0
+            else -> current?.proteinG ?: 0.0
+        }
+        val carbs = carbsG ?: 0.0
+        val fat = fatG ?: 0.0
         // Reuse the existing row's guid on a same-day re-set - see MealTargetDao.getByEffectiveDate's
         // own doc comment for why a fresh guid here would orphan a server row.
         val guid = db.mealTargetDao().getByEffectiveDate(dayStart)?.guid ?: UUID.randomUUID().toString()
@@ -187,7 +204,12 @@ object MealController {
             return WriteOutcome(false, "That target didn't go through: ${outcome.message}")
         }
         val queuedNote = (outcome as? WriteThroughOutcome.Queued<*>)?.let { " " + queuedSentence(it.reason) } ?: ""
-        return WriteOutcome(true, targetSentence(kcal, protein, carbs, fat) + queuedNote)
+        val proteinNote = when {
+            proteinG != null || caloriesKcal == null -> ""
+            ruleProtein != null -> " Protein is the rule's estimate."
+            else -> " Protein is not set: there was no protein estimate on hand."
+        }
+        return WriteOutcome(true, targetSentence(kcal, protein, carbs, fat) + proteinNote + queuedNote)
     }
 
     /** "Daily target set: 2400 kcal, 160g protein." Carbs and fat only when they are set (above 0). */

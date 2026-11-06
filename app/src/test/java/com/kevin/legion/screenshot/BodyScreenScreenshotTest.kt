@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kevin.legion.bodycoach.CurrentTargetWire
@@ -182,6 +184,37 @@ class BodyScreenScreenshotTest {
                 note = null, busy = false, message = null, onStart = {}, onOpen = {},
             )
         }
+    }
+
+    /**
+     * Kevin, 2026-11-06: "i cant see all the workouts on the screen, i only see day A". The card's
+     * "See all workouts" opened: every day with its targets, then the next sessions. Synthetic.
+     */
+    @Config(qualifiers = "w384dp-h1400dp")
+    @Test
+    fun `body - see all workouts, opened`() {
+        val dayB = listOf(
+            com.kevin.legion.bodycoach.TargetWire("deadlift", "Romanian deadlift", sets = 3, repsLow = 8, repsHigh = 10, weightLbs = null, calibrating = true),
+            com.kevin.legion.bodycoach.TargetWire("ohp", "Overhead press", sets = 3, repsLow = 6, repsHigh = 8, weightLbs = 75.0),
+        )
+        val all = workout.copy(
+            days = listOf(
+                com.kevin.legion.bodycoach.ProgrammeDayWire(dayKey = "A", dayLabel = "Day A", exercises = plan.exercises),
+                com.kevin.legion.bodycoach.ProgrammeDayWire(dayKey = "B", dayLabel = "Day B", calibrating = true, exercises = dayB),
+            ),
+            upcoming = listOf(
+                com.kevin.legion.bodycoach.UpcomingWire(dayKey = "A", dayLabel = "Day A", date = "", isToday = true),
+                com.kevin.legion.bodycoach.UpcomingWire(dayKey = "B", dayLabel = "Day B", date = ""),
+                com.kevin.legion.bodycoach.UpcomingWire(dayKey = "A", dayLabel = "Day A", date = ""),
+            ),
+        )
+        rule.setContent { SoftTheme { OnGround { BodyWorkoutCard(all, note = null, busy = false, message = null, onStart = {}, onOpen = {}) } } }
+        rule.onNodeWithText("See all workouts (2 days)").performClick()
+        rule.onNodeWithText("Romanian deadlift").assertExists()
+        rule.onNodeWithText("3 x 6-8 @ 75 lb").assertExists()
+        rule.onNodeWithText("Next sessions").assertExists()
+        rule.onNodeWithText("Hide all workouts").assertExists()
+        rule.onRoot().captureRoboImage("body-workout-all-days.png")
     }
 
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)

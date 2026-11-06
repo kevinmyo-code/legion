@@ -3,6 +3,7 @@
 
 package com.kevin.legion.ui.body
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +59,7 @@ import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
+import java.time.LocalDate
 
 /**
  * The workout on the Body screen, direction 2 of the workout prototypes (Kevin picked it
@@ -126,6 +129,9 @@ internal fun BodyWorkoutCard(
             session != null -> SessionSummary(session, onOpen)
             plan != null -> PlanTargets(plan, today.trainingDay, busy, onStart)
         }
+        // Kevin, 2026-11-06: "i cant see all the workouts on the screen, i only see day A". One
+        // expander on this card, not a new screen (the fewer-screens ruling).
+        AllWorkoutsExpander(today)
         note?.takeIf { today != null }?.let {
             Text(it, style = MaterialTheme.typography.labelSmall, color = SoftColors.text3, modifier = Modifier.padding(top = 8.dp))
         }
@@ -141,6 +147,87 @@ internal fun BodyWorkoutCard(
         }
         proposalResult?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
+/**
+ * "See all workouts": every day of the programme with its targets, then the next sessions, folded
+ * by default. Absent when the engine sent no days. The lines are [WorkoutText.allWorkouts]'s.
+ */
+@Composable
+private fun AllWorkoutsExpander(today: WorkoutTodayWire?) {
+    val view = remember(today) { WorkoutText.allWorkouts(today, LocalDate.now()) } ?: return
+    var open by rememberSaveable { mutableStateOf(false) }
+    Row(
+        Modifier
+            .padding(top = 10.dp)
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClickLabel = toggleLabel(open)) { open = !open }
+            .semantics { contentDescription = toggleLabel(open) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (open) "Hide all workouts" else "See all workouts (${view.days.size} days)",
+            style = MaterialTheme.typography.labelLarge,
+            color = SoftColors.text,
+            modifier = Modifier.weight(1f),
+        )
+        Text(if (open) "▲" else "▼", style = MaterialTheme.typography.labelLarge, color = SoftColors.text2)
+    }
+    AnimatedVisibility(visible = open) { AllWorkoutsBody(view) }
+}
+
+private fun toggleLabel(open: Boolean) = if (open) "Hide all workouts" else "See all workouts"
+
+@Composable
+private fun AllWorkoutsBody(view: WorkoutText.AllWorkoutsView) {
+    val strong = MaterialTheme.typography.titleSmall
+    Column {
+        view.days.forEach { day ->
+            Row(
+                Modifier.padding(top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(day.label, style = strong, color = SoftColors.text, fontWeight = FontWeight.SemiBold)
+                if (day.calibrating) DayTag("Calibration")
+            }
+            day.rows.forEachIndexed { i, (name, target) ->
+                if (i > 0) RowRule()
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val body = MaterialTheme.typography.bodyMedium
+                    Text(name, style = body, color = SoftColors.text, modifier = Modifier.weight(1f))
+                    Text(
+                        target,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SoftColors.text,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.End,
+                    )
+                }
+            }
+        }
+        if (view.next.isNotEmpty()) {
+            Text(
+                "Next sessions",
+                style = strong,
+                color = SoftColors.text,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            view.next.forEach { line ->
+                Text(line, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+        if (view.days.any { it.calibrating }) {
+            Text(
+                "Your pick: a weight you could lift for 2 more reps than the top of the range.",
+                style = MaterialTheme.typography.labelSmall,
+                color = SoftColors.text3,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }

@@ -1351,9 +1351,15 @@ class LiveSessionController(context: Context) {
             // is what makes a repeat "show my agenda" re-fire rather than being
             // read as an unchanged value.
             "show_agenda_modal" -> {
-                VoiceModalController.show(VoiceModalTarget.AGENDA)
-                openVoiceModal()
-                JSONObject().put("success", true)
+                // Coach voice fixes (2026-11-06): "No, what's on DA?" (Day A) opened the agenda.
+                val refusal = CoachRouting.agendaRefusal(userText)
+                if (refusal != null) {
+                    JSONObject().put("success", false).put("message", refusal)
+                } else {
+                    VoiceModalController.show(VoiceModalTarget.AGENDA)
+                    openVoiceModal()
+                    JSONObject().put("success", true)
+                }
             }
             // "show_list_modal" retired (one-today ticket 10 slice C, "everything is
             // a checklist now") - VoiceModalTarget.WHOLE_LIST/`ui/NotesScreen.kt`

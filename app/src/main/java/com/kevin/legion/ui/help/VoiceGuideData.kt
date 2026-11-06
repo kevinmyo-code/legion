@@ -144,7 +144,7 @@ object VoiceGuideData {
                 Entry(name = "log_meal", say = "Log my usual breakfast", does = "Logs a meal. Name a saved meal and its saved estimate is logged; otherwise calories and macros are estimates from the description, not measurements.", hands = "Body tab, log-a-meal dialog; saved meals on the web Body page."),
                 Entry(name = "list_recent_meals", say = "What have I eaten today?", does = "Recent meals.", hands = "Body tab, meal history."),
                 Entry(name = "get_meal_gap", say = "How am I doing on calories today?", does = "Today's logged calories and protein against your target, as estimates. Says so when nothing is logged yet, never zero.", hands = "Body tab, intake panel."),
-                Entry(name = "set_meal_target", say = "Set my protein target to 180", does = "Sets your daily calorie and protein target. Only what you say changes; carbs and fat are optional.", hands = "Body tab, meal-target dialog."),
+                Entry(name = "set_meal_target", say = "Set my protein target to 180", does = "Sets a daily calorie or protein target you say as your own number. Calories alone take protein from the rule. To lock in the plan you made with the assistant, say \"lock it in\" instead.", hands = "Body tab, meal-target dialog."),
                 Entry(name = "ask_pantry", say = "Ask the pantry what I'm low on", does = "Sends a harder food question to the pantry specialist.", hands = "Is itself a read-only dispatcher; the Pantry sub-route already shows what it would answer."),
             ),
         ),
