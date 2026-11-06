@@ -85,13 +85,13 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>370 tickets open</h1>
+<h1>371 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 55 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 85 are waiting on another ticket first. <b>213 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 55 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 85 are waiting on another ticket first. <b>214 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">370</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">371</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">58</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">213</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n mint">214</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">85</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">11</span><span class="stamp l">your call</span></div>
 <div class="stat"><span class="n mint">132</span><span class="stamp l">still to build</span></div>
@@ -438,8 +438,8 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>alfred-ota</h2>
-<span class="counts"><span class="k">8</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">5</span> built<span class="sep">&middot;</span><span class="k amber">2</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 8 tickets</span></span>
-<span class="bar"><i style="flex:5"></i><b style="flex:3"></b></span>
+<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">6</span> built<span class="sep">&middot;</span><span class="k amber">2</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 9 tickets</span></span>
+<span class="bar"><i style="flex:6"></i><b style="flex:3"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Alfred pack: format and engine endpoint</span><span class="det">engine half built 2026-11-05 on feat/alfred-ota-engine; the phone half (ticket 02) and ADR 0072 built 2026-11-05 on feat/alfred-ota-phone. Owed: engine deploy (Kevin)</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
@@ -447,6 +447,7 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">versionCode, private bucket, releases, publisher</span><span class="det">server and tools built 2026-11-05 on feat/alfred-ota-engine; versionCode built 2026-11-05 on feat/alfred-ota-phone as yyDDDHHmm (yyMMddHHmm overflows). Owed: setup_bucket.sh + LEGION_APK_BUCKET + deploy (Kevin); keystore backup</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">Phone updater: check, download, verify, ask, install</span><span class="det">built 2026-11-05 on feat/alfred-ota-phone, JVM suite green. Owed: Kevin&#x27;s grants and first OTA (ticket 07)</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">Updates by voice and on a screen</span><span class="det">built 2026-11-05 on feat/alfred-ota-phone, JVM suite green. Owed: Kevin&#x27;s run (ticket 07); Kevin to ratify the payload ceiling raise</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">09</span><span class="body"><span class="tt">Head unit updater: check, download, verify, tap to install</span><span class="det">built 2026-11-06 on feat/headunit-ota with the Live move to gemini-3.8-live, 39 targeted JVM tests green, fast -Pnokey APK 263101640 built, publisher dry-run passed. Owed: Kevin&#x27;s one manual install and the Install-unknown-apps grant on the car; the first real publish; the on-device run below</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">Move wording into the pack</span><span class="det">charted 2026-11-05; after 02</span></span><span class="chip c-build">build</span><span class="state">waiting on #02</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Acceptance run on the A25</span><span class="det">charted 2026-11-05; Kevin&#x27;s run after 02 and 06</span></span><span class="chip c-test">test</span><span class="state">waiting on #02, #06</span></li>
 <li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">08</span><span class="body"><span class="tt">Later: shrink the APK, head unit, worker publish</span><span class="det">parked 2026-11-05; after 07</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>

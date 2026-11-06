@@ -7358,6 +7358,53 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Meals (item 4):** the Today card already had Saved meals and Log meal; the quick-log Meal
   dialog now lists saved meals as one-tap logs above the free-text field.
 
+## 2026-11-06 - Phone OTA skips Android's own confirm (Kevin)
+
+- **Asked:** whether phone updates could install without Android's system prompt, after the head
+  unit OTA work found the phone manifest lacked `UPDATE_PACKAGES_WITHOUT_USER_ACTION`. Kevin:
+  *"phone update prompt yes"*.
+- **Ruled:** the phone declares `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, so the PackageInstaller
+  session's existing `USER_ACTION_NOT_REQUIRED` is honoured on Android 12+ self-updates. Kevin's
+  in-app yes stays the consent (ADR 0072 unchanged); only the second, system confirm goes.
+- **Owed:** on-device check on the next OTA after this build is installed; Android may still
+  confirm if the installer of record is not LEGION itself (the first one after an adb install).
+
+## 2026-11-06 - The head unit updates itself too (Kevin)
+
+- **Asked:** *"can the headunit also receive updates like this instead of me having to install a
+  new apk everytime"*, then *"yes"*. This un-parks the head unit bullet of
+  `.scratch/alfred-ota/issues/08-later.md` (KIV 2026-11-05, "least important").
+- **Ruled:** the head unit gets the phone's updater (ADR 0072 half B): engine release
+  `app=headunit`, sha256 and signer verified, never a downgrade, never installed without Kevin's
+  tap. Built on `feat/headunit-ota`, ticket `.scratch/alfred-ota/issues/09-head-unit-updater.md`.
+- **Decided in the build, open to Kevin** (design calls, not his rulings yet):
+  - The consent is a tap (Cruise chip "UPDATE READY · TAP TO INSTALL", or Settings, System,
+    Updates). No voice ask and no `app_update` tool on the head unit.
+  - Never prompted or installed while the car moves (OBD speed or fix speed above 5 km/h in the
+    last 2 minutes). No speed source at all reads as parked.
+  - Downloads are allowed on a metered network by default, unlike the phone, because the unit's
+    internet is the phone's hotspot; a toggle switches it to Wi-Fi only. The APK is 16.7 MB.
+  - Same debug-key pin as the phone (`deploy/release/signer.sha256`): the head unit's `fast` is
+    debug-signed; its own `release.jks` signs only `assembleRelease`, which is not on the car.
+
+## 2026-11-06 - Head unit car builds carry no Gemini key; the head unit moves to the phone's models (Kevin)
+
+- **Ruled (Kevin):** the car has its own Gemini key saved in Settings, so **every car build is
+  `assembleFast -Pnokey`**. A car build is what `tools/release_apk.py --app headunit` publishes to
+  the engine's bucket, and it must carry no dev key. Written into ticket
+  `.scratch/alfred-ota/issues/09-head-unit-updater.md`, `headunit/CLAUDE.md` section 15 and
+  `headunit/README.md`.
+- **Asked:** *"seemed the car build had outdated models? can u check"*. It had: Live ran
+  `gemini-3.1-flash-live-preview`; the phone moved to `gemini-3.8-live` on 2026-09-27 (`29057645`).
+- **Built on `feat/headunit-ota`:** Live on `models/gemini-3.8-live` with the phone's 3.8 rules
+  (every declaration `BLOCKING`; no `thinkingConfig`, `proactivity` or `enableAffectiveDialog`;
+  root `voiceActivity` ACTIVITY_START cancels the idle timer), in `service/LiveSetup.kt`.
+  SubAgent keeps `gemini-3.5-flash-lite` (the phone's default too; still the newest Flash-Lite)
+  and gains the phone's one retry on `gemini-3.8-flash` after a 429 or 500/503. The key check
+  stays on `gemini-3.5-flash-lite`.
+- **Not the phone's, on purpose:** the head unit has no NON_BLOCKING read tools (ADR 0065 is the
+  phone's), and its fallback is per POST, not per call.
+
 ## 2026-11-06 - Body coach 2: change the plan by asking, and what to eat from what's left (Kevin)
 
 - **Kevin, by voice:** *"will i be able to tell it like hey i wanna change the workouts. recommend

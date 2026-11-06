@@ -48,6 +48,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Head unit OTA (alfred-ota ticket 08, ADR 0072): the app installs its own published
+         updates through a PackageInstaller session. REQUEST_INSTALL_PACKAGES is the per-app
+         "Install unknown apps" grant Kevin switches on once. UPDATE_PACKAGES_WITHOUT_USER_ACTION
+         (normal, API 31+) is the last of the conditions Android 12+ checks before it lets a
+         self-update skip its own confirm (PackageInstaller.SessionParams.setRequireUserAction). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Mixtape playback (Media3 ExoPlayer + our own MediaSession) runs inside
@@ -168,6 +175,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Head unit OTA: PackageInstaller's status for an update session, fired only by this
+             app's own PendingIntent; and the app being replaced by that update. -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".update.PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

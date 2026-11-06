@@ -5,6 +5,7 @@ import com.kevin.legion.bodycoach.BodyCoachController
 import com.kevin.legion.bodycoach.BodyCoachText
 import com.kevin.legion.bodycoach.WorkoutSessionController
 import com.kevin.legion.bodycoach.WorkoutText
+import java.time.LocalDate
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -30,7 +31,13 @@ object BodyCoachToolbox {
     /** Test seam for the workout read (workouts, 2026-11-06). */
     internal var workoutFactory: (Context) -> WorkoutSessionController = WorkoutSessionController::forApp
 
-    val NAMES = listOf("get_energy_estimate", "get_weight_trend", "list_saved_meals", "get_todays_workout")
+    /** Test seam: the phone's date, which only turns an engine date into "today" or "tomorrow". */
+    internal var phoneDate: () -> LocalDate = LocalDate::now
+
+    val NAMES = listOf(
+        "get_energy_estimate", "get_weight_trend", "list_saved_meals", "get_todays_workout",
+        "get_workout_programme",
+    )
 
     fun declarations(): JSONArray = JSONArray()
         .put(
@@ -63,12 +70,26 @@ object BodyCoachToolbox {
         .put(
             fn(
                 name = "get_todays_workout",
-                description = "Today's workout from the user's programme: each exercise as sets x reps " +
-                    "@ weight, what is already ticked, why a weight went up or held, and sessions done " +
-                    "this week. Use for 'what's my workout today', 'what weight for squats'. Every " +
-                    "number comes from the programme's rules: say it as given, never invent or change " +
-                    "one. 'Your pick' means a calibration session: a weight they could lift for 2 more " +
-                    "reps than the top of the range.",
+                description = "TODAY's workout only, from the user's programme: each exercise as sets x " +
+                    "reps @ weight, what is already ticked, why a weight went up or held, and sessions " +
+                    "done this week. Use for 'what's my workout today', 'what weight for squats'. It " +
+                    "lists one day; for any other day, the next workout or the week, call " +
+                    "get_workout_programme. Every number comes from the programme's rules: say it as " +
+                    "given, never invent or change one. 'Your pick' means a calibration session: a " +
+                    "weight they could lift for 2 more reps than the top of the range.",
+            ),
+        )
+        .put(
+            fn(
+                name = "get_workout_programme",
+                description = "The user's whole training programme and its calendar: EVERY day of it " +
+                    "(Day A and Day B) with each exercise as sets x reps @ weight, the training days " +
+                    "and sessions per week, today's status (training or rest day, done or not), the " +
+                    "next sessions with weekday and date (today counts until its workout is done), " +
+                    "and sessions done this week. Use for 'what are my workouts', 'what's on Day B', " +
+                    "'what's the next day', 'when's my next workout', 'how many sessions a week', " +
+                    "'what are all three sessions'. Every number and date comes from the programme's " +
+                    "rules: say it as given, never invent one. 'Your pick' means calibration.",
             ),
         )
 
@@ -86,7 +107,9 @@ object BodyCoachToolbox {
     /** Null when [name] is not one of these tools, so [LiveToolbox.dispatch] can fall through. */
     suspend fun dispatch(context: Context, name: String): JSONObject? {
         if (name !in NAMES) return null
-        if (name == "get_todays_workout") return WorkoutText.todayResult(workoutFactory(context).today())
+        if (name == "get_todays_workout") return WorkoutText.todayResult(workoutFactory(context).today(), phoneDate())
+        // Workout reads, 2026-11-06: the same engine read as today's, said as the whole programme.
+        if (name == "get_workout_programme") return WorkoutText.programmeResult(workoutFactory(context).today(), phoneDate())
         val controller = controllerFactory(context)
         return when (name) {
             "get_energy_estimate" -> BodyCoachText.energyResult(controller.energy())

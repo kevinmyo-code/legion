@@ -347,8 +347,13 @@ def get_todays_workout(request, args):
     data, error = _read(request, f"{WORKOUT}/")
     if error:
         return error
+    # workout reads, 2026-11-06: the whole programme (Day A and Day B), today's status and the
+    # sessions ahead ride along, so "what's Day B" or "when's my next workout" has an answer.
+    programme = data.get("programme_words")
     return ok(
-        data["words"] + " Every target comes from the programme's rules; never change a number.",
+        data["words"]
+        + (f" {programme}" if programme else "")
+        + " Every target comes from the programme's rules; never change a number.",
         structured=data,
     )
 

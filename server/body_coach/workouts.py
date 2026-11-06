@@ -662,17 +662,125 @@ def today_body(request) -> dict:
             else _default_plan(request)
         ).as_dict()
     words = _today_words(running, finished_today, plan, week, training_day)
+    if running is not None:
+        status = TODAY_IN_PROGRESS
+        first_key, first_number = running.day_key, running.session_number
+    else:
+        status = TODAY_DONE if finished_today else TODAY_NOT_STARTED if training_day else TODAY_REST
+        first_key, first_number = plan["day_key"], plan["session_number"]
+    template = state_of(programme).template if programme else rules.DEFAULT_TEMPLATE
+    upcoming = rules.upcoming_sessions(
+        template,
+        first_key,
+        first_is_now=status in (TODAY_IN_PROGRESS, TODAY_NOT_STARTED),
+        first_number=first_number,
+        per_week=week["planned"],
+        count=max(2, week["planned"]),
+    )
+    days = programme_days(request, programme, upcoming)
+    upcoming_list = [upcoming_dict(u) for u in upcoming]
     return {
         "programme": programme_dict(programme),
         "today": today.isoformat(),
+        "today_weekday": rules.WEEKDAY_NAMES[today.weekday()],
         "training_day": training_day,
+        "today_status": status,
         "week": week,
         "session": session_dict(running or finished_today),
         "next": plan,
+        "days": days,
+        "upcoming": upcoming_list,
         # body coach 2: a programme change waiting for Accept or Dismiss, or None.
         "proposal": proposal_dict(pending_proposal(request)),
         "words": words,
+        "programme_words": _programme_words(programme, status, week, days, upcoming_list),
     }
+
+
+# =============================================================================
+# The whole programme, and the sessions ahead (workout reads, 2026-11-06; flexible days, Kevin's
+# Body interview the same day: a sessions-a-week target, no weekdays)
+# =============================================================================
+
+TODAY_REST = "rest"  # this week's sessions are done
+TODAY_NOT_STARTED = "not_started"  # a session is due this week
+TODAY_IN_PROGRESS = "in_progress"
+TODAY_DONE = "done"  # a session was finished today
+
+
+def programme_days(request, programme: TrainingProgramme | None, upcoming: list[rules.Upcoming]) -> list[dict]:
+    """Every day of the programme with the rules' current targets (gym variants), and where each
+    comes in the rotation. A deload is not applied here: `next` and `upcoming` say which session is
+    one, and its lighter targets are the rules' when that session starts."""
+    state = (
+        state_of(programme)
+        if programme
+        else change.State(rules.DEFAULT_TEMPLATE, rules.DEFAULT_TRAINING_DAYS)
+    )
+    out = []
+    for day in rules.day_keys(state.template):
+        targets = [
+            rules.target_for(slot, ex, history_for(request, ex))
+            for slot, ex in rules.slots_for(state.template, day, state.swaps, state.filters)
+        ]
+        place = next((i for i, u in enumerate(upcoming) if u.day_key == day), None)
+        out.append(
+            {
+                "day_key": day,
+                "day_label": rules.day_label(state.template, day),
+                # Kept for an older phone build: sessions have no dates now.
+                "next_on": None,
+                "next_weekday": None,
+                "sessions_away": place,
+                "calibrating": any(t.calibrating for t in targets),
+                "exercises": [target_dict(t) for t in targets],
+            }
+        )
+    return out
+
+
+def upcoming_dict(u: rules.Upcoming) -> dict:
+    return {
+        "day_key": u.day_key,
+        "day_label": u.label,
+        # An older phone build reads `date` as a string: empty means none, never a day.
+        "date": "",
+        "weekday": "",
+        "session_number": u.session_number,
+        "deload": u.deload,
+        "is_today": u.is_now,
+    }
+
+
+def _programme_words(programme, status: str, week: dict, days: list[dict], upcoming: list[dict]) -> str:
+    state = (
+        state_of(programme)
+        if programme
+        else change.State(rules.DEFAULT_TEMPLATE, rules.DEFAULT_TRAINING_DAYS)
+    )
+    parts = [f"Programme: {change.summary(state)}; days are flexible, no fixed weekdays."]
+    for d in days:
+        parts.append(
+            f"{d['day_label']}: " + "; ".join(describe_target(t) for t in d["exercises"]) + "."
+        )
+    if any(d["calibrating"] for d in days):
+        parts.append(
+            "Where it says your pick, it is a calibration: choose a weight you could lift for 2 "
+            "more reps than the top of the range."
+        )
+    first = upcoming[0]
+    if status == TODAY_IN_PROGRESS:
+        parts.append(f"{first['day_label']} is in progress.")
+    elif status == TODAY_DONE:
+        parts.append("Today's session is done.")
+    elif status == TODAY_REST:
+        parts.append("This week's sessions are done.")
+    order = ", then ".join(
+        u["day_label"] + (" (deload)" if u["deload"] else "") for u in upcoming
+    )
+    parts.append(f"Next sessions, in order: {order}.")
+    parts.append(f"This week: {week['done']} of {week['planned']} sessions done.")
+    return " ".join(parts)
 
 
 def _default_plan(request) -> Plan:

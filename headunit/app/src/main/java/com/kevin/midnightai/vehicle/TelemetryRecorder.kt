@@ -171,6 +171,8 @@ object TelemetryRecorder {
             if (wanted("010D")) {
                 speedKmh = ObdBluetoothManager.getSpeedKmh()?.toDouble()
                 add("010D", speedKmh, "km/h")
+                // The updater never prompts or installs while the car moves (update/DrivingState).
+                com.kevin.midnightai.update.DrivingState.note(speedKmh, now)
             }
             if (wanted("012F")) add("012F", ObdBluetoothManager.getFuelLevel(), "%")
             if (wanted("0106")) add("0106", ObdBluetoothManager.getShortFuelTrim(), "%")

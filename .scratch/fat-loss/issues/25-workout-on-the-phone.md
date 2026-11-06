@@ -36,3 +36,17 @@ dialog lists saved meals.
   declarations still describe a drafted plan; `generatePlan` now sets up the programme. Reword.
 - `test_an_extra_set_does_not_count_against_progression` only checks the next plan exists; make it
   assert the extra set leaves the next target unchanged.
+
+## Workout reads (2026-11-06, branch fix/workout-reads)
+
+Kevin's first voice session asked "what's the next day", "what are the three sessions" and "Day
+B"; the only read behind `ask_body` was today's, so Alfred said the next day was Day A and that
+there was no Day B. Built: `GET workout/` also returns `days` (A and B with the rules' targets),
+`upcoming` (one week of sessions with dates, today counted until its workout is done),
+`today_status` and `programme_words`; the phone's `get_workout_programme` says them behind
+`ask_body`. Owed: an engine deploy (an older engine sends no `days`, and the tool says the
+programme is unknown rather than missing), then the four questions again by voice.
+
+- **Hands path is partial (ADR 0035).** By hand, Today's workout shows the next day and This week
+  the training days; nothing on the phone shows Day A and Day B side by side, or the dates ahead.
+  The web half is ticket 26; the phone needs a small programme view on the Body tab.

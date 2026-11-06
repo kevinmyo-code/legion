@@ -2266,6 +2266,8 @@ object LiveToolbox {
             "get_energy_estimate", "get_weight_trend", "list_saved_meals",
             // workouts, 2026-11-06: today's workout from the engine's programme, a read.
             "get_todays_workout",
+            // workout reads, 2026-11-06: the whole programme, Day A and B, and the sessions ahead.
+            "get_workout_programme",
         ),
         "goals" to listOf("list_goals", "ask_advisor"),
         // manage_grocery came BACK OUT of this list on 2026-08-18 and was declared directly to the
@@ -2684,7 +2686,11 @@ object LiveToolbox {
         " You are reasoning about the user's meals, sleep, workouts, and bodyweight using the " +
         "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
         "phrase them as estimates, never as fact. Pull only what would change your answer, then " +
-        "answer in plain spoken text, no markdown." +
+        "answer in plain spoken text, no markdown. " +
+        // workout reads, 2026-11-06: a today-only read made the answer "there is no Day B".
+        "Any question about the training programme beyond today - another day such as Day B, " +
+        "the next workout, how many sessions a week, all the sessions - is get_workout_programme. " +
+        "Never say a day or a session does not exist because a today-only read did not list it." +
         dispatchBoundaryClause("body") +
         Priming.dispatchClause(context, "body")
 

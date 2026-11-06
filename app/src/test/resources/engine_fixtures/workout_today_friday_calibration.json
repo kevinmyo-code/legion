@@ -1,0 +1,337 @@
+{
+ "programme": null,
+ "today": "2026-11-06",
+ "today_weekday": "Friday",
+ "training_day": true,
+ "today_status": "not_started",
+ "week": {
+  "week_start": "2026-11-02",
+  "done": 0,
+  "planned": 3,
+  "sessions": [],
+  "training_days": [
+   "mon",
+   "wed",
+   "fri"
+  ]
+ },
+ "session": null,
+ "next": {
+  "day_key": "A",
+  "session_number": 1,
+  "deload": false,
+  "calibrating": true,
+  "set_count": 13,
+  "exercises": [
+   {
+    "exercise_key": "back_squat",
+    "name": "Back squat",
+    "kind": "weighted",
+    "slot_key": "squat",
+    "sets": 3,
+    "reps_low": 6,
+    "reps_high": 8,
+    "unit": "reps",
+    "weight_lbs": null,
+    "calibrating": true,
+    "rule": "calibrate",
+    "words": "Calibration: pick a weight you could lift for 2 more reps than 8, and log what you used.",
+    "alternatives": [
+     "Goblet squat",
+     "Leg press"
+    ]
+   },
+   {
+    "exercise_key": "bench_press",
+    "name": "Bench press",
+    "kind": "weighted",
+    "slot_key": "push",
+    "sets": 3,
+    "reps_low": 6,
+    "reps_high": 8,
+    "unit": "reps",
+    "weight_lbs": null,
+    "calibrating": true,
+    "rule": "calibrate",
+    "words": "Calibration: pick a weight you could lift for 2 more reps than 8, and log what you used.",
+    "alternatives": [
+     "Dumbbell bench press",
+     "Push-up"
+    ]
+   },
+   {
+    "exercise_key": "barbell_row",
+    "name": "Barbell row",
+    "kind": "weighted",
+    "slot_key": "row",
+    "sets": 3,
+    "reps_low": 8,
+    "reps_high": 10,
+    "unit": "reps",
+    "weight_lbs": null,
+    "calibrating": true,
+    "rule": "calibrate",
+    "words": "Calibration: pick a weight you could lift for 2 more reps than 10, and log what you used.",
+    "alternatives": [
+     "Dumbbell row",
+     "Seated cable row"
+    ]
+   },
+   {
+    "exercise_key": "lateral_raise",
+    "name": "Lateral raise",
+    "kind": "weighted",
+    "slot_key": "shoulders",
+    "sets": 2,
+    "reps_low": 12,
+    "reps_high": 15,
+    "unit": "reps",
+    "weight_lbs": null,
+    "calibrating": true,
+    "rule": "calibrate",
+    "words": "Calibration: pick a weight you could lift for 2 more reps than 15, and log what you used.",
+    "alternatives": [
+     "Cable lateral raise"
+    ]
+   },
+   {
+    "exercise_key": "plank",
+    "name": "Plank",
+    "kind": "timed",
+    "slot_key": "core_a",
+    "sets": 2,
+    "reps_low": 30,
+    "reps_high": 45,
+    "unit": "seconds",
+    "weight_lbs": null,
+    "calibrating": false,
+    "rule": "reps",
+    "words": "Add seconds until every set reaches 45.",
+    "alternatives": [
+     "Side plank"
+    ]
+   }
+  ]
+ },
+ "days": [
+  {
+   "day_key": "A",
+   "next_on": "2026-11-06",
+   "next_weekday": "Friday",
+   "calibrating": true,
+   "exercises": [
+    {
+     "exercise_key": "back_squat",
+     "name": "Back squat",
+     "kind": "weighted",
+     "slot_key": "squat",
+     "sets": 3,
+     "reps_low": 6,
+     "reps_high": 8,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 8, and log what you used.",
+     "alternatives": [
+      "Goblet squat",
+      "Leg press"
+     ]
+    },
+    {
+     "exercise_key": "bench_press",
+     "name": "Bench press",
+     "kind": "weighted",
+     "slot_key": "push",
+     "sets": 3,
+     "reps_low": 6,
+     "reps_high": 8,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 8, and log what you used.",
+     "alternatives": [
+      "Dumbbell bench press",
+      "Push-up"
+     ]
+    },
+    {
+     "exercise_key": "barbell_row",
+     "name": "Barbell row",
+     "kind": "weighted",
+     "slot_key": "row",
+     "sets": 3,
+     "reps_low": 8,
+     "reps_high": 10,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 10, and log what you used.",
+     "alternatives": [
+      "Dumbbell row",
+      "Seated cable row"
+     ]
+    },
+    {
+     "exercise_key": "lateral_raise",
+     "name": "Lateral raise",
+     "kind": "weighted",
+     "slot_key": "shoulders",
+     "sets": 2,
+     "reps_low": 12,
+     "reps_high": 15,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 15, and log what you used.",
+     "alternatives": [
+      "Cable lateral raise"
+     ]
+    },
+    {
+     "exercise_key": "plank",
+     "name": "Plank",
+     "kind": "timed",
+     "slot_key": "core_a",
+     "sets": 2,
+     "reps_low": 30,
+     "reps_high": 45,
+     "unit": "seconds",
+     "weight_lbs": null,
+     "calibrating": false,
+     "rule": "reps",
+     "words": "Add seconds until every set reaches 45.",
+     "alternatives": [
+      "Side plank"
+     ]
+    }
+   ]
+  },
+  {
+   "day_key": "B",
+   "next_on": "2026-11-09",
+   "next_weekday": "Monday",
+   "calibrating": true,
+   "exercises": [
+    {
+     "exercise_key": "romanian_deadlift",
+     "name": "Romanian deadlift",
+     "kind": "weighted",
+     "slot_key": "hinge",
+     "sets": 3,
+     "reps_low": 8,
+     "reps_high": 10,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 10, and log what you used.",
+     "alternatives": [
+      "Dumbbell Romanian deadlift",
+      "Hip thrust"
+     ]
+    },
+    {
+     "exercise_key": "overhead_press",
+     "name": "Overhead press",
+     "kind": "weighted",
+     "slot_key": "press",
+     "sets": 3,
+     "reps_low": 6,
+     "reps_high": 8,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 8, and log what you used.",
+     "alternatives": [
+      "Dumbbell shoulder press"
+     ]
+    },
+    {
+     "exercise_key": "lat_pulldown",
+     "name": "Lat pulldown",
+     "kind": "weighted",
+     "slot_key": "pull",
+     "sets": 3,
+     "reps_low": 8,
+     "reps_high": 10,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 10, and log what you used.",
+     "alternatives": [
+      "Chin-up",
+      "Seated cable row"
+     ]
+    },
+    {
+     "exercise_key": "dumbbell_lunge",
+     "name": "Dumbbell lunge",
+     "kind": "weighted",
+     "slot_key": "legs",
+     "sets": 2,
+     "reps_low": 10,
+     "reps_high": 12,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": true,
+     "rule": "calibrate",
+     "words": "Calibration: pick a weight you could lift for 2 more reps than 12, and log what you used.",
+     "alternatives": [
+      "Split squat"
+     ]
+    },
+    {
+     "exercise_key": "hanging_knee_raise",
+     "name": "Hanging knee raise",
+     "kind": "bodyweight",
+     "slot_key": "core_b",
+     "sets": 2,
+     "reps_low": 10,
+     "reps_high": 15,
+     "unit": "reps",
+     "weight_lbs": null,
+     "calibrating": false,
+     "rule": "reps",
+     "words": "Add reps until every set reaches 15.",
+     "alternatives": [
+      "Cable crunch"
+     ]
+    }
+   ]
+  }
+ ],
+ "upcoming": [
+  {
+   "day_key": "A",
+   "date": "2026-11-06",
+   "weekday": "Friday",
+   "session_number": 1,
+   "deload": false,
+   "is_today": true
+  },
+  {
+   "day_key": "B",
+   "date": "2026-11-09",
+   "weekday": "Monday",
+   "session_number": 2,
+   "deload": false,
+   "is_today": false
+  },
+  {
+   "day_key": "A",
+   "date": "2026-11-11",
+   "weekday": "Wednesday",
+   "session_number": 3,
+   "deload": false,
+   "is_today": false
+  }
+ ],
+ "words": "Today's workout is Day A: Back squat 3 x 6-8 @ your pick; Bench press 3 x 6-8 @ your pick; Barbell row 3 x 8-10 @ your pick; Lateral raise 2 x 12-15 @ your pick; Plank 2 x 30-45 s. Calibration: where it says your pick, choose a weight you could lift for 2 more reps than the top of the range. This week: 0 of 3 sessions.",
+ "programme_words": "Programme: full body, Day A and Day B alternating, 3 sessions a week on Monday, Wednesday and Friday. Day A: Back squat 3 x 6-8 @ your pick; Bench press 3 x 6-8 @ your pick; Barbell row 3 x 8-10 @ your pick; Lateral raise 2 x 12-15 @ your pick; Plank 2 x 30-45 s. Day B: Romanian deadlift 3 x 8-10 @ your pick; Overhead press 3 x 6-8 @ your pick; Lat pulldown 3 x 8-10 @ your pick; Dumbbell lunge 2 x 10-12 @ your pick; Hanging knee raise 2 x 10-15. Where it says your pick, it is a calibration: choose a weight you could lift for 2 more reps than the top of the range. Today is Friday 2026-11-06, a training day: Day A, not done yet. Next sessions: Day A today (Friday 2026-11-06); Day B Monday 2026-11-09; Day A Wednesday 2026-11-11. This week: 0 of 3 sessions done."
+}

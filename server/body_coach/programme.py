@@ -697,6 +697,58 @@ def alternatives_for(slot: Slot, current: str, filters: Filters = NO_FILTERS) ->
     return out
 
 
+WEEKDAY_NAMES: tuple[str, ...] = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
+
+
+@dataclass(frozen=True)
+class Upcoming:
+    """One coming session in the rotation. **Days are flexible** (Kevin, 2026-11-06): a session has
+    a place in the order, never a date; "next" means the next one in the rotation."""
+
+    day_key: str
+    label: str
+    session_number: int
+    deload: bool
+    is_now: bool
+
+
+def upcoming_sessions(
+    template: str,
+    first_day_key: str,
+    *,
+    first_is_now: bool,
+    first_number: int,
+    per_week: int,
+    count: int,
+) -> list[Upcoming]:
+    """The next `count` sessions in the rotation, from `first_day_key`. The first is "now" when it
+    is running or a session is due this week. Session numbers count up from `first_number`, so
+    each deload flag is the one `is_deload` will give that session."""
+    out: list[Upcoming] = []
+    key = first_day_key
+    for i in range(count):
+        number = first_number + i
+        out.append(
+            Upcoming(
+                key,
+                day_label(template, key),
+                number,
+                is_deload(number, per_week),
+                first_is_now and i == 0,
+            )
+        )
+        key = next_day_key(key, template)
+    return out
+
+
 def normalise(text: str) -> str:
     text = re.sub(r"[^a-z0-9 ]+", " ", text.lower())
     words = [w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w for w in text.split()]
