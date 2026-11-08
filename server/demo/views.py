@@ -33,7 +33,7 @@ import logging
 import uuid
 from datetime import timedelta
 
-from django.contrib.auth import login
+from django.contrib.auth import get_user, login
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
@@ -46,6 +46,7 @@ from rest_framework.views import APIView
 from api.schema import DetailSerializer
 from demo.briefing import seed_visit_procedures
 from demo.models import DemoCode, DemoVisit
+from demo.visitor import is_real_member, owner_from_cookie, set_owner_cookie, visitor_details
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
@@ -58,6 +59,9 @@ VISIT_LENGTH = timedelta(hours=2)
 WRONG_CODE = "That invite code is not right. Nothing was created; check the code and try again."
 RETIRED_CODE = (
     "That invite code has been retired. Nothing was created; ask for the current one."
+)
+NOT_AN_OWNER_DEVICE = (
+    "Nothing was set. Only a member of a real household can mark a browser as theirs."
 )
 DOOR_CLOSED = "The demo is closed right now. Nothing was created."
 SEED_FAILED = (
@@ -151,6 +155,16 @@ class DemoEnterView(APIView):
         if code.revoked_at is not None:
             return _refuse(RETIRED_CODE, status.HTTP_403_FORBIDDEN)
 
+        # Read before `login()` below replaces the session. `request.user` is
+        # anonymous here (no authentication classes, and DRF writes that
+        # anonymous user back onto the Django request too), so the session is
+        # read directly. A recruiter's browser has a session as well, after one
+        # entry: `is_real_member` is what keeps that from counting as the owner.
+        session_user = get_user(request._request)
+        session_is_member = is_real_member(session_user)
+        by_owner = session_is_member or owner_from_cookie(request)
+        details = visitor_details(request)
+
         expires_at = timezone.now() + VISIT_LENGTH
         try:
             with transaction.atomic():
@@ -163,6 +177,8 @@ class DemoEnterView(APIView):
                     ref=ref,
                     expires_at=expires_at,
                     household=household,
+                    by_owner=by_owner,
+                    **details,
                 )
         except Exception:  # noqa: BLE001 - any seed failure; the transaction rolled back
             logger.exception("demo enter: seeding the visit household failed")
@@ -171,11 +187,40 @@ class DemoEnterView(APIView):
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
         request.session.set_expiry(int(VISIT_LENGTH.total_seconds()))
         request.session[DEMO_TOKEN_SESSION_KEY] = token.pk
-        return Response(
+        response = Response(
             {"token": raw_key, "expires_at": expires_at, "ref": ref},
             status=status.HTTP_201_CREATED,
             headers={"Cache-Control": "no-store"},
         )
+        if session_is_member:
+            set_owner_cookie(response, session_user)
+        return response
+
+
+class MarkOwnerDeviceView(APIView):
+    """`POST /api/demo/mark-owner-device`: marks this browser as a real member's,
+    so a demo visit made from it later is flagged `by_owner` (`demo/visitor.py`).
+    Any credential the engine accepts, but a recruiter visitor is refused: the
+    flag would be a lie told by the person it exists to tell apart."""
+
+    @extend_schema(
+        tags=DEMO_TAGS,
+        operation_id="api_demo_mark_owner_device_create",
+        summary="Mark this browser as a household member's own",
+        request=None,
+        responses={
+            204: OpenApiResponse(description="The owner-device cookie is set."),
+            403: OpenApiResponse(
+                DetailSerializer,
+                description="A recruiter visit, or not a member of a real household. Nothing set.",
+            ),
+        },
+    )
+    def post(self, request):
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        if not set_owner_cookie(response, request.user):
+            return _refuse(NOT_AN_OWNER_DEVICE, status.HTTP_403_FORBIDDEN)
+        return response
 
 
 def _refuse(message: str, code: int) -> Response:

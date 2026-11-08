@@ -132,6 +132,25 @@ Off until you do this; the web's notifications page says so in words. web-revamp
 4. `python deploy.py`, then `python deploy_job.py --image <tag it printed>`, then
    `python install_schedule.py` for the `push_dispatch` line.
 
+## Recruiter demo: visitor details from the edge (optional)
+
+Cloud Run sees only Cloudflare's address, so a demo visit cannot say where it came from on its
+own. A Cloudflare Worker in front of the engine can forward what Cloudflare knows of the caller
+(`X-Legion-Client-IP`, `-Country`, `-Region`, `-City`, `-ASN`, `-AS-Org`, values
+percent-encoded) beside a shared secret in `X-Edge-Auth`. The engine stores an HMAC of the IP
+(never the IP), the place and the network on the `DemoVisit`, and only when the secret matches;
+`prune_demo_visitors` clears them after 30 days. Without this, visits store none of it.
+
+1. Make a value: `python -c "import secrets; print(secrets.token_urlsafe(32), end='')"`.
+2. Store it for Cloud Run and let the runtime account read it:
+   ```
+   echo -n "<value>" | gcloud secrets create LEGION_EDGE_SECRET --data-file=-
+   gcloud secrets add-iam-policy-binding LEGION_EDGE_SECRET --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+   ```
+3. Put `LEGION_EDGE_HEADERS=on` in `deploy/cloudrun/.env` (do step 2 first, or the deploy fails).
+4. Give the Worker the same value as a secret named `LEGION_EDGE_SECRET`, and make it strip any
+   incoming `X-Edge-Auth` and `X-Legion-*` before setting its own.
+
 ## What is pure standard library and what is not
 
 `deploy.py`, `deploy_job.py`, `install_schedule.py` and `_common.py` import only `argparse`,

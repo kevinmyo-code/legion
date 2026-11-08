@@ -25,6 +25,10 @@ arrived, whether or not its visit has ended.
 procedures ticket 13): a visit's runs go with its household above; this is
 the 30-day backstop for recruiter runs and the 60-day sweep for members'
 (also run inline at each new run).
+
+**And each visit's visitor details after 30 days** (`demo.visitor.clear_old_details`):
+the IP hash, country, region, city, network and user agent are blanked on a
+`DemoVisit` older than that. The row itself, `ref` and `by_owner` stay.
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from django.utils import timezone
 
 from demo.models import DemoVisit
 from demo.visit_cleanup import delete_visit_household
+from demo.visitor import VISITOR_DETAIL_DAYS, clear_old_details, stale_details
 from devicelogs.models import VISIT_RETENTION_DAYS, DeviceLog
 from devicelogs.web_conversation import prune_visit_records
 from household.models import Household, HouseholdMember, User
@@ -78,10 +83,12 @@ class Command(BaseCommand):
                 household__isnull=True,
                 received_at__lt=timezone.now() - timedelta(days=VISIT_RETENTION_DAYS),
             ).count()
+            details = stale_details(timezone.now() - timedelta(days=VISITOR_DETAIL_DAYS)).count()
             self.stdout.write(
                 f"Would delete {n_households} expired demo visit household(s) and "
                 f"{n_legacy} older visitor(s), and {stale} visit conversation record(s) older "
-                f"than {VISIT_RETENTION_DAYS} days. Nothing was deleted."
+                f"than {VISIT_RETENTION_DAYS} days, and clear the visitor details of {details} "
+                f"visit(s) older than {VISITOR_DETAIL_DAYS} days. Nothing was deleted."
             )
             return
         rows = 0
@@ -91,9 +98,11 @@ class Command(BaseCommand):
             legacy_users.delete()
         records = prune_visit_records()
         runs = prune_runs()
+        cleared = clear_old_details(timezone.now())
         self.stdout.write(
             f"Deleted {n_households} expired demo visit household(s) ({rows} rows, visitors "
             f"included) and {n_legacy} older visitor(s) with their tokens, and {records} visit "
-            f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, and {runs} procedure "
-            f"run(s) past retention."
+            f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, {runs} procedure "
+            f"run(s) past retention, and cleared the visitor details of {cleared} visit(s) older "
+            f"than {VISITOR_DETAIL_DAYS} days."
         )

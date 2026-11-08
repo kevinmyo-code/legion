@@ -129,6 +129,18 @@ class DemoVisit(models.Model):
     ref = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
+    # Who and where (Kevin, 2026-11-06: "differentiate myself and others"; `demo/visitor.py`).
+    # `by_owner`: made from a browser a real household member has signed in on. Kept for good.
+    by_owner = models.BooleanField(default=False)
+    # The rest is cleared 30 days after the visit (`prune_demo_visitors`). Each edge field is
+    # stored only when the kevinwin.dev Worker's secret matched. Never the raw IP: an HMAC of it.
+    ip_hash = models.CharField(max_length=64, blank=True, default="")
+    country = models.CharField(max_length=2, blank=True, default="")
+    region = models.CharField(max_length=64, blank=True, default="")
+    city = models.CharField(max_length=64, blank=True, default="")
+    asn = models.BigIntegerField(null=True, blank=True)
+    as_org = models.CharField(max_length=128, blank=True, default="")
+    user_agent = models.CharField(max_length=512, blank=True, default="")
 
     class Meta:
         indexes = [models.Index(fields=["expires_at"])]

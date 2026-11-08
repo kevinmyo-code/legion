@@ -195,6 +195,13 @@ LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
 # engine treats a household specially by name.
 LEGION_DEMO_HOUSEHOLD_NAME = os.environ.get("LEGION_DEMO_HOUSEHOLD_NAME", "").strip() or "Demo"
 
+# Who a recruiter demo visit was (`demo/visitor.py`): the shared secret the kevinwin.dev
+# Cloudflare Worker sends as `X-Edge-Auth` beside what Cloudflare knows of the caller (city,
+# network). Optional: unset, or a request without the right value (anyone calling the run.app
+# host directly), and a visit stores nothing from those headers. A Secret Manager secret on
+# Cloud Run (`deploy/cloudrun/_common.py`), mounted when `LEGION_EDGE_HEADERS` is set.
+LEGION_EDGE_SECRET = os.environ.get("LEGION_EDGE_SECRET", "").strip()
+
 # recruiter-demo ticket 04: one daily Gemini budget across every recruiter
 # visit (map ruling 4: $5/day), and the units it is counted in. Strings in USD,
 # parsed by `demo/budget.py` through Decimal into whole cents (rounded UP).

@@ -41,6 +41,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from demo.visitor import set_owner_cookie
 from household.models import DeviceToken, Household, HouseholdMember, Invite, User
 from household.serializers import (
     DeviceTokenSerializer,
@@ -215,16 +216,23 @@ class SessionLoginView(APIView):
             )
 
         login(request, user)
-        body = MeResponseSerializer(
-            {
-                "user_id": user.id,
-                "email": user.email,
-                "device_name": "",
-                "name": user.first_name,
-                "role": _role_of(user),
-            }
-        ).data
-        return Response(body, status=status.HTTP_200_OK)
+        response = Response(_session_me_body(user), status=status.HTTP_200_OK)
+        # Marks this browser so the recruiter demo can tell the household's own
+        # visits from strangers' (`demo/visitor.py`). Nothing for a recruiter.
+        set_owner_cookie(response, user)
+        return response
+
+
+def _session_me_body(user) -> dict:
+    return MeResponseSerializer(
+        {
+            "user_id": user.id,
+            "email": user.email,
+            "device_name": "",
+            "name": user.first_name,
+            "role": _role_of(user),
+        }
+    ).data
 
 
 class SessionLogoutView(APIView):
@@ -319,7 +327,13 @@ class MeView(APIView):
         },
     )
     def get(self, request):
-        return Response(_me_body(request), status=status.HTTP_200_OK)
+        response = Response(_me_body(request), status=status.HTTP_200_OK)
+        # The web app calls this on every load: a browser already signed in is
+        # marked as the household's own without signing in again (`demo/visitor.py`).
+        # A session only; a device token is an app, not a browser.
+        if request.auth is None:
+            set_owner_cookie(response, request.user)
+        return response
 
     @extend_schema(
         operation_id="api_auth_me_partial_update",

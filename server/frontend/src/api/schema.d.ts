@@ -1939,6 +1939,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/mark-owner-device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark this browser as a household member's own
+         * @description `POST /api/demo/mark-owner-device`: marks this browser as a real member's,
+         *     so a demo visit made from it later is flagged `by_owner` (`demo/visitor.py`).
+         *     Any credential the engine accepts, but a recruiter visitor is refused: the
+         *     flag would be a lie told by the person it exists to tell apart.
+         */
+        post: operations["api_demo_mark_owner_device_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/session": {
         parameters: {
             query?: never;
@@ -13734,6 +13757,33 @@ export interface operations {
             };
             /** @description The visit's demo household could not be seeded. Nothing created. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_mark_owner_device_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The owner-device cookie is set. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A recruiter visit, or not a member of a real household. Nothing set. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

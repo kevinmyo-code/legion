@@ -4447,6 +4447,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The visit's demo household could not be seeded. Nothing created.
+  /api/demo/mark-owner-device:
+    post:
+      operationId: api_demo_mark_owner_device_create
+      description: |-
+        `POST /api/demo/mark-owner-device`: marks this browser as a real member's,
+        so a demo visit made from it later is flagged `by_owner` (`demo/visitor.py`).
+        Any credential the engine accepts, but a recruiter visitor is refused: the
+        flag would be a lie told by the person it exists to tell apart.
+      summary: Mark this browser as a household member's own
+      tags:
+      - demo
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: The owner-device cookie is set.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A recruiter visit, or not a member of a real household. Nothing
+            set.
   /api/demo/session:
     get:
       operationId: api_demo_session_retrieve

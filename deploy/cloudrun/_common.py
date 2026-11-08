@@ -71,15 +71,24 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # alfred-ota ticket 04: LEGION_APK_BUCKET names the private APK bucket
 # `deploy/release/setup_bucket.sh` creates; without it the release download endpoint refuses in
 # words. A bucket name, not a secret: the bucket is private and the URLs are signed per request.
+# LEGION_EDGE_HEADERS=on is only the switch that mounts LEGION_EDGE_SECRET below; the server
+# reads the secret, not the switch.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
+    "LEGION_EDGE_HEADERS",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
 # `--set-secrets` fails the whole deploy on a secret that does not exist, and push is optional.
 # VAPID_PRIVATE_KEY rides with VAPID_PUBLIC_KEY: set the public key in `.env` only after
 # `gcloud secrets create VAPID_PRIVATE_KEY` (README.md, "Push notifications").
-OPTIONAL_SECRET_ENV_VARS = {"VAPID_PRIVATE_KEY": "VAPID_PUBLIC_KEY"}
+# LEGION_EDGE_SECRET rides with LEGION_EDGE_HEADERS: the kevinwin.dev Worker's shared secret,
+# which lets a recruiter demo visit trust the Worker's visitor headers (`server/demo/visitor.py`;
+# README.md, "Recruiter demo: visitor details from the edge").
+OPTIONAL_SECRET_ENV_VARS = {
+    "VAPID_PRIVATE_KEY": "VAPID_PUBLIC_KEY",
+    "LEGION_EDGE_SECRET": "LEGION_EDGE_HEADERS",
+}
 
 
 # Plain vars with a default: passed always, the `.env` value winning when set. PLAID_ENV

@@ -123,6 +123,9 @@ _VAULT = "the ID vault holds a member's own identity numbers and opens only on t
 RECRUITER_DENIED: dict[str, str] = {
     # household settings, members, invites, tokens, passwords
     "household.views.PasswordChangeView": "a visitor has no password to change",
+    "demo.views.MarkOwnerDeviceView": (
+        "marking a browser as the owner's is for a real household member, never a visitor"
+    ),
     "household.views.DeviceListView": "device tokens are household settings",
     "household.views.DeviceDetailView": "device tokens are household settings",
     "household.households.InviteListCreateView": _SETTINGS,
