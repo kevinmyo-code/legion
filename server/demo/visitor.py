@@ -39,6 +39,7 @@ from datetime import timedelta
 from urllib.parse import unquote
 
 from django.conf import settings
+from django.contrib.auth import get_user
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db.models import Q
@@ -135,6 +136,21 @@ def _header(meta, key: str, limit: int) -> str:
     return unquote(meta.get(key, "")).strip()[:limit]
 
 
+def edge_ip_hash(request) -> str:
+    """The HMAC of the caller's IP as the edge saw it, or "" when the edge
+    secret does not match or no IP came with it."""
+    if not _edge_trusted(request.META):
+        return ""
+    ip = _header(request.META, EDGE_IP, 64)
+    return hash_ip(ip) if ip else ""
+
+
+def is_owner_request(request) -> bool:
+    """A real member's live session, or a valid owner-device cookie. Reads the
+    session directly: on `/enter` DRF has already made `request.user` anonymous."""
+    return is_real_member(get_user(request._request)) or owner_from_cookie(request)
+
+
 def visitor_details(request) -> dict:
     """The `DemoVisit` fields this request can fill: the user agent always,
     the edge's view of the caller only when the edge secret matches."""
@@ -142,9 +158,7 @@ def visitor_details(request) -> dict:
     details: dict = {"user_agent": meta.get("HTTP_USER_AGENT", "")[:USER_AGENT_MAX]}
     if not _edge_trusted(meta):
         return details
-    ip = _header(meta, EDGE_IP, 64)
-    if ip:
-        details["ip_hash"] = hash_ip(ip)
+    details["ip_hash"] = edge_ip_hash(request)
     for field, (key, limit) in EDGE_FIELDS.items():
         details[field] = _header(meta, key, limit)
     asn = _header(meta, EDGE_ASN, 12)

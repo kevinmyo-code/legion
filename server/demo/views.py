@@ -46,7 +46,14 @@ from rest_framework.views import APIView
 from api.schema import DetailSerializer
 from demo.briefing import seed_visit_procedures
 from demo.models import DemoCode, DemoVisit
-from demo.visitor import is_real_member, owner_from_cookie, set_owner_cookie, visitor_details
+from demo.visitor import (
+    edge_ip_hash,
+    is_owner_request,
+    is_real_member,
+    owner_from_cookie,
+    set_owner_cookie,
+    visitor_details,
+)
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
@@ -104,7 +111,20 @@ DemoEnterResponse = inline_serializer(
 
 
 class DemoEnterThrottle(ScopedRateThrottle):
-    """Per IP: `ScopedRateThrottle` keys an anonymous request on its address."""
+    """Per caller IP. Behind the kevinwin.dev Worker `REMOTE_ADDR` is Cloudflare's
+    address, which would put every recruiter in one bucket, so the key is the
+    edge's verified IP (its HMAC, `demo.visitor.edge_ip_hash`) when the edge
+    secret matches, and `REMOTE_ADDR` otherwise: a spoofed header without the
+    secret buys nothing. The owner's own browser is not throttled."""
+
+    def allow_request(self, request, view):
+        if is_owner_request(request):
+            return True
+        return super().allow_request(request, view)
+
+    def get_cache_key(self, request, view):
+        ident = edge_ip_hash(request) or self.get_ident(request)
+        return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
 class DemoEnterView(APIView):

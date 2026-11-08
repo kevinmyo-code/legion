@@ -238,3 +238,48 @@ def test_prune_clears_visitor_details_after_30_days_and_keeps_the_rest(code):
     assert old.asn is None
     assert old.by_owner is True and old.ref == "acme"
     assert fresh.ip_hash and fresh.city == "São Paulo" and fresh.asn == 64500
+
+
+# =============================================================================
+# The per-IP limit, behind the edge
+# =============================================================================
+
+
+@pytest.fixture
+def three_an_hour(monkeypatch):
+    from demo.views import DemoEnterThrottle
+
+    rates = {**DemoEnterThrottle.THROTTLE_RATES, "demo_enter": "3/hour"}
+    monkeypatch.setattr(DemoEnterThrottle, "THROTTLE_RATES", rates)
+
+
+def _edge(ip, **extra):
+    return dict(EDGE, HTTP_X_LEGION_CLIENT_IP=ip, **extra)
+
+
+def test_two_edge_ips_behind_one_cloudflare_address_get_separate_buckets(code, three_an_hour):
+    # Every request arrives from the same REMOTE_ADDR (Cloudflare's), as on Cloud Run.
+    for _ in range(3):
+        assert _enter(_browser(), "wrong", **_edge("198.51.100.1")).status_code == 403
+    assert _enter(_browser(), code, **_edge("198.51.100.1")).status_code == 429
+    assert _enter(_browser(), code, **_edge("198.51.100.2")).status_code == 201
+
+
+def test_a_spoofed_edge_ip_without_the_secret_falls_back_to_the_address(code, three_an_hour):
+    for i in range(3):
+        spoof = _edge(f"198.51.100.{10 + i}", HTTP_X_EDGE_AUTH="wrong")
+        assert _enter(_browser(), "wrong", **spoof).status_code == 403
+    # A fresh spoofed IP each time, but one REMOTE_ADDR: the fourth is limited.
+    spoof = _edge("198.51.100.99", HTTP_X_EDGE_AUTH="wrong")
+    assert _enter(_browser(), code, **spoof).status_code == 429
+
+
+def test_the_owners_browser_is_never_limited(code, household_user, three_an_hour):
+    client = _browser()
+    _sign_in(client)
+    for _ in range(4):
+        assert _enter(client, "wrong").status_code == 403
+    # Entering signs the browser in as the visitor; the owner cookie still exempts it.
+    assert _enter(client, code).status_code == 201
+    assert _enter(client, code).status_code == 201
+    assert DemoVisit.objects.filter(by_owner=True).count() == 2
