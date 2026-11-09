@@ -84,6 +84,7 @@ Format and the test for whether something deserves an ADR:
 | 0076 | [[0076-the-id-vault\|The ID vault: phone only, behind the fingerprint]] | accepted | 2026-11-05 | - |
 | 0077 | [[0077-body-is-the-seventh-aspect\|Body is the seventh aspect]] | accepted | 2026-11-05 | - |
 | 0078 | [[0078-workouts-come-from-rules\|Workouts come from rules, not from the model]] | accepted | 2026-11-06 | - |
+| 0079 | [[0079-alfreds-clock\|Alfred's clock lives inside LEGION, rings on its own, and briefs only on a tap]] | accepted | 2026-11-09 | - |
 
 ## Superseded
 
