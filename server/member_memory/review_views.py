@@ -41,6 +41,7 @@ class ReviewVerdictSerializer(serializers.Serializer):
     index = serializers.IntegerField()
     action = serializers.CharField()
     handles = serializers.ListField(child=serializers.CharField())
+    ids = serializers.ListField(child=serializers.CharField(), help_text="Memory id prefixes.")
     status = serializers.CharField()
     gate = serializers.CharField()
     cluster = serializers.IntegerField()

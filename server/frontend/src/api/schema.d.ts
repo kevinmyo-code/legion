@@ -8685,6 +8685,8 @@ export interface components {
             index: number;
             action: string;
             handles: string[];
+            /** @description Memory id prefixes. */
+            ids: string[];
             status: string;
             gate: string;
             cluster: number;

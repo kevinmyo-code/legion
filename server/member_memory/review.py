@@ -573,11 +573,13 @@ class Verdict:
     before: dict = field(default_factory=dict)
 
     def public(self) -> dict:
-        """What the laptop may print: handles, action and verdict. Never text."""
+        """What the laptop may print: handles, 8-character id prefixes (so a dry run can be
+        compared with a private list kept off the repo), action and verdict. Never text."""
         return {
             "index": self.index,
             "action": self.action,
             "handles": self.handles,
+            "ids": [str(r.pk)[:8] for r in self.rows],
             "status": self.status,
             "gate": self.gate,
             "cluster": self.cluster,

@@ -161,7 +161,7 @@ def submit(cfg: dict, paths: Paths, task: int, dry_run: bool = False) -> str:
         rows = [line + " (dry run: nothing was written)"]
         for v in answer.get("verdicts") or []:
             rows.append(f"  {v.get('index')}: {v.get('action')} {','.join(v.get('handles') or [])}"
-                        f" -> {v.get('status')} ({v.get('gate')})")
+                        f" [{','.join(v.get('ids') or [])}] -> {v.get('status')} ({v.get('gate')})")
         return "\n".join(rows)
     for f in (context_file, changes_file):
         f.unlink(missing_ok=True)

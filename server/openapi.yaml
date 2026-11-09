@@ -19549,6 +19549,11 @@ components:
           type: array
           items:
             type: string
+        ids:
+          type: array
+          items:
+            type: string
+          description: Memory id prefixes.
         status:
           type: string
         gate:
@@ -19560,6 +19565,7 @@ components:
       - cluster
       - gate
       - handles
+      - ids
       - index
       - status
     RoleEnum:

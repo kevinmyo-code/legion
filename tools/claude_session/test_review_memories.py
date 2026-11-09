@@ -95,11 +95,11 @@ class ScriptCase(unittest.TestCase):
         self.run_script("fetch", "--task", "7")
         write_json_atomic(self.work / "changes.json", GOOD)
         self.engine.review_answer = {**self.engine.review_answer, "verdicts": [
-            {"index": 0, "action": "merge", "handles": ["m1", "m2"], "status": "pending",
-             "gate": "passed"}]}
+            {"index": 0, "action": "merge", "handles": ["m1", "m2"], "ids": ["0a1b2c3d", "4e5f6a7b"],
+             "status": "pending", "gate": "passed"}]}
         code, said = self.run_script("submit", "--task", "7", "--dry-run")
         self.assertEqual(code, 0, said)
-        self.assertIn("0: merge m1,m2 -> pending (passed)", said)
+        self.assertIn("0: merge m1,m2 [0a1b2c3d,4e5f6a7b] -> pending (passed)", said)
         self.assertTrue(self.engine.review_submits[0]["dry_run"])
         self.assertTrue((self.work / "context.json").exists())
         self.assertTrue((self.work / "changes.json").exists())

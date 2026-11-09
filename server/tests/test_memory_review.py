@@ -143,6 +143,29 @@ def test_a_recruiter_and_the_work_laptop_are_refused(shadow, household_user):
     assert laptop.get(CHANGES).status_code == 403
 
 
+def test_a_recruiter_is_refused_every_review_route(shadow, db):
+    from datetime import timedelta as td
+
+    from household.models import Household, HouseholdMember, User
+    from household.permissions import DEMO_TOKEN_SESSION_KEY
+
+    visit = Household.objects.create(name="Visit", is_demo_visit=True)
+    visitor = User.objects.create_user(email="visitor-r@demo.invalid")
+    HouseholdMember.objects.create(user=visitor, household=visit, role=HouseholdMember.RECRUITER)
+    token, _raw = DeviceToken.issue(
+        visitor, "Demo visit", DeviceToken.SCOPE_READ, expires_at=timezone.now() + td(hours=2)
+    )
+    client = APIClient()
+    client.force_login(visitor)
+    session = client.session
+    session[DEMO_TOKEN_SESSION_KEY] = token.pk
+    session.save()
+    for method, path in (("get", CONTEXT), ("post", CHANGES), ("get", CHANGES),
+                         ("post", f"{CHANGES}/1/accept"), ("post", f"{BASE}review/run")):
+        response = getattr(client, method)(path, {}, format="json")
+        assert response.status_code == 403, (path, response.status_code)
+
+
 # =============================================================================
 # Context
 # =============================================================================
@@ -439,6 +462,22 @@ def test_the_hourly_job_holding_the_lock_refuses_a_submit(shadow, auth_client, h
     finally:
         other.close()
     assert _submit(auth_client, context, []).status_code == 200
+
+
+def test_the_hourly_job_is_skipped_locked_while_a_submit_holds_the_lock(household_a):
+    from ingest.jobs import lock_key, run_job
+    from ingest.models import Outcome, Source
+
+    other = connection.copy()
+    try:
+        with other.cursor() as cursor:
+            cursor.execute("begin")
+            cursor.execute("select pg_advisory_xact_lock(%s)",
+                           [lock_key(Source.MEMORY, household_a.pk)])
+        run = run_job(Source.MEMORY, household_a, lambda run: None)
+        assert run.outcome == Outcome.SKIPPED_LOCKED
+    finally:
+        other.close()
 
 
 def test_the_views_log_no_memory_or_transcript_text(shadow, auth_client, household_user,
