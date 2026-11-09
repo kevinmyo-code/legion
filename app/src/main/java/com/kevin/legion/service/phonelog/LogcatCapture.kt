@@ -52,15 +52,19 @@ class LogcatCapture(
 
     /** The previous run's tail. Returns how many lines it recovered. */
     fun recoverPreviousRun(previous: RunState.Snapshot): Int {
-        val pid = previous.pid ?: return 0
-        if (pid == myPid.toString()) return 0
-        val from = previous.lastLineAtMs ?: return 0
-        val raw = runCatching { readAll(dumpCommand(LogcatLines.logcatTime(from))) }.getOrNull() ?: return 0
-        val theirs = LogcatLines.ours(raw, setOf(pid)).filterNot { LogcatLines.isNoise(it) }
+        val pid = previous.pid?.takeIf { it != myPid.toString() }
+        val from = previous.lastLineAtMs
+        val raw = if (pid != null && from != null) {
+            runCatching { readAll(dumpCommand(LogcatLines.logcatTime(from))) }.getOrNull().orEmpty()
+        } else {
+            emptyList()
+        }
+        val theirs = LogcatLines.ours(raw, setOfNotNull(pid)).filterNot { LogcatLines.isNoise(it) }
         val redacted = theirs.map(LogcatRedactor::redactLine)
         val fresh = LogcatLines.newSince(redacted, previous.lastLine)
         if (fresh.isNotEmpty()) {
-            sink(listOf(marker("recovered ${fresh.size} lines the previous run (pid $pid) wrote after its last capture")) + fresh, now())
+            val note = marker("recovered ${fresh.size} lines the previous run (pid $pid) wrote after its last capture")
+            sink(listOf(note) + fresh, now())
         }
         return fresh.size
     }

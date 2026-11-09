@@ -131,7 +131,9 @@ class LogcatRedactorTest {
     }
 
     @Test fun `mail json fields are blanked wherever they appear`() {
-        val out = r("{\"id\":\"m1\",\"subject\":\"Rent due\",\"snippet\":\"Hi \\\"Kevin\\\"\",\"labelIds\":[\"INBOX\"]}")
+        val out = r(
+            "{\"id\":\"m1\",\"subject\":\"Rent due\",\"snippet\":\"Hi \\\"Kevin\\\"\",\"labelIds\":[\"INBOX\"]}",
+        )
         assertEquals(
             "{\"id\":\"m1\",\"subject\":\"${LogcatRedactor.THIRD_PARTY}\"," +
                 "\"snippet\":\"${LogcatRedactor.THIRD_PARTY}\",\"labelIds\":[\"INBOX\"]}",
@@ -145,11 +147,14 @@ class LogcatRedactorTest {
     }
 
     @Test fun `a line with no threadtime header is still redacted`() {
-        assertEquals("Authorization: [redacted]", LogcatRedactor.redactLine("Authorization: Token abcdefabcdef12345678"))
+        val bare = LogcatRedactor.redactLine("Authorization: Token abcdefabcdef12345678")
+        assertEquals("Authorization: [redacted]", bare)
     }
 
     @Test fun `redacting twice changes nothing more`() {
-        val once = LogcatRedactor.redactLine(head + "Authorization: Token abcdefabcdef12345678 to a@b.com (713) 555-1234")
+        val once = LogcatRedactor.redactLine(
+            head + "Authorization: Token abcdefabcdef12345678 to a@b.com (713) 555-1234",
+        )
         assertEquals(once, LogcatRedactor.redactLine(once))
     }
 

@@ -16,7 +16,8 @@ class CrashCaptureTest {
         val boom = IllegalStateException("engine said no to bob@example.com")
         val lines = CrashCapture.fatalLines(boom, "main", 4242, 4242, "run-1", at, utc)
         assertTrue(lines.all { threadtime.matches(it) })
-        assertTrue(lines.first(), lines.first().startsWith("11-09 20:00:00.000 4242 4242 E AndroidRuntime: FATAL EXCEPTION: main (run run-1"))
+        val expected = "11-09 20:00:00.000 4242 4242 E AndroidRuntime: FATAL EXCEPTION: main (run run-1"
+        assertTrue(lines.first(), lines.first().startsWith(expected))
         assertTrue(lines[1].endsWith("java.lang.IllegalStateException: engine said no to [email]"))
         assertTrue(lines.any { it.contains("at com.kevin.legion.service.phonelog.CrashCaptureTest") })
         assertFalse(lines.any { it.contains('\t') })
@@ -32,7 +33,8 @@ class CrashCaptureTest {
         val exit = CrashCapture.Exit(
             timestampMs = at, pid = 4242, processName = "com.kevin.legion", reason = CrashCapture.REASON_ANR,
             status = 0, importance = 100, pssKb = 210_000, rssKb = 300_000,
-            description = "Input dispatching timed out", trace = listOf("\"main\" prio=5 tid=1 Blocked", "  at x.y(Z.java:1)"),
+            description = "Input dispatching timed out",
+            trace = listOf("\"main\" prio=5 tid=1 Blocked", "  at x.y(Z.java:1)"),
         )
         val lines = CrashCapture.exitLines(exit, previousRunId = "run-0", zone = utc)
         assertEquals(

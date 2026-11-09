@@ -179,9 +179,9 @@ object PhoneLog {
 
     @Synchronized
     private fun start(app: Context, fromMs: Long) {
-        if (capture != null) return
-        val runState = state ?: return
-        val logs = logcatSpool ?: return
+        val runState = state
+        val logs = logcatSpool
+        if (capture != null || runState == null || logs == null) return
         val reader = LogcatCapture(
             myPid = Process.myPid(),
             fromMs = fromMs,
@@ -220,8 +220,9 @@ object PhoneLog {
     /** Android's own exit records newer than the last one sent (API 30+). */
     private fun recordExits(app: Context, before: RunState.Snapshot) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        val am = app.getSystemService(ActivityManager::class.java) ?: return
-        val records = am.getHistoricalProcessExitReasons(null, 0, EXIT_RECORDS)
+        val records = app.getSystemService(ActivityManager::class.java)
+            ?.getHistoricalProcessExitReasons(null, 0, EXIT_RECORDS)
+            .orEmpty()
             .filter { it.timestamp > before.lastExitSeenMs }
             .sortedBy { it.timestamp }
         if (records.isEmpty()) return
@@ -298,15 +299,12 @@ object PhoneLog {
 
     /** Crash batches first (small, and the reason an audit is run), then logcat. */
     private suspend fun upload(manual: Boolean): SendOutcome? {
-        val logs = logcatUploader ?: return null
-        val crashes = crashUploader ?: return null
-        if (!enabled) return null
+        val logs = logcatUploader
+        val crashes = crashUploader
+        if (logs == null || crashes == null || !enabled) return null
         val crash = runCatching { crashes.upload(manual) }.getOrElse { failed(it) }
         val logcat = runCatching { logs.upload(manual) }.getOrElse { failed(it) }
-        val shown = when {
-            logcat is SendOutcome.NothingToSend -> crash
-            else -> logcat
-        }
+        val shown = if (logcat is SendOutcome.NothingToSend) crash else logcat
         if (shown !is SendOutcome.NothingToSend && shown !is SendOutcome.Waiting) {
             lastResult = shown.sentence
             Log.i(TAG, shown.sentence)

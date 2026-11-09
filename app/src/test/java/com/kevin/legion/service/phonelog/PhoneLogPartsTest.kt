@@ -157,7 +157,8 @@ class PhoneLogPartsTest {
         val f = transport.fields.single()
         assertEquals("logcat", f["reason"])
         assertEquals("run-1", f["run_id"])
-        assertEquals("11-09 14:00:00.000  1  1 I OkHttp: Authorization: [redacted]\n", gunzip(transport.bodies.single()))
+        val sent = gunzip(transport.bodies.single())
+        assertEquals("11-09 14:00:00.000  1  1 I OkHttp: Authorization: [redacted]\n", sent)
     }
 
     @Test fun `over the daily cap the rest waits and stays on the phone`() = runBlocking {

@@ -26,18 +26,23 @@ object CrashCapture {
     const val EXIT_TAG = "ExitInfo"
     private const val MAX_TRACE_LINES = 4_000
 
-    /** `ApplicationExitInfo.REASON_*`, by value, so this file needs no API 30 class. */
-    private val REASONS = mapOf(
-        0 to "UNKNOWN", 1 to "EXIT_SELF", 2 to "SIGNALED", 3 to "LOW_MEMORY", 4 to "CRASH",
-        5 to "CRASH_NATIVE", 6 to "ANR", 7 to "INITIALIZATION_FAILURE", 8 to "PERMISSION_CHANGE",
-        9 to "EXCESSIVE_RESOURCE_USAGE", 10 to "USER_REQUESTED", 11 to "USER_STOPPED",
-        12 to "DEPENDENCY_DIED", 13 to "OTHER", 14 to "FREEZER", 15 to "PACKAGE_STATE_CHANGE",
-        16 to "PACKAGE_UPDATED",
+    /** `ApplicationExitInfo.REASON_*` names, indexed by value, so this file needs no API 30 class. */
+    private val REASONS = listOf(
+        "UNKNOWN", "EXIT_SELF", "SIGNALED", "LOW_MEMORY", "CRASH", "CRASH_NATIVE", "ANR",
+        "INITIALIZATION_FAILURE", "PERMISSION_CHANGE", "EXCESSIVE_RESOURCE_USAGE", "USER_REQUESTED",
+        "USER_STOPPED", "DEPENDENCY_DIED", "OTHER", "FREEZER", "PACKAGE_STATE_CHANGE", "PACKAGE_UPDATED",
     )
 
+    /** Exits an audit should look at: a crash, an ANR, a kill the user did not ask for. */
+    private val FAILURES = setOf(
+        "SIGNALED", "LOW_MEMORY", "CRASH", "CRASH_NATIVE", "ANR", "INITIALIZATION_FAILURE",
+        "EXCESSIVE_RESOURCE_USAGE", "DEPENDENCY_DIED",
+    )
+
+    /** `ApplicationExitInfo.REASON_ANR`. */
     const val REASON_ANR = 6
 
-    fun reasonName(reason: Int): String = REASONS[reason] ?: "REASON_$reason"
+    fun reasonName(reason: Int): String = REASONS.getOrNull(reason) ?: "REASON_$reason"
 
     /** One exit record, the fields of `ApplicationExitInfo` this needs. */
     data class Exit(
@@ -83,7 +88,7 @@ object CrashCapture {
     }
 
     /** True for an exit an audit should look at: a crash, an ANR, a kill the user did not ask for. */
-    fun isFailure(reason: Int): Boolean = reason in setOf(2, 3, 4, 5, 6, 7, 9, 12)
+    fun isFailure(reason: Int): Boolean = reasonName(reason) in FAILURES
 
     private fun stamp(atMs: Long, zone: TimeZone): String =
         SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US).apply { timeZone = zone }.format(Date(atMs))

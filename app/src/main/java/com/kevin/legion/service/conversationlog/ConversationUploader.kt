@@ -230,31 +230,38 @@ class ConversationUploader(
     private suspend fun sendAll(batches: List<SpooledBatch>): SendOutcome {
         var lines = 0
         var sent = 0
-        for (batch in batches) {
+        var stop: SendOutcome? = null
+        val queue = batches.iterator()
+        while (stop == null && queue.hasNext()) {
+            val batch = queue.next()
             val count = batch.lineCount()
             val body = gzip(prepare(batch.file.readBytes()))
-            if (budget != null && !budget.allows(body.size.toLong(), now())) {
+            val failure = if (budget == null || budget.allows(body.size.toLong(), now())) {
+                val result = transport.post(fieldsFor(batch), "${batch.id}.log.gz", body)
+                RetryRules.classify(result)?.let { failed(it, result, lines) }
+            } else {
                 if (sent > 0) backoff.succeeded()
-                return SendOutcome.Capped(lines)
+                SendOutcome.Capped(lines)
             }
-            val result = transport.post(fieldsFor(batch), "${batch.id}.log.gz", body)
-            val failure = RetryRules.classify(result)
             if (failure == null) {
                 spool.delete(batch)
                 budget?.spent(body.size.toLong(), now())
                 lines += count
                 sent++
-                continue
             }
-            backoff.failed(now(), failure)
-            if (failure == FailureKind.OLD_ENGINE && !saidOldEngine) {
-                saidOldEngine = true
-                say("The engine refused reason=$reason (an engine from before that reason existed). Batches are kept.")
-            }
-            return SendOutcome.Failed(failure, RetryRules.sentence(failure, result), lines)
+            stop = failure
         }
-        backoff.succeeded()
-        return SendOutcome.Sent(lines, sent)
+        if (stop == null) backoff.succeeded()
+        return stop ?: SendOutcome.Sent(lines, sent)
+    }
+
+    private fun failed(failure: FailureKind, result: PostResult, sentLines: Int): SendOutcome {
+        backoff.failed(now(), failure)
+        if (failure == FailureKind.OLD_ENGINE && !saidOldEngine) {
+            saidOldEngine = true
+            say("The engine refused reason=$reason (an engine from before that reason existed). Batches are kept.")
+        }
+        return SendOutcome.Failed(failure, RetryRules.sentence(failure, result), sentLines)
     }
 
     /** The multipart text fields, in the head unit's order (`devicelogs/views.py` UploadSerializer). */

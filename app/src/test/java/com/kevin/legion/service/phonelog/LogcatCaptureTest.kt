@@ -98,7 +98,8 @@ class LogcatCaptureTest {
         var sleeps = 0
         capture(ArrayDeque(), onSleep = { if (++sleeps == 3) it.stop() }).run()
         assertEquals(1, delivered.size)
-        assertTrue(delivered.single(), delivered.single().contains("I ${LogcatCapture.MARKER_TAG}: logcat could not be read"))
+        val said = delivered.single()
+        assertTrue(said, said.contains("I ${LogcatCapture.MARKER_TAG}: logcat could not be read"))
     }
 
     @Test fun `the previous run's tail is recovered past its anchor, for its pid only`() {

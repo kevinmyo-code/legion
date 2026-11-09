@@ -16,7 +16,9 @@ class PhoneLogCopyTest {
         val s = PhoneLogCopy.DETAIL
         assertTrue(s.contains("crashes"))
         assertTrue(s.contains("engine"))
-        for (removed in listOf("Passwords", "keys", "email addresses", "phone numbers", "mail")) assertTrue(removed, s.contains(removed))
+        for (removed in listOf("Passwords", "keys", "email addresses", "phone numbers", "mail")) {
+            assertTrue(removed, s.contains(removed))
+        }
         assertTrue(s.contains("${PhoneLog.DAILY_CAP_BYTES / (1024 * 1024)} MB a day"))
         assertTrue(s.contains("30 days"))
     }
