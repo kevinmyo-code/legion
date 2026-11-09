@@ -141,6 +141,47 @@ class LiveToolboxGoalPlanTest {
         assertTrue(constraintsOnEngine().isEmpty())
     }
 
+    // --- The read-through gate (CLAUDE.md section 7): a constraint stated in a turn that read mail
+    // or a web page is refused, the same gate the memory tool's remember action uses ------------
+
+    private suspend fun planAfter(readThroughTool: String?): JSONObject {
+        // The production flag is set by GeminiLiveSession when one of these tools is called; prove
+        // the named tool really trips it, then hand dispatch the flag the session would.
+        val touched = readThroughTool != null && GeminiLiveSession.isEpisodicExcludedTool(readThroughTool)
+        if (readThroughTool != null) assertTrue("$readThroughTool must be a read-through tool", touched)
+        return LiveToolbox.dispatch(
+            context, "generate_goal_plan",
+            JSONObject().put("goal_text", "lose fat, gain muscle").put("new_constraint", "no gym access"),
+            touchedReadThroughToolThisTurn = touched,
+        )!!
+    }
+
+    @Test
+    fun `a constraint in the same turn as reading mail is refused and never saved`() = runBlocking {
+        val result = planAfter("ask_mail")
+
+        assertEquals(LiveToolbox.GOAL_CONSTRAINT_READ_THROUGH_REFUSAL, result.getString("constraintNotSaved"))
+        assertTrue(constraintsOnEngine().isEmpty())
+        assertTrue("nothing was sent to the engine", engine.calls.none { it.startsWith("create:") })
+    }
+
+    @Test
+    fun `a constraint in the same turn as reading a web page is refused and never saved`() = runBlocking {
+        val result = planAfter("browser")
+
+        assertEquals(LiveToolbox.GOAL_CONSTRAINT_READ_THROUGH_REFUSAL, result.getString("constraintNotSaved"))
+        assertTrue(constraintsOnEngine().isEmpty())
+        assertTrue("nothing was sent to the engine", engine.calls.none { it.startsWith("create:") })
+    }
+
+    @Test
+    fun `a constraint in a clean turn is saved`() = runBlocking {
+        val result = planAfter(readThroughTool = null)
+
+        assertFalse(result.has("constraintNotSaved"))
+        assertEquals(listOf(GoalPlanAgent.CONSTRAINT_PREFIX + "no gym access"), constraintsOnEngine())
+    }
+
     // --- A constraint already on file survives to the NEXT call's combined goal text, across
     // sessions - the mechanism GoalPlanAgent.withConstraints and this dispatch build together ----
 

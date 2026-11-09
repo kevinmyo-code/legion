@@ -3109,7 +3109,7 @@ object LiveToolbox {
             "set_goal" -> setGoalTool(context, args)
             "list_goals" -> listGoalsTool(context, args)
             "close_goal" -> closeGoalTool(context, args)
-            "generate_goal_plan" -> generateGoalPlanTool(context, args)
+            "generate_goal_plan" -> generateGoalPlanTool(context, args, touchedReadThroughToolThisTurn)
             "accept_goal_plan" -> acceptGoalPlanTool(context, args)
             "ask_advisor" -> askAdvisorTool(context, args)
             "accept_proposal" -> acceptProposalTool(context, args)
@@ -3318,6 +3318,13 @@ object LiveToolbox {
     // ADR 0071: a web page read in the same turn trips the same gate, so the words name both.
     internal const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail or web pages - that's on " +
         "purpose, not a slip. Tell me the fact yourself, in your own words, and I'll remember that."
+
+    /**
+     * `generate_goal_plan`'s `constraintNotSaved` when the same gate fires for its `new_constraint`
+     * (2026-11-09): a constraint is a member memory, so mail or web text in the turn refuses it.
+     */
+    internal const val GOAL_CONSTRAINT_READ_THROUGH_REFUSAL = "Constraint not saved: this turn read mail or " +
+        "a web page. Ask the user to confirm it in their own words next turn."
 
     /**
      * Category A guard (ticket 01 §0): these tools read whichever car the OBD
@@ -5062,8 +5069,17 @@ object LiveToolbox {
      * constraint on file (including the one just added) into the goal text via
      * [GoalPlanAgent.withConstraints] before calling [GoalPlanAgent.generate]. Writes nothing else
      * - see the tool's own declaration for why a plan is a proposal, not an action.
+     *
+     * [touchedReadThroughToolThisTurn]: a constraint is a member memory, so it takes the `memory`
+     * tool's remember gate ([rememberBlockedByReadThroughTool], CLAUDE.md section 7). After mail or
+     * a web page in the same turn it is refused, never saved: planted text must not become a
+     * constraint. The plan is still generated, the same as for any other refused constraint.
      */
-    private suspend fun generateGoalPlanTool(context: Context, args: JSONObject): JSONObject {
+    private suspend fun generateGoalPlanTool(
+        context: Context,
+        args: JSONObject,
+        touchedReadThroughToolThisTurn: Boolean = false,
+    ): JSONObject {
         val goalText = args.optString("goal_text").trim()
         if (goalText.isBlank()) return result(false, "What's the goal?")
 
@@ -5077,7 +5093,11 @@ object LiveToolbox {
         // So the model is told, as its own key, rather than being left to present a plan the user
         // will read as having honoured something it never saw.
         val constraints = goalPlanConstraints(context)
-        val constraintRefusal = if (newConstraint.isNotBlank()) constraints.add(newConstraint) else null
+        val constraintRefusal = when {
+            newConstraint.isBlank() -> null
+            rememberBlockedByReadThroughTool(touchedReadThroughToolThisTurn) -> GOAL_CONSTRAINT_READ_THROUGH_REFUSAL
+            else -> constraints.add(newConstraint)
+        }
 
         if (!GeminiKeyProvider.hasKey()) {
             return result(false, "No Gemini key is set, so this cannot run. One can be added in Setup.")
