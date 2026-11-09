@@ -138,27 +138,39 @@ class TestLock(Base):
 
 
 class TestSteps(Base):
+    def setUp(self):
+        super().setUp()
+        self.shared = Path(self.tmp.name) / "laptop" / "gradle.lock"
+
     def run_steps(self, steps, codes=None, read=readings(70.0), **kw):
         ran = []
         codes = list(codes or [])
 
         def runner(argv, cwd):
             ran.append(argv)
-            if "--stop" in argv:
-                return 0
+            self.assertTrue(self.shared.is_dir() == B.is_gradle(argv),
+                            "the shared lock is held for Gradle steps, and only for them")
             return codes.pop(0) if codes else 0
+        kw.setdefault("shared_lock", self.shared)
         code = B.run_steps(self.paths, 41, steps, runner=runner, read=read, sleep=self.clock.sleep,
                            clock=self.clock, say=self.said.append, **kw)
         return code, ran
 
-    def test_gradle_gets_the_private_registry_and_stop_after(self):
+    def test_gradle_gets_registry_one_worker_build_cache_and_is_never_stopped(self):
         code, ran = self.run_steps([["gradlew.bat", "compileDebugKotlin"],
-                                    ["gradlew.bat", "testDebugUnitTest"]])
+                                    ["gradlew.bat", "testDebugUnitTest", "--max-workers=4"]])
         self.assertEqual(code, 0)
         flag = f"-Dorg.gradle.daemon.registry.base={self.paths.root / 'gradle-daemons'}"
-        self.assertEqual(ran, [["gradlew.bat", "compileDebugKotlin", flag],
-                               ["gradlew.bat", "testDebugUnitTest", flag],
-                               ["gradlew.bat", "--stop", flag]])
+        self.assertEqual(ran, [["gradlew.bat", "compileDebugKotlin", "--max-workers=1",
+                                "--build-cache", flag],
+                               ["gradlew.bat", "testDebugUnitTest", "--max-workers=4",
+                                "--build-cache", flag]])
+        self.assertFalse([r for r in ran if "--stop" in r], "the daemon stays warm")
+        self.assertFalse(self.shared.exists(), "the shared lock is released")
+
+    def test_a_stop_step_is_never_passed_to_gradle(self):
+        _code, ran = self.run_steps([["gradlew.bat", "--stop"]])
+        self.assertNotIn("--stop", ran[0])
 
     def test_heat_is_checked_before_each_step(self):
         code, ran = self.run_steps([["gradlew", "a"], ["gradlew", "b"]],
@@ -167,17 +179,48 @@ class TestSteps(Base):
         self.assertEqual(len(self.clock.slept), 1)
         self.assertTrue(any("pausing before gradlew b" in s for s in self.said))
 
-    def test_a_failing_step_stops_the_rest_still_stops_gradle_and_releases(self):
+    def test_a_failing_step_stops_the_rest_and_releases_both_locks(self):
         code, ran = self.run_steps([["gradlew", "a"], ["gradlew", "b"]], codes=[3])
         self.assertEqual(code, 3)
-        self.assertEqual([r[1] for r in ran], ["a", "--stop"])
+        self.assertEqual([r[1] for r in ran], ["a"])
+        self.assertFalse(self.shared.exists())
         lock = B.BuildLock(self.paths, 9)
         lock.acquire(wait_s=0)
         lock.release()
 
-    def test_non_gradle_steps_get_no_flag(self):
+    def test_non_gradle_steps_get_no_flag_and_no_shared_lock(self):
         code, ran = self.run_steps([["uv", "run", "pytest"]])
         self.assertEqual(ran, [["uv", "run", "pytest"]])
+
+    def test_waits_for_another_agents_gradle_then_times_out_in_words(self):
+        self.shared.mkdir(parents=True)  # g.sh holds it: no owner file, never cleared
+        with self.assertRaises(B.TimedOut) as e:
+            self.run_steps([["gradlew", "a"]], lock_wait_s=30)
+        self.assertIn("shared lock", str(e.exception))
+        self.assertIn("Waiting for another Gradle build on this laptop (one at a time).", self.said)
+        self.assertTrue(self.shared.is_dir(), "someone else's lock is left alone")
+
+    def test_a_lock_our_killed_build_left_is_cleared(self):
+        self.shared.mkdir(parents=True)
+        owner = self.shared.with_name("gradle.lock.worker.json")
+        owner.write_text('{"pid": 999999, "task": 7}')
+        code, ran = self.run_steps([["gradlew", "a"]], alive=lambda pid: False)
+        self.assertEqual(code, 0)
+        self.assertTrue(any("Cleared a Gradle lock" in s for s in self.said))
+        self.assertFalse(self.shared.exists())
+        self.assertFalse(owner.exists())
+
+    def test_a_lock_our_live_build_holds_is_waited_for(self):
+        self.shared.mkdir(parents=True)
+        self.shared.with_name("gradle.lock.worker.json").write_text('{"pid": 4242, "task": 7}')
+        with self.assertRaises(B.TimedOut):
+            self.run_steps([["gradlew", "a"]], alive=lambda pid: True, lock_wait_s=30)
+        self.assertTrue(self.shared.is_dir())
+
+    def test_config_names_the_shared_lock(self):
+        self.assertEqual(B.shared_lock_path({}), B.SHARED_GRADLE_LOCK)
+        self.assertIsNone(B.shared_lock_path({"gradle_lock": ""}))
+        self.assertEqual(B.shared_lock_path({"gradle_lock": "D:/x/l"}), Path("D:/x/l"))
 
     def test_cli_runs_a_real_command_under_the_lock(self):
         import os
@@ -186,7 +229,7 @@ class TestSteps(Base):
         try:
             out = io.StringIO()
             with redirect_stdout(out):
-                code = B.main(["--task", "41", "--no-heat", "--", sys.executable, "-c", "print(1)"])
+                code = B.main(["--task", "41", "--no-heat", "--no-shared-lock", "--", sys.executable, "-c", "print(1)"])
             self.assertEqual(code, 0)
             self.assertIn("All steps passed.", out.getvalue())
         finally:

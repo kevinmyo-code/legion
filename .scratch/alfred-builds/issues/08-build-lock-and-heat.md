@@ -16,6 +16,6 @@ tags: [ticket]
 ## What
 - **Lock.** `tools/claude_session/build_lock.py`, a file lock in the worker root. Every Gradle and full-suite run in a worker task takes it, and other tasks wait (reported as "waiting for another build").
 - **Heat check.** Before and during a build, read `laptopctl` status (the agent's local API, or `mcp__laptopctl__thermal_status` if the helper has it). Above 92 C, pause between Gradle tasks until it is under 80 C. No CPU cap (Kevin, 2026-11-05: "dont cap the cpu").
-- **Gradle flags:** a private daemon registry dir per worker, `--stop` after.
+- **Gradle flags:** a private daemon registry dir per worker, `--stop` after. (Superseded 2026-11-09: never `--stop`, the daemon stays warm; `--max-workers=1 --build-cache`; the laptop's shared Gradle lock too. See `build_lock.py`.)
 ## Verification
 - tools tests: lock contention, the heat pause with a fake reading.

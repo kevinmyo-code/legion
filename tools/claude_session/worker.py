@@ -41,6 +41,7 @@ from common import (DELIVER_EMAIL_SELF, DELIVER_PHONE, PAGE_CAP_BYTES, UPLOAD_CA
                     read_json, write_json_atomic)
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
+import warm_worktree  # noqa: E402
 
 log = logging.getLogger("legion.claude")
 
@@ -301,6 +302,7 @@ class Worker:
                      # alfred-builds tickets 03, 05, 08: the ship step, undo, the build lock.
                      "<<SHIP>>": cmd_path(HERE / "ship.py"), "<<UNDO>>": cmd_path(HERE / "undo.py"),
                      "<<BUILD_LOCK>>": cmd_path(HERE / "build_lock.py"),
+                     "<<WARM>>": cmd_path(HERE / "warm_worktree.py"),
                      "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
@@ -550,6 +552,12 @@ class Worker:
                    "duration_ms": int(max(0.0, now - t.get("started_at", now)) * 1000),
                    "found": found}
         self.state["outbox"].append({"task": t["id"], "payload": payload})
+        if status != "needs_confirmation":  # a question keeps the warm tree for its follow-up
+            try:
+                if warm_worktree.release(self.paths, t["id"]):
+                    log.info("task %s released the warm worktree", t["id"])
+            except OSError:
+                pass
         nudge = f"[report {t['id']}]"
         for p in [p for p in self.pending if p[0] is None and p[1].startswith(nudge)]:
             self.pending.remove(p)

@@ -81,8 +81,17 @@ Copy these rules into every helper prompt, with the task number filled in:
      `<<PYTHON>> <<UNDO>> run --task N --token <token>`.
    - Never `git push`, run a deploy script, `release_apk.py` or `gcloud` directly: the hook
      denies them even with a token. Gradle and full test suites run only through
-     `<<PYTHON>> <<BUILD_LOCK>> --task N --cwd <folder> -- <command>` (one build at a time on
-     this laptop, with a heat check).
+     `<<PYTHON>> <<BUILD_LOCK>> --task N --cwd <folder> -- <command>`. It takes the laptop's
+     shared Gradle lock (one Gradle at a time across every agent on this laptop, it waits its
+     turn), adds `--max-workers=1` and the build cache, checks the heat, and keeps the Gradle
+     daemon warm. Never run `gradlew` any other way, never `gradlew --stop`. A build can take
+     minutes: run it in the foreground with a long timeout, or in the background and wait for
+     it; output may be redirected to a file in the work folder.
+   - LEGION code work uses the warm worktree, not a fresh one: `<<PYTHON>> <<WARM>> claim
+     --task N --branch <feat/x or fix/x>` (a follow-up carrying on a branch adds `--resume`;
+     tests only: no `--branch`). Its last line is the worktree path: use it wherever a skill
+     says `<work>\wt`. It keeps the build outputs, so builds are incremental. If it says Busy,
+     make a fresh worktree as the skill says (its first build is cold, so allow for that).
 
 ## This machine
 

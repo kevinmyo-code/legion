@@ -404,6 +404,18 @@ class TestLateReports(WorkerCase):
         self.assertEqual(w.state["outbox"][0]["payload"]["summary"], "it did finish")
         self.assertEqual(w._task(5)["status"], "done")
 
+    def test_finishing_releases_the_warm_worktree_unless_it_asked_kevin(self):
+        import warm_worktree
+        w = self._worker()
+        for tid in (8, 9):
+            w.state["tasks"][str(tid)] = {"id": tid, "status": "running", "started_at": 0.0, "turns": 0}
+        write_json_atomic(warm_worktree.lease_path(self.paths), {"task": 8})
+        w.finish(w._task(8), "needs_confirmation", "", "Ship it?")
+        self.assertEqual(read_json(warm_worktree.lease_path(self.paths))["task"], 8)
+        write_json_atomic(warm_worktree.lease_path(self.paths), {"task": 9})
+        w.finish(w._task(9), "done", "Done.")
+        self.assertEqual(read_json(warm_worktree.lease_path(self.paths)), {})
+
     def test_late_report_after_a_delivered_failure_is_kept_not_dropped(self):
         w = self._worker()
         w.state["tasks"]["6"] = {"id": 6, "status": "failed", "started_at": 0.0, "turns": 0,
