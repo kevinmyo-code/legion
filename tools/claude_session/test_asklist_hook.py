@@ -85,6 +85,43 @@ class TestAskList(Base):
         self.assertDenied("Bash", {"command": f"echo hi > {k}"})
         self.assertPassed("Bash", {"command": "python make.py > out.csv 2>&1"})
 
+    def test_redirect_into_own_work_folder_passes_whatever_the_script_path(self):
+        """2026-11-09, task 7: the redirect writes only compile.log; the interpreter and the
+        build_lock.py it runs live outside the work folder and are read, not written."""
+        w = self.work.as_posix()
+        script = "C:/Users/kevin/AndroidStudioProjects/legion-claude-on/tools/claude_session/build_lock.py"
+        cmd = (f'cd "{w}" && C:/Users/kevin/anaconda3/python.exe {script} --task 41 --cwd "{w}/wt" '
+               "-- gradlew.bat compileDebugKotlin -Pnokey > compile.log 2>&1; echo \"exit $?\"; "
+               "tail -40 compile.log")
+        self.assertPassed("Bash", {"command": cmd}, cwd=self.paths.work)
+        self.assertPassed("Bash", {"command": f"C:/x/python.exe {script} -- gradlew.bat a > compile.log"})
+        self.assertPassed("Bash", {"command": f"C:/x/python.exe {script} >> \"{w}/build log.txt\" 2>&1"},
+                          cwd=self.root)
+        self.assertPassed("PowerShell", {"command": f"python {script} -- gradlew.bat a > {w}/wt/c.log"},
+                          cwd=self.root)
+        self.assertPassed("Bash", {"command": f"python {script} 2>&1 | tail -5"})  # no file at all
+
+    def test_redirect_outside_work_folder_still_asks(self):
+        k = self.kevin_file.as_posix()
+        script = "C:/Users/kevin/AndroidStudioProjects/legion-claude-on/tools/claude_session/build_lock.py"
+        for cmd, cwd in ((f"python {script} > {k}", self.work),
+                         (f"python {script} >> {k} 2>&1", self.work),
+                         (f'python {script} > "{k}"', self.work),
+                         ("python make.py > budget.xlsx", self.kevin_file.parent),
+                         (f"cd {self.kevin_file.parent.as_posix()} && python {script} > budget.xlsx", self.work),
+                         ("python make.py > ../budget.xlsx", self.work),
+                         ("python make.py > ~/Documents/x.log", self.work),
+                         ("python make.py > $env:USERPROFILE/x.log", self.work),
+                         (f"python make.py > {self.work.as_posix()}/ok.log; mv a.txt {k}", self.work)):
+            with self.subTest(cmd=cmd):
+                out = self.assertDenied("Bash", {"command": cmd}, cwd=cwd)
+                self.assertIn("ASK LIST", out["hookSpecificOutput"]["permissionDecisionReason"])
+        out = self.assertDenied("Bash", {"command": f"python x.py > {self.paths.config.as_posix()}"})
+        self.assertIn("WORKER FILES", out["hookSpecificOutput"]["permissionDecisionReason"])
+        out = self.assertDenied("Bash", {"command": f"python x.py > {(self.paths.skills / 'a.md').as_posix()}"},
+                                agent="agentB")
+        self.assertIn("ASK LIST", out["hookSpecificOutput"]["permissionDecisionReason"])
+
     def test_install_settings_send_always_ask(self):
         for cmd in ("pip install openpyxl", "python -m pip install requests", "winget install x",
                     "reg add HKCU\\Software\\X /v Y /d 1", "powercfg /change standby-timeout-ac 0",
