@@ -2,6 +2,7 @@ package com.kevin.legion.ui.clock
 
 import com.kevin.legion.clock.AlarmMath
 import com.kevin.legion.clock.AlarmText
+import com.kevin.legion.clock.Bedtime
 import com.kevin.legion.clock.ClockAlarm
 import com.kevin.legion.clock.ClockState
 import com.kevin.legion.clock.ClockTime
@@ -33,7 +34,10 @@ data class ClockUi(
     val alarms: List<AlarmRow> = emptyList(),
     val timers: List<TimerRow> = emptyList(),
     val stopwatch: StopwatchRow = StopwatchRow("0:00", running = false, laps = emptyList(), started = false),
-    val bedtime: BedtimeRow = BedtimeRow(false, 22, 30, AlarmMath.EVERY_DAY, active = false, windDownMin = 30),
+    val bedtime: BedtimeRow = BedtimeRow(
+        false, Bedtime.DEFAULT_HOUR, Bedtime.DEFAULT_MINUTE, AlarmMath.EVERY_DAY, active = false,
+        windDownMin = Bedtime.DEFAULT_WIND_DOWN_MIN,
+    ),
     val problems: List<ProblemRow> = emptyList(),
     val bedtimeProblem: ProblemRow? = null,
     val notice: String? = null,
@@ -51,11 +55,12 @@ data class ClockUi(
             val zone = time.zone()
             val elapsed = time.elapsedMs()
             val boot = time.bootCount()
-            val alarms = state.alarms.sortedBy { it.hour * 60 + it.minute }.map { a ->
+            val alarms = state.alarms.sortedWith(compareBy({ it.hour }, { it.minute })).map { a ->
                 val at = AlarmMath.nextTrigger(a, now, zone)
                 val next = if (at != null && at > now) "Rings ${AlarmText.whenAt(at, now, zone)}" else "Off"
                 val days = AlarmMath.daysLabel(a.days).replaceFirstChar(Char::uppercaseChar)
-                AlarmRow(a, AlarmMath.hhmm(a.hour, a.minute), listOfNotNull(a.label.ifBlank { null }, days, next).joinToString(" · "))
+                val detail = listOfNotNull(a.label.ifBlank { null }, days, next).joinToString(" · ")
+                AlarmRow(a, AlarmMath.hhmm(a.hour, a.minute), detail)
             }
             val timers = state.timers.map { t ->
                 TimerRow(t.id, t.label, AlarmMath.digital(AlarmMath.timerRemaining(t, elapsed, now, boot)),
@@ -64,7 +69,8 @@ data class ClockUi(
             val sw = state.stopwatch
             val total = AlarmMath.stopwatchTotal(sw, elapsed, now, boot)
             val laps = sw.laps.mapIndexed { i, at ->
-                "Lap ${i + 1}  ${AlarmMath.digital(at - (sw.laps.getOrNull(i - 1) ?: 0L))}  ·  ${AlarmMath.digital(at)}"
+                val split = AlarmMath.digital(at - (sw.laps.getOrNull(i - 1) ?: 0L))
+                "Lap ${i + 1}  $split  ·  ${AlarmMath.digital(at)}"
             }.reversed()
             val b = state.bedtime
             return ClockUi(
@@ -81,7 +87,10 @@ data class ClockUi(
     }
 }
 
-/** What the Clock screen can ask for. Every one calls the same [com.kevin.legion.clock.ClockController] the voice tool does. */
+/**
+ * What the Clock screen can ask for. Every one calls the same [com.kevin.legion.clock.ClockController]
+ * the voice tool does.
+ */
 data class ClockActions(
     val onTab: (Int) -> Unit = {},
     val onSaveAlarm: (ClockAlarm) -> Unit = {},
@@ -100,3 +109,11 @@ data class ClockActions(
 )
 
 enum class StopwatchVerb { START, STOP, LAP, RESET }
+
+data class RingActions(
+    val onDismiss: () -> Unit = {},
+    val onSnooze: () -> Unit = {},
+    val onBrief: () -> Unit = {},
+    val onAddMinute: () -> Unit = {},
+    val onClose: () -> Unit = {},
+)

@@ -7,7 +7,8 @@ import java.util.Locale
  * change never stretches one) and on the wall clock across a reboot. Each running or paused timer
  * keeps an ongoing countdown notification ([ClockNotices.timer]); done rings like an alarm.
  */
-@Suppress("TooManyFunctions") // one verb per voice action plus their shared helpers; split further it scatters one model
+// One verb per voice action plus their shared helpers; split further it scatters one model.
+@Suppress("TooManyFunctions", "ReturnCount")
 class TimerOps(private val core: ClockCore) {
 
     /** The label the screen and notification buttons pass to name one timer exactly. */
@@ -89,7 +90,9 @@ class TimerOps(private val core: ClockCore) {
     fun rearm() {
         val boot = core.time.bootCount()
         val timers = core.edit { s ->
-            val next = s.timers.map { t -> if (t.state == TimerState.RUNNING && t.bootCount != boot) running(t, remaining(t)) else t }
+            val next = s.timers.map { t ->
+                if (t.state == TimerState.RUNNING && t.bootCount != boot) running(t, remaining(t)) else t
+            }
             s.copy(timers = next) to next
         }
         timers.forEach(::publish)

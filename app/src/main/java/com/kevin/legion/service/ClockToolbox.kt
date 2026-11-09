@@ -70,34 +70,47 @@ object ClockToolbox {
         return JSONObject().put("success", r.ok).put("message", r.message)
     }
 
+    /** The arguments every action may read. */
+    private data class Args(val time: String?, val days: String, val label: String?, val seconds: Long)
+
+    private val handlers: Map<String, (ClockController, Args) -> ClockResult> = mapOf(
+        "alarm_set" to { c, a -> setAlarm(c, a) },
+        "alarm_cancel" to { c, a -> c.alarms.cancel(a.time, a.label) },
+        "alarm_list" to { c, _ -> c.alarms.list() },
+        "timer_start" to { c, a -> c.timers.start(a.seconds, a.label) },
+        "timer_pause" to { c, a -> c.timers.pause(a.label) },
+        "timer_resume" to { c, a -> c.timers.resume(a.label) },
+        "timer_cancel" to { c, a -> c.timers.cancel(a.label) },
+        "timer_left" to { c, a -> c.timers.left(a.label) },
+        "stopwatch_start" to { c, _ -> c.stopwatch.start() },
+        "stopwatch_stop" to { c, _ -> c.stopwatch.stop() },
+        "stopwatch_lap" to { c, _ -> c.stopwatch.lap() },
+        "stopwatch_reset" to { c, _ -> c.stopwatch.reset() },
+        "bedtime_on" to { c, a -> c.bedtime.voiceOn(a.time) },
+        "bedtime_off" to { c, _ -> c.bedtime.voiceOff() },
+    )
+
     /** One action, parsed. Pure over the controller so it is tested without Android. */
     internal fun run(clock: ClockController, args: JSONObject): ClockResult {
-        val label = args.optString("label").takeIf { it.isNotBlank() }
-        val time = args.optString("time").takeIf { it.isNotBlank() }
-        return when (val action = args.optString("action")) {
-            "alarm_set" -> setAlarm(clock, time, args.optString("days"), label)
-            "alarm_cancel" -> clock.alarms.cancel(time, label)
-            "alarm_list" -> clock.alarms.list()
-            "timer_start" -> clock.timers.start(args.optLong("seconds", 0L), label)
-            "timer_pause" -> clock.timers.pause(label)
-            "timer_resume" -> clock.timers.resume(label)
-            "timer_cancel" -> clock.timers.cancel(label)
-            "timer_left" -> clock.timers.left(label)
-            "stopwatch_start" -> clock.stopwatch.start()
-            "stopwatch_stop" -> clock.stopwatch.stop()
-            "stopwatch_lap" -> clock.stopwatch.lap()
-            "stopwatch_reset" -> clock.stopwatch.reset()
-            "bedtime_on" -> clock.bedtime.voiceOn(time)
-            "bedtime_off" -> clock.bedtime.voiceOff()
-            else -> ClockResult(false, "\"$action\" is not a clock action. Nothing was changed.")
-        }
+        val action = args.optString("action")
+        val handler = handlers[action]
+            ?: return ClockResult(false, "\"$action\" is not a clock action. Nothing was changed.")
+        val parsed = Args(
+            time = args.optString("time").takeIf { it.isNotBlank() },
+            days = args.optString("days"),
+            label = args.optString("label").takeIf { it.isNotBlank() },
+            seconds = args.optLong("seconds", 0L),
+        )
+        return handler(clock, parsed)
     }
 
-    private fun setAlarm(clock: ClockController, time: String?, daysRaw: String, label: String?): ClockResult {
-        val hm = time?.let(AlarmMath::parseTime)
-            ?: return ClockResult(false, "An alarm needs a time of day, like 07:00. Nothing was set.")
-        val days = AlarmMath.parseDays(daysRaw)
-            ?: return ClockResult(false, "\"$daysRaw\" is not a set of days. Nothing was set.")
-        return clock.alarms.set(hm.first, hm.second, days, label.orEmpty())
+    private fun setAlarm(clock: ClockController, a: Args): ClockResult {
+        val hm = a.time?.let(AlarmMath::parseTime)
+        val days = AlarmMath.parseDays(a.days)
+        return when {
+            hm == null -> ClockResult(false, "An alarm needs a time of day, like 07:00. Nothing was set.")
+            days == null -> ClockResult(false, "\"${a.days}\" is not a set of days. Nothing was set.")
+            else -> clock.alarms.set(hm.first, hm.second, days, a.label.orEmpty())
+        }
     }
 }

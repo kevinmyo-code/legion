@@ -40,7 +40,8 @@ class StopwatchOps(private val core: ClockCore) {
             s.copy(stopwatch = next) to next.laps
         }
         val split = laps.last() - (laps.dropLast(1).lastOrNull() ?: 0L)
-        return ClockResult(true, "Lap ${laps.size}: ${AlarmMath.spokenDuration(split)}, total ${AlarmMath.spokenDuration(laps.last())}.")
+        val total = AlarmMath.spokenDuration(laps.last())
+        return ClockResult(true, "Lap ${laps.size}: ${AlarmMath.spokenDuration(split)}, total $total.")
     }
 
     fun reset(): ClockResult {

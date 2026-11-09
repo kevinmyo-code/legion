@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,14 +24,6 @@ import com.kevin.legion.clock.ClockDefaults
 import com.kevin.legion.clock.RingKind
 import com.kevin.legion.clock.RingRequest
 import com.kevin.legion.ui.theme.soft.SoftColors
-
-data class RingActions(
-    val onDismiss: () -> Unit = {},
-    val onSnooze: () -> Unit = {},
-    val onBrief: () -> Unit = {},
-    val onAddMinute: () -> Unit = {},
-    val onClose: () -> Unit = {},
-)
 
 /**
  * What rings, big. Dismiss is the largest target; Brief me sits under it (ticket 07) and only for
@@ -77,14 +68,18 @@ private fun BigButton(text: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         shape = RoundedCornerShape(32.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = SoftColors.primaryContainer, contentColor = SoftColors.onPrimaryContainer),
+        colors = primaryColors(),
         modifier = Modifier.fillMaxWidth().height(72.dp),
     ) { Text(text, fontSize = 22.sp) }
 }
 
 @Composable
 private fun WideOutline(text: String, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(28.dp),
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+    ) {
         Text(text, color = SoftColors.text, fontSize = 18.sp)
     }
 }

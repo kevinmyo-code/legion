@@ -16,9 +16,12 @@ import java.util.Locale
  * (02:30 that does not exist rings at 03:30); a time inside the fall-back overlap rings once, at
  * the earlier offset.
  */
+@Suppress("TooManyFunctions") // one pure helper per clock rule; splitting them scatters the arithmetic
 object AlarmMath {
 
     private const val DAYS_TO_SEARCH = 8L
+    private const val DAY_ABBREVIATION = 3
+    private const val MIN_DAY_TOKEN = 2
     private const val HOURS_PER_HALF_DAY = 12
     private const val SECONDS_PER_MINUTE = 60L
     private const val MINUTES_PER_HOUR = 60L
@@ -29,6 +32,7 @@ object AlarmMath {
     val EVERY_DAY: Set<DayOfWeek> = DayOfWeek.entries.toSet()
 
     /** The instant [alarm] rings next, or null when it is off. A one-off's instant may be past. */
+    @Suppress("ReturnCount") // snooze, one-off and repeating each answer in their own line
     fun nextTrigger(alarm: ClockAlarm, nowMs: Long, zone: ZoneId): Long? {
         if (!alarm.enabled) return null
         alarm.snoozedUntilMs?.let { if (it > nowMs) return it }
@@ -89,7 +93,9 @@ object AlarmMath {
     }
 
     private fun dayOf(token: String): DayOfWeek? =
-        DayOfWeek.entries.firstOrNull { it.name.lowercase(Locale.US).startsWith(token.take(3)) && token.length >= 2 }
+        DayOfWeek.entries.firstOrNull {
+            token.length >= MIN_DAY_TOKEN && it.name.lowercase(Locale.US).startsWith(token.take(DAY_ABBREVIATION))
+        }
 
     /** "weekdays", "every day", "Mon, Wed", or "once". */
     fun daysLabel(days: Set<DayOfWeek>): String = when (days) {
@@ -97,19 +103,22 @@ object AlarmMath {
         EVERY_DAY -> "every day"
         WEEKDAYS -> "weekdays"
         WEEKEND -> "weekends"
-        else -> days.sorted().joinToString(", ") { it.name.take(3).lowercase(Locale.US).replaceFirstChar(Char::uppercaseChar) }
+        else -> days.sorted().joinToString(", ") { d ->
+            d.name.take(DAY_ABBREVIATION).lowercase(Locale.US).replaceFirstChar(Char::uppercaseChar)
+        }
     }
 
     /** "07:30". The clock's own 24-hour form, which is what the model sends back. */
     fun hhmm(hour: Int, minute: Int): String = String.format(Locale.US, "%02d:%02d", hour, minute)
 
     /** Time left on [timer]: elapsed realtime within its boot, the wall clock across a reboot. */
-    fun timerRemaining(timer: ClockTimer, nowElapsed: Long, nowWallMs: Long, bootCount: Int): Long = when (timer.state) {
-        TimerState.PAUSED -> timer.remainingMs
-        TimerState.RINGING -> 0L
-        TimerState.RUNNING ->
-            if (timer.bootCount == bootCount) timer.endsAtElapsed - nowElapsed else timer.endsAtWallMs - nowWallMs
-    }.coerceAtLeast(0L)
+    fun timerRemaining(timer: ClockTimer, nowElapsed: Long, nowWallMs: Long, bootCount: Int): Long =
+        when (timer.state) {
+            TimerState.PAUSED -> timer.remainingMs
+            TimerState.RINGING -> 0L
+            TimerState.RUNNING ->
+                if (timer.bootCount == bootCount) timer.endsAtElapsed - nowElapsed else timer.endsAtWallMs - nowWallMs
+        }.coerceAtLeast(0L)
 
     /** Total on the stopwatch now. Across a reboot the running stretch is measured on the wall clock. */
     fun stopwatchTotal(sw: Stopwatch, nowElapsed: Long, nowWallMs: Long, bootCount: Int): Long {
@@ -140,6 +149,10 @@ object AlarmMath {
         val h = total / (SECONDS_PER_MINUTE * MINUTES_PER_HOUR)
         val m = total / SECONDS_PER_MINUTE % MINUTES_PER_HOUR
         val s = total % SECONDS_PER_MINUTE
-        return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s) else String.format(Locale.US, "%d:%02d", m, s)
+        return if (h > 0) {
+            String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+        } else {
+            String.format(Locale.US, "%d:%02d", m, s)
+        }
     }
 }

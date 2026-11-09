@@ -46,6 +46,9 @@ import com.kevin.legion.clock.ClockAlarm
 import com.kevin.legion.ui.theme.soft.SoftColors
 import java.time.DayOfWeek
 
+private const val SECONDS_PER_MINUTE = 60L
+private const val MAX_DIGITS = 3
+
 @Composable
 internal fun StopwatchPane(sw: StopwatchRow, onVerb: (StopwatchVerb) -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -86,7 +89,7 @@ internal fun BedtimePane(b: BedtimeRow, problem: ProblemRow?, actions: ClockActi
             Switch(checked = b.enabled, onCheckedChange = { actions.onSaveBedtime(it, time.first, time.second, days) })
         }
         TextButton(onClick = { picking = true }) {
-            Text(AlarmMath.hhmm(time.first, time.second), color = SoftColors.text, fontSize = 48.sp, fontWeight = FontWeight.Light)
+            BigTime(time, size = 48)
         }
         DayChips(days) { days = it }
         PrimaryButton("Save schedule") { actions.onSaveBedtime(true, time.first, time.second, days) }
@@ -97,7 +100,7 @@ internal fun BedtimePane(b: BedtimeRow, problem: ProblemRow?, actions: ClockActi
         }
     }
     if (picking) {
-        TimeDialog(time.first, time.second, onPick = { h, m -> time = h to m; picking = false }, onDismiss = { picking = false })
+        TimeDialog(time, onPick = { time = it; picking = false }, onDismiss = { picking = false })
     }
 }
 
@@ -110,11 +113,12 @@ internal fun DayChips(days: Set<DayOfWeek>, onChange: (Set<DayOfWeek>) -> Unit) 
             Box(
                 Modifier.size(36.dp).clip(CircleShape)
                     .background(if (on) SoftColors.primaryContainer else SoftColors.cardHighest)
-                    .toggleable(value = on, role = Role.Checkbox, onValueChange = { onChange(if (on) days - d else days + d) })
+                    .toggleable(value = on, role = Role.Checkbox) { onChange(if (on) days - d else days + d) }
                     .semantics { contentDescription = name },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(d.name.take(1), color = if (on) SoftColors.onPrimaryContainer else SoftColors.text2, fontSize = 13.sp)
+                val ink = if (on) SoftColors.onPrimaryContainer else SoftColors.text2
+                Text(d.name.take(1), color = ink, fontSize = 13.sp)
             }
         }
     }
@@ -134,16 +138,18 @@ internal fun AlarmEditor(alarm: ClockAlarm, onSave: (ClockAlarm) -> Unit, onDele
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { picking = true }) {
-                    Text(AlarmMath.hhmm(time.first, time.second), color = SoftColors.text, fontSize = 44.sp, fontWeight = FontWeight.Light)
+                    BigTime(time, size = 44)
                 }
                 DayChips(days) { days = it }
-                Text(if (days.isEmpty()) "Rings once" else "Repeats ${AlarmMath.daysLabel(days)}", color = SoftColors.text2, fontSize = 13.sp)
-                OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Label") }, singleLine = true)
+                val repeats = if (days.isEmpty()) "Rings once" else "Repeats ${AlarmMath.daysLabel(days)}"
+                Text(repeats, color = SoftColors.text2, fontSize = 13.sp)
+                OutlinedTextField(label, { label = it }, label = { Text("Label") }, singleLine = true)
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(alarm.copy(hour = time.first, minute = time.second, days = days, label = label.trim(), enabled = true))
+                val (h, m) = time
+                onSave(alarm.copy(hour = h, minute = m, days = days, label = label.trim(), enabled = true))
             }) { Text("Save", color = SoftColors.primary) }
         },
         dismissButton = {
@@ -151,18 +157,20 @@ internal fun AlarmEditor(alarm: ClockAlarm, onSave: (ClockAlarm) -> Unit, onDele
             else TextButton(onClick = onDismiss) { Text("Cancel", color = SoftColors.text2) }
         },
     )
-    if (picking) TimeDialog(time.first, time.second, onPick = { h, m -> time = h to m; picking = false }, onDismiss = { picking = false })
+    if (picking) TimeDialog(time, onPick = { time = it; picking = false }, onDismiss = { picking = false })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TimeDialog(hour: Int, minute: Int, onPick: (Int, Int) -> Unit, onDismiss: () -> Unit) {
-    val state = rememberTimePickerState(initialHour = hour, initialMinute = minute, is24Hour = true)
+internal fun TimeDialog(time: Pair<Int, Int>, onPick: (Pair<Int, Int>) -> Unit, onDismiss: () -> Unit) {
+    val state = rememberTimePickerState(initialHour = time.first, initialMinute = time.second, is24Hour = true)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SoftColors.cardHigh,
         text = { TimePicker(state = state) },
-        confirmButton = { TextButton(onClick = { onPick(state.hour, state.minute) }) { Text("OK", color = SoftColors.primary) } },
+        confirmButton = {
+            TextButton(onClick = { onPick(state.hour to state.minute) }) { Text("OK", color = SoftColors.primary) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = SoftColors.text2) } },
     )
 }
@@ -173,7 +181,7 @@ internal fun TimerEditor(onStart: (Long, String) -> Unit, onDismiss: () -> Unit)
     var minutes by remember { mutableStateOf("5") }
     var seconds by remember { mutableStateOf("0") }
     var label by remember { mutableStateOf("") }
-    val total = (minutes.toLongOrNull() ?: 0L) * 60 + (seconds.toLongOrNull() ?: 0L)
+    val total = (minutes.toLongOrNull() ?: 0L) * SECONDS_PER_MINUTE + (seconds.toLongOrNull() ?: 0L)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SoftColors.cardHigh,
@@ -184,11 +192,13 @@ internal fun TimerEditor(onStart: (Long, String) -> Unit, onDismiss: () -> Unit)
                     NumberField(minutes, "Minutes", Modifier.weight(1f)) { minutes = it }
                     NumberField(seconds, "Seconds", Modifier.weight(1f)) { seconds = it }
                 }
-                OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Name (optional)") }, singleLine = true)
+                OutlinedTextField(label, { label = it }, label = { Text("Name (optional)") }, singleLine = true)
             }
         },
         confirmButton = {
-            TextButton(onClick = { onStart(total, label) }, enabled = total > 0) { Text("Start", color = SoftColors.primary) }
+            TextButton(onClick = { onStart(total, label) }, enabled = total > 0) {
+                Text("Start", color = SoftColors.primary)
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = SoftColors.text2) } },
     )
@@ -198,7 +208,7 @@ internal fun TimerEditor(onStart: (Long, String) -> Unit, onDismiss: () -> Unit)
 private fun NumberField(value: String, label: String, modifier: Modifier, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
-        onValueChange = { v -> onChange(v.filter(Char::isDigit).take(3)) },
+        onValueChange = { v -> onChange(v.filter(Char::isDigit).take(MAX_DIGITS)) },
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -210,7 +220,19 @@ private fun NumberField(value: String, label: String, modifier: Modifier, onChan
 internal fun PrimaryButton(text: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        colors = ButtonDefaults.buttonColors(containerColor = SoftColors.primaryContainer, contentColor = SoftColors.onPrimaryContainer),
-        modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(SoftColors.ground),
+        colors = primaryColors(),
     ) { Text(text) }
+}
+
+@Composable
+internal fun primaryColors() =
+    ButtonDefaults.buttonColors(
+        containerColor = SoftColors.primaryContainer,
+        contentColor = SoftColors.onPrimaryContainer,
+    )
+
+@Composable
+private fun BigTime(time: Pair<Int, Int>, size: Int) {
+    val text = AlarmMath.hhmm(time.first, time.second)
+    Text(text, color = SoftColors.text, fontSize = size.sp, fontWeight = FontWeight.Light)
 }

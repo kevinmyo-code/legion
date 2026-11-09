@@ -71,7 +71,12 @@ class FakeEffects(
         else -> { quiet = true; BedtimeEffects.On.TurnedOn }
     }
     override fun quietOff(): String? { quiet = false; return null }
-    override fun feedOn(): BedtimeEffects.On = if (feed) BedtimeEffects.On.AlreadyOn else { feed = true; BedtimeEffects.On.TurnedOn }
+    override fun feedOn(): BedtimeEffects.On = if (feed) {
+        BedtimeEffects.On.AlreadyOn
+    } else {
+        feed = true
+        BedtimeEffects.On.TurnedOn
+    }
     override fun feedOff() { feed = false }
 }
 

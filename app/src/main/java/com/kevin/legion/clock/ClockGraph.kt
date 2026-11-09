@@ -66,7 +66,10 @@ class AndroidClockScheduler(private val context: Context) : ClockScheduler {
         val fire = fire(ClockFireReceiver.ACTION_ALARM, id)
         if (exactAllowed()) {
             val show = PendingIntent.getActivity(
-                context, id, ClockActivity.intent(context), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                context,
+                id,
+                ClockActivity.intent(context),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             am.setAlarmClock(AlarmManager.AlarmClockInfo(atMs, show), fire)
         } else {

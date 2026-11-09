@@ -107,7 +107,9 @@ class ClockActivity : ComponentActivity() {
     /** Runs a controller call off the main thread; a result's sentence becomes the notice. */
     private fun io(block: () -> ClockResult?) {
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching(block).getOrElse { ClockResult(false, "That did not work: ${it.message}") } }
+            val result = withContext(Dispatchers.IO) {
+                runCatching(block).getOrElse { ClockResult(false, "That did not work: ${it.message}") }
+            }
             result?.let { notice = it.message }
         }
     }
@@ -116,7 +118,7 @@ class ClockActivity : ComponentActivity() {
         val problem = if (key == "dnd") dnd else key.removePrefix("h").toIntOrNull()?.let { health.getOrNull(it) }
         val intent = problem?.intent ?: return
         runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            .onFailure { notice = "That settings page would not open on this phone. Find it under Settings, Apps, LEGION." }
+            .onFailure { notice = NO_SETTINGS_PAGE }
     }
 
     companion object {
@@ -126,6 +128,8 @@ class ClockActivity : ComponentActivity() {
         const val TAB_BEDTIME = 3
         private const val EXTRA_TAB = "tab"
         private const val TICK_MS = 500L
+        private const val NO_SETTINGS_PAGE =
+            "That settings page would not open on this phone. Find it under Settings, Apps, LEGION."
 
         fun intent(context: Context, tab: Int = TAB_ALARMS): Intent =
             Intent(context, ClockActivity::class.java).putExtra(EXTRA_TAB, tab)

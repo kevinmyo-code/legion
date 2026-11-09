@@ -48,11 +48,10 @@ fun ClockScreen(ui: ClockUi, actions: ClockActions) {
             ClockTopBar(actions.onClose)
             TabRow(selectedTabIndex = ui.tab, containerColor = SoftColors.ground, contentColor = SoftColors.primary) {
                 TABS.forEachIndexed { i, title ->
-                    Tab(
-                        selected = ui.tab == i,
-                        onClick = { actions.onTab(i) },
-                        text = { Text(title, maxLines = 1, softWrap = false, fontSize = 13.sp) },
-                    )
+                    // The content form of Tab carries no 16 dp side padding, so "Stopwatch" fits a quarter.
+                    Tab(selected = ui.tab == i, onClick = { actions.onTab(i) }) {
+                        Text(title, maxLines = 1, fontSize = 14.sp, modifier = Modifier.padding(vertical = 14.dp))
+                    }
                 }
             }
             ui.notice?.let { NoticeBar(it, actions.onDismissNotice) }
@@ -77,7 +76,10 @@ fun ClockScreen(ui: ClockUi, actions: ClockActions) {
                 containerColor = SoftColors.primaryContainer,
                 contentColor = SoftColors.onPrimaryContainer,
                 modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(20.dp),
-            ) { MsIcon(R.drawable.ms_add, if (ui.tab == 0) "New alarm" else "New timer", SoftColors.onPrimaryContainer) }
+            ) {
+                val what = if (ui.tab == ClockActivity.TAB_ALARMS) "New alarm" else "New timer"
+                MsIcon(R.drawable.ms_add, what, SoftColors.onPrimaryContainer)
+            }
         }
     }
     editing?.let { a ->
@@ -85,14 +87,19 @@ fun ClockScreen(ui: ClockUi, actions: ClockActions) {
             actions.onDeleteAlarm(a.id); editing = null
         }, onDismiss = { editing = null })
     }
-    if (newTimer) TimerEditor(onStart = { s, l -> actions.onStartTimer(s, l); newTimer = false }, onDismiss = { newTimer = false })
+    if (newTimer) {
+        TimerEditor(
+            onStart = { s, l -> actions.onStartTimer(s, l); newTimer = false },
+            onDismiss = { newTimer = false },
+        )
+    }
 }
 
 private val TABS = listOf("Alarms", "Timers", "Stopwatch", "Bedtime")
 
 @Composable
 private fun ClockTopBar(onClose: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose) {
             MsIcon(R.drawable.ms_arrow_back, "Close", SoftColors.text)
         }
@@ -115,7 +122,8 @@ internal fun NoticeBar(text: String, onDismiss: () -> Unit) {
 @Composable
 internal fun ProblemCard(p: ProblemRow, onFix: (String) -> Unit) {
     Column(
-        Modifier.fillMaxWidth().padding(16.dp, 6.dp).clip(RoundedCornerShape(12.dp)).background(SoftColors.alertContainer)
+        Modifier.fillMaxWidth().padding(16.dp, 6.dp).clip(RoundedCornerShape(12.dp))
+            .background(SoftColors.alertContainer)
             .padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 4.dp),
     ) {
         Text(p.sentence, color = SoftColors.text, fontSize = 14.sp, lineHeight = 20.sp)
@@ -147,7 +155,8 @@ private fun AlarmCard(row: AlarmRow, actions: ClockActions, onEdit: (ClockAlarm)
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(row.time, color = if (on) SoftColors.text else SoftColors.text3, fontSize = 40.sp, fontWeight = FontWeight.Light)
+            val ink = if (on) SoftColors.text else SoftColors.text3
+            Text(row.time, color = ink, fontSize = 40.sp, fontWeight = FontWeight.Light)
             Text(row.detail, color = if (on) SoftColors.text2 else SoftColors.text3, fontSize = 13.sp)
         }
         Switch(checked = on, onCheckedChange = { actions.onToggleAlarm(row.alarm.id, it) })
@@ -179,11 +188,14 @@ private fun TimerCard(row: TimerRow, actions: ClockActions) {
             row.paused -> "${row.left} · paused"
             else -> row.left
         }
-        Text(status, color = if (row.ringing) SoftColors.primary else SoftColors.text, fontSize = 40.sp, fontWeight = FontWeight.Light)
+        val ink = if (row.ringing) SoftColors.primary else SoftColors.text
+        Text(status, color = ink, fontSize = 40.sp, fontWeight = FontWeight.Light)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             if (!row.ringing) {
                 if (row.paused) {
-                    TextButton(onClick = { actions.onResumeTimer(row.id) }) { Text("Resume", color = SoftColors.primary) }
+                    TextButton(onClick = { actions.onResumeTimer(row.id) }) {
+                        Text("Resume", color = SoftColors.primary)
+                    }
                 } else {
                     TextButton(onClick = { actions.onPauseTimer(row.id) }) { Text("Pause", color = SoftColors.primary) }
                 }

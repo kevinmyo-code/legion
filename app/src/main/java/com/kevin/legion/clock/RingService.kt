@@ -59,7 +59,8 @@ class RingService : Service() {
                 .apply { acquire((ClockDefaults.AUTO_SILENCE_MIN + 1) * ClockDefaults.MINUTE_MS) }
         }
         sound.start()
-        handler.postDelayed({ silence(request) }, request.key(), ClockDefaults.AUTO_SILENCE_MIN * ClockDefaults.MINUTE_MS)
+        val after = ClockDefaults.AUTO_SILENCE_MIN * ClockDefaults.MINUTE_MS
+        handler.postDelayed({ silence(request) }, request.key(), after)
     }
 
     /** Rang out unanswered: an alarm is dismissed as missed, a timer is finished. */
@@ -113,7 +114,8 @@ class RingService : Service() {
             .recoverCatching {
                 // systemExempted refused (no exact-alarm grant): mediaPlayback is still a ring.
                 Log.w(TAG, "systemExempted refused, ringing as mediaPlayback", it)
-                ServiceCompat.startForeground(this, ClockNotifier.RING_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                val media = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                ServiceCompat.startForeground(this, ClockNotifier.RING_ID, n, media)
             }
             .onFailure { Log.e(TAG, "could not start the ring in the foreground", it) }
     }
@@ -168,11 +170,13 @@ class RingService : Service() {
         }
 
         private fun requestOf(i: Intent): RingRequest? {
-            val kind = runCatching { RingKind.valueOf(i.getStringExtra(EXTRA_KIND).orEmpty()) }.getOrNull() ?: return null
+            val kind = runCatching { RingKind.valueOf(i.getStringExtra(EXTRA_KIND).orEmpty()) }.getOrNull()
+                ?: return null
             return RingRequest(kind, i.getIntExtra(EXTRA_ID, -1), i.getStringExtra(EXTRA_LABEL).orEmpty())
         }
 
-        private fun RingRequest.key(): String = "${kind.name}:$id".intern() // interned: Handler matches tokens by identity
+        /** Interned: a Handler matches message tokens by identity. */
+        private fun RingRequest.key(): String = "${kind.name}:$id".intern()
     }
 }
 

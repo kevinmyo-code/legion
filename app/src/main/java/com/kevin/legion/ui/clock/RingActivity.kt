@@ -102,16 +102,18 @@ class RingActivity : ComponentActivity() {
     /** Said on this screen, because the strip's own refusal notice is behind the lock screen. */
     private fun briefRefusal(): String? = when {
         !GeminiKeyProvider.hasKey() -> "No brief: no Gemini key is saved. The alarm is dismissed."
-        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ->
-            "No brief: the microphone is not allowed for LEGION. The alarm is dismissed."
+        !micAllowed() -> "No brief: the microphone is not allowed for LEGION. The alarm is dismissed."
         !online() -> "No brief: the phone is offline. The alarm is dismissed."
         else -> null
     }
 
+    private fun micAllowed(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
     private fun online(): Boolean {
-        val cm = getSystemService(ConnectivityManager::class.java) ?: return true
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+        return cm == null || caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     }
 
     private fun openLegion() {
@@ -138,7 +140,9 @@ class RingActivity : ComponentActivity() {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         } else {
-            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            window.addFlags(flags)
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }

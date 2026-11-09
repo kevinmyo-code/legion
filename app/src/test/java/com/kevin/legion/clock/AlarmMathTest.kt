@@ -14,7 +14,8 @@ class AlarmMathTest {
     private val chicago = ZoneId.of("America/Chicago")
     private val newYork = ZoneId.of("America/New_York")
 
-    private fun ms(iso: String, zone: ZoneId = chicago) = ZonedDateTime.of(LocalDateTime.parse(iso), zone).toInstant().toEpochMilli()
+    private fun ms(iso: String, zone: ZoneId = chicago) =
+        ZonedDateTime.of(LocalDateTime.parse(iso), zone).toInstant().toEpochMilli()
 
     private fun alarm(h: Int, m: Int, days: Set<DayOfWeek> = emptySet(), date: LocalDate? = null) =
         ClockAlarm(id = 1, hour = h, minute = m, days = days, date = date)
@@ -41,7 +42,8 @@ class AlarmMathTest {
 
     @Test
     fun `an alarm that is off has no trigger`() {
-        assertNull(AlarmMath.nextTrigger(alarm(7, 0, AlarmMath.EVERY_DAY).copy(enabled = false), ms("2026-11-09T22:00"), chicago))
+        val off = alarm(7, 0, AlarmMath.EVERY_DAY).copy(enabled = false)
+        assertNull(AlarmMath.nextTrigger(off, ms("2026-11-09T22:00"), chicago))
     }
 
     @Test
@@ -66,7 +68,7 @@ class AlarmMathTest {
         val at = AlarmMath.nextTrigger(alarm(1, 30, AlarmMath.EVERY_DAY), ms("2026-11-01T00:00", newYork), newYork)
         assertEquals(java.time.OffsetDateTime.parse("2026-11-01T01:30-04:00").toInstant().toEpochMilli(), at)
         val next = AlarmMath.nextTrigger(alarm(1, 30, AlarmMath.EVERY_DAY), at!!, newYork)
-        assertEquals(ZonedDateTime.of(LocalDateTime.parse("2026-11-02T01:30"), newYork).toInstant().toEpochMilli(), next)
+        assertEquals(ms("2026-11-02T01:30", newYork), next)
     }
 
     @Test
@@ -114,7 +116,10 @@ class AlarmMathTest {
 
     @Test
     fun `a timer counts on elapsed time within its boot and on the wall clock after a reboot`() {
-        val t = ClockTimer(1, "pasta", 600_000, TimerState.RUNNING, 600_000, endsAtElapsed = 700_000, endsAtWallMs = 2_000_000, bootCount = 3)
+        val t = ClockTimer(
+            1, "pasta", 600_000, TimerState.RUNNING, 600_000,
+            endsAtElapsed = 700_000, endsAtWallMs = 2_000_000, bootCount = 3,
+        )
         assertEquals(200_000L, AlarmMath.timerRemaining(t, nowElapsed = 500_000, nowWallMs = 0, bootCount = 3))
         assertEquals(500_000L, AlarmMath.timerRemaining(t, nowElapsed = 10, nowWallMs = 1_500_000, bootCount = 4))
         assertEquals(0L, AlarmMath.timerRemaining(t, nowElapsed = 900_000, nowWallMs = 0, bootCount = 3))

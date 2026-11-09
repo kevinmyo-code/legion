@@ -28,6 +28,11 @@ class ClockAndroidTest {
         ClockGraph.reset()
     }
 
+    private fun oneAlarm() =
+        ClockRig(
+            store = MemoryClockStore(ClockState(alarms = listOf(ClockAlarm(1, 7, 0, AlarmMath.EVERY_DAY)), nextId = 2)),
+        )
+
     private fun install(rig: ClockRig) {
         ClockGraph.reset()
         ClockGraph.factory = { rig.clock }
@@ -42,7 +47,9 @@ class ClockAndroidTest {
             ),
             timers = listOf(ClockTimer(5, "tea", 180_000, TimerState.PAUSED, 90_000, 1, 2, 3)),
             stopwatch = Stopwatch(true, 10, 20, 30, 4, listOf(5L, 6L)),
-            bedtime = Bedtime(true, 23, 15, AlarmMath.WEEKEND, 20, active = true, quietByBedtime = true, feedByBedtime = false),
+            bedtime = Bedtime(
+                true, 23, 15, AlarmMath.WEEKEND, 20, active = true, quietByBedtime = true, feedByBedtime = false,
+            ),
             nextId = 6,
         )
         assertEquals(state, ClockJson.decode(ClockJson.encode(state)))
@@ -61,12 +68,12 @@ class ClockAndroidTest {
     @Test
     fun `every re-arm broadcast re-arms from the store, and nothing else does`() {
         for (action in ClockRearmReceiver.ACTIONS) {
-            val rig = ClockRig(store = MemoryClockStore(ClockState(alarms = listOf(ClockAlarm(1, 7, 0, AlarmMath.EVERY_DAY)), nextId = 2)))
+            val rig = oneAlarm()
             install(rig)
             ClockRearmReceiver().onReceive(context, Intent(action))
             assertEquals(action, rig.ms("2026-11-10T07:00"), rig.scheduler.alarms[1])
         }
-        val rig = ClockRig(store = MemoryClockStore(ClockState(alarms = listOf(ClockAlarm(1, 7, 0, AlarmMath.EVERY_DAY)), nextId = 2)))
+        val rig = oneAlarm()
         install(rig)
         ClockRearmReceiver().onReceive(context, Intent("com.example.SPOOF"))
         assertTrue(rig.scheduler.alarms.isEmpty())
@@ -74,22 +81,25 @@ class ClockAndroidTest {
 
     @Test
     fun `the fire receiver rings an armed alarm and ignores a deleted one`() {
-        val rig = ClockRig(store = MemoryClockStore(ClockState(alarms = listOf(ClockAlarm(1, 7, 0, AlarmMath.EVERY_DAY)), nextId = 2)))
+        val rig = oneAlarm()
         install(rig)
         val fire = { id: Int ->
-            ClockFireReceiver().onReceive(context, Intent(ClockFireReceiver.ACTION_ALARM).putExtra(ClockFireReceiver.EXTRA_ID, id))
+            val i = Intent(ClockFireReceiver.ACTION_ALARM).putExtra(ClockFireReceiver.EXTRA_ID, id)
+            ClockFireReceiver().onReceive(context, i)
         }
         fire(9)
         assertTrue(rig.ringer.ringing.isEmpty())
         fire(1)
         assertEquals(RingRequest(RingKind.ALARM, 1, "07:00"), rig.ringer.ringing.single())
-        ClockActionReceiver().onReceive(context, Intent(ClockActionReceiver.ACTION_DISMISS).putExtra(ClockFireReceiver.EXTRA_ID, 1))
+        val dismiss = Intent(ClockActionReceiver.ACTION_DISMISS).putExtra(ClockFireReceiver.EXTRA_ID, 1)
+        ClockActionReceiver().onReceive(context, dismiss)
         assertTrue(rig.ringer.ringing.isEmpty())
     }
 
     @Test
     fun `the bedtime fire starts bedtime and arms the next night`() {
-        val rig = ClockRig(time = FakeTime.at("2026-11-09T22:30"), store = MemoryClockStore(ClockState(bedtime = Bedtime(enabled = true))))
+        val store = MemoryClockStore(ClockState(bedtime = Bedtime(enabled = true)))
+        val rig = ClockRig(time = FakeTime.at("2026-11-09T22:30"), store = store)
         install(rig)
         ClockFireReceiver().onReceive(context, Intent(ClockFireReceiver.ACTION_BEDTIME))
         assertTrue(rig.store.load().bedtime.active)
@@ -106,13 +116,15 @@ class ClockAndroidTest {
     fun `the clock tool parses every action and says what happened`() {
         val rig = ClockRig()
         try {
-            assertTrue(tool(rig, "action" to "alarm_set", "time" to "6:30", "days" to "weekdays", "label" to "Work").getBoolean("success"))
+            val set = tool(rig, "action" to "alarm_set", "time" to "6:30", "days" to "weekdays", "label" to "Work")
+            assertTrue(set.getBoolean("success"))
             assertEquals(rig.ms("2026-11-10T06:30"), rig.scheduler.alarms[1])
             assertTrue(tool(rig, "action" to "alarm_list").getString("message").contains("06:30 weekdays, Work"))
             assertFalse(tool(rig, "action" to "alarm_set", "time" to "teatime").getBoolean("success"))
             assertFalse(tool(rig, "action" to "alarm_set", "time" to "7", "days" to "someday").getBoolean("success"))
             assertTrue(tool(rig, "action" to "timer_start", "seconds" to 300, "label" to "pasta").getBoolean("success"))
-            assertTrue(tool(rig, "action" to "timer_left", "label" to "pasta").getString("message").contains("5 minutes"))
+            val left = tool(rig, "action" to "timer_left", "label" to "pasta").getString("message")
+            assertTrue(left.contains("5 minutes"))
             assertTrue(tool(rig, "action" to "timer_pause").getBoolean("success"))
             assertTrue(tool(rig, "action" to "timer_resume").getBoolean("success"))
             assertTrue(tool(rig, "action" to "timer_cancel", "label" to "pasta").getBoolean("success"))
@@ -135,7 +147,8 @@ class ClockAndroidTest {
     fun `the clock declaration lists exactly the actions the tool handles`() {
         val decl = ClockToolbox.declarations().getJSONObject(0)
         assertEquals("clock", decl.getString("name"))
-        val enum = decl.getJSONObject("parameters").getJSONObject("properties").getJSONObject("action").getJSONArray("enum")
+        val props = decl.getJSONObject("parameters").getJSONObject("properties")
+        val enum = props.getJSONObject("action").getJSONArray("enum")
         val names = (0 until enum.length()).map { enum.getString(it) }
         assertEquals(ClockToolbox.ACTIONS, names)
         val rig = ClockRig()

@@ -782,7 +782,8 @@ class LiveSessionController(context: Context) {
             pendingPrompt = when {
                 // A reconnect inside a running conversation (turn detector fallback): just listen.
                 listenOnly -> null
-                opener != null -> if (live.isBlank()) opener else "(Current context, use naturally if relevant:\n$live)\n\n$opener"
+                opener != null && live.isBlank() -> opener
+                opener != null -> "(Current context, use naturally if relevant:\n$live)\n\n$opener"
                 isFirst -> firstGreetingOpener(appContext)
                 lostThread -> THREAD_LOST_PROMPT
                 live.isBlank() -> first

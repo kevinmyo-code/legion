@@ -24,6 +24,7 @@ class AndroidBedtimeEffects(private val context: Context) : BedtimeEffects {
 
     override fun unlocked(): Boolean = isUnlocked(context)
 
+    @Suppress("ReturnCount") // one exit per state Quiet can be in
     override fun quietOn(): BedtimeEffects.On {
         if (!unlocked()) return BedtimeEffects.On.Refused(LOCKED)
         if (QuietMode.isOn(context)) return BedtimeEffects.On.AlreadyOn
@@ -41,6 +42,7 @@ class AndroidBedtimeEffects(private val context: Context) : BedtimeEffects {
         else -> null
     }
 
+    @Suppress("ReturnCount") // one exit per state the switch can be in
     override fun feedOn(): BedtimeEffects.On {
         if (!unlocked()) return BedtimeEffects.On.Refused(LOCKED)
         val graph = (context.applicationContext as? MidnightApplication)?.dumb
@@ -58,7 +60,8 @@ class AndroidBedtimeEffects(private val context: Context) : BedtimeEffects {
     }
 
     companion object {
-        const val NEEDS_DND = "Quiet needs Do Not Disturb access for LEGION, so it stayed off. Grant it on the Clock's Bedtime tab."
+        const val NEEDS_DND =
+            "Quiet needs Do Not Disturb access for LEGION, so it stayed off. Grant it on the Clock's Bedtime tab."
         const val NEEDS_DND_OFF = "Quiet could not be turned off: Do Not Disturb access for LEGION was removed."
         const val LOCKED = "The phone has not been unlocked since it restarted."
 
@@ -72,6 +75,7 @@ class AndroidBedtimeEffects(private val context: Context) : BedtimeEffects {
  * What can stop the clock ringing, each as a sentence and the system page that fixes it (ADR 0079).
  * The Clock screen shows every one that applies, in words, never as a silent colour.
  */
+@Suppress("ReturnCount") // each check: not applicable, fine, or the problem
 object ClockHealth {
 
     data class Problem(val sentence: String, val button: String, val intent: Intent)
@@ -89,7 +93,8 @@ object ClockHealth {
         val nm = context.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || nm.isNotificationPolicyAccessGranted) return null
         return Problem(
-            "Bedtime turns Quiet on, which needs Do Not Disturb access for LEGION. Without it only the feed block comes on.",
+            "Bedtime turns Quiet on, which needs Do Not Disturb access for LEGION. " +
+                "Without it only the feed block comes on.",
             "Grant access",
             Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS),
         )

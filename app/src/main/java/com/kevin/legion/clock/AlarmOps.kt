@@ -13,6 +13,7 @@ import java.util.Locale
  * **A one-off missed while the phone was off is reported, never rung late** - unless it is within
  * [ClockDefaults.AUTO_SILENCE_MIN], the window it would still have been ringing in.
  */
+@Suppress("TooManyFunctions") // the voice verbs plus the screen's edit, toggle and delete, over one model
 class AlarmOps(private val core: ClockCore, private val onDismissed: () -> Unit) {
 
     /** Voice and screen: a new alarm. [days] empty = once. */
@@ -28,7 +29,8 @@ class AlarmOps(private val core: ClockCore, private val onDismissed: () -> Unit)
             withId.copy(alarms = withId.alarms + a) to a
         }
         val at = arm(alarm)
-        return ClockResult(true, "Alarm set for ${AlarmText.describe(alarm)}. It rings ${AlarmText.whenAt(at, now, zone)}.")
+        val rings = AlarmText.whenAt(at, now, zone)
+        return ClockResult(true, "Alarm set for ${AlarmText.describe(alarm)}. It rings $rings.")
     }
 
     /** The screen's edit sheet: replaces [alarm] by id (or adds it when id is 0) and re-arms it. */
@@ -39,7 +41,8 @@ class AlarmOps(private val core: ClockCore, private val onDismissed: () -> Unit)
             val a = alarm.copy(
                 id = id,
                 snoozedUntilMs = null,
-                date = if (alarm.days.isEmpty()) AlarmMath.oneOffDate(alarm.hour, alarm.minute, now, core.time.zone()) else null,
+                date = alarm.takeIf { it.days.isEmpty() }
+                    ?.let { AlarmMath.oneOffDate(it.hour, it.minute, now, core.time.zone()) },
             )
             withId.copy(alarms = withId.alarms.filterNot { it.id == id } + a) to a
         }
@@ -88,7 +91,8 @@ class AlarmOps(private val core: ClockCore, private val onDismissed: () -> Unit)
         if (alarms.isEmpty()) return ClockResult(true, "There are no alarms.")
         return ClockResult(true, alarms.joinToString("; ") { a ->
             val at = AlarmMath.nextTrigger(a, now, zone)
-            AlarmText.describe(a) + if (at != null && at > now) ", rings ${AlarmText.whenAt(at, now, zone)}" else ", off"
+            val rings = if (at != null && at > now) ", rings ${AlarmText.whenAt(at, now, zone)}" else ", off"
+            AlarmText.describe(a) + rings
         } + ".")
     }
 
@@ -140,7 +144,8 @@ class AlarmOps(private val core: ClockCore, private val onDismissed: () -> Unit)
                 val at = AlarmMath.nextTrigger(a, now, zone)
                 a.enabled && !a.repeats && at != null && at < now - grace
             }
-            s.copy(alarms = s.alarms.map { a -> if (a in gone) a.copy(enabled = false, snoozedUntilMs = null) else a }) to gone
+            val next = s.alarms.map { a -> if (a in gone) a.copy(enabled = false, snoozedUntilMs = null) else a }
+            s.copy(alarms = next) to gone
         }
         missed.forEach { core.notices.missedAlarm(it); core.scheduler.cancelAlarm(it.id) }
         core.read().alarms.forEach { arm(it) }
@@ -172,10 +177,12 @@ class AlarmOps(private val core: ClockCore, private val onDismissed: () -> Unit)
 /** How an alarm is said and shown. */
 object AlarmText {
     private const val MINUTES_PER_DAY = 24 * 60L
+    private const val DAYS_CAP = 8
 
     /** "07:00 weekdays, Gym" or "07:00 once". */
     fun describe(a: ClockAlarm): String =
-        AlarmMath.hhmm(a.hour, a.minute) + " " + AlarmMath.daysLabel(a.days) + if (a.label.isNotBlank()) ", ${a.label}" else ""
+        AlarmMath.hhmm(a.hour, a.minute) + " " + AlarmMath.daysLabel(a.days) +
+            if (a.label.isNotBlank()) ", ${a.label}" else ""
 
     /** "today at 07:00, in 3 hours 5 minutes", "tomorrow at 07:00, ...", "on Friday at 07:00, ...". */
     fun whenAt(at: Long?, now: Long, zone: ZoneId): String {
@@ -199,6 +206,6 @@ object AlarmText {
 
     private fun roundUpToMinute(ms: Long): Long {
         val m = ClockDefaults.MINUTE_MS
-        return ((ms + m - 1) / m * m).coerceAtMost(MINUTES_PER_DAY * 8 * m)
+        return ((ms + m - 1) / m * m).coerceAtMost(MINUTES_PER_DAY * DAYS_CAP * m)
     }
 }

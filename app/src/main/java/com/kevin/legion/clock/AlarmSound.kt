@@ -106,7 +106,8 @@ class AlarmSound(private val context: Context) {
         handler.post(loop)
     }
 
-    @Suppress("DEPRECATION") // vibrate(effect, attributes) is the API 26-32 form; 33's VibrationAttributes adds nothing here
+    // vibrate(effect, attributes) is the API 26-32 form; 33's VibrationAttributes adds nothing here.
+    @Suppress("DEPRECATION")
     private fun vibrate() {
         val v = context.getSystemService(Vibrator::class.java) ?: return
         if (!v.hasVibrator()) return

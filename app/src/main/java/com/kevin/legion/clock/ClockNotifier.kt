@@ -55,7 +55,8 @@ class ClockNotifier(private val context: Context) : ClockNotices {
     override fun windDown(bedtime: Bedtime, nextAlarm: String?) {
         ensureChannels(context)
         val alarm = nextAlarm?.let { "Next alarm: $it." } ?: "No alarm is set."
-        val text = "Bedtime at ${AlarmMath.hhmm(bedtime.hour, bedtime.minute)}, in ${bedtime.windDownMin} minutes. $alarm"
+        val at = AlarmMath.hhmm(bedtime.hour, bedtime.minute)
+        val text = "Bedtime at $at, in ${bedtime.windDownMin} minutes. $alarm"
         post(WIND_DOWN_ID, info("Time to wind down", text).build())
     }
 
@@ -114,7 +115,8 @@ class ClockNotifier(private val context: Context) : ClockNotices {
                 description = "Running timers, with Pause and Cancel."
                 setSound(null, null)
             }
-            val info = NotificationChannel(CHANNEL_INFO, "Clock notices", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            val notices = NotificationManager.IMPORTANCE_DEFAULT
+            val info = NotificationChannel(CHANNEL_INFO, "Clock notices", notices).apply {
                 description = "Missed alarms, wind-down and bedtime."
             }
             nm.createNotificationChannels(listOf(ring, timers, info))

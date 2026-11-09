@@ -47,7 +47,9 @@ class ClockScreenshotTest {
             ClockAlarm(3, 7, 15, emptySet(), "Flight", date = LocalDate.parse("2026-11-10")),
         ),
         timers = listOf(
-            ClockTimer(4, "pasta", 600_000, TimerState.RUNNING, 600_000, endsAtElapsed = time.elapsed + 252_000, bootCount = 1),
+            ClockTimer(
+                4, "pasta", 600_000, TimerState.RUNNING, 600_000, endsAtElapsed = time.elapsed + 252_000, bootCount = 1,
+            ),
             ClockTimer(5, "laundry", 3_600_000, TimerState.PAUSED, 2_065_000),
         ),
         stopwatch = Stopwatch(running = false, accumulatedMs = 95_400, laps = listOf(65_000L, 95_000L)),
@@ -69,7 +71,11 @@ class ClockScreenshotTest {
         0,
         "clock-alarms-battery.png",
         problems = listOf(
-            ProblemRow("Battery optimisation is on for LEGION. Samsung may put it to sleep and an alarm may not ring.", "Exempt LEGION", "h0"),
+            ProblemRow(
+                "Battery optimisation is on for LEGION. Samsung may put it to sleep and an alarm may not ring.",
+                "Exempt LEGION",
+                "h0",
+            ),
         ),
     )
 
@@ -83,13 +89,18 @@ class ClockScreenshotTest {
     fun `clock - bedtime without DND access`() = clock(
         3,
         "clock-bedtime.png",
-        dnd = ProblemRow("Bedtime turns Quiet on, which needs Do Not Disturb access for LEGION. Without it only the feed block comes on.", "Grant access", "dnd"),
+        dnd = ProblemRow(
+            "Bedtime turns Quiet on, which needs Do Not Disturb access for LEGION. " +
+                "Without it only the feed block comes on.",
+            "Grant access",
+            "dnd",
+        ),
     )
 
     @Test
     fun `ring - alarm with Brief me`() {
         composeTestRule.setContent {
-            SoftTheme { RingScreen("07:00", RingRequest(RingKind.ALARM, 1, "Work"), canBrief = true, problem = null, actions = RingActions()) }
+            SoftTheme { RingScreen("07:00", RingRequest(RingKind.ALARM, 1, "Work"), true, null, RingActions()) }
         }
         composeTestRule.onRoot().captureRoboImage("clock-ring-alarm.png")
     }
@@ -97,7 +108,7 @@ class ClockScreenshotTest {
     @Test
     fun `ring - timer done`() {
         composeTestRule.setContent {
-            SoftTheme { RingScreen("18:42", RingRequest(RingKind.TIMER, 4, "pasta"), canBrief = true, problem = null, actions = RingActions()) }
+            SoftTheme { RingScreen("18:42", RingRequest(RingKind.TIMER, 4, "pasta"), true, null, RingActions()) }
         }
         composeTestRule.onRoot().captureRoboImage("clock-ring-timer.png")
     }

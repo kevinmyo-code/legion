@@ -13,9 +13,12 @@ package com.kevin.legion.clock
 class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffects) {
 
     /** The Bedtime tab's save, and voice with a time. */
+    @Suppress("ReturnCount") // one worded exit each
     fun schedule(enabled: Boolean, hour: Int, minute: Int, days: Set<java.time.DayOfWeek>): ClockResult {
         if (enabled && days.isEmpty()) return ClockResult(false, "Bedtime needs at least one day. Nothing was changed.")
-        core.edit { s -> s.copy(bedtime = s.bedtime.copy(enabled = enabled, hour = hour, minute = minute, days = days)) to Unit }
+        core.edit { s ->
+            s.copy(bedtime = s.bedtime.copy(enabled = enabled, hour = hour, minute = minute, days = days)) to Unit
+        }
         rearm()
         if (!enabled) return ClockResult(true, "The bedtime schedule is off.")
         return ClockResult(true, "Bedtime is set for ${AlarmMath.hhmm(hour, minute)} ${AlarmMath.daysLabel(days)}, " +
@@ -23,6 +26,7 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
     }
 
     /** Voice "bedtime on": with [timeRaw], a nightly schedule; without, bedtime starts now. */
+    @Suppress("ReturnCount") // one worded exit each
     fun voiceOn(timeRaw: String?): ClockResult {
         if (timeRaw.isNullOrBlank()) return startNow()
         val (h, m) = AlarmMath.parseTime(timeRaw)
@@ -55,7 +59,8 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
                 ),
             ) to Unit
         }
-        val problems = listOf(quiet, feed).filterIsInstance<BedtimeEffects.On.Refused>().joinToString(" ") { it.message }
+        val problems = listOf(quiet, feed).filterIsInstance<BedtimeEffects.On.Refused>()
+            .joinToString(" ") { it.message }
         val until = nextAlarm()?.let { "until the alarm $it is dismissed" } ?: "until you end it; no alarm is set"
         val sentence = "Bedtime is on: Quiet and the feed block, $until." + if (problems.isEmpty()) "" else " $problems"
         core.notices.bedtimeOn(sentence)
@@ -63,6 +68,7 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
     }
 
     /** Turns off what bedtime turned on. Before the first unlock the restore waits for it. */
+    @Suppress("ReturnCount") // one worded exit each
     fun end(): ClockResult {
         val b = core.read().bedtime
         if (!b.active && !b.pendingEnd) return ClockResult(false, "Bedtime is not on. Nothing was changed.")
@@ -74,7 +80,8 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
         val quietProblem = if (b.quietByBedtime) effects.quietOff() else null
         if (b.feedByBedtime) effects.feedOff()
         core.edit { s ->
-            s.copy(bedtime = s.bedtime.copy(active = false, pendingEnd = false, quietByBedtime = false, feedByBedtime = false)) to Unit
+            val off = s.bedtime.copy(active = false, pendingEnd = false, quietByBedtime = false, feedByBedtime = false)
+            s.copy(bedtime = off) to Unit
         }
         val kept = listOfNotNull(
             "Quiet".takeIf { !b.quietByBedtime },
@@ -101,7 +108,7 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
     fun rearm() {
         val b = core.read().bedtime
         if (b.pendingEnd && effects.unlocked()) end()
-        if (b.active) core.notices.bedtimeOn("Bedtime is on: Quiet and the feed block, until the next alarm is dismissed.")
+        if (b.active) core.notices.bedtimeOn(STILL_ON)
         val now = core.time.nowMs()
         val start = if (b.enabled) AlarmMath.nextOnDays(b.hour, b.minute, b.days, now, core.time.zone()) else null
         if (start == null) {
@@ -110,6 +117,10 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
         }
         val windDown = (start - b.windDownMin * ClockDefaults.MINUTE_MS).takeIf { it > now }
         core.scheduler.armBedtime(windDown, start)
+    }
+
+    private companion object {
+        const val STILL_ON = "Bedtime is on: Quiet and the feed block, until the next alarm is dismissed."
     }
 
     /** "07:00 tomorrow" for the soonest enabled alarm, or null. */

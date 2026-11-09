@@ -44,6 +44,7 @@ class PrefsClockStore(private val prefs: SharedPreferences) : ClockStore {
 }
 
 /** [ClockState] to and from JSON. Unknown or missing fields fall back to the model's defaults. */
+@Suppress("TooManyFunctions") // an encode and a decode per model type
 object ClockJson {
 
     fun encode(s: ClockState): String = JSONObject()
