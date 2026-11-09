@@ -14,7 +14,7 @@ import androidx.room.Update
  *
  * **Why a table rather than a log line.** On 2026-08-20 the assistant said the Jeep was at 142k
  * when the record said 227,612, and it could not be diagnosed at all: logcat had rolled,
- * `episodic_turns` is emptied by [com.kevin.legion.ai.MemoryConsolidator] once it has distilled a
+ * `episodic_turns` is emptied by `MemoryConsolidator` (deleted 2026-11-09) once it has distilled a
  * drive, and nothing anywhere recorded what the assistant had said or which memories it was
  * holding when it said it. An audit that survives only until the log buffer wraps is an audit that
  * is never there on the day something goes wrong.

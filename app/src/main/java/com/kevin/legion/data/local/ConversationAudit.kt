@@ -26,7 +26,7 @@ import androidx.room.Query
  * out. It was ruled out for three reasons, not one:
  * 1. [MemoryAudit] is scoped to the MEMORY system specifically - writes, deletes, recalls, and the
  *    line the assistant spoke - and its readers ([com.kevin.legion.ui.companions.MemoryScreen],
- *    [com.kevin.legion.ai.ReflectionEngine], [com.kevin.legion.ai.MemoryConsolidator]) all assume
+ *    `ReflectionEngine` (deleted 2026-11-09), `MemoryConsolidator` (deleted 2026-11-09)) all assume
  *    that scope. This table's job is broader and orthogonal to memory entirely: every tool call's
  *    NAME, ARGUMENTS and RESULT, a thing memory_audit has never recorded and was never asked to.
  * 2. **Retention differs on purpose.** [MemoryAudit] trims to a fixed ROW COUNT ([AUDIT_KEEP])

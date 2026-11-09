@@ -16,8 +16,8 @@ import kotlinx.serialization.json.Json
 
 /**
  * The push half of memory sync: write-through on every create/delete the four existing writers
- * already perform ([com.kevin.legion.ai.AriaBrain.remember], [com.kevin.legion.ai.MemoryConsolidator],
- * [com.kevin.legion.ai.ReflectionEngine], `LiveToolbox.rememberGoalPlanConstraint`), plus the
+ * already perform ([com.kevin.legion.ai.AriaBrain.remember], `MemoryConsolidator` (deleted 2026-11-09),
+ * `ReflectionEngine` (deleted 2026-11-09), `LiveToolbox.rememberGoalPlanConstraint`), plus the
  * durable outbox that makes an offline write survive - mirrors [BodyWriteThrough]/
  * [BodyOutboxDrain]'s own shape.
  *
@@ -41,8 +41,8 @@ import kotlinx.serialization.json.Json
  * sentence, and anything else that failed writes locally, queues, and is said in words. On
  * [com.kevin.legion.backend.engine.Transport.SUPABASE] - still `memory`'s default - nothing
  * changed. See [BodyWriteThrough]'s class doc for the full reasoning; it is identical here, and
- * memory is where it bites hardest, because [com.kevin.legion.ai.MemoryConsolidator] and
- * [com.kevin.legion.ai.ReflectionEngine] write unattended with nobody watching to notice a row
+ * memory is where it bites hardest, because `MemoryConsolidator` (deleted 2026-11-09) and
+ * `ReflectionEngine` (deleted 2026-11-09) write unattended with nobody watching to notice a row
  * that was accepted locally and refused forever.
  *
  * **Deletes stay local-first on both transports**, same reasoning as body's.
@@ -236,8 +236,8 @@ object MemoryWriteThrough {
 
     /**
      * **A refusal here returns [WriteThroughOutcome.Refused] and NO row**, which is what every
-     * caller's audit line turns on: [com.kevin.legion.ai.MemoryConsolidator],
-     * [com.kevin.legion.ai.ReflectionEngine] and `LiveToolbox.rememberGoalPlanConstraint` each
+     * caller's audit line turns on: `MemoryConsolidator` (deleted 2026-11-09),
+     * `ReflectionEngine` (deleted 2026-11-09) and `LiveToolbox.rememberGoalPlanConstraint` each
      * record a [com.kevin.legion.data.local.MemoryAudit] line saying `WRITTEN` and pointing at
      * this row's id. There is no id when nothing was written, and an audit line claiming a write
      * that did not happen is the same lie in the archive that "logged it" is out loud.

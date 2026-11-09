@@ -24,8 +24,8 @@ import org.robolectric.RuntimeEnvironment
  * file's class doc for the table of cases and why order is only observable through consequences.
  *
  * **Memory is where a refused row does the most damage**, which is why it gets its own file rather
- * than a case in body's: [com.kevin.legion.ai.MemoryConsolidator] and
- * [com.kevin.legion.ai.ReflectionEngine] write here unattended, from a transcript they then
+ * than a case in body's: `MemoryConsolidator` (deleted 2026-11-09) and
+ * `ReflectionEngine` (deleted 2026-11-09) write here unattended, from a transcript they then
  * DELETE, and each follows its write with a `WRITTEN` audit line pointing at the row's id. A row
  * that never landed has no id, so the audit branch is asserted here too: no row, no audit claim.
  */
