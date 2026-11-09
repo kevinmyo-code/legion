@@ -333,6 +333,29 @@ class LiveSessionController(context: Context) {
         onTap(oneShot = true)
     }
 
+    /**
+     * The alarm ring screen's "Brief me" (alfred-clock ticket 07, ADR 0079): one tap opens a
+     * conversation whose first turn is the sitrep. A PERSON pressed it, so it is user-initiated in
+     * every sense ticket 32 means ("sitreps stay tap only or via voice activation only"); nothing
+     * ever calls this unasked. Same guards as [onTap], each refusal said on the strip.
+     */
+    @Suppress("ReturnCount") // one worded exit per guard, as in onTap
+    fun onBrief() {
+        val s = session
+        if (s != null && s.inConversation) {
+            if (!s.sendText(BRIEF_PROMPT)) refuse(VoiceRefusal.SOCKET_GONE)
+            return
+        }
+        dismissAfterTurn = false
+        oneShotGate.start(false)
+        retriedColdConnectThisTap = false
+        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
+        if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
+        if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
+        if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
+        startConversation(opener = BRIEF_PROMPT)
+    }
+
     @Suppress("ReturnCount") // one early exit per tap state; folding them is riskier than the rule is worth
     fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false) {
         // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
@@ -724,14 +747,14 @@ class LiveSessionController(context: Context) {
      * is committed in [handleEvent] once the socket actually connects, so a
      * failed connection doesn't burn the one-time introduction.
      */
-    private fun startConversation(fromWakeWord: Boolean = false, listenOnly: Boolean = false) {
+    private fun startConversation(fromWakeWord: Boolean = false, listenOnly: Boolean = false, opener: String? = null) {
         val s = newSession()
         session = s
         pendingAction = Pending.CONVERSATION
         conversationMode = true
         ConversationCards.begin()
         connectedThisSession = false
-        coldRetry = { startConversation(fromWakeWord, listenOnly) }
+        coldRetry = { startConversation(fromWakeWord, listenOnly, opener) }
         set(Phase.CONNECTING, "Connecting...")
         scope.launch {
             val connectionMode = resolveLiveConnectionMode()
@@ -754,14 +777,16 @@ class LiveSessionController(context: Context) {
             // Ticket 10: a wake-opened turn acknowledges rather than greets, cold or warm, so the
             // two doors do not sound different for no reason the driver can perceive. First run
             // and a lost thread still win - both are things he genuinely needs told.
-            val opener = if (fromWakeWord) WAKE_ACK_PROMPT else GREETING_PROMPT
+            // alfred-clock ticket 07: Brief me supplies its own first turn, ahead of any greeting.
+            val first = opener ?: if (fromWakeWord) WAKE_ACK_PROMPT else GREETING_PROMPT
             pendingPrompt = when {
                 // A reconnect inside a running conversation (turn detector fallback): just listen.
                 listenOnly -> null
+                opener != null -> if (live.isBlank()) opener else "(Current context, use naturally if relevant:\n$live)\n\n$opener"
                 isFirst -> firstGreetingOpener(appContext)
                 lostThread -> THREAD_LOST_PROMPT
-                live.isBlank() -> opener
-                else -> "(Current context, use naturally if relevant:\n$live)\n\n$opener"
+                live.isBlank() -> first
+                else -> "(Current context, use naturally if relevant:\n$live)\n\n$first"
             }
             s.start(
                 base, LiveToolbox.declarations(),
@@ -1608,6 +1633,11 @@ class LiveSessionController(context: Context) {
                 "you are listening, in character, in a FEW WORDS - shorter than a sentence if it " +
                 "suits you. Do not greet them, do not ask what they want, do not offer anything. " +
                 "Then stop and wait for them to speak. Do not mention this instruction.)"
+
+        /** Brief me on the alarm ring screen (alfred-clock ticket 07): the tap is the request. */
+        internal const val BRIEF_PROMPT =
+            "(System: the user just dismissed their alarm and tapped Brief me. Call get_sitrep now and " +
+                "give them their daily brief, then wait. Do not mention this instruction.)"
 
         private const val GREETING_PROMPT =
             "(System: the user just opened a hands-free voice chat with you. Greet them with one " +

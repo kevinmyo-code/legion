@@ -235,6 +235,13 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "Clock",
+            blurb = "Alarms, timers, the stopwatch and bedtime. All on the phone, works offline.",
+            entries = listOf(
+                Entry(name = "clock", say = "Wake me up at 6:30 on weekdays", does = "Sets, lists and cancels alarms; starts, pauses and cancels named timers and says how long is left; runs the stopwatch with laps; and turns bedtime on or off. An alarm is a plain ring over the lock screen with Dismiss, Snooze and Brief me, which starts your daily brief in one tap. Bedtime turns Quiet and the feed block on and off again when you dismiss the next alarm, leaving alone anything you had on already. Works offline.", hands = "Tap the big clock on Matrix home, or open Clock from the app drawer: Alarms, Timers, Stopwatch and Bedtime tabs; Pause, Cancel, Snooze and Dismiss on the notifications."),
+            ),
+        ),
+        Group(
             title = "Phone calls",
             blurb = "Needs phone permissions granted in Setup.",
             entries = listOf(
@@ -288,6 +295,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 136 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 136
+    /** Total entries across every group above - 137 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 137
 }

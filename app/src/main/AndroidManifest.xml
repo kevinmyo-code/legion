@@ -105,11 +105,24 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <!-- Local alarms for the notes/lists/calendar domain
-         (`.scratch/notes-lists-calendar/issues/03-android-alarm-mechanism.md`). SCHEDULE_EXACT_ALARM
-         only (revocable, requested at runtime) - NOT USE_EXACT_ALARM, rejected on proportionality
-         in that ticket's Answer. RECEIVE_BOOT_COMPLETED re-arms reminders after a reboot, since
-         AlarmManager does not persist alarms across one. -->
+         (`.scratch/notes-lists-calendar/issues/03-android-alarm-mechanism.md`): SCHEDULE_EXACT_ALARM,
+         revocable, the only exact grant on Android 12. RECEIVE_BOOT_COMPLETED re-arms reminders after
+         a reboot, since AlarmManager does not persist alarms across one.
+         Alfred's clock (ADR 0079) adds USE_EXACT_ALARM, which ticket 03 rejected for reminders on
+         proportionality: a wake-up alarm cannot tolerate an hour of slack, revoking the revocable
+         grant kills every pending alarm, and this is a clock app, sideloaded, which Play's
+         clock-and-calendar restriction never reviews. Granted at install on Android 13+, not revocable. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- ADR 0079: the alarm ring's notification shows full screen over the lock screen. Sideloaded,
+         granted at install; on Android 14+ the Clock screen checks canUseFullScreenIntent and asks
+         in words if it was turned off. The ring service runs as systemExempted (Android 14+, allowed
+         for an app holding an exact-alarm permission), holds a wake lock while ringing, and the
+         Clock screen asks to exempt LEGION from battery optimisation (Samsung). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- alfred-ota ticket 05 (ADR 0072): LEGION installs its own published updates through
          PackageInstaller, after Kevin's yes. He grants "Install unknown apps" once.
@@ -120,10 +133,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
-    <!-- Matrix home's big clock opens AlarmClock.ACTION_SHOW_ALARMS (ADR 0062). Samsung's clock
-         guards that intent with SET_ALARM and refuses the launch without it, logging a Permission
-         Denial and opening nothing (seen on the A25, 2026-10-23). Normal permission, granted at install. -->
-    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- SET_ALARM left with ADR 0079: Matrix home's big clock opens Alfred's clock, not the system
+         alarm list (ADR 0062's 2026-10-23 hand-off, which needed it for Samsung's clock). -->
 
     <!-- Google Calendar permissions REMOVED - one-today ticket 01, "cut Google entirely"
          (2026-09-01, `.scratch/one-today/issues/01-one-agenda-source.md`). READ_CALENDAR/
@@ -504,6 +515,67 @@
             android:name=".service.CallNotificationReceiver"
             android:enabled="true"
             android:exported="false" />
+
+        <!-- Alfred's clock (ADR 0079, map .scratch/alfred-clock/). The ring path - the fire and action
+             receivers, the ring service and the ring screen - is direct-boot aware so an alarm rings
+             after a reboot before the first unlock; its state lives in device-protected storage.
+             The fire and action receivers take only this app's own PendingIntents (exported=false).
+             The re-arm receiver is exported because the system sends its broadcasts; every one of
+             them is protected or harmless, and the re-arm is idempotent. -->
+        <receiver
+            android:name=".clock.ClockFireReceiver"
+            android:directBootAware="true"
+            android:exported="false" />
+        <receiver
+            android:name=".clock.ClockActionReceiver"
+            android:directBootAware="true"
+            android:exported="false" />
+        <receiver
+            android:name=".clock.ClockRearmReceiver"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".clock.RingService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted|mediaPlayback" />
+        <activity
+            android:name=".ui.clock.RingActivity"
+            android:directBootAware="true"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.kevin.legion.ring"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Legion" />
+        <activity
+            android:name=".ui.clock.ClockActivity"
+            android:exported="false"
+            android:label="Clock"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.kevin.legion.clock"
+            android:theme="@style/Theme.Legion" />
+        <!-- The "Clock" entry in the app drawer, the way Browser has one (ADR 0071). -->
+        <activity-alias
+            android:name=".ui.clock.ClockLauncher"
+            android:exported="true"
+            android:label="Clock"
+            android:targetActivity=".ui.clock.ClockActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- FileProvider for CameraCapture's camera-app handoff URI (pantry
              receipt photos). Authority = packageName + ".provider". Not

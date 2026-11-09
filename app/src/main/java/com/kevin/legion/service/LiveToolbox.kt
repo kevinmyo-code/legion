@@ -1403,10 +1403,10 @@ object LiveToolbox {
                     enum = listOf("never", "on_date", "after_count")),
                 "repeat_end_date" to schema("string", "For repeat_end_kind on_date: yyyy-MM-dd, the series' last possible date."),
                 "repeat_end_count" to schema("integer", "For repeat_end_kind after_count: total occurrences."),
-                "exact" to schema("boolean", "Only for 'schedule', only when the user wants a precise, punctual " +
-                    "alarm (e.g. 'wake me up at exactly 6am, don't be late'). Omit for the default, which fires " +
-                    "within about an hour and needs no extra permission. Falls back silently to the default if " +
-                    "exact permission isn't available - the reply must say so."),
+                // alfred-clock ticket 06: the old "wake me up at exactly 6am" example routed wake-ups
+                // here; they are the `clock` tool now. Trimmed to pay for that declaration.
+                "exact" to schema("boolean", "Only for 'schedule': on the minute, not within the hour. " +
+                    "Wake-up alarms are the clock tool."),
             ),
             required = listOf("action"),
         ))
@@ -2440,6 +2440,9 @@ object LiveToolbox {
         // memory-and-vault ticket 12 (ADR 0076): opens the ID vault screen; never carries a value.
         val vaultDecls = VaultToolbox.declarations()
         for (i in 0 until vaultDecls.length()) fns.put(vaultDecls.getJSONObject(i))
+        // alfred-clock ticket 06 (ADR 0079): alarms, timers, stopwatch and bedtime, one action-dispatched declaration.
+        val clockDecls = ClockToolbox.declarations()
+        for (i in 0 until clockDecls.length()) fns.put(clockDecls.getJSONObject(i))
 
         return fns
     }
@@ -2778,6 +2781,7 @@ object LiveToolbox {
         AppUpdateToolbox.dispatch(context, name, args)?.let { return it }
         MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         VaultToolbox.dispatch(context, name, args)?.let { return it }
+        ClockToolbox.dispatch(context, name, args)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))

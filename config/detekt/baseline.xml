@@ -788,7 +788,7 @@
     <ID>LongMethod:MediaScreen.kt:@Composable fun MediaScreen(onBack: () -&gt; Unit)</ID>
     <ID>LongMethod:MemoryScreen.kt:@Composable fun MemoryScreen(onBack: () -&gt; Unit)</ID>
     <ID>LongMethod:MetersScreen.kt:@Composable fun MetersContent( state: MetersUiState, onOpenBody: () -&gt; Unit, onOpenMoney: () -&gt; Unit, onOpenFleet: () -&gt; Unit, onOpenPantry: () -&gt; Unit, onOpenMedia: () -&gt; Unit = {}, onOpenVoiceNotes: () -&gt; Unit = {}, onOpenChecklists: () -&gt; Unit = {}, )</ID>
-    <ID>LongMethod:MidnightApplication.kt:MidnightApplication$override fun onCreate()</ID>
+    <ID>LongMethod:MidnightApplication.kt:MidnightApplication$private fun startUnlocked()</ID>
     <ID>LongMethod:MidnightImport.kt:MidnightImport$@VisibleForTesting internal fun rekeyExistingRows( db: SupportSQLiteDatabase, spec: TableSpec, rows: List&lt;JSONObject&gt;, remap: Map&lt;String, String&gt;, ): RekeyResult</ID>
     <ID>LongMethod:MidnightImport.kt:MidnightImport$private fun importTable( db: SupportSQLiteDatabase, assets: AssetManager, spec: TableSpec, remap: MutableMap&lt;String, String&gt;, expectedRows: Int, ): TableResult</ID>
     <ID>LongMethod:Migrations.kt:&lt;no name provided&gt;$override fun migrate(db: SupportSQLiteDatabase)</ID>

@@ -221,21 +221,4 @@ class KeptAppLauncher(private val context: Context, private val resolver: KeptAp
             null
         }.getOrElse { "$label could not be opened." }
     }
-
-    /**
-     * The big clock on Matrix home: the system's alarm list, so an alarm can be set (Kevin,
-     * 2026-10-23). Null on success. With nothing answering, or the launch failing, a sentence says so.
-     */
-    fun openAlarms(): String? {
-        if (resolver.clockPackages().isEmpty()) return CLOCK_NONE
-        return runCatching {
-            context.startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            null
-        }.getOrElse { CLOCK_FAILED }
-    }
-
-    companion object {
-        const val CLOCK_NONE = "No clock app on this phone can show alarms, so nothing opened."
-        const val CLOCK_FAILED = "The clock app could not be opened."
-    }
 }

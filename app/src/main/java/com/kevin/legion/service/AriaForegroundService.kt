@@ -407,6 +407,11 @@ class AriaForegroundService : Service() {
             sessionController.onTap(fromWakeWord = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false))
         }
 
+        // The alarm ring screen's Brief me (alfred-clock ticket 07): a tap, never an alarm firing.
+        if (intent?.action == ACTION_BRIEF) {
+            sessionController.onBrief()
+        }
+
         // The assistant strip's typed box (web-assistant ticket 09): a typed turn into the same
         // Live session, reply shown as text. Never touches the microphone.
         if (intent?.action == ACTION_TYPE) {
@@ -1134,6 +1139,9 @@ class AriaForegroundService : Service() {
         /** Start-intent action: a message typed into the assistant strip. Text rides in [EXTRA_TYPED_TEXT]. */
         const val ACTION_TYPE = "com.kevin.legion.TYPE"
         const val EXTRA_TYPED_TEXT = "com.kevin.legion.TYPED_TEXT"
+
+        /** Start-intent action: Brief me on the alarm ring screen (alfred-clock ticket 07, ADR 0079). */
+        const val ACTION_BRIEF = "com.kevin.legion.BRIEF"
 
         /** Start-intent action: the strip's "New conversation" - clears the panel and the session. */
         const val ACTION_NEW_CHAT = "com.kevin.legion.NEW_CHAT"

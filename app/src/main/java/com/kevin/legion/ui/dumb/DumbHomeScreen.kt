@@ -181,7 +181,8 @@ fun DumbHome(
         },
         onLeave = viewModel::requestLeave,
         onOpenSettings = onOpenSettings,
-        onOpenClock = { message = launcher.openAlarms() },
+        // Alfred's clock (ADR 0079), replacing the hand-off to the system alarm list.
+        onOpenClock = { context.startActivity(com.kevin.legion.ui.clock.ClockActivity.intent(context)) },
     )
     SoftTheme {
         if (booksOpen) {
@@ -233,8 +234,8 @@ internal fun DumbHomeContent(
                 fontSize = 64.sp,
                 letterSpacing = (-2).sp,
                 lineHeight = 64.sp,
-                // The big clock opens the system alarm list, so an alarm can be set (Kevin, 2026-10-23).
-                modifier = Modifier.clickable(onClickLabel = "Open alarms", onClick = onOpenClock),
+                // The big clock opens Alfred's clock (ADR 0079; it opened the system alarm list before).
+                modifier = Modifier.clickable(onClickLabel = "Open clock", onClick = onOpenClock),
             )
             Text(ui.date, color = DumbColors.dim, fontSize = 15.sp)
             Text(
