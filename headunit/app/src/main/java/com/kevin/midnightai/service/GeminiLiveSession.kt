@@ -22,6 +22,7 @@ import com.kevin.midnightai.ai.CrisisDetector
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.diag.ConvoAudit
 import com.kevin.midnightai.diag.ConvoLatency
+import com.kevin.midnightai.diag.ConvoSessionGate
 import com.kevin.midnightai.diag.DriveLogLoop
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.data.local.EpisodicTurn
@@ -319,9 +320,11 @@ class GeminiLiveSession(
     // The conversation audit (diag/ConvoAudit, LIVE_AUDIT) and its timing (diag/ConvoLatency,
     // LIVE_LATENCY), in the phone's line formats. Both write to the conversation spool on disk,
     // which uploads to the household's engine as `reason=conversation`; never logcat, never
-    // Crashlytics.
-    private val audit = ConvoAudit()
-    private val latency = ConvoLatency()
+    // Crashlytics. Both go through one gate (diag/ConvoSessionGate, 2026-11-09): a session nobody
+    // spoke in writes nothing, so it neither fills the spool nor uploads an empty record.
+    private val convoGate = ConvoSessionGate()
+    private val audit = ConvoAudit(sink = { convoGate.write(ConvoAudit.TAG, it) })
+    private val latency = ConvoLatency(sink = { convoGate.write(ConvoLatency.TAG, it) })
 
     // Guards LiveEvent.CrisisDetected to once per turn. The detector runs on every
     // partial transcript delta, and the transcript only grows within a turn, so a
@@ -363,7 +366,6 @@ class GeminiLiveSession(
         vad: Boolean = false,
         voiceName: String = "",
         keepWarm: Boolean = false,
-        prewarmOnly: Boolean = false,
         idleTimeoutMs: Long = IDLE_TIMEOUT_MS,
         connectionMode: ConnectionMode = ConnectionMode.Direct(apiKey),
     ) {
@@ -391,10 +393,9 @@ class GeminiLiveSession(
         warm.set(false)
         suppressMicNextTurn = false
         discardModelAudioUntilTurnComplete = false
-        // A pre-connect (no conversation yet) must NOT mark the app busy - the
-        // proactive engine may still speak on the warm socket. A cold session that
-        // will speak/listen right away marks busy so proactive stays quiet for it.
-        if (!prewarmOnly) ConversationState.setBusy(true)
+        // Every session speaks or listens right away (the idle pre-connect that did not mark busy
+        // is gone, 2026-11-09), so it marks busy and routine proactive stays quiet for it.
+        ConversationState.setBusy(true)
         // Build the playback track up front so the first audio chunk plays without
         // paying AudioTrack setup latency mid-reply (pre-warming the output path).
         io.launch {
@@ -509,7 +510,7 @@ class GeminiLiveSession(
     /**
      * @return whether the line was handed to the socket. False (B15, 2026-10-15) means it was NOT
      * spoken: the socket is gone or refused the send. The session closes itself as a stale
-     * socket in that case (the controller re-prewarms off the Closed event) and the controller
+     * socket in that case (nothing reopens off the Closed event; 2026-11-09) and the controller
      * decides whether to keep the line for the next connect. This used to ignore the result, so a
      * proactive line to a dead warm socket vanished and left the busy flag set.
      */
@@ -755,8 +756,8 @@ class GeminiLiveSession(
     /**
      * `goAway`: the server will end this connection soon (`timeLeft`). Ignored until 2026-10-15,
      * which let a PARKED socket die mid-reply to the next proactive line. A parked warm socket
-     * is closed now (reason "go away", a normal close the controller re-prewarms from) so the
-     * next tap or proactive finds a fresh one. A live conversation is left alone: tearing it
+     * is closed now (reason "go away", a normal close; nothing reopens from it since 2026-11-09) so
+     * the next tap or proactive line cold-connects a fresh one. A live conversation is left alone: tearing it
      * down early would cut the driver off, and the close path covers it when the server follows
      * through. Breadcrumbed either way.
      */
@@ -832,14 +833,12 @@ class GeminiLiveSession(
     }
 
     private fun handleServerContent(content: JSONObject) {
-        content.optJSONObject("inputTranscription")?.optString("text")?.let {
-            if (it.isNotEmpty()) {
-                idleJob?.cancel() // driver is talking - cancel any pending auto-close
-                userTurnText.append(it)
-                latency.inputTranscript(System.currentTimeMillis())
-                audit.user(it, final = content.optJSONObject("inputTranscription")?.optBoolean("finished") == true)
-                checkForCrisis()
-            }
+        LiveTranscript.input(content)?.let { (chunk, finished) ->
+            idleJob?.cancel() // driver is talking - cancel any pending auto-close
+            userTurnText.append(chunk)
+            latency.inputTranscript(System.currentTimeMillis())
+            audit.user(chunk, final = finished)
+            checkForCrisis()
         }
 
         // Zero's own speech, accumulated for the full-turn transcript log but
@@ -850,12 +849,10 @@ class GeminiLiveSession(
         // while Zero kept talking well past it (session-16 bug B4). A
         // rolling tail always shows what he's saying right now instead.
         if (subtitles) {
-            content.optJSONObject("outputTranscription")?.optString("text")?.let {
-                if (it.isNotEmpty()) {
-                    companionTurnText.append(it)
-                    audit.assistant(it)
-                    emit(LiveEvent.Subtitle(captionTail(companionTurnText)))
-                }
+            LiveTranscript.output(content)?.let {
+                companionTurnText.append(it)
+                audit.assistant(it)
+                emit(LiveEvent.Subtitle(captionTail(companionTurnText)))
             }
         }
 

@@ -1836,3 +1836,24 @@ device reads that Drive folder.
 - **Same session, related.** Room v12 -> v13 adds an empty `drives` table (start time recorded by
   `TelemetryRecorder`, not inferred); drives before v13 are not backfilled.
 
+## 2026-11-09 - No voice session while idle on the head unit (Kevin approved; branch `fix/audit-2026-11-09-headunit`)
+
+- **Why.** Prod device_logs audit 2026-11-09: the head unit prewarmed a Gemini Live socket at
+  service start and again on every close. Google closed it for client inactivity 2 minutes later
+  and it reopened at once (`08:07:22.929 session start / 08:09:24.097 session end (Session closed
+  due to client inactivity.) / 08:09:24.152 session start`); offline it retried a DNS failure
+  ("Unable to resolve host generativelanguage.googleapis.com", x150) on a 1/2/4/5 min backoff.
+  182 conversation records were uploaded, none with a user or assistant line.
+- **Ruling.** Phone parity with LEGION `e6a193f8` (Kevin, 2026-11-05: "stop keeping a voice
+  session open while idle; only open one when you tap or say the wake word"). The head unit has no
+  wake word (removed 2026-10-11), so a socket opens only for the talk tap or a proactive line.
+  `LiveSessionController.prewarm()` and the reopen-on-close (with its backoff) are deleted;
+  `refreshIdleVoice` only drops an idle socket. The 3 minute warm park after a real conversation
+  stays, so follow-up taps still resume instantly.
+- **Same commit.** `diag/ConvoSessionGate` sits in front of both conversation-spool sinks
+  (LIVE_AUDIT and LIVE_LATENCY): a session with no user, assistant or tool_call line writes nothing,
+  so it uploads no `conversation` record.
+- **Recording path audited, no bug found.** Transcripts reach the spool the same way the phone's
+  do (`LiveSetup` requests both transcriptions; `handleServerContent` -> `ConvoAudit.user/assistant`
+  -> `DriveLog.conversation`); `LiveTranscriptSpoolTest` pins it. Zero spoken turns in prod means
+  no tap and no spoken proactive line in that window, not a lost transcript.

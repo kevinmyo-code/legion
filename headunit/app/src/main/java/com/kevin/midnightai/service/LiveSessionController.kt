@@ -19,7 +19,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -45,13 +44,15 @@ import org.json.JSONObject
  * [phase] and [status] are exposed as flows so the overlay (and the setup
  * screen) can render the current state.
  *
- * **Warm sessions (latency):** the WebSocket + setup handshake is the dominant
- * per-conversation latency, so we avoid paying it on every tap. The service
- * [prewarm]s a connected-but-idle session on start; tapping resumes it
- * instantly. After a conversation goes quiet the socket parks *warm* (see
- * [GeminiLiveSession.parkWarm]) rather than closing, so follow-up turns through a
- * drive are instant too; it fully closes only after a few idle minutes, and the
- * next tap lazily reconnects. The session is set up with the cached static
+ * **No voice session while idle (2026-11-09, phone parity with LEGION e6a193f8).** Nothing opens
+ * a socket ahead of a tap any more: the old prewarm opened one at service start and again after
+ * every close, Google closed it for client inactivity every 2 minutes, and offline it retried a
+ * DNS failure on a backoff all day (prod device_logs audit, 2026-11-09: 182 empty conversation
+ * records). A socket opens only for the driver's talk tap ([onTap]) or a proactive line
+ * ([requestSpeak]), and a close never reopens one. **Warm resume stays:** after a conversation goes
+ * quiet the socket parks *warm* (see [GeminiLiveSession.parkWarm]) rather than closing, so
+ * follow-up turns through a drive are instant; it fully closes after a few idle minutes, and the
+ * next tap cold-connects. The session is set up with the cached static
  * instruction ([AriaBrain.buildBaseInstruction]); fresh live context
  * ([AriaBrain.buildLiveContext]) is injected into the greeting at the start of
  * each conversation so it's current without rebuilding the whole prompt per turn.
@@ -73,8 +74,7 @@ class LiveSessionController(context: Context) {
 
     private var session: GeminiLiveSession? = null
 
-    // Set once destroy() runs so a final Closed event doesn't re-prewarm a socket
-    // on a torn-down controller.
+    // Set once destroy() runs so nothing starts a socket on a torn-down controller.
     private var destroyed = false
 
     private val _phase = MutableStateFlow(Phase.IDLE)
@@ -102,13 +102,8 @@ class LiveSessionController(context: Context) {
     // LiveEvent.Closed.
     private val usageMeter = VoiceUsageMeter()
 
-    // Consecutive prewarm sockets that never connected (dead zone / bad key). The
-    // auto-prewarm after a close backs off exponentially on this so we don't
-    // hot-loop failed connects. Reset on any successful connect and on a fresh tap.
-    private var consecutivePrewarmFailures = 0
-
     // What to do once the socket finishes connecting (the setup handshake is
-    // async). A warm/prewarmed socket is already connected, so these only matter
+    // async). A warm (parked) socket is already connected, so these only matter
     // for a cold connect.
     private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM }
     private var pendingAction = Pending.NONE
@@ -164,43 +159,13 @@ class LiveSessionController(context: Context) {
     // --- public entry points (service / overlay) -------------------------
 
     /**
-     * Opens a connected-but-idle (warm) session ahead of the first tap so that
-     * tap doesn't pay the connect + setup handshake. Safe/cheap to call when one
-     * already exists (no-op). Called by the service on start and again after a
-     * session fully closes, so there's normally always a warm socket ready.
-     */
-    fun prewarm() {
-        if (destroyed || session != null) return
-        // Only prewarm eagerly on a BYO/dev key. A broker-minted ephemeral token
-        // (trial/subscribed) expires in ~6 min server-side, so eagerly opening a
-        // warm socket ahead of any tap risks it going stale before the driver
-        // ever taps. Trial/sub users pay a real connect handshake on first tap
-        // instead (see resolveConnectionMode + onTap/startConversation) - a small
-        // latency cost, not a correctness one.
-        if (!GeminiKeyProvider.hasKey()) return
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
-        session = s
-        pendingAction = Pending.NONE
-        conversationMode = false
-        connectedThisSession = false
-        scope.launch {
-            val base = brain.buildBaseInstruction()
-            s.start(
-                base, LiveToolbox.declarations(),
-                vad = true, voiceName = CompanionProfile.voice(appContext),
-                keepWarm = true, prewarmOnly = true,
-            )
-        }
-    }
-
-    /**
-     * Rebuilds the idle warm/prewarm socket so the next line the companion speaks
-     * uses the CURRENT voice. [prewarm] captures voiceName at socket start, so after
-     * the driver changes voice (onboarding finish, Settings) a still-open warm socket
-     * would keep the old voice - the field-test "default voice after onboarding" bug.
-     * No-op during an active conversation (never kills a live turn); the fresh prewarm
-     * re-reads CompanionProfile.voice. Only BYO keys prewarm eagerly, so this is a
-     * no-op for trial/subscribed (whose greet already cold-opens with the current voice).
+     * Drops an idle socket (a conversation parked warm, or a proactive line's socket) so the next
+     * line the companion speaks uses the CURRENT voice: voiceName is captured at socket start, so
+     * after the driver changes voice (onboarding finish, Settings, a car switch) a still-open
+     * socket would keep the old one - the field-test "default voice after onboarding" bug. It does
+     * NOT open a replacement (2026-11-09, no voice session while idle); the next tap or proactive
+     * line connects with the current voice. No-op during an active conversation (never kills a
+     * live turn).
      */
     fun refreshIdleVoice() {
         if (destroyed || conversationMode) return
@@ -210,7 +175,6 @@ class LiveSessionController(context: Context) {
         usageMeter.pause(System.currentTimeMillis())
         session?.silentDestroy()
         session = null
-        prewarm()
     }
 
     /**
@@ -239,10 +203,6 @@ class LiveSessionController(context: Context) {
         )
         // Always allow stopping an active conversation.
         if (s != null && s.inConversation) { s.stop(); return }
-
-        // A deliberate tap resets the prewarm backoff - the driver is actively
-        // asking, so try now rather than honoring a long dead-zone cooldown.
-        consecutivePrewarmFailures = 0
 
         // Fast-fail with a visible reason instead of a silent 15s connect attempt.
         if (TelephonyController.isInCall) { notice("ON A CALL"); return }
@@ -328,13 +288,13 @@ class LiveSessionController(context: Context) {
             s != null && s.isWarm() -> {
                 usageMeter.startSegment(System.currentTimeMillis())
                 if (!s.speakOnWarm(prompt)) {
-                    // B15: the "warm" socket was dead and has closed itself. Keep the line for the
-                    // fresh socket the Closed event prewarms, once; it was not spoken.
+                    // B15: the "warm" socket was dead and has closed itself. Keep the line, once, for
+                    // the next good connect (nothing reopens on a close any more); it was not spoken.
                     usageMeter.pause(System.currentTimeMillis())
                     carried.hold(prompt, now, failures = 1, onDropped = ::dropped)
                 }
             }
-            // A socket is still connecting (prewarm): speak once it's up, warm.
+            // A socket is still connecting (a tap's or a proactive line's): speak once it's up, warm.
             s != null && pendingPrompt == null -> { pendingAction = Pending.PROACTIVE_WARM; pendingPrompt = prompt }
             // Two proactive lines for one connecting socket: only one slot exists, and the first
             // is already promised. Leave a trace rather than overwrite it silently.
@@ -492,7 +452,8 @@ class LiveSessionController(context: Context) {
 
     /**
      * After a connect, speaks the line [carried] kept from a failed one (B8). [connectedFor] is
-     * what the connect was for: a bare prewarm (NONE) speaks it on the warm socket; a
+     * what the connect was for: a bare connect (NONE; nothing opens one since prewarm went,
+     * 2026-11-09) speaks it on the warm socket; a
      * conversation connect folds it in at the first turn boundary; anything else is a connect that
      * already has its own line, so the carried one is dropped with a breadcrumb.
      */
@@ -540,9 +501,8 @@ class LiveSessionController(context: Context) {
         when (event) {
             is LiveEvent.Connected -> {
                 connectedThisSession = true
-                consecutivePrewarmFailures = 0
                 // A fresh connect that's about to actually talk starts the
-                // billing segment here; Pending.NONE is a bare prewarm sitting
+                // billing segment here; Pending.NONE is a bare connect sitting
                 // idle (no one spoke), so it must NOT start one.
                 if (pendingAction != Pending.NONE) {
                     usageMeter.startSegment(System.currentTimeMillis())
@@ -649,10 +609,6 @@ class LiveSessionController(context: Context) {
                         }
                     )
                 }
-                // A prewarm socket (not a conversation) that never connected is a
-                // failed connect - escalate the retry backoff.
-                if (!everConnected && !userInitiated) consecutivePrewarmFailures++
-
                 // Always close out the meter (folds in any still-open segment and
                 // resets it for the next socket). No broker to report to (CLAUDE.md
                 // sec 2/8: broker removed 2026-07-16) - the meter stays dormant,
@@ -661,7 +617,8 @@ class LiveSessionController(context: Context) {
 
                 // B8 (2026-10-15): a proactive line still waiting on a socket that never connected
                 // was dropped here with no trace (the late Spotify report was the visible case).
-                // Keep it, once, for the next good connect; a second failure drops it, loudly.
+                // Keep it, once, for the next good connect (a tap or the next proactive line; a close
+                // never reopens a socket); a second failure drops it, loudly.
                 val unspoken = pendingPrompt
                 if (unspoken != null && !everConnected &&
                     (pendingAction == Pending.PROACTIVE_WARM || pendingAction == Pending.PROACTIVE_COLD)
@@ -681,19 +638,10 @@ class LiveSessionController(context: Context) {
                 connectedThisSession = false
                 set(Phase.IDLE, IDLE_STATUS)
 
-                // Re-establish a warm socket so the next tap is instant again,
-                // backing off after repeated connect failures (dead zone / bad key).
-                if (!destroyed) {
-                    val failures = consecutivePrewarmFailures
-                    if (failures > 0) {
-                        scope.launch {
-                            delay((30_000L * (1L shl failures.coerceAtMost(6))).coerceAtMost(300_000L))
-                            if (!destroyed && session == null) prewarm()
-                        }
-                    } else {
-                        prewarm()
-                    }
-                }
+                // Nothing reopens here (2026-11-09, no voice session while idle). This close used
+                // to prewarm a fresh socket at once, which Google closed for client inactivity two
+                // minutes later, forever; offline it retried a DNS failure on a backoff. The next
+                // talk tap or proactive line opens a socket when one is needed.
             }
         }
     }
