@@ -95,13 +95,14 @@ class WorkerCase(unittest.TestCase):
         self.tmp.cleanup()
 
     def start(self, **over) -> W.Worker:
+        idle = over.pop("_idle", None)
         cfg = {**self.cfg, **over}
         write_json_atomic(self.paths.config, cfg)  # send_mail.py and the hook read it from disk
         if not W.log.handlers:
             W.setup_logging(self.paths)
         w = W.Worker(self.paths, cfg, power=NoPower(), today=lambda: self.day,
                      drives=lambda: ["C:\\", "D:\\"], base_env=self.env,
-                     engine=EngineClient(cfg["engine_url"], cfg["token"], timeout=3))
+                     engine=EngineClient(cfg["engine_url"], cfg["token"], timeout=3), idle=idle)
         stop = threading.Event()
         t = threading.Thread(target=w.run, args=(stop,), daemon=True)
         t.start()
