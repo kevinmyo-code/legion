@@ -307,6 +307,59 @@ class DestinationResolverTest {
         assertTrue(r.sentence().contains("away"))
     }
 
+    // 2026-11-09 log audit, 11-08 17:29: navigate({"destination":"Petco"}) read back "Vetco
+    // Vaccination Clinic" as the top pick, above the Petco at the same address, in the SDK's order.
+    @Test fun aBrandSearchPutsTheBrandFirstNearestBranchFirst() {
+        search.reply = {
+            SearchAnswer.Hits(
+                listOf(
+                    hit("Vetco Vaccination Clinic", distanceM = 124_000.0),
+                    hit("Petco", detail = "Corpus Christi", distanceM = 124_500.0),
+                    hit("Petco", detail = "Floresville", distanceM = 123_900.0),
+                    hit("PetSmart", distanceM = 2_000.0),
+                ),
+            )
+        }
+        val r = resolve("Petco") as Resolution.Resolved
+        assertEquals(listOf("Petco", "Petco"), r.candidates.take(2).map { it.name })
+        assertEquals("Floresville", r.candidates.first().detail)
+        assertEquals("the non-brand hits keep the SDK's order", listOf("Vetco Vaccination Clinic", "PetSmart"),
+            r.candidates.drop(2).map { it.name })
+        assertTrue(r.sentence().startsWith("Several places match. Top pick: Petco, Floresville"))
+    }
+
+    @Test fun nearestBrandIsTheNearestBranchAndOneAnswer() {
+        search.reply = {
+            SearchAnswer.Hits(
+                listOf(
+                    hit("Vetco Vaccination Clinic", distanceM = 900.0),
+                    hit("Petco Animal Supplies", distanceM = 8_000.0),
+                    hit("Petco", distanceM = 3_000.0),
+                ),
+            )
+        }
+        val r = resolve("take me to the nearest Petco") as Resolution.Resolved
+        assertEquals("petco", search.queries.single().text)
+        assertEquals("Petco", r.candidates.first().name)
+        assertFalse("nearest X is the closest, not a choice", r.ambiguous)
+    }
+
+    @Test fun aCategorySearchIsNearestFirst() {
+        search.reply = {
+            SearchAnswer.Hits(listOf(hit("Shell", distanceM = 5_000.0), hit("Chevron", distanceM = 1_200.0)))
+        }
+        val r = resolve("nearest gas station") as Resolution.Resolved
+        assertEquals("Chevron", r.candidates.first().name)
+    }
+
+    @Test fun nameCarriesWholeWordsOnly() {
+        assertTrue(SearchRanking.nameCarries("Petco Animal Supplies", "petco"))
+        assertTrue(SearchRanking.nameCarries("Joe's Pizza", "joes pizza"))
+        assertFalse(SearchRanking.nameCarries("Vetco Vaccination Clinic", "petco"))
+        assertFalse(SearchRanking.nameCarries("Petcopia", "petco"))
+        assertFalse(SearchRanking.nameCarries("Petco", ""))
+    }
+
     @Test fun nearestWithNoFixSaysSoInsteadOfGuessingAPlace() {
         val r = resolve("nearest gas station", LookupContext(null)) as Resolution.NotFound
         assertTrue(r.message.contains("I don't have your location yet"))

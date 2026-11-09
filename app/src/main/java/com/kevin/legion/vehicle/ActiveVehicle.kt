@@ -49,6 +49,20 @@ object ActiveVehicle {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_LAST_CONNECTED, null)?.takeIf { it.isNotBlank() }
 
+    /**
+     * The vehicle id of the car the OBD dongle is in right now, or null when nothing is connected
+     * (2026-11-09 log audit). One dongle moves between cars, so that car is [current]: the
+     * driver's pick, else the dongle's MAC. Matching the dongle's MAC against `Vehicle.obdMac`
+     * instead reads every hand-added car (a synthetic id) as unplugged: on 11-07 `list_vehicles`
+     * said "not connected" while `get_vehicle_data` read live RPM from the same car.
+     */
+    fun connectedCarId(context: Context): String? =
+        connectedCarId(ObdBluetoothManager.connectedDeviceAddress, selected(context))
+
+    /** Pure half of [connectedCarId]: [selectedId] wins over [connectedAddress], null when unplugged. */
+    internal fun connectedCarId(connectedAddress: String?, selectedId: String?): String? =
+        connectedAddress?.let { selectedId ?: it }
+
     /** Records [address] as the last car the dongle connected to. */
     fun rememberConnected(context: Context, address: String) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
