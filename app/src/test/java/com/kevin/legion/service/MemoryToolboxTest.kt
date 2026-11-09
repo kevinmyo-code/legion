@@ -58,6 +58,34 @@ class MemoryToolboxTest {
     }
 
     @Test
+    fun `each recalled row says how it was learned`() {
+        install(
+            FakeMemberMemoryBackend(
+                mutableListOf(
+                    memory("asked", "Mia likes orchids", source = "phone"),
+                    memory("chat", "Mia likes orchids in white", source = "consolidation", fromConversation = "log-1"),
+                    memory("hand", "Mia likes orchids from the market", source = "manual"),
+                    memory("claude", "Mia likes orchids, per Claude", source = "claude"),
+                    memory("web", "Mia likes orchids, said on the web", source = "web"),
+                ),
+            ),
+        )
+        val rows = call("""{"action":"recall","query":"orchids"}""").getJSONArray("memories")
+        val said = (0 until rows.length()).associate { rows.getJSONObject(it).let { r -> r.getString("id") to r.getString("said") } }
+        assertTrue(said.getValue("asked").contains(", you asked me to keep this) Mia likes orchids"))
+        assertTrue(said.getValue("chat").contains(", noted from a chat) "))
+        assertTrue(said.getValue("hand").contains(", you added this) "))
+        assertTrue(said.getValue("claude").contains(", Claude saved this) "))
+        assertTrue(said.getValue("web").contains(", you told me this) "))
+    }
+
+    @Test
+    fun `a distilled row is never labelled as asked, whatever its source`() {
+        val row = memory("x", "likes orchids", source = "phone", fromConversation = "log-1")
+        assertEquals("noted from a chat", MemoryWording.provenance(row))
+    }
+
+    @Test
     fun `recall offline says it is the phone's copy`() {
         val backend = FakeMemberMemoryBackend(mutableListOf(memory("m1", "Gym is on Westheimer")))
         val cache = InMemoryMemoryCache()

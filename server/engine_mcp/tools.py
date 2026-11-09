@@ -2306,10 +2306,30 @@ def _memory_door(request) -> ToolResult | None:
     return refused(reason) if reason else None
 
 
+# How the assistant came to know a memory, a few words per row (2026-11-09), so "you told me" is
+# said only of a memory the person gave it. Same words as the phone's `MemoryWording.provenance`.
+_PROVENANCE = {
+    "phone": "you asked me to keep this",
+    "web": "you told me this",
+    "manual": "you added this",
+    "claude": "Claude saved this",
+    "consolidation": "noted from a chat",
+}
+
+
+def provenance(row: dict) -> str:
+    if row.get("from_conversation"):
+        return _PROVENANCE["consolidation"]
+    return _PROVENANCE.get(row.get("source") or "", _PROVENANCE["phone"])
+
+
 def _say_memory(row: dict) -> str:
     who = "shared with the household" if row["shared"] else "private"
     about = "" if row["about_you"] else ", about another member"
-    return f"[{row['id']}] ({row['created_at'][:10]}, {row['kind']}, {who}{about}) {row['text']}"
+    return (
+        f"[{row['id']}] ({row['created_at'][:10]}, {row['kind']}, {who}{about}, "
+        f"{provenance(row)}) {row['text']}"
+    )
 
 
 def _recall_memory(request, args) -> ToolResult:

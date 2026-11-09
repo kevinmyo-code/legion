@@ -321,6 +321,31 @@ def test_claude_on_mcp_reads_and_writes_memory(household_user, mcp_on):
     assert is_error and text.startswith("Nothing was changed")
 
 
+def test_recall_says_how_each_memory_was_learned(household_user, mcp_on):
+    from member_memory.models import SOURCE_CONSOLIDATION, SOURCE_PHONE
+
+    claude = client_with(household_user)
+    call(claude, "remember", {"text": "Kevin's gym is on Elm"})
+    household_id = HouseholdMember.objects.get(user=household_user).household_id
+    for source, text in (
+        (SOURCE_PHONE, "Kevin's gym opens at six"),
+        (SOURCE_CONSOLIDATION, "Kevin's gym has a sauna"),
+    ):
+        MemberMemory.objects.create(
+            household_id=household_id,
+            member=household_user,
+            owner_user=household_user,
+            text=text,
+            source=source,
+        )
+    is_error, text, _ = call(claude, "recall_memory", {"query": "gym"})
+    assert not is_error
+    lines = {line.split(") ", 1)[1]: line for line in text.splitlines() if line.startswith("[")}
+    assert "Claude saved this)" in lines["Kevin's gym is on Elm"]
+    assert "you asked me to keep this)" in lines["Kevin's gym opens at six"]
+    assert "noted from a chat)" in lines["Kevin's gym has a sauna"]
+
+
 def test_remember_refuses_a_vault_identifier_on_mcp(household_user, mcp_on):
     is_error, text, _ = call(client_with(household_user), "remember", {"text": "SSN 123-45-6789"})
     assert is_error and "ID vault" in text

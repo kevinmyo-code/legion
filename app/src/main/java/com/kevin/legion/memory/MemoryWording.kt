@@ -33,6 +33,21 @@ object MemoryWording {
         else -> "said to the assistant on ${day(memory.createdAtMs)}"
     }
 
+    /**
+     * How the assistant came to know a memory, in a few words, for each row of a voice `memory`
+     * result (2026-11-09). The model may say "you told me" only when a row says so: a memory the
+     * hourly job distilled from a conversation is "noted from a chat", never "you asked me". Mirrors
+     * the engine's `_say_memory` (`server/engine_mcp/tools.py`). Legacy rows imported with
+     * `source=phone` read as asked, whatever the old phone pass that made them.
+     */
+    fun provenance(memory: MemberMemory): String = when {
+        memory.fromConversation != null || memory.source == "consolidation" -> "noted from a chat"
+        memory.source == "manual" -> "you added this"
+        memory.source == "web" -> "you told me this"
+        memory.source == "claude" -> "Claude saved this"
+        else -> "you asked me to keep this"
+    }
+
     fun sharing(memory: MemberMemory): String = when {
         memory.shared -> "shared with the household"
         else -> "private to you"
