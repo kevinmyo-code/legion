@@ -213,6 +213,13 @@ class LiveSetupPayloadSizeTest {
      * food means Groceries" on `manage_checklist`; "car status only from this" on `ask_fleet`;
      * `get_current_location` reworded token-neutral. The car-status rule itself
      * (`CAR_STATUS_CLAUSE`) rides in `buildLiveContext`, per conversation. Headroom is ~137 tokens.
+     *
+     * **Lowered usage, ceiling unchanged, 2026-11-09 (`feat/memory-quickwins`).** Measured on
+     * dev `8e983a60`: 94 declarations, 87,500 chars of tools JSON plus 10,554 chars of system
+     * instruction = 98,054 chars, ~24,513 tokens. After: 87,500 + 10,336 = 97,836 chars, ~24,459
+     * (-54). `SHARED_RECORD_RULES` named the retired `remember` and `recall_memory` tools; its
+     * memory sentence is now "Never claim to remember something without checking the memory tool
+     * first." The `memory` tool's own description says when to recall and save. Headroom ~191 tokens.
      */
     private val ceilingTokens = 24_650
 
