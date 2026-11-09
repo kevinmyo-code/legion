@@ -1616,6 +1616,10 @@ class GeminiLiveSession(
     }
 
     private fun handleServerContent(content: JSONObject) {
+        // Round 3: the socket declares googleSearch, and a grounded answer reaches the model with no
+        // functionCall, so no read-through tool name can catch it. First, so the transcript below
+        // and any tool call after it in this turn already see the flag.
+        if (carriesWebResults(content)) mailToolCalledThisTurn = true
         content.optJSONObject("inputTranscription")?.optString("text")?.let {
             if (it.isNotEmpty()) {
                 // Speech means a voice turn now: stop muting (see [typedTurnInFlight]).
@@ -3701,6 +3705,21 @@ class GeminiLiveSession(
          */
         internal fun carriesReadThroughPastTurn(async: Boolean, turnStillOpen: Boolean): Boolean =
             async && turnStillOpen
+
+        /**
+         * Whether one `serverContent` shows the model used Google Search (or URL context) this turn,
+         * so web text reached it with no tool call (round 3). `groundingMetadata` and
+         * `urlContextMetadata` are `BidiGenerateContentServerContent` fields (Live API reference,
+         * read 2026-11-09); an `executableCode`/`codeExecutionResult` part is how a Live model has
+         * shown a search it ran itself. Any of them marks the turn read-through.
+         */
+        internal fun carriesWebResults(content: JSONObject): Boolean {
+            val parts = content.optJSONObject("modelTurn")?.optJSONArray("parts") ?: JSONArray()
+            return content.has("groundingMetadata") || content.has("urlContextMetadata") ||
+                (0 until parts.length()).any { i ->
+                    parts.optJSONObject(i)?.let { it.has("executableCode") || it.has("codeExecutionResult") } == true
+                }
+        }
 
         /**
          * Ticket 02: parses a protobuf `Duration` (the type of [GoAway.timeLeft]) into
