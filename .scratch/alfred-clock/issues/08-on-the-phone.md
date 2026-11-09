@@ -22,6 +22,16 @@ tags: [ticket]
 5. "Alfred, set a timer for 5 minutes called pasta", "how long left on pasta".
 6. Bedtime 1 min out: Quiet and the feed block on; dismissing the next alarm turns them off.
 
+## What Kevin grants on the phone
+
+- Battery: LEGION unrestricted / not optimised (the Clock screen's "Exempt LEGION" button). On
+  Samsung also check LEGION is not in Sleeping or Deep sleeping apps (Settings, Battery,
+  Background usage limits); the app cannot read that list.
+- Full screen notifications for LEGION: granted at install when sideloaded; the Clock screen asks
+  if it is off.
+- Do Not Disturb access (already granted if Quiet works): Bedtime's Quiet needs it.
+- Notifications on. Exact alarms need nothing (`USE_EXACT_ALARM`).
+
 ## Deferred (not v1)
 
 - Custom ringtones per alarm, sunrise screen, world clock, alarm missions/puzzles.

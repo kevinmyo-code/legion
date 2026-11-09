@@ -3,12 +3,12 @@ map: alfred-clock
 ticket: "06"
 title: "The clock voice tool"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-09 on feat/alfred-clock; clock tests green, full suite and assembleFast not yet run to completion. Owed: Kevin's run on the A25 (ticket 08)"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The clock voice tool
@@ -23,3 +23,8 @@ tags: [ticket]
 - `manage_item.exact`'s "wake me up at exactly 6am" example routed wake-ups to reminders; it now
   points at `clock`. That trim pays for most of the new declaration.
 - `LiveSetupPayloadSizeTest` stays green against dev merged with `integrate/2026-11-09`.
+
+## Built (2026-11-09)
+
+- `clock` is 693 chars, ~173 tokens. Merged with `integrate/2026-11-09`: ~24,633 of the 24,650
+  ceiling, ~17 tokens of headroom. Not raised. The next tool needs a trim or a ruling.

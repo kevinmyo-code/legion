@@ -3,12 +3,12 @@ map: alfred-clock
 ticket: "02"
 title: "Ringing: foreground service, full-screen intent, audio, snooze, auto-silence"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-09 on feat/alfred-clock; clock tests green, full suite and assembleFast not yet run to completion. Owed: Kevin's run on the A25 (ticket 08)"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Ringing: foreground service, full-screen intent, audio, snooze, auto-silence
