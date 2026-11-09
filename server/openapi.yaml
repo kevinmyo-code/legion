@@ -8979,6 +8979,333 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/member-memories/review/changes:
+    get:
+      operationId: api_member_memories_review_changes_list
+      description: 'The review''s changes about the caller, newest first: pending
+        by default.'
+      parameters:
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - accepted
+          - all
+          - applied
+          - dismissed
+          - pending
+          - reverted
+          - stale
+        description: Default pending.
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewChangeList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    post:
+      operationId: api_member_memories_review_changes_submit
+      description: The worker's change list for one context. Exact duplicates merge
+        by code; every other change passes its gate or becomes a proposal. One transaction.
+        A repeated submit answers the first result. `dry_run` writes nothing. The
+        answer carries counts and verdicts by handle, never memory text.
+      tags:
+      - member-memories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewSubmit'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewAnswer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/review/changes/{change_id}/accept:
+    post:
+      operationId: api_member_memories_review_accept
+      description: Applies a pending change. 409 and `stale` when its memories moved
+        since.
+      parameters:
+      - in: path
+        name: change_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewDecision'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/review/changes/{change_id}/dismiss:
+    post:
+      operationId: api_member_memories_review_dismiss
+      description: Dismisses a pending change. Nothing about the memories changes.
+      parameters:
+      - in: path
+        name: change_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewDecision'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/review/changes/{change_id}/revert:
+    post:
+      operationId: api_member_memories_review_revert
+      description: 'Undoes an applied or accepted change: restores the rows it retired
+        and deletes only the row the review wrote.'
+      parameters:
+      - in: path
+        name: change_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewDecision'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/review/clusters/{cluster}/accept:
+    post:
+      operationId: api_member_memories_review_cluster_accept
+      description: 'Accept all: every pending change in one group, each checked for
+        staleness.'
+      parameters:
+      - in: path
+        name: cluster
+        schema:
+          type: string
+        required: true
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewCluster'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/review/context:
+    get:
+      operationId: api_member_memories_review_context
+      description: 'The snapshot the Claude worker''s review judges: the caller''s
+        private live memories with handles, household facts about them as context
+        only, the last 7 days of their own words (tool and mail turns dropped on the
+        engine), and the exact duplicates the engine merges itself. Refused while
+        LEGION_MEMORY_REVIEW is off.'
+      parameters:
+      - in: query
+        name: task
+        schema:
+          type: integer
+        description: The worker's task id, if any.
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/member-memories/review/run:
+    post:
+      operationId: api_member_memories_review_run
+      description: Queues one memory review on the caller's own Alienware now.
+      tags:
+      - member-memories
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewRun'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/memory/companion_memories/:
     get:
       operationId: api_memory_companion_memories_list
@@ -12991,6 +13318,14 @@ components:
             maxLength: 120
           description: Task id to the helper's current step, for tasks running on
             this machine.
+        input_idle_s:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Seconds since Windows last saw keyboard or mouse input.
+        on_mains:
+          type: boolean
+          nullable: true
       required:
       - name
       - scope
@@ -13209,7 +13544,7 @@ components:
           type: integer
           nullable: true
         origin:
-          $ref: '#/components/schemas/ClaudeTaskOriginEnum'
+          $ref: '#/components/schemas/ClaudeTaskCreateOriginEnum'
         deliver:
           nullable: true
           description: |-
@@ -13227,6 +13562,14 @@ components:
       required:
       - origin
       - request
+    ClaudeTaskCreateOriginEnum:
+      enum:
+      - named
+      - offered
+      type: string
+      description: |-
+        * `named` - named
+        * `offered` - offered
     ClaudeTaskCreated:
       type: object
       properties:
@@ -13274,10 +13617,12 @@ components:
       enum:
       - named
       - offered
+      - schedule
       type: string
       description: |-
         * `named` - named
         * `offered` - offered
+        * `schedule` - schedule
     ClaudeTaskRow:
       type: object
       properties:
@@ -13317,6 +13662,14 @@ components:
           nullable: true
         origin:
           $ref: '#/components/schemas/ClaudeTaskOriginEnum'
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeTaskRowKindEnum'
+          description: |-
+            `ask` for Kevin's own tasks; `memory_review` for the daily memory review.
+
+            * `ask` - ask
+            * `memory_review` - memory_review
         deliver:
           nullable: true
           oneOf:
@@ -13346,6 +13699,7 @@ components:
       - files
       - finished_at
       - id
+      - kind
       - machine
       - origin
       - parent
@@ -13356,6 +13710,14 @@ components:
       - status
       - steps
       - summary
+    ClaudeTaskRowKindEnum:
+      enum:
+      - ask
+      - memory_review
+      type: string
+      description: |-
+        * `ask` - ask
+        * `memory_review` - memory_review
     ClaudeTaskStatusEnum:
       enum:
       - queued
@@ -15632,6 +15994,26 @@ components:
         updated_at:
           type: string
           format: date-time
+        retired_reason:
+          type: string
+          nullable: true
+          description: 'Why the memory review retired it: merged, contradicted, expired,
+            relabelled or not_about_person. Null for a live row.'
+        retired_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: The row that replaced it.
+        retired_change:
+          type: integer
+          nullable: true
+          description: The review change that retired it; revert it to restore.
+        pending_review:
+          allOf:
+          - $ref: '#/components/schemas/PendingReview'
+          nullable: true
+          description: 'A pending memory-review change names this row: confirm it
+            on the Memory screen. Never treat it as fact.'
       required:
       - about_you
       - created_at
@@ -15641,7 +16023,11 @@ components:
       - importance
       - kind
       - last_recalled_at
+      - pending_review
       - recall_count
+      - retired_by
+      - retired_change
+      - retired_reason
       - shared
       - source
       - superseded_at
@@ -15689,6 +16075,7 @@ components:
       - claude
       - manual
       - consolidation
+      - review
       type: string
       description: |-
         * `phone` - phone
@@ -15696,6 +16083,7 @@ components:
         * `claude` - claude
         * `manual` - manual
         * `consolidation` - consolidation
+        * `review` - review
     Memory:
       type: object
       description: |-
@@ -17640,6 +18028,19 @@ components:
           writeOnly: true
           description: Sealed before it is stored. Never returned by this route.
           maxLength: 128
+    PendingReview:
+      type: object
+      properties:
+        change_id:
+          type: integer
+        action:
+          type: string
+        after:
+          type: string
+      required:
+      - action
+      - after
+      - change_id
     PinnedBy:
       type: object
       properties:
@@ -18311,6 +18712,26 @@ components:
         updated_at:
           type: string
           format: date-time
+        retired_reason:
+          type: string
+          nullable: true
+          description: 'Why the memory review retired it: merged, contradicted, expired,
+            relabelled or not_about_person. Null for a live row.'
+        retired_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: The row that replaced it.
+        retired_change:
+          type: integer
+          nullable: true
+          description: The review change that retired it; revert it to restore.
+        pending_review:
+          allOf:
+          - $ref: '#/components/schemas/PendingReview'
+          nullable: true
+          description: 'A pending memory-review change names this row: confirm it
+            on the Memory screen. Never treat it as fact.'
         score:
           type: number
           format: double
@@ -18323,7 +18744,11 @@ components:
       - importance
       - kind
       - last_recalled_at
+      - pending_review
       - recall_count
+      - retired_by
+      - retired_change
+      - retired_reason
       - score
       - shared
       - source
@@ -18901,6 +19326,242 @@ components:
         * `won` - won
         * `lost` - lost
         * `draw` - draw
+    ReviewAnswer:
+      type: object
+      properties:
+        context_id:
+          type: string
+          format: uuid
+        dry_run:
+          type: boolean
+        mode:
+          type: string
+        code_merged:
+          type: integer
+        counts:
+          $ref: '#/components/schemas/ReviewCounts'
+        by_action:
+          type: object
+          additionalProperties:
+            type: integer
+        words:
+          type: string
+        verdicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewVerdict'
+      required:
+      - by_action
+      - code_merged
+      - context_id
+      - counts
+      - dry_run
+      - mode
+      - verdicts
+      - words
+    ReviewBefore:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+          nullable: true
+        kind:
+          type: string
+          nullable: true
+        durable:
+          type: boolean
+          nullable: true
+      required:
+      - durable
+      - id
+      - kind
+      - text
+    ReviewChange:
+      type: object
+      properties:
+        id:
+          type: integer
+        action:
+          type: string
+        status:
+          $ref: '#/components/schemas/ReviewChangeStatusEnum'
+        by_code:
+          type: boolean
+        cluster:
+          type: string
+          description: '`<review id>.<n>`; Accept all takes it.'
+        before:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewBefore'
+        after:
+          type: object
+          additionalProperties: {}
+          nullable: true
+        after_words:
+          type: string
+        reason:
+          type: string
+        action_words:
+          type: string
+        confidence:
+          type: string
+        gate:
+          type: string
+        evidence_date:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        result:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - action
+      - action_words
+      - after
+      - after_words
+      - before
+      - by_code
+      - cluster
+      - confidence
+      - created_at
+      - evidence_date
+      - gate
+      - id
+      - reason
+      - result
+      - status
+    ReviewChangeList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewChange'
+      required:
+      - results
+    ReviewChangeStatusEnum:
+      enum:
+      - applied
+      - pending
+      - accepted
+      - dismissed
+      - stale
+      - reverted
+      type: string
+      description: |-
+        * `applied` - applied
+        * `pending` - pending
+        * `accepted` - accepted
+        * `dismissed` - dismissed
+        * `stale` - stale
+        * `reverted` - reverted
+    ReviewCluster:
+      type: object
+      properties:
+        accepted:
+          type: integer
+        stale:
+          type: integer
+        words:
+          type: string
+      required:
+      - accepted
+      - stale
+      - words
+    ReviewCounts:
+      type: object
+      properties:
+        applied:
+          type: integer
+        proposed:
+          type: integer
+        refused:
+          type: integer
+        stale:
+          type: integer
+      required:
+      - applied
+      - proposed
+      - refused
+      - stale
+    ReviewDecision:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+        words:
+          type: string
+      required:
+      - id
+      - status
+      - words
+    ReviewRun:
+      type: object
+      properties:
+        task:
+          type: integer
+        words:
+          type: string
+      required:
+      - task
+      - words
+    ReviewSubmit:
+      type: object
+      properties:
+        context_id:
+          type: string
+          format: uuid
+        changes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        dry_run:
+          type: boolean
+          default: false
+        usage:
+          type: object
+          additionalProperties: {}
+          description: Token counts only.
+        model:
+          type: string
+      required:
+      - changes
+      - context_id
+    ReviewVerdict:
+      type: object
+      properties:
+        index:
+          type: integer
+        action:
+          type: string
+        handles:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        gate:
+          type: string
+        cluster:
+          type: integer
+      required:
+      - action
+      - cluster
+      - gate
+      - handles
+      - index
+      - status
     RoleEnum:
       enum:
       - inviter

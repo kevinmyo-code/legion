@@ -187,6 +187,13 @@ INSTALLED_APPS = [
 # Storage. A bucket name, not a secret; the bucket is private and each link is signed.
 LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
 
+# memory-review (Kevin, 2026-11-09): the daily memory review on the Claude worker. `off` (the
+# default): no review task is minted and the review endpoints refuse in words. `shadow`: tasks are
+# minted on the member's idle Alienware, exact duplicates merge by code, and everything Claude
+# judges waits on the Memory screen. `on`: gated merges and past-date expiries also apply on their
+# own, and only after 14 shadow runs (ruling 01; `member_memory.review.effective_mode`).
+LEGION_MEMORY_REVIEW = os.environ.get("LEGION_MEMORY_REVIEW", "").strip().lower() or "off"
+
 # recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter
 # visitors join. `manage.py seed_demo_household` creates it, and
 # `household.demo.find_demo_household()` is the one lookup both the seed and

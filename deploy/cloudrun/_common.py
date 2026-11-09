@@ -71,8 +71,11 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # alfred-ota ticket 04: LEGION_APK_BUCKET names the private APK bucket
 # `deploy/release/setup_bucket.sh` creates; without it the release download endpoint refuses in
 # words. A bucket name, not a secret: the bucket is private and the URLs are signed per request.
+# memory-review (2026-11-09): LEGION_MEMORY_REVIEW=off|shadow|on; unset is off, so the daily review
+# is never minted and its endpoints refuse until Kevin sets it.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
+    "LEGION_MEMORY_REVIEW",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because

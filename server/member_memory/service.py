@@ -232,12 +232,21 @@ class Forgotten:
 
 
 def _chain(row: MemberMemory) -> list:
-    """`row` and every older version it superseded, newest first. Cycle-safe."""
-    ids, seen, current = [], set(), row
-    while current is not None and current.pk not in seen:
-        seen.add(current.pk)
-        ids.append(current.pk)
-        current = current.supersedes
+    """`row` and every older version it replaced: the `supersedes` chain, and (memory-review
+    ticket 05) every row whose `retired_by` is in the set, repeated until nothing new is added,
+    so forgetting a merged row takes every duplicate it absorbed. Cycle-safe."""
+    ids, seen = [], set()
+    frontier = [row.pk]
+    while frontier:
+        fresh = [pk for pk in frontier if pk not in seen]
+        if not fresh:
+            break
+        for pk in fresh:
+            seen.add(pk)
+            ids.append(pk)
+        older = MemberMemory.objects.filter(pk__in=fresh).values_list("supersedes_id", flat=True)
+        merged = MemberMemory.objects.filter(retired_by_id__in=fresh).values_list("pk", flat=True)
+        frontier = [pk for pk in [*older, *merged] if pk is not None and pk not in seen]
     return ids
 
 
@@ -282,11 +291,14 @@ def recall(request, query: str = "", limit: int = scoring.RECALL_LIMIT_DEFAULT):
     return best
 
 
-def as_dict(row: MemberMemory, request) -> dict:
-    """The one wire shape, for REST and tool results alike."""
+def as_dict(row: MemberMemory, request, *, flags=None, retired=None) -> dict:
+    """The one wire shape, for REST and tool results alike. `flags` and `retired` are the maps
+    `member_memory.review.pending_flags` / `retired_by_change` built for the whole list (one query
+    each); without them `pending_review` is null and `retired_change` is null."""
     from rest_framework.fields import DateTimeField
 
     stamp = DateTimeField().to_representation
+    key = str(row.id)
     return {
         "id": str(row.id),
         "text": row.text,
@@ -303,4 +315,10 @@ def as_dict(row: MemberMemory, request) -> dict:
         "from_conversation": str(row.source_log_id) if row.source_log_id else None,
         "created_at": stamp(row.created_at),
         "updated_at": stamp(row.updated_at),
+        # memory-review ticket 08: why a retired row left recall, what replaced it, the change
+        # that can restore it, and the recall flag for a row a pending review change names.
+        "retired_reason": row.retired_reason,
+        "retired_by": str(row.retired_by_id) if row.retired_by_id else None,
+        "retired_change": (retired or {}).get(key),
+        "pending_review": (flags or {}).get(key),
     }

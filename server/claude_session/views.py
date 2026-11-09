@@ -202,6 +202,7 @@ def task_row(task: ClaudeTask, now) -> dict:
         "artifacts": artifacts,
         "parent": task.parent_id,
         "origin": task.origin,
+        "kind": task.kind,
         "deliver": task.deliver,
         "confirms": task.confirms,
         "progress": task.progress,
@@ -560,6 +561,8 @@ def _touch_machine(request, data: dict, now) -> ClaudeMachine:
     machine.scope = data["scope"]
     machine.reported_state = data["state"]
     machine.claude_version = data.get("claude_version", "")
+    machine.input_idle_s = data.get("input_idle_s")
+    machine.on_mains = data.get("on_mains")
     machine.last_seen_at = now
     # Map decision G (memory-and-vault): bind the token that speaks for this machine, so memory
     # and the vault can refuse a `listed` machine's token. A browser session binds nothing.
@@ -674,6 +677,11 @@ class ClaimView(APIView):
         machine.save(update_fields=["last_seen_at"])
         only_one_online = [m.id for m in _online_machines(request, now)] == [machine.id]
         with transaction.atomic():
+            # memory-review ticket 15: the daily review is minted here, for this machine, when
+            # its member is due and it is idle. Off by default (LEGION_MEMORY_REVIEW).
+            from member_memory.review import maybe_mint
+
+            maybe_mint(request, machine, now)
             queued = scoped(ClaudeTask, request).filter(status=QUEUED)
             mine = queued.filter(machine=machine)
             if only_one_online:
