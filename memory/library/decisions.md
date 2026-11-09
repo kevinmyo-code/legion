@@ -7501,3 +7501,25 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   says "let Alfred set it". **The goal plan generator no longer writes a meal target**: one owner.
 - **Screen (ruling A):** the checklist shows the locked plan's today; a pending draft or proposal
   is one line with Accept and Dismiss, Accept on a draft being the lock.
+
+## 2026-11-09 - Alfred's clock inside LEGION (Kevin)
+
+- **Asked:** a clock that is Alfred's: alarms, timers, stopwatch and bedtime, inside LEGION.
+- **Ruled (Kevin):** lives INSIDE LEGION; Matrix home's big clock opens it instead of the system
+  alarm list (replaces ADR 0062's clock line). v1 = Alarms, Timers, Stopwatch, Bedtime. The wake-up
+  is a plain ring; the dismiss screen has "Brief me", one tap, never auto-speak (ticket 32 stands).
+  Alfred controls all of it by voice. Bedtime: wind-down reminder, Quiet and the feed blocker on at
+  bedtime, off at the next alarm's dismiss.
+- **Decided in the build, open to Kevin:** `USE_EXACT_ALARM` declared (reverses ticket 03's
+  proportionality call for wake-ups only); `systemExempted` ring service; direct-boot storage;
+  bedtime restores only what it turned on, and its own feed block skips ADR 0066's off-gate;
+  snooze 9, auto-silence 10, ramp 30 s, wind-down 30 min. ADR 0079, map `.scratch/alfred-clock/`.
+
+## 2026-11-09 - Bedtime never turns the feed blocker off (Kevin)
+
+- **Asked:** the build's flagged bypass: bedtime's own feed block went off at the alarm's dismiss,
+  skipping ADR 0066's off-gate.
+- **Ruled (Kevin):** when the morning alarm is dismissed after bedtime, the feed blocker STAYS ON.
+  Bedtime may turn it on, never off; Kevin turns it off himself through ADR 0066's gate (60 s wait
+  and typed sentence). Quiet unchanged: bedtime turns off only the Quiet it turned on, at dismiss.
+- **Done:** `BedtimeEffects` has no feed-off; `feedByBedtime` dropped. ADR 0079 updated in place.

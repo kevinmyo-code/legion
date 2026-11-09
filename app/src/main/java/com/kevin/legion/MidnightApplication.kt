@@ -174,7 +174,32 @@ class MidnightApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Direct boot (ADR 0079). Alfred's clock's ring path is direct-boot aware, so after a reboot
+        // this process can start BEFORE the first unlock, when credential-encrypted storage (every
+        // SharedPreferences and Room file below) throws on read. Only the clock runs then, from
+        // device-protected storage; everything else starts the moment the user unlocks.
+        if (!com.kevin.legion.clock.AndroidBedtimeEffects.isUnlocked(this)) {
+            startWhenUnlocked()
+            return
+        }
+        startUnlocked()
+    }
 
+    private fun startWhenUnlocked() {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                runCatching { unregisterReceiver(this) }
+                startUnlocked()
+            }
+        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            this, receiver, android.content.IntentFilter(android.content.Intent.ACTION_USER_UNLOCKED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    /** Everything the app starts once credential-encrypted storage is readable. */
+    private fun startUnlocked() {
         // Process-wide caches that are seeded from disk exactly once.
         //
         // These used to be seeded in AriaForegroundService.onCreate, which was
@@ -628,6 +653,13 @@ class MidnightApplication : Application() {
             // never mind the DB race those three already document).
             runCatching { com.kevin.legion.service.AssistantIgnition.resumeIfEnabled(this@MidnightApplication) }
                 .onFailure { MidnightEvents.appStartWorkFailed("resume_assistant_ignition", it) }
+
+            // Alfred's clock (ADR 0079): app start is one of its re-arm triggers, and it finishes a
+            // bedtime restore that waited for this unlock. Idempotent; prefs only.
+            appScope.launch {
+                runCatching { com.kevin.legion.clock.ClockGraph.controller(this@MidnightApplication).rearmAll() }
+                    .onFailure { MidnightEvents.appStartWorkFailed("clock_rearm", it) }
+            }
         }
 
         MidnightEvents.setBuildContext(

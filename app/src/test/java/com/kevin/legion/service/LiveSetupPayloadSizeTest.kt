@@ -213,6 +213,14 @@ class LiveSetupPayloadSizeTest {
      * food means Groceries" on `manage_checklist`; "car status only from this" on `ask_fleet`;
      * `get_current_location` reworded token-neutral. The car-status rule itself
      * (`CAR_STATUS_CLAUSE`) rides in `buildLiveContext`, per conversation. Headroom is ~137 tokens.
+     *
+     * **NOT raised on 2026-11-09 (alfred-clock ticket 06, `clock`, ADR 0079).** `clock` is ONE
+     * action-dispatched declaration (14 actions: alarms, timers, stopwatch, bedtime) at 693 chars,
+     * ~173 tokens; its params carry no descriptions. Paid for mostly by `manage_item.exact`, whose
+     * "wake me up at exactly 6am" example also routed wake-ups to reminders: cut to one line naming
+     * `clock`. Measured on `feat/alfred-clock` merged with `integrate/2026-11-09` (the audit fixes):
+     * 95 declarations, 87,981 chars of tools JSON plus 10,554 chars of system instruction = 98,535
+     * chars, ~24,633 estimated tokens. Headroom is ~17 tokens.
      */
     private val ceilingTokens = 24_650
 

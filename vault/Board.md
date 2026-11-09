@@ -19,6 +19,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | [[02-daily-brief\|02]] | build | Build: the daily brief, built at 5am on the server, opened from a Home button |
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[01-report-a-problem\|01]] | build | Report a problem: voice and button |
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[06-book-library\|06]] | build | Book library on the engine, synced to the phone |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[08-on-the-phone\|08]] | acceptance | Acceptance on the A25, and what is deferred |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -95,6 +96,13 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 |---|---|---|---|
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[02-records-for-the-worker\|02]] | build | Conversation records the worker can read |
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[08-build-lock-and-heat\|08]] | build | One build at a time, with a heat check |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[01-alarm-engine\|01]] | build | Alarm engine: model, math, store, scheduling, re-arm |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[02-ringing\|02]] | build | Ringing: foreground service, full-screen intent, audio, snooze, auto-silence |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[03-timers-and-stopwatch\|03]] | build | Timers and stopwatch |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[04-bedtime\|04]] | build | Bedtime |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[05-clock-screen\|05]] | build | Clock screen and Matrix home entry |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[06-voice-tool\|06]] | build | The clock voice tool |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | [[07-brief-me\|07]] | build | Brief me on the dismiss screen |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[09-head-unit-updater\|09]] | build | Head unit updater: check, download, verify, tap to install |
@@ -412,6 +420,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ai-craft/map\|ai-craft]] | 4 | 3 | [[.scratch/ai-craft/ai-craft.canvas\|open]] |
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | 3 | 2 | [[.scratch/ai-upgrade/ai-upgrade.canvas\|open]] |
 | [[.scratch/alfred-builds/map\|alfred-builds]] | 9 | 9 | [[.scratch/alfred-builds/alfred-builds.canvas\|open]] |
+| [[.scratch/alfred-clock/map\|alfred-clock]] | 8 | 8 | [[.scratch/alfred-clock/alfred-clock.canvas\|open]] |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | 9 | 9 | [[.scratch/alfred-ota/alfred-ota.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |

@@ -1,0 +1,85 @@
+{
+  "nodes": [
+    {
+      "id": "2b2eac778883a31a",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/01-alarm-engine.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3cfb543f8d02c297",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/02-ringing.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "fd227844275ff5e7",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/03-timers-and-stopwatch.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "54f50e901527cf4d",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/04-bedtime.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4d0f23a91b1185cf",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/05-clock-screen.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9c31af4a60878fa0",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/06-voice-tool.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "36679c5e58ad5a28",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/07-brief-me.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "823e5a2ab98d3149",
+      "type": "file",
+      "file": ".scratch/alfred-clock/issues/08-on-the-phone.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}
