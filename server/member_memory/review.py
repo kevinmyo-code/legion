@@ -1328,6 +1328,10 @@ def maybe_mint(request, machine, now):
     household = machine.household
     if getattr(household, "is_demo_visit", False):
         return None
+    if machine.input_idle_s is None:
+        # A worker that sends no idle reading predates the review: it would run the task as an
+        # ordinary ask, with no fixed progress phrase and no hook rule. Never hand it one.
+        return None
     _mint_lock(member.pk)
     due = review_due(member, household, now)
     if not due.due or _machine_busy(machine, now):
@@ -1363,12 +1367,15 @@ def run_now(request) -> dict:
     household = household_of(request)
     machine = (
         ClaudeMachine.objects.filter(
-            household=household, scope=SCOPE_FULL, token__user=member
+            household=household, scope=SCOPE_FULL, token__user=member,
+            input_idle_s__isnull=False,
         ).order_by("-last_seen_at").first()
     )
     if machine is None:
         raise ReviewRefused(
-            "Nothing was queued. None of your Claude machines can run the review.", status=404
+            "Nothing was queued. None of your Claude machines runs a worker that knows the "
+            "memory review yet.",
+            status=404,
         )
     now = timezone.now()
     with transaction.atomic():

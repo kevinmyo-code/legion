@@ -705,6 +705,16 @@ def test_another_members_machine_is_never_minted_ones_for_this_member(
     assert _claim(worker).status_code == 204
 
 
+def test_a_worker_that_sends_no_idle_reading_is_never_handed_a_review(
+    shadow, auth_client, household_user, household_a
+):
+    _row(household_user, household_a, "Sam likes green tea.")
+    old_worker = _alienware(household_user, idle=None)  # overdue: no review has ever run
+    assert _claim(old_worker).status_code == 204
+    refused = auth_client.post(f"{BASE}review/run")
+    assert refused.status_code == 404 and "knows the memory review" in refused.data["detail"]
+
+
 def test_run_now_queues_one_and_refuses_a_second(shadow, auth_client, household_user,
                                                  household_a):
     _row(household_user, household_a, "Sam likes green tea.")
