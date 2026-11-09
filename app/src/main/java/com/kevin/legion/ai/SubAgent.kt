@@ -636,7 +636,10 @@ class SubAgent internal constructor(
      * The POST itself lives in [GeminiRest] (2026-10-27): retry once on a transport failure,
      * cancellable I/O, metering through [GeminiUsageMeter], and [KeyHealth] recording.
      */
-    private suspend fun postRaw(body: JSONObject): RestOutcome {
+    private suspend fun postRaw(body: JSONObject): RestOutcome =
+        postOnce(body).also { if (it is RestOutcome.Ok && isSearchGrounded(body)) WebReadMark.noteWebRead() }
+
+    private suspend fun postOnce(body: JSONObject): RestOutcome {
         val state = callState()
         val probe = state.probe
         probe?.let { it.rounds++ }
@@ -930,6 +933,16 @@ class SubAgent internal constructor(
 
     companion object {
         private const val TAG = "SubAgent"
+
+        /**
+         * Whether [body] asks Gemini to ground on Google Search, so its answer is web text
+         * ([WebReadMark], round 3). Only [buildAskBody] adds the tool; the function-calling bodies
+         * never do. Read off the body actually sent, not the [useSearch] field, so it cannot drift.
+         */
+        internal fun isSearchGrounded(body: JSONObject): Boolean {
+            val tools = body.optJSONArray("tools") ?: return false
+            return (0 until tools.length()).any { tools.optJSONObject(it)?.has("google_search") == true }
+        }
 
         /**
          * The real tool [asked] meant, when the miss is unambiguous: same name ignoring case,

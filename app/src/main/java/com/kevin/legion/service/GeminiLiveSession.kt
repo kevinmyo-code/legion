@@ -587,6 +587,11 @@ class GeminiLiveSession(
     // turnComplete alongside every other per-turn accumulator.
     @Volatile private var mailToolCalledThisTurn = false
 
+    // Round 3 (2026-11-09): [mailToolCalledThisTurn] for the NEXT turn too, set by
+    // [markToolResultReadThrough] when a NON_BLOCKING result carrying web text is sent while its own
+    // turn is still open. Moved into the flag, then cleared, on the next turnComplete.
+    @Volatile private var readThroughCarry = false
+
     // 2026-09-07: whether ANY tool was called this turn, mail-shaped or not. Set from
     // [handleToolCall] beside [mailToolCalledThisTurn] and cleared on the same turnComplete.
     //
@@ -1102,6 +1107,18 @@ class GeminiLiveSession(
      */
     fun markTurnReadThrough() {
         mailToolCalledThisTurn = true
+    }
+
+    /**
+     * A tool's result carried web text ([com.kevin.legion.ai.WebReadMark], round 3: `ask_fleet`'s
+     * `web_lookup`), so this turn is read-through, as [markTurnReadThrough]. A NON_BLOCKING result is
+     * spoken `WHEN_IDLE`: sent while its own turn is still open, the answer lands in the NEXT turn,
+     * after this turn's turnComplete has cleared the flag, so then the mark also carries across one
+     * turnComplete ([carriesReadThroughPastTurn]). Call before the result is sent.
+     */
+    fun markToolResultReadThrough(name: String) {
+        mailToolCalledThisTurn = true
+        if (carriesReadThroughPastTurn(isNonBlockingTool(name), toolCalledThisTurn)) readThroughCarry = true
     }
 
     val isActive: Boolean get() = running.get() && !closed.get()
@@ -1796,7 +1813,8 @@ class GeminiLiveSession(
             val refusedTool = refusalWatch.onTurnComplete(companionTurnText.toString())
             modelTurnStartedAtMs = 0L
             audit.turnComplete()
-            mailToolCalledThisTurn = false
+            mailToolCalledThisTurn = readThroughCarry
+            readThroughCarry = false
             toolCalledThisTurn = false
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
@@ -3673,6 +3691,16 @@ class GeminiLiveSession(
             toolName: String,
             excludedTools: Set<String> = LiveToolbox.EPISODIC_EXCLUDED_TOOLS,
         ): Boolean = toolName in excludedTools
+
+        /**
+         * Whether a web-carrying tool result must keep the turn read-through past the next
+         * turnComplete ([markToolResultReadThrough]): only a NON_BLOCKING ([async]) result, and only
+         * while the turn it was asked in is still open ([turnStillOpen], a tool was called and no
+         * turnComplete has come since). A blocking result is answered inside its own turn; an async
+         * one sent once the turn closed starts the answer turn, which the flag already covers.
+         */
+        internal fun carriesReadThroughPastTurn(async: Boolean, turnStillOpen: Boolean): Boolean =
+            async && turnStillOpen
 
         /**
          * Ticket 02: parses a protobuf `Duration` (the type of [GoAway.timeLeft]) into

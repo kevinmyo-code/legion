@@ -13,6 +13,7 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
+import com.kevin.legion.ai.WebReadMark
 import com.kevin.legion.ai.firstGreetingOpener
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.data.local.CarDatabase
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
@@ -1258,8 +1260,13 @@ class LiveSessionController(context: Context) {
                 // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn() is what
                 // `remember`'s dispatch branch gates on - read here, off the live session, rather
                 // than dispatch reaching back into GeminiLiveSession itself.
-                val response: JSONObject =
+                // Round 3: a sub-agent behind this call that got web text back (ask_fleet's
+                // web_lookup) notes the mark; the turn turns read-through before the answer is sent.
+                val webRead = WebReadMark()
+                val response: JSONObject = withContext(webRead) {
                     runToolBounded(call.name, call.args, s.readThroughToolTouchedThisTurn(), s.userTextThisTurn())
+                }
+                if (webRead.touched) s.markToolResultReadThrough(call.name)
                 // The panel's tool line: only for a tool that came back with an explicit `success`
                 // (see [ChatTranscript.tool]) - a result that says nothing about success gets no
                 // line rather than a "done" nobody checked. Failure detail is the tool's own words.
