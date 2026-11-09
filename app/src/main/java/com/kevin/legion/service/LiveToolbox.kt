@@ -562,7 +562,8 @@ object LiveToolbox {
                 "guidance still runs.",
             params = obj(
                 "destination" to schema("string",
-                    "Where to, in the user's words: saved place, event, contact, address, business."),
+                    "Where to, in the user's words, keeping 'nearest' or 'closest': saved place, " +
+                        "event, contact, address, business."),
                 "via" to schema("string", "Optional stop on the way."),
                 "avoid" to schema("string", "Optional: tolls, highways, ferries (comma separated)."),
                 "preview" to schema("boolean", "True to only show the routes, not start."),
@@ -1442,7 +1443,8 @@ object LiveToolbox {
                 "NOT the one persistent list (manage_item) - never route a to-do here, or a " +
                 "checklist line there. The grocery/shopping list is a checklist named " +
                 "\"Groceries\": 'add milk to the grocery list' is action=add, list=Groceries, " +
-                "text=milk (it is built in and always exists - never create it). " +
+                "text=milk (it is built in and always exists - never create it); 'the list' with " +
+                "food or a household item means Groceries. " +
                 "No schedule ('none') means done once ever, the first tick; 'daily' resets each " +
                 "day, 'weekly' only applies on its named days - a list created today has nothing " +
                 "for yesterday, that is expected. A measured line needs a real number to tick - " +
@@ -1623,8 +1625,8 @@ object LiveToolbox {
         fns.put(fn(
             name = "get_current_location",
             description = "Get the user's current GPS location and human-readable address. Use " +
-                "whenever the user asks 'where am I', or when you need the current city/state " +
-                "to ground a nearby search.",
+                "whenever the user asks 'where am I', or to ground a web search. navigate finds " +
+                "its own location.",
             params = obj(),
             required = listOf(),
         ))
@@ -2347,7 +2349,8 @@ object LiveToolbox {
                 "mileage, specs, recalls, service history, maintenance schedules, or the build " +
                 "log. Read-only - it records NOTHING. Recording work that was done is " +
                 "log_service, log_past_service or log_build_entry, never here. Ask a " +
-                "plain-English question; raw results come back to relay.",
+                "plain-English question; raw results come back to relay. How the car is doing " +
+                "or whether it is connected is answered only from this, never from memory.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2844,14 +2847,14 @@ object LiveToolbox {
                     val named = VehicleResolver.mentionedIn(question, roster)
                     val pick = VehicleResolver.pickDefault(
                         roster,
-                        connectedId = ObdBluetoothManager.connectedDeviceAddress,
+                        connectedId = ActiveVehicle.connectedCarId(context),
                         selectedId = ActiveVehicle.selected(context),
                         lastConnectedId = ActiveVehicle.lastConnected(context),
                     )
                     val fleetLine = fleetRouteContext(
                         roster,
                         (pick as? VehicleMatch.Resolved)?.vehicle?.obdMac,
-                        ObdBluetoothManager.connectedDeviceAddress,
+                        ActiveVehicle.connectedCarId(context),
                         namedId = named?.obdMac,
                     )
                     SubAgent(systemInstruction = fleetDispatchGrounding(context) + fleetLine).route(
@@ -3333,7 +3336,8 @@ object LiveToolbox {
     private suspend fun refuseIfNotConnectedCar(context: Context, args: JSONObject): JSONObject? {
         val requested = args.optString("vehicle").trim()
         if (requested.isBlank()) return null
-        val connectedId = ObdBluetoothManager.connectedDeviceAddress
+        // The car the dongle is in, not its MAC (2026-11-09 audit, see ActiveVehicle.connectedCarId).
+        val connectedId = ActiveVehicle.connectedCarId(context)
         if (connectedId == null) {
             // Nothing connected at all - each of these tools already returns
             // its own "OBD adapter isn't connected" message; a second,
@@ -4034,7 +4038,9 @@ object LiveToolbox {
     private suspend fun listVehicles(context: Context): JSONObject {
         val vehicles = com.kevin.legion.vehicle.FleetEngineStore.getAll(context)
         val activeId = ActiveVehicle.current(context)
-        val connectedId = ObdBluetoothManager.connectedDeviceAddress
+        // The car the dongle is IN (2026-11-09 audit): ActiveVehicle.connectedCarId, never the
+        // dongle's MAC against obdMac, which read a hand-added car as unplugged mid-drive.
+        val connectedId = ActiveVehicle.connectedCarId(context)
         val arr = JSONArray()
         for (v in vehicles) {
             // Raw v.name deliberately, not VehicleController.label - this is a decomposed tuple
@@ -6161,6 +6167,55 @@ object LiveToolbox {
     }
 
     /**
+     * The PIDs `read_vehicle_sensor` answers from. [unread] is the connected car with no support
+     * bitmask live or stored: its sensor list was never read, which is not "not profiled" (the
+     * 2026-11-09 audit's 11-07 case, said while get_vehicle_data read the same car live).
+     */
+    internal data class SensorProfile(val pids: Set<Int>, val unread: Boolean)
+
+    internal fun sensorProfile(connectedToThisCar: Boolean, live: Set<Int>, stored: Set<Int>): SensorProfile =
+        when {
+            connectedToThisCar && live.isNotEmpty() -> SensorProfile(live, unread = false)
+            stored.isNotEmpty() -> SensorProfile(stored, unread = false)
+            else -> SensorProfile(emptySet(), unread = connectedToThisCar)
+        }
+
+    /**
+     * `read_vehicle_sensor` on the connected car whose sensor list was never read: a named sensor
+     * is tried against the whole registry (a car that does not report it simply does not answer),
+     * and a list request says the list is unread rather than that the car is unprofiled.
+     */
+    private suspend fun readUnprofiledSensor(vehicle: Vehicle, sensorArg: String): JSONObject {
+        val label = VehicleController.label(vehicle)
+        val matches = if (sensorArg.isBlank()) emptyList() else matchPid(sensorArg, PID_REGISTRY.filter { it.readable })
+        return when {
+            sensorArg.isBlank() -> result(
+                false,
+                "The adapter is connected to $label, but it has not reported which sensors the car " +
+                    "supports, so there is no list to read yet. Live readings still work: coolant, RPM, " +
+                    "speed, fuel, battery voltage, engine load and intake air come from get_vehicle_data.",
+            )
+            matches.isEmpty() -> result(false, "I don't know a sensor called \"$sensorArg\".")
+            matches.size > 1 -> result(false, "Which one? " + matches.joinToString(", ") { it.description })
+            else -> {
+                val spec = matches.first()
+                val value = ObdBluetoothManager.readPid(spec)
+                if (value == null) {
+                    result(false, "$label didn't answer for ${spec.label} just now; it may not report that sensor.")
+                } else {
+                    JSONObject()
+                        .put("success", true)
+                        .put("vehicle", label)
+                        .put("sensor", spec.key)
+                        .put("description", spec.description)
+                        .put("value", (value * 100).roundToInt() / 100.0)
+                        .put("unit", spec.unit)
+                }
+            }
+        }
+    }
+
+    /**
      * Dispatches `read_vehicle_sensor`: list a car's capabilities, or read one sensor live.
      *
      * Deliberately NOT in [CATEGORY_A_TOOLS]. The capability half is a database read that must work
@@ -6178,9 +6233,16 @@ object LiveToolbox {
             // Compared against ActiveVehicle.current for the same reason persistCapabilities uses it:
             // a hand-added car's id is synthetic, so comparing the dongle's MAC to vehicle.obdMac
             // would read as "not this car" for every vehicle Kevin added by hand.
-            val connectedToThisCar = ObdBluetoothManager.isConnected &&
-                ActiveVehicle.current(context) == vehicle.obdMac
-            val supported = if (connectedToThisCar && live.isNotEmpty()) live else storedPids
+            val connectedToThisCar = ActiveVehicle.connectedCarId(context) == vehicle.obdMac
+            val profile = sensorProfile(connectedToThisCar, live, storedPids)
+            val supported = profile.pids
+
+            if (profile.unread) {
+                // 2026-11-09 audit (11-07 10:13): "I haven't profiled the Jeep" while get_vehicle_data
+                // read live coolant from it. Connected with no support bitmask in hand means the
+                // list was never read, not that the car reports nothing: try the PID itself.
+                return@withResolvedVehicle readUnprofiledSensor(vehicle, args.optString("sensor").trim())
+            }
 
             if (supported.isEmpty()) {
                 return@withResolvedVehicle result(
@@ -6684,7 +6746,7 @@ object LiveToolbox {
         val unknown = codes.filter { it !in seed && it !in learned }
         if (unknown.isEmpty()) return
         val lookup = DtcLookup.get(context)
-        val label = ObdBluetoothManager.connectedDeviceAddress?.let { m ->
+        val label = ActiveVehicle.connectedCarId(context)?.let { m ->
             runCatching { com.kevin.legion.vehicle.FleetEngineStore.getByMac(context, m) }.getOrNull()
                 ?.let { VehicleController.label(it) }
         }.orEmpty()
@@ -6702,14 +6764,14 @@ object LiveToolbox {
         }
         val codes = ObdBluetoothManager.getDtcCodes()
         if (codes.isEmpty()) {
-            ToolCards.codes(context, ObdBluetoothManager.connectedDeviceAddress, codes, emptyMap())
+            ToolCards.codes(context, ActiveVehicle.connectedCarId(context), codes, emptyMap())
             return result(true, "No codes stored - everything's clear.")
         }
 
         val seed = withContext(Dispatchers.IO) { DtcDescriptions.loadSeed(context) }
         val learned = withContext(Dispatchers.IO) { DtcDescriptions.loadLearned(context) }
         val info = seed + learned
-        ToolCards.codes(context, ObdBluetoothManager.connectedDeviceAddress, codes, info)
+        ToolCards.codes(context, ActiveVehicle.connectedCarId(context), codes, info)
         val glance = GlanceCardPayload(
             shape = GlanceShape.LIST,
             title = "Codes",
@@ -6722,7 +6784,7 @@ object LiveToolbox {
         // Each live code's freeze frame (2026-11-03): the snapshot saved with the newest stored
         // event that carries the code. Mode 02 is not re-read here - ten more PID round trips
         // inside an 8 s tool budget - and the stored frame is the ECU's same latched snapshot.
-        val mac = ObdBluetoothManager.connectedDeviceAddress
+        val mac = ActiveVehicle.connectedCarId(context)
         val stored = mac?.let { m ->
             withContext(Dispatchers.IO) { CarDatabase.getDatabase(context).codeEventDao().getAll(m) }
         }.orEmpty().sortedByDescending { it.timestamp }

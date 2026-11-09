@@ -156,4 +156,21 @@ class DriveLogUploaderTest {
         assertEquals(UploadOutcome.NothingToSend, uploader(newStore()).upload(UploadReason.STARTUP))
         assertEquals(0, server.requestCount)
     }
+
+    @Test
+    fun `a Live session nobody spoke in uploads no conversation record`() = runTest {
+        // 2026-11-09: 182 head-unit conversation records were session_start, cold_start_ms and
+        // session_end only. Through the gate such a session writes nothing, so nothing is posted.
+        val store = newStore()
+        val gate = ConvoSessionGate(sink = { t, l, _ ->
+            store.append(listOf(DriveLog.threadtime("11-09 08:07:22.929", 1, 1, t, l)))
+        })
+        val audit = ConvoAudit(sink = { gate.write(ConvoAudit.TAG, it) })
+        val latency = ConvoLatency(sink = { gate.write(ConvoLatency.TAG, it) })
+        audit.sessionStart("gemini-3.8-live"); latency.start(1); latency.setupComplete(900)
+        audit.sessionEnd("Session closed due to client inactivity.")
+
+        assertEquals(UploadOutcome.NothingToSend, uploader(store).upload(UploadReason.CONVERSATION))
+        assertEquals(0, server.requestCount)
+    }
 }

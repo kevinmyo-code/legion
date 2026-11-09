@@ -337,7 +337,7 @@ Everything below is compile-and-test verified; none of it has been run on the he
 - **Companion identity = PER CAR (changed 2026-07-16, Kevin; was "global (app install)"; rewritten 2026-10-14).** Identity - name, persona, traits, voice, avatar, and its sync clock - is keyed by the active vehicle in `CompanionProfile` (`name:<vehicleId>` and so on, falling back to the unkeyed value). The companion character itself is Uncle Moose for every car (section 1, `CompanionIdentity`); what is per car is what the driver customised. **Everything that is NOT identity stays global**: the Gemini, Spotify and Shelly credentials, the spend hash, the sync-enabled flag, first-session-done. Those belong to the install, not a car. See `library/decisions.md` 2026-07-16 and 2026-10-14.
 - **Vehicle identity = the driver's ACTIVE car (`vehicle/ActiveVehicle.kt`), not the OBD MAC (changed 2026-07-16).** The MAC is now only the fallback when nothing is picked. The old rule assumed one dongle per car; with one dongle moved between two cars they collapsed into one vehicle id, and since `vehicles` is LWW across sync, registering car B overwrote car A's row **including `odometerBaseline`**. Ids may be a MAC (existing rows, unchanged forever) or synthetic `car:<uuid>` - `vehicle.obdMac` is just a String PK, which is why this needed no Room migration. **The active selection is per-device and MUST NOT sync**: the phone can be in one car while the head unit is bolted in another, and that disagreement is correct.
 - **No StateFlow Bitmaps.** Decode at render time with `inSampleSize`.
-- **Warm-session model.** Live socket idles 3min post-conv for instant resume.
+- **Warm-session model.** Live socket idles 3min post-conv for instant resume. **No socket while idle (Kevin, 2026-11-09, phone parity with LEGION e6a193f8):** nothing prewarms at service start or after a close; a socket opens only for the talk tap or a proactive line. An idle prewarm reopened every 2 minutes all day (decisions.md 2026-11-09).
 - **Split system instruction:** `buildBaseInstruction()` cached 2min + `buildLiveContext()` fresh.
 - **Frame-clock motion only.** All UI animation via `ui/Motion.kt` (`animPhase`/`triangle`/`wave`/`rememberRamp`). Banned in `ui/` (Motion.kt excepted): `AnimatedVisibility`, `tween(`, `infiniteTransition`, `animate*AsState`, `Crossfade`. CI grep-check.
 - **No real ML.** Predictions = Gemini-as-reasoner over compressed trend summaries. Never frame as "AI predicts"; the mascot _notices_.
@@ -669,7 +669,7 @@ app/src/main/java/com/kevin/midnightai/
 ├── StartupTrace.kt                     cold-start timings, first-frame mark, main-thread stall watchdog
 ├── service/
 │   ├── AriaForegroundService.kt        service lifecycle, background loops (§4.4)
-│   ├── LiveSessionController.kt        Gemini Live state machine, prewarm
+│   ├── LiveSessionController.kt        Gemini Live state machine (no idle prewarm, 2026-11-09)
 │   ├── GeminiLiveSession.kt            WebSocket STS, VAD, audio I/O
 │   ├── LiveToolbox.kt                  voice tool declarations + dispatch (§4.3), onboarding tools
 │   ├── AskEngine.kt                    ask_engine: the bridge to the LEGION engine's /mcp

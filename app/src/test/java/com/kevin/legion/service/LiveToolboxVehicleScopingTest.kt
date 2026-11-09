@@ -171,6 +171,58 @@ class LiveToolboxVehicleScopingTest {
         assertFalse(result.has("batteryVolts"))
     }
 
+    /**
+     * 2026-11-09 log audit (A25 11-07 10:13): "It is not connected" from list_vehicles while
+     * get_vehicle_data read live RPM. The dongle is in the car [ActiveVehicle] says, and a
+     * hand-added car's id is synthetic, so matching the dongle's MAC against obdMac never fired.
+     */
+    @Test
+    fun `list_vehicles says the dongle is in a hand-added car it is connected to`() = runBlocking {
+        seedVehicles(vehicle("car:jeep-1", "Cherokee"), vehicle("CC:DD", "Miata"))
+        ActiveVehicle.select(context, "car:jeep-1")
+        fakeConnect("11:22:33:44:55:66")
+
+        val arr = LiveToolbox.dispatch(context, "list_vehicles", JSONObject())!!.getJSONArray("vehicles")
+
+        val connected = (0 until arr.length()).map { arr.getJSONObject(it) }
+            .filter { it.getBoolean("dongleConnected") }.map { it.getString("name") }
+        assertEquals(listOf("Cherokee"), connected)
+    }
+
+    @Test
+    fun `list_vehicles says nothing is connected when the dongle is not`() = runBlocking {
+        seedVehicles(vehicle("car:jeep-1", "Cherokee"))
+        ActiveVehicle.select(context, "car:jeep-1")
+
+        val o = LiveToolbox.dispatch(context, "list_vehicles", JSONObject())!!
+            .getJSONArray("vehicles").getJSONObject(0)
+        assertFalse(o.getBoolean("dongleConnected"))
+    }
+
+    /** Same audit: "I haven't profiled the Jeep yet" while the dongle in it answered live reads. */
+    @Test
+    fun `read_vehicle_sensor on the connected car with no sensor list does not call it unprofiled`() = runBlocking {
+        seedVehicles(vehicle("car:jeep-1", "Cherokee"))
+        ActiveVehicle.select(context, "car:jeep-1")
+        fakeConnect("11:22:33:44:55:66")
+
+        val result = LiveToolbox.dispatch(context, "read_vehicle_sensor", JSONObject())!!
+
+        assertFalse(result.getBoolean("success"))
+        val message = result.getString("message")
+        assertFalse(message, message.contains("profiled"))
+        assertTrue(message, message.contains("connected to Cherokee"))
+    }
+
+    @Test
+    fun `read_vehicle_sensor on an unplugged car with no stored profile still says it is unprofiled`() = runBlocking {
+        seedVehicles(vehicle("car:jeep-1", "Cherokee"))
+        ActiveVehicle.select(context, "car:jeep-1")
+
+        val message = LiveToolbox.dispatch(context, "read_vehicle_sensor", JSONObject())!!.getString("message")
+        assertTrue(message, message.contains("haven't profiled"))
+    }
+
     /** Test 12: list_vehicles returns every non-archived car and flags exactly one active. */
     @Test
     fun `list_vehicles returns every non-archived car and flags exactly one active`() = runBlocking {

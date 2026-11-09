@@ -125,6 +125,36 @@ object SearchAmbiguity {
     }
 }
 
+/**
+ * Orders search hits before the read-back (2026-11-09 log audit, 11-08 "take me to the nearest
+ * Petco" from Victoria: the model sent just "Petco", and the top pick read back was "Vetco
+ * Vaccination Clinic" from the SDK's own order, above the Petco at the same address).
+ *
+ * A name or brand search puts the hits whose name carries the searched words first, nearest of
+ * those first (a chain means its nearest branch), then the rest in the SDK's order, or nearest
+ * first when the ask was "nearest". A category search ("gas station") is nearest first. Along a
+ * route the SDK's route order stands. Stable, so equal distances keep the SDK's order.
+ */
+object SearchRanking {
+    private val BY_DISTANCE: Comparator<Candidate> = compareBy(nullsLast()) { it.distanceM }
+
+    fun rank(parsed: ParsedSearch, alongRoute: Boolean, hits: List<Candidate>): List<Candidate> = when {
+        alongRoute || hits.size < 2 -> hits
+        parsed.category != null -> hits.sortedWith(BY_DISTANCE)
+        else -> {
+            val (named, rest) = hits.partition { nameCarries(it.name, parsed.term) }
+            named.sortedWith(BY_DISTANCE) + if (parsed.nearest) rest.sortedWith(BY_DISTANCE) else rest
+        }
+    }
+
+    /** True when [name]'s words hold [term]'s in a row: "Petco Animal Supplies" carries "petco", "Vetco" does not. */
+    internal fun nameCarries(name: String, term: String): Boolean {
+        fun words(t: String) = QueryText.normalize(t).replace("'", "")
+        val want = words(term)
+        return want.isNotEmpty() && " ${words(name)} ".contains(" $want ")
+    }
+}
+
 /** Mapbox search as the last source. Failures are [SourceAnswer.Unreadable] (said in words), never "no match". */
 class SearchSource(private val search: PlaceSearch) : DestinationSource {
     override val kind = SourceKind.SEARCH
@@ -150,7 +180,8 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
                         c.copy(distanceM = c.distanceM ?: Geo.distanceM(fix, GeoPoint(c.latitude, c.longitude)))
                     }
                 } ?: answer.candidates
-                val comparable = SearchAmbiguity.comparable(query, hits)
+                val ranked = SearchRanking.rank(parsed, along != null, hits)
+                val comparable = SearchAmbiguity.comparable(query, ranked)
                 SourceAnswer.Hits(comparable, SearchAmbiguity.isAmbiguous(parsed, along != null, comparable))
             }
         }

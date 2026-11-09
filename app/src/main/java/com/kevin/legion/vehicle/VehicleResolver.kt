@@ -92,7 +92,7 @@ object VehicleResolver {
             val roster = FleetEngineStore.getAll(context)
             return pickDefault(
                 roster,
-                connectedId = ObdBluetoothManager.connectedDeviceAddress,
+                connectedId = ActiveVehicle.connectedCarId(context),
                 selectedId = ActiveVehicle.selected(context),
                 lastConnectedId = ActiveVehicle.lastConnected(context),
             ) ?: VehicleMatch.Resolved(VehicleController.currentVehicle(context))

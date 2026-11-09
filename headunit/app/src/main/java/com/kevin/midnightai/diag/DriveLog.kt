@@ -74,14 +74,20 @@ object DriveLog {
      */
     fun conversation(tag: String, message: String) = write(conversationStore, tag, message)
 
+    /**
+     * [conversation] stamped with [atMs], the time the line was produced rather than the time it is
+     * written: [ConvoSessionGate] holds a session's opening lines until someone speaks, and they
+     * must keep their own times when it lets them through.
+     */
+    fun conversationAt(tag: String, message: String, atMs: Long) = write(conversationStore, tag, message, atMs)
+
     /** Runs [block] on the log thread after every write queued before it. */
     fun afterQueuedWrites(block: () -> Unit) {
         io.execute { runCatching(block) }
     }
 
-    private fun write(target: DriveLogStore?, tag: String, message: String) {
+    private fun write(target: DriveLogStore?, tag: String, message: String, atMs: Long = System.currentTimeMillis()) {
         val s = target ?: return
-        val atMs = System.currentTimeMillis()
         val pid = android.os.Process.myPid()
         val tid = android.os.Process.myTid()
         io.execute {

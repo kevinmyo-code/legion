@@ -205,6 +205,15 @@ class LiveSetupPayloadSizeTest {
      * result (`MemoryToolbox.RECALL_EMPTY_NOTE`), billed per result. `show_vault_item` is 295 chars.
      * Headroom is ~41 tokens.
      *
+     * **NOT raised on 2026-11-09 (voice log audit fixes, `fix/audit-2026-11-09-phone`).** Measured
+     * on that branch before the change: 94 declarations, 87,323 chars of tools JSON plus 10,487
+     * chars of system instruction = 97,810 chars, ~24,452 estimated tokens (dev had shed ~160 since
+     * the entry above). After: 87,500 + 10,554 = 98,054 chars, ~24,513 (+61). The lone "¿Qué?"
+     * sentence in `ENGLISH_CLAUSE`; "keep 'nearest'" on `navigate.destination`; "'the list' with
+     * food means Groceries" on `manage_checklist`; "car status only from this" on `ask_fleet`;
+     * `get_current_location` reworded token-neutral. The car-status rule itself
+     * (`CAR_STATUS_CLAUSE`) rides in `buildLiveContext`, per conversation. Headroom is ~137 tokens.
+     *
      * **NOT raised on 2026-11-09 (alfred-clock ticket 06, `clock`, ADR 0079).** `clock` is ONE
      * action-dispatched declaration (14 actions: alarms, timers, stopwatch, bedtime) at 693 chars,
      * ~173 tokens; its params carry no descriptions. Paid for mostly by `manage_item.exact`, whose

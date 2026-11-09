@@ -437,12 +437,13 @@ class AriaBrain private constructor(context: Context) {
                     "code means, or how to fix one, call the diagnose_codes tool - it's your " +
                     "diagnostics specialist. Don't explain or look up codes yourself.")
             } else {
-                sb.append("The car's OBD-II port is connected and reports no stored trouble " +
-                    "codes in the ECU right now. If the user asks what's wrong with the car or " +
-                    "about a check engine light, tell them nothing is stored at the moment - but " +
-                    "that says nothing about PAST codes, which are a separate question (below).")
+                sb.append("The car's OBD-II port was connected when this conversation opened and " +
+                    "reported no stored trouble codes in the ECU then. If the user asks about a " +
+                    "check engine light, that is all this note says - and it says nothing about " +
+                    "PAST codes, which are a separate question (below).")
             }
         }
+        sb.appendSection(CAR_STATUS_CLAUSE)
 
         // Outside the isConnected gate on purpose (2026-08-11). Stored code history is a database
         // read that works for any car with nothing plugged in, and the assistant previously had no
@@ -946,15 +947,35 @@ internal val ASSISTANT_FRAME =
     "calendar, money, and yes their cars - and no one of those is the default subject. "
 
 /**
+ * Car status comes from a car tool (2026-11-09 log audit, A25 11-07 10:12). Asked "how's the car
+ * doing?", Alfred called only get_current_time and said "nothing stored in the ECU, so the Cherokee
+ * is running clean" off the session-open codes note; told "reconnected", he said "everything is
+ * back online and talking to the car" with no tool at all. Both are claims about the car's present
+ * state with no reading behind them. In the live context, not the shared rules, so it is billed per
+ * conversation rather than on every setup ([com.kevin.legion.service.LiveSetupPayloadSizeTest]).
+ */
+internal const val CAR_STATUS_CLAUSE =
+    "How the car is doing, whether it is running fine, any reading, and whether the adapter is " +
+        "connected are answered only from ask_fleet called in this turn, never from this note, " +
+        "memory or an earlier answer: call it before you answer."
+
+/**
  * Reply in English (2026-11-05, A25 LIVE_AUDIT 11-03 and 11-04). Gemini's input transcript
  * sometimes renders the user's English as Spanish or Korean, and the model answers in the language
  * the transcript shows: twice in Spanish, once with no tool in the turn, once over an English
  * `ask_fleet` result, until the user said "in English, please". Here, so it reaches a turn with no
  * tool; the route-result frame ([SubAgent.frameRouteResults]) repeats it beside the facts. One
  * sentence on purpose: [com.kevin.legion.service.LiveSetupPayloadSizeTest] bills it on every setup.
+ *
+ * The lone "¿Qué?" sentence (2026-11-09 log audit, five times across 11-06, 11-07 and 11-08): a
+ * short sound 2-3 s into the silence before an answer (most likely the user's "huh?") starts a new
+ * turn, the transcript shows "¿Qué?", the server drops the answer it had begun, and on 11-08 the
+ * reply came back in Spanish ("¿En qué puedo ayudarte?") and the Petco request was lost. The
+ * sentence names the one transcript seen every time and says what it is for.
  */
 internal const val ENGLISH_CLAUSE =
-    "Speak English; the transcript may show another language by mistake. Switch only if asked in words. "
+    "Speak English; the transcript may show another language by mistake. A lone \"¿Qué?\" is " +
+        "\"what?\": give or repeat your answer, in English. Switch only if asked in words. "
 
 /**
  * Companion-safety rules (CLAUDE.md sec 7 safety). Appended to every system instruction, voice and

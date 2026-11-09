@@ -105,10 +105,9 @@ class AriaForegroundService : Service() {
             sessionController = LiveSessionController(this)
         }
 
-        // Pre-open a warm Gemini Live socket so the driver's first tap doesn't pay
-        // the connect + setup handshake. Only once onboarding is done, so we don't
-        // open a cloud connection while the companion is still being set up.
-        if (OnboardingState.isComplete(this)) sessionController.prewarm()
+        // No Gemini Live socket is opened here (2026-11-09, no voice session while idle): the
+        // first talk tap or proactive line opens one. The old prewarm reopened every 2 minutes
+        // all day (LiveSessionController's class doc).
 
         // Live data sources Zero reads from (used to be inited by MainActivity):
         // the media session for now-playing, and GPS for location/arrival. Both
@@ -289,8 +288,8 @@ class AriaForegroundService : Service() {
         }
 
         // Greet once first-run onboarding has just finished (the opener launched in
-        // onCreate was suppressed while onboarding was still in progress). Warm a
-        // socket first so the greeting (and the driver's first tap) is instant.
+        // onCreate was suppressed while onboarding was still in progress). Drop any idle
+        // socket first so the greeting connects with the voice just chosen.
         // If this intent arrived during the same startup, onCreate's opener is
         // still pending (1.5s delay) - let it speak; launching another here would
         // double-fire and clobber the first-run self-introduction.
@@ -836,8 +835,8 @@ class AriaForegroundService : Service() {
         /**
          * The driver switched cars (car manager, 2026-07-16). Voice is per-car now,
          * so a warm socket is holding the PREVIOUS car's voice - the same shape as
-         * the "default voice after onboarding" field bug. Re-prewarm to pick up the
-         * new car's voice.
+         * the "default voice after onboarding" field bug. Drop it so the next connect
+         * picks up the new car's voice.
          */
         const val ACTION_CAR_SWITCHED = "com.kevin.midnightai.CAR_SWITCHED"
 
