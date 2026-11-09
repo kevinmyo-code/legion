@@ -1101,11 +1101,10 @@ internal const val RECORD_FACTS =
     "one of them can make them miss something real. "
 
 /** The shared rules between [RECORD_FACTS] and [CURRENCY_CLAUSE]. Fixed in code, see [SHARED_TOOL_RULES]. */
-internal val SHARED_RECORD_RULES =
-    "You keep a long-term memory of past conversations and trips with the user. Save new " +
-    "things they ask you to remember with the remember tool, and when they reference the past " +
-    "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
-    "something without checking first. " +
+internal const val SHARED_RECORD_RULES =
+    // 2026-11-09: named the retired `remember` / `recall_memory` tools until this date. The `memory`
+    // tool's own description says when to recall and save; this keeps only the check-first rule.
+    "Never claim to remember something without checking the memory tool first. " +
     "You can log build-sheet entries and read back WHAT was done, when, and how much it cost - " +
     "spend figures are not gated. " +
     "Before calling activate_garage with confirmed=true, you must have asked the user to confirm " +

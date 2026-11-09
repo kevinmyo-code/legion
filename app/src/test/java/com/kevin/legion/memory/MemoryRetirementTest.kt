@@ -8,8 +8,8 @@ import org.junit.Test
 /**
  * memory-and-vault ticket 10: the phone stopped distilling memories itself once the engine's
  * `consolidate_memories` job took over (ADR 0075), so nothing is distilled twice. The consolidator
- * and reflection objects stay in the tree (their own tests still run), uncalled; this fails the build
- * if a call, an episodic capture, or the legacy pull comes back.
+ * and reflection objects were deleted 2026-11-09; this fails the build if a call, an episodic
+ * capture, or the legacy pull comes back.
  */
 class MemoryRetirementTest {
 

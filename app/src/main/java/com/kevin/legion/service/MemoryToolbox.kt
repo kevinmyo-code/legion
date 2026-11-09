@@ -164,7 +164,9 @@ object MemoryToolbox {
             arr.put(
                 JSONObject()
                     .put("id", m.id)
-                    .put("said", "(${MemoryWording.day(m.createdAtMs)}) ${m.text}")
+                    // The day, then how it was learned (2026-11-09), so "you told me" is said only
+                    // of a memory the person asked to keep.
+                    .put("said", "(${MemoryWording.day(m.createdAtMs)}, ${MemoryWording.provenance(m)}) ${m.text}")
                     .apply { if (m.shared) put("shared", true) },
             )
         }

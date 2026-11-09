@@ -108,6 +108,17 @@ class MemoryController(
         return outcome
     }
 
+    /**
+     * Uploads legacy Room [rows] to the engine's one-time import (idempotent there), refreshing the
+     * cache when anything was new. Nothing is sent for an empty list.
+     */
+    suspend fun importLegacy(rows: List<LegacyMemoryRow>): MemoryOutcome<Int> {
+        if (rows.isEmpty()) return MemoryOutcome.Ok(0)
+        val outcome = backend.importLegacy(rows)
+        if (outcome is MemoryOutcome.Ok && outcome.value > 0) refresh()
+        return outcome
+    }
+
     /** Changes a memory's text. */
     suspend fun edit(memory: MemberMemory, text: String): MemoryOutcome<MemberMemory> {
         val clean = text.trim()

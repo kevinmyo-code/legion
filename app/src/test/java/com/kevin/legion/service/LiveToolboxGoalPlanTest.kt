@@ -1,13 +1,19 @@
 package com.kevin.legion.service
 
 import com.kevin.legion.advisor.GoalPlan
+import android.content.Context
 import com.kevin.legion.advisor.GoalPlanAgent
+import com.kevin.legion.advisor.GoalPlanConstraints
 import com.kevin.legion.advisor.GoalPlanGoal
 import com.kevin.legion.advisor.GoalPlanMealTarget
 import com.kevin.legion.advisor.GoalPlanResult
 import com.kevin.legion.advisor.GoalPlanSleepTarget
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionMemory
+import com.kevin.legion.memory.FakeMemberMemoryBackend
+import com.kevin.legion.memory.InMemoryMemoryCache
+import com.kevin.legion.memory.MemoryController
+import com.kevin.legion.memory.MemoryOutcome
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -23,7 +29,8 @@ import org.robolectric.RuntimeEnvironment
 
 /**
  * `generate_goal_plan`/`accept_goal_plan` dispatch (ticket 03, `goal-plans`) - same Robolectric-
- * plus-Room shape as [LiveToolboxAdvisorTest]. No test here makes a real network call: no Gemini
+ * plus-Room shape as [LiveToolboxAdvisorTest]. Constraints go to a [FakeMemberMemoryBackend]
+ * through [MemoryToolbox.controllerFactory] (member memory since 2026-11-09). No test here makes a real network call: no Gemini
  * key is ever configured, so [LiveToolbox.generateGoalPlanTool] always takes its own
  * "I need a Gemini key" refusal path AFTER persisting a stated constraint - deliberately, so the
  * ticket's core promise ("having said once that he has no gym, he should not have to say it
@@ -38,10 +45,14 @@ class LiveToolboxGoalPlanTest {
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
+        context.getSharedPreferences("goal_plan_constraints", Context.MODE_PRIVATE).edit().clear().commit()
+        val cache = InMemoryMemoryCache()
+        MemoryToolbox.controllerFactory = { MemoryController(engine, cache, now = { FakeMemberMemoryBackend.NOW }) }
     }
 
     @After
     fun drainRoomInvalidationTracker() {
+        MemoryToolbox.controllerFactory = MemoryController::forContext
         // A DAO write anywhere in this test can schedule a Room InvalidationTracker refresh
         // on ArchTaskExecutor's disk-IO pool. If that refresh is still queued or running when
         // this test method returns, it races Robolectric's own per-@Test-METHOD native SQLite
@@ -54,12 +65,17 @@ class LiveToolboxGoalPlanTest {
     }
 
 
-    // --- generate_goal_plan persists a stated constraint, independent of whether a plan could
-    // actually be generated --------------------------------------------------------------------
+    // --- generate_goal_plan persists a stated constraint as a member memory (2026-11-09: it was a
+    // legacy companion_memories row), independent of whether a plan could be generated -----------
+
+    private val engine = FakeMemberMemoryBackend()
+
+    private fun constraintsOnEngine(): List<String> =
+        engine.store.map { it.text }.filter { it.startsWith(GoalPlanAgent.CONSTRAINT_PREFIX) }
 
     @Test
-    fun `a new_constraint is persisted even when there is no Gemini key to generate with`() = runBlocking {
-        val result = LiveToolbox.dispatch(
+    fun `a new_constraint is saved as a private member memory even when there is no Gemini key`() = runBlocking {
+        LiveToolbox.dispatch(
             context, "generate_goal_plan",
             JSONObject().put("goal_text", "lose fat, gain muscle").put("new_constraint", "no gym access"),
         )!!
@@ -67,21 +83,12 @@ class LiveToolboxGoalPlanTest {
         // Deliberately NOT asserted: whether the generation itself succeeded. That depends on
         // whether the machine running this test happens to have a Gemini key in its
         // local.properties, which is a property of the developer's setup and not of the code.
-        // An earlier cut asserted the call must FAIL "because there is no key on file" and duly
-        // passed on a keyless machine and failed on Kevin's. What this test is actually about is
-        // the sentence below it.
 
-        val stored = CarDatabase.getDatabase(context).companionMemoryDao()
+        assertEquals(listOf(GoalPlanAgent.CONSTRAINT_PREFIX + "no gym access"), constraintsOnEngine())
+        assertTrue("written by voice on this phone, private", "create:phone:false" in engine.calls)
+        val legacy = CarDatabase.getDatabase(context).companionMemoryDao()
             .byCategoryPrefixed(CompanionMemory.Category.DRIVER, GoalPlanAgent.CONSTRAINT_PREFIX)
-        assertEquals(
-            "the stated constraint must survive even though nothing could be generated from it",
-            1, stored.size,
-        )
-        assertTrue(stored.first().text.contains("no gym access"))
-        assertEquals(
-            "written directly from this turn, never from a later consolidation pass",
-            CompanionMemory.Source.STATED, stored.first().source,
-        )
+        assertTrue("nothing new goes to the legacy table", legacy.isEmpty())
     }
 
     @Test
@@ -96,18 +103,15 @@ class LiveToolboxGoalPlanTest {
             JSONObject().put("goal_text", "lose fat, gain muscle").put("new_constraint", "  No Gym Access  "),
         )
 
-        val stored = CarDatabase.getDatabase(context).companionMemoryDao()
-            .byCategoryPrefixed(CompanionMemory.Category.DRIVER, GoalPlanAgent.CONSTRAINT_PREFIX)
-        assertEquals("restating an already-known constraint must not grow the recall pool", 1, stored.size)
+        assertEquals("restating an already-known constraint must not grow memory", 1, constraintsOnEngine().size)
     }
 
     @Test
     fun `a call with no new_constraint writes nothing, only reads what is already on file`() = runBlocking {
         LiveToolbox.dispatch(context, "generate_goal_plan", JSONObject().put("goal_text", "lose fat, gain muscle"))
 
-        val stored = CarDatabase.getDatabase(context).companionMemoryDao()
-            .byCategoryPrefixed(CompanionMemory.Category.DRIVER, GoalPlanAgent.CONSTRAINT_PREFIX)
-        assertTrue("no new_constraint given, so nothing should be written", stored.isEmpty())
+        assertTrue("no new_constraint given, so nothing should be written", constraintsOnEngine().isEmpty())
+        assertTrue(engine.calls.none { it.startsWith("create:") })
     }
 
     @Test
@@ -118,13 +122,23 @@ class LiveToolboxGoalPlanTest {
         )!!
 
         assertFalse(result.getBoolean("success"))
-        val stored = CarDatabase.getDatabase(context).companionMemoryDao()
-            .byCategoryPrefixed(CompanionMemory.Category.DRIVER, GoalPlanAgent.CONSTRAINT_PREFIX)
         assertTrue(
             "a call with no real goal must not persist a constraint either - there is nothing to " +
                 "attach it to",
-            stored.isEmpty(),
+            engine.calls.isEmpty(),
         )
+    }
+
+    @Test
+    fun `an engine out of reach refuses the constraint in words, never silently`() = runBlocking {
+        engine.failWith = MemoryOutcome.Unreachable("No engine address saved on this device yet - nothing was sent.")
+        val result = LiveToolbox.dispatch(
+            context, "generate_goal_plan",
+            JSONObject().put("goal_text", "lose fat, gain muscle").put("new_constraint", "no gym access"),
+        )!!
+
+        assertTrue(result.getString("constraintNotSaved").contains("nothing was saved"))
+        assertTrue(constraintsOnEngine().isEmpty())
     }
 
     // --- A constraint already on file survives to the NEXT call's combined goal text, across
@@ -137,16 +151,37 @@ class LiveToolboxGoalPlanTest {
             JSONObject().put("goal_text", "lose fat, gain muscle").put("new_constraint", "no gym access"),
         )
 
-        // A brand-new call - the model restating only the original goal, as its own declaration
-        // instructs, with no new_constraint of its own. This is the exact "he should not have to
-        // say it again" case.
-        val storedNextTime = CarDatabase.getDatabase(context).companionMemoryDao()
-            .byCategoryPrefixed(CompanionMemory.Category.DRIVER, GoalPlanAgent.CONSTRAINT_PREFIX)
-            .map { it.text.removePrefix(GoalPlanAgent.CONSTRAINT_PREFIX).trim() }
+        // A brand-new call, with no new_constraint of its own: "he should not have to say it again".
+        val storedNextTime = GoalPlanConstraints.forContext(context, MemoryToolbox.controllerFactory(context)).read()
         val combined = GoalPlanAgent.withConstraints("lose fat, gain muscle", storedNextTime)
 
         assertTrue(combined.contains("lose fat, gain muscle"))
         assertTrue("the earlier constraint must reach the new call's prompt without being restated", combined.contains("no gym access"))
+    }
+
+    @Test
+    fun `constraints stated before the move are uploaded once, keyed by their sync id`() = runBlocking {
+        val dao = CarDatabase.getDatabase(context).companionMemoryDao()
+        dao.insert(
+            CompanionMemory(
+                vehicleId = "car-a",
+                text = GoalPlanAgent.CONSTRAINT_PREFIX + "vegetarian",
+                category = CompanionMemory.Category.DRIVER,
+                source = CompanionMemory.Source.STATED,
+                createdAt = 1_000L,
+                syncId = "sync-veg",
+            ),
+        )
+        // Read twice, as two plans would, without dispatching: a dispatch with no constraint reads
+        // only after the Gemini key check, which depends on the machine running the test.
+        val constraints = GoalPlanConstraints.forContext(context, MemoryToolbox.controllerFactory(context))
+        assertEquals(listOf("vegetarian"), constraints.read())
+        assertEquals(listOf("vegetarian"), constraints.read())
+
+        assertEquals("one upload, not one per call", 1, engine.calls.count { it.startsWith("import:") })
+        assertEquals("sync-veg", engine.imported.single().originGuid)
+        assertEquals("companion_memories", engine.imported.single().store)
+        assertEquals(listOf(GoalPlanAgent.CONSTRAINT_PREFIX + "vegetarian"), constraintsOnEngine())
     }
 
     // --- accept_goal_plan -----------------------------------------------------------------------

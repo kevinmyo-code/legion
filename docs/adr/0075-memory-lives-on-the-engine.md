@@ -19,7 +19,7 @@ engine-mcp ticket 06 sub-question 2), for memory v2 only.
 
 ## Context
 
-Alfred's memory lived on the phone (`ai/AriaBrain.kt`, `ai/MemoryConsolidator.kt`). The engine held
+Alfred's memory lived on the phone (`ai/AriaBrain.kt`, and a `MemoryConsolidator` deleted 2026-11-09). The engine held
 a replica (`companion_memories`, `memories`) with no member column, and the engine's tools were
 barred from it, so the web assistant said it had no memory and the Claude worker could not see
 any. Kevin, 2026-11-05: *"alfred's memory should stay on a centralized place, like the engine no?

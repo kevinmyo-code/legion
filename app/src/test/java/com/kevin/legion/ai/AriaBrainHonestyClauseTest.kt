@@ -88,7 +88,9 @@ class AriaBrainHonestyClauseTest {
                 "the fact rule - LEGION invented a dentist appointment at 3 (2026-08-18, on-device)",
             "never say 'opening' or 'closing' - say 'triggering' or 'hitting'" to
                 "the garage relay's forbidden verbs - the app cannot observe the door",
-            "don't claim to remember something without checking first" to
+            // 2026-11-09: reworded to name the live `memory` tool (it named the retired
+            // remember/recall_memory tools). Same rule: check before claiming to remember.
+            "Never claim to remember something without checking the memory tool first" to
                 "the memory rule",
         )
         for ((rule, why) in rules) {

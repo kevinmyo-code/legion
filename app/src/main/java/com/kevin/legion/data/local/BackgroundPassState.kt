@@ -9,8 +9,8 @@ import androidx.room.Query
  * The retry bookkeeping for an unattended background pass: how far it has got, how many times it
  * has failed since, when it may try again, and whether it has been set aside for good.
  *
- * **Why one table for two loops (2026-09-06).** [com.kevin.legion.ai.ReflectionEngine] and
- * [com.kevin.legion.ai.MemoryConsolidator] both run off
+ * **Why one table for two loops (2026-09-06).** `ReflectionEngine` (deleted 2026-11-09) and
+ * `MemoryConsolidator` (deleted 2026-11-09) both run off
  * [com.kevin.legion.service.AriaForegroundService]'s five-minute timer - 288 passes a day - and
  * both could spend forever with nobody present:
  *
