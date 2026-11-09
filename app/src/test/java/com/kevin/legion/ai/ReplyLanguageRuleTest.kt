@@ -27,6 +27,18 @@ class ReplyLanguageRuleTest {
         assertTrue("switching needs the user's words, not the transcript's language", clause.contains("in words"))
     }
 
+    /**
+     * 2026-11-09 log audit: five lone "¿Qué?" turns cut answers off, and on 11-08 one got
+     * "¿En qué puedo ayudarte?" back. The clause names that transcript and asks for the answer.
+     */
+    @Test
+    fun `a lone Que is read as what and answered in English`() {
+        assertTrue(ENGLISH_CLAUSE.contains("¿Qué?"))
+        val clause = ENGLISH_CLAUSE.lowercase()
+        assertTrue(clause, clause.contains("\"what?\""))
+        assertTrue(clause, clause.contains("repeat your answer, in english"))
+    }
+
     @Test
     fun `a route result tells the model to answer in English`() {
         val text = SubAgent.frameRouteResults(
