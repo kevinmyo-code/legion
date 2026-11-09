@@ -7523,3 +7523,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   Bedtime may turn it on, never off; Kevin turns it off himself through ADR 0066's gate (60 s wait
   and typed sentence). Quiet unchanged: bedtime turns off only the Quiet it turned on, at dismiss.
 - **Done:** `BedtimeEffects` has no feed-off; `feedByBedtime` dropped. ADR 0079 updated in place.
+
+## 2026-11-09 - The phone sends its whole logcat to the engine; audits need no adb (Kevin)
+
+- **Kevin's words:** *"Send everything from the phone to the engine so we can audit without adb"*
+  (after 2026-10-28's *"all logs on engine. both headunit and phone."*).
+- **Everything the app's process logs**, any tag, libraries and native code included, read from
+  the app's own logcat (own-uid visibility, no `READ_LOGS`), not a `Log` tee. Reason `logcat` on
+  `POST /api/device-logs/`; crash stacks and Android's exit records (ANR, low-memory kill) as
+  `crash`. A `run_id` per process joins them to the conversation records.
+- **Redacted on the phone before it leaves:** credentials, cookies, email addresses, phone numbers
+  (a contact's label stays), ID-shaped numbers, and mail (a read-through tool's payload, as
+  `LiveAudit` does).
+- **Conservative defaults taken by the build agent, open to Kevin:** switch default ON under
+  Settings > Permissions and diagnostics > Developer (no Developer screen existed); 4 MB compressed
+  a day, then the rest waits and the 16 MB spool drops the oldest; `logcat` kept 30 days on the
+  engine, `crash` and `conversation` 60; nothing dropped as noise (Samsung's per-frame
+  `View: setRequestedFrameRate` is about half the compressed bytes; one constant drops it).

@@ -52,19 +52,52 @@ REASON_PERIODIC = "periodic"
 # upload. The reason names the content, so `manage.py device_logs --reason conversation --render`
 # reads a conversation without a drive log mixed in.
 REASON_CONVERSATION = "conversation"
+# The phone's own logcat (2026-11-09, Kevin: "Send everything from the phone to the engine so we can
+# audit without adb"): every line the app's process wrote, whatever the tag, redacted on the phone
+# before it leaves (`service/phonelog/LogcatRedactor.kt`).
+REASON_LOGCAT = "logcat"
+# What the phone knows about how its process died: the stack of an uncaught exception, written by
+# the dying process, and Android's own exit records (ANR traces, low-memory kills) read at the next
+# start.
+REASON_CRASH = "crash"
 REASONS: tuple[str, ...] = (
     REASON_DRIVE_END,
     REASON_STARTUP,
     REASON_MANUAL,
     REASON_PERIODIC,
     REASON_CONVERSATION,
+    REASON_LOGCAT,
+    REASON_CRASH,
 )
 
 # One upload is refused above this, compressed or decompressed (the second is
 # the gzip-bomb guard). The head unit seals batches at about 1 MB, well under.
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+# A tighter decompressed cap for the phone's own logs: it seals a logcat batch at 1 MB, so anything
+# much bigger is a phone bug, refused in words rather than stored.
+MAX_RAW_BYTES_BY_REASON: dict[str, int] = {
+    REASON_LOGCAT: 2 * 1024 * 1024,
+    REASON_CRASH: 2 * 1024 * 1024,
+}
 # Rows older than this are deleted when their household next uploads.
 RETENTION_DAYS = 60
+# Per-reason exceptions to RETENTION_DAYS (2026-11-09). A raw logcat batch is the bulk of what a
+# phone sends and is read within days of a problem, so it goes at 30; conversation and the head
+# unit's reasons stay at 60, and a crash batch (small, and the rarest thing to have) at 60 too.
+RETENTION_DAYS_BY_REASON: dict[str, int] = {
+    REASON_LOGCAT: 30,
+}
+
+
+def retention_days(reason: str) -> int:
+    """How long a batch of this reason is kept, in days."""
+    return RETENTION_DAYS_BY_REASON.get(reason, RETENTION_DAYS)
+
+
+def max_raw_bytes(reason: str) -> int:
+    """The decompressed cap for one upload of this reason."""
+    return MAX_RAW_BYTES_BY_REASON.get(reason, MAX_UPLOAD_BYTES)
+
 # A recruiter visit's conversation records (`demo_visitor`): deleted by the hourly
 # `manage.py prune_demo_visitors` this long after they arrived, whether or not the visit ended.
 VISIT_RETENTION_DAYS = 30
@@ -104,6 +137,10 @@ class DeviceLog(models.Model):
     # Web conversations only: server clock minus the browser's, measured at the mint, so the
     # browser's transcript lines and the engine's tool lines share one clock.
     clock_offset_ms = models.BigIntegerField(null=True, blank=True)
+    # The phone's process run (2026-11-09): one id per app process start, sent on its logcat, crash
+    # and conversation batches alike, so a conversation record joins to the raw lines around it.
+    # Blank for anything that sends none (the head unit, the web, an older phone).
+    run_id = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
         db_table = "device_logs"

@@ -53,6 +53,12 @@ sealed interface SendOutcome {
         override val sentence = "${linesSentence(lines)}."
     }
 
+    /** Today's upload allowance ([DailyBudget]) is spent; the rest waits on the phone until tomorrow. */
+    data class Capped(val sentLines: Int) : SendOutcome {
+        override val sentence = (if (sentLines > 0) "${linesSentence(sentLines)}, then stopped: " else "Not sent: ") +
+            "today's upload allowance is used up. The rest stays on this phone and goes tomorrow."
+    }
+
     /** [sentLines] went before this failure; the failed batch and everything after it are kept. */
     data class Failed(val kind: FailureKind, val reason: String, val sentLines: Int) : SendOutcome {
         override val sentence = (if (sentLines > 0) "${linesSentence(sentLines)}, then failed: " else "Failed: ") +
@@ -174,7 +180,13 @@ class Backoff(private val baseMs: Long = BASE_MS, private val maxMs: Long = MAX_
  * - **No engine means nothing is sent and nothing is lost** ([SendOutcome.NoEngine]), said once
  *   per process through [say].
  * - **An old engine** (a 400 naming `reason`) is said once per process and the batch kept.
- * - The body is the batch file gzipped as-is: byte-identical to the lines the spool was handed.
+ * - The body is the batch file gzipped as-is: byte-identical to the lines the spool was handed,
+ *   unless [prepare] rewrites it on the way out (the phone's logcat re-runs its redactor there).
+ *
+ * **The same uploader sends the phone's own logs** (2026-11-09, `service/phonelog/PhoneLog`):
+ * [reason] is `logcat` or `crash` there, [runId] joins every batch of one process run, and
+ * [budget] caps the compressed bytes sent per day. The conversation log passes none of the last
+ * three but [runId].
  */
 class ConversationUploader(
     private val spool: ConversationSpool,
@@ -183,6 +195,10 @@ class ConversationUploader(
     private val say: (String) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
     private val backoff: Backoff = Backoff(),
+    private val reason: String = REASON,
+    private val runId: String? = null,
+    private val budget: DailyBudget? = null,
+    private val prepare: (ByteArray) -> ByteArray = { it },
 ) {
     private val lock = Mutex()
     private var saidNoEngine = false
@@ -197,7 +213,7 @@ class ConversationUploader(
         val usable = transport.isUsable()
         if (!usable && !saidNoEngine) {
             saidNoEngine = true
-            say("No engine is configured on this phone, so conversation logs stay on the phone. Nothing was sent.")
+            say("No engine is configured on this phone, so $reason logs stay on the phone. Nothing was sent.")
         }
         val due = manual || backoff.ready(now())
         if (usable && due) spool.seal()
@@ -214,25 +230,38 @@ class ConversationUploader(
     private suspend fun sendAll(batches: List<SpooledBatch>): SendOutcome {
         var lines = 0
         var sent = 0
-        for (batch in batches) {
+        var stop: SendOutcome? = null
+        val queue = batches.iterator()
+        while (stop == null && queue.hasNext()) {
+            val batch = queue.next()
             val count = batch.lineCount()
-            val result = transport.post(fieldsFor(batch), "${batch.id}.log.gz", gzip(batch.file.readBytes()))
-            val failure = RetryRules.classify(result)
+            val body = gzip(prepare(batch.file.readBytes()))
+            val failure = if (budget == null || budget.allows(body.size.toLong(), now())) {
+                val result = transport.post(fieldsFor(batch), "${batch.id}.log.gz", body)
+                RetryRules.classify(result)?.let { failed(it, result, lines) }
+            } else {
+                if (sent > 0) backoff.succeeded()
+                SendOutcome.Capped(lines)
+            }
             if (failure == null) {
                 spool.delete(batch)
+                budget?.spent(body.size.toLong(), now())
                 lines += count
                 sent++
-                continue
             }
-            backoff.failed(now(), failure)
-            if (failure == FailureKind.OLD_ENGINE && !saidOldEngine) {
-                saidOldEngine = true
-                say("The engine refused reason=conversation (an engine from before devicelogs 0003). Batches are kept.")
-            }
-            return SendOutcome.Failed(failure, RetryRules.sentence(failure, result), lines)
+            stop = failure
         }
-        backoff.succeeded()
-        return SendOutcome.Sent(lines, sent)
+        if (stop == null) backoff.succeeded()
+        return stop ?: SendOutcome.Sent(lines, sent)
+    }
+
+    private fun failed(failure: FailureKind, result: PostResult, sentLines: Int): SendOutcome {
+        backoff.failed(now(), failure)
+        if (failure == FailureKind.OLD_ENGINE && !saidOldEngine) {
+            saidOldEngine = true
+            say("The engine refused reason=$reason (an engine from before that reason existed). Batches are kept.")
+        }
+        return SendOutcome.Failed(failure, RetryRules.sentence(failure, result), sentLines)
     }
 
     /** The multipart text fields, in the head unit's order (`devicelogs/views.py` UploadSerializer). */
@@ -241,10 +270,10 @@ class ConversationUploader(
         "device_label" to meta.deviceLabel,
         "app_version_name" to meta.versionName,
         "app_version_code" to meta.versionCode.toString(),
-        "reason" to REASON,
+        "reason" to reason,
         "window_start_ms" to batch.startMs.toString(),
         "window_end_ms" to batch.endMs.toString(),
-    )
+    ).apply { if (runId != null) put("run_id", runId) }
 
     companion object {
         const val PATH = "/api/device-logs/"

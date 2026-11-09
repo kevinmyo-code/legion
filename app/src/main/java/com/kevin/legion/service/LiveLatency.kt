@@ -5,6 +5,7 @@ import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.LookupProbe
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.service.conversationlog.ConversationLog
+import com.kevin.legion.service.phonelog.PhoneLog
 
 /**
  * Per-turn timing for the Live voice loop (2026-10-27, Kevin: the voice agent feels slow). Pure
@@ -99,7 +100,9 @@ internal class LiveLatency {
          * one line per transcript chunk would flood the on-screen probe buffer.
          */
         fun audit(tag: String, message: String) {
-            if (ConversationLog.logcatMirror) Log.i(tag, message)
+            // The phone's own log capture (PhoneLog) reads logcat, so while it is on these lines go
+            // there whatever the mirror switch says: an audit from the engine sees every one.
+            if (ConversationLog.logcatMirror || PhoneLog.enabled) Log.i(tag, message)
             ConversationLog.record(tag, message)
         }
 
