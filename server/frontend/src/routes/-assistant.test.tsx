@@ -84,10 +84,12 @@ describe('the family surface', () => {
     await waitFor(() => expect(socket.sentOf('toolResponse')).toHaveLength(1))
     // The tool's name, its arguments and the engine's text for the model are never on screen.
     expect(within(sheet).queryByText(/search_purchases|shampoo"|Shampoo: 3 matches|Done:/)).not.toBeInTheDocument()
-    // The tool call names the conversation, so the engine writes it into the record.
+    // The tool call names the conversation, so the engine writes it into the record, and the
+    // turn, so the engine can refuse `remember` in a turn that read the web.
     expect(engine.assistant.toolRecordIds[0]).toEqual({
       conversation_id: '00000000-0000-4000-8000-00000000c0de',
       call_id: expect.any(String),
+      turn: 0,
     })
     expect(socket.sentOf('toolResponse')).toHaveLength(1)
 

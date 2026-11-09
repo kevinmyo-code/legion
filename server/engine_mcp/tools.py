@@ -62,6 +62,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from jsonschema import Draft202012Validator
 
 from api.event_columns import KIND_SUGGESTION
+from assistant import read_through
 from api.registry import SYNCED_VIEWSETS
 from diagrams.catalogue import ALL_VIEW_IDS as DIAGRAM_VIEW_IDS
 from diagrams.catalogue import HIGHLIGHT_MAX as DIAGRAM_HIGHLIGHT_MAX
@@ -2391,6 +2392,11 @@ def _remember(request, args) -> ToolResult:
     door = _memory_door(request)
     if door:
         return door
+    # Round 3: never in a turn that read web text, mirroring the phone's read-through gate
+    # (`assistant/read_through.py` says what a turn is on each door).
+    after_web = read_through.remember_refusal(request, args["text"])
+    if after_web:
+        return refused(after_web)
     # The door the call came through: the web assistant's tool door, or `/mcp` (Claude Code).
     source = SOURCE_WEB if request.path.startswith("/api/assistant") else SOURCE_CLAUDE
     try:
@@ -3632,6 +3638,8 @@ def run_engine_tool(request, tool: EngineTool, arguments: dict) -> ToolResult:
             f"{'/'.join(str(p) for p in e.path) or 'arguments'}: {e.message}" for e in errors
         )
         return refused(f"Nothing was {tool.verb}. The arguments do not fit {name}: {reasons}.")
+    # Before the handler: a `remember` later in this same request (a procedure) must see it.
+    read_through.note_tool(request, name)
     try:
         return tool.handler(request, arguments)
     except Exception as exc:  # noqa: BLE001 - the result must say what happened, always

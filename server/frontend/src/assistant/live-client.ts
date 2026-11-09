@@ -90,6 +90,12 @@ export interface SessionInfo {
 export interface ToolContext {
   conversationId?: string
   callId?: string
+  /**
+   * Which model turn of the conversation the call belongs to: the count of
+   * `turnComplete`s heard so far. The engine refuses `remember` in a turn
+   * that already read web text (round 3, the phone's read-through rule).
+   */
+  turn?: number
 }
 
 export type SessionResult = { ok: true; session: SessionInfo } | { ok: false; notice: Notice }
@@ -235,6 +241,8 @@ export class LiveClient {
   /** Whether the model's current turn has produced its first audio or words yet. */
   private replyStarted = false
   private readonly callNames = new Map<string, string>()
+  /** `turnComplete`s heard in this conversation: the `turn` sent with each tool call. */
+  private turn = 0
   private readonly onPageHide = () => {
     // The page may be closing: hand what is not yet stored to the browser to deliver.
     this.record?.beacon()
@@ -478,6 +486,7 @@ export class LiveClient {
       return
     }
     this.session = result.session
+    this.turn = 0
     if (this.deps.record) {
       this.record ??= new ConversationRecord(this.deps.record)
       this.record.conversationId = result.session.conversationId ?? null
@@ -778,6 +787,7 @@ export class LiveClient {
     }
     if (content.turnComplete || content.interrupted) this.replyStarted = false
     if (content.turnComplete) {
+      this.turn += 1
       this.closeAi(false)
       this.closeMe()
       this.awaiting = false
@@ -890,6 +900,7 @@ export class LiveClient {
     for (const call of calls) this.callNames.set(call.id, call.name)
     this.refresh()
     const conversationId = this.record?.conversationId ?? this.session?.conversationId
+    const turn = this.turn
     const answered = await Promise.all(
       calls.map(async (call) => {
         let result: ToolResult
@@ -897,6 +908,7 @@ export class LiveClient {
           result = await this.deps.runTool(call.name, call.args ?? {}, {
             conversationId: conversationId ?? undefined,
             callId: call.id,
+            turn,
           })
         } catch {
           const message = 'Nothing was read or written: the engine could not be reached.'

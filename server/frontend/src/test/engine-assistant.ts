@@ -34,7 +34,7 @@ export interface AssistantState {
   /** Every tool call the engine was asked to run, in order. */
   toolCalls: { name: string; args: unknown }[]
   /** What each tool call carried for the conversation record, in the same order. */
-  toolRecordIds: { conversation_id?: unknown; call_id?: unknown }[]
+  toolRecordIds: { conversation_id?: unknown; call_id?: unknown; turn?: unknown }[]
   /** Every conversation-record upload, its events parsed. */
   recordUploads: { conversation_id: string; events: { kind: string }[] }[]
   /** How long a minted token lives: 30 minutes for a member; a recruiter's is capped (5 minutes on the engine). */
@@ -99,14 +99,15 @@ export function handleAssistant(
   }
 
   if (method === 'POST' && pathname === '/api/assistant/tool') {
-    const { name, args, conversation_id, call_id } = body as {
+    const { name, args, conversation_id, call_id, turn } = body as {
       name: string
       args?: unknown
       conversation_id?: unknown
       call_id?: unknown
+      turn?: unknown
     }
     a.toolCalls.push({ name, args })
-    a.toolRecordIds.push({ conversation_id, call_id })
+    a.toolRecordIds.push({ conversation_id, call_id, turn })
     const fixture = a.tools[name]
     if (!fixture) {
       const detail = `Nothing was read or written. ${name} is not a tool the web assistant has.`

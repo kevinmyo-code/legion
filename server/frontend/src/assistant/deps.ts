@@ -111,6 +111,7 @@ async function runTool(
     args,
     ...(context.conversationId ? { conversation_id: context.conversationId } : {}),
     call_id: context.callId ?? '',
+    ...(context.turn !== undefined ? { turn: context.turn } : {}),
   }
   try {
     const { data, error, response } = await api.POST('/api/assistant/tool', { body })

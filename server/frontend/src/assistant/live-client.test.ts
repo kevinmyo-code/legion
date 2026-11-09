@@ -154,7 +154,11 @@ describe('tool calls', () => {
     const socket = await live(client)
     socket.serve(call)
     await settle()
-    expect(runTool).toHaveBeenCalledWith('search_purchases', { query: 'shampoo' }, { conversationId: undefined, callId: 'c1' })
+    expect(runTool).toHaveBeenCalledWith(
+      'search_purchases',
+      { query: 'shampoo' },
+      { conversationId: undefined, callId: 'c1', turn: 0 },
+    )
     expect(text(client)).toContain('tool:Done: ran search_purchases')
     expect(socket.sentOf('toolResponse')[0]).toEqual({
       toolResponse: {
