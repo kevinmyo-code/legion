@@ -228,6 +228,11 @@ class LiveSetupPayloadSizeTest {
      * (-54). `SHARED_RECORD_RULES` named the retired `remember` and `recall_memory` tools; its
      * memory sentence is now "Never claim to remember something without checking the memory tool
      * first." The `memory` tool's own description says when to recall and save. Headroom ~191 tokens.
+     *
+     * **Both together, ceiling unchanged, 2026-11-09 (`integrate/2026-11-09-r2`).** Clock plus
+     * memory-quickwins plus phone-log-upload on dev `8e983a60`: 95 declarations, 87,979 chars of
+     * tools JSON plus 10,336 chars of system instruction = 98,315 chars, ~24,578 tokens. Headroom is
+     * ~72 tokens.
      */
     private val ceilingTokens = 24_650
 
