@@ -68,5 +68,26 @@ interface MemberMemoryBackend {
     /** `DELETE /api/member-memories/<id>` - a hard delete, with every older version it superseded. */
     suspend fun delete(id: String): MemoryOutcome<Unit>
 
+    /**
+     * `POST /api/member-memories/import` - legacy phone rows, private to the caller. Idempotent by
+     * store and origin guid on the engine, the same key `manage.py import_legacy_memories` uses, so
+     * the two doors can never import one row twice. Ok carries how many were new.
+     */
+    suspend fun importLegacy(rows: List<LegacyMemoryRow>): MemoryOutcome<Int>
 }
+
+/**
+ * One legacy Room row as the engine's import route reads it (`ImportRowSerializer`). [originGuid]
+ * is the row's `syncId`, which the legacy sync already sent as `origin_guid`.
+ */
+data class LegacyMemoryRow(
+    /** `companion_memories` or `memories`. */
+    val store: String,
+    val originGuid: String,
+    val text: String,
+    val category: String,
+    val source: String,
+    val importance: Int?,
+    val loggedAtMs: Long,
+)
 

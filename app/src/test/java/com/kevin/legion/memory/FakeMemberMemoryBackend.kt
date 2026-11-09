@@ -55,6 +55,20 @@ class FakeMemberMemoryBackend(
         return MemoryOutcome.Ok(Unit)
     }
 
+    /** Every row [importLegacy] was handed, in order; a row already imported is not imported twice. */
+    val imported = mutableListOf<LegacyMemoryRow>()
+
+    override suspend fun importLegacy(rows: List<LegacyMemoryRow>): MemoryOutcome<Int> {
+        calls += "import:${rows.size}"
+        (failWith ?: failWritesWith)?.let { return it }
+        val fresh = rows.filter { row -> imported.none { it.store == row.store && it.originGuid == row.originGuid } }
+        imported += fresh
+        for (row in fresh) {
+            store += memory(id = "imp-${next++}", text = row.text, source = "phone", createdAtMs = row.loggedAtMs)
+        }
+        return MemoryOutcome.Ok(fresh.size)
+    }
+
     companion object {
         const val NOW = 1_800_000_000_000L
         const val NOT_FOUND = "Nothing was changed. There is no memory with that id that you can see."

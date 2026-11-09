@@ -383,15 +383,13 @@ class GoalPlanAgent(
         }
 
         /**
-         * The text marker a stored `CompanionMemory` row must start with for [withConstraints] to
-         * treat it as a stated goal-plan constraint (ticket 03, `goal-plans`). Written by
-         * `service/LiveToolbox.kt`'s `generate_goal_plan` dispatch when the user states a new
-         * fact ("no gym access"), stored as an ordinary [CompanionMemory.Category.DRIVER] row -
-         * see that constant's own doc comment for why no new category or table exists for this.
-         * The prefix exists only so [CompanionMemoryDao.byCategoryPrefixed] can pull back exactly
-         * this subset of `driver` rows and nothing else the category already holds (music taste,
-         * a work address). Never shown to the user or spoken - it is stripped before the text
-         * reaches either [withConstraints]'s output or anything read aloud.
+         * The text marker a stored memory must start with for [withConstraints] to treat it as a
+         * stated goal-plan constraint (ticket 03, `goal-plans`). Written by `generate_goal_plan`
+         * when the user states a new fact ("no gym access"). Since 2026-11-09 that is a member
+         * memory on the engine ([GoalPlanConstraints]), so it shows on the Memory screen with this
+         * prefix; before, a legacy `driver` [CompanionMemory] row, which
+         * [CompanionMemoryDao.byCategoryPrefixed] still reads for the one-time backfill and the
+         * offline fallback. Stripped before the text reaches [withConstraints]'s output.
          */
         const val CONSTRAINT_PREFIX = "Plan constraint: "
 

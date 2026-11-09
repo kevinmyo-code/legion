@@ -25,10 +25,8 @@ import com.kevin.legion.advisor.HarnessPrompt
 import com.kevin.legion.advisor.Priming
 import com.kevin.legion.advisor.GoalPlan
 import com.kevin.legion.advisor.GoalPlanAgent
+import com.kevin.legion.advisor.GoalPlanConstraints
 import com.kevin.legion.advisor.GoalPlanResult
-import com.kevin.legion.data.local.CompanionMemory
-import com.kevin.legion.data.local.MemoryAudit
-import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.displayDescription
@@ -3185,8 +3183,9 @@ object LiveToolbox {
         "log_meal", "set_meal_target", "set_budget", "log_sleep", "set_sleep_target",
         "undo_last_log", "manage_vehicle", "set_goal", "close_goal", "accept_proposal",
         // goal-plans ticket 03: generate_goal_plan writes NOTHING about the plan itself (it is a
-        // proposal - see its own declaration), but DOES write a CompanionMemory row when
-        // new_constraint is given, the same reason "remember" is in this set above.
+        // proposal - see its own declaration), but DOES write a member memory (2026-11-09; a
+        // CompanionMemory row before) when new_constraint is given, the same reason "remember" is
+        // in this set above.
         // accept_goal_plan is a real write - the workout piece of an accepted plan.
         "generate_goal_plan", "accept_goal_plan",
         // voice-notes ticket 04: start/stop each write a `voice_notes` row (insert, then update on
@@ -5044,71 +5043,13 @@ object LiveToolbox {
     // --- Goal plans (ticket 03, `goal-plans`) -----------------------------------------------------
 
     /**
-     * Every stated goal-plan constraint on file, plain text, prefix stripped, oldest first - what
-     * [GoalPlanAgent.withConstraints] folds into a plan's own goal text so a stated fact survives
-     * a regeneration without the user repeating it. See [CompanionMemoryDao.byCategoryPrefixed]'s
-     * doc comment for why this is a filtered read over the ordinary `driver` category rather than
-     * a new store.
+     * Stated goal-plan constraints, on the engine as the member's own memories since 2026-11-09
+     * ([GoalPlanConstraints]; before that, the legacy `companion_memories` table). Built over
+     * [MemoryToolbox.controllerFactory] so the `memory` tool, the Memory screen and this share one
+     * controller and one test seam.
      */
-    private suspend fun goalPlanConstraints(context: Context): List<String> =
-        CarDatabase.getDatabase(context).companionMemoryDao()
-            .byCategoryPrefixed(CompanionMemory.Category.DRIVER, GoalPlanAgent.CONSTRAINT_PREFIX)
-            .map { it.text.removePrefix(GoalPlanAgent.CONSTRAINT_PREFIX).trim() }
-
-    /**
-     * Persists [text] as a stated goal-plan constraint, unless an existing one already says the
-     * same thing (trimmed, case-insensitive exact match) - the same dedup posture
-     * the retired local `remember` took for the older memory table, so restating an
-     * already-known constraint refreshes nothing and does not grow the recall pool with a
-     * near-duplicate row. Category [CompanionMemory.Category.DRIVER], source
-     * [CompanionMemory.Source.STATED] - written directly from THIS turn, never from a later
-     * unattended consolidation pass. Audited the same way [MemoryConsolidator] audits its own
-     * writes, for the same reason: this pass runs from a voice call with no screen to show its
-     * work, so the audit trail is the only place a wrong constraint is ever traceable back to the
-     * turn that wrote it.
-     */
-    private suspend fun rememberGoalPlanConstraint(context: Context, text: String): String? {
-        val trimmed = text.trim()
-        // Blank, or already on file: nothing to write either way, and the blank check comes first
-        // so a blank constraint never costs a read (`||` short-circuits).
-        if (trimmed.isBlank() || goalPlanConstraints(context).any { it.equals(trimmed, ignoreCase = true) }) return null
-
-        val vehicleId = ActiveVehicle.current(context)
-        val db = CarDatabase.getDatabase(context)
-        val now = System.currentTimeMillis()
-        val outcome = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
-            context,
-            CompanionMemory(
-                vehicleId = vehicleId,
-                text = GoalPlanAgent.CONSTRAINT_PREFIX + trimmed,
-                category = CompanionMemory.Category.DRIVER,
-                source = CompanionMemory.Source.STATED,
-                createdAt = now,
-                updatedAtMs = now,
-            ),
-        )
-        // Refused: nothing stored, so no audit line, and the caller is told in words rather than
-        // the constraint quietly evaporating (server-first write-through,
-        // `.scratch/django-engine/issues/15-*`).
-        val id = outcome.row?.id
-        return if (id == null) {
-            (outcome as com.kevin.legion.backend.WriteThroughOutcome.Refused).message
-        } else {
-            db.memoryAuditDao().record(
-                MemoryAudit.Event.WRITTEN,
-                MemoryAudit.Store.COMPANION,
-                // Not "[${CompanionMemory.Category.DRIVER}/...]" - that interpolation's SOURCE TEXT
-                // contains the literal word "DRIVER" inside the string span PromptRoleNamingTest
-                // scans, even though the emitted value is fine at runtime. A stand-alone tag
-                // sidesteps it entirely rather than special-casing this file into that test's
-                // allowlist.
-                "[goal-plan constraint, stated] ${GoalPlanAgent.CONSTRAINT_PREFIX}$trimmed",
-                refId = id,
-                vehicleId = vehicleId,
-            )
-            null
-        }
-    }
+    private fun goalPlanConstraints(context: Context): GoalPlanConstraints =
+        GoalPlanConstraints.forContext(context, MemoryToolbox.controllerFactory(context))
 
     /**
      * `generate_goal_plan`. Persists [args]' `new_constraint` (if any) BEFORE generating, so the
@@ -5128,21 +5069,18 @@ object LiveToolbox {
         val newConstraint = args.optString("new_constraint").trim()
         // A refusal here is reported, never swallowed. The plan below is still generated, because
         // that is what the user asked for - but it is generated WITHOUT this constraint, since
-        // goalPlanConstraints() reads them back out of the table the refused row never reached.
+        // goalPlanConstraints() reads them back out of the store the refused memory never reached.
         // So the model is told, as its own key, rather than being left to present a plan the user
         // will read as having honoured something it never saw.
-        val constraintRefusal = if (newConstraint.isNotBlank()) {
-            rememberGoalPlanConstraint(context, newConstraint)
-        } else {
-            null
-        }
+        val constraints = goalPlanConstraints(context)
+        val constraintRefusal = if (newConstraint.isNotBlank()) constraints.add(newConstraint) else null
 
         if (!GeminiKeyProvider.hasKey()) {
             return result(false, "No Gemini key is set, so this cannot run. One can be added in Setup.")
                 .apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
         }
 
-        val combinedGoalText = GoalPlanAgent.withConstraints(goalText, goalPlanConstraints(context))
+        val combinedGoalText = GoalPlanAgent.withConstraints(goalText, constraints.read())
         return mapGoalPlanResult(GoalPlanAgent().generate(context, combinedGoalText))
             .apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
     }

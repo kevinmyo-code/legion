@@ -1,9 +1,11 @@
 package com.kevin.legion.backend.engine
 
+import com.kevin.legion.memory.LegacyMemoryRow
 import com.kevin.legion.memory.MemberMemory
 import com.kevin.legion.memory.MemberMemoryBackend
 import com.kevin.legion.memory.MemoryEdit
 import com.kevin.legion.memory.MemoryOutcome
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
 import kotlinx.serialization.SerialName
@@ -15,6 +17,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 private const val MEMORIES_PATH = "/api/member-memories/"
 private const val RECALL_PATH = "/api/member-memories/recall"
+private const val IMPORT_PATH = "/api/member-memories/import"
 
 private val memoryJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
 
@@ -58,6 +61,24 @@ private data class CreateBody(val text: String, val shared: Boolean, val source:
 
 @Serializable
 private data class RecallBody(val query: String, val limit: Int)
+
+/** `ImportRowSerializer` in `server/member_memory/views.py`. */
+@Serializable
+private data class ImportRow(
+    val store: String,
+    @SerialName("origin_guid") val originGuid: String,
+    val text: String,
+    val category: String,
+    val source: String,
+    val importance: Int? = null,
+    @SerialName("logged_at") val loggedAt: String,
+)
+
+@Serializable
+private data class ImportBody(val rows: List<ImportRow>)
+
+@Serializable
+private data class ImportResult(val imported: Int)
 
 /**
  * [MemberMemoryBackend] over the engine's `/api/member-memories/` routes (memory v2, ADR 0075), with
@@ -113,6 +134,25 @@ class DjangoMemberMemoryBackend(private val http: EngineHttp) : MemberMemoryBack
             return MemoryOutcome.Unconfirmed("The engine answered HTTP $status, not the 204 a delete gives.")
         }
         return outcome(result) { }
+    }
+
+    override suspend fun importLegacy(rows: List<LegacyMemoryRow>): MemoryOutcome<Int> {
+        val body = ImportBody(
+            rows.map {
+                ImportRow(
+                    store = it.store,
+                    originGuid = it.originGuid,
+                    text = it.text,
+                    category = it.category,
+                    source = it.source,
+                    importance = it.importance,
+                    loggedAt = Instant.ofEpochMilli(it.loggedAtMs).toString(),
+                )
+            },
+        )
+        return outcome(http.post(IMPORT_PATH, memoryJson.encodeToString(ImportBody.serializer(), body))) {
+            memoryJson.decodeFromString(ImportResult.serializer(), it).imported
+        }
     }
 
     private fun <T> outcome(result: Result<EngineOk>, decode: (String) -> T): MemoryOutcome<T> {
