@@ -263,25 +263,97 @@ class BadArgument(Exception):
     pass
 
 
+def _now() -> datetime:
+    """The engine's clock, one seam so a test can pin "today"."""
+    return datetime.now(UTC)
+
+
+_RELATIVE_DAYS = {"today": 0, "tomorrow": 1, "yesterday": -1}
+_WHEN_ARG = (
+    "ISO date or date-time, or today/tomorrow. A date (or today) is the household's whole day; "
+    "a date-time with no offset is the household's local time."
+)
+
+
+def _named_day(raw: str, zone) -> date | None:
+    """The day `raw` names on the household's clock: a bare YYYY-MM-DD, or today, tomorrow or
+    yesterday in `zone`. None when `raw` names no whole day (a date-time, or nothing)."""
+    word = raw.strip().lower()
+    if word in _RELATIVE_DAYS:
+        return _now().astimezone(zone).date() + timedelta(days=_RELATIVE_DAYS[word])
+    try:
+        return parse_date(word)
+    except ValueError:  # well formed but no such day (2026-02-30)
+        return None
+
+
+def _local_datetime(raw: str, zone) -> datetime | None:
+    """The aware date-time in `raw`, or None when it is not one. One with no offset is a clock
+    time in `zone`, the household's (audit 2026-11-09: the web model sent "2026-11-08T00:00:00"
+    for "today", the engine read it as UTC, and 23:59 deadlines fell out of the day)."""
+    try:
+        parsed = parse_datetime(raw.strip())
+    except ValueError:  # well formed but no such moment
+        return None
+    if parsed is not None and parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=zone)
+    return parsed
+
+
 def _parse_instant(raw: str, name: str, *, end_of_day: bool = False, zone=UTC) -> datetime:
-    """An aware instant. A bare YYYY-MM-DD is that day in `zone` (its first instant, or its
-    last with `end_of_day`); `parse_datetime` would read it as UTC midnight, which west of UTC
-    is the evening before. A date-time with no offset is read as UTC."""
-    raw = raw.strip()
-    if len(raw) == 10 and (day := parse_date(raw)) is not None:
+    """An aware instant. A bare YYYY-MM-DD (or today/tomorrow/yesterday) is that day in `zone`
+    (its first instant, or its last with `end_of_day`); `parse_datetime` would read it as UTC
+    midnight, which west of UTC is the evening before. A date-time with no offset is a clock
+    time in `zone` too; one with an offset is taken as given."""
+    day = _named_day(raw, zone)
+    if day is not None:
         if end_of_day:
             nxt = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone)
             return nxt.astimezone(UTC) - timedelta(microseconds=1)
         return datetime.combine(day, time.min, tzinfo=zone).astimezone(UTC)
-    parsed = parse_datetime(raw)
+    parsed = _local_datetime(raw, zone)
     if parsed is None:
-        day = parse_date(raw)
-        if day is None:
-            raise BadArgument(f"{name} {raw!r} is not an ISO date or date-time")
-        parsed = datetime.combine(day, time.max if end_of_day else time.min)
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed
+        raise BadArgument(f"{name} {raw.strip()!r} is not an ISO date or date-time")
+    return parsed.astimezone(UTC)
+
+
+def _local_write_times(request, fields):
+    """A write's `fields` with every date-time on the household's clock, for the REST view
+    (whose own parser, under TIME_ZONE = "UTC", reads an offset-less value as UTC).
+
+    Any `*_at` string that is a date-time with no offset gets the household's offset. For an
+    event's starts_at/ends_at, a whole day (YYYY-MM-DD, today, tomorrow) is that day on the
+    household's clock: all-day unless `all_day` is false, stored the way every client stores an
+    all-day row (UTC midnight of the date it names). Anything else is passed through for REST
+    to accept or refuse in its own words."""
+    if not isinstance(fields, dict):
+        return fields
+    zone = _household_zone(request)
+    out = dict(fields)
+    for key in ("starts_at", "ends_at"):
+        raw = out.get(key)
+        if not isinstance(raw, str) or (day := _named_day(raw, zone)) is None:
+            continue
+        if key == "starts_at" and "all_day" not in out:
+            out["all_day"] = True
+        if out.get("all_day") is True:
+            out[key] = f"{day.isoformat()}T00:00:00Z"
+        else:
+            out[key] = _parse_instant(raw, key, end_of_day=key == "ends_at", zone=zone).isoformat()
+    for key, raw in list(out.items()):
+        if not key.endswith("_at") or not isinstance(raw, str):
+            continue
+        try:
+            parsed = parse_datetime(raw.strip())
+        except ValueError:
+            continue
+        if parsed is None or parsed.tzinfo is not None:
+            continue
+        if key in ("starts_at", "ends_at") and out.get("all_day") is True:
+            out[key] = f"{parsed.date().isoformat()}T00:00:00Z"
+        else:
+            out[key] = parsed.replace(tzinfo=zone).isoformat()
+    return out
 
 
 def _parse_day(raw: str, name: str) -> date:
@@ -372,7 +444,11 @@ def _read_records(request, args) -> ToolResult:
     if since:
         try:
             queryset = queryset.filter(
-                **{f"{viewset.cursor_field}__gte": _parse_instant(since, "since")}
+                **{
+                    f"{viewset.cursor_field}__gte": _parse_instant(
+                        since, "since", zone=_household_zone(request)
+                    )
+                }
             )
         except BadArgument as exc:
             return refused(f"Nothing was read. {exc}.")
@@ -410,7 +486,7 @@ def _list_events(request, args) -> ToolResult:
         start = (
             _parse_instant(args["from"], "from", zone=zone)
             if args.get("from")
-            else datetime.now(UTC)
+            else _now()
         )
         end = (
             _parse_instant(args["to"], "to", end_of_day=True, zone=zone)
@@ -603,7 +679,10 @@ def _write_record(request, args) -> ToolResult:
     viewset = WRITABLE[table]
     try:
         response = call_route(
-            request, "PUT", f"/api/{viewset.route_prefix()}{identity}/", args["fields"]
+            request,
+            "PUT",
+            f"/api/{viewset.route_prefix()}{identity}/",
+            _local_write_times(request, args["fields"]),
         )
     except RouteNotFound:
         return refused(
@@ -629,7 +708,21 @@ def _delete_record(request, args) -> ToolResult:
 
 
 def _add_event(request, args) -> ToolResult:
-    response = call_route(request, "POST", "/api/events", args["fields"])
+    fields = args["fields"]
+    # Audit 2026-11-09: "remind me to get my medicine today" was saved as
+    # {"kind": "reminder", "title": "Get medicine"}, no day, so it would never come up. A
+    # reminder asked for by name, or one with a lead time, needs a day; an item with no kind
+    # and no date is still an undated task, as before.
+    if isinstance(fields, dict) and not fields.get("starts_at"):
+        if fields.get("kind") == "reminder" or fields.get("remind_minutes_before") is not None:
+            return refused(
+                "Nothing was written. A reminder needs starts_at, or it is saved with no day "
+                "and never comes up. Pass the day the person named: 'today', 'tomorrow' or "
+                "YYYY-MM-DD (an all-day reminder on the household's own day), or a date-time "
+                "(with no offset it is the household's local time). If they named no day, ask "
+                "them when. A to-do with no date is kind 'task'."
+            )
+    response = call_route(request, "POST", "/api/events", _local_write_times(request, fields))
     if response.status_code == 200:
         # The view's idempotent-retry answer: this origin_guid already exists.
         return ok(
@@ -643,7 +736,12 @@ def _add_event(request, args) -> ToolResult:
 
 def _update_event(request, args) -> ToolResult:
     try:
-        response = call_route(request, "PATCH", f"/api/events/{args['id']}", args["fields"])
+        response = call_route(
+            request,
+            "PATCH",
+            f"/api/events/{args['id']}",
+            _local_write_times(request, args["fields"]),
+        )
     except RouteNotFound:
         return refused(f"Nothing was written. {args['id']!r} is not an event id.")
     return _write_result(response, f"event {args['id']}", "written")
@@ -2404,7 +2502,10 @@ TOOLS: tuple[EngineTool, ...] = (
                 },
                 "since": {
                     "type": "string",
-                    "description": "ISO date or date-time: only rows changed at or after it.",
+                    "description": (
+                        "ISO date or date-time: only rows changed at or after it. With no "
+                        "offset it is the household's local time."
+                    ),
                 },
                 "limit": {"type": "integer", "minimum": 1, "maximum": READ_LIMIT_MAX},
             },
@@ -2423,8 +2524,8 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object(
             {
-                "from": {"type": "string", "description": "ISO date or date-time."},
-                "to": {"type": "string", "description": "ISO date or date-time."},
+                "from": {"type": "string", "description": _WHEN_ARG},
+                "to": {"type": "string", "description": _WHEN_ARG},
                 "include_done": {"type": "boolean"},
             }
         ),
@@ -2659,13 +2760,17 @@ TOOLS: tuple[EngineTool, ...] = (
         title="Add an event or task",
         description=(
             "Creates an event or task. `fields` takes the REST event fields: title (required), "
-            "starts_at, ends_at, all_day, location, notes, origin_guid (pass one so a retry "
+            "starts_at and ends_at (a date-time; with no offset it is the household's local "
+            "time; or a whole day, YYYY-MM-DD, 'today' or 'tomorrow', for an all-day item on "
+            "the household's day), all_day, location, notes, origin_guid (pass one so a retry "
             "cannot create a duplicate), remind_minutes_before, kind (reminder, event, task, "
             "or suggestion: a thing the household could do, not their plan; no reminder; give it "
             "structured_meta {city, venue, address (street, or null), url, price} and location "
             "\"venue, street address, city TX\"), and "
             "visibility: \"shared\" (the default; every member of the household sees it) or "
-            "\"private\" (only the member this token belongs to)." + _WRITE_NOTE
+            "\"private\" (only the member this token belongs to). A reminder needs starts_at: "
+            "pass the day the person named (\"today\" included), or ask when."
+            + _WRITE_NOTE
         ),
         input_schema=_object({"fields": {"type": "object"}}, ("fields",)),
         handler=_add_event,
