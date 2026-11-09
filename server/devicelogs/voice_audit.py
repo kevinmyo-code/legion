@@ -62,6 +62,13 @@ Capture on the host (the full tag list above), then read:
     python tools/voice_audit.py live.txt
     python tools/voice_audit.py live.txt --summary
 
+Or with no adb at all (2026-11-09): the phone uploads its whole logcat to the engine
+(reason=logcat), and the engine's raw dump is the same threadtime shape, every tag included:
+
+    python tools/phone_audit_engine.py --minutes 90          pulls from prod, runs this, and more
+    manage.py device_logs --reason logcat --since 90m --raw > live.txt   (on the engine)
+    python tools/voice_audit.py live.txt
+
 Holding line (--summary): an ASSISTANT line that ends before a `TOOL <-` of a tool called in the
 same turn, i.e. what was said while a lookup ran. Transcript chunks of one line that a timing line
 split ("Checking the" / eot_reply / "records.") are merged first, so they count once.

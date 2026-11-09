@@ -9187,6 +9187,11 @@ export interface components {
             /** @description Epoch milliseconds on the DEVICE's clock, which is not trusted. */
             window_end_ms?: number | null;
             /**
+             * @description The phone's process run (one per app start), so batches of one run join up.
+             * @default
+             */
+            run_id: string;
+            /**
              * Format: uri
              * @description The log text, gzip-compressed.
              */
@@ -9198,9 +9203,11 @@ export interface components {
          *     * `manual` - manual
          *     * `periodic` - periodic
          *     * `conversation` - conversation
+         *     * `logcat` - logcat
+         *     * `crash` - crash
          * @enum {string}
          */
-        UploadReasonEnum: "drive_end" | "startup" | "manual" | "periodic" | "conversation";
+        UploadReasonEnum: "drive_end" | "startup" | "manual" | "periodic" | "conversation" | "logcat" | "crash";
         VapidKey: {
             enabled: boolean;
             public_key: string | null;
@@ -13779,7 +13786,7 @@ export interface operations {
                 /** @description At most this many (default 50, max 200). */
                 limit?: number;
                 /** @description Keep only this upload reason. */
-                reason?: "conversation" | "drive_end" | "manual" | "periodic" | "startup";
+                reason?: "conversation" | "crash" | "drive_end" | "logcat" | "manual" | "periodic" | "startup";
                 /** @description ISO 8601 time; only batches the engine received after it. */
                 since?: string;
             };

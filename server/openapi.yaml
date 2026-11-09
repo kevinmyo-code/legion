@@ -4493,7 +4493,9 @@ paths:
           type: string
           enum:
           - conversation
+          - crash
           - drive_end
+          - logcat
           - manual
           - periodic
           - startup
@@ -20473,6 +20475,12 @@ components:
           type: integer
           nullable: true
           description: Epoch milliseconds on the DEVICE's clock, which is not trusted.
+        run_id:
+          type: string
+          default: ''
+          description: The phone's process run (one per app start), so batches of
+            one run join up.
+          maxLength: 64
         file:
           type: string
           format: uri
@@ -20489,6 +20497,8 @@ components:
       - manual
       - periodic
       - conversation
+      - logcat
+      - crash
       type: string
       description: |-
         * `drive_end` - drive_end
@@ -20496,6 +20506,8 @@ components:
         * `manual` - manual
         * `periodic` - periodic
         * `conversation` - conversation
+        * `logcat` - logcat
+        * `crash` - crash
     VapidKey:
       type: object
       properties:

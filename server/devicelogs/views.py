@@ -36,7 +36,15 @@ from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
 from devicelogs import records
-from devicelogs.models import MAX_UPLOAD_BYTES, REASONS, RETENTION_DAYS, DeviceLog
+from devicelogs.models import (
+    MAX_UPLOAD_BYTES,
+    REASONS,
+    RETENTION_DAYS,
+    RETENTION_DAYS_BY_REASON,
+    DeviceLog,
+    max_raw_bytes,
+    retention_days,
+)
 from household.tenancy import household_of, scoped
 
 TAGS = ["device-logs"]
@@ -58,6 +66,10 @@ class UploadSerializer(serializers.Serializer):
     window_end_ms = serializers.IntegerField(
         required=False, allow_null=True, default=None,
         help_text="Epoch milliseconds on the DEVICE's clock, which is not trusted.",
+    )
+    run_id = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=64,
+        help_text="The phone's process run (one per app start), so batches of one run join up.",
     )
     file = serializers.FileField(help_text="The log text, gzip-compressed.")
 
@@ -137,11 +149,12 @@ class DeviceLogUploadView(APIView):
         if upload.size > MAX_UPLOAD_BYTES:
             return _too_large()
         blob = upload.read()
+        cap = min(MAX_UPLOAD_BYTES, max_raw_bytes(data["reason"]))
         try:
-            raw = inflate_capped(blob)
+            raw = inflate_capped(blob, cap)
         except ValueError as exc:
             if "larger" in str(exc):
-                return _too_large()
+                return _too_large(cap)
             return Response(
                 {"detail": f"Nothing was stored. {exc}"}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -164,6 +177,7 @@ class DeviceLogUploadView(APIView):
                     line_count=raw.count(b"\n"),
                     raw_bytes=len(raw),
                     body_gz=blob,
+                    run_id=data["run_id"],
                 )
         except IntegrityError:
             # A concurrent retry of the same batch won the race: same answer.
@@ -173,9 +187,9 @@ class DeviceLogUploadView(APIView):
         return Response(_stored(row, "Stored."), status=status.HTTP_201_CREATED)
 
 
-def _too_large() -> Response:
+def _too_large(cap: int = MAX_UPLOAD_BYTES) -> Response:
     return Response(
-        {"detail": f"Nothing was stored. A log upload is capped at {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."},
+        {"detail": f"Nothing was stored. A log upload of this kind is capped at {cap // (1024 * 1024)} MB."},
         status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     )
 
@@ -190,12 +204,22 @@ def _stored(row: DeviceLog, detail: str) -> dict:
 
 
 def prune(household) -> int:
-    """Delete this household's logs older than RETENTION_DAYS. Returns the count.
+    """Delete this household's logs past their reason's retention (`models.retention_days`:
+    60 days, `logcat` 30). Returns the count.
 
     Run inline on upload rather than from its own cron line: Cloud Scheduler
     bills per job and the crontab already has six, and a household that never
     uploads has nothing growing.
     """
-    cutoff = timezone.now() - datetime.timedelta(days=RETENTION_DAYS)
-    deleted, _ = DeviceLog.objects.filter(household=household, received_at__lt=cutoff).delete()
-    return deleted
+    now = timezone.now()
+    rows = DeviceLog.objects.filter(household=household)
+    deleted = 0
+    special = set(RETENTION_DAYS_BY_REASON)
+    for reason in special:
+        cutoff = now - datetime.timedelta(days=retention_days(reason))
+        count, _ = rows.filter(reason=reason, received_at__lt=cutoff).delete()
+        deleted += count
+    # Every other reason at the default.
+    cutoff = now - datetime.timedelta(days=RETENTION_DAYS)
+    count, _ = rows.exclude(reason__in=special).filter(received_at__lt=cutoff).delete()
+    return deleted + count
