@@ -7,6 +7,7 @@ import com.kevin.legion.memory.InMemoryMemoryCache
 import com.kevin.legion.memory.MemoryController
 import com.kevin.legion.memory.MemoryOutcome
 import com.kevin.legion.memory.MemoryWording
+import com.kevin.legion.memory.PendingReview
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
@@ -55,6 +56,21 @@ class MemoryToolboxTest {
         assertEquals("m1", out.getJSONArray("memories").getJSONObject(0).getString("id"))
         assertTrue(out.getJSONArray("memories").getJSONObject(0).getString("said").contains("orchids"))
         assertEquals(LiveToolbox.RECALL_USE_NOTE, out.getString("how_to_use"))
+    }
+
+    @Test
+    fun `a recalled row a review names carries the flag, and a plain row is unchanged`() {
+        val plain = memory("m1", "Sam's pharmacy is Maple Pharmacy")
+        val flagged = plain.copy(pendingReview = PendingReview(7, "merge", "one row for the pharmacy"))
+        assertEquals(MemoryToolbox.said(plain) + " (a review suggests: one row for the pharmacy; " +
+            "confirm on the Memory screen)", MemoryToolbox.said(flagged))
+        assertFalse(MemoryToolbox.said(plain).contains("review"))
+        install(FakeMemberMemoryBackend(mutableListOf(flagged)))
+        val out = call("""{"action":"recall","query":"pharmacy"}""")
+        assertTrue(out.getJSONArray("memories").getJSONObject(0).getString("said").contains("a review suggests"))
+        assertEquals(MemoryToolbox.REVIEW_FLAG_NOTE, out.getString("review_note"))
+        install(FakeMemberMemoryBackend(mutableListOf(plain)))
+        assertFalse(call("""{"action":"recall","query":"pharmacy"}""").has("review_note"))
     }
 
     @Test

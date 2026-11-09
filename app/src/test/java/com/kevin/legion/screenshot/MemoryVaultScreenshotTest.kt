@@ -10,11 +10,15 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.kevin.legion.memory.MemberMemory
+import com.kevin.legion.memory.ReviewBefore
+import com.kevin.legion.memory.ReviewChange
 import com.kevin.legion.ui.companions.MemoryCallbacks
 import com.kevin.legion.ui.companions.MemoryContent
 import com.kevin.legion.ui.companions.MemoryDialog
+import com.kevin.legion.ui.companions.MemoryFilter
 import com.kevin.legion.ui.companions.MemoryUiState
 import com.kevin.legion.ui.companions.MemoryView
+import com.kevin.legion.ui.companions.ReviewState
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.vault.Shown
 import com.kevin.legion.ui.vault.VaultCallbacks
@@ -95,6 +99,47 @@ class MemoryVaultScreenshotTest {
         composeTestRule.setContent { Framed { VaultContent(state, VaultCallbacks()) } }
         composeTestRule.onRoot().captureRoboImage("vault-list-revealed.png")
     }
+
+    @Test
+    fun `memory review to check sits above the list`() = captureMemory(
+        "memory-review-to-check.png",
+        MemoryUiState(
+            view = MemoryView.Listed(memories),
+            review = ReviewState(
+                listOf(
+                    ReviewChange(
+                        1, "merge", "pending", "3.1",
+                        listOf(
+                            ReviewBefore("m2", "Home address is on Elm Street"),
+                            ReviewBefore("m9", "Lives on Elm St"),
+                        ),
+                        "Home address is on Elm Street", "Two rows give the same address.",
+                        "These say the same thing; keep one.",
+                    ),
+                    ReviewChange(
+                        2, "expire", "pending", "3.1", listOf(ReviewBefore("m9", "Lives on Elm St")),
+                        "the date has passed, so it would be retired", "The move date has passed.",
+                        "The date has passed.", evidenceDate = "2026-11-07",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun `memory review retired list says why and offers restore`() = captureMemory(
+        "memory-review-retired.png",
+        MemoryUiState(
+            view = MemoryView.Listed(memories),
+            filter = MemoryFilter.Retired,
+            retired = MemoryView.Listed(
+                listOf(
+                    memories[0].copy(id = "r1", retiredReason = "merged", retiredChange = 4L),
+                    memories[3].copy(id = "r2", text = "Dentist on August 3", retiredReason = "expired"),
+                ),
+            ),
+        ),
+    )
 
     private fun captureMemory(fileName: String, state: MemoryUiState) {
         composeTestRule.setContent { Framed { MemoryContent(state, MemoryCallbacks()) } }

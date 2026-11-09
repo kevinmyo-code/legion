@@ -26,7 +26,65 @@ data class MemberMemory(
     val lastRecalledAtMs: Long? = null,
     /** The conversation record a consolidated memory was distilled from, if any. */
     val fromConversation: String? = null,
+    /**
+     * Why the daily memory review retired it (`merged`, `contradicted`, `expired`, `relabelled`,
+     * `not_about_person`); null for a live row. Only the Retired list carries retired rows.
+     */
+    val retiredReason: String? = null,
+    /** The review change that retired it; reverting it restores the row (memory-review ticket 08). */
+    val retiredChange: Long? = null,
+    /** Set when a pending review change names this row: the recall flag (ruling 02). */
+    val pendingReview: PendingReview? = null,
 )
+
+/** A pending memory-review change that names a memory. [after] is said in words. */
+data class PendingReview(val changeId: Long, val action: String, val after: String)
+
+/** One memory as a review change saw it. [text] is null when it is gone since. */
+data class ReviewBefore(val id: String, val text: String?)
+
+/**
+ * One change the daily memory review proposed or applied (memory-review tickets 06 and 08). The
+ * engine gated it; a pending one waits for Kevin's Accept or Dismiss on the Memory screen.
+ * [cluster] groups changes about the same memories, for Accept all.
+ */
+data class ReviewChange(
+    val id: Long,
+    val action: String,
+    val status: String,
+    val cluster: String,
+    val before: List<ReviewBefore>,
+    /** The text it would keep (a merge or a correction), else what it would do, in words. */
+    val afterWords: String,
+    val reason: String,
+    val actionWords: String,
+    /** The day of the conversation a correction cites, `YYYY-MM-DD`, or null. */
+    val evidenceDate: String? = null,
+)
+
+/**
+ * The review half of the engine's memory API (`/api/member-memories/review/`). A seam of its own
+ * so [MemberMemoryBackend]'s fakes need not change, and so the screen can be tested with a fake.
+ */
+interface MemoryReviewBackend {
+    /** `GET review/changes` - the pending ones, newest first. */
+    suspend fun pending(): MemoryOutcome<List<ReviewChange>>
+
+    /** `POST review/changes/<id>/accept`. Refused 409 when its memories changed since. Ok carries words. */
+    suspend fun accept(id: Long): MemoryOutcome<String>
+
+    /** `POST review/changes/<id>/dismiss`. */
+    suspend fun dismiss(id: Long): MemoryOutcome<String>
+
+    /** `POST review/changes/<id>/revert` - restores what an applied change retired. */
+    suspend fun revert(id: Long): MemoryOutcome<String>
+
+    /** `POST review/clusters/<cluster>/accept` - Accept all. */
+    suspend fun acceptCluster(cluster: String): MemoryOutcome<String>
+
+    /** `GET /api/member-memories/?include_superseded=true`, the retired rows only. */
+    suspend fun retired(limit: Int): MemoryOutcome<List<MemberMemory>>
+}
 
 /**
  * What one call to the engine's memory did. **Four states, because four different sentences

@@ -7,6 +7,7 @@ import com.kevin.legion.memory.MemberMemory
 import com.kevin.legion.memory.MemoryController
 import com.kevin.legion.memory.MemoryOutcome
 import com.kevin.legion.memory.MemoryWording
+import com.kevin.legion.memory.ReviewChange
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +32,23 @@ sealed interface MemoryDialog {
     data class ConfirmForget(val memory: MemberMemory) : MemoryDialog
 }
 
+/** Which list the screen shows: live memories (with To check on top), or what the review retired. */
+enum class MemoryFilter { Live, Retired }
+
+/**
+ * The review's pending changes (memory-review ticket 09). [offline] disables Accept and Dismiss and
+ * [note] says why in words: an accept is never queued, because a stale one must reach the engine.
+ */
+data class ReviewState(
+    val changes: List<ReviewChange> = emptyList(),
+    val offline: Boolean = false,
+    val note: String? = null,
+) {
+    /** Changes grouped for Accept all, in the order the engine listed them. */
+    val clusters: List<List<ReviewChange>>
+        get() = changes.groupBy { it.cluster }.values.toList()
+}
+
 data class MemoryUiState(
     val view: MemoryView = MemoryView.Loading,
     val query: String = "",
@@ -38,6 +56,10 @@ data class MemoryUiState(
     val busy: Boolean = false,
     /** The last write's result in words ("Deleted for good.", or why nothing changed). */
     val message: String? = null,
+    val review: ReviewState = ReviewState(),
+    val filter: MemoryFilter = MemoryFilter.Live,
+    /** The Retired list, read when that filter is picked. */
+    val retired: MemoryView = MemoryView.Loading,
 ) {
     /** The listed memories narrowed by [query] (text, kind or source), on the phone. */
     val shown: List<MemberMemory>
@@ -87,7 +109,56 @@ class MemoryViewModel(
                 else -> MemoryView.Unavailable(MemoryWording.readFailed(outcome))
             }
             _state.update { it.copy(view = view) }
+            loadReview()
+            if (_state.value.filter == MemoryFilter.Retired) loadRetired()
         }
+    }
+
+    private suspend fun loadReview() {
+        val review = when (val outcome = controller.reviewPending()) {
+            is MemoryOutcome.Ok -> ReviewState(outcome.value)
+            is MemoryOutcome.Refused -> ReviewState() // review off on the engine: nothing to check
+            else -> ReviewState(
+                offline = true,
+                note = "The engine can't be reached, so the memory review's suggestions can't be answered now.",
+            )
+        }
+        _state.update { it.copy(review = review) }
+    }
+
+    private suspend fun loadRetired() {
+        _state.update { it.copy(retired = MemoryView.Loading) }
+        val view = when (val outcome = controller.retired()) {
+            is MemoryOutcome.Ok -> MemoryView.Listed(outcome.value)
+            else -> MemoryView.Unavailable(MemoryWording.readFailed(outcome))
+        }
+        _state.update { it.copy(retired = view) }
+    }
+
+    fun setFilter(filter: MemoryFilter) {
+        _state.update { it.copy(filter = filter, message = null) }
+        if (filter == MemoryFilter.Retired) viewModelScope.launch { loadRetired() }
+    }
+
+    fun acceptChange(change: ReviewChange) = reviewWrite { controller.acceptChange(change) }
+
+    fun dismissChange(change: ReviewChange) = reviewWrite { controller.dismissChange(change) }
+
+    fun acceptCluster(cluster: String) = reviewWrite { controller.acceptCluster(cluster) }
+
+    fun restore(memory: MemberMemory) = reviewWrite { controller.restore(memory) }
+
+    /** One review answer: its words (the engine's, or why nothing changed), then fresh lists. */
+    private fun reviewWrite(call: suspend () -> MemoryOutcome<String>) = runWrite {
+        val message = when (val outcome = call()) {
+            is MemoryOutcome.Ok -> outcome.value
+            else -> MemoryWording.writeFailed(outcome, "changed")
+        }
+        _state.update { it.copy(message = message) }
+        val cached = controller.cached()
+        cached?.let { c -> _state.update { it.copy(view = MemoryView.Listed(c.memories)) } }
+        loadReview()
+        if (_state.value.filter == MemoryFilter.Retired) loadRetired()
     }
 
     fun setQuery(query: String) = _state.update { it.copy(query = query) }

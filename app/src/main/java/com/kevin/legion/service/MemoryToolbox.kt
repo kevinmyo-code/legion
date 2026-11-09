@@ -111,6 +111,8 @@ object MemoryToolbox {
                 } else {
                     // Read at answer time, beside the memories it is about (2026-10-30).
                     out.put("how_to_use", LiveToolbox.RECALL_USE_NOTE)
+                    // memory-review ruling 02: only when a recalled line carries a review flag.
+                    if (read.memories.any { it.pendingReview != null }) out.put("review_note", REVIEW_FLAG_NOTE)
                 }
                 out
             }
@@ -166,12 +168,31 @@ object MemoryToolbox {
                     .put("id", m.id)
                     // The day, then how it was learned (2026-11-09), so "you told me" is said only
                     // of a memory the person asked to keep.
-                    .put("said", "(${MemoryWording.day(m.createdAtMs)}, ${MemoryWording.provenance(m)}) ${m.text}")
+                    .put("said", said(m))
                     .apply { if (m.shared) put("shared", true) },
             )
         }
         return arr
     }
+
+    /**
+     * The line the model reads for one memory. A row a pending memory-review change names ends with
+     * the review's suggestion (ruling 02's recall flag); every other line is exactly as before.
+     */
+    internal fun said(m: MemberMemory): String {
+        val line = "(${MemoryWording.day(m.createdAtMs)}, ${MemoryWording.provenance(m)}) ${m.text}"
+        val flag = m.pendingReview ?: return line
+        return "$line (a review suggests: ${flag.after}; confirm on the Memory screen)"
+    }
+
+    /**
+     * Rides on a recall whose lines carry a review flag, never on any other result, so it costs
+     * nothing in setup and nothing on an ordinary recall.
+     */
+    internal const val REVIEW_FLAG_NOTE =
+        "A line ending in 'a review suggests' is still the fact on file: say it as it stands, and " +
+            "mention that a newer version waits on the Memory screen. Never treat the suggestion as fact, " +
+            "and never bring it up unless the user asked about that memory."
 
     /**
      * Rides on an empty recall: the sentence the old `recall_memory` description carried ("never

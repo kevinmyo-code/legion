@@ -5,6 +5,7 @@ import com.kevin.legion.memory.MemberMemory
 import com.kevin.legion.memory.MemberMemoryBackend
 import com.kevin.legion.memory.MemoryEdit
 import com.kevin.legion.memory.MemoryOutcome
+import com.kevin.legion.memory.PendingReview
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
@@ -19,13 +20,21 @@ private const val MEMORIES_PATH = "/api/member-memories/"
 private const val RECALL_PATH = "/api/member-memories/recall"
 private const val IMPORT_PATH = "/api/member-memories/import"
 
-private val memoryJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
+internal val memoryJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
 
 private fun parseMs(stamp: String): Long = OffsetDateTime.parse(stamp).toInstant().toEpochMilli()
 
+/** `pending_review` on a row (memory-review ruling 02's recall flag). */
+@Serializable
+internal data class PendingReviewRow(
+    @SerialName("change_id") val changeId: Long,
+    val action: String,
+    val after: String,
+)
+
 /** One row as `member_memory/service.as_dict` renders it (`server/member_memory/views.py`). */
 @Serializable
-private data class MemberMemoryRow(
+internal data class MemberMemoryRow(
     val id: String,
     val text: String,
     val kind: String = "fact",
@@ -37,6 +46,9 @@ private data class MemberMemoryRow(
     @SerialName("last_recalled_at") val lastRecalledAt: String? = null,
     @SerialName("from_conversation") val fromConversation: String? = null,
     @SerialName("created_at") val createdAt: String,
+    @SerialName("retired_reason") val retiredReason: String? = null,
+    @SerialName("retired_change") val retiredChange: Long? = null,
+    @SerialName("pending_review") val pendingReview: PendingReviewRow? = null,
 ) {
     fun toMemory() = MemberMemory(
         id = id,
@@ -50,11 +62,14 @@ private data class MemberMemoryRow(
         createdAtMs = parseMs(createdAt),
         lastRecalledAtMs = lastRecalledAt?.let(::parseMs),
         fromConversation = fromConversation,
+        retiredReason = retiredReason,
+        retiredChange = retiredChange,
+        pendingReview = pendingReview?.let { PendingReview(it.changeId, it.action, it.after) },
     )
 }
 
 @Serializable
-private data class MemoryList(val results: List<MemberMemoryRow> = emptyList())
+internal data class MemoryList(val results: List<MemberMemoryRow> = emptyList())
 
 @Serializable
 private data class CreateBody(val text: String, val shared: Boolean, val source: String)
@@ -97,20 +112,20 @@ private data class ImportResult(val imported: Int)
 class DjangoMemberMemoryBackend(private val http: EngineHttp) : MemberMemoryBackend {
 
     override suspend fun list(limit: Int): MemoryOutcome<List<MemberMemory>> =
-        outcome(http.get(MEMORIES_PATH, mapOf("limit" to limit.toString()))) { body ->
+        memoryOutcome(http.get(MEMORIES_PATH, mapOf("limit" to limit.toString()))) { body ->
             memoryJson.decodeFromString(MemoryList.serializer(), body).results.map { it.toMemory() }
         }
 
     override suspend fun recall(query: String, limit: Int): MemoryOutcome<List<MemberMemory>> {
         val body = memoryJson.encodeToString(RecallBody.serializer(), RecallBody(query, limit))
-        return outcome(http.post(RECALL_PATH, body)) { reply ->
+        return memoryOutcome(http.post(RECALL_PATH, body)) { reply ->
             memoryJson.decodeFromString(MemoryList.serializer(), reply).results.map { it.toMemory() }
         }
     }
 
     override suspend fun create(text: String, shared: Boolean, source: String): MemoryOutcome<MemberMemory> {
         val body = memoryJson.encodeToString(CreateBody.serializer(), CreateBody(text, shared, source))
-        return outcome(http.post(MEMORIES_PATH, body)) {
+        return memoryOutcome(http.post(MEMORIES_PATH, body)) {
             memoryJson.decodeFromString(MemberMemoryRow.serializer(), it).toMemory()
         }
     }
@@ -120,7 +135,7 @@ class DjangoMemberMemoryBackend(private val http: EngineHttp) : MemberMemoryBack
             edit.text?.let { put("text", JsonPrimitive(it)) }
             edit.shared?.let { put("shared", JsonPrimitive(it)) }
         }
-        return outcome(http.patch(MEMORIES_PATH + id, JsonObject(fields).toString())) {
+        return memoryOutcome(http.patch(MEMORIES_PATH + id, JsonObject(fields).toString())) {
             memoryJson.decodeFromString(MemberMemoryRow.serializer(), it).toMemory()
         }
     }
@@ -133,7 +148,7 @@ class DjangoMemberMemoryBackend(private val http: EngineHttp) : MemberMemoryBack
         if (result.isSuccess && status != HTTP_NO_CONTENT) {
             return MemoryOutcome.Unconfirmed("The engine answered HTTP $status, not the 204 a delete gives.")
         }
-        return outcome(result) { }
+        return memoryOutcome(result) { }
     }
 
     override suspend fun importLegacy(rows: List<LegacyMemoryRow>): MemoryOutcome<Int> {
@@ -150,38 +165,43 @@ class DjangoMemberMemoryBackend(private val http: EngineHttp) : MemberMemoryBack
                 )
             },
         )
-        return outcome(http.post(IMPORT_PATH, memoryJson.encodeToString(ImportBody.serializer(), body))) {
+        return memoryOutcome(http.post(IMPORT_PATH, memoryJson.encodeToString(ImportBody.serializer(), body))) {
             memoryJson.decodeFromString(ImportResult.serializer(), it).imported
-        }
-    }
-
-    private fun <T> outcome(result: Result<EngineOk>, decode: (String) -> T): MemoryOutcome<T> {
-        val failure = (result.exceptionOrNull() as? EngineHttpException)?.failure
-        return when {
-            result.isSuccess -> try {
-                MemoryOutcome.Ok(decode(result.getOrThrow().body))
-            } catch (e: SerializationException) {
-                MemoryOutcome.Unconfirmed("The engine's reply did not decode: ${e.message}")
-            } catch (e: DateTimeParseException) {
-                MemoryOutcome.Unconfirmed("The engine's reply did not decode: ${e.message}")
-            } catch (e: IllegalArgumentException) {
-                MemoryOutcome.Unconfirmed("The engine's reply did not decode: ${e.message}")
-            }
-            failure is EngineFailure.Unreachable -> MemoryOutcome.Unreachable(failure.message)
-            failure is EngineFailure.Unauthorized -> MemoryOutcome.Refused(
-                failure.body.takeIf { failure.status == HTTP_FORBIDDEN && it.isNotBlank() }
-                    ?.let(::engineRefusalSentence) ?: failure.sentence,
-                failure.status,
-            )
-            failure is EngineFailure.Refused ->
-                MemoryOutcome.Refused(engineRefusalSentence(failure.body), failure.status)
-            failure is EngineFailure.Malformed -> MemoryOutcome.Unconfirmed(failure.sentence)
-            else -> MemoryOutcome.Unconfirmed(result.exceptionOrNull()?.message ?: "unknown error")
         }
     }
 
     private companion object {
         const val HTTP_NO_CONTENT = 204
-        const val HTTP_FORBIDDEN = 403
+    }
+}
+
+private const val HTTP_FORBIDDEN = 403
+
+/**
+ * Where an [EngineHttp] failure becomes one of [MemoryOutcome]'s four states, for the memory routes
+ * and the review routes alike ([DjangoMemoryReviewBackend]).
+ */
+internal fun <T> memoryOutcome(result: Result<EngineOk>, decode: (String) -> T): MemoryOutcome<T> {
+    val failure = (result.exceptionOrNull() as? EngineHttpException)?.failure
+    return when {
+        result.isSuccess -> try {
+            MemoryOutcome.Ok(decode(result.getOrThrow().body))
+        } catch (e: SerializationException) {
+            MemoryOutcome.Unconfirmed("The engine's reply did not decode: ${e.message}")
+        } catch (e: DateTimeParseException) {
+            MemoryOutcome.Unconfirmed("The engine's reply did not decode: ${e.message}")
+        } catch (e: IllegalArgumentException) {
+            MemoryOutcome.Unconfirmed("The engine's reply did not decode: ${e.message}")
+        }
+        failure is EngineFailure.Unreachable -> MemoryOutcome.Unreachable(failure.message)
+        failure is EngineFailure.Unauthorized -> MemoryOutcome.Refused(
+            failure.body.takeIf { failure.status == HTTP_FORBIDDEN && it.isNotBlank() }
+                ?.let(::engineRefusalSentence) ?: failure.sentence,
+            failure.status,
+        )
+        failure is EngineFailure.Refused ->
+            MemoryOutcome.Refused(engineRefusalSentence(failure.body), failure.status)
+        failure is EngineFailure.Malformed -> MemoryOutcome.Unconfirmed(failure.sentence)
+        else -> MemoryOutcome.Unconfirmed(result.exceptionOrNull()?.message ?: "unknown error")
     }
 }
