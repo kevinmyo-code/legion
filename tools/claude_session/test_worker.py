@@ -72,7 +72,7 @@ class WorkerCase(unittest.TestCase):
             "name": "Alienware", "scope": "full", "engine_url": self.engine.url, "token": TOKEN,
             "claude_cmd": [sys.executable, str(HERE / "fake_claude.py")],
             "claude_images": ["python.exe"],
-            "heartbeat_s": 0.2, "tick_s": 0.05, "task_cap_s": 60.0, "report_grace_s": 0.6,
+            "heartbeat_s": 0.2, "tick_s": 0.05, "task_cap_s": 60.0, "report_grace_s": 0.6, "settle_s": 0.2,
             "hang_s": 60.0, "restart_min_s": 0.2, "backoff_max_s": 0.4,
             "mail": {"address": "alfred@example.com", "app_password": "x", "kevin": "kevin@example.com"},
         }
@@ -326,11 +326,94 @@ class TestTasks(WorkerCase):
         text = "".join(p.read_text(encoding="utf-8") for p in self.paths.logs.glob("*.log"))
         self.assertNotIn(SECRET_SUMMARY, text)
 
-    def test_helper_ending_without_report_fails_in_words(self):
+    def test_helper_ending_without_report_is_reminded_once_then_fails_in_words(self):
         self.engine.queue(id=75, request=fake(report=False))
         self.start()
         self.wait(lambda: self.engine.finished(75), what="task 75")
+        self.assertEqual(self.engine.finished(75)[0]["status"], "failed")
         self.assertEqual(self.engine.finished(75)[0]["summary"], W.SAY_NO_REPORT)
+        nudges = [m for m in self.msgs() if m.startswith("[report 75]")]
+        self.assertEqual(len(nudges), 1, "one reminder, then the failure")
+        self.assertIn("report.py", nudges[0])
+
+    def test_reminder_answered_records_the_result(self):
+        self.engine.queue(id=74, request=fake(report=False, nudge_report=True,
+                                              nudge_summary="late but here"))
+        self.start()
+        self.wait(lambda: self.engine.finished(74), what="task 74")
+        f = self.engine.finished(74)[0]
+        self.assertEqual((f["status"], f["summary"]), ("done", "late but here"))
+        self.assertEqual(len(self.engine.finished(74)), 1)
+
+    def test_helper_paused_on_its_own_build_is_not_failed(self):
+        """Task 7, 2026-11-06: the helper backgrounded its compile and ended its turn; the CLI sent
+        `completed` for it while the compile ran. That is a pause, not the end."""
+        self.engine.queue(id=76, request=fake(pause=2.5, summary="built after the wait"))
+        w = self.start()
+        self.wait(lambda: (w._task(76) or {}).get("helper_paused"), what="paused")
+        time.sleep(1.0)  # well past report_grace_s + settle_s
+        self.assertFalse(self.engine.finished(76), "an interim completion must not end the task")
+        self.assertEqual(w._task(76)["status"], "running")
+        self.wait(lambda: self.engine.finished(76), what="task 76")
+        f = self.engine.finished(76)[0]
+        self.assertEqual((f["status"], f["summary"]), ("done", "built after the wait"))
+        self.assertFalse([m for m in self.msgs() if m.startswith("[report 76]")], "no reminder")
+        self.assertEqual(w._task(76)["agent"], "agent76", "the child never replaced the helper")
+        self.stop_last()
+        text = (self.paths.logs / "worker.log").read_text(encoding="utf-8")
+        self.assertIn("task 76 helper paused on its own background work", text)
+        self.assertIn("task 76 helper resumed", text)
+        self.assertNotIn("ignored (not running)", text)
+
+    def test_question_after_a_pause_is_accepted(self):
+        self.engine.queue(id=77, request=fake(pause=1.5, status="needs_confirmation",
+                                              question="Ready: Snake in your Games. Ship it?"))
+        self.start()
+        self.wait(lambda: self.engine.finished(77), what="task 77")
+        f = self.engine.finished(77)[0]
+        self.assertEqual((f["status"], f["question"]),
+                         ("needs_confirmation", "Ready: Snake in your Games. Ship it?"))
+
+
+class TestPausedCap(WorkerCase):
+    cfg_extra = {"task_cap_s": 1.5}
+
+    def test_a_paused_helper_still_stops_at_the_cap(self):
+        self.engine.queue(id=78, request=fake(pause=10))
+        self.start()
+        self.wait(lambda: self.engine.finished(78), what="task 78 capped")
+        self.assertEqual(self.engine.finished(78)[0]["summary"], W.SAY_CAP)
+
+
+class TestLateReports(WorkerCase):
+    def _worker(self):
+        write_json_atomic(self.paths.config, self.cfg)
+        return W.Worker(self.paths, self.cfg, power=NoPower(), base_env=self.env,
+                        engine=EngineClient(self.engine.url, TOKEN))
+
+    def _report(self, task, **r):
+        write_json_atomic(self.paths.reports / f"1-{task}.json", {"task": task, "found": [], **r})
+
+    def test_late_report_replaces_an_undelivered_failure(self):
+        w = self._worker()
+        w.state["tasks"]["5"] = {"id": 5, "status": "running", "started_at": 0.0, "turns": 0}
+        w.finish(w._task(5), "failed", W.SAY_NO_REPORT)
+        self._report(5, status="done", summary="it did finish")
+        w.drain_reports(w.clock())
+        self.assertEqual(w.state["outbox"][0]["payload"]["status"], "done")
+        self.assertEqual(w.state["outbox"][0]["payload"]["summary"], "it did finish")
+        self.assertEqual(w._task(5)["status"], "done")
+
+    def test_late_report_after_a_delivered_failure_is_kept_not_dropped(self):
+        w = self._worker()
+        w.state["tasks"]["6"] = {"id": 6, "status": "failed", "started_at": 0.0, "turns": 0,
+                                 "finished_at": w.clock()}
+        self._report(6, status="failed", summary="first build took twenty four minutes")
+        w.drain_reports(w.clock())
+        kept = read_json(self.paths.reports / "late" / "6.json")
+        self.assertEqual(kept["summary"], "first build took twenty four minutes")
+        self.assertEqual(w.state["outbox"], [])
+        self.assertFalse(list(self.paths.reports.glob("*.json")), "the report left the queue")
 
 
 class TestCap(WorkerCase):
