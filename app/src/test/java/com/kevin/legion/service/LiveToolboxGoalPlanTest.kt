@@ -30,8 +30,8 @@ import org.robolectric.RuntimeEnvironment
 /**
  * `generate_goal_plan`/`accept_goal_plan` dispatch (ticket 03, `goal-plans`) - same Robolectric-
  * plus-Room shape as [LiveToolboxAdvisorTest]. Constraints go to a [FakeMemberMemoryBackend]
- * through [MemoryToolbox.controllerFactory] (member memory since 2026-11-09). No test here makes a real network call: no Gemini
- * key is ever configured, so [LiveToolbox.generateGoalPlanTool] always takes its own
+ * through [MemoryToolbox.controllerFactory] (member memory since 2026-11-09). No test here makes a
+ * real network call: no Gemini key is ever configured, so [LiveToolbox.generateGoalPlanTool] always takes its own
  * "I need a Gemini key" refusal path AFTER persisting a stated constraint - deliberately, so the
  * ticket's core promise ("having said once that he has no gym, he should not have to say it
  * again") is provable deterministically, without depending on a real model response.
