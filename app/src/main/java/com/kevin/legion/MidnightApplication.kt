@@ -192,6 +192,14 @@ class MidnightApplication : Application() {
         // two, which is harmless - they are idempotent - and is left alone so
         // the assistant path does not depend on this ordering.
         GeminiKeyProvider.init(this)
+        // The phone's own logs on the engine (2026-11-09, Kevin: "Send everything from the phone to
+        // the engine so we can audit without adb"). First after the key it redacts, so its crash
+        // handler and its logcat reader are live before anything else here can fail. Gated off
+        // under Robolectric: every test runs this onCreate, and it would spawn logcat.
+        if (!isRunningUnderRobolectric()) {
+            runCatching { com.kevin.legion.service.phonelog.PhoneLog.init(this) }
+                .onFailure { MidnightEvents.appStartWorkFailed("phone_log", it) }
+        }
         // Mapbox's public token (mapbox-nav spike, ticket 08). Set only when non-blank: the
         // SDK reads this at first use, and a blank value would shadow a token supplied by any
         // other path with an empty string. Initialised here, not lazily in a screen, because

@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,11 +31,13 @@ import com.kevin.legion.location.LocationAccessState
 import com.kevin.legion.service.CallActions
 import com.kevin.legion.service.CallerId
 import com.kevin.legion.service.PlaceCallAction
+import com.kevin.legion.service.phonelog.PhoneLog
 import com.kevin.legion.ui.CallHandlingRow
 import com.kevin.legion.ui.LocationAccessRow
 import com.kevin.legion.ui.SettingsNavRow
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.common.findActivity
+import kotlinx.coroutines.launch
 
 /**
  * "Permissions and diagnostics" - the fifth subscreen `settings/` split into (command-center
@@ -66,6 +69,11 @@ fun PermissionsDiagnosticsScreen(
     // would offer the Settings shortcut to a user who has never even seen the background dialog
     // once.
     var offerLocationAppSettings by remember { mutableStateOf(false) }
+    // The phone's own logs on the engine (2026-11-09, PhoneLog).
+    var phoneLogOn by remember { mutableStateOf(PhoneLog.isEnabled(context)) }
+    var phoneLogSending by remember { mutableStateOf(false) }
+    var phoneLogResult by remember { mutableStateOf(PhoneLog.lastResult) }
+    val scope = rememberCoroutineScope()
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         // Both halves of call handling are re-read on every resume rather than cached: the user
@@ -203,6 +211,24 @@ fun PermissionsDiagnosticsScreen(
                     label = "Car probe",
                     status = "On-screen diagnostic log for Android Auto probes",
                     onClick = onOpenCarProbe,
+                )
+
+                Spacer(Modifier.height(16.dp))
+                PhoneLogRow(
+                    enabled = phoneLogOn,
+                    sending = phoneLogSending,
+                    lastResult = phoneLogResult,
+                    onToggle = { on ->
+                        PhoneLog.setEnabled(context, on)
+                        phoneLogOn = on
+                    },
+                    onSendNow = {
+                        phoneLogSending = true
+                        scope.launch {
+                            phoneLogResult = PhoneLog.sendNow().sentence
+                            phoneLogSending = false
+                        }
+                    },
                 )
 
                 Spacer(Modifier.height(24.dp))

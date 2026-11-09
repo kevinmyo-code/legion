@@ -8,6 +8,7 @@ import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttp
 import com.kevin.legion.backend.engine.EngineHttpException
+import com.kevin.legion.service.phonelog.PhoneLog
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import java.io.File
 import java.text.SimpleDateFormat
@@ -155,6 +156,8 @@ object ConversationLog {
                 versionCode = BuildConfig.VERSION_CODE,
             ),
             say = { Log.i(SAY_TAG, it) },
+            // Joins these records to the same run's raw logcat batches (2026-11-09).
+            runId = PhoneLog.runId,
         )
         recorder = ConversationRecorder(s, writer, enabled = { keepAndSend })
     }
@@ -187,6 +190,7 @@ object ConversationLog {
         } else {
             stopTicker()
             if (keepAndSend && uploader != null) scope.launch { uploadNow(manual = false) }
+            PhoneLog.onLiveSession(started = false)
         }
     }
 

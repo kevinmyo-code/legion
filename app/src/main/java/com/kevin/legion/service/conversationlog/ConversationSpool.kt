@@ -62,6 +62,33 @@ class ConversationSpool(
         enforceCap()
     }
 
+    /**
+     * Append several lines written by [atMs] in one write: the phone's logcat reader hands over a
+     * burst at a time, and [append]'s per-line bookkeeping would rewrite `current.end` for each.
+     * Same newline rule as [append].
+     */
+    @Synchronized
+    fun appendAll(lines: List<String>, atMs: Long) {
+        if (lines.isEmpty()) return
+        pendingDir.mkdirs()
+        if (!current.exists() || current.length() == 0L) currentStart.writeText(atMs.toString())
+        val text = StringBuilder()
+        for (line in lines) text.append(line.replace('\r', ' ').replace('\n', ' ')).append('\n')
+        current.appendText(text.toString())
+        currentEnd.writeText(atMs.toString())
+        if (current.length() >= sealAtBytes) seal()
+        enforceCap()
+    }
+
+    /** Everything on disk goes: the phone's logcat switch turned off (nothing kept, nothing sent). */
+    @Synchronized
+    fun clear() {
+        current.delete()
+        currentStart.delete()
+        currentEnd.delete()
+        pendingDir.listFiles()?.forEach { it.delete() }
+    }
+
     /** Move `current.log` into `pending/`. Returns the new batch, or null when nothing was waiting. */
     @Synchronized
     fun seal(): SpooledBatch? {
