@@ -1101,7 +1101,7 @@ internal const val RECORD_FACTS =
     "one of them can make them miss something real. "
 
 /** The shared rules between [RECORD_FACTS] and [CURRENCY_CLAUSE]. Fixed in code, see [SHARED_TOOL_RULES]. */
-internal val SHARED_RECORD_RULES =
+internal const val SHARED_RECORD_RULES =
     // 2026-11-09: named the retired `remember` / `recall_memory` tools until this date. The `memory`
     // tool's own description says when to recall and save; this keeps only the check-first rule.
     "Never claim to remember something without checking the memory tool first. " +

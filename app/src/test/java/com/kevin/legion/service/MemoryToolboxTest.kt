@@ -71,7 +71,9 @@ class MemoryToolboxTest {
             ),
         )
         val rows = call("""{"action":"recall","query":"orchids"}""").getJSONArray("memories")
-        val said = (0 until rows.length()).associate { rows.getJSONObject(it).let { r -> r.getString("id") to r.getString("said") } }
+        val said = (0 until rows.length())
+            .map { rows.getJSONObject(it) }
+            .associate { it.getString("id") to it.getString("said") }
         assertTrue(said.getValue("asked").contains(", you asked me to keep this) Mia likes orchids"))
         assertTrue(said.getValue("chat").contains(", noted from a chat) "))
         assertTrue(said.getValue("hand").contains(", you added this) "))
