@@ -470,8 +470,6 @@ class AssistantToolView(_AssistantView):
             result = run_engine_tool(request, only_here, body.validated_data["args"])
         else:
             result = run_tool(request, name, body.validated_data["args"])
-        if read_through.read_third_party(request):
-            read_through.mark(request)
         _audit(request, AssistantCall.TOOL, result.outcome, name)
         self._record(
             request, started, success=not result.is_error, outcome=result.outcome, text=result.text

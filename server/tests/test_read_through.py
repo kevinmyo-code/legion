@@ -13,6 +13,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from django.db import DatabaseError
 
 from assistant import read_through
 from assistant.models import ReadThroughTurn
@@ -155,6 +156,53 @@ def test_the_turn_must_be_a_count(household_user):
 
 
 # =============================================================================
+# Fail closed: a mark that cannot be written, or read
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def no_failed_marks():
+    read_through._UNMARKED.clear()
+    yield
+    read_through._UNMARKED.clear()
+
+
+def _fail(*_args, **_kwargs):
+    raise DatabaseError("the database is gone")
+
+
+def test_a_mark_that_cannot_be_written_stops_the_search_and_every_later_remember(
+    household_user, monkeypatch
+):
+    web = browser(household_user)
+    conversation = _mint(web)
+    record = read_through._record
+    monkeypatch.setattr(read_through, "_record", _fail)
+    searched = _tool(web, "web_search", {"query": "water pump life"}, conversation, turn=0)
+    assert searched["is_error"] is True and searched["text"] == read_through.MARK_FAILED
+    monkeypatch.setattr(read_through, "_record", record)
+    for turn in (0, 1, None):
+        result = _remember(web, conversation, turn=turn)
+        assert result["is_error"] is True and result["text"] == read_through.REFUSAL, turn
+    assert MemberMemory.objects.count() == 0
+    # Another conversation is untouched.
+    assert _remember(web, _mint(web), turn=0)["is_error"] is False
+
+
+def test_marks_that_cannot_be_read_refuse_remember(household_user, monkeypatch):
+    web = browser(household_user)
+    conversation = _mint(web)
+    _tool(web, "web_search", {"query": "water pump life"}, conversation, turn=0)
+    monkeypatch.setattr(read_through, "_marked", _fail)
+    for turn in (0, 1):
+        result = _remember(web, conversation, turn=turn)
+        assert result["is_error"] is True and result["text"] == read_through.REFUSAL, turn
+    # Fail closed even in a conversation that never searched.
+    assert _remember(web, _mint(web), turn=0)["text"] == read_through.REFUSAL
+    assert MemberMemory.objects.count() == 0
+
+
+# =============================================================================
 # No turn the engine can see: /mcp, and a web call naming no conversation
 # =============================================================================
 
@@ -187,7 +235,7 @@ def test_a_web_call_naming_no_conversation_takes_the_mcp_rule(household_user):
 # =============================================================================
 
 
-def test_run_engine_tool_notes_a_third_party_tool_before_its_handler(household_user):
+def test_run_engine_tool_flags_a_third_party_tool_before_its_handler(household_user):
     request = SimpleNamespace(user=household_user, path="/mcp", auth=None)
     engine_tools.run_tool(request, "legion_docs", {"query": "reconciliation gate"})
     assert not read_through.read_third_party(request)
