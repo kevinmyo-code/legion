@@ -7515,6 +7515,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   bedtime restores only what it turned on, and its own feed block skips ADR 0066's off-gate;
   snooze 9, auto-silence 10, ramp 30 s, wind-down 30 min. ADR 0079, map `.scratch/alfred-clock/`.
 
+## 2026-11-09 - The daily memory review runs on the Claude worker (Kevin)
+
+- **Kevin's words:** *"Laptop will always be on. Use Claude."* and *"If laptop is off, then do the
+  review the next time it turns on. Doesn't have to be a strict schedule."* Then: build per the
+  recommendations.
+- **Ruled, all as proposed (`.scratch/memory-review/`, rulings 01 to 04):** R1 proposals only for
+  14 runs, then gated merges and past-date expiries apply on their own; contradictions are always
+  proposals. R2 the Memory screen (To check, Retired) plus a recall flag, never raised unprompted.
+  R3 exact-text duplicates merged by code; everything else a proposal with Accept all. R4 evidence
+  is a paraphrased reason plus record ids, never verbatim.
+- **Built on `feat/memory-review`:** engine API and gates, the worker task and script, the phone's
+  To check and Retired. `LEGION_MEMORY_REVIEW` defaults to `off`; ADR 0067 amended for the one
+  built-in recurring kind.
+
 ## 2026-11-09 - Bedtime never turns the feed blocker off (Kevin)
 
 - **Asked:** the build's flagged bypass: bedtime's own feed block went off at the alarm's dismiss,
