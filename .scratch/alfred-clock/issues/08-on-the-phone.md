@@ -20,7 +20,8 @@ tags: [ticket]
 3. Snooze, then dismiss. Brief me speaks the sitrep.
 4. Reboot with an alarm set, do not unlock: it still rings.
 5. "Alfred, set a timer for 5 minutes called pasta", "how long left on pasta".
-6. Bedtime 1 min out: Quiet and the feed block on; dismissing the next alarm turns them off.
+6. Bedtime 1 min out: Quiet and the feed block on; dismissing the next alarm turns Quiet off and
+   leaves the feed block on (Kevin 2026-11-09).
 
 ## What Kevin grants on the phone
 

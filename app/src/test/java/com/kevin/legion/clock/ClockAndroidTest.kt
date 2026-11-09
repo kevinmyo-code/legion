@@ -48,7 +48,7 @@ class ClockAndroidTest {
             timers = listOf(ClockTimer(5, "tea", 180_000, TimerState.PAUSED, 90_000, 1, 2, 3)),
             stopwatch = Stopwatch(true, 10, 20, 30, 4, listOf(5L, 6L)),
             bedtime = Bedtime(
-                true, 23, 15, AlarmMath.WEEKEND, 20, active = true, quietByBedtime = true, feedByBedtime = false,
+                true, 23, 15, AlarmMath.WEEKEND, 20, active = true, quietByBedtime = true,
             ),
             nextId = 6,
         )

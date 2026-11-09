@@ -77,7 +77,6 @@ class FakeEffects(
         feed = true
         BedtimeEffects.On.TurnedOn
     }
-    override fun feedOff() { feed = false }
 }
 
 /** One controller over fakes, with every fake reachable. */

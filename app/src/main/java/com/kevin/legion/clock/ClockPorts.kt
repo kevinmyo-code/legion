@@ -51,7 +51,7 @@ interface Ringer {
  */
 interface BedtimeEffects {
     sealed interface On {
-        /** This call turned it on, so bedtime owns turning it off. */
+        /** This call turned it on. For Quiet, bedtime owns turning it off. */
         data object TurnedOn : On
         /** It was already on; bedtime leaves it alone in the morning. */
         data object AlreadyOn : On
@@ -61,8 +61,11 @@ interface BedtimeEffects {
     fun quietOn(): On
     /** Null when it went off, else the sentence saying why not. */
     fun quietOff(): String?
+    /**
+     * On only. Bedtime never turns the feed block off (Kevin 2026-11-09): he does, through
+     * ADR 0066's gate. There is deliberately no `feedOff` here.
+     */
     fun feedOn(): On
-    fun feedOff()
     /** Quiet and the feed block keep their state in credential-encrypted storage. */
     fun unlocked(): Boolean
 }

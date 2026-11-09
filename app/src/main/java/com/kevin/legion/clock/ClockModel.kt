@@ -57,8 +57,8 @@ data class Stopwatch(
 )
 
 /**
- * The bedtime schedule and tonight's state. [quietByBedtime] and [feedByBedtime] record what
- * bedtime ITSELF turned on, so the morning turns off only those (ADR 0079).
+ * The bedtime schedule and tonight's state. [quietByBedtime] records whether bedtime ITSELF turned
+ * Quiet on, so the morning turns off only that (ADR 0079). The feed block bedtime turns on stays on.
  */
 data class Bedtime(
     val enabled: Boolean = false,
@@ -68,8 +68,7 @@ data class Bedtime(
     val windDownMin: Int = DEFAULT_WIND_DOWN_MIN,
     val active: Boolean = false,
     val quietByBedtime: Boolean = false,
-    val feedByBedtime: Boolean = false,
-    /** Ended before the first unlock: the restore waits for unlock (Quiet's prefs are locked). */
+    /** Ended before the first unlock: Quiet's restore waits for unlock (its prefs are locked). */
     val pendingEnd: Boolean = false,
 ) {
     companion object {

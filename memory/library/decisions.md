@@ -7514,3 +7514,12 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   proportionality call for wake-ups only); `systemExempted` ring service; direct-boot storage;
   bedtime restores only what it turned on, and its own feed block skips ADR 0066's off-gate;
   snooze 9, auto-silence 10, ramp 30 s, wind-down 30 min. ADR 0079, map `.scratch/alfred-clock/`.
+
+## 2026-11-09 - Bedtime never turns the feed blocker off (Kevin)
+
+- **Asked:** the build's flagged bypass: bedtime's own feed block went off at the alarm's dismiss,
+  skipping ADR 0066's off-gate.
+- **Ruled (Kevin):** when the morning alarm is dismissed after bedtime, the feed blocker STAYS ON.
+  Bedtime may turn it on, never off; Kevin turns it off himself through ADR 0066's gate (60 s wait
+  and typed sentence). Quiet unchanged: bedtime turns off only the Quiet it turned on, at dismiss.
+- **Done:** `BedtimeEffects` has no feed-off; `feedByBedtime` dropped. ADR 0079 updated in place.

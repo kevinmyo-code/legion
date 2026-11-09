@@ -30,8 +30,8 @@ object ClockToolbox {
     internal var controllerFactory: (Context) -> ClockController = ClockGraph::controller
 
     private const val DESCRIPTION =
-        "Phone clock, offline: alarms (wake-ups), named timers, stopwatch, bedtime (Quiet + feed block till " +
-            "the next alarm). time HH:mm; days e.g. weekdays or mon,fri, none = once. " +
+        "Phone clock, offline: alarms (wake-ups), named timers, stopwatch, bedtime (feed block on, Quiet till " +
+            "next alarm). time HH:mm; days e.g. weekdays or mon,fri, none = once. " +
             "bedtime_on with time = nightly, else now. Say only what the result says."
 
     fun declarations(): JSONArray = JSONArray().put(

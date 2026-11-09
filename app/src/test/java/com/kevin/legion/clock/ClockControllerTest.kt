@@ -180,20 +180,54 @@ class ClockControllerTest {
     }
 
     @Test
-    fun `bedtime turns on Quiet and the feed block, and the alarm's dismiss turns off only what it turned on`() {
-        val rig = ClockRig(effects = FakeEffects(quiet = true, feed = false))
+    fun `the alarm's dismiss turns off the Quiet bedtime turned on, and the feed block stays on`() {
+        val rig = ClockRig(effects = FakeEffects(quiet = false, feed = false))
         rig.clock.alarms.set(7, 0, emptySet(), "")
         assertTrue(rig.clock.bedtime.startNow().ok)
-        assertTrue(rig.effects.feed)
+        assertTrue(rig.effects.quiet && rig.effects.feed)
         assertNotNull(rig.notices.bedtimeSentence)
         assertTrue(rig.notices.bedtimeSentence!!.contains("tomorrow at 07:00"))
         rig.time.now = rig.ms("2026-11-10T07:00")
         rig.clock.alarms.fired(1)
         rig.clock.alarms.dismiss(1)
         assertFalse(rig.store.load().bedtime.active)
-        assertFalse("bedtime turned the feed block on, so it goes off", rig.effects.feed)
-        assertTrue("Quiet was on before bedtime, so it stays on", rig.effects.quiet)
+        assertFalse("bedtime turned Quiet on, so it goes off", rig.effects.quiet)
+        assertTrue("bedtime never turns the feed block off (Kevin 2026-11-09)", rig.effects.feed)
         assertNull(rig.notices.bedtimeSentence)
+    }
+
+    @Test
+    fun `Quiet Kevin had on before bedtime stays on at the dismiss`() {
+        val rig = ClockRig(effects = FakeEffects(quiet = true, feed = false))
+        rig.clock.alarms.set(7, 0, emptySet(), "")
+        rig.clock.bedtime.startNow()
+        rig.time.now = rig.ms("2026-11-10T07:00")
+        rig.clock.alarms.fired(1)
+        rig.clock.alarms.dismiss(1)
+        assertTrue("Quiet was on before bedtime, so it stays on", rig.effects.quiet)
+        assertTrue(rig.effects.feed)
+    }
+
+    @Test
+    fun `ending bedtime, voice bedtime off, and turning the schedule off never turn the feed block off`() {
+        val rig = ClockRig()
+        rig.clock.bedtime.startNow()
+        val ended = rig.clock.bedtime.end()
+        assertTrue(ended.message, ended.message.contains("feed block stays on"))
+        assertFalse(rig.effects.quiet)
+        assertTrue(rig.effects.feed)
+
+        rig.clock.bedtime.schedule(true, 22, 30, AlarmMath.EVERY_DAY)
+        rig.clock.bedtime.startNow()
+        assertTrue(rig.clock.bedtime.voiceOff().ok)
+        assertFalse(rig.store.load().bedtime.active)
+        assertTrue(rig.effects.feed)
+
+        rig.clock.bedtime.startNow()
+        rig.clock.bedtime.schedule(false, 22, 30, AlarmMath.EVERY_DAY)
+        assertTrue(rig.clock.bedtime.voiceOff().ok)
+        assertFalse(rig.clock.bedtime.voiceOff().ok)
+        assertTrue(rig.effects.feed)
     }
 
     @Test
@@ -208,7 +242,7 @@ class ClockControllerTest {
     }
 
     @Test
-    fun `bedtime ending before the first unlock waits for it, then restores`() {
+    fun `bedtime ending before the first unlock waits for it, then turns Quiet off and leaves the feed block`() {
         val effects = FakeEffects()
         val rig = ClockRig(effects = effects)
         rig.clock.bedtime.startNow()
@@ -218,7 +252,8 @@ class ClockControllerTest {
         assertTrue(rig.store.load().bedtime.pendingEnd)
         effects.isUnlocked = true
         rig.clock.rearmAll()
-        assertFalse(effects.quiet || effects.feed)
+        assertFalse(effects.quiet)
+        assertTrue(effects.feed)
         assertFalse(rig.store.load().bedtime.pendingEnd)
     }
 

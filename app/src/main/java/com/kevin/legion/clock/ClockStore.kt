@@ -127,7 +127,7 @@ object ClockJson {
     private fun bedtime(b: Bedtime): JSONObject = JSONObject()
         .put("enabled", b.enabled).put("hour", b.hour).put("minute", b.minute).put("days", days(b.days))
         .put("windDown", b.windDownMin).put("active", b.active).put("quietByBedtime", b.quietByBedtime)
-        .put("feedByBedtime", b.feedByBedtime).put("pendingEnd", b.pendingEnd)
+        .put("pendingEnd", b.pendingEnd)
 
     private fun bedtime(o: JSONObject): Bedtime = Bedtime(
         enabled = o.optBoolean("enabled"),
@@ -137,7 +137,6 @@ object ClockJson {
         windDownMin = o.optInt("windDown", Bedtime.DEFAULT_WIND_DOWN_MIN),
         active = o.optBoolean("active"),
         quietByBedtime = o.optBoolean("quietByBedtime"),
-        feedByBedtime = o.optBoolean("feedByBedtime"),
         pendingEnd = o.optBoolean("pendingEnd"),
     )
 }

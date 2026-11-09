@@ -2,13 +2,13 @@ package com.kevin.legion.clock
 
 /**
  * Bedtime (ticket 04, ADR 0079): a wind-down notice, then Quiet mode and the feed block on at
- * bedtime, and off at the next alarm's dismiss.
+ * bedtime. Quiet goes off at the next alarm's dismiss; the feed block stays on.
  *
- * **Bedtime turns off only what it turned on.** [Bedtime.quietByBedtime] and
- * [Bedtime.feedByBedtime] record it. Quiet or a feed block Kevin had on before stays on.
+ * **Bedtime turns off only the Quiet it turned on.** [Bedtime.quietByBedtime] records it. Quiet
+ * Kevin had on before stays on.
  *
- * **The one scheduled exception to ADR 0066's off-gate:** the feed block bedtime switched on goes
- * off without the 60 second wait and sentence. Kevin's own switch is never touched.
+ * **Bedtime never turns the feed block off** (Kevin, 2026-11-09). No path here can: the port has
+ * no off. Kevin turns it off himself through ADR 0066's gate (60 second wait and sentence).
  */
 class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffects) {
 
@@ -44,7 +44,7 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
         }
     }
 
-    /** Bedtime starts: Quiet and the feed block on, recording which of them this turned on. */
+    /** Bedtime starts: Quiet and the feed block on, recording whether this turned Quiet on. */
     fun startNow(): ClockResult {
         if (core.read().bedtime.active) return ClockResult(true, "Bedtime is already on.")
         val quiet = effects.quietOn()
@@ -55,41 +55,37 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
                     active = true,
                     pendingEnd = false,
                     quietByBedtime = quiet == BedtimeEffects.On.TurnedOn,
-                    feedByBedtime = feed == BedtimeEffects.On.TurnedOn,
                 ),
             ) to Unit
         }
         val problems = listOf(quiet, feed).filterIsInstance<BedtimeEffects.On.Refused>()
             .joinToString(" ") { it.message }
         val until = nextAlarm()?.let { "until the alarm $it is dismissed" } ?: "until you end it; no alarm is set"
-        val sentence = "Bedtime is on: Quiet and the feed block, $until." + if (problems.isEmpty()) "" else " $problems"
+        val sentence = "Bedtime is on: the feed block, and Quiet $until." + if (problems.isEmpty()) "" else " $problems"
         core.notices.bedtimeOn(sentence)
         return ClockResult(true, sentence)
     }
 
-    /** Turns off what bedtime turned on. Before the first unlock the restore waits for it. */
+    /**
+     * Turns off the Quiet bedtime turned on; the feed block stays on. Before the first unlock the
+     * Quiet restore waits for it.
+     */
     @Suppress("ReturnCount") // one worded exit each
     fun end(): ClockResult {
         val b = core.read().bedtime
         if (!b.active && !b.pendingEnd) return ClockResult(false, "Bedtime is not on. Nothing was changed.")
         core.notices.bedtimeGone()
-        if (!effects.unlocked()) {
+        if (b.quietByBedtime && !effects.unlocked()) {
             core.edit { s -> s.copy(bedtime = s.bedtime.copy(active = false, pendingEnd = true)) to Unit }
-            return ClockResult(true, "Bedtime is over; Quiet and the feed block go off when the phone is unlocked.")
+            return ClockResult(true, "Bedtime is over; Quiet goes off when the phone is unlocked. $FEED_STAYS")
         }
         val quietProblem = if (b.quietByBedtime) effects.quietOff() else null
-        if (b.feedByBedtime) effects.feedOff()
         core.edit { s ->
-            val off = s.bedtime.copy(active = false, pendingEnd = false, quietByBedtime = false, feedByBedtime = false)
-            s.copy(bedtime = off) to Unit
+            s.copy(bedtime = s.bedtime.copy(active = false, pendingEnd = false, quietByBedtime = false)) to Unit
         }
-        val kept = listOfNotNull(
-            "Quiet".takeIf { !b.quietByBedtime },
-            "the feed block".takeIf { !b.feedByBedtime },
-        )
         return ClockResult(quietProblem == null, buildString {
-            append("Bedtime is over.")
-            if (kept.isNotEmpty()) append(" ${kept.joinToString(" and ")} stayed as it was before bedtime.")
+            append("Bedtime is over. $FEED_STAYS")
+            if (!b.quietByBedtime) append(" Quiet stayed as it was before bedtime.")
             quietProblem?.let { append(" $it") }
         })
     }
@@ -104,7 +100,7 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
         if (b.enabled && !b.active) core.notices.windDown(b, nextAlarm())
     }
 
-    /** Arms tonight's wind-down and start; finishes a restore that waited for unlock; re-posts an active bedtime. */
+    /** Arms tonight's wind-down and start; finishes a Quiet restore that waited for unlock; re-posts bedtime. */
     fun rearm() {
         val b = core.read().bedtime
         if (b.pendingEnd && effects.unlocked()) end()
@@ -120,7 +116,8 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
     }
 
     private companion object {
-        const val STILL_ON = "Bedtime is on: Quiet and the feed block, until the next alarm is dismissed."
+        const val STILL_ON = "Bedtime is on: the feed block, and Quiet until the next alarm is dismissed."
+        const val FEED_STAYS = "The feed block stays on until you turn it off."
     }
 
     /** "07:00 tomorrow" for the soonest enabled alarm, or null. */

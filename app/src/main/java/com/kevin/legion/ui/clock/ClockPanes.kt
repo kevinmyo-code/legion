@@ -83,7 +83,8 @@ internal fun BedtimePane(b: BedtimeRow, problem: ProblemRow?, actions: ClockActi
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Bedtime", color = SoftColors.text, fontSize = 18.sp)
-                Text("Quiet and the feed block come on, and go off when you dismiss the next alarm. " +
+                Text("Quiet and the feed block come on. Quiet goes off when you dismiss the next alarm; " +
+                    "the feed block stays on until you turn it off. " +
                     "A reminder comes ${b.windDownMin} minutes before.", color = SoftColors.text2, fontSize = 13.sp)
             }
             Switch(checked = b.enabled, onCheckedChange = { actions.onSaveBedtime(it, time.first, time.second, days) })

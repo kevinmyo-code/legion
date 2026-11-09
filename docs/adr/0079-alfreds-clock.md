@@ -63,14 +63,16 @@ Android 12 (where `USE_EXACT_ALARM` does not exist). `SCHEDULE_EXACT_ALARM` stay
 
 ### Bedtime
 
-At bedtime, Quiet mode and the ADR 0066 feed block come on. **Bedtime records which of the two IT
-turned on, and at the next alarm's dismiss turns off only those.** Something Kevin had on before
+At bedtime, Quiet mode and the ADR 0066 feed block come on. **Bedtime records whether IT turned
+Quiet on, and at the next alarm's dismiss turns off only that Quiet.** Quiet Kevin had on before
 bedtime stays on.
 
-**This is the one scheduled exception to ADR 0066's off-gate:** a feed block that bedtime itself
-switched on goes off at the dismiss without the 60 second wait and sentence, because Kevin ruled
-"off at the next alarm's dismiss". Kevin's own switch is never touched by it. **Flagged for Kevin:
-if the gate should hold here too, bedtime leaves the feed block on in the morning instead.**
+**Bedtime never turns the feed block off** (Kevin, 2026-11-09: "when the morning alarm is dismissed
+after bedtime, the feed blocker stays on"). Bedtime may turn it on; it stays on through the
+dismiss, End bedtime, voice "bedtime off" and the schedule being turned off. Kevin turns it off
+himself through ADR 0066's gate (60 second wait and typed sentence). There is no exception to that
+gate: `BedtimeEffects` has no feed-off at all. This replaces the build's first reading ("off at the
+next alarm's dismiss", flagged as a bypass of the gate).
 
 ### Defaults (chosen in the build, Kevin may change)
 

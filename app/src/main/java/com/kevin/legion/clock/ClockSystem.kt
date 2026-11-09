@@ -53,12 +53,6 @@ class AndroidBedtimeEffects(private val context: Context) : BedtimeEffects {
         return BedtimeEffects.On.TurnedOn
     }
 
-    override fun feedOff() {
-        val graph = (context.applicationContext as? MidnightApplication)?.dumb ?: return
-        graph.feedBlock.set(false)
-        runCatching { graph.feedBlockWatch.check() }
-    }
-
     companion object {
         const val NEEDS_DND =
             "Quiet needs Do Not Disturb access for LEGION, so it stayed off. Grant it on the Clock's Bedtime tab."

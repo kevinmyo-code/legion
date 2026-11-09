@@ -16,11 +16,12 @@ tags: [ticket]
 ## What
 
 - Bedtime time and days. A wind-down notification 30 min before.
-- At bedtime: `QuietMode.enable` and the ADR 0066 feed-block switch on, recording which of the two
-  BEDTIME turned on. An ongoing "Bedtime" notification with End bedtime.
-- At the next alarm's dismiss (or End bedtime, or voice "bedtime off"): turn off only what
-  bedtime turned on. Something Kevin had on before bedtime stays on.
-- **The one scheduled exception to ADR 0066's off-gate:** the feed block bedtime itself switched
-  on goes off without the 60 s wait and sentence. Flagged for Kevin in ADR 0079.
+- At bedtime: `QuietMode.enable` and the ADR 0066 feed-block switch on, recording whether
+  BEDTIME turned Quiet on. An ongoing "Bedtime" notification with End bedtime.
+- At the next alarm's dismiss (or End bedtime, or voice "bedtime off"): turn off Quiet only if
+  bedtime turned it on. Quiet Kevin had on before bedtime stays on.
+- **The feed block stays on** (Kevin's ruling 2026-11-09). Bedtime may turn it on, never off; Kevin
+  turns it off through ADR 0066's gate (60 s wait and typed sentence). No clock path has a
+  feed-off. Replaces the earlier flagged bypass of the gate.
 - Quiet needs Do Not Disturb access; the Bedtime tab checks it before saving, never at 10 pm.
 - Before first unlock the restore waits for unlock (Quiet's prefs are credential-encrypted).

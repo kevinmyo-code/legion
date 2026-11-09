@@ -36,7 +36,8 @@ clock/                  pure model + math (no Android), unit tested
   ClockScheduler.kt     AlarmManager: setAlarmClock (alarms), setExactAndAllowWhileIdle (timers, bedtime)
   ClockReceivers.kt     fire receiver, action receiver, reschedule receiver (boot, locked boot, time, zone)
   RingService.kt        foreground service (systemExempted on 14+), alarm-stream audio, ramp, vibrate
-  BedtimeEffects.kt     Quiet + feed block on at bedtime, restore what IT changed at the alarm's dismiss
+  BedtimeEffects.kt     Quiet + feed block on at bedtime; at the alarm's dismiss Quiet off if IT turned
+                        it on; feed block stays on (Kevin 2026-11-09, never off via the clock)
 ui/clock/               ClockActivity (4 tabs), RingActivity (over the lock screen)
 service/ClockToolbox.kt one `clock` voice tool, action enum
 ```
