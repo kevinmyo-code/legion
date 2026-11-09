@@ -5099,14 +5099,13 @@ object LiveToolbox {
             else -> constraints.add(newConstraint)
         }
 
-        if (!GeminiKeyProvider.hasKey()) {
-            return result(false, "No Gemini key is set, so this cannot run. One can be added in Setup.")
-                .apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
+        val response = if (!GeminiKeyProvider.hasKey()) {
+            result(false, "No Gemini key is set, so this cannot run. One can be added in Setup.")
+        } else {
+            val combinedGoalText = GoalPlanAgent.withConstraints(goalText, constraints.read())
+            mapGoalPlanResult(GoalPlanAgent().generate(context, combinedGoalText))
         }
-
-        val combinedGoalText = GoalPlanAgent.withConstraints(goalText, constraints.read())
-        return mapGoalPlanResult(GoalPlanAgent().generate(context, combinedGoalText))
-            .apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
+        return response.apply { constraintRefusal?.let { put("constraintNotSaved", it) } }
     }
 
     /**
