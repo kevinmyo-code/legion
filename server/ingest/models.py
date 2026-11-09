@@ -47,6 +47,10 @@ class Source(models.TextChoices):
     # household per BUILD (the 05:00 build or a Refresh), so freshness can say
     # when the brief was last built.
     BRIEF = "brief", "Daily brief"
+    # 2026-11-09: `manage.py consolidate_memories`, hourly. Not a feed: one row
+    # per household per run, so a cron that never fires or a model that keeps
+    # failing shows as stale instead of silently writing no memories.
+    MEMORY = "memory", "Memory from conversations"
 
 
 class Outcome(models.TextChoices):

@@ -50,6 +50,8 @@ STALE_AFTER: dict[str, datetime.timedelta] = {
     # ai-upgrade ticket 02: built once a day at 05:00 local, so a missed day
     # plus a few hours is the line.
     Source.BRIEF: datetime.timedelta(hours=30),
+    # Hourly at :40, so three missed runs is the line.
+    Source.MEMORY: datetime.timedelta(hours=3),
 }
 
 
@@ -77,6 +79,9 @@ WORDS: dict[str, _Words] = {
     Source.PUSH: _Words("Notifications", "were last checked", "have never been checked"),
     Source.PLAID: _Words("The bank connection", "last synced", "has never synced"),
     Source.BRIEF: _Words("The daily brief", "was last built", "has never been built"),
+    Source.MEMORY: _Words(
+        "Memory from conversations", "was last updated", "has never been updated"
+    ),
 }
 
 

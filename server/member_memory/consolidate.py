@@ -34,8 +34,16 @@ contradicts in `supersedes`; an id that was not sent is ignored. The older row i
 ## Failures
 
 No key: nothing is marked, so the records wait for one. A refused or unreadable call marks the
-record `failed`; it is tried again on the next run, `MAX_ATTEMPTS` in all, then left. Nothing here
-logs or stores transcript text; `detail` carries the reason in words only.
+record `failed`; it is tried again on the next run, `MAX_ATTEMPTS` in all, then left, and every
+run report counts the ones left (`given_up`). Nothing here logs or stores transcript text;
+`detail` carries the reason in words only.
+
+## Health (2026-11-09)
+
+`manage.py consolidate_memories` runs once per household through `ingest.jobs.run_job`, source
+`memory`, so `/api/freshness` says when memory was last updated and goes stale after three hours
+without an `ok` run. No key records `skipped` with the reason; a run where every record failed
+records `failed`.
 
 `_transport` is replaced in every test (`tests/conftest.py`), so no test reaches Google.
 """
@@ -308,23 +316,32 @@ def _write(log: DeviceLog, items: list[dict], known: list[MemberMemory]) -> int:
     return written
 
 
-def pending(now=None):
-    """Records ready to read: finished, a member's, never consolidated or failed under the cap."""
+def pending(now=None, household=None):
+    """Records ready to read: finished, a member's, never consolidated or failed under the cap.
+    Every household's, or only `household`'s when one is named."""
     now = now or timezone.now()
     done = MemoryConsolidation.objects.filter(
         Q(outcome__in=(OUTCOME_DONE, OUTCOME_SKIPPED)) | Q(attempts__gte=MAX_ATTEMPTS)
     ).values("device_log_id")
-    return (
-        DeviceLog.objects.filter(
-            reason=REASON_CONVERSATION,
-            household__isnull=False,
-            user__isnull=False,
-            demo_visitor=False,
-            received_at__lte=now - timedelta(minutes=SETTLE_MINUTES),
-        )
-        .exclude(pk__in=done)
-        .order_by("received_at")
+    logs = DeviceLog.objects.filter(
+        reason=REASON_CONVERSATION,
+        household__isnull=False,
+        user__isnull=False,
+        demo_visitor=False,
+        received_at__lte=now - timedelta(minutes=SETTLE_MINUTES),
     )
+    if household is not None:
+        logs = logs.filter(household=household)
+    return logs.exclude(pk__in=done).order_by("received_at")
+
+
+def given_up(household=None) -> int:
+    """Records that failed `MAX_ATTEMPTS` times and are never tried again (2026-11-09: they were
+    excluded from `pending` and named nowhere, so a long outage lost conversations silently)."""
+    rows = MemoryConsolidation.objects.filter(outcome=OUTCOME_FAILED, attempts__gte=MAX_ATTEMPTS)
+    if household is not None:
+        rows = rows.filter(household=household)
+    return rows.count()
 
 
 def _mark(log: DeviceLog, outcome: str, *, written: int = 0, detail: str = "") -> None:
@@ -353,6 +370,13 @@ class RunReport:
     skipped: int = 0
     failed: int = 0
     no_key: bool = False
+    # Records set aside for good after MAX_ATTEMPTS failures, all of them, not only this run's.
+    gave_up: int = 0
+
+    @property
+    def all_failed(self) -> bool:
+        """Every record read this run failed: the model is down or refusing, not one bad record."""
+        return self.read > 0 and self.failed == self.read
 
     def sentence(self) -> str:
         if self.no_key:
@@ -360,10 +384,17 @@ class RunReport:
                 f"Nothing was consolidated: {statements.GEMINI_KEY_ENV} is not set, so no model "
                 "can be asked. The conversation records wait for a key; none was marked."
             )
-        return (
+        said = (
             f"Read {self.read} conversation records: {self.written} memories written, "
             f"{self.skipped} with nothing to read, {self.failed} failed (retried next run)."
         )
+        if self.gave_up:
+            noun = "record has" if self.gave_up == 1 else "records have"
+            said += (
+                f" {self.gave_up} {noun} failed {MAX_ATTEMPTS} times and will not be tried "
+                "again; no memories came from them."
+            )
+        return said
 
 
 def consolidate_one(log: DeviceLog, *, key: str, transport: Transport) -> tuple[str, int]:
@@ -403,14 +434,18 @@ def consolidate_one(log: DeviceLog, *, key: str, transport: Transport) -> tuple[
     return OUTCOME_DONE, written
 
 
-def run(*, limit: int = BATCH_LIMIT, key: str | None = None, transport=None) -> RunReport:
+def run(
+    *, limit: int = BATCH_LIMIT, key: str | None = None, transport=None, household=None
+) -> RunReport:
+    """One pass over every household's pending records, or only `household`'s (the command runs
+    one per household, so each gets its own `ingest_runs` row and freshness line)."""
     report = RunReport()
     key = key if key is not None else statements.gemini_key()
     if not key:
         report.no_key = True
         return report
     send = transport or _transport
-    for log in pending()[:limit]:
+    for log in pending(household=household)[:limit]:
         outcome, written = consolidate_one(log, key=key, transport=send)
         report.read += 1
         report.written += written
@@ -418,4 +453,5 @@ def run(*, limit: int = BATCH_LIMIT, key: str | None = None, transport=None) -> 
             report.skipped += 1
         elif outcome == OUTCOME_FAILED:
             report.failed += 1
+    report.gave_up = given_up(household)
     return report

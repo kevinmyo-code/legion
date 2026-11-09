@@ -235,3 +235,100 @@ def test_the_read_through_list_covers_the_phones():
     assert phone and phone <= consolidate.READ_THROUGH_TOOLS, sorted(
         phone - consolidate.READ_THROUGH_TOOLS
     )
+
+
+# =============================================================================
+# Health (2026-11-09): an `ingest_runs` row per household, give-ups counted
+# =============================================================================
+
+
+def _command(monkeypatch, transport, key="k"):
+    if key:
+        monkeypatch.setenv("LEGION_GEMINI_KEY", key)
+    else:
+        monkeypatch.delenv("LEGION_GEMINI_KEY", raising=False)
+    monkeypatch.setattr(consolidate, "_transport", transport)
+    out = io.StringIO()
+    call_command("consolidate_memories", stdout=out)
+    return out.getvalue()
+
+
+def _memory_runs(household):
+    from ingest.models import IngestRun, Source
+
+    return list(IngestRun.objects.filter(household=household, source=Source.MEMORY))
+
+
+def _freshness(household):
+    from ingest.freshness import freshness_for
+    from ingest.models import IngestRun, Source
+
+    return freshness_for(
+        IngestRun.objects.filter(household=household), Source.MEMORY, timezone.now()
+    )
+
+
+def test_a_run_records_an_ok_row_and_freshness_says_when(
+    household_user, household_a, monkeypatch
+):
+    _log(household_a, household_user)
+    model = FakeModel([{"text": "Kevin's gym is on Elm Street", "kind": "fact",
+                        "importance": 6, "durable": True}])
+    out = _command(monkeypatch, model)
+    assert "1 memories written" in out
+    [run] = _memory_runs(household_a)
+    assert (run.outcome, run.rows_written) == ("ok", 1)
+    fresh = _freshness(household_a)
+    assert fresh["stale"] is False
+    assert fresh["sentence"].startswith("Memory from conversations was last updated")
+
+
+def test_no_key_records_skipped_with_the_reason(household_user, household_a, monkeypatch):
+    _log(household_a, household_user)
+    _command(monkeypatch, FakeModel(), key=None)
+    [run] = _memory_runs(household_a)
+    assert run.outcome == "skipped" and "LEGION_GEMINI_KEY is not set" in run.error
+    sentence = _freshness(household_a)["sentence"]
+    assert sentence.startswith("Memory from conversations is not being read.")
+    assert "LEGION_GEMINI_KEY is not set" in sentence
+
+
+def test_every_record_failing_records_a_failed_run(household_user, household_a, monkeypatch):
+    _log(household_a, household_user)
+    _command(monkeypatch, FakeModel(status=500))
+    [run] = _memory_runs(household_a)
+    assert run.outcome == "failed"
+    fresh = _freshness(household_a)
+    assert fresh["stale"] is True and "The latest attempt failed." in fresh["sentence"]
+
+
+def test_a_quiet_hour_is_an_ok_run_not_a_failure(household_a, monkeypatch):
+    _command(monkeypatch, FakeModel())
+    [run] = _memory_runs(household_a)
+    assert (run.outcome, run.rows_written) == ("ok", 0)
+
+
+def test_records_that_gave_up_are_counted_in_the_report(household_user, household_a):
+    _log(household_a, household_user)
+    for _ in range(MAX_ATTEMPTS - 1):
+        assert consolidate.run(key="k", transport=FakeModel(status=500)).gave_up == 0
+    report = consolidate.run(key="k", transport=FakeModel(status=500))
+    assert report.gave_up == 1
+    assert f"1 record has failed {MAX_ATTEMPTS} times and will not be tried again" in (
+        report.sentence()
+    )
+    # Still said on a later run that reads nothing.
+    later = consolidate.run(key="k", transport=FakeModel())
+    assert (later.read, later.gave_up) == (0, 1) and "will not be tried again" in later.sentence()
+
+
+def test_one_households_run_reads_only_its_own_records(
+    household_user, household_a, household_b
+):
+    other = _member(household_b, "mia@example.com")
+    _log(household_a, household_user)
+    _log(household_b, other)
+    report = consolidate.run(key="k", transport=FakeModel(), household=household_b)
+    assert report.read == 1
+    assert consolidate.pending(household=household_a).count() == 1
+    assert consolidate.pending(household=household_b).count() == 0

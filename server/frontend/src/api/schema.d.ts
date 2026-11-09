@@ -8883,9 +8883,10 @@ export interface components {
          *     * `push` - Notifications
          *     * `plaid` - Bank connection
          *     * `brief` - Daily brief
+         *     * `memory` - Memory from conversations
          * @enum {string}
          */
-        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push" | "plaid" | "brief";
+        SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push" | "plaid" | "brief" | "memory";
         Spend: {
             /** @description YYYY-MM, the budget month these figures are for. */
             month: string;
