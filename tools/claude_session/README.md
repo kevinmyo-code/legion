@@ -35,7 +35,8 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `asklist_hook.py` | Ruling 6 ask list and ruling 5 work-laptop scope; push, deploy, publish and gcloud only through `ship.py` / `undo.py`; `work\.claude` is Kevin's; the worker's own files are never a helper's. Fails closed. |
 | `ship.py` | The ship step (map alfred-builds, ticket 03): `ask` prints "Ready: ... Ship it?", `run --token` rebases, tests, merges and pushes dev and main, deploys the engine, publishes the phone (`tools/release_apk.py`), adds a book. History in `work\ships.jsonl`. |
 | `undo.py` | Undo the last ship (ticket 05): traffic back a revision plus a revert on dev, the previous phone build republished, a book removed. |
-| `build_lock.py` | One build at a time with a heat check from laptopctl's agent (ticket 08); private Gradle daemon registry, `--stop` after. |
+| `build_lock.py` | One build at a time with a heat check from laptopctl's agent (ticket 08). Each Gradle step also takes the laptop's shared mkdir lock (config `gradle_lock`), runs with `--max-workers=1 --build-cache` and a stable private daemon registry, and leaves the daemon warm: never `--stop` (2026-11-09). |
+| `warm_worktree.py` | One warm LEGION worktree, `work\warm\wt`, reset per task and keeping its build outputs, so a task's compile is incremental, not cold (task 7's first build took 24 min). Leased to one task at a time; a question holds it for the follow-up that ships it. `prepare` seeds it. |
 | `main_session_prompt.md` | The main session's appended system prompt. |
 | `install.ps1` / `uninstall.ps1` / `status.ps1` | Kevin runs these by hand. |
 | `fake_claude.py`, `fake_engine.py`, `test_*.py` | Tests. Never the real CLI, never real mail. |

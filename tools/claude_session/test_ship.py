@@ -342,6 +342,40 @@ class TestRun(ShipBase):
         self.assertEqual(self.run_ship(), 1)
         self.assertIn("changed after Kevin's yes", self.said[-1])
 
+    def test_on_the_warm_worktree_it_ships_only_while_this_task_holds_it(self):
+        import warm_worktree
+        warm = warm_worktree.warm_path(self.paths)
+        warm.parent.mkdir(parents=True)
+        subprocess.run(["git", "clone", "-q", "-b", "dev", str(self.origin), str(warm)], check=True)
+        self.ident(warm)
+        git(warm, "checkout", "-q", "-b", "fix/timer")
+        commit(warm, "server/app.py", "x = 2\n", "fix the timer")
+        now = time.time()
+        write_json_atomic(self.paths.state, {"tasks": {
+            "41": {"id": 41, "status": "running"}}})
+        warm_worktree.take_lease(self.paths, 41)
+        self.assertEqual(self.main("ask", "--task", "41", "--kind", "engine", "--branch", "fix/timer",
+                                   "--worktree", str(warm), "--notes", "Alfred announces a timer once"),
+                         0, self.said)
+        self.token()
+        # Kevin is slow to answer and another task took the tree meanwhile: no ship under it.
+        write_json_atomic(self.paths.state, {"tasks": {
+            "41": {"id": 41, "status": "needs_confirmation", "finished_at": now - 7 * 3600},
+            "42": {"id": 42, "status": "running", "parent": 41},
+            "50": {"id": 50, "status": "running"}}})
+        warm_worktree.take_lease(self.paths, 50)
+        dev = self.origin_sha("dev")
+        self.assertEqual(self.run_ship(), 1)
+        self.assertIn("in use by task 50", self.said[-1])
+        self.assertEqual(self.origin_sha("dev"), dev)
+        # The usual case: the ask task still holds it, and its follow-up (Kevin's yes) inherits it.
+        write_json_atomic(self.paths.state, {"tasks": {
+            "41": {"id": 41, "status": "needs_confirmation", "finished_at": now},
+            "42": {"id": 42, "status": "running", "parent": 41}}})
+        write_json_atomic(warm_worktree.lease_path(self.paths), {"task": 41})
+        self.assertEqual(self.run_ship(), 0, self.said)
+        self.assertEqual(read_json(warm_worktree.lease_path(self.paths))["task"], 42)
+
     def test_a_branch_other_than_the_question_is_refused(self):
         self.asked()
         self.token()

@@ -45,17 +45,24 @@ SHELL_TOOLS = ("Bash", "PowerShell")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 READ_TOOLS = ("Read", "Glob", "Grep")
 
+# The overwrite rule in two halves: verbs that write a file named somewhere in the command, and a
+# shell redirect. A redirect writes only its own target, so a match on the redirect alone is
+# judged on the redirect targets alone (2026-11-09, task 7: `python <repo>/build_lock.py ... >
+# compile.log` in the helper's own work folder was denied because the script's path is not).
+OVERWRITE_LABEL = "overwrite or move a file"
+OVERWRITE_VERBS = (
+    r"Move-Item|\bmv\b|\bmove\b|\bren(ame)?\b|Rename-Item|Copy-Item\b.*-Force|\bcp\b\s+-\w*f"
+    r"|\bcopy\b.*/y|Set-Content|Out-File|Add-Content|shutil\.move|os\.replace|os\.rename"
+    r"|\.write_(text|bytes)\(|open\([^)]*['\"][wa]b?\+?['\"]")
+REDIRECT_OUT = r"(?<![0-9&=-])>{1,2}\s*(?!&|\$null\b|nul\b|/dev/null)\S"
+
 # Each rule: (spoken label, kind, regex). kind "path" rules only ask when a target is outside the
 # work folder; kind "always" rules ask wherever they run.
 RULES = [
     ("delete a file", "path",
      r"\brm\b|\brmdir\b|\brd\b|\bdel\b|\berase\b|Remove-Item|\bri\s|os\.remove|os\.unlink|os\.rmdir"
      r"|shutil\.rmtree|\.unlink\(|\.rmdir\(|Clear-Content|Clear-RecycleBin"),
-    ("overwrite or move a file", "path",
-     r"Move-Item|\bmv\b|\bmove\b|\bren(ame)?\b|Rename-Item|Copy-Item\b.*-Force|\bcp\b\s+-\w*f"
-     r"|\bcopy\b.*/y|Set-Content|Out-File|Add-Content|shutil\.move|os\.replace|os\.rename"
-     r"|\.write_(text|bytes)\(|open\([^)]*['\"][wa]b?\+?['\"]"
-     r"|(?<![0-9&=-])>{1,2}\s*(?!&|\$null\b|nul\b|/dev/null)\S"),
+    (OVERWRITE_LABEL, "path", OVERWRITE_VERBS + "|" + REDIRECT_OUT),
     ("install software", "always",
      r"\bpip3?\s+install|-m\s+pip\s+install|\buv\s+(pip\s+)?(install|add)\b|\bwinget\b|\bchoco\b"
      r"|\bscoop\s+install|\bnpm\s+(i|install|add)\b.*(-g|--global)|\bmsiexec\b|Install-Module"
@@ -240,6 +247,47 @@ def _targets_outside(command: str, cwd: str, paths: Paths) -> bool:
     return any(t is None or not _scratch(t, paths) for t in _targets(command, cwd))
 
 
+# `> target`, `>> "target"`, `2> target`; `2>&1` and friends never match (the target cannot start
+# with `&`). A `cd`/`Set-Location`/`pushd` earlier in the command moves where a relative target lands.
+REDIRECT_TARGET_RE = re.compile(
+    r"(?<![0-9&=-])(?:[0-9])?>{1,2}\s*(?:\"([^\"]+)\"|'([^']+)'|([^\s|;&<>()]+))")
+CD_RE = re.compile(
+    r"(?:^|&&|\|\||;|\n)\s*(?:cd|Set-Location|sl|pushd|Push-Location)\s+(?:-Path\s+)?"
+    r"(?:\"([^\"]+)\"|'([^']+)'|([^\s|;&]+))", re.I)
+
+
+def _redirect_targets(command: str, cwd: str) -> list:
+    """Where each output redirect in the command writes. None for a target that cannot be resolved
+    here (`~`, `$env:`, `%VAR%`, `..`, or relative to an unresolvable `cd`)."""
+    out = []
+    for m in REDIRECT_TARGET_RE.finditer(command):
+        t = next(g for g in m.groups() if g is not None)
+        if t in REDIRECT_SAFE or t.lower() in ("nul", "$null"):
+            continue
+        base = cwd or None
+        for c in CD_RE.finditer(command[:m.start()]):
+            d = _to_os_path(next(g for g in c.groups() if g is not None))
+            if d.startswith(("~", "$", "%")) or ".." in d:
+                base = None
+            elif DRIVE_RE.match(d):
+                base = d
+            elif base is not None:
+                base = os.path.join(base, d)
+        if t.startswith(("~", "$", "%")) or ".." in t:
+            out.append(None)
+        elif DRIVE_RE.match(t):
+            out.append(_to_os_path(t))
+        else:
+            out.append(os.path.join(base, t) if base else None)
+    return out
+
+
+def _redirect_only(command: str) -> bool:
+    """The overwrite rule matched through a redirect and through nothing else."""
+    return (re.search(REDIRECT_OUT, command, re.I) is not None
+            and re.search(OVERWRITE_VERBS, command, re.I) is None)
+
+
 def _names_skills(command: str, cwd: str, paths: Paths) -> bool:
     return any(t is not None and is_under(t, paths.skills) for t in _targets(command, cwd))
 
@@ -354,7 +402,15 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             if label == "send something" and SEND_MAIL_RE.search(command) and not re.search(
                     r"smtplib|Send-MailMessage|System\.Net\.Mail", command, re.I):
                 continue  # send_mail.py refuses without the worker's confirmation token
-            if kind == "path" and _targets_internal(command, cwd, paths):
+            if label == OVERWRITE_LABEL and _redirect_only(command):
+                # Only the redirect writes: judge its targets, not the interpreter or the script
+                # the command runs (those are read, not written).
+                targets = _redirect_targets(command, cwd)
+                if any(t is not None and _worker_internal(t, paths) for t in targets):
+                    return _deny(_worker_files_reason()), "worker files"
+                if targets and all(t is not None and _scratch(t, paths) for t in targets):
+                    continue
+            elif kind == "path" and _targets_internal(command, cwd, paths):
                 return _deny(_worker_files_reason()), "worker files"
             if kind == "path" and not _targets_outside(command, cwd, paths):
                 continue

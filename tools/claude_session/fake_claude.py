@@ -2,12 +2,18 @@
 
 Emits the event shapes ticket 02 measured on CLI 2.1.316 (assistant Agent tool_use, tool_result,
 result, system task_started / task_progress / task_updated / task_notification, then an unprompted
-main turn), and runs the real report.py as a helper would. Never calls the real CLI.
+main turn), plus `background_tasks_changed` and a helper's own background children as measured on
+2.1.319 (2026-11-09), and runs the real report.py as a helper would. Never calls the real CLI.
 
 Behaviour per task comes from a `FAKE{...}` JSON blob in the message text:
     sleep (s, default 0.3), status, summary, question, found [paths], report (default true),
     progress (the task_progress description),
-    hang (no result for this turn), crash (exit at once), no_agent (answer without a helper).
+    hang (no result for this turn), crash (exit at once), no_agent (answer without a helper),
+    pause (s: the helper first parks on its own background build for that long, the way 2.1.319
+    shows it: a child task_started with parent_task_id, the agent's `completed` notification,
+    background_tasks_changed, then the child ends and the agent's task_started fires again),
+    nudge_report (answer a `[report N]` reminder by running report.py with nudge_status and
+    nudge_summary).
 Writes what it saw (argv, env facts, each message) to $FAKE_CLAUDE_LOG as JSON lines.
 """
 from __future__ import annotations
@@ -24,6 +30,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 OUT_LOCK = threading.Lock()
 KILLED: set = set()
+SPECS: dict = {}
+LIVE: dict = {}  # background task id -> parent task id (None for one the main window owns)
 SESSION = "fake-session"
 
 
@@ -56,37 +64,94 @@ def parse_fake(text: str) -> dict:
         return {}
 
 
-def helper(n: int, tool_use_id: str, spec: dict) -> None:
-    agent = f"agent{n}"
-    emit({"type": "system", "subtype": "task_started", "task_id": agent, "tool_use_id": tool_use_id,
-          "description": f"task {n}: fake", "task_type": "local_agent", "session_id": SESSION})
-    emit({"type": "system", "subtype": "task_progress", "task_id": agent, "tool_use_id": tool_use_id,
-          "description": spec.get("progress", "Working"), "usage": {"tool_uses": 1},
+def live_changed() -> None:
+    tasks = [{"task_id": k, "task_type": "local_bash" if v else "local_agent",
+              **({"parent_task_id": v} if v else {})} for k, v in list(LIVE.items())]
+    emit({"type": "system", "subtype": "background_tasks_changed", "tasks": tasks,
           "session_id": SESSION})
-    end = time.time() + float(spec.get("sleep", 0.3))
+
+
+def agent_started(n: int, agent: str, tool_use_id: str) -> None:
+    LIVE[agent] = None
+    live_changed()
+    emit({"type": "system", "subtype": "task_started", "task_id": agent, "tool_use_id": tool_use_id,
+          "description": f"task {n}: fake", "task_type": "local_agent", "is_backgrounded": True,
+          "session_id": SESSION})
+
+
+def agent_completed(agent: str, tool_use_id: str, summary: str) -> None:
+    emit({"type": "system", "subtype": "task_updated", "task_id": agent,
+          "patch": {"status": "completed"}, "session_id": SESSION})
+    emit({"type": "system", "subtype": "task_notification", "task_id": agent,
+          "tool_use_id": tool_use_id, "status": "completed", "summary": summary,
+          "usage": {"tool_uses": 2}, "session_id": SESSION})
+    LIVE.pop(agent, None)
+    live_changed()
+
+
+def wait_unless_killed(agent: str, watch: str, seconds: float) -> bool:
+    """Sleep `seconds`; False (after emitting the kill) if `agent` is stopped meanwhile."""
+    end = time.time() + seconds
     while time.time() < end:
         if agent in KILLED:
             emit({"type": "system", "subtype": "task_updated", "task_id": agent,
                   "patch": {"status": "killed"}, "session_id": SESSION})
-            return
+            LIVE.pop(agent, None)
+            LIVE.pop(watch, None)
+            live_changed()
+            return False
         time.sleep(0.05)
+    return True
+
+
+def run_report(n: int, status: str, summary: str, question: str = "", found=()) -> None:
+    args = [sys.executable, str(HERE / "report.py"), "--task", str(n), "--status", status]
+    if summary and status != "needs_confirmation":
+        args += ["--summary", summary]
+    if question:
+        args += ["--question", question]
+    for f in found:
+        args += ["--found", f]
+    r = subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    if r.returncode:
+        note({"report_error": r.stderr[-500:]})
+
+
+def helper(n: int, tool_use_id: str, spec: dict) -> None:
+    agent = f"agent{n}"
+    agent_started(n, agent, tool_use_id)
+    emit({"type": "system", "subtype": "task_progress", "task_id": agent, "tool_use_id": tool_use_id,
+          "description": spec.get("progress", "Working"), "usage": {"tool_uses": 1},
+          "session_id": SESSION})
+    if not wait_unless_killed(agent, agent, float(spec.get("sleep", 0.3))):
+        return
+    if spec.get("pause"):
+        child = f"bash{n}"
+        LIVE[child] = agent
+        # The description names the task on purpose: a child is never to be taken for the helper.
+        emit({"type": "system", "subtype": "task_started", "task_id": child,
+              "tool_use_id": f"toolu_child{n}", "description": f"Compile task {n} through the lock",
+              "is_backgrounded": True, "parent_task_id": agent, "owned_by_subagent": True,
+              "task_type": "local_bash", "session_id": SESSION})
+        live_changed()
+        agent_completed(agent, tool_use_id, "Waiting for the compile to finish.")
+        emit({"type": "assistant", "parent_tool_use_id": None, "message": {
+            "role": "assistant", "content": [{"type": "text", "text": f"[task {n}] still building"}]}})
+        result(f"[task {n}] still building")
+        if not wait_unless_killed(agent, child, float(spec["pause"])):
+            return
+        emit({"type": "system", "subtype": "task_updated", "task_id": child,
+              "patch": {"status": "completed"}, "session_id": SESSION})
+        emit({"type": "system", "subtype": "task_notification", "task_id": child,
+              "tool_use_id": f"toolu_child{n}", "status": "completed",
+              "summary": "Background command completed (exit code 0)", "session_id": SESSION})
+        LIVE.pop(child, None)
+        live_changed()
+        agent_started(n, agent, tool_use_id)  # the CLI resumes the parked helper
     if spec.get("report", True):
-        args = [sys.executable, str(HERE / "report.py"), "--task", str(n),
-                "--status", spec.get("status", "done")]
-        if spec.get("summary", "Done.") and spec.get("status", "done") != "needs_confirmation":
-            args += ["--summary", spec.get("summary", "Done.")]
-        if spec.get("question"):
-            args += ["--question", spec["question"]]
-        for f in spec.get("found", []):
-            args += ["--found", f]
-        r = subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL)
-        if r.returncode:
-            note({"report_error": r.stderr[-500:]})
-    emit({"type": "system", "subtype": "task_updated", "task_id": agent,
-          "patch": {"status": "completed"}, "session_id": SESSION})
-    emit({"type": "system", "subtype": "task_notification", "task_id": agent,
-          "tool_use_id": tool_use_id, "status": "completed", "summary": "helper finished",
-          "usage": {"tool_uses": 2}, "session_id": SESSION})
+        run_report(n, spec.get("status", "done"), spec.get("summary", "Done."),
+                   spec.get("question", ""), spec.get("found", []))
+    agent_completed(agent, tool_use_id, "helper finished")
     emit({"type": "assistant", "parent_tool_use_id": None,
           "message": {"role": "assistant", "content": [{"type": "text", "text": f"[task {n}] done"}]}})
     result(f"[task {n}] done")
@@ -115,6 +180,14 @@ def main() -> int:
         spec = parse_fake(text)
         if spec.get("crash"):
             os._exit(3)
+        m = re.match(r"\[report (\d+)\]", text)
+        if m:  # the worker's reminder: the main window runs report.py itself, once
+            n = int(m.group(1))
+            s = SPECS.get(n, {})
+            if s.get("nudge_report"):
+                run_report(n, s.get("nudge_status", "done"), s.get("nudge_summary", "Reported late."))
+            result(f"[task {n}] reported" if s.get("nudge_report") else "ok")
+            continue
         m = re.match(r"\[(cancel|stop) (\d+)\]", text)
         if m:
             n = int(m.group(2))
@@ -130,6 +203,7 @@ def main() -> int:
                 result("ok")
             continue
         n = int(m.group(1))
+        SPECS[n] = spec
         tuid = f"toolu_{n}"
         emit({"type": "assistant", "parent_tool_use_id": None, "message": {"role": "assistant",
               "content": [{"type": "tool_use", "id": tuid, "name": "Agent",

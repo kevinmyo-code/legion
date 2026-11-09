@@ -65,6 +65,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import build_lock  # noqa: E402
+import warm_worktree  # noqa: E402
 from common import (Paths, TokenRefused, find_token, load_config, read_json,  # noqa: E402
                     write_json_atomic)
 
@@ -385,6 +386,14 @@ class Shipper:
 
         wt = Path(plan["worktree"])
         branch = plan["branch"]
+        if warm_worktree.is_warm(self.paths, wt):
+            # The warm tree is shared between tasks: ship only while this task holds it (the ask
+            # task's lease passes to its follow-up), never under another task's helper.
+            try:
+                warm_worktree.take_lease(self.paths, a.task, branch=branch)
+            except warm_worktree.Busy as e:
+                raise Refused(f"{e}, so shipping now would change the files under it; ask again "
+                              "when it finishes. Nothing shipped") from None
         if self.sha(wt, branch) != plan["head"]:
             raise Refused("the branch changed after Kevin's yes; ask the ship question again. "
                           "Nothing shipped")

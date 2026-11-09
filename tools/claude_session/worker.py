@@ -41,6 +41,7 @@ from common import (DELIVER_EMAIL_SELF, DELIVER_PHONE, PAGE_CAP_BYTES, UPLOAD_CA
                     read_json, write_json_atomic)
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
+import warm_worktree  # noqa: E402
 
 log = logging.getLogger("legion.claude")
 
@@ -51,6 +52,10 @@ DEFAULTS = {
     "tick_s": 0.5,
     "task_cap_s": 30 * 60.0,
     "report_grace_s": 60.0,
+    # A helper's `completed` is final only once it has no live background work of its own; the CLI
+    # sends the same event when it parks waiting on a build (task 7, 2026-11-06). Events about its
+    # children can trail the notification by a moment, so the verdict waits this long.
+    "settle_s": 2.0,
     "hang_s": 10 * 60.0,
     "restart_min_s": 5.0,
     "backoff_max_s": 300.0,
@@ -68,7 +73,8 @@ SAY_RESTARTED = "The laptop's Claude session restarted while this was running, s
 SAY_HUNG = "The laptop's Claude session stopped answering and was restarted, so this did not finish."
 SAY_CAP = "Stopped after 30 minutes without finishing."
 SAY_CANCELLED = "Cancelled before it finished, as asked."
-SAY_NO_REPORT = "The helper stopped without reporting a result."
+SAY_NO_REPORT = ("The helper finished without reporting a result, and a reminder to report did "
+                 "not get one.")
 SAY_KILLED = "The helper was stopped before it finished."
 
 
@@ -208,6 +214,10 @@ class Worker:
         self.refused: set = set()
         self.claude_version = ""
         self.progress: dict[int, str] = {}  # task id -> latest helper step (heartbeat only)
+        # Live background tasks in the main session (CLI task ids) -> the task id that owns each
+        # (a helper agent for its own builds and waits), None for one the main window owns.
+        # `background_tasks_changed` replaces it whole; task_started and task ends keep it current.
+        self.live: dict[str, str | None] = {}
 
     # ------------------------------------------------------------ state
 
@@ -292,6 +302,7 @@ class Worker:
                      # alfred-builds tickets 03, 05, 08: the ship step, undo, the build lock.
                      "<<SHIP>>": cmd_path(HERE / "ship.py"), "<<UNDO>>": cmd_path(HERE / "undo.py"),
                      "<<BUILD_LOCK>>": cmd_path(HERE / "build_lock.py"),
+                     "<<WARM>>": cmd_path(HERE / "warm_worktree.py"),
                      "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
@@ -400,17 +411,29 @@ class Worker:
                     if tid is not None:
                         self.tool_uses[c.get("id", "")] = tid
         elif typ == "system" and sub == "task_started":
+            agent = ev.get("task_id")
+            parent = ev.get("parent_task_id")
+            if agent:
+                self.live[agent] = parent
+            if parent or ev.get("owned_by_subagent"):
+                return  # a helper's own build, wait or subagent: never the helper itself
             tid = self.tool_uses.get(ev.get("tool_use_id", ""))
             if tid is None:
                 tid = self._task_from_text(ev.get("description", ""), ev.get("prompt", ""))
-            agent = ev.get("task_id")
             t = self._task(tid) if tid is not None else None
             if t and agent:
+                resumed = t.get("agent") == agent
                 t["agent"] = agent
+                for k in ("helper_completed_at", "helper_ended_at", "helper_end", "helper_paused",
+                          "nudged_at"):
+                    t.pop(k, None)  # a helper that runs again has not ended
                 self.state["agents"][agent] = int(tid)
                 self._write_agents()
                 self.dirty = True
-                log.info("task %s helper started", tid)
+                log.info("task %s helper %s", tid, "resumed" if resumed else "started")
+        elif typ == "system" and sub == "background_tasks_changed":
+            self.live = {x["task_id"]: x.get("parent_task_id")
+                         for x in ev.get("tasks") or [] if isinstance(x, dict) and x.get("task_id")}
         elif typ == "system" and sub == "task_progress":
             tid = self.tool_uses.get(ev.get("tool_use_id", ""))
             t = self._task(tid) if tid is not None else self._task_for_agent(ev.get("task_id"))
@@ -422,11 +445,20 @@ class Worker:
                 self.dirty = True
         elif typ == "system" and sub in ("task_updated", "task_notification"):
             status = (ev.get("patch") or {}).get("status") if sub == "task_updated" else ev.get("status")
+            if status in ("completed", "killed", "failed"):
+                self.live.pop(ev.get("task_id") or "", None)
             t = self._task_for_agent(ev.get("task_id"))
             if t and sub == "task_notification":
                 t["turns"] = int((ev.get("usage") or {}).get("tool_uses") or t.get("turns", 0))
-            if t and status in ("completed", "killed", "failed") and t["status"] == "running" \
-                    and not t.get("helper_ended_at"):
+            if not t or t["status"] != "running" or t.get("helper_ended_at"):
+                return
+            if status == "completed":
+                # Final, or a pause on its own background work: the raw event is the same either
+                # way (CLI 2.1.319), so check_timers decides from its live children after settle_s.
+                if not t.get("helper_completed_at"):
+                    t["helper_completed_at"] = now
+                    self.dirty = True
+            elif status in ("killed", "failed"):
                 t["helper_ended_at"] = now
                 t["helper_end"] = status
                 self.dirty = True
@@ -450,6 +482,20 @@ class Worker:
         tid = self.state["agents"].get(agent or "")
         return self._task(tid) if tid is not None else None
 
+    def _has_live_work(self, agent) -> bool:
+        """Does the helper `agent` still own live background work (its builds, waits or
+        subagents, at any depth)?"""
+        if not agent:
+            return False
+        for task_id in self.live:
+            seen, cur = set(), self.live.get(task_id)
+            while cur and cur not in seen:
+                if cur == agent:
+                    return True
+                seen.add(cur)
+                cur = self.live.get(cur)
+        return False
+
     # ------------------------------------------------------------ reports, timers, finishing
 
     def drain_reports(self, now: float) -> None:
@@ -463,11 +509,38 @@ class Worker:
                 log.warning("dropped an unreadable report")
                 continue
             t = self._task(r["task"])
+            if t and t["status"] == "failed" and not t.get("late_report"):
+                self.keep_late_report(t, r)
+                continue
             if not t or t["status"] != "running":
                 log.info("report for task %s ignored (not running)", r.get("task"))
                 continue
             self.finish(t, r.get("status", "failed"), r.get("summary", ""), r.get("question", ""),
                         r.get("found") or [])
+
+    def keep_late_report(self, t: dict, r: dict) -> None:
+        """A helper's report that came after the worker failed its task. Still in the outbox (the
+        engine was down): the report replaces the failure. Already delivered: the engine refuses a
+        second finish (FinishView, 409), so it is kept on this laptop, never silently dropped."""
+        t["late_report"] = True
+        self.dirty = True
+        for item in self.state["outbox"]:
+            if item["task"] == t["id"]:
+                found = [] if self.scope != "full" else [
+                    {"path": f["path"], "name": f["name"], "size": int(f["size"])}
+                    for f in r.get("found") or []]
+                fields = {"status": r.get("status", "failed"), "summary": r.get("summary", ""),
+                          "question": r.get("question", ""), "found": found}
+                item["payload"].update(fields)
+                t.update(fields)
+                log.warning("late report for task %s replaced its unsent failure (%s)", t["id"],
+                            t["status"])
+                return
+        late = self.paths.reports / "late"
+        late.mkdir(parents=True, exist_ok=True)
+        write_json_atomic(late / f"{int(t['id'])}.json", {**r, "kept_at": self.clock()})
+        log.warning("late report for task %s after it failed; the engine already has the failure, "
+                    "kept in reports/late", t["id"])
 
     def finish(self, t: dict, status: str, summary: str, question: str = "", found=()) -> None:
         now = self.clock()
@@ -479,6 +552,15 @@ class Worker:
                    "duration_ms": int(max(0.0, now - t.get("started_at", now)) * 1000),
                    "found": found}
         self.state["outbox"].append({"task": t["id"], "payload": payload})
+        if status != "needs_confirmation":  # a question keeps the warm tree for its follow-up
+            try:
+                if warm_worktree.release(self.paths, t["id"]):
+                    log.info("task %s released the warm worktree", t["id"])
+            except OSError:
+                pass
+        nudge = f"[report {t['id']}]"
+        for p in [p for p in self.pending if p[0] is None and p[1].startswith(nudge)]:
+            self.pending.remove(p)
         self.dirty = True
         log.info("task %s finished %s found=%s", t["id"], status, len(found))
 
@@ -488,14 +570,45 @@ class Worker:
                 self._stop_helper(t, "stop", f"[stop {t['id']}] Task {t['id']} hit the 30 minute "
                                   f"limit. Stop task {t['id']}'s helper now with TaskStop. One line.")
                 self.finish(t, "failed", SAY_CAP)
+            elif t.get("helper_completed_at") and not t.get("helper_ended_at"):
+                if now - t["helper_completed_at"] < self.cfg["settle_s"]:
+                    continue
+                if self._has_live_work(t.get("agent")):
+                    if not t.get("helper_paused"):  # waits on its own build: the cap still holds
+                        t["helper_paused"] = True
+                        self.dirty = True
+                        log.info("task %s helper paused on its own background work", t["id"])
+                    continue
+                t["helper_ended_at"] = now
+                t["helper_end"] = "completed"
+                self.dirty = True
+                log.info("task %s helper ended completed", t["id"])
             elif t.get("helper_ended_at") and now - t["helper_ended_at"] > self.cfg["report_grace_s"]:
-                self.finish(t, "failed", SAY_KILLED if t.get("helper_end") == "killed" else SAY_NO_REPORT)
+                if t.get("helper_end") != "completed":
+                    self.finish(t, "failed", SAY_KILLED if t.get("helper_end") == "killed"
+                                else SAY_NO_REPORT)
+                elif not t.get("nudged_at"):
+                    t["nudged_at"] = now
+                    self.dirty = True
+                    self.pending.append((None, self.nudge_message(t["id"])))
+                    log.info("task %s finished without a report; reminder sent", t["id"])
+                elif now - t["nudged_at"] > self.cfg["report_grace_s"]:
+                    self.finish(t, "failed", SAY_NO_REPORT)
         if self.awaiting_since is not None and now - self.awaiting_since > self.cfg["hang_s"]:
             log.warning("main session did not answer; restarting it")
             self.stop_session(kill=True)
             for t in self.running():
                 self.finish(t, "failed", SAY_HUNG)
             self.start_session(now)
+
+    @staticmethod
+    def nudge_message(tid: int) -> str:
+        return (f"[report {tid}] Task {tid}'s helper finished without running report.py, so LEGION "
+                f"has no result for it. Run exactly one report.py line for task {tid} yourself now, "
+                "from the helper's last result: --status done --summary only if that result clearly "
+                "says the work finished, --status needs_confirmation --question if it ended on a "
+                "question for Kevin, otherwise --status failed --summary with what it said, in "
+                "words. Then one line.")
 
     def _stop_helper(self, t: dict, verb: str, text: str) -> None:
         unsent = [p for p in self.pending if p[0] == t["id"]]
@@ -698,6 +811,9 @@ class Worker:
         self._write_agents()
         for f in self.paths.tokens.glob("*.json"):
             if (read_json(f, {}) or {}).get("expires_at", 0) < now:
+                f.unlink(missing_ok=True)
+        for f in (self.paths.reports / "late").glob("*.json"):
+            if (read_json(f, {}) or {}).get("kept_at", 0) < now - keep:
                 f.unlink(missing_ok=True)
         cutoff = now - self.cfg["keep_work_days"] * 86400
         for d in self.paths.work.glob("task-*"):

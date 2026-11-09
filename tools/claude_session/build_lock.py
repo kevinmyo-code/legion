@@ -17,9 +17,18 @@ undo.py use it as a library). It:
    sensors above 92 C pauses before the next step until it is under 80 C. The agent unreachable is
    said in words and the build goes on: a monitor being down is not a reason to stop work.
    **No CPU cap** (Kevin, 2026-11-05: "dont cap the cpu"); this only waits.
-3. **Gradle gets a private daemon registry** for the worker
+3. **Gradle gets a private, stable daemon registry** for the worker
    (`-Dorg.gradle.daemon.registry.base=<root>\gradle-daemons`), so Kevin's own `gradlew --stop`
-   never kills a worker build and the worker's never kills his, and `--stop` runs after.
+   never kills a worker build and the worker's never kills his. The daemon is **left running**
+   (2026-11-09, B1): the next task's build reuses it until Gradle's own idle timeout
+   (`org.gradle.daemon.idletimeout` in gradle.properties) retires it. Nothing here runs
+   `gradlew --stop`, ever.
+4. **One Gradle at a time on the whole laptop** (Kevin's laptop rule): each Gradle step also takes
+   the laptop's shared lock, a directory created with mkdir and removed after (the same lock
+   every other agent's Gradle run takes; config `gradle_lock`, default `SHARED_GRADLE_LOCK`), and
+   runs with `--max-workers=1` and the Gradle build cache. A lock left by a worker build that was
+   killed is cleared once its process is gone (the owner file beside it says whose it is);
+   anyone else's lock is only waited for.
 
 Prints what it did in words. Exit code: the first failing step's, 75 when the lock or the heat
 wait timed out (nothing ran past that point). Stdlib only.
@@ -38,7 +47,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import Paths, read_json, write_json_atomic  # noqa: E402
+from common import Paths, load_config, read_json, write_json_atomic  # noqa: E402
 
 HOT_C = 92.0
 COOL_C = 80.0
@@ -51,6 +60,13 @@ EXIT_TIMED_OUT = 75
 LAPTOPCTL_PORT = 47613
 LAPTOPCTL_TOKEN = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "laptopctl" / "token"
 GRADLE_NAMES = ("gradlew", "gradlew.bat", "gradlew.cmd")
+# The laptop's one-Gradle-at-a-time lock that Kevin's other agents take (a mkdir lock, see g.sh
+# beside it). Config `gradle_lock` overrides it; "" turns it off (tests, the work laptop).
+SHARED_GRADLE_LOCK = Path(r"C:\Users\kevin\AppData\Local\Temp\claude\42ff6d1bfd5615cb"
+                          r"\58672419-0d7b-4530-ae20-2e6a844feced\scratchpad\gradle.lock")
+# Added to every worker Gradle run (B1, 2026-11-09): the laptop rule and the build cache.
+GRADLE_FLAGS = ("--max-workers=1", "--build-cache")
+JBR = Path(r"C:\Program Files\Android\Android Studio\jbr")
 
 
 class TimedOut(Exception):
@@ -194,6 +210,97 @@ class BuildLock:
         return False
 
 
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            return bool(k32.GetExitCodeProcess(h, ctypes.byref(code))) and code.value == 259
+        finally:
+            k32.CloseHandle(h)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+class SharedGradleLock:
+    """The laptop's one-Gradle-at-a-time lock: a directory, made with mkdir and removed after, the
+    same one Kevin's other agents' Gradle runs take. It stays empty (theirs is removed with
+    rmdir); whose it is lives in `<lock>.worker.json` beside it, so a lock this worker left
+    behind when its build was killed can be cleared. Anyone else's is only waited for."""
+
+    def __init__(self, path: Path, task, *, sleep=time.sleep, clock=time.monotonic, say=print,
+                 alive=pid_alive):
+        self.path = Path(path)
+        self.owner = self.path.with_name(self.path.name + ".worker.json")
+        self.task, self.sleep, self.clock, self.say, self.alive = task, sleep, clock, say, alive
+        self.held = False
+
+    def _clear_if_ours_and_dead(self) -> None:
+        info = read_json(self.owner, None)
+        if not info or self.alive(int(info.get("pid") or 0)):
+            return
+        try:
+            self.path.rmdir()  # empty, ours, and its process is gone
+            self.say("Cleared a Gradle lock a stopped worker build left behind.")
+        except OSError:
+            pass
+        try:
+            self.owner.unlink()
+        except OSError:
+            pass
+
+    def acquire(self, wait_s: float = LOCK_WAIT_S, poll_s: float = LOCK_POLL_S) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        start, said = self.clock(), False
+        while True:
+            try:
+                self.path.mkdir()
+                break
+            except FileExistsError:
+                self._clear_if_ours_and_dead()
+            if not said:
+                self.say("Waiting for another Gradle build on this laptop (one at a time).")
+                said = True
+            if self.clock() - start > wait_s:
+                raise TimedOut(f"another Gradle build on this laptop held the shared lock for over "
+                               f"{round(wait_s / 60)} minutes")
+            self.sleep(poll_s)
+        self.held = True
+        try:
+            write_json_atomic(self.owner, {"pid": os.getpid(), "task": self.task, "at": time.time()})
+        except OSError:
+            pass
+
+    def release(self) -> None:
+        if not self.held:
+            return
+        try:
+            self.owner.unlink()
+        except OSError:
+            pass
+        try:
+            self.path.rmdir()
+        except OSError:
+            pass
+        self.held = False
+
+
+def shared_lock_path(cfg: dict | None) -> Path | None:
+    raw = (cfg or {}).get("gradle_lock")
+    if raw is None:
+        return SHARED_GRADLE_LOCK
+    return Path(raw) if str(raw).strip() else None
+
+
 # --------------------------------------------------------------------------------------- steps
 
 
@@ -215,18 +322,33 @@ def _resolve(argv: list[str], cwd: Path | None) -> list[str]:
 
 
 def default_runner(argv: list[str], cwd: Path | None) -> int:
-    return subprocess.run(argv, cwd=str(cwd) if cwd else None, check=False).returncode
+    env = None
+    if is_gradle(argv) and not os.environ.get("JAVA_HOME") and JBR.exists():
+        env = {**os.environ, "JAVA_HOME": str(JBR)}
+    return subprocess.run(argv, cwd=str(cwd) if cwd else None, env=env, check=False).returncode
+
+
+def gradle_argv(paths: Paths, argv: list[str]) -> list[str]:
+    """A worker Gradle run: the stable private registry, one worker, the build cache. Never
+    `--stop` (Kevin's laptop rule; the daemon stays warm for the next task)."""
+    rest = [a for a in argv[1:] if a != "--stop"]
+    extra = [f for f in GRADLE_FLAGS if f not in rest and not any(
+        a.startswith(f.split("=")[0] + "=") for a in rest)]
+    return [argv[0]] + rest + extra + [registry_flag(paths)]
 
 
 def run_steps(paths: Paths, task, steps: list[list[str]], *, cwd: Path | None = None,
               heat: bool = True, runner=default_runner, read=read_heat, sleep=time.sleep,
               clock=time.monotonic, say=print, lock_wait_s: float = LOCK_WAIT_S,
-              heat_max_wait_s: float = HEAT_MAX_WAIT_S) -> int:
-    """Run each step under the lock, heat-gated, Gradle with the private registry and `--stop`
-    after. Returns the first non-zero exit code (0 when all passed). Raises TimedOut."""
+              heat_max_wait_s: float = HEAT_MAX_WAIT_S, shared_lock: Path | None | str = "config",
+              alive=pid_alive) -> int:
+    """Run each step under the worker's lock, heat-gated; each Gradle step also under the laptop's
+    shared lock, with the private registry, one worker and the build cache, and the daemon left
+    warm. Returns the first non-zero exit code (0 when all passed). Raises TimedOut."""
+    if shared_lock == "config":
+        shared_lock = shared_lock_path(load_config(paths))
     lock = BuildLock(paths, task, sleep=sleep, clock=clock, say=say)
     lock.acquire(wait_s=lock_wait_s)
-    gradles: list[str] = []
     try:
         for argv in steps:
             argv = _resolve(list(argv), cwd)
@@ -235,17 +357,22 @@ def run_steps(paths: Paths, task, steps: list[list[str]], *, cwd: Path | None = 
                 heat_gate(name, read=read, sleep=sleep, clock=clock, say=say,
                           max_wait_s=heat_max_wait_s)
             if is_gradle(argv):
-                argv = argv + [registry_flag(paths)]
-                if argv[0] not in gradles:
-                    gradles.append(argv[0])
-            code = runner(argv, cwd)
+                shared = (SharedGradleLock(shared_lock, task, sleep=sleep, clock=clock, say=say,
+                                           alive=alive) if shared_lock else None)
+                if shared:
+                    shared.acquire(wait_s=lock_wait_s)
+                try:
+                    code = runner(gradle_argv(paths, argv), cwd)
+                finally:
+                    if shared:
+                        shared.release()
+            else:
+                code = runner(argv, cwd)
             if code != 0:
                 say(f"{name} failed (exit {code}).")
                 return code
         return 0
     finally:
-        for g in gradles:
-            runner([g, "--stop", registry_flag(paths)], cwd)
         lock.release()
 
 
@@ -260,6 +387,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cwd", default=None)
     ap.add_argument("--step", action="append", default=[], help="one command; repeat for more")
     ap.add_argument("--no-heat", action="store_true", help="skip the heat check (tests only)")
+    ap.add_argument("--no-shared-lock", action="store_true",
+                    help="skip the laptop's shared Gradle lock (tests only)")
     ap.add_argument("--wait-min", type=float, default=LOCK_WAIT_S / 60)
     a = ap.parse_args(argv)
     steps = [[t.strip('"') for t in shlex.split(s, posix=os.name != "nt")] for s in a.step]
@@ -269,7 +398,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("give a command after --, or --step \"<command>\"")
     try:
         code = run_steps(Paths(), a.task, steps, cwd=Path(a.cwd) if a.cwd else None,
-                         heat=not a.no_heat, lock_wait_s=a.wait_min * 60)
+                         heat=not a.no_heat, lock_wait_s=a.wait_min * 60,
+                         shared_lock=None if a.no_shared_lock else "config")
     except TimedOut as e:
         print(f"Not run: {e}.")
         return EXIT_TIMED_OUT
