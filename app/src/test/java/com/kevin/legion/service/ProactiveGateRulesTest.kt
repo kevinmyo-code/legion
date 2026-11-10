@@ -202,6 +202,19 @@ class ProactiveGateRulesTest {
     }
 
     @Test
+    fun `a watch line has no cap by day but is still refused at night, and never quiet-exempt`() {
+        // Integration 2026-11-10 (ADR 0082 + 0083): WATCHES landed while the cap still existed on
+        // its branch. With the cap gone a daytime watch goes ahead; at night it is QuietHours, which
+        // the bus turns into the posted notification (WatchDeliveryTest checks the post).
+        assertNull(ProactiveBus.decideOnHistory(raise(ProactiveCategory.WATCHES), 1_000L, null, noon))
+        assertEquals(
+            ProactiveBus.RaiseOutcome.QuietHours,
+            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WATCHES), 1_000L, null, night),
+        )
+        assertFalse(ProactiveCategory.WATCHES in ProactiveBus.QUIET_HOURS_EXEMPT)
+    }
+
+    @Test
     fun `claude tasks, app updates and watches are the categories on by default`() {
         assertEquals(
             setOf(ProactiveCategory.CLAUDE_TASKS, ProactiveCategory.UPDATES, ProactiveCategory.WATCHES),
