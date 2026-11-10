@@ -60,7 +60,7 @@ onnxruntime = "1.31.0"
 # Robolectric: test-only, needed because PdfBox-Android's fonts/glyphlists ship
 # as Android assets (not JVM classpath resources) - a plain unit test can't
 # reach them without something shadowing AssetManager.
-robolectric = "4.13"
+robolectric = "4.16.1"
 # Media3 session (`.scratch/android-auto/map.md`, Android Auto probe harness). CLAUDE.md §3 lists
 # Media3 as a dependency deliberately dropped at the pivot - it is back specifically for the
 # MediaLibraryService that puts LEGION in Android Auto's media list (research 02 section 1c). Only
