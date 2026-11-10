@@ -158,11 +158,7 @@ object EngineToolbox {
                 "(\"2026-08-23\" or a full ISO datetime), a money field takes whole CENTS as a " +
                 "number (never dollars), a multi-select field takes a list of strings. Only write " +
                 "a value the user actually told you - never guess or estimate one they did not " +
-                "give you; leave a field out rather than invent it. Returns success only if the " +
-                "record was actually written; on failure the message states in words what did not " +
-                "happen (a bad reference, an unknown field, a missing record type) - never say " +
-                "something was logged, saved, or recorded unless this tool reports " +
-                "success.$ROUTING_NOTE",
+                "give you; leave a field out rather than invent it.$ROUTING_NOTE",
             params = obj(
                 "aspectName" to schema("string", "The aspect's name."),
                 "recordTypeName" to schema("string", "The record type's name within that aspect."),
@@ -176,10 +172,7 @@ object EngineToolbox {
             description = "Updates fields on one existing record by its id. \"fields\" is a " +
                 "PARTIAL object - only the keys you include change, everything else on the " +
                 "record stays as it was. Same value rules as create_record: exact field names, " +
-                "cents for money, ISO dates, never a guessed value. Returns success only if the " +
-                "write actually happened; on failure the message states in words what did not " +
-                "happen - never say something was updated unless this tool reports " +
-                "success.$ROUTING_NOTE",
+                "cents for money, ISO dates, never a guessed value.$ROUTING_NOTE",
             params = obj(
                 "recordId" to schema("number", "The record's id, from query_records or a prior create_record."),
                 "fields" to schema("object", "Field name to new value - only the fields that changed."),
@@ -237,8 +230,7 @@ object EngineToolbox {
                 "date\"). Only call this a SECOND time, with the exact same \"description\" and " +
                 "the \"draftToken\" the first call returned plus \"confirm\": true, after the " +
                 "user has heard the draft and agreed - that second call is the one that actually " +
-                "creates it. Never tell the user an aspect was created before a confirmed call " +
-                "reports success.",
+                "creates it.",
             params = obj(
                 "description" to schema("string", "What the user wants tracked, in their own words."),
                 "confirm" to schema("boolean", "True only on the confirmed second call."),
@@ -254,8 +246,7 @@ object EngineToolbox {
                 "spoken description. Same confirm handshake as create_aspect: the first call only " +
                 "drafts the change and returns it to read back; call again with the same " +
                 "\"aspectName\"/\"description\", the returned \"draftToken\", and \"confirm\": " +
-                "true to actually apply it. Never say a change was made before a confirmed call " +
-                "reports success.",
+                "true to actually apply it.",
             params = obj(
                 "aspectName" to schema("string", "The existing aspect's name."),
                 "description" to schema("string", "The single change wanted, in the user's own words."),

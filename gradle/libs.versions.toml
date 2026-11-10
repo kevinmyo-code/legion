@@ -3,7 +3,7 @@
 # compileSdk 37, so 3.3.0 (Kotlin 2.3.20 metadata, readable by the 2.2.10 compiler). See .scratch/books/research/engine.md.
 readium = "3.3.0"
 agp = "9.2.1"
-kotlin = "2.1.0"
+kotlin = "2.2.10"
 coreKtx = "1.13.1"
 junit = "4.13.2"
 junitVersion = "1.1.5"
@@ -11,13 +11,17 @@ espressoCore = "3.5.1"
 appcompat = "1.7.0"
 material = "1.12.0"
 room = "2.8.4"
-composeBom = "2025.09.00"
+composeBom = "2026.06.01"
 okhttp = "4.12.0"
-coroutines = "1.8.1"
+# 1.11.0 (2026-11-10, architecture review item 14): the catalog said 1.8.1 while Gradle already
+# resolved 1.11.0 through Readium/media3, so this states what is on the classpath. No runtime change.
+coroutines = "1.11.0"
 # WorkManager (books ticket 05, 2026-10-23): the PDF-to-EPUB conversion worker. Entered the build for that
 # ticket only; ScheduledBackup and the engine poll stay off it by their own rulings.
 work = "2.10.5"
-lifecycle = "2.8.0"
+# 2.10.0 (2026-11-10, architecture review item 14): same as coroutines above, the catalog said 2.8.0
+# while lifecycle-runtime already resolved 2.10.0 transitively. Now the pin is what ships.
+lifecycle = "2.10.0"
 # ADR 0084, "look at this": CameraX for the look screen's preview and ~1 fps frames. 1.4.2, the
 # last 1.4 stable on Google Maven (read 2026-11-10); 1.5+ was not tried against Kotlin 2.1.0.
 camerax = "1.4.2"
@@ -56,7 +60,7 @@ onnxruntime = "1.31.0"
 # Robolectric: test-only, needed because PdfBox-Android's fonts/glyphlists ship
 # as Android assets (not JVM classpath resources) - a plain unit test can't
 # reach them without something shadowing AssetManager.
-robolectric = "4.13"
+robolectric = "4.16.1"
 # Media3 session (`.scratch/android-auto/map.md`, Android Auto probe harness). CLAUDE.md §3 lists
 # Media3 as a dependency deliberately dropped at the pivot - it is back specifically for the
 # MediaLibraryService that puts LEGION in Android Auto's media list (research 02 section 1c). Only

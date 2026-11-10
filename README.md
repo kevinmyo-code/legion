@@ -38,17 +38,17 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 
 <!-- VOICE-SURFACE:START -->
 
-**139 voice tools across 22 domains**, dispatched from one Gemini Live
+**141 voice tools across 22 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
 | Domain | Tools | Something you would say |
 |---|---|---|
-| Getting started | 8 | &ldquo;Give me my brief&rdquo; |
+| Getting started | 9 | &ldquo;Give me my brief&rdquo; |
 | Your day | 14 | &ldquo;Remind me to renew my registration next month&rdquo; |
 | The cars | 29 | &ldquo;Any trouble codes?&rdquo; |
 | Driving | 6 | &ldquo;Take me to the hardware store&rdquo; |
-| Money | 10 | &ldquo;What's my balance?&rdquo; |
+| Money | 11 | &ldquo;What's my balance?&rdquo; |
 | Food and shopping | 9 | &ldquo;When did we last buy shampoo?&rdquo; |
 | Training and sleep | 16 | &ldquo;Log bench 135 for 8&rdquo; |
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |
@@ -136,8 +136,13 @@ Counted from build output, not memory. Live ticket board: <https://kevinmyo-code
 ./gradlew compileDebugKotlin -Pnokey   # compiles with no baked-in key
 ./gradlew testDebugUnitTest            # read totals from app/build/test-results
 ./gradlew assembleFast                 # daily driver: release build, debug-signed
+./gradlew assembleFast -Pnokey         # an APK that leaves the laptop (OTA): no secret baked in
 adb shell cmd package compile -m speed -f com.kevin.legion   # after each install
 ```
+
+`tools/release_apk.py` refuses an APK whose BuildConfig carries a Gemini or AirNow key; build
+releases with `-Pnokey`. The phone then uses the key pasted in Setup. `-Pnokey` also leaves the
+public Mapbox token out, so paste that in Setup too before the first such release.
 
 `local.properties` needs `sdk.dir`. The API key is optional at build time; the app asks for the
 user's own on first launch.

@@ -64,6 +64,8 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/ClockToolbox.kt',
     # watches (ADR 0083): the one `watch` tool (standing watches).
     ROOT / 'app/src/main/java/com/kevin/legion/service/WatchesToolbox.kt',
+    # architecture review 2026-11-10 item 8: LiveToolbox's own declarations, split by domain.
+    *sorted((ROOT / 'app/src/main/java/com/kevin/legion/service/tools').glob('*/Declarations.kt')),
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'
