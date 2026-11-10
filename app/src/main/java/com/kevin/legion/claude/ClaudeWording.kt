@@ -167,7 +167,12 @@ class ClaudeWording(
      * (name and size, never a path), whether they are open on the screen now, and which did not
      * arrive. No question: naming the files was the yes, and sharing them on is Kevin's tap.
      */
-    fun filesDelivered(task: ClaudeTask, kept: List<ClaudeTaskFile>, missing: List<ClaudeTaskFile>, opened: Boolean): String =
+    fun filesDelivered(
+        task: ClaudeTask,
+        kept: List<ClaudeTaskFile>,
+        missing: List<ClaudeTaskFile>,
+        opened: Boolean,
+    ): String =
         buildString {
             val on = task.machine?.let { " on the $it" } ?: ""
             append("Task ${task.id}$on (\"${task.request.take(REQUEST_SHOWN)}\") is done.")
@@ -176,7 +181,8 @@ class ClaudeWording(
                 append(" On your phone: ").append(kept.joinToString { "${it.name} (${size(it.size)})" }).append(".")
                 append(
                     when {
-                        opened -> if (kept.size == 1) " It is open on the screen now." else " They are open on the screen now."
+                        opened -> if (kept.size == 1) " It is open on the screen now." else
+                            " They are open on the screen now."
                         else -> " Tap the notification to open " + (if (kept.size == 1) "it." else "them.")
                     },
                 )

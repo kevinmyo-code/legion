@@ -117,6 +117,10 @@ data class ClaudeTask(
     /** The files coming to the phone: requested at the finish, because naming them was the yes. */
     val deliveredFiles: List<ClaudeTaskFile> get() = if (wantsFiles) files.filter { it.requested } else emptyList()
 
+    /** Files a result may offer for `send_file`: not a delivered page, not files already sent. */
+    val offeredFiles: List<ClaudeTaskFile> get() =
+        files.filterNot { (wantsPage && it.isPage) || (wantsFiles && it.requested) }
+
     /** A done files task with a requested file still on its way up from the laptop. */
     val filesPending: Boolean get() =
         status == DONE && deliveredFiles.any { !it.uploaded && !it.gone }

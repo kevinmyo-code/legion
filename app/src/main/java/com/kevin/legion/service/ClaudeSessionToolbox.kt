@@ -46,8 +46,8 @@ object ClaudeSessionToolbox {
     private const val DESCRIPTION =
         "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check only " +
             "reads results already in; \"ask Claude to...\" is always a new send; answer follows up a " +
-            "task (yes=true only for his yes to its question); assign picks the machine it asked for; send_file only on his " +
-            "yes to a found file; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
+            "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
+            "send_file only on his yes to a found file; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
             "result announcements. A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
@@ -185,7 +185,7 @@ object ClaudeSessionToolbox {
         tasks.forEach { t ->
             // A delivered page is opened (open_page), never offered as a file (ticket 09); files asked
             // for by name are already sent (ADR 0080), and the result line says so.
-            val offered = t.files.filterNot { (t.wantsPage && it.isPage) || it in t.deliveredFiles }
+            val offered = t.offeredFiles
             val files = if (o.summariesOnly(t)) "" else offered.joinToString("") { f ->
                 " [file_id ${f.id}: ${f.name}, ${ClaudeWording.size(f.size)}" +
                     (if (f.uploaded) ", already on the engine" else "") + "]"

@@ -48,6 +48,7 @@ class ClaudeFileStore(context: Context, private val now: () -> Long = System::cu
     override fun has(taskId: Int, fileId: Int): Boolean =
         taskDir(taskId).listFiles()?.any { it.name.startsWith("$fileId-") } == true
 
+    @Suppress("SwallowedException") // a failed write is "not kept", said by the false; nothing to log
     override suspend fun keep(taskId: Int, fileId: Int, name: String, bytes: ByteArray): Boolean =
         withContext(Dispatchers.IO) {
             prune()

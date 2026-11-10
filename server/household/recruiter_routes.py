@@ -205,6 +205,7 @@ RECRUITER_DENIED: dict[str, str] = {
     "claude_session.views.FinishView": _CLAUDE,
     "claude_session.views.FileUploadView": _CLAUDE,
     "claude_session.views.FileDownloadView": _CLAUDE,
+    "claude_session.views.FileReceivedView": _CLAUDE,
     "claude_session.views.SessionReportView": _CLAUDE,
     # devices, notifications, laptops
     "push.views.VapidKeyView": "notifications are sent to a member's own devices",

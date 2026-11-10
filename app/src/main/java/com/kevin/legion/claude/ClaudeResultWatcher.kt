@@ -58,7 +58,8 @@ class ClaudeResultWatcher(
      */
     private val openFiles: suspend (taskId: Int) -> Boolean = { false },
     /** The files result: said like any result, its notification opening the files when tapped. */
-    private val filesReady: suspend (taskId: Int, text: String) -> ClaudeDelivery = { id, text -> announce(id, text, "") },
+    private val filesReady: suspend (taskId: Int, text: String) -> ClaudeDelivery =
+        { id, text -> announce(id, text, "") },
 ) {
     private val lock = Mutex()
 
@@ -116,15 +117,7 @@ class ClaudeResultWatcher(
     @Suppress("ReturnCount") // still coming, silenced, or the announcement
     private suspend fun settleFiles(c: ClaudeSessionController, task: ClaudeTask, shelf: ClaudeFileShelf): Boolean {
         val wanted = task.deliveredFiles
-        for (f in wanted) {
-            if (!shelf.has(task.id, f.id) && f.uploaded && !f.gone) {
-                val bytes = (c.download(task.id, f.id) as? ClaudeOutcome.Ok)?.value ?: continue
-                if (!shelf.keep(task.id, f.id, f.name, bytes)) continue
-            }
-            // Here now (or from an earlier poll whose receipt did not reach the engine): the
-            // engine's copy may go. A failed receipt is retried next poll; the 24 h purge backs it.
-            if (shelf.has(task.id, f.id) && !f.received && !f.gone) c.received(task.id, f.id)
-        }
+        for (f in wanted) bring(c, task.id, f, shelf)
         val kept = wanted.filter { shelf.has(task.id, it.id) }
         val coming = wanted.filter { it !in kept && !it.gone }
         if (coming.isNotEmpty() && !filesWaitOver(task)) return false
@@ -144,6 +137,19 @@ class ClaudeResultWatcher(
             openedFor -= task.id
         }
         return delivered
+    }
+
+    /**
+     * One delivered file: fetched and kept if it is up and not here yet; then, once here (now, or
+     * from an earlier poll whose receipt did not reach the engine), the engine told its copy may
+     * go. A failed fetch or receipt is retried next poll; the engine's 24 h purge backs it.
+     */
+    private suspend fun bring(c: ClaudeSessionController, taskId: Int, f: ClaudeTaskFile, shelf: ClaudeFileShelf) {
+        if (!shelf.has(taskId, f.id) && f.uploaded && !f.gone) {
+            val bytes = (c.download(taskId, f.id) as? ClaudeOutcome.Ok)?.value
+            if (bytes != null) shelf.keep(taskId, f.id, f.name, bytes)
+        }
+        if (shelf.has(taskId, f.id) && !f.received && !f.gone) c.received(taskId, f.id)
     }
 
     private fun filesWaitOver(task: ClaudeTask): Boolean {

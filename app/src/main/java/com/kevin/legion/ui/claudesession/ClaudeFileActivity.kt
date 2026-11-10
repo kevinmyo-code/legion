@@ -66,7 +66,9 @@ class ClaudeFileActivity : ComponentActivity() {
         // One document and nothing else: open it in its reader at once, this screen stays behind it
         // with Share. Not again on a rotation or a return.
         val single = files.singleOrNull()
-        if (savedInstanceState == null && single != null && !single.isImage) launch(ClaudeFileIntents.view(this, single))
+        if (savedInstanceState == null && single != null && !single.isImage) {
+            launch(ClaudeFileIntents.view(this, single))
+        }
         setContent {
             SoftTheme {
                 ClaudeFilesContent(
@@ -79,6 +81,7 @@ class ClaudeFileActivity : ComponentActivity() {
         }
     }
 
+    @Suppress("SwallowedException") // no app for the type: said in the toast, nothing else to keep
     private fun launch(intent: Intent) {
         try {
             startActivity(intent)

@@ -39,8 +39,10 @@ class ClaudeFilesDeliveryTest {
         filesReady = { _, text -> said += text; delivery },
     )
 
-    private val scan = ClaudeTaskFile(91, "form-scan.pdf", 1_200_000, uploaded = true, requested = true, contentType = "application/pdf")
-    private val photo = ClaudeTaskFile(92, "photo-1.jpg", 300_000, uploaded = true, requested = true, contentType = "image/jpeg")
+    private val scan =
+        ClaudeTaskFile(91, "form-scan.pdf", 1_200_000, uploaded = true, requested = true, contentType = "x/pdf")
+    private val photo =
+        ClaudeTaskFile(92, "photo-1.jpg", 300_000, uploaded = true, requested = true, contentType = "image/jpeg")
 
     private fun filesTask(vararg files: ClaudeTaskFile) =
         task(58, ClaudeTask.DONE, summary = "Found the form and the photo.", files = files.toList(),
@@ -66,7 +68,8 @@ class ClaudeFilesDeliveryTest {
     fun `the work laptop never gets a files request`() {
         backend.machines(machine("work laptop", scope = "listed"))
         val out = runBlocking {
-            ClaudeSessionController(backend).send("send me a file", "work laptop", "named", emailMe = false, files = true)
+            ClaudeSessionController(backend)
+                .send("send me a file", "work laptop", "named", emailMe = false, files = true)
         }
         assertTrue(out is ClaudeSendResult.NotSent)
         assertTrue((out as ClaudeSendResult.NotSent).sentence.contains("can't send files"))
@@ -189,7 +192,8 @@ class ClaudeFilesDeliveryTest {
 
     @Test
     fun `requested files are never offered for send_file again`() {
-        val t = filesTask(scan.copy(uploaded = false), ClaudeTaskFile(93, "other.txt", 10, uploaded = false, requested = false))
+        val other = ClaudeTaskFile(93, "other.txt", 10, uploaded = false, requested = false)
+        val t = filesTask(scan.copy(uploaded = false), other)
         val hint = ClaudeResultWatcher.hint(t, summariesOnly = false)
         assertTrue(hint, hint.contains("file_id 93"))
         assertFalse(hint, hint.contains("file_id 91"))
