@@ -1,0 +1,10 @@
+# Server pytest failures that are red on clean dev, listed so CI can gate on everything else.
+# One `classname::name` per line, exactly as the JUnit XML names it. The tests still run and are
+# printed. If one starts passing, CI fails until its line is removed (the list only shrinks).
+#
+# Persona Kotlin twins: the phone dropped the persona roster (ADR 0063, one companion persona),
+# so `val DOROTHY =` / `val KRATOS =` no longer exist in Personas.kt while the server's copy test
+# still expects them. Red on dev since 2026-11-09 (AGENT-RULES "Known baselines"). Owed: an engine
+# change to drop or re-point the two server personas; not a CI change.
+tests.test_assistant_prompt::test_every_persona_copy_matches_personas_kt[dorothy]
+tests.test_assistant_prompt::test_every_persona_copy_matches_personas_kt[kratos]

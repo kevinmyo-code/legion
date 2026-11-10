@@ -36,6 +36,11 @@ on:
 permissions:
   contents: read
 
+# One ping at a time; a manual run while the scheduled one is in flight just queues.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   ping:
     runs-on: ubuntu-latest
