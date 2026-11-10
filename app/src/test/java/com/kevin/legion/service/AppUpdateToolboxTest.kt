@@ -17,7 +17,11 @@ import com.kevin.legion.update.UpdateController
 import com.kevin.legion.update.UpdateNotifier
 import com.kevin.legion.update.UpdatePlatform
 import com.kevin.legion.update.UpdatePrefs
+import com.kevin.legion.update.UpdateState
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -52,6 +56,9 @@ class AppUpdateToolboxTest {
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
+    /** Null downloads at once; otherwise the download waits for it (a slow first download). */
+    private var downloadGate: CompletableDeferred<Unit>? = null
+
     private fun controller(): UpdateController {
         val sha = UpdateController.sha256(tmp.newFile().apply { writeBytes(bytes) })
         latest = ReleaseInfo("r1", 263091200, "2026-11-05-ab12cd3", sha, bytes.size.toLong(), "fixes the double announce", signer)
@@ -63,6 +70,7 @@ class AppUpdateToolboxTest {
             },
             downloader = object : ApkDownloader {
                 override suspend fun download(url: String, dest: File, expectedSize: Long, onProgress: (Long) -> Unit): Result<Unit> {
+                    downloadGate?.await()
                     dest.writeBytes(bytes)
                     return Result.success(Unit)
                 }
@@ -108,6 +116,7 @@ class AppUpdateToolboxTest {
 
     @After fun reset() {
         AppUpdateToolbox.controllerFactory = { com.kevin.legion.update.UpdateGraph.controller(it) }
+        AppUpdateToolbox.checkWaitMs = AppUpdateToolbox.CHECK_WAIT_MS
     }
 
     @Test
@@ -124,6 +133,32 @@ class AppUpdateToolboxTest {
         assertTrue(result.getString("message"), result.getString("message").contains("Nothing is installed yet"))
         assertTrue(installs.isEmpty())
         assertTrue(call("""{"action":"whats_new"}""").getString("message").contains("fixes the double announce"))
+    }
+
+    /**
+     * Phone audit 2026-11-10: the first voice check ran the whole download inline and hit the
+     * 10 s tool timeout ("That took too long and timed out"); the retry found the file. A check
+     * now answers within [AppUpdateToolbox.checkWaitMs] with the download in words, and the
+     * download is not cancelled by the tool's own bound: it finishes, and the next check is Ready.
+     */
+    @Test
+    fun `a check that has to download answers in time and the download carries on`() {
+        val c = controller()
+        AppUpdateToolbox.controllerFactory = { c }
+        AppUpdateToolbox.checkWaitMs = 200
+        val gate = CompletableDeferred<Unit>().also { downloadGate = it }
+        val first = call("""{"action":"check"}""")
+        assertTrue(first.getString("message"), first.getBoolean("success"))
+        assertTrue(first.getString("message"), first.getString("message").contains("downloading"))
+        assertTrue(first.getString("message"), first.getString("message").contains("Nothing is installed"))
+        // A second ask while it downloads answers from the state at once, never waiting on the lock.
+        val during = call("""{"action":"check"}""")
+        assertTrue(during.getString("message"), during.getString("message").contains("downloading"))
+        gate.complete(Unit)
+        runBlocking { withTimeout(5_000) { c.state.first { it is UpdateState.Ready } } }
+        val after = call("""{"action":"check"}""")
+        assertTrue(after.getString("message"), after.getString("message").contains("downloaded and checked"))
+        assertTrue(installs.isEmpty())
     }
 
     @Test
