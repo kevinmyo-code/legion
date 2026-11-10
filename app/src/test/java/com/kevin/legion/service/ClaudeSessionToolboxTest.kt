@@ -6,6 +6,7 @@ import com.kevin.legion.claude.InMemoryClaudeModalMemory
 import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.claude.ClaudeTask
+import com.kevin.legion.claude.ClaudeTaskDraft
 import com.kevin.legion.claude.ClaudeTaskFile
 import com.kevin.legion.claude.ClaudeWatchStore
 import com.kevin.legion.claude.FakeClaudeBackend
@@ -220,5 +221,17 @@ class ClaudeSessionToolboxTest {
         } finally {
             ClaudeSessionToolbox.watchFactory = ::ClaudeWatchStore
         }
+    }
+
+    /** ADR 0080: `files: true` asks for the named files on the phone; it is declared on `send`. */
+    @Test
+    fun `files true sends deliver files`() {
+        backend.machines(machine("Alienware"))
+        val out = call("action" to "send", "request" to "send me the form scan on my PC", "files" to true)
+        assertTrue(out.toString(), out.getBoolean("success"))
+        assertEquals(ClaudeTaskDraft.DELIVER_FILES, backend.created.single().deliver)
+        val params = ClaudeSessionToolbox.declarations().getJSONObject(0)
+            .getJSONObject("parameters").getJSONObject("properties")
+        assertEquals("boolean", params.getJSONObject("files").getString("type"))
     }
 }

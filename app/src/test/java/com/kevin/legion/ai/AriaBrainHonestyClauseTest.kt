@@ -238,7 +238,9 @@ class AriaBrainHonestyClauseTest {
             "That needs your Claude session. Want me to send it: <one-line version>?",
             "A sent task is queued, not done",
             "its outcome comes only from check or its result",
-            "say its name and size and ask if they want it on their phone",
+            // ADR 0080: files asked for by name go with files true; any other found file is asked about.
+            "Files they ask to have on their phone: files true",
+            "Other found files: name and size, ask first",
             "never send one unasked",
         )) {
             assertTrue("the Claude session rule must say: $phrase", CLAUDE_SESSION_CLAUSE.contains(phrase))

@@ -9,6 +9,8 @@ Runs in Kevin's logon session (Task Scheduler "LEGION Claude session", at logon,
 - cancel and the 30 minute cap: a message asking the main session to TaskStop that one helper;
   kill and resume only when the main session itself stops answering;
 - uploads a file only when the engine says Kevin asked for it and the file is one that task listed;
+  a `deliver: files` task's files go up straight after its finish (ADR 0080: naming them was the
+  yes), unless there are more than 20 or 100 MB of them, when the task asks first;
 - issues the confirmation tokens send_mail.py and the ask-list hook check.
 
 Logs carry ids, statuses, counts and exit codes. Never a request, a summary, a question or a path.
@@ -37,8 +39,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from common import (DELIVER_EMAIL_SELF, DELIVER_PHONE, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, load_config, norm,  # noqa: E402
-                    read_json, write_json_atomic)
+from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_COUNT,  # noqa: E402
+                    FILES_MAX_TOTAL_BYTES, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, load_config,
+                    norm, read_json, write_json_atomic)
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
 import warm_worktree  # noqa: E402
@@ -85,6 +88,36 @@ KIND_MEMORY_REVIEW = "memory_review"
 REVIEW_PROGRESS = "Reviewing memories"
 SAY_REVIEW_NO_RESULT = "The memory review ended without sending its changes."
 REVIEW_TEXT_FILES = ("context.json", "changes.json")
+
+
+def files_question(count: int, total: int) -> str:
+    """ADR 0080: the one question a files task asks when the find is past the caps."""
+    mb = total / (1024 * 1024)
+    size = f"{mb:.0f} MB" if mb >= 1 else f"{max(1, total // 1024)} KB"
+    noun = "file" if count == 1 else "files"
+    return f"I found {count} {noun}, {size} in all. Send them all to your phone?"
+
+
+def files_instructions(confirmed: bool) -> str:
+    """ADR 0080: what a `deliver: files` helper is told. Find by name, path and metadata; open a
+    document only to tell candidates apart, and say so; ask when unsure or past the caps."""
+    text = ("Kevin wants these files on his phone; naming them was his yes for exactly those "
+            "files. Find them by name, folder, date, type and size. Do not open or read a "
+            "document's contents (scans, IDs, statements, letters) unless you must to tell two "
+            "candidates apart; if you did, say so in the summary. List every file to send with "
+            "--found (each under 25 MB) and LEGION sends them to his phone. The summary names "
+            "them and their sizes in words.")
+    if confirmed:
+        return text + " He has already said yes to sending all of them; list them all."
+    return text + (f" If what you found is not clearly what he asked for, or it is more than "
+                   f"{FILES_MAX_COUNT} files or {FILES_MAX_TOTAL_BYTES // (1024 * 1024)} MB, "
+                   "finish needs_confirmation with one question naming the count and size, and "
+                   "still list them with --found.")
+
+
+def over_files_caps(found) -> bool:
+    total = sum(int(f.get("size") or 0) for f in found)
+    return len(found) > FILES_MAX_COUNT or total > FILES_MAX_TOTAL_BYTES
 
 
 # ---------------------------------------------------------------- machine helpers (Windows)
@@ -616,6 +649,13 @@ class Worker:
                     (self.paths.task_work(t["id"]) / name).unlink(missing_ok=True)
                 except OSError:
                     pass
+        if (t.get("deliver") == DELIVER_FILES and status == "done" and not t.get("confirms")
+                and over_files_caps(found)):
+            # ADR 0080: naming the files is the yes only up to 20 files and 100 MB. Past that the
+            # task asks, the files stay listed, and Kevin's yes is a follow-up that sends them.
+            status = "needs_confirmation"
+            question = files_question(len(found), sum(f["size"] for f in found))
+            log.info("task %s over the files caps (%s files); asking first", t["id"], len(found))
         t.update(status=status, summary=summary, question=question, found=found, finished_at=now)
         payload = {"status": status, "summary": summary, "question": question,
                    "turns": int(t.get("turns", 0)),
@@ -746,15 +786,16 @@ class Worker:
                 log.warning("finish for task %s refused HTTP %s; dropped", item["task"], e.status)
             self.state["outbox"].pop(0)
             self.dirty = True
-            self.upload_pages(item["task"], reply)
+            self.upload_at_finish(item["task"], reply)
 
-    def upload_pages(self, tid, reply) -> None:
-        """Ticket 09: a `deliver: phone` task's page goes up right after its finish, without
-        waiting a heartbeat. The engine requested it at finish (asking for it was Kevin's yes);
-        [upload_requested] still checks it is a file this task listed. If the engine is down,
-        the next heartbeat asks again."""
+    def upload_at_finish(self, tid, reply) -> None:
+        """Ticket 09 and ADR 0080: a `deliver: phone` task's page, and a `deliver: files` task's
+        files, go up right after its finish, without waiting a heartbeat. The engine requested
+        them at finish (asking for them was Kevin's yes); [upload_requested] still checks each is
+        a file this task listed. If the engine is down, the next heartbeat asks again."""
         t = self._task(tid)
-        if not t or t.get("deliver") != DELIVER_PHONE or not isinstance(reply, dict):
+        if (not t or t.get("deliver") not in (DELIVER_PHONE, DELIVER_FILES)
+                or not isinstance(reply, dict)):
             return
         by_name = {}
         for f in t.get("found", []):
@@ -765,7 +806,7 @@ class Worker:
                     self.upload_requested({"task": tid, "file_id": f.get("id"),
                                            "path": by_name[f["name"]]})
                 except EngineDown:
-                    log.warning("page for task %s not uploaded yet: engine unreachable", tid)
+                    log.warning("file for task %s not uploaded yet: engine unreachable", tid)
                     return
 
     def upload_requested(self, req: dict) -> None:
@@ -893,6 +934,12 @@ class Worker:
             else:  # the engine refuses this; held here too (ruling 5)
                 lines.append("Kevin asked for the result as a page on his phone, but this laptop "
                              "returns summaries only. Say so in the summary.")
+        elif t.get("deliver") == DELIVER_FILES:
+            if self.scope == "full":
+                lines.append(files_instructions(bool(t.get("confirms"))))
+            else:  # the engine refuses this; held here too (ruling 5)
+                lines.append("Kevin asked for files on his phone, but this laptop returns "
+                             "summaries only. Say so in the summary.")
         lines.append(f"Work folder: {work}")
         return "\n".join(lines)
 

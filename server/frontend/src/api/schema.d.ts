@@ -1840,6 +1840,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/claude/tasks/{task_id}/files/{file_id}/received/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST tasks/{id}/files/{file_id}/received/`: the phone has a delivered file (ADR 0080), so
+         *     the engine's copy is deleted now rather than at 24 h. Only the member who asked for it.
+         *     Idempotent: a second call, or one after the prune, says it is already gone.
+         */
+        post: operations["api_claude_tasks_files_received"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/claude/tasks/{task_id}/finish/": {
         parameters: {
             query?: never;
@@ -5691,6 +5712,12 @@ export interface components {
         ClaudeClaim: {
             name: string;
         };
+        ClaudeFileReceived: {
+            file_id: number;
+            /** @description The engine's copy is gone. */
+            deleted: boolean;
+            detail: string;
+        };
         ClaudeFileRequested: {
             task: number;
             file_id: number;
@@ -5841,10 +5868,11 @@ export interface components {
             parent?: number | null;
             origin: components["schemas"]["ClaudeTaskCreateOriginEnum"];
             /**
-             * @description email_self only when Kevin named his own email in the request (ruling 17).
+             * @description email_self only when Kevin named his own email in the request (ruling 17); phone for a researched page (ticket 09); files when he asked for files on his phone (ADR 0080). A confirms follow-up to a files task inherits files.
              *
              *     * `email_self` - email_self
              *     * `phone` - phone
+             *     * `files` - files
              */
             deliver?: (components["schemas"]["ClaudeTaskDeliverEnum"] | components["schemas"]["NullEnum"]) | null;
             /**
@@ -5867,15 +5895,22 @@ export interface components {
         /**
          * @description * `email_self` - email_self
          *     * `phone` - phone
+         *     * `files` - files
          * @enum {string}
          */
-        ClaudeTaskDeliverEnum: "email_self" | "phone";
+        ClaudeTaskDeliverEnum: "email_self" | "phone" | "files";
         ClaudeTaskFileRow: {
             id: number;
             name: string;
             size: number | null;
             uploaded: boolean;
             requested: boolean;
+            /** @description The type it was uploaded as; blank until it is uploaded. */
+            content_type: string;
+            /** @description The asking member's phone said it has it (files to phone, ADR 0080). */
+            received: boolean;
+            /** @description Its bytes were deleted from the engine: received, or 24 h after upload. */
+            gone: boolean;
         };
         /**
          * @description * `named` - named
@@ -13695,6 +13730,15 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
+            /** @description The files bucket refused it (ADR 0080). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
         };
     };
     api_claude_tasks_files_retrieve: {
@@ -13719,6 +13763,72 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A delivered file already received or past its 24 h (ADR 0080). */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The bucket refused. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_tasks_files_received: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: number;
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeFileReceived"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not uploaded yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The bucket refused. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

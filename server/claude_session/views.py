@@ -37,6 +37,13 @@ Rulings this file enforces, by number in the map:
   appended to the task's `steps` when it changes, last 20 kept, and served
   newest first on every task row. It outlives the finish (the current line
   does not). A `listed` machine keeps none (ruling 5).
+- Files to phone (ADR 0080, Kevin 2026-11-09): `deliver: files` brings the
+  files Kevin named to his phone. Refused for a `listed` machine like a page.
+  At a `done` finish every found file is requested at once (naming them was
+  the yes) within 20 files and 100 MB; past that nothing is requested and the
+  worker asks first. The bytes go to the private bucket (`storage`) or, with
+  none set, the row's column; only the member who asked may download them,
+  `received/` deletes them, and they are refused and purged 24 h after upload.
 """
 
 from __future__ import annotations
@@ -63,8 +70,13 @@ from claude_session import serializers as s
 from claude_session.models import (
     CANCEL_REQUESTED,
     CANCELLED,
+    DELIVER_FILES,
     DELIVER_PHONE,
+    DONE,
     FILE_MAX_BYTES,
+    FILES_KEEP_HOURS,
+    FILES_MAX_COUNT,
+    FILES_MAX_TOTAL_BYTES,
     IN_FLIGHT,
     NEEDS_CONFIRMATION,
     NEEDS_MACHINE,
@@ -85,6 +97,7 @@ from claude_session.models import (
     ClaudeTaskFile,
 )
 from claude_session.state import effective_status, failure_reason, machine_state
+from claude_session.storage import StorageError, get_store, new_key
 from household.models import DeviceToken
 from household.tenancy import household_of, scoped
 
@@ -100,6 +113,16 @@ LISTED_REFUSAL = (
 LISTED_PAGE_REFUSAL = (
     "Nothing was sent. The {name} returns summaries only, so it cannot send a page to the "
     "phone (ruling 5). Send it to a machine that can, or ask for the summary."
+)
+LISTED_FILES_REFUSAL = (
+    "Nothing was sent. The {name} returns summaries only, so it cannot send files to the "
+    "phone (ruling 5). Send it to a machine that can, or ask for the summary."
+)
+# Deliveries a `listed` machine can never make, each with the sentence that says so.
+_LISTED_REFUSALS = {DELIVER_PHONE: LISTED_PAGE_REFUSAL, DELIVER_FILES: LISTED_FILES_REFUSAL}
+_FILE_GONE = (
+    "That file is no longer on the engine: it is deleted once your phone has it, and 24 hours "
+    "after it arrived at the latest. Ask Claude for it again."
 )
 PAGE_SALT = "claude-session-page"
 # Served exactly like the recruiter report (`demo.content_views`): scripts run
@@ -142,7 +165,54 @@ def _file_row(row: ClaudeTaskFile) -> dict:
         "size": row.size,
         "uploaded": row.uploaded_at is not None,
         "requested": row.requested_at is not None,
+        "content_type": row.content_type or "",
+        "received": row.received_at is not None,
+        "gone": row.purged_at is not None,
     }
+
+
+def files_expired(row: ClaudeTaskFile, now) -> bool:
+    """A delivered file's bytes are refused FILES_KEEP_HOURS after upload, computed at read time,
+    so the 24 h holds even before the hourly prune has deleted them."""
+    if row.uploaded_at is None:
+        return False
+    return now - row.uploaded_at >= datetime.timedelta(hours=FILES_KEEP_HOURS)
+
+
+def purge_bytes(row: ClaudeTaskFile, now, *, received: bool = False) -> None:
+    """Deletes a file's stored bytes, from the bucket or the row, and stamps when. The row (name,
+    size) stays for the task's 30 days. A bucket that refuses raises StorageError and leaves the
+    row untouched, for the next prune to try again; the bucket's one-day lifecycle rule is the
+    backstop."""
+    fields = ["content", "purged_at"]
+    if row.storage_key:
+        store = get_store()
+        if store is None:
+            raise StorageError("This engine no longer has its files bucket set.")
+        store.delete(row.storage_key)
+        row.storage_key = ""
+        fields.append("storage_key")
+    row.content = None
+    row.purged_at = now
+    if received and row.received_at is None:
+        row.received_at = now
+        fields.append("received_at")
+    row.save(update_fields=fields)
+
+
+def _owned_delivery(request, task_id: int, file_id: int) -> ClaudeTaskFile | None:
+    """A file of a `deliver: files` task, only for the member who asked for it (ADR 0080: the
+    requesting member's own devices). Anyone else, in the household or not, gets None, which the
+    views answer exactly like a file that does not exist."""
+    row = (
+        scoped(ClaudeTaskFile, request)
+        .select_related("task")
+        .filter(task_id=task_id, pk=file_id, task__deliver=DELIVER_FILES)
+        .first()
+    )
+    if row is None or row.task.user_id is None or row.task.user_id != request.user.pk:
+        return None
+    return row
 
 
 def page_token(row: ClaudeTaskFile) -> str:
@@ -322,11 +392,17 @@ class TaskListCreateView(APIView):
             elif len(online) > 1:
                 status = NEEDS_MACHINE
 
-        # Ticket 09: a page never comes from a `listed` machine, named or picked.
+        deliver = data["deliver"]
+        # ADR 0080: Kevin's yes to a files task's question ("that's 31 files, send them all?")
+        # is a follow-up that carries no deliver of its own; it still means "to my phone".
+        if deliver is None and data["confirms"] and parent.deliver == DELIVER_FILES:
+            deliver = DELIVER_FILES
+
+        # Ticket 09 and ADR 0080: a page or files never come from a `listed` machine.
         listed = machine is not None and machine.scope == SCOPE_LISTED
-        if data["deliver"] == DELIVER_PHONE and listed:
+        if deliver in _LISTED_REFUSALS and listed:
             return _detail(
-                LISTED_PAGE_REFUSAL.format(name=machine.name), http.HTTP_400_BAD_REQUEST
+                _LISTED_REFUSALS[deliver].format(name=machine.name), http.HTTP_400_BAD_REQUEST
             )
 
         task = ClaudeTask.objects.create(
@@ -335,7 +411,7 @@ class TaskListCreateView(APIView):
             machine=machine,
             parent=parent,
             origin=data["origin"],
-            deliver=data["deliver"],
+            deliver=deliver,
             confirms=data["confirms"],
             request=data["request"],
             status=status,
@@ -436,9 +512,10 @@ class TaskAssignView(APIView):
                     "Nothing was changed. No machine has that name here.",
                     http.HTTP_404_NOT_FOUND,
                 )
-            if task.deliver == DELIVER_PHONE and machine.scope == SCOPE_LISTED:
+            if task.deliver in _LISTED_REFUSALS and machine.scope == SCOPE_LISTED:
                 return _detail(
-                    LISTED_PAGE_REFUSAL.format(name=machine.name), http.HTTP_400_BAD_REQUEST
+                    _LISTED_REFUSALS[task.deliver].format(name=machine.name),
+                    http.HTTP_400_BAD_REQUEST,
                 )
             task.machine = machine
             task.status = QUEUED
@@ -687,8 +764,8 @@ class ClaimView(APIView):
             if only_one_online:
                 unaddressed = queued.filter(machine__isnull=True)
                 if machine.scope == SCOPE_LISTED:
-                    # Ticket 09: a page request waits for a machine that can send one.
-                    unaddressed = unaddressed.exclude(deliver=DELIVER_PHONE)
+                    # Ticket 09, ADR 0080: a page or files wait for a machine that can send them.
+                    unaddressed = unaddressed.exclude(deliver__in=list(_LISTED_REFUSALS))
                 mine = queued.filter(machine=machine) | unaddressed
             claimed = list(mine.select_for_update(skip_locked=True).order_by("id"))
             for task in claimed:
@@ -699,6 +776,11 @@ class ClaimView(APIView):
         if not claimed:
             return Response(status=http.HTTP_204_NO_CONTENT)
         return Response([task_row(task, now) for task in claimed])
+
+
+def _over_caps(found: list[dict]) -> bool:
+    total = sum(int(f.get("size") or 0) for f in found)
+    return len(found) > FILES_MAX_COUNT or total > FILES_MAX_TOTAL_BYTES
 
 
 class FinishView(APIView):
@@ -762,13 +844,23 @@ class FinishView(APIView):
                 # Ticket 09: asking for the page was the yes, so a delivered
                 # page is requested now and rides the next heartbeat up.
                 wants_page = task.deliver == DELIVER_PHONE
+                # ADR 0080: naming the files was the yes, for a find that is done and within
+                # the caps (or one Kevin already said yes to past them).
+                wants_files = task.deliver == DELIVER_FILES and data["status"] == DONE
+                if wants_files and not task.confirms and _over_caps(data["found"]):
+                    wants_files = False
+                    notes.append(
+                        f"Files were not requested: over {FILES_MAX_COUNT} files or "
+                        f"{FILES_MAX_TOTAL_BYTES // (1024 * 1024)} MB needs Kevin's yes first."
+                    )
                 ClaudeTaskFile.objects.bulk_create(
                     ClaudeTaskFile(
                         household=household, task=task, path=f["path"], name=f["name"],
                         size=f["size"],
                         requested_at=(
                             now
-                            if wants_page and f["name"].lower().endswith(PAGE_SUFFIXES)
+                            if wants_files
+                            or (wants_page and f["name"].lower().endswith(PAGE_SUFFIXES))
                             else None
                         ),
                     )
@@ -806,6 +898,9 @@ class FileUploadView(APIView):
             ),
             415: OpenApiResponse(
                 response=DetailSerializer, description="A delivered page that is not text/html."
+            ),
+            503: OpenApiResponse(
+                response=DetailSerializer, description="The files bucket refused it (ADR 0080)."
             ),
         },
     )
@@ -853,12 +948,26 @@ class FileUploadView(APIView):
                 http.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             )
         blob = upload.read()
-        row.content = blob
         row.size = len(blob)
         row.content_type = "text/html" if page else content_type
         row.title = page_title(blob, row.name) if page else ""
+        row.content = blob
+        store = get_store() if task.deliver == DELIVER_FILES else None
+        if store is not None:
+            # ADR 0080: a delivered file waits in the private bucket, never in the row.
+            key = new_key(row.household_id, task.id, row.id)
+            try:
+                store.put(key, blob, row.content_type)
+            except StorageError as exc:
+                return _detail(f"Nothing was stored. {exc}", http.HTTP_503_SERVICE_UNAVAILABLE)
+            row.storage_key = key
+            row.content = None
         row.uploaded_at = timezone.now()
-        row.save(update_fields=["content", "size", "content_type", "title", "uploaded_at"])
+        row.save(
+            update_fields=[
+                "content", "size", "content_type", "title", "uploaded_at", "storage_key",
+            ]
+        )
         return Response(
             {"file_id": row.id, "size": row.size, "detail": "Stored."}, status=http.HTTP_201_CREATED
         )
@@ -873,25 +982,98 @@ class FileDownloadView(APIView):
                 response=OpenApiTypes.BINARY, description="The file's bytes."
             ),
             404: DetailSerializer,
+            410: OpenApiResponse(
+                response=DetailSerializer,
+                description="A delivered file already received or past its 24 h (ADR 0080).",
+            ),
+            503: OpenApiResponse(response=DetailSerializer, description="The bucket refused."),
         },
     )
     def get(self, request, task_id: int, file_id: int):
+        missing = _detail(
+            f"Task {task_id} has no uploaded file {file_id}.", http.HTTP_404_NOT_FOUND
+        )
         row = (
             scoped(ClaudeTaskFile, request)
+            .select_related("task")
             .filter(task_id=task_id, pk=file_id, uploaded_at__isnull=False)
             .first()
         )
         if row is None:
-            return _detail(
-                f"Task {task_id} has no uploaded file {file_id}.", http.HTTP_404_NOT_FOUND
-            )
-        response = HttpResponse(
-            bytes(row.content), content_type=row.content_type or "application/octet-stream"
-        )
+            return missing
+        if row.task.deliver == DELIVER_FILES:
+            # ADR 0080: only the member who asked, only while it is still on the engine.
+            if _owned_delivery(request, task_id, file_id) is None:
+                return missing
+            if row.purged_at is not None or files_expired(row, timezone.now()):
+                return _detail(_FILE_GONE, http.HTTP_410_GONE)
+        if row.storage_key:
+            store = get_store()
+            if store is None:
+                return _detail(
+                    "The file could not be read: this engine no longer has its files bucket set.",
+                    http.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            try:
+                blob = store.get(row.storage_key)
+            except StorageError as exc:
+                return _detail(
+                    f"The file could not be read. {exc}", http.HTTP_503_SERVICE_UNAVAILABLE
+                )
+        else:
+            blob = bytes(row.content or b"")
+        response = HttpResponse(blob, content_type=row.content_type or "application/octet-stream")
         safe = "".join(c for c in row.name if c.isprintable() and c not in '"\\') or "file"
         response["Content-Disposition"] = f'attachment; filename="{safe}"'
         response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
         return response
+
+
+class FileReceivedView(APIView):
+    """`POST tasks/{id}/files/{file_id}/received/`: the phone has a delivered file (ADR 0080), so
+    the engine's copy is deleted now rather than at 24 h. Only the member who asked for it.
+    Idempotent: a second call, or one after the prune, says it is already gone."""
+
+    @extend_schema(
+        operation_id="api_claude_tasks_files_received",
+        tags=TAGS,
+        request=None,
+        responses={
+            200: s.ClaudeFileReceivedSerializer,
+            404: DetailSerializer,
+            409: OpenApiResponse(response=DetailSerializer, description="Not uploaded yet."),
+            503: OpenApiResponse(response=DetailSerializer, description="The bucket refused."),
+        },
+    )
+    def post(self, request, task_id: int, file_id: int):
+        owned = _owned_delivery(request, task_id, file_id)
+        if owned is None:
+            return _detail(
+                f"Task {task_id} has no delivered file {file_id} of yours.",
+                http.HTTP_404_NOT_FOUND,
+            )
+        with transaction.atomic():
+            row = ClaudeTaskFile.objects.select_for_update().get(pk=owned.pk)
+            if row.uploaded_at is None:
+                return _detail(
+                    "Nothing was deleted. That file has not reached the engine yet.",
+                    http.HTTP_409_CONFLICT,
+                )
+            now = timezone.now()
+            if row.purged_at is not None:
+                if row.received_at is None:
+                    row.received_at = now
+                    row.save(update_fields=["received_at"])
+                return Response({"file_id": row.id, "deleted": True, "detail": "Already deleted."})
+            try:
+                purge_bytes(row, now, received=True)
+            except StorageError as exc:
+                return _detail(
+                    f"The engine's copy was not deleted yet. {exc} It goes within 24 hours.",
+                    http.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+        return Response({"file_id": row.id, "deleted": True, "detail": "Deleted from the engine."})
 
 
 _PAGE_GONE = "That page link has expired or is not valid. Open the task again for a fresh one."

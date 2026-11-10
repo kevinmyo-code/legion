@@ -102,8 +102,13 @@ class FakeEngine:
                         # Like the engine (ticket 09): a page of a `deliver: phone` task is
                         # requested at finish; file ids are 1000 + task*10 + index.
                         page = engine.deliver.get(tid) == "phone"
+                        # ADR 0080: every found file of a `deliver: files` task that finished
+                        # done (the worker already turned an over-the-caps find into a question).
+                        files_too = (engine.deliver.get(tid) == "files"
+                                     and body.get("status") == "done")
                         files = [{"id": 1000 + tid * 10 + i, "name": f["name"], "size": f["size"],
-                                  "requested": page and f["name"].lower().endswith((".html", ".htm")),
+                                  "requested": files_too or (
+                                      page and f["name"].lower().endswith((".html", ".htm"))),
                                   "uploaded": False}
                                  for i, f in enumerate(body.get("found") or [])]
                         return self._reply(200, {"id": tid, "status": body.get("status"),

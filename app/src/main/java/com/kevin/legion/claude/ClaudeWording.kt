@@ -100,6 +100,10 @@ class ClaudeWording(
         "The $machine returns summaries only, so it can't send a page to your phone. Nothing was sent; " +
             "ask for it on the Alienware, or for the summary."
 
+    fun filesNeedFullMachine(machine: String): String =
+        "The $machine returns summaries only, so it can't send files to your phone. Nothing was sent; " +
+            "ask for them on the Alienware."
+
     fun summariesOnly(machine: String): String =
         "The $machine returns summaries only, never files, so nothing was sent to the phone."
 
@@ -118,8 +122,17 @@ class ClaudeWording(
             ClaudeTask.DONE -> buildString {
                 append("$head is done.")
                 summary?.let { append(" ").append(it) }
-                // A delivered page is opened, not saved; it is never offered as a file too.
-                val offer = task.files.filterNot { it.uploaded || (task.wantsPage && it.isPage) }
+                // A delivered page is opened, not saved; it is never offered as a file too. Files
+                // asked for by name (ADR 0080) are already coming: never offered a second time.
+                val offer = task.files.filterNot {
+                    it.uploaded || (task.wantsPage && it.isPage) || (task.wantsFiles && it.requested)
+                }
+                val coming = task.deliveredFiles
+                if (coming.isNotEmpty()) {
+                    val sent = coming.all { it.received || it.gone }
+                    append(if (sent) " Sent to your phone: " else " Coming to your phone: ")
+                    append(coming.joinToString { "${it.name} (${size(it.size)})" }).append(".")
+                }
                 val page = task.pages.firstOrNull()
                 when {
                     !task.wantsPage -> Unit
@@ -146,6 +159,39 @@ class ClaudeWording(
     }
 
     fun fileSaved(name: String): String = "$name is on your phone, in Downloads."
+
+    // --------------------------------------------------------------------------- files (ADR 0080)
+
+    /**
+     * A files task's result once its files are on the phone: what was done, which files landed
+     * (name and size, never a path), whether they are open on the screen now, and which did not
+     * arrive. No question: naming the files was the yes, and sharing them on is Kevin's tap.
+     */
+    fun filesDelivered(
+        task: ClaudeTask,
+        kept: List<ClaudeTaskFile>,
+        missing: List<ClaudeTaskFile>,
+        opened: Boolean,
+    ): String =
+        buildString {
+            val on = task.machine?.let { " on the $it" } ?: ""
+            append("Task ${task.id}$on (\"${task.request.take(REQUEST_SHOWN)}\") is done.")
+            task.summary?.trim()?.takeIf { it.isNotEmpty() }?.let { append(" ").append(it) }
+            if (kept.isNotEmpty()) {
+                append(" On your phone: ").append(kept.joinToString { "${it.name} (${size(it.size)})" }).append(".")
+                append(
+                    when {
+                        opened -> if (kept.size == 1) " It is open on the screen now." else
+                            " They are open on the screen now."
+                        else -> " Tap the notification to open " + (if (kept.size == 1) "it." else "them.")
+                    },
+                )
+            }
+            if (missing.isNotEmpty()) {
+                append(" Did not reach the phone: ").append(missing.joinToString { it.name })
+                append(". Ask again to retry.")
+            }
+        }
 
     // --------------------------------------------------------------------------- pages (ticket 09)
 

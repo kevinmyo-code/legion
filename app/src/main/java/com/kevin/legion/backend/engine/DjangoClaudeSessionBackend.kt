@@ -33,6 +33,9 @@ private data class FileRow(
     val size: Long? = null,
     val uploaded: Boolean = false,
     val requested: Boolean = false,
+    @SerialName("content_type") val contentType: String = "",
+    val received: Boolean = false,
+    val gone: Boolean = false,
 )
 
 @Serializable
@@ -77,7 +80,9 @@ private data class TaskRow(
         question = question,
         createdAt = instant(createdAt),
         finishedAt = instant(finishedAt),
-        files = files.map { ClaudeTaskFile(it.id, it.name, it.size, it.uploaded, it.requested) },
+        files = files.map {
+            ClaudeTaskFile(it.id, it.name, it.size, it.uploaded, it.requested, it.contentType, it.received, it.gone)
+        },
         parent = parent,
         origin = origin,
         deliver = deliver,
@@ -242,6 +247,9 @@ class DjangoClaudeSessionBackend(private val http: EngineHttp) : ClaudeSessionBa
             failed(result.exceptionOrNull())
         }
     }
+
+    override suspend fun received(taskId: Int, fileId: Int): ClaudeOutcome<Unit> =
+        outcome(http.post(CLAUDE_ROOT + "tasks/$taskId/files/$fileId/received/", "{}")) { }
 
     private fun <T> outcome(result: Result<EngineOk>, decode: (String) -> T): ClaudeOutcome<T> {
         if (result.isFailure) return failed(result.exceptionOrNull())

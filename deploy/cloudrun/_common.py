@@ -74,9 +74,11 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # memory-review (2026-11-09): LEGION_MEMORY_REVIEW=off|shadow|on; unset is off, so the daily review
 # is never minted and its endpoints refuse until Kevin sets it. LEGION_MEMORY_REVIEW_CAP: the most
 # changes one night applies (unset is 25).
+# ADR 0080: LEGION_CLAUDE_FILES_BUCKET names the private bucket a Claude task's delivered files wait
+# in (`deploy/claude_files/setup_bucket.sh`); without it they wait in Postgres instead.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
-    "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP",
+    "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because

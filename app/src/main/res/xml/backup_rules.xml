@@ -9,4 +9,6 @@
 -->
 <full-backup-content>
     <exclude domain="sharedpref" path="companion_profile.xml" />
+    <!-- ADR 0080: files a Claude task brought to the phone (a scan may be an ID). -->
+    <exclude domain="file" path="claude_files/" />
 </full-backup-content>

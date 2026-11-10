@@ -20,6 +20,11 @@ urlpatterns = [
         views.FileDownloadView.as_view(),
         name="claude-task-file",
     ),
+    path(
+        "tasks/<int:task_id>/files/<int:file_id>/received/",
+        views.FileReceivedView.as_view(),
+        name="claude-task-file-received",
+    ),
     path("pages/<int:file_id>/", views.PageView.as_view(), name="claude-page"),
     path("status/", views.StatusView.as_view(), name="claude-status"),
     path("machines/heartbeat/", views.HeartbeatView.as_view(), name="claude-heartbeat"),

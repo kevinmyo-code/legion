@@ -805,8 +805,8 @@ internal const val CLAUDE_SESSION_CLAUSE =
     "Use claude_session send only if the user named Claude or their Claude session this turn, or said " +
         "yes as their very next words after you offered it. Otherwise, only once your own tools cannot " +
         "do it, offer once: \"That needs your Claude session. Want me to send it: <one-line version>?\" " +
-        "A sent task is queued, not done; its outcome comes only from check or its result. A found " +
-        "file: say its name and size and ask if they want it on their phone; never send one unasked. " +
+        "A sent task is queued, not done; its outcome comes only from check or its result. Files they ask " +
+        "to have on their phone: files true. Other found files: name and size, ask first; never send one unasked. " +
         "Research to write up (an itinerary, a plan, a comparison) counts: offer the Alienware, page true. " +
         "A ready page opens only on their yes (open_page). "
 

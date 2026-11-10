@@ -27,6 +27,13 @@ enum class ClaudeDelivery { DELIVERED, RETRY }
  * on his yes, a file to take or leave); (c) it never speaks of his absence or engagement; (d)
  * [ClaudeWatch.silenced] stops every announcement in one instruction (the screen's switch, or
  * "stop telling me about Claude tasks" through the tool), and the result still waits on the screen.
+ *
+ * **Files to phone (ADR 0080).** A `deliver: files` task's requested files are fetched as soon as
+ * each is on the engine, kept in app-private storage ([shelf]), and the engine told it may delete
+ * its copy (`received`). Once all have come (or [FILES_WAIT] after the finish) [openFiles] opens
+ * them on the screen if LEGION is in front, or posts the notification that opens them on a tap, and
+ * the result is handed to [filesReady]. Silenced: the files still come and still open or notify
+ * (Kevin asked for them by name); only the spoken result is not said.
  */
 class ClaudeResultWatcher(
     private val controller: () -> ClaudeSessionController?,
@@ -43,8 +50,21 @@ class ClaudeResultWatcher(
     private val liveActive: () -> Boolean = { false },
     /** Every read this poll makes, for [ClaudeLiveWatch]; null when the read failed. */
     private val onOverview: (ClaudeOverview?) -> Unit = {},
+    /** Where a files task's files are kept (ADR 0080). Null: files tasks are announced like any other. */
+    private val shelf: ClaudeFileShelf? = null,
+    /**
+     * Opens task [taskId]'s kept files on the screen and returns true when LEGION was in front;
+     * otherwise posts the notification that opens them on a tap and returns false.
+     */
+    private val openFiles: suspend (taskId: Int) -> Boolean = { false },
+    /** The files result: said like any result, its notification opening the files when tapped. */
+    private val filesReady: suspend (taskId: Int, text: String) -> ClaudeDelivery =
+        { id, text -> announce(id, text, "") },
 ) {
     private val lock = Mutex()
+
+    /** Tasks whose files were already opened, so a "not now" retry does not open them twice. */
+    private val openedFor = mutableSetOf<Int>()
 
     /** One pass. Returns how many announcements were handed on. */
     suspend fun pollOnce(): Int = lock.withLock { poll() }
@@ -81,11 +101,60 @@ class ClaudeResultWatcher(
         // Re-read: a `claude_session` check may have read this result out (and forgotten the task)
         // while this poll was waiting on the engine. Saying it again is the double announcement.
         if (task.id !in watch.watchedTasks()) return false
+        val shelf = shelf
+        if (shelf != null && task.deliveredFiles.isNotEmpty()) return settleFiles(c, task, shelf)
         val only = overview.summariesOnly(task)
         val delivered = !watch.silenced() &&
             announce(task.id, c.wording.result(task, only), hint(task, only)) == ClaudeDelivery.DELIVERED
         if (delivered || watch.silenced()) watch.forgetTask(task.id)
         return delivered
+    }
+
+    /**
+     * ADR 0080: fetch each delivered file that is up and not here yet, keep it, tell the engine to
+     * delete its copy; then, once nothing more is coming, open and announce. True when announced.
+     */
+    @Suppress("ReturnCount") // still coming, silenced, or the announcement
+    private suspend fun settleFiles(c: ClaudeSessionController, task: ClaudeTask, shelf: ClaudeFileShelf): Boolean {
+        val wanted = task.deliveredFiles
+        for (f in wanted) bring(c, task.id, f, shelf)
+        val kept = wanted.filter { shelf.has(task.id, it.id) }
+        val coming = wanted.filter { it !in kept && !it.gone }
+        if (coming.isNotEmpty() && !filesWaitOver(task)) return false
+        // Opened (or its notification posted) even when announcements are off: Kevin asked for
+        // these by name, so this is the delivery, not a raise. Only the spoken line is silenced.
+        val opened = kept.isNotEmpty() && (task.id in openedFor || openFiles(task.id))
+        if (opened) openedFor += task.id
+        if (watch.silenced()) {
+            watch.forgetTask(task.id)
+            openedFor -= task.id
+            return false
+        }
+        val text = c.wording.filesDelivered(task, kept, wanted - kept.toSet(), opened)
+        val delivered = filesReady(task.id, text) == ClaudeDelivery.DELIVERED
+        if (delivered) {
+            watch.forgetTask(task.id)
+            openedFor -= task.id
+        }
+        return delivered
+    }
+
+    /**
+     * One delivered file: fetched and kept if it is up and not here yet; then, once here (now, or
+     * from an earlier poll whose receipt did not reach the engine), the engine told its copy may
+     * go. A failed fetch or receipt is retried next poll; the engine's 24 h purge backs it.
+     */
+    private suspend fun bring(c: ClaudeSessionController, taskId: Int, f: ClaudeTaskFile, shelf: ClaudeFileShelf) {
+        if (!shelf.has(taskId, f.id) && f.uploaded && !f.gone) {
+            val bytes = (c.download(taskId, f.id) as? ClaudeOutcome.Ok)?.value
+            if (bytes != null) shelf.keep(taskId, f.id, f.name, bytes)
+        }
+        if (shelf.has(taskId, f.id) && !f.received && !f.gone) c.received(taskId, f.id)
+    }
+
+    private fun filesWaitOver(task: ClaudeTask): Boolean {
+        val finished = task.finishedAt ?: return true
+        return Duration.between(finished, now()) >= FILES_WAIT
     }
 
     /** A watched task older than the list: read it alone. A 404 forgets it. */
@@ -132,6 +201,9 @@ class ClaudeResultWatcher(
         /** How long a finished task's result waits for its page to reach the engine. */
         val PAGE_WAIT: Duration = Duration.ofMinutes(3)
 
+        /** How long a files task's result waits for its files (ADR 0080: up to 20, 25 MB each). */
+        val FILES_WAIT: Duration = Duration.ofMinutes(10)
+
         /** The `claude_session` action a yes to "want me to open it?" makes. */
         const val OPEN_PAGE_ACTION = "open_page"
         private const val LIMIT = 50
@@ -142,7 +214,9 @@ class ClaudeResultWatcher(
          * makes. Blank when the result asks nothing, which is also what keeps the mic closed.
          */
         fun hint(task: ClaudeTask, summariesOnly: Boolean): String {
-            val files = task.files.filterNot { it.uploaded || (task.wantsPage && it.isPage) }
+            val files = task.files.filterNot {
+                it.uploaded || (task.wantsPage && it.isPage) || (task.wantsFiles && it.requested)
+            }
             return when {
                 task.needsConfirmation ->
                     "On a yes: claude_session answer, task_id ${task.id}, yes true."
