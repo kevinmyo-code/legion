@@ -199,6 +199,9 @@ INSTALLED_APPS = [
     # open-loops map (ADR 0085): proposed to-dos from the member's own words, private to him
     # (`public.open_loops`, `open_loop_runs`, `open_loop_settings`).
     "open_loops",
+    # Architecture review 2026-11-10, item 15: the engine's model-call helper (retry and
+    # backoff), the model config route, and `llm_usage`, per-member token accounting.
+    "llm",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).

@@ -45,6 +45,7 @@ from urllib.parse import urlparse
 from brief.compose import line, section
 from ingest import statements
 from ingest.drive import Response, Transport
+from llm.client import retrying
 
 logger = logging.getLogger(__name__)
 
@@ -399,7 +400,9 @@ def build_news(
     key = key if key is not None else statements.gemini_key()
     if not key:
         return failed(NO_KEY)
-    send = transport or _transport
+    # Item 15: one retry on 429/5xx (never on a timeout) for the real transport; a test's
+    # injected transport is used as given.
+    send = transport or retrying(_transport, attempts=2)
     call_id = uuid.uuid4()
     model = statements.GEMINI_MODEL
     try:

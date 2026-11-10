@@ -53,6 +53,8 @@ class WebAnswer:
     sources: list[dict] = field(default_factory=list)
     search_queries: list[str] = field(default_factory=list)
     model: str = statements.GEMINI_MODEL
+    # Google's token counts and an estimated cost (`llm.client.usage_of`), for `llm_usage`.
+    usage: dict = field(default_factory=dict)
 
 
 class SearchFailed(Exception):
@@ -171,4 +173,8 @@ def search(query: str, *, transport: Transport | None = None, key: str | None = 
             "Nothing was found. The web search's answer could not be read, so nothing is known "
             "from it."
         ) from None
-    return parse(query, payload)
+    found = parse(query, payload)
+    from llm.client import usage_of
+
+    found.usage = usage_of(payload)
+    return found

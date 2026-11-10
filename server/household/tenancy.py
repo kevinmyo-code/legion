@@ -200,6 +200,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # who set them (`OWNER_PATHS`; `watches/models.py`).
     "watches",
     "watch_firings",
+    # Architecture review 2026-11-10, item 15: model-call and Live-mint accounting, per member
+    # where known (`llm/models.py`). Born tenanted; read only by the member cap (`llm/cap.py`).
+    "llm_usage",
     # open-loops map (ADR 0085): proposed to-dos, the ledger of records read for them, and the
     # member's switch, always private to the member (`OWNER_PATHS`; `open_loops/models.py`).
     "open_loops",
@@ -288,6 +291,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "open_loops",
         "open_loop_runs",
         "open_loop_settings",
+        "llm_usage",
     }
 )
 

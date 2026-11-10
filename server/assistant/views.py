@@ -57,6 +57,7 @@ from engine_mcp.tools import run_engine_tool, run_tool
 from household.permissions import IsHouseholdMember
 from household.tenancy import household_of
 from ingest.statements import gemini_key
+from llm import cap as member_cap
 
 ASSISTANT_TAGS = ["assistant"]
 
@@ -225,7 +226,8 @@ class AssistantSessionView(_AssistantView):
                 DetailSerializer,
                 description=(
                     "Too many starts; nothing started. For a recruiter's demo visit, also: "
-                    "\"Today's demo budget is used up. Try again tomorrow.\""
+                    "\"Today's demo budget is used up. Try again tomorrow.\" For a member with "
+                    "`LEGION_MEMBER_DAILY_CAP` set: today's own spend limit is used up."
                 ),
             ),
             502: OpenApiResponse(
@@ -267,6 +269,15 @@ class AssistantSessionView(_AssistantView):
                     status=status.HTTP_429_TOO_MANY_REQUESTS,
                 )
 
+        # Q9 (architecture review 2026-11-10): a member's own daily cap, off unless
+        # LEGION_MEMBER_DAILY_CAP is set. Recruiters never reach it (`llm/cap.py`).
+        admitted = member_cap.admit_live_mint(request.user, household_of(request), live.MODEL)
+        if admitted is None:
+            _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
+            return Response(
+                {"detail": member_cap.USED_UP}, status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
         token_request, companion = token_request_for(
             request.user,
             now=datetime.now(UTC),
@@ -277,6 +288,7 @@ class AssistantSessionView(_AssistantView):
         except live.MintFailed as exc:
             if reservation is not None:
                 demo_budget.release(reservation)
+            admitted.release()
             _audit(request, AssistantCall.SESSION, Outcome.FAILED)
             return Response({"detail": exc.message}, status=exc.status)
         _audit(request, AssistantCall.SESSION, Outcome.OK)

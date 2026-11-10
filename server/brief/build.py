@@ -22,6 +22,7 @@ from brief.compose import Viewer, canvas_section, car_section, money_section
 from brief.models import KEEP_DAYS, Brief, Trigger
 from brief.news import NewsResult, build_news
 from household.timezones import zone_named
+from llm import client as llm_client
 
 BUILD_HOUR = 5
 
@@ -92,6 +93,18 @@ def build_for_household(
     zone, local, notes = household_clock(household, now)
     today = local.date()
     news = (news_builder or build_news)(today)
+    if news.model:
+        # Item 15: the News call in `llm_usage`, charged to the one member who asked for a
+        # refresh, else to the household alone (the scheduled build).
+        members = list(members) if members is not None else None
+        asked = members or []
+        llm_client.record(
+            household=household,
+            feature="brief_news",
+            model=news.model,
+            usage=news.usage,
+            user=asked[0] if len(asked) == 1 else None,
+        )
     briefs = []
     for member in members if members is not None else members_of(household):
         brief = Brief(

@@ -1951,6 +1951,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Gemini model ids clients should use */
+        get: operations["api_config_models_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/asset/{kind}": {
         parameters: {
             query?: never;
@@ -6782,8 +6799,9 @@ export interface components {
             db: string;
         };
         /**
-         * @description The 503 body. `detail` is psycopg's own message, verbatim - the
-         *     check says what it actually found rather than a generic failure.
+         * @description The 503 body. `detail` names the failure's class only: psycopg's own
+         *     message can carry the database host and user, and this route is public, so
+         *     the message itself goes to the server log, never to the caller.
          */
         HealthError: {
             /** @description Always "error" on a 503. */
@@ -7621,6 +7639,16 @@ export interface components {
          * @enum {string}
          */
         ModeEnum: "create" | "update";
+        ModelConfig: {
+            /** @description Gemini Live: the voice conversation (phone, head unit, web). */
+            live: string;
+            /** @description Cheap one-shot calls: sub-agents, the engine's jobs. */
+            text: string;
+            /** @description Typed chat, voice-note summaries, the sub-agent fallback. */
+            chat: string;
+            /** @description Rare, heavy structured generation. */
+            schema_generator: string;
+        };
         NetWorth: {
             currency: string;
             /** Format: date */
@@ -10478,7 +10506,7 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
-            /** @description Too many starts; nothing started. For a recruiter's demo visit, also: "Today's demo budget is used up. Try again tomorrow." */
+            /** @description Too many starts; nothing started. For a recruiter's demo visit, also: "Today's demo budget is used up. Try again tomorrow." For a member with `LEGION_MEMBER_DAILY_CAP` set: today's own spend limit is used up. */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -14537,6 +14565,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_config_models_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every key always present. A client that cannot reach this, or meets a key it does not know, uses its own bundled constant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelConfig"];
                 };
             };
         };
@@ -20857,7 +20905,7 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
-            /** @description The database did not answer. The body carries psycopg's own message. */
+            /** @description The database did not answer. The body names the error's class only; the full message is in the server log. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -20886,7 +20934,7 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
-            /** @description The database did not answer. The body carries psycopg's own message. */
+            /** @description The database did not answer. The body names the error's class only; the full message is in the server log. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -80,6 +80,7 @@ from ingest.drive import (
     urllib_transport,
 )
 from ingest.models import IngestRun, SessionSource, Source
+from llm.client import retrying
 
 GEMINI_KEY_ENV = "LEGION_GEMINI_KEY"
 FOLDER_CONFIG_KEY = "statements_folder_id"
@@ -335,7 +336,8 @@ def gemini_extract(content: bytes, *, key: str, transport: Transport | None = No
     """The model's reading of one PDF statement, as a dict in LEGION's format.
     Raises `GeminiUnavailable`, `GeminiKeyRefused` or `GeminiRefusedDocument`;
     no message carries the document or the key."""
-    send = transport or gemini_transport
+    # Item 15: a statement read is a job, not a request: up to three attempts on 429/5xx.
+    send = transport or retrying(gemini_transport, attempts=3)
     try:
         response = send(
             "POST",
