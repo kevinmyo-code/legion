@@ -66,8 +66,10 @@ class ClaudeWording(
 
     // --------------------------------------------------------------------------- sending
 
-    fun sent(created: ClaudeCreated, followUp: Boolean = false, confirmsTask: Int? = null): String {
-        if (followUp) return followUpQueued(created, confirmsTask)
+    fun sent(created: ClaudeCreated, followUp: Boolean = false, confirmsTask: Int? = null): String =
+        if (followUp) followUpQueued(created, confirmsTask) else taskSent(created)
+
+    private fun taskSent(created: ClaudeCreated): String {
         val what = "Task ${created.id}"
         val m = created.machine ?: return "$what is queued for whichever machine comes on first. It is not done; " +
             "I'll say when there is a result."

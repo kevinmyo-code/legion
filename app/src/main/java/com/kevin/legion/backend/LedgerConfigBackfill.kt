@@ -93,22 +93,24 @@ object LedgerConfigBackfill {
                         LedgerConfigBackfillCursor.advance(context, table, localId(row))
                     } else {
                         val error = result.exceptionOrNull()
-                        val message = error?.message ?: "unknown error"
-                        if (isDefinitiveRefusal(error)) {
-                            // Stepped over, never retried: see [isDefinitiveRefusal].
-                            failure = (failure?.let { "$it; " } ?: "") +
-                                "$table: refused by the engine, skipped: $message (row id ${localId(row)}, guid ${localGuid(row)})"
-                            LedgerConfigBackfillCursor.advance(context, table, localId(row))
-                            continue
-                        }
-                        failure = "$table: $message (row id ${localId(row)}, guid ${localGuid(row)})"
-                        break
+                        val line = "$table: " + failureLine(error, "row id ${localId(row)}, guid ${localGuid(row)}")
+                        failure = failure?.let { "$it; $line" } ?: line
+                        // A refusal is stepped over, never retried (see [isDefinitiveRefusal]);
+                        // anything else stops this table so the next run retries the row.
+                        if (!isDefinitiveRefusal(error)) break
+                        LedgerConfigBackfillCursor.advance(context, table, localId(row))
                     }
                 }
             }
         }
 
         return TableResult(pushed, alreadyPresent, skippedLocalOnlyDeleted, failure)
+    }
+
+    private fun failureLine(error: Throwable?, where: String): String {
+        val message = error?.message ?: "unknown error"
+        val prefix = if (isDefinitiveRefusal(error)) "refused by the engine, skipped: " else ""
+        return "$prefix$message ($where)"
     }
 
     /**
@@ -120,10 +122,12 @@ object LedgerConfigBackfill {
      */
     internal fun isDefinitiveRefusal(error: Throwable?): Boolean {
         val refused = (error as? EngineHttpException)?.failure as? EngineFailure.Refused ?: return false
-        return refused.status in CLIENT_ERRORS && refused.status != REQUEST_TIMEOUT && refused.status != TOO_MANY_REQUESTS
+        return refused.status in CLIENT_ERROR_FIRST..CLIENT_ERROR_LAST &&
+            refused.status != REQUEST_TIMEOUT && refused.status != TOO_MANY_REQUESTS
     }
 
-    private val CLIENT_ERRORS = 400..499
+    private const val CLIENT_ERROR_FIRST = 400
+    private const val CLIENT_ERROR_LAST = 499
     private const val REQUEST_TIMEOUT = 408
     private const val TOO_MANY_REQUESTS = 429
 

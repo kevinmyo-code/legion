@@ -204,8 +204,7 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
         )
         // A "nearest" ask looks around the fix first, then widens only when nothing is there.
         val boxed = parsed.nearest && along == null && ctx.fix != null
-        val first = search.search(if (boxed) request.copy(withinM = NEAREST_RADIUS_M) else request)
-        val answer = if (boxed && first == SearchAnswer.NoMatch) search.search(request) else first
+        val answer = searchNearestFirst(request, boxed)
         return when (answer) {
             is SearchAnswer.Failed -> SourceAnswer.Unreadable("search couldn't be reached: ${answer.why}")
             SearchAnswer.NoMatch -> SourceAnswer.NoMatch
@@ -215,12 +214,21 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
                         c.copy(distanceM = c.distanceM ?: Geo.distanceM(fix, GeoPoint(c.latitude, c.longitude)))
                     }
                 } ?: answer.candidates
-                val near = if (parsed.nearest && along == null) SearchRanking.preferLocal(hits, NEAREST_RADIUS_M) else hits
-                val ranked = SearchRanking.rank(parsed, along != null, near)
+                val ranked = SearchRanking.rank(parsed, along != null, nearestFirstPass(parsed, along, hits))
                 val comparable = SearchAmbiguity.comparable(query, ranked)
                 SourceAnswer.Hits(comparable, SearchAmbiguity.isAmbiguous(parsed, along != null, comparable))
             }
         }
+    }
+
+    /** A "nearest" ask (not along a route) keeps only the local hits when there are any. */
+    private fun nearestFirstPass(parsed: ParsedSearch, along: List<GeoPoint>?, hits: List<Candidate>): List<Candidate> =
+        if (parsed.nearest && along == null) SearchRanking.preferLocal(hits, NEAREST_RADIUS_M) else hits
+
+    /** One search, boxed around the fix first for a "nearest" ask and widened only on no match. */
+    private suspend fun searchNearestFirst(request: SearchQuery, boxed: Boolean): SearchAnswer {
+        val first = search.search(if (boxed) request.copy(withinM = NEAREST_RADIUS_M) else request)
+        return if (boxed && first == SearchAnswer.NoMatch) search.search(request) else first
     }
 
     companion object {

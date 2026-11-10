@@ -410,7 +410,7 @@ object SpotifyController {
     internal fun message(outcome: PlayOutcome, description: String): String = when (outcome) {
         is PlayOutcome.Started ->
             "Playing \"${outcome.pickedLabel ?: description}\" on Spotify." +
-                (if (outcome.repeatCleared) " Repeat was on, so I turned it off; it moves on after this song." else "") +
+                (if (outcome.repeatCleared) " $REPEAT_CLEARED" else "") +
                 (outcome.premiumWarning?.let { " $it" } ?: "")
         PlayOutcome.NotInstalled ->
             "Spotify isn't installed on this phone, so there's nothing to play \"$description\" through."
@@ -499,7 +499,11 @@ object SpotifyController {
         if (!started) return@withContext PlayOutcome.PlayRejected
 
         val repeatCleared = uri.startsWith(TRACK_URI_PREFIX) && clearRepeatBestEffort(r)
-        PlayOutcome.Started(premiumWarning = premiumWarningIfNeeded(r), pickedLabel = pickedLabel, repeatCleared = repeatCleared)
+        PlayOutcome.Started(
+            premiumWarning = premiumWarningIfNeeded(r),
+            pickedLabel = pickedLabel,
+            repeatCleared = repeatCleared,
+        )
     }
 
     /**
@@ -556,6 +560,9 @@ object SpotifyController {
     /** Told, never gated on (map decision 7) - see [premiumWarningIfNeeded]. */
     private const val PREMIUM_WARNING =
         "Heads up - this Spotify account doesn't look like it has Premium, so on-demand play may not work as expected."
+
+    /** Said when [playUri] turned repeat off for a single track. */
+    private const val REPEAT_CLEARED = "Repeat was on, so I turned it off; it moves on after this song."
 
     /** A single track's URI: a context of one, which repeat loops (see [shouldClearRepeat]). */
     private const val TRACK_URI_PREFIX = "spotify:track:"

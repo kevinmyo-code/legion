@@ -226,8 +226,9 @@ class MapboxPlaceSearch : PlaceSearch {
 
     /** [SearchQuery.withinM] around the fix as a box, or null when the query is not bounded. */
     private fun boxFor(query: SearchQuery): BoundingBox? {
-        val near = query.near ?: return null
-        val within = query.withinM ?: return null
+        val near = query.near
+        val within = query.withinM
+        if (near == null || within == null) return null
         val b = GeoBox.around(near, within)
         return BoundingBox.fromLngLats(b.west, b.south, b.east, b.north)
     }
@@ -260,16 +261,17 @@ object GeoBox {
 
     private const val METRES_PER_DEGREE_LAT = 111_320.0
     private const val MAX_LAT = 89.9
+    private const val MAX_LNG = 180.0
     private const val MIN_COS = 0.01
 
     fun around(center: GeoPoint, radiusM: Double): Box {
         val dLat = radiusM / METRES_PER_DEGREE_LAT
         val cos = Math.cos(Math.toRadians(center.latitude)).coerceAtLeast(MIN_COS)
-        val dLng = (radiusM / (METRES_PER_DEGREE_LAT * cos)).coerceAtMost(180.0)
+        val dLng = (radiusM / (METRES_PER_DEGREE_LAT * cos)).coerceAtMost(MAX_LNG)
         return Box(
-            west = (center.longitude - dLng).coerceAtLeast(-180.0),
+            west = (center.longitude - dLng).coerceAtLeast(-MAX_LNG),
             south = (center.latitude - dLat).coerceAtLeast(-MAX_LAT),
-            east = (center.longitude + dLng).coerceAtMost(180.0),
+            east = (center.longitude + dLng).coerceAtMost(MAX_LNG),
             north = (center.latitude + dLat).coerceAtMost(MAX_LAT),
         )
     }

@@ -358,7 +358,10 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
         val ids = detail?.pendingClear.orEmpty().toSet()
         if (checklistId != null && ids.isNotEmpty()) {
             val context = app
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+            val scope = kotlinx.coroutines.CoroutineScope(
+                kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+            )
+            scope.launch {
                 runCatching { ChecklistController.clearTicked(context, checklistId, onlyIds = ids) }
             }
         }
@@ -372,6 +375,7 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Removes the lines [clearTicked] hid, exactly those, through the same controller call voice uses. */
+    @Suppress("ReturnCount") // no list open, no list, nothing pending
     fun commitClearTicked() {
         val detail = _state.value.detail ?: return
         val checklistId = detail.checklist?.id ?: return

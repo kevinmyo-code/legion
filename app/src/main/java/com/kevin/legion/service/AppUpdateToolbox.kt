@@ -97,6 +97,7 @@ object AppUpdateToolbox {
      * awaited for at most [checkWaitMs] while it carries on in [checkScope]. A check still
      * running says so in words; the ready notification and the spoken offer follow on their own.
      */
+    @Suppress("ReturnCount") // a download under way, a check still running, then the result
     internal suspend fun check(controller: UpdateController): JSONObject {
         (controller.state.value as? UpdateState.Downloading)?.let { return stillWorking(it) }
         val running = checkScope.async { controller.check() }
@@ -127,7 +128,8 @@ object AppUpdateToolbox {
             is UpdateState.UpToDate -> result(true, "LEGION is up to date. ${controller.whatsNew()}")
             is UpdateState.Available -> result(
                 true,
-                "An update is published, ${UpdateRules.describe(state.release)}, but it is not ready to install. ${state.why}",
+                "An update is published, ${UpdateRules.describe(state.release)}, but it is not ready to " +
+                    "install. ${state.why}",
             )
             is UpdateState.Ready -> {
                 controller.offered()
@@ -137,7 +139,8 @@ object AppUpdateToolbox {
                         "installed yet. Ask whether to install it now; installing closes LEGION for about a minute.",
                 )
             }
-            is UpdateState.Waiting -> result(true, "LEGION ${state.release.versionName} installs as soon as this conversation ends.")
+            is UpdateState.Waiting ->
+                result(true, "LEGION ${state.release.versionName} installs as soon as this conversation ends.")
             is UpdateState.Installing -> result(true, "LEGION ${state.release.versionName} is installing now.")
             is UpdateState.Failed -> result(false, state.sentence)
             else -> result(false, "The update check did not finish. Nothing was installed.")

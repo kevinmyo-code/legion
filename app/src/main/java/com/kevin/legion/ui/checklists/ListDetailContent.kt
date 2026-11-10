@@ -259,7 +259,11 @@ private fun DetailTopBar(name: String, builtIn: Boolean, clearTicked: ClearTicke
                     DropdownMenuItem(
                         text = { Text("Clear ticked items") },
                         enabled = clearTicked == ClearTickedMenu.ENABLED,
-                        onClick = { menuOpen = false; callbacks.onToggleOverflowMenu(false); callbacks.onClearTicked() },
+                        onClick = {
+                            menuOpen = false
+                            callbacks.onToggleOverflowMenu(false)
+                            callbacks.onClearTicked()
+                        },
                     )
                 }
                 if (!builtIn) {

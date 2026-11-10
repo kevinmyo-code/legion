@@ -386,6 +386,7 @@ object ChecklistController {
      * the lines it hid, not whatever happens to be ticked by then). A routine (daily/weekly) is
      * refused: its ticks are per day and reset on their own, and its lines are the routine itself.
      */
+    @Suppress("ReturnCount") // no list, a routine, an unreadable list, then the clear
     suspend fun clearTicked(
         context: Context,
         checklistId: Long,
@@ -402,7 +403,8 @@ object ChecklistController {
         val ticked = when (val loaded = itemsWithTickState(context, checklistId)) {
             is ChecklistItemsResult.Failed ->
                 return ClearTickedOutcome.Refused("Could not read \"${checklist.name}\", so nothing was removed.")
-            is ChecklistItemsResult.Loaded -> loaded.items.filter { it.ticked && (onlyIds == null || it.item.id in onlyIds) }
+            is ChecklistItemsResult.Loaded ->
+                loaded.items.filter { it.ticked && (onlyIds == null || it.item.id in onlyIds) }
         }
         ticked.forEach { deleteItem(context, it.item.id, at) }
         return ClearTickedOutcome.Cleared(ticked.map { it.item })
