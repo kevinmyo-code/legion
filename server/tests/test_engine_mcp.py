@@ -155,6 +155,34 @@ def test_a_legacy_client_initializes_and_lists_without_a_session(mcp_write):
     assert names == set(TOOLS_BY_NAME) - SCREEN_ONLY_TOOLS
 
 
+def _phone_rpc(client, method: str, meta: dict):
+    """The request `EngineMcpClient.rpc` (the phone) sends: its four headers and `_meta`."""
+    headers = {
+        "HTTP_ACCEPT": "application/json, text/event-stream",
+        "HTTP_MCP_PROTOCOL_VERSION": MODERN,
+        "HTTP_MCP_METHOD": method,
+    }
+    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": {"_meta": meta}}
+    return client.post(
+        "/mcp", data=json.dumps(body), content_type="application/json; charset=UTF-8", **headers
+    )
+
+
+def test_the_phone_envelope_without_client_capabilities_was_the_400(mcp_read):
+    # Phone audit 2026-11-10: every phone POST /mcp came back 400 since 2026-10-13. The phone
+    # sent the protocol version alone; the SDK requires the capabilities key beside it.
+    old = _phone_rpc(mcp_read, "tools/list", {mcp_types.PROTOCOL_VERSION_META_KEY: MODERN})
+    assert old.status_code == 400, old.content
+    assert "clientCapabilities" in old.content.decode()
+    new = _phone_rpc(
+        mcp_read,
+        "tools/list",
+        {mcp_types.PROTOCOL_VERSION_META_KEY: MODERN, mcp_types.CLIENT_CAPABILITIES_META_KEY: {}},
+    )
+    assert new.status_code == 200, new.content
+    assert json.loads(new.content)["result"]["tools"]
+
+
 def test_tools_list_is_the_registry_with_its_hints(mcp_read):
     response = rpc(mcp_read, "tools/list")
     tools = {tool["name"]: tool for tool in json.loads(response.content)["result"]["tools"]}
