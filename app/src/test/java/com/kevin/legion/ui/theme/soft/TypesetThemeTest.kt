@@ -145,6 +145,22 @@ class TypesetThemeTest {
         }
     }
 
+    @Test
+    fun `Typeset sets Source Serif 4 on the one scale, Matrix keeps Figtree`() {
+        val day = softLook(matrix = false, edition = TypesetEdition.DAY).typography
+        assertEquals(SourceSerif, day.bodyLarge.fontFamily)
+        assertEquals(SoftTypography, softLook(matrix = false, edition = TypesetEdition.NIGHT).typography)
+        assertEquals(SoftFigtreeTypography, softLook(matrix = true, edition = TypesetEdition.DAY).typography)
+        val scale = listOf(TypesetType.caps, TypesetType.small, TypesetType.body, TypesetType.lead,
+            TypesetType.fig, TypesetType.hero, TypesetType.time).map { it.fontSize.value }
+        assertEquals(listOf(12f, 14f, 17f, 21f, 34f, 64f, 92f), scale)
+        val sizes = with(day) {
+            listOf(displayLarge, headlineMedium, titleLarge, titleMedium, bodyLarge, bodyMedium, labelMedium)
+        }.map { it.fontSize.value }.toSet()
+        assertTrue("every Material role sits on the scale: $sizes", sizes.all { it in scale })
+        assertEquals(SourceSerifDisplay, TypesetType.time.fontFamily)
+    }
+
     private fun lum(c: Color): Double {
         fun ch(v: Float): Double = if (v <= 0.03928f) v / 12.92 else ((v + 0.055) / 1.055).pow(2.4)
         return 0.2126 * ch(c.red) + 0.7152 * ch(c.green) + 0.0722 * ch(c.blue)

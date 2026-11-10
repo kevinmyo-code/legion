@@ -5,6 +5,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -207,7 +208,7 @@ internal val SoftSemantics = softSemantics(SoftDarkPalette)
  * [ProvideTypesetEdition]) or, where nothing provides one, the phone's own dark theme. It provides
  * [LocalSoftPalette] too, so every `SoftColors.x` read under it follows the edition. Under Matrix
  * mode soft screens keep exactly their old look: [SoftDarkPalette] behind `SoftColors`, Matrix's
- * scheme and semantics on top.
+ * scheme and semantics on top, Figtree type.
  *
  * Also provides [LocalLegionSemantics] (the look's semantics) and [LocalSoftActive] = true, which is what
  * turns the shared `ui/common` primitives (`DeckPane`, `DeckScreenHeader`, `DeckRow`, ...) and
@@ -241,7 +242,7 @@ fun SoftTheme(content: @Composable () -> Unit) {
     ) {
         MaterialTheme(
             colorScheme = look.scheme,
-            typography = SoftTypography,
+            typography = look.typography,
             shapes = SoftShapes,
             content = content,
         )
@@ -254,15 +255,23 @@ private fun systemEdition(): TypesetEdition =
     if (isSystemInDarkTheme()) TypesetEdition.NIGHT else TypesetEdition.DAY
 
 /** What [SoftTheme] provides: the palette behind `SoftColors`, the Material scheme, the semantics. */
-internal data class SoftLook(val palette: SoftPalette, val scheme: ColorScheme, val semantics: LegionSemantics)
+internal data class SoftLook(
+    val palette: SoftPalette,
+    val scheme: ColorScheme,
+    val semantics: LegionSemantics,
+    val typography: Typography,
+)
 
 /**
  * Pure choice of look (ADR 0081). Matrix mode keeps exactly the look soft screens had before
  * Typeset: the soft-dark palette behind `SoftColors`, with Matrix's scheme and semantics on top.
- * Otherwise the Typeset edition: paper by day, cream on warm black by night.
+ * Otherwise the Typeset edition: paper by day, cream on warm black by night, set in Source Serif 4.
  */
 internal fun softLook(matrix: Boolean, edition: TypesetEdition): SoftLook = when {
-    matrix -> SoftLook(SoftDarkPalette, pickColorScheme(true, SoftColorScheme), pickSemantics(true, SoftSemantics))
-    edition == TypesetEdition.DAY -> SoftLook(TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics)
-    else -> SoftLook(TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics)
+    matrix -> SoftLook(
+        SoftDarkPalette, pickColorScheme(true, SoftColorScheme), pickSemantics(true, SoftSemantics),
+        SoftFigtreeTypography,
+    )
+    edition == TypesetEdition.DAY -> SoftLook(TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics, SoftTypography)
+    else -> SoftLook(TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics, SoftTypography)
 }
