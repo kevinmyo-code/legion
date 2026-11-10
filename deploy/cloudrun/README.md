@@ -117,6 +117,98 @@ gcloud run jobs executions list --job legion-worker --region us-south1
 gcloud run jobs execute legion-worker --region us-south1 --args=manage.py,backup_nightly
 ```
 
+## Shipping a commit: `deploy/ship.py`
+
+One versioned tool ships one commit: the Claude worker, a fast-forward of `dev` and `main`, the
+image, migrations, the job, the service, the schedule, a health check and the phone's OTA. It
+replaces the per-round bash scripts. Every step checks whether it is already done, so a failed
+run is fixed and run again.
+
+```
+# from a clean checkout that is (or will be moved to) the commit; .env stays in deploy/cloudrun/
+python deploy/ship.py --sha <40-hex> --deploy-tree ../legion-deploy \
+    --worker-tree ../legion-claude-on \
+    --apk <app-fast.apk> --apk-sha <sha256> --notes "what the phone gets" --dry-run
+# the same without --dry-run ships it
+```
+
+- **`--dry-run`** runs every read-only check against the live project and prints the plan:
+  refs, the live revision and which commit it runs, the worker, the APK, flag decisions,
+  the env-drop check, the rollback facts. Nothing is pushed, checked out, built, deployed,
+  executed, scheduled or written.
+- **Order:** worker, then dev/main, then image `server:<sha>`, then the job on that image's
+  DIGEST, then `manage.py migrate` as a one-off job execution, then the service on the same
+  digest. Migrations are applied before any request reaches new code, so the service may carry
+  `LEGION_SKIP_MIGRATE=1` (set it in `flags.yaml`).
+- **The job image and migrate go in a quiet gap**: ship.py waits until no `deploy/crontab` line
+  is due for 150 s, so no scheduled task runs the new image against the old schema.
+- **Refuses inside :30-:45** (the :40 consolidate cron), on a moved ref, on a non-fast-forward,
+  on a dirty tree, on a running worker task, on an APK whose sha256 or versionCode is wrong, on a
+  flag `.env` and `flags.yaml` disagree about, and on any live env name the deploy would drop.
+- **Flags** live in `flags.yaml` (committed, non-secret). A flag that mounts a secret turns on
+  only when that secret exists and the runtime account can read it; otherwise ship.py says what
+  is owed. `tools/tests/test_ship.py` checks each name is read by the server and passed by
+  `_common.py`.
+- **Records** go to `~/.legion/ships/<sha12>.rollback.json` (written once, before anything
+  changes) and `<sha12>.shipped.json`. Never in the repo.
+
+## Shipping from GitHub (Workload Identity Federation)
+
+`.github/workflows/ship.yml` runs `deploy/ship.py --no-worker` (no laptop, no APK) when someone
+clicks "Run workflow" on the Actions tab. It has no other trigger. It authenticates with Workload
+Identity Federation, so no service-account key exists anywhere. **Nothing below has been created;
+each step is for the project owner to run once.** Replace `PROJECT_ID`, `PROJECT_NUMBER` and
+`OWNER/REPO`.
+
+1. **A deploy service account**, separate from the runtime one:
+   ```
+   gcloud iam service-accounts create legion-ship --project PROJECT_ID --display-name "LEGION ship (GitHub)"
+   ```
+2. **Its roles**, the least that ship.py uses:
+   ```
+   SA=legion-ship@PROJECT_ID.iam.gserviceaccount.com
+   for role in roles/run.developer roles/cloudbuild.builds.editor roles/artifactregistry.writer \
+               roles/cloudscheduler.admin roles/logging.viewer roles/storage.admin \
+               roles/secretmanager.viewer roles/serviceusage.serviceUsageConsumer; do
+     gcloud projects add-iam-policy-binding PROJECT_ID --member "serviceAccount:$SA" --role "$role"
+   done
+   # deploy as the runtime account (the service and the job run as it)
+   gcloud iam service-accounts add-iam-policy-binding PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+     --member "serviceAccount:$SA" --role roles/iam.serviceAccountUser
+   ```
+   `roles/secretmanager.viewer` lets ship.py read each secret's IAM policy (the "readable"
+   check); it cannot read a secret's value. `roles/storage.admin` is for Cloud Build's source
+   upload bucket; narrow it to that bucket if preferred. `install_schedule.py` only adds the job's
+   `run.invoker` binding when it is missing; once it exists, `roles/run.developer` is enough.
+3. **A pool and a provider that trust only this repository:**
+   ```
+   gcloud iam workload-identity-pools create github --project PROJECT_ID --location global \
+     --display-name "GitHub Actions"
+   gcloud iam workload-identity-pools providers create-oidc legion --project PROJECT_ID \
+     --location global --workload-identity-pool github \
+     --issuer-uri "https://token.actions.githubusercontent.com" \
+     --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref,attribute.environment=assertion.environment" \
+     --attribute-condition "assertion.repository == 'OWNER/REPO' && assertion.environment == 'production'"
+   ```
+4. **Let that repository's `production` environment act as the deploy account:**
+   ```
+   gcloud iam service-accounts add-iam-policy-binding legion-ship@PROJECT_ID.iam.gserviceaccount.com \
+     --role roles/iam.workloadIdentityUser \
+     --member "principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/OWNER/REPO"
+   ```
+5. **On GitHub** (Settings > Environments > New environment `production`):
+   - Required reviewers: yourself. The click on "Run workflow" then still waits for an approval.
+   - Deployment branches: `dev` only.
+   - Variables: `GCP_PROJECT` = `PROJECT_ID`,
+     `GCP_WIF_PROVIDER` = `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/legion`,
+     `GCP_SHIP_SERVICE_ACCOUNT` = `legion-ship@PROJECT_ID.iam.gserviceaccount.com`.
+   - Secret `CLOUDRUN_ENV`: the contents of `deploy/cloudrun/.env` (non-secret config, but it
+     holds a contact address and the repo is public).
+6. **First run with "dry run" ticked.** It prints the same plan as the laptop's `--dry-run`.
+
+Undo: delete the provider, the pool and the account (`gcloud iam ... delete`); the workflow then
+fails at its auth step and changes nothing.
+
 ## Push notifications (optional)
 
 Off until you do this; the web's notifications page says so in words. web-revamp ticket 15.
