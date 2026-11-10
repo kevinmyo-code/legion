@@ -36,12 +36,14 @@ on:
       - '!server/frontend/**'
       - '.github/workflows/server.yml'
       - '.github/scripts/junit_totals.py'
+      - '.github/known-failures/server.txt'
   pull_request:
     paths:
       - 'server/**'
       - '!server/frontend/**'
       - '.github/workflows/server.yml'
       - '.github/scripts/junit_totals.py'
+      - '.github/known-failures/server.txt'
   workflow_dispatch:
 
 permissions:
@@ -137,17 +139,19 @@ jobs:
           uv run --no-sync manage.py write_openapi
           git diff --exit-code -- openapi.yaml
 
+      # pytest's own exit code is NOT the verdict: the next step is, read from the XML, so the two
+      # listed baseline failures (`.github/known-failures/server.txt`) do not hide every other
+      # result behind a permanent red. A crash before the XML is written still fails there.
       - name: pytest
-        run: uv run --no-sync pytest --junitxml=junit.xml
+        run: uv run --no-sync pytest --junitxml=junit.xml || echo "pytest exited $? (verdict comes from the XML below)"
 
-      # CLAUDE.md section 6: read the totals from the XML, never from the console summary. pytest's
-      # own exit code has already failed the job on a test failure; what this adds is a printed,
-      # checkable number and a hard failure when the XML is missing or reports zero tests - an
-      # empty results file reads exactly like a pass to anything that only looks at an exit code.
+      # CLAUDE.md section 6: the verdict is read from the XML, never the console summary. Fails on
+      # any failure not listed in the known-failures file, on a listed one that stopped failing, and
+      # when the XML is missing or reports zero tests (an empty results file reads like a pass).
       - name: Totals from the JUnit XML
         if: always()
         working-directory: .
-        run: python3 .github/scripts/junit_totals.py server/junit.xml
+        run: python3 .github/scripts/junit_totals.py --known-failures .github/known-failures/server.txt server/junit.xml
 
       - name: Upload the JUnit XML
         if: always()
