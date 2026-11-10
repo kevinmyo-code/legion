@@ -91,6 +91,7 @@ object ConversationCards {
             codes = pick(CarPart.CODES) { it.codes },
             parts = older.parts + newer.parts,
             extraNote = newer.extraNote ?: older.extraNote,
+            provenance = newer.provenance ?: older.provenance,
         )
     }
 }

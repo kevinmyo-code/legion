@@ -30,16 +30,33 @@ object CarCards {
     }
 
     /** The car with the recall list NHTSA returned. An empty list is a real "none on file". */
-    fun recalls(label: String, vehicle: Vehicle, summaries: List<String>, zone: ZoneId): ConversationCard.Car {
+    fun recalls(
+        label: String,
+        vehicle: Vehicle,
+        summaries: List<String>,
+        zone: ZoneId,
+        nowMs: Long = System.currentTimeMillis(),
+    ): ConversationCard.Car {
         val note = if (summaries.isEmpty()) "NHTSA lists no recalls for this car." else RECALLS_SCOPE
-        return car(label, vehicle, zone, mapOf(CarPart.RECALLS to note)).copy(recalls = summaries.map { Recall(it) })
+        // A live NHTSA fetch, no cache: the read is now.
+        return car(label, vehicle, zone, mapOf(CarPart.RECALLS to note), nowMs)
+            .copy(recalls = summaries.map { Recall(it) }, provenance = CardProvenance("NHTSA", readAtMs = nowMs))
     }
 
     /** The car with the codes read off the port now; a null meaning is a code with no known meaning. */
-    fun codes(label: String, vehicle: Vehicle, codes: List<Pair<String, String?>>, zone: ZoneId): ConversationCard.Car {
+    fun codes(
+        label: String,
+        vehicle: Vehicle,
+        codes: List<Pair<String, String?>>,
+        zone: ZoneId,
+        nowMs: Long = System.currentTimeMillis(),
+    ): ConversationCard.Car {
         val note = if (codes.isEmpty()) "No trouble codes stored." else "Codes as read off the OBD port now."
-        return car(label, vehicle, zone, mapOf(CarPart.CODES to note))
-            .copy(codes = codes.map { (code, meaning) -> TroubleCode(code, meaning) })
+        // Read off the port by this call: the read is now.
+        return car(label, vehicle, zone, mapOf(CarPart.CODES to note), nowMs).copy(
+            codes = codes.map { (code, meaning) -> TroubleCode(code, meaning) },
+            provenance = CardProvenance("OBD port", readAtMs = nowMs),
+        )
     }
 
     /**

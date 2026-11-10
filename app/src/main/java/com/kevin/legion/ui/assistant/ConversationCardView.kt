@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
+import java.time.ZoneId
 
 /** Test tag on the card's outer surface. */
 internal const val CONVERSATION_CARD_TAG = "conversation-card"
@@ -115,6 +117,15 @@ private fun CardHeader(card: ConversationCard, onDismiss: () -> Unit) {
             )
             CardWords.subtitle(card)?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2, maxLines = 1)
+            }
+            // Source and age only when the card's data carries them (ADR 0081, 2026-11-10).
+            CardWords.provenance(card, System.currentTimeMillis(), ZoneId.systemDefault())?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+                    color = SoftColors.text2,
+                    maxLines = 1,
+                )
             }
         }
         Box(
