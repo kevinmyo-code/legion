@@ -222,7 +222,20 @@ describe('the conversation record', () => {
     const socket = await live(client, tick)
     socket.serve({ toolCall: { functionCalls: [{ id: 'fc-9', name: 'list_checklists', args: {} }] } })
     await settle()
-    expect(runTool).toHaveBeenCalledWith('list_checklists', {}, { conversationId: 'conv-1', callId: 'fc-9' })
+    expect(runTool).toHaveBeenCalledWith('list_checklists', {}, { conversationId: 'conv-1', callId: 'fc-9', turn: 0 })
+  })
+
+  it('counts the model turns, so the engine knows which turn a tool call is in', async () => {
+    const { client, runTool, tick } = build()
+    const socket = await live(client, tick)
+    socket.serve({ toolCall: { functionCalls: [{ id: 'fc-1', name: 'web_search', args: {} }] } })
+    await settle()
+    socket.serve({ serverContent: { outputTranscription: { text: 'It fails at 60,000.' }, turnComplete: true } })
+    socket.serve({ toolCall: { functionCalls: [{ id: 'fc-2', name: 'remember', args: { text: 'x' } }] } })
+    await settle()
+    const calls = runTool.mock.calls as unknown as [string, unknown, { turn?: number }][]
+    const turns = calls.map(([name, , context]) => [name, context.turn])
+    expect(turns).toEqual([['web_search', 0], ['remember', 1]])
   })
 
   it('records a cancelled tool call, an interruption and the end', async () => {

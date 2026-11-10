@@ -100,3 +100,33 @@ class AssistantCall(models.Model):
                 name="assistant_calls_kind_valid",
             ),
         ]
+
+
+class ReadThroughTurn(models.Model):
+    """One model turn of a web conversation that ran a tool returning third-party text
+    (`assistant.read_through`, round 3, 2026-11-09). `remember` refuses in that turn, as the
+    phone's `remember` refuses in a turn that read mail or the web.
+
+    Keyed to the conversation's record row, so it is scoped the way that row is
+    (`devicelogs.web_conversation.owned`) and goes when the row is pruned. No `household_id`
+    of its own: it is not a tenant table, and says nothing but "turn N read the web". `turn`
+    is the browser's count of `turnComplete`s; `UNKNOWN_TURN` (-1) marks a call that named
+    no turn (a tab from before the field), and taints every turn of that conversation.
+    """
+
+    UNKNOWN_TURN = -1
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    conversation = models.ForeignKey(
+        "devicelogs.DeviceLog", on_delete=models.CASCADE, related_name="+"
+    )
+    turn = models.IntegerField()
+    at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "assistant_read_through_turns"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conversation", "turn"], name="assistant_read_through_turn_once"
+            ),
+        ]

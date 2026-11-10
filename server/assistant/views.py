@@ -44,7 +44,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from assistant import live
+from assistant import live, read_through
 from assistant.companions import companion_for
 from assistant.models import AssistantCall
 from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES
@@ -328,6 +328,18 @@ class AssistantToolRequestSerializer(serializers.Serializer):
         max_length=200,
         help_text="`functionCalls[].id`, as Gemini sent it, for the record.",
     )
+    turn = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        min_value=0,
+        help_text=(
+            "Which model turn of the conversation this call is in: the count of `turnComplete`s "
+            "heard so far. `remember` is refused in a turn that already ran a tool returning "
+            "web text (`web_search`, `brief_latest`). Omitted means unknown, which treats any "
+            "such tool earlier in the conversation as this turn's."
+        ),
+    )
 
 
 ForwardSerializer = inline_serializer(
@@ -450,6 +462,9 @@ class AssistantToolView(_AssistantView):
                 {"detail": refusal, "response": _forward(False, refusal)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        read_through.set_turn(
+            request, body.validated_data["conversation_id"], body.validated_data["turn"]
+        )
         only_here = recruiter_only_tool(name, request.user)
         if only_here is not None:
             result = run_engine_tool(request, only_here, body.validated_data["args"])

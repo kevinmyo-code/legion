@@ -4867,6 +4867,8 @@ export interface components {
              * @default
              */
             call_id: string;
+            /** @description Which model turn of the conversation this call is in: the count of `turnComplete`s heard so far. `remember` is refused in a turn that already ran a tool returning web text (`web_search`, `brief_latest`). Omitted means unknown, which treats any such tool earlier in the conversation as this turn's. */
+            turn?: number | null;
         };
         AssistantToolResult: {
             response: components["schemas"]["AssistantToolForward"];

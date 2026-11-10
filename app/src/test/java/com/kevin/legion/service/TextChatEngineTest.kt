@@ -2,7 +2,9 @@ package com.kevin.legion.service
 
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.RestOutcome
+import com.kevin.legion.ai.SubAgent
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -156,6 +158,38 @@ class TextChatEngineTest {
         )
         assertTrue(r.readThroughTouched)
         assertEquals(listOf("ask_mail" to true, "remember" to true), calls.map { it.first to it.third })
+    }
+
+    /**
+     * Round 3: `ask_fleet`'s specialist used `web_lookup`, a search-grounded sub-agent. Its `ask`
+     * hops to Dispatchers.IO, which runTest's virtual clock would count as the whole turn's budget
+     * running out, so these two run on runBlocking.
+     */
+    private fun fleetExecutor(useSearch: Boolean): TextToolExecutor {
+        val webLookup = SubAgent("web", useSearch, SubAgent.DEFAULT_MODEL) { _, _ -> text("Known failure: the pump.") }
+        return TextToolExecutor { name, args, readThrough ->
+            calls.add(Triple(name, args, readThrough))
+            if (name == "ask_fleet") webLookup.ask("", "common failures")
+            JSONObject().put("success", true)
+        }
+    }
+
+    @Test
+    fun `web text a sub-agent got back during a tool makes the rest of the turn read-through`() = runBlocking {
+        val r = engine(call("ask_fleet"), call("remember"), text("Tell me in your own words.")).answer(
+            listOf("BASE"), emptyList(), "look it up and remember it", decls, fleetExecutor(useSearch = true),
+        )
+        assertTrue(r.readThroughTouched)
+        assertEquals(listOf("ask_fleet" to false, "remember" to true), calls.map { it.first to it.third })
+    }
+
+    @Test
+    fun `a sub-agent answered without the web leaves the turn clean`() = runBlocking {
+        val r = engine(call("ask_fleet"), call("remember"), text("Noted.")).answer(
+            listOf("BASE"), emptyList(), "check and remember it", decls, fleetExecutor(useSearch = false),
+        )
+        assertFalse(r.readThroughTouched)
+        assertEquals(listOf("ask_fleet" to false, "remember" to false), calls.map { it.first to it.third })
     }
 
     @Test

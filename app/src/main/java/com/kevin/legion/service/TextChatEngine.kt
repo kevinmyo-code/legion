@@ -4,7 +4,9 @@ import com.kevin.legion.ai.AgentProtocol
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.GeminiRest
 import com.kevin.legion.ai.RestOutcome
+import com.kevin.legion.ai.WebReadMark
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -182,9 +184,14 @@ class TextChatEngine(
     ): JSONObject {
         if (isReadThrough(call.name)) state.readThrough = true
         var confirmedOutcome = false
+        // Round 3: web text a sub-agent behind this call got back (ask_fleet's web_lookup) makes the
+        // rest of the turn read-through too, exactly as a read-through tool does.
+        val webRead = WebReadMark()
         val response = try {
-            withTimeoutOrNull(toolTimeoutMs(call.name)) {
-                executor.run(call.name, call.args, state.readThrough)
+            withContext(webRead) {
+                withTimeoutOrNull(toolTimeoutMs(call.name)) {
+                    executor.run(call.name, call.args, state.readThrough)
+                }
             }?.also { confirmedOutcome = it.has("success") }
                 ?: JSONObject().put("success", false).put("message", "That took too long and timed out.")
         } catch (e: CancellationException) {
@@ -193,6 +200,7 @@ class TextChatEngine(
             // The voice path's own wording for a thrown tool; the model is told in words.
             JSONObject().put("success", false).put("message", "Something went wrong running that.")
         }
+        if (webRead.touched) state.readThrough = true
         if (isMutating(call.name, call.args)) {
             when {
                 confirmedOutcome && response.optBoolean("success", false) -> state.writesDone.add(call.name)
