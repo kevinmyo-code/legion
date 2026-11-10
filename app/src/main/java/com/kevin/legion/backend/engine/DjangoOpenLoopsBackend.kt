@@ -2,6 +2,7 @@ package com.kevin.legion.backend.engine
 
 import com.kevin.legion.memory.MemoryOutcome
 import com.kevin.legion.openloops.Listing
+import com.kevin.legion.openloops.OpenLoopsBrief
 import com.kevin.legion.openloops.OpenLoopsBackend
 import com.kevin.legion.openloops.Proposal
 import com.kevin.legion.openloops.Tracked
@@ -45,27 +46,38 @@ private data class WordedRow(val words: String = "")
 class DjangoOpenLoopsBackend(private val http: EngineHttp) : OpenLoopsBackend {
 
     override suspend fun list(): MemoryOutcome<Listing> =
-        memoryOutcome(http.get(PATH)) { memoryJson.decodeFromString(ListingRow.serializer(), it).toListing() }
+        loopsOutcome(http.get(PATH)) { memoryJson.decodeFromString(ListingRow.serializer(), it).toListing() }
 
     override suspend fun offer(): MemoryOutcome<Listing> =
-        memoryOutcome(http.post(PATH + "offer", "{}")) {
+        loopsOutcome(http.post(PATH + "offer", "{}")) {
             memoryJson.decodeFromString(ListingRow.serializer(), it).toListing()
         }
 
     override suspend fun track(id: String, dueDate: LocalDate?): MemoryOutcome<Tracked> {
         val body = buildJsonObject { dueDate?.let { put("due_date", it.toString()) } }.toString()
-        return memoryOutcome(http.post("$PATH$id/track", body)) {
+        return loopsOutcome(http.post("$PATH$id/track", body)) {
             memoryJson.decodeFromString(TrackedRow.serializer(), it).let { row -> Tracked(row.taskKind, row.words) }
         }
     }
 
     override suspend fun dismiss(id: String): MemoryOutcome<String> =
-        memoryOutcome(http.post("$PATH$id/dismiss", "{}")) {
+        loopsOutcome(http.post("$PATH$id/dismiss", "{}")) {
             memoryJson.decodeFromString(WordedRow.serializer(), it).words
         }
 
     override suspend fun setProposing(on: Boolean): MemoryOutcome<String> =
-        memoryOutcome(http.put(PATH + "settings", buildJsonObject { put("proposing", on) }.toString())) {
+        loopsOutcome(http.put(PATH + "settings", buildJsonObject { put("proposing", on) }.toString())) {
             memoryJson.decodeFromString(WordedRow.serializer(), it).words
         }
 }
+
+/**
+ * [memoryOutcome], except that an engine from before open loops (no `/api/open-loops/` route, so
+ * Django's own 404 page) is said in words: [OpenLoopsBrief.NOT_ON_ENGINE], never its HTML.
+ */
+private fun <T> loopsOutcome(result: Result<EngineOk>, decode: (String) -> T): MemoryOutcome<T> =
+    if (engineRouteMissing(result)) {
+        MemoryOutcome.Refused(OpenLoopsBrief.NOT_ON_ENGINE, HTTP_NOT_FOUND)
+    } else {
+        memoryOutcome(result, decode)
+    }

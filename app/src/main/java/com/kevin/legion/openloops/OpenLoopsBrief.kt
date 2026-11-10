@@ -71,6 +71,10 @@ object OpenLoopsBrief {
 
     const val UNREADABLE_FOR_SCREEN = "Proposed to-dos could not be read just now."
 
+    /** The engine has no open-loops routes yet (a phone build ahead of its engine update). */
+    const val NOT_ON_ENGINE =
+        "Proposed to-dos are not available yet: the engine has not been updated for them."
+
     /** True when [spoken] (a `why_did_you_say_that` stop argument) names these proposals. */
     fun namesThis(spoken: String): Boolean {
         val norm = spoken.lowercase().replace(Regex("[^a-z ]"), " ")

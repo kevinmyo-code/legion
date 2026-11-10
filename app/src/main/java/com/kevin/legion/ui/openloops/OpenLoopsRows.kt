@@ -52,12 +52,19 @@ fun OpenLoopsRows(controllerFor: (android.content.Context) -> OpenLoopsControlle
         ui = when (val v = controller.view()) {
             is LoopsView.Showing -> OpenLoopsUi(
                 loaded = true,
+                listed = true,
                 proposing = v.listing.proposing,
                 on = v.listing.on,
                 proposals = v.listing.proposals,
                 note = note,
             )
-            is LoopsView.Unavailable -> ui.copy(loaded = true, note = v.sentence)
+            is LoopsView.Unavailable -> ui.copy(
+                loaded = true,
+                listed = false,
+                notYet = v.notYet,
+                proposals = emptyList(),
+                note = v.sentence,
+            )
         }
     }
 
@@ -66,8 +73,14 @@ fun OpenLoopsRows(controllerFor: (android.content.Context) -> OpenLoopsControlle
     OpenLoopsRowsContent(
         ui = ui,
         onToggle = { on ->
+            val before = ui.proposing
             ui = ui.copy(proposing = on)
-            scope.launch { reload(controller.setProposing(on).words) }
+            scope.launch {
+                val answer = controller.setProposing(on)
+                reload(answer.words)
+                // A refused or unreadable change never leaves the switch showing what did not happen.
+                if (!answer.ok) ui = ui.copy(proposing = before)
+            }
         },
         onTrack = { p -> scope.launch { reload(controller.track(p.id).words) } },
         onDismiss = { p -> scope.launch { reload(controller.dismiss(p.id).words) } },
@@ -106,10 +119,10 @@ fun OpenLoopsRowsContent(
                         color = sem.faint,
                     )
                 }
-                DeckSwitch(checked = ui.proposing, onCheckedChange = onToggle)
+                if (!ui.notYet) DeckSwitch(checked = ui.proposing, onCheckedChange = onToggle)
             }
-            if (ui.proposing && ui.on) {
-                if (ui.loaded && ui.proposals.isEmpty()) {
+            if (ui.proposing && ui.on && !ui.notYet) {
+                if (ui.listed && ui.proposals.isEmpty()) {
                     Text("No proposed to-dos.", style = LegionType.stamp, color = sem.faint)
                 }
                 ui.proposals.forEach { p -> ProposalRow(p, onTrack, onDismiss) }

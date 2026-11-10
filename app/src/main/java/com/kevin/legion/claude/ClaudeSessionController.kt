@@ -160,6 +160,8 @@ class ClaudeSessionController(
         if (status !is ClaudeOutcome.Ok) return ClaudeSendResult.NotSent(ClaudeWording.failed(status, "start it"))
         val machines = status.value.machines
         if (machines.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.NO_MACHINE_EVER)
+        // An old engine drops the `workflow` key and queues the phrase as an ordinary task.
+        if (!status.value.workflowsKnown) return ClaudeSendResult.NotSent(ClaudeWorkflowWording.NOT_ON_ENGINE)
         val target = if (machine.isNullOrBlank()) {
             null
         } else {
@@ -192,7 +194,9 @@ class ClaudeSessionController(
                 }
             }
             // The engine's 400 and 409 are already whole sentences ("Nothing was sent. ...").
-            is ClaudeOutcome.Refused -> ClaudeSendResult.NotSent(out.sentence)
+            is ClaudeOutcome.Refused -> ClaudeSendResult.NotSent(
+                if (out.sentence == ClaudeWording.NOT_ON_ENGINE) ClaudeWorkflowWording.NOT_ON_ENGINE else out.sentence,
+            )
             else -> ClaudeSendResult.NotSent(ClaudeWording.failed(out, "start it"))
         }
     }

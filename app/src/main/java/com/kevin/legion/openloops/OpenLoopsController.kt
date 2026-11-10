@@ -11,7 +11,8 @@ import java.time.LocalDate
 sealed interface LoopsView {
     data class Showing(val listing: Listing) : LoopsView
 
-    data class Unavailable(val sentence: String) : LoopsView
+    /** [notYet]: the engine has no open-loops routes yet, so nothing here can be read or changed. */
+    data class Unavailable(val sentence: String, val notYet: Boolean = false) : LoopsView
 }
 
 /**
@@ -38,7 +39,7 @@ class OpenLoopsController(
         val engine = backend() ?: return LoopsView.Unavailable(NO_ENGINE)
         return when (val got = engine.list()) {
             is MemoryOutcome.Ok -> LoopsView.Showing(got.value).also { remember(got.value) }
-            else -> LoopsView.Unavailable(sentence(got))
+            else -> LoopsView.Unavailable(sentence(got), notYet = notOnEngine(got))
         }
     }
 
@@ -61,7 +62,11 @@ class OpenLoopsController(
     /** The Brief modal's section text, or null for none. Counts nothing. */
     suspend fun screenLine(): String? = when (val v = view()) {
         is LoopsView.Showing -> if (v.listing.on) OpenLoopsBrief.forScreen(v.listing.proposals) else null
-        is LoopsView.Unavailable -> if (backend() == null) null else OpenLoopsBrief.UNREADABLE_FOR_SCREEN
+        is LoopsView.Unavailable -> when {
+            backend() == null -> null
+            v.notYet -> OpenLoopsBrief.NOT_ON_ENGINE
+            else -> OpenLoopsBrief.UNREADABLE_FOR_SCREEN
+        }
     }
 
     suspend fun track(id: String, dueDate: LocalDate? = null): LoopAnswer {
@@ -112,7 +117,9 @@ class OpenLoopsController(
     suspend fun match(spoken: String): Match {
         if (Hint.pending == false) return Match.None
         val engine = backend() ?: return Match.None
-        val listing = (engine.list() as? MemoryOutcome.Ok)?.value ?: return Match.None
+        val got = engine.list()
+        notOnEngine(got)
+        val listing = (got as? MemoryOutcome.Ok)?.value ?: return Match.None
         remember(listing)
         val said = OpenLoopsWords.task(spoken)
         if (said.isEmpty()) return Match.None
@@ -133,6 +140,17 @@ class OpenLoopsController(
     private fun forget(@Suppress("UNUSED_PARAMETER") id: String) {
         // The next list read sets the hint again; until then a further match asks the engine.
         Hint.pending = null
+    }
+
+    /**
+     * True when the engine has no open-loops routes yet. Then nothing is pending as far as this
+     * process knows ([Hint] false), so `manage_item` stops asking it on every add; the next list
+     * read that succeeds (a brief, the Settings rows) sets the hint again.
+     */
+    private fun notOnEngine(got: MemoryOutcome<*>): Boolean {
+        val notYet = got is MemoryOutcome.Refused && got.sentence == OpenLoopsBrief.NOT_ON_ENGINE
+        if (notYet) Hint.pending = false
+        return notYet
     }
 
     private fun sentence(got: MemoryOutcome<*>): String = when (got) {

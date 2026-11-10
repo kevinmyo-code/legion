@@ -7,6 +7,11 @@ package com.kevin.legion.watches
  * a watch is set unless the engine answered with the row it wrote.
  */
 object WatchWording {
+    /** The engine has no watches routes yet (a phone build ahead of its engine update). */
+    const val NOT_ON_ENGINE =
+        "Watches are not available yet: the engine has not been updated for them, so nothing about " +
+            "watches was read or changed."
+
 
     /** How many facts one spoken line carries; the rest are counted and left on the screen. */
     const val SPOKEN_FACTS = 3

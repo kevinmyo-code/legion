@@ -6,6 +6,7 @@ import com.kevin.legion.watches.WatchKind
 import com.kevin.legion.watches.WatchList
 import com.kevin.legion.watches.WatchOutcome
 import com.kevin.legion.watches.WatchSet
+import com.kevin.legion.watches.WatchWording
 import com.kevin.legion.watches.WatchesBackend
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
@@ -167,6 +168,8 @@ class DjangoWatchesBackend(private val http: EngineHttp) : WatchesBackend {
 private fun <T> watchOutcome(result: Result<EngineOk>, decode: (String) -> T): WatchOutcome<T> {
     val failure = (result.exceptionOrNull() as? EngineHttpException)?.failure
     return when {
+        // An engine from before watches (integrate 2026-11-10): said in words, never its HTML page.
+        engineRouteMissing(result) -> WatchOutcome.Refused(WatchWording.NOT_ON_ENGINE, HTTP_NOT_FOUND)
         result.isSuccess -> try {
             WatchOutcome.Ok(decode(result.getOrThrow().body))
         } catch (e: SerializationException) {

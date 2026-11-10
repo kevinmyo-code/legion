@@ -3,6 +3,7 @@ package com.kevin.legion.backend.engine
 import com.kevin.legion.claude.ClaudeCodeSession
 import com.kevin.legion.claude.ClaudeCreated
 import com.kevin.legion.claude.ClaudeFileRequest
+import com.kevin.legion.claude.ClaudeWording
 import com.kevin.legion.claude.ClaudeMachine
 import com.kevin.legion.claude.ClaudeMachineRef
 import com.kevin.legion.claude.ClaudeOutcome
@@ -120,7 +121,8 @@ private data class MachineRow(
     @SerialName("last_seen_at") val lastSeenAt: String? = null,
     val running: List<Int> = emptyList(),
     val progress: List<ProgressRow> = emptyList(),
-    val workflows: List<WorkflowNameRow> = emptyList(),
+    // Absent on an engine from before workflows (claude_session 0007): null, never "none".
+    val workflows: List<WorkflowNameRow>? = null,
 )
 
 @Serializable
@@ -280,12 +282,13 @@ class DjangoClaudeSessionBackend(private val http: EngineHttp) : ClaudeSessionBa
                         lastSeenAt = instant(m.lastSeenAt),
                         running = m.running,
                         progress = m.progress.mapNotNull { p -> p.progress?.let { p.task to it } }.toMap(),
-                        workflows = m.workflows.map { ClaudeWorkflowName(it.name, it.says) },
+                        workflows = m.workflows.orEmpty().map { ClaudeWorkflowName(it.name, it.says) },
                     )
                 },
                 sessions = parsed.sessions.map {
                     ClaudeCodeSession(it.machine, it.project, it.state, it.lastPromptSummary, instant(it.lastSeenAt))
                 },
+                workflowsKnown = parsed.machines.any { it.workflows != null },
             )
         }
 
@@ -382,7 +385,13 @@ class DjangoClaudeSessionBackend(private val http: EngineHttp) : ClaudeSessionBa
         when (val failure = (error as? EngineHttpException)?.failure) {
             is EngineFailure.Unreachable -> ClaudeOutcome.Unreachable(failure.message)
             is EngineFailure.Unauthorized -> ClaudeOutcome.Refused(failure.sentence)
-            is EngineFailure.Refused -> ClaudeOutcome.Refused(refusal(failure.body), failure.status)
+            is EngineFailure.Refused ->
+                if (failure.routeMissing()) {
+                    // An engine from before this route (integrate 2026-11-10): words, never its HTML page.
+                    ClaudeOutcome.Refused(ClaudeWording.NOT_ON_ENGINE, failure.status)
+                } else {
+                    ClaudeOutcome.Refused(refusal(failure.body), failure.status)
+                }
             is EngineFailure.Malformed -> ClaudeOutcome.Unconfirmed(failure.sentence)
             null -> ClaudeOutcome.Unconfirmed(error?.message ?: "unknown error")
         }

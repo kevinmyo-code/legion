@@ -155,3 +155,21 @@ internal fun engineRefusalSentence(body: String): String = runCatching {
     }.filter { it.isNotBlank() }
     if (sentences.isEmpty()) body else sentences.joinToString(" ")
 }.getOrDefault(body).trim()
+
+/**
+ * True when [result] failed because the engine has no such ROUTE: a 404 whose body is not JSON,
+ * which is Django's own "Not Found" page for a URL it does not know (DEBUG off). A 404 for a
+ * missing ROW is DRF's JSON (`{"detail": ...}`) and is not this.
+ *
+ * Why it exists (integrate 2026-11-10): a phone build can reach the engine before the engine
+ * update that adds a feature's routes. Such a call must say in words that the feature is not
+ * available yet, never read Django's HTML page aloud or draw it on a screen.
+ */
+internal fun engineRouteMissing(result: Result<*>): Boolean =
+    ((result.exceptionOrNull() as? EngineHttpException)?.failure as? EngineFailure.Refused)?.routeMissing() == true
+
+/** [engineRouteMissing] for a failure already in hand. */
+internal fun EngineFailure.Refused.routeMissing(): Boolean {
+    val head = body.trimStart()
+    return status == HTTP_NOT_FOUND && !head.startsWith("{") && !head.startsWith("[")
+}

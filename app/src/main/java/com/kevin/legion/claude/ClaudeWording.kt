@@ -223,10 +223,21 @@ class ClaudeWording(
             else -> String.format(Locale.US, "%.1f MB", bytes.toDouble() / MB)
         }
 
+        /**
+         * A route this phone build calls that the engine does not have yet (an engine older than the
+         * phone, e.g. workflows before `claude_session` 0007 is deployed). Set by the Django backend
+         * for a 404 that is Django's own page, never the engine's JSON.
+         */
+        const val NOT_ON_ENGINE = "The engine has not been updated for this yet."
+
         /** What a failed call says. [what] completes "so I couldn't ...". */
         fun failed(outcome: ClaudeOutcome<*>, what: String): String = when (outcome) {
             is ClaudeOutcome.Unreachable -> "I can't reach the engine right now, so I couldn't $what."
-            is ClaudeOutcome.Refused -> "The engine refused, so I couldn't $what: ${outcome.sentence}"
+            is ClaudeOutcome.Refused -> if (outcome.sentence == NOT_ON_ENGINE) {
+                "Not available yet: the engine has not been updated for this, so I couldn't $what."
+            } else {
+                "The engine refused, so I couldn't $what: ${outcome.sentence}"
+            }
             is ClaudeOutcome.Unconfirmed ->
                 "The engine answered but I couldn't read the reply, so I can't say whether I could $what. " +
                     "Check the Claude session screen before assuming it went."

@@ -43,7 +43,15 @@ data class ClaudeCodeSession(
     }
 }
 
-data class ClaudeStatus(val machines: List<ClaudeMachine>, val sessions: List<ClaudeCodeSession>)
+data class ClaudeStatus(
+    val machines: List<ClaudeMachine>,
+    val sessions: List<ClaudeCodeSession>,
+    /**
+     * False when the engine's `status/` names no workflows field at all: an engine from before
+     * workflows (claude_session 0007), which would take a workflow request as an ordinary task.
+     */
+    val workflowsKnown: Boolean = true,
+)
 
 /**
  * A file a task found on the laptop. Listed, not uploaded, until Kevin says yes (ruling 8), or

@@ -49,6 +49,11 @@ data class ClaudeWorkflow(
 /** The words for workflows, shared by the voice tool, the screen and the scheduled-question raise. */
 object ClaudeWorkflowWording {
 
+    /** A workflow asked of an engine from before workflows (claude_session 0007). Nothing is queued. */
+    const val NOT_ON_ENGINE =
+        "Nothing was sent. Workflows are not available yet: the engine has not been updated for them. " +
+            "Say it as an ordinary request if it should go to Claude anyway."
+
     /** "log-audit" as Alfred says it, matching the engine's `spoken`. */
     fun spoken(name: String): String = name.replace("-", " ")
 
@@ -116,10 +121,10 @@ object ClaudeWorkflowWording {
 
     /** The raise for a scheduled run that stopped for his yes (ruling R3). */
     fun scheduledQuestion(task: ClaudeTask): String {
-        val name = task.workflow?.let(::spoken) ?: "A scheduled task"
+        val head = task.workflow?.let { "Scheduled ${spoken(it)}" } ?: "A scheduled run"
         val on = task.machine?.let { " on the $it" } ?: ""
         val q = task.question?.trim().orEmpty().ifEmpty { "It is waiting for your yes." }
-        return "Scheduled $name$on (task ${task.id}) stopped to ask: $q"
+        return "$head$on (task ${task.id}) stopped to ask: $q"
     }
 
     private fun statusWords(status: String): String = when (status) {

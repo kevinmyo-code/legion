@@ -85,7 +85,9 @@ class ScheduledQuestionPoller(
     @Suppress("ReturnCount") // no engine, unreadable, or nothing new
     internal suspend fun pollNow(): Int {
         val c = controller() ?: return 0
-        val questions = (c.scheduledQuestions() as? ClaudeOutcome.Ok)?.value ?: return 0
+        // Only rows the engine marks scheduled: an engine from before workflows ignores
+        // `origin=schedule` and lists every question, his own sends included (integrate 2026-11-10).
+        val questions = (c.scheduledQuestions() as? ClaudeOutcome.Ok)?.value?.filter { it.isScheduled } ?: return 0
         seen.keepOnly(questions.map { it.id }.toSet())
         val fresh = questions.filter { it.id !in seen.seen() }
         if (fresh.isEmpty()) return 0

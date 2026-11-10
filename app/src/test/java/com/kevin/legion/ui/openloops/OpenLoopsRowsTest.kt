@@ -9,7 +9,12 @@ import androidx.compose.ui.test.performClick
 import com.kevin.legion.openloops.FakeOpenLoopsBackend
 import com.kevin.legion.openloops.FakeOpenLoopsBackend.Companion.DENTIST
 import com.kevin.legion.openloops.FakeOpenLoopsBackend.Companion.REGISTRATION
+import com.kevin.legion.memory.MemoryOutcome
+import com.kevin.legion.openloops.Listing
+import com.kevin.legion.openloops.OpenLoopsBackend
+import com.kevin.legion.openloops.OpenLoopsBrief
 import com.kevin.legion.openloops.OpenLoopsController
+import com.kevin.legion.openloops.Tracked
 import com.kevin.legion.service.OpenLoopsToolbox
 import com.kevin.legion.spokenbrief.SpokenBriefs
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -22,6 +27,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.time.LocalDate
 
 /**
  * ADR 0035 for ADR 0085: the hands path. The rows list each pending proposal with Track and
@@ -72,5 +78,28 @@ class OpenLoopsRowsTest {
         compose.waitForIdle()
         compose.onNodeWithText("Propose to-dos").assertIsDisplayed()
         assertTrue(compose.onAllNodesWithText("Track").fetchSemanticsNodes().isEmpty())
+    }
+
+    /** The engine from before open loops, as DjangoOpenLoopsBackend maps its 404 page. */
+    private object OldEngine : OpenLoopsBackend {
+        private val no = MemoryOutcome.Refused(OpenLoopsBrief.NOT_ON_ENGINE, 404)
+        override suspend fun list(): MemoryOutcome<Listing> = no
+        override suspend fun offer(): MemoryOutcome<Listing> = no
+        override suspend fun track(id: String, dueDate: LocalDate?): MemoryOutcome<Tracked> = no
+        override suspend fun dismiss(id: String): MemoryOutcome<String> = no
+        override suspend fun setProposing(on: Boolean): MemoryOutcome<String> = no
+    }
+
+    @Test
+    fun `against an engine without open loops the rows say not available yet, never none, and offer no switch`() {
+        compose.setContent { SoftTheme { OpenLoopsRows(controllerFor = { OpenLoopsController(backend = { OldEngine }) }) } }
+        compose.waitForIdle()
+        compose.onNodeWithText(OpenLoopsBrief.NOT_ON_ENGINE).assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText("No proposed to-dos.").fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithText("Track").fetchSemanticsNodes().isEmpty())
+        assertTrue(
+            "no switch to flip",
+            compose.onAllNodes(androidx.compose.ui.test.isToggleable()).fetchSemanticsNodes().isEmpty(),
+        )
     }
 }
