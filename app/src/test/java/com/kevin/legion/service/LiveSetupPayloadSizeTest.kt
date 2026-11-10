@@ -240,6 +240,13 @@ class LiveSetupPayloadSizeTest {
      * out `files true`. Measured on dev `2779ef88` plus the branch: 95 declarations, 88,042 chars of
      * tools JSON plus 10,356 chars of system instruction = 98,398 chars, ~24,599 tokens (+21).
      * Headroom is ~51 tokens.
+     *
+     * **NOT raised on 2026-11-10 (round 5, `feat/github-status`).** No new declaration: GitHub status
+     * is the engine's `github_status`, reached through `ask_engine`, whose description gained
+     * "GitHub builds and PRs". Measured on dev `ea6e968b` plus the branch: 95 declarations, 88,065
+     * chars of tools JSON plus 10,356 chars of system instruction = 98,421 chars, ~24,605 tokens
+     * (+6). Headroom is ~45 tokens. With round 5's field-nav (+68 chars) and conditions (+39) on top:
+     * 98,528 chars, ~24,632 tokens, headroom ~18 (computed from the three measurements).
      */
     private val ceilingTokens = 24_650
 
