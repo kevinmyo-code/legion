@@ -26,6 +26,10 @@ Decisions:
 - **The daily memory review** (memory-review ticket 16): a `memory_review` task's helper may not
   run git at all, and may not write outside its own task folder, token or not, so Kevin's memory
   text can only land in that folder's two work files.
+- **Workflow reports** (worker-workflows ticket 05) land in Kevin's own folder,
+  `%USERPROFILE%/.legion/reports/<workflow>/`, outside the work folder, so they are his files
+  under the rules above with no rule of their own: a new dated report passes, rewriting or
+  deleting an older one asks. A scheduled run has no token, so it can only add.
 - Anything unexpected inside this hook denies (fails closed).
 
 The hook log records tool, decision, rule and agent id. Never the command, a path, or any text.

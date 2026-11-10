@@ -75,8 +75,15 @@ class WorkerCase(unittest.TestCase):
             "heartbeat_s": 0.2, "tick_s": 0.05, "task_cap_s": 60.0, "report_grace_s": 0.6, "settle_s": 0.2,
             "hang_s": 60.0, "restart_min_s": 0.2, "backoff_max_s": 0.4,
             "mail": {"address": "alfred@example.com", "app_password": "x", "kevin": "kevin@example.com"},
+            # Worker workflows (ticket 05): never Kevin's real %USERPROFILE%\.legion in a test.
+            "workflow_reports": str(Path(self.tmp.name) / "legion" / "reports"),
+            "task_log": str(Path(self.tmp.name) / "legion" / "task-log.jsonl"),
+            "agent_rules": str(Path(self.tmp.name) / "legion" / "AGENT-RULES.md"),
         }
         self.cfg.update(self.cfg_extra)
+        # Belt and braces: anything that still reaches for the profile lands in the temp folder.
+        self._userprofile = __import__("os").environ.get("USERPROFILE")
+        __import__("os").environ["USERPROFILE"] = str(Path(self.tmp.name) / "profile")
         self.env = {"PATH": __import__("os").environ.get("PATH", ""),
                     "SYSTEMROOT": __import__("os").environ.get("SYSTEMROOT", ""),
                     "CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli", "CLAUDE_CODE_SSE_PORT": "1",
@@ -88,6 +95,10 @@ class WorkerCase(unittest.TestCase):
             stop.set()
             t.join(15)
         self.engine.close()
+        if self._userprofile is None:
+            __import__("os").environ.pop("USERPROFILE", None)
+        else:
+            __import__("os").environ["USERPROFILE"] = self._userprofile
         import logging
         for h in list(W.log.handlers):
             W.log.removeHandler(h)

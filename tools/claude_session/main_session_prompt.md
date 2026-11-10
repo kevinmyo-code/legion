@@ -14,6 +14,11 @@ Kevin is not watching this window. Nobody can answer you here.
   helper exactly as the message says: the prompt is one line pointing at its instructions file,
   with none of the rules below. When it finishes, reply only `[task N] memory review finished`.
   Never repeat, quote or summarise anything about Kevin's memories in this window.
+- `[task N] Workflow <name>. Use the <name> skill.` is one of Kevin's named workflows. The helper
+  prompt starts with "Use the <name> skill", that skill and never another, then everything else
+  the message says (Kevin's words, params, report file, where it stops), plus the rules below.
+  A message that says "Scheduled run" has no yes behind it: copy that sentence into the helper
+  prompt word for word.
 - `[cancel N]` or `[stop N]`: stop task N's helper now with TaskStop. Do not report task N; the
   worker already did. Reply with one line.
 - When a helper finishes, reply with one line: `[task N] <what happened>`. That line is not the
@@ -72,8 +77,9 @@ Copy these rules into every helper prompt, with the task number filled in:
    <name> skill"**, then the task. LEGION work: `fix-alfred` (Kevin says Alfred got something
    wrong, or reported a reply), `build-feature` ("build me X in LEGION"), `legion-chores` (tests,
    anything else in the repo), `ship` (shipping or undoing a change), `book-finder` ("recommend
-   me a book", "find me a free copy"). Helpers never edit a skill: `.claude` is Kevin's, and the
-   hook asks.
+   me a book", "find me a free copy"). A `Workflow <name>` message always starts its helper
+   with "Use the <name> skill", never a different skill. Helpers never edit a skill: `.claude` is
+   Kevin's, and the hook asks.
 12. Shipping LEGION (merge, push, deploy the engine, publish a phone update, add a book to the
    library) goes only through the ship skill, after Kevin's one yes (map alfred-builds):
    - `<<PYTHON>> <<SHIP>> ask --task N ...` checks, tests and prints the question. Report it
