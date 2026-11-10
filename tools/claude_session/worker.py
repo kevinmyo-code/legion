@@ -53,6 +53,7 @@ from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
 import containment  # noqa: E402
+import health as hl  # noqa: E402
 import warm_worktree  # noqa: E402
 import workflows as wfl  # noqa: E402
 
@@ -80,6 +81,10 @@ DEFAULTS = {
     "catalog_s": 300.0,
     "keep_reports_days": 180,
     "keep_task_log_days": 180,
+    # Laptop health (2026-11-10): a snapshot rides the heartbeat about once a minute. Null means
+    # on for a `full` machine (the Alienware), off for a `listed` one.
+    "health": None,
+    "health_every_s": 60.0,
 }
 
 KIND_WORKFLOW = "workflow"
@@ -270,7 +275,7 @@ def setup_logging(paths: Paths) -> None:
 
 class Worker:
     def __init__(self, paths: Paths, cfg: dict, *, engine=None, power=None, clock=time.time,
-                 today=None, drives=None, base_env=None, idle=None):
+                 today=None, drives=None, base_env=None, idle=None, health=None):
         self.paths = paths.ensure()
         self.cfg = {**DEFAULTS, **cfg}
         self.scope = self.cfg.get("scope", "listed")
@@ -282,6 +287,13 @@ class Worker:
         self.drives = drives if drives is not None else fixed_drives
         self.idle = idle if idle is not None else input_idle_seconds
         self.base_env = dict(os.environ if base_env is None else base_env)
+        want_health = self.cfg["health"] if self.cfg["health"] is not None else self.scope == "full"
+        if health is not None:
+            self.health = health
+        elif want_health:
+            self.health = hl.HealthSampler(lambda: hl.collect(self.on_mains), self.cfg["health_every_s"])
+        else:
+            self.health = None
 
         st = read_json(paths.state, {}) or {}
         self.state = {"session_id": st.get("session_id"), "session_date": st.get("session_date"),
@@ -893,6 +905,7 @@ class Worker:
     def contact_engine(self, now: float) -> None:
         if now < self.next_contact:
             return
+        snap = None
         try:
             self.flush_outbox()
             self.power.update()
@@ -900,13 +913,15 @@ class Worker:
             running = sorted(t["id"] for t in self.running())
             self.progress = {k: v for k, v in self.progress.items() if k in running}
             wf_fields = self.catalog_fields(now)
+            snap = self.health.take() if self.health else None
+            extra = {"health": snap} if snap else {}
             reply = self.engine.heartbeat({
                 "name": self.name, "hostname": socket.gethostname(), "scope": self.scope,
                 "state": "busy" if running else "idle", "running": running,
                 "progress": {str(k): v for k, v in self.progress.items()},
                 "claude_version": self.claude_version,
                 # memory-review ticket 15: the engine mints the daily review only when idle.
-                "input_idle_s": self.idle(), "on_mains": self.on_mains(), **wf_fields})
+                "input_idle_s": self.idle(), "on_mains": self.on_mains(), **wf_fields, **extra})
             self.note_engine_hash(reply, wf_fields, now)
             for tid in reply.get("cancel_requested") or []:
                 t = self._task(tid)
@@ -924,6 +939,8 @@ class Worker:
             self.backoff = 0.0
             self.next_contact = now + self.cfg["heartbeat_s"]
         except EngineDown as e:
+            if self.health:
+                self.health.put_back(snap)
             self.backoff = min(max(self.cfg["heartbeat_s"], self.backoff * 2 or self.cfg["heartbeat_s"]),
                                self.cfg["backoff_max_s"])
             self.next_contact = now + self.backoff
@@ -1231,6 +1248,8 @@ class Worker:
 
     def run(self, stop: threading.Event) -> None:
         self.startup()
+        if self.health:
+            self.health.start()
         try:
             while not stop.is_set():
                 try:
