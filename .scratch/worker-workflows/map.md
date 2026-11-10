@@ -146,6 +146,10 @@ Sizes: S under half a day of agent work, M about a day, L two or more.
 - **2026-11-09, Kevin: R1 to R4 as recommended** (*"All ur picks"*). Ticket 01 resolved.
 - **2026-11-10, Kevin: build** (*"yeah as per ur recs"*), engine and worker half only; the phone
   half later off the merged tree. ADR 0067 amended (ticket 15).
+- **2026-11-10, strict default (coordinator, pending Kevin):** unattended runs only on the
+  `full` machine. A schedule on a `listed` machine is refused in words (`workflows_refused` on
+  the heartbeat, `schedule_refused` on `GET workflows/`) and the workflow runs there only by name.
+  `LEGION_WORKFLOW_SCHEDULES_LISTED=on` (default off) is Kevin's one-line yes.
 - **Open for Kevin:** fold the memory review into a workflow (ticket 12). It shipped first as its
   own `kind = memory_review`, and the live worker and ask-list hook guard it by that kind, so the
   rename ships only with a worker update. Until then both coexist and one claim mints at most one.
@@ -184,7 +188,9 @@ already ignores unknown keys.
 - **Screen (hands path, ADR 0035):** `GET workflows/?machine=` returns per workflow `{machine,
   machine_state, name, spoken, says, aliases, params: [{name, says, required}], asks: [says],
   outputs, deliver, every: {hours, idle_minutes, force_after_hours, retry_after_hours} | null,
-  last_run: {task, status, origin, created_at, finished_at} | null, waiting, due}`. Run button:
+  last_run: {task, status, origin, created_at, finished_at} | null, waiting, due,
+  schedule_refused: <words> | null}`. Show `schedule_refused` as is under a workflow with a
+  schedule on the work laptop ("runs only when Kevin asks for it"). Run button:
   `POST workflows/run/ {machine, name, params}` -> 201 `{id, status, machine, workflow, detail}`
   ("Queued log audit on the Alienware."), 400 `{detail, workflows}`, 409 `{detail}`. Both paths
   are one controller call each (`runWorkflow`), as the ticket says.

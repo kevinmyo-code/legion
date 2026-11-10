@@ -553,6 +553,44 @@ def test_a_listed_machine_is_never_minted_a_full_only_workflow(household_user):
     assert _claim(client, "work laptop").status_code == 204
 
 
+LISTED_TIDY = dict(TIDY, name="tidy-repos", aliases=["tidy my repos"], scope=["full", "listed"])
+
+
+def test_a_listed_machine_never_starts_a_schedule_and_says_why(household_user, token_a):
+    client = _worker(household_user, "desk box", "listed", catalog=(LISTED_TIDY,), wf_hash="d")
+    _first_seen("tidy-repos", machine="desk box", hours=500)  # long past force-after
+    assert _claim(client, "desk box").status_code == 204
+    assert _minted() == []
+    reply = _beat(client, "desk box", "listed")
+    assert reply["workflows_refused"] == [
+        "Scheduled runs only happen on a full-access machine. On the desk box, tidy repos runs "
+        "only when Kevin asks for it."
+    ]
+    [row] = token_a.get(f"{API}workflows/").data
+    assert row["due"] is False and row["schedule_refused"] == reply["workflows_refused"][0]
+    # Started by name it runs there as before.
+    ran = token_a.post(f"{API}workflows/run/", {"name": "tidy-repos"}, format="json")
+    assert ran.status_code == 201 and ran.data["machine"]["name"] == "desk box"
+    assert _claim(client, "desk box").data[0]["origin"] == "named"
+
+
+def test_the_same_workflow_is_scheduled_on_the_full_machine(household_user, token_a):
+    client = _worker(household_user, "big rig", catalog=(LISTED_TIDY,), wf_hash="b")
+    assert _beat(client, "big rig")["workflows_refused"] == []
+    claimed = _claim(client, "big rig")
+    assert [t["workflow"] for t in claimed.data] == ["tidy-repos"]
+    assert token_a.get(f"{API}workflows/").data[0]["schedule_refused"] is None
+
+
+def test_the_listed_switch_is_kevins_one_line_yes(settings, household_user):
+    settings.LEGION_WORKFLOW_SCHEDULES_LISTED = "on"
+    client = _worker(household_user, "desk box", "listed", catalog=(LISTED_TIDY,), wf_hash="d")
+    assert _beat(client, "desk box", "listed")["workflows_refused"] == []
+    claimed = _claim(client, "desk box")
+    assert [t["workflow"] for t in claimed.data] == ["tidy-repos"]
+    assert claimed.data[0]["origin"] == "schedule"
+
+
 def test_another_tokens_claim_never_mints(household_user):
     _worker(household_user)
     stranger = _client_for(household_user)  # a phone's token, not the one bound to the machine

@@ -900,6 +900,7 @@ class HeartbeatView(APIView):
                 "files_requested": files,
                 "workflows_hash": machine.workflows_hash,
                 "workflows_dropped": dropped,
+                "workflows_refused": wf.schedule_refusals(machine),
             }
         )
 
@@ -1010,6 +1011,7 @@ class WorkflowListView(APIView):
                         "finished_at": last.finished_at,
                     },
                     "waiting": wf.waiting_on_kevin(m, entry["name"], now),
+                    "schedule_refused": wf.schedule_refusal(m, entry),
                     "due": wf.due(m, entry, now).due,
                 })
         return Response(out)

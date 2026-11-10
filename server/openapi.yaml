@@ -13529,11 +13529,18 @@ components:
           type: integer
           description: Entries of the catalog just sent that failed the engine's checks;
             0 otherwise.
+        workflows_refused:
+          type: array
+          items:
+            type: string
+          description: Schedules this machine will not run on its own, each in words
+            (a listed machine runs a workflow only when Kevin asks, unless LEGION_WORKFLOW_SCHEDULES_LISTED).
       required:
       - cancel_requested
       - files_requested
       - workflows_dropped
       - workflows_hash
+      - workflows_refused
     ClaudeMachineRef:
       type: object
       properties:
@@ -14151,6 +14158,12 @@ components:
         due:
           type: boolean
           description: Its schedule says a run is due now.
+        schedule_refused:
+          type: string
+          nullable: true
+          description: Why this machine never starts it on its own, in words; null
+            when it may (a schedule on a listed machine while LEGION_WORKFLOW_SCHEDULES_LISTED
+            is off).
       required:
       - aliases
       - asks
@@ -14164,6 +14177,7 @@ components:
       - outputs
       - params
       - says
+      - schedule_refused
       - spoken
       - waiting
     ClaudeWorkflowRun:

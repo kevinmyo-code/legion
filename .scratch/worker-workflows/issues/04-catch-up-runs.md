@@ -80,6 +80,11 @@ also what the phone's `action: "workflow"` amounts to). Same one-at-a-time rule.
 | Concurrent claims mint one | reasoned, not tested: the claim takes `select_for_update` on the machine row before minting; the suite runs inside one transaction per test, so two real threads were not raced |
 | The memory review's tests pass against this shape | done in the sense available: the review kept its own shape (ticket 12 deferred) and `test_memory_review.py` is green with the new claim path |
 
+Strict default (2026-11-10, coordinator, pending Kevin's ruling): a `listed` machine never
+starts a scheduled run; the schedule is refused in words on the heartbeat (`workflows_refused`)
+and on `GET workflows/` (`schedule_refused`), and the workflow still runs there by name.
+`LEGION_WORKFLOW_SCHEDULES_LISTED=on` (default off) allows it. Tested with made-up machine names.
+
 Choices made in the build: a Kevin task already queued on the machine runs first (no mint that
 claim); only the claiming token bound to the machine mints; the minted task's `user` is that
 token's member; a scheduled run carries `email_self` when declared and never `phone` or `files`.

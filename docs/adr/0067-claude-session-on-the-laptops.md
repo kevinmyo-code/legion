@@ -115,7 +115,11 @@ can take several messages, start a background helper per task, stay free, and re
     only when the laptop's own `workflow.json` declares it. A page or files to the phone, mail to
     anyone else, and any deploy never stand. `LEGION_WORKFLOW_SCHEDULES=off` stops every schedule;
     `LEGION_WORKFLOW_SCHEDULES_OFF` names single ones. A schedule may not exceed the 30 day
-    retention, and the 30 minute cap holds.
+    retention, and the 30 minute cap holds. **Unattended runs happen only on the `full` machine
+    (the Alienware).** On a `listed` machine (the work laptop) a workflow with a schedule is
+    refused in words and runs only when Kevin starts it by name; Kevin has not ruled on unattended
+    work-laptop runs, and `LEGION_WORKFLOW_SCHEDULES_LISTED=on` (default off) is the one switch
+    for his yes.
   - **R4, the repeated-task miner** reads Claude worker tasks only (the engine's task rows and a
     local task log on the laptop, `%USERPROFILE%\.legion\task-log.jsonl`, request text, 180 days,
     never leaving the laptop), proposes at 3 or more similar requests over 2 or more days, and

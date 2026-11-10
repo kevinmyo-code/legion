@@ -255,6 +255,35 @@ def schedules_off_for() -> set[str]:
     return {n.strip().lower() for n in raw.split(",") if n.strip()}
 
 
+def schedules_on_listed() -> bool:
+    """Unattended runs on a `listed` (summaries-only, work laptop) machine. Off unless Kevin says
+    so: `LEGION_WORKFLOW_SCHEDULES_LISTED=on`. A run he starts by name there is unaffected."""
+    value = str(getattr(settings, "LEGION_WORKFLOW_SCHEDULES_LISTED", "off") or "off")
+    return value.strip().lower() == "on"
+
+
+def schedule_refusal(machine, entry: dict) -> str | None:
+    """Why this machine will never start `entry` on its own, in words; None when it may. Scheduled
+    runs belong to the full-access machine (ADR 0067's Alienware); on a `listed` machine a
+    workflow with a schedule runs only when Kevin asks for it, until he turns the switch on."""
+    from claude_session.models import SCOPE_LISTED
+
+    if not entry.get("every") or machine.scope != SCOPE_LISTED or schedules_on_listed():
+        return None
+    return (
+        f"Scheduled runs only happen on a full-access machine. On the {machine.name}, "
+        f"{spoken(entry['name'])} runs only when Kevin asks for it."
+    )
+
+
+def schedule_refusals(machine) -> list[str]:
+    return [
+        words
+        for e in machine.workflows or []
+        if isinstance(e, dict) and (words := schedule_refusal(machine, e)) is not None
+    ]
+
+
 # An extra due predicate per workflow name, registered by whatever owns that workflow:
 # `EXTRA[name](machine, now) -> bool`. None registered today; the memory review keeps its own kind
 # and minting (`member_memory.review.maybe_mint`) until ticket 12 folds it in.
@@ -322,6 +351,9 @@ def due(machine, entry: dict, now) -> Due:
     every = entry.get("every")
     if not every:
         return Due(False, "no schedule")
+    refused = schedule_refusal(machine, entry)
+    if refused is not None:
+        return Due(False, refused)
     if not schedules_on():
         return Due(False, "schedules off")
     if entry["name"] in schedules_off_for():
@@ -386,7 +418,11 @@ def maybe_mint_workflow(request, machine, now):
     )
     from household.models import DeviceToken, is_recruiter
 
+    from claude_session.models import SCOPE_LISTED
+
     if not schedules_on() or not machine.workflows:
+        return None
+    if machine.scope == SCOPE_LISTED and not schedules_on_listed():
         return None
     token = getattr(request, "auth", None)
     member = getattr(request, "user", None)

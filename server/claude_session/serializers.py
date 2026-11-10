@@ -350,6 +350,11 @@ class ClaudeHeartbeatResultSerializer(serializers.Serializer):
     workflows_dropped = serializers.IntegerField(
         help_text="Entries of the catalog just sent that failed the engine's checks; 0 otherwise."
     )
+    workflows_refused = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Schedules this machine will not run on its own, each in words (a listed "
+        "machine runs a workflow only when Kevin asks, unless LEGION_WORKFLOW_SCHEDULES_LISTED).",
+    )
 
 
 class ClaudeWorkflowParamSerializer(serializers.Serializer):
@@ -392,6 +397,11 @@ class ClaudeWorkflowRowSerializer(serializers.Serializer):
         help_text="A run is queued, running, or waiting on Kevin's yes."
     )
     due = serializers.BooleanField(help_text="Its schedule says a run is due now.")
+    schedule_refused = serializers.CharField(
+        allow_null=True,
+        help_text="Why this machine never starts it on its own, in words; null when it may "
+        "(a schedule on a listed machine while LEGION_WORKFLOW_SCHEDULES_LISTED is off).",
+    )
 
 
 class ClaudeWorkflowQueuedSerializer(serializers.Serializer):

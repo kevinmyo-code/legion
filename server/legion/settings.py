@@ -206,6 +206,11 @@ except ValueError:
 # On by default: a schedule exists only once Kevin installed a workflow.json that declares one.
 LEGION_WORKFLOW_SCHEDULES = os.environ.get("LEGION_WORKFLOW_SCHEDULES", "").strip().lower() or "on"
 LEGION_WORKFLOW_SCHEDULES_OFF = os.environ.get("LEGION_WORKFLOW_SCHEDULES_OFF", "").strip()
+# Unattended runs on a `listed` machine (the work laptop). Off: a schedule there is refused in
+# words and the workflow runs only when Kevin asks. Kevin has not ruled; `on` is his one-line yes.
+LEGION_WORKFLOW_SCHEDULES_LISTED = (
+    os.environ.get("LEGION_WORKFLOW_SCHEDULES_LISTED", "").strip().lower() or "off"
+)
 
 # Files to phone (ADR 0080): the private bucket a Claude task's delivered files wait in until the
 # phone has them (`deploy/claude_files/setup_bucket.sh`, `claude_session.storage`). Optional:

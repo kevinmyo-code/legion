@@ -808,6 +808,12 @@ class Worker:
             if reply.get("workflows_dropped"):
                 log.warning("engine dropped %s workflow(s) from the catalog",
                             int(reply["workflows_dropped"]))
+            refused = len(reply.get("workflows_refused") or [])
+            if refused != getattr(self, "_refused_schedules", 0):
+                # A schedule this machine kind does not run on its own (a listed machine): count
+                # only; the words are on the engine's workflow list.
+                log.info("engine runs %s workflow schedule(s) here only when Kevin asks", refused)
+                self._refused_schedules = refused
         elif "workflows" in sent:
             self.wf_resend_at = now + self.cfg["catalog_s"]
 
