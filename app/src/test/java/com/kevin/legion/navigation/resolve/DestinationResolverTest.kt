@@ -394,6 +394,49 @@ class DestinationResolverTest {
         assertEquals(900.0, r.candidates.first().distanceM!!, 0.0)
     }
 
+    // Phone audit 2026-11-10: "nearest <brand>" started a 141 mi trip to a branch in another city
+    // while branches existed in town. A nearest ask now searches a box around the fix first, and
+    // only widens when nothing is in it.
+    @Test fun nearestSearchesAroundTheFixFirstAndWidensOnlyWhenNothingIsThere() {
+        search.reply = { q -> if (q.withinM != null) SearchAnswer.NoMatch else SearchAnswer.Hits(listOf(hit("Far Feed Co"))) }
+        val r = resolve("nearest far feed co") as Resolution.Resolved
+        assertEquals(2, search.queries.size)
+        assertEquals(SearchSource.NEAREST_RADIUS_M, search.queries[0].withinM!!, 0.0)
+        assertNull("the second pass is unbounded", search.queries[1].withinM)
+        assertEquals("Far Feed Co", r.destination.name)
+    }
+
+    @Test fun theNearestBoxIsTheRadiusEachWayAroundTheFix() {
+        val b = GeoBox.around(GeoPoint(30.0, -97.0), 111_320.0)
+        assertEquals(29.0, b.south, 1e-6)
+        assertEquals(31.0, b.north, 1e-6)
+        // A degree of longitude is shorter away from the equator, so the box is wider in degrees.
+        assertEquals(-97.0 - 1 / Math.cos(Math.toRadians(30.0)), b.west, 1e-6)
+        assertTrue(b.east > -96.0)
+    }
+
+    @Test fun aPlainSearchIsNeverBoxed() {
+        search.reply = { SearchAnswer.Hits(listOf(hit("Blue Door Cafe"))) }
+        resolve("blue door cafe")
+        assertNull(search.queries.single().withinM)
+    }
+
+    // The same failure from the ranking side: a far branch that came back WITH a drive time used
+    // to outrank a near one that came back without one (drive times sort nulls last).
+    @Test fun nearestNeverPicksAFarBranchOverANearOneThatLacksADriveTime() {
+        search.reply = {
+            SearchAnswer.Hits(
+                listOf(
+                    hit("Kibble Barn Training", distanceM = 220_000.0).copy(etaMinutes = 140.0),
+                    hit("Kibble Barn", distanceM = 4_000.0),
+                ),
+            )
+        }
+        val r = resolve("take me to the nearest kibble barn") as Resolution.Resolved
+        assertEquals("Kibble Barn", r.destination.name)
+        assertEquals(listOf("Kibble Barn"), r.candidates.map { it.name })
+    }
+
     @Test fun nearestWithNoFixSaysSoInsteadOfGuessingAPlace() {
         val r = resolve("nearest gas station", LookupContext(null)) as Resolution.NotFound
         assertTrue(r.message.contains("I don't have your location yet"))
