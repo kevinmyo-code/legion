@@ -7624,6 +7624,17 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   the run; a scheduled run never takes a page or files, only the standing mail; a Kevin task
   already queued on the laptop goes before any scheduled run; schedules are on by default (a
   schedule exists only once Kevin installs a sidecar that declares one).
+- **Phone half, built later that day on `feat/workflows-phone` (ticket 06), choices not ruled:**
+  a read-through turn cannot start a workflow (the watches/remember guard), while `check`,
+  `assign` and `answer` stay allowed there as before; a scheduled run's question is raised once
+  through the same path as a Claude result (spoken or posted by the proactive bus, Claude tasks
+  category), never when answered, older than 3 days, or silenced; `claude_session` grew 42 chars,
+  paid for by an analogy cut from `manage_item` (ceiling unchanged).
+- **Not built: a recurring workflow set up by voice.** By voice Kevin can run a named workflow,
+  hear the list, and answer a scheduled run's question; he cannot yet create one ("every morning,
+  check X"). Charted as tickets 17 (rulings: what his yes on the phone covers, and a new install
+  path where the worker process copies a hashed draft into his private skills folder) and 18 (the
+  build).
 
 ## 2026-11-06 - Navigation quality: what NAV_AUDIT keeps, and TomTom retired (Kevin)
 
