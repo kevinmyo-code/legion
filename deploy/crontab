@@ -63,3 +63,7 @@
 # into each member's private memories on the household's Gemini key. Hourly at :40, clear of
 # the other jobs' minutes. With LEGION_GEMINI_KEY unset it says so and marks nothing.
 40 * * * * python manage.py consolidate_memories
+
+# Files to phone (ADR 0080): a Claude task's delivered files are deleted from the engine once the
+# phone has them, and 24 hours after upload at the latest. Hourly at :50, clear of the others.
+50 * * * * python manage.py claude_files_prune

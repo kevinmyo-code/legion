@@ -56,7 +56,9 @@ class ClaudeTaskCreateSerializer(serializers.Serializer):
     origin = serializers.ChoiceField(choices=list(ORIGINS))
     deliver = serializers.ChoiceField(
         choices=list(DELIVERIES), required=False, allow_null=True, default=None,
-        help_text="email_self only when Kevin named his own email in the request (ruling 17).",
+        help_text="email_self only when Kevin named his own email in the request (ruling 17); "
+        "phone for a researched page (ticket 09); files when he asked for files on his phone "
+        "(ADR 0080). A confirms follow-up to a files task inherits files.",
     )
     confirms = serializers.BooleanField(
         required=False, default=False,
@@ -159,6 +161,15 @@ class ClaudeTaskFileRowSerializer(serializers.Serializer):
     size = serializers.IntegerField(allow_null=True)
     uploaded = serializers.BooleanField()
     requested = serializers.BooleanField()
+    content_type = serializers.CharField(
+        help_text="The type it was uploaded as; blank until it is uploaded."
+    )
+    received = serializers.BooleanField(
+        help_text="The asking member's phone said it has it (files to phone, ADR 0080)."
+    )
+    gone = serializers.BooleanField(
+        help_text="Its bytes were deleted from the engine: received, or 24 h after upload."
+    )
 
 
 class ClaudeArtifactSerializer(serializers.Serializer):
@@ -213,6 +224,12 @@ class ClaudeSendFileResultSerializer(serializers.Serializer):
     file_id = serializers.IntegerField()
     requested = serializers.BooleanField()
     uploaded = serializers.BooleanField()
+    detail = serializers.CharField()
+
+
+class ClaudeFileReceivedSerializer(serializers.Serializer):
+    file_id = serializers.IntegerField()
+    deleted = serializers.BooleanField(help_text="The engine's copy is gone.")
     detail = serializers.CharField()
 
 

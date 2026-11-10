@@ -73,7 +73,14 @@ DELIVER_EMAIL_SELF = "email_self"
 # short-lived signed link (`views.PageView`). Asking for it is the yes for that
 # one page (ruling 8's "Kevin asked"). A `listed` machine never takes it.
 DELIVER_PHONE = "phone"
-DELIVERIES: tuple[str, ...] = (DELIVER_EMAIL_SELF, DELIVER_PHONE)
+# Files to phone (ADR 0080, Kevin 2026-11-09): the files Kevin named come to his phone and open
+# there. Naming them in the request is the yes, so at finish every found file is requested at
+# once, within FILES_MAX_COUNT and FILES_MAX_TOTAL_BYTES; past either (or when the find is not
+# clearly what he asked for) the worker asks first. The bytes are deleted the moment the phone
+# says it has them, and FILES_KEEP_HOURS after upload whatever happens. A `listed` machine never
+# takes it. Not `phone`: that value was already the HTML page (ticket 09).
+DELIVER_FILES = "files"
+DELIVERIES: tuple[str, ...] = (DELIVER_EMAIL_SELF, DELIVER_PHONE, DELIVER_FILES)
 
 # Ruling 5. `full`: every fixed drive, files may come back. `listed`: the repos
 # folder only, summaries only, never a file.
@@ -107,6 +114,10 @@ PAGE_MAX_BYTES = 5 * 1024 * 1024
 PAGE_SUFFIXES: tuple[str, ...] = (".html", ".htm")
 PAGE_LINK_SECONDS = 10 * 60
 TITLE_MAX_CHARS = 200
+# Files to phone (ADR 0080).
+FILES_MAX_COUNT = 20
+FILES_MAX_TOTAL_BYTES = 100 * 1024 * 1024
+FILES_KEEP_HOURS = 24
 OFFLINE_AFTER_SECONDS = 90
 TASK_CAP_MINUTES = 30
 SILENT_FAIL_MINUTES = 10
@@ -235,6 +246,15 @@ class ClaudeTaskFile(models.Model):
     content_type = models.TextField(blank=True, default="")
     # A delivered page's <title>, read at upload (ticket 09). Blank otherwise.
     title = models.TextField(blank=True, default="")
+    # Files to phone (ADR 0080): where the bytes sit when they are in the private bucket
+    # (`claude_session.storage`), an opaque key that never carries the file's name. Blank when
+    # they are in `content`, or gone.
+    storage_key = models.TextField(blank=True, default="")
+    # When the requesting member's phone said it had the file; its stored bytes are deleted then.
+    received_at = models.DateTimeField(null=True, blank=True)
+    # When the stored bytes were deleted (received, or FILES_KEEP_HOURS passed). The row stays,
+    # with its name and size, for the task's 30 days.
+    purged_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
 
     class Meta:

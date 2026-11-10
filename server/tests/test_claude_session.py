@@ -299,7 +299,8 @@ def test_the_full_state_machine_done(token_a):
     assert row["finished_at"] is not None
     assert row["files"] == [
         {"id": row["files"][0]["id"], "name": "aw4.pdf", "size": 2_000_000,
-         "uploaded": False, "requested": False}
+         "uploaded": False, "requested": False, "content_type": "", "received": False,
+         "gone": False}
     ]
     # Terminal: a second finish and a cancel are both refused.
     assert _finish(token_a, task_id).status_code == 409

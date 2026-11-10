@@ -25,7 +25,7 @@ function task(partial: Partial<ClaudeTask> = {}): ClaudeTask {
     question: null,
     created_at: '2026-11-03T15:00:00Z',
     finished_at: '2026-11-03T15:09:00Z',
-    files: [{ id: 1410, name: 'atlanta.html', size: 9000, uploaded: true, requested: true }],
+    files: [{ id: 1410, name: 'atlanta.html', size: 9000, uploaded: true, requested: true, content_type: 'text/html', received: false, gone: false }],
     artifacts: [
       {
         id: 1410,
@@ -59,7 +59,7 @@ describe('the Claude session page', () => {
   })
 
   test('a page that has not arrived is said in words, with no link', async () => {
-    const waiting = task({ artifacts: [], files: [{ id: 1410, name: 'atlanta.html', size: 9000, uploaded: false, requested: true }] })
+    const waiting = task({ artifacts: [], files: [{ id: 1410, name: 'atlanta.html', size: 9000, uploaded: false, requested: true, content_type: '', received: false, gone: false }] })
     renderApp('/claude', createEngine({ ...seedHousehold(), claude: [waiting] }))
     expect(await screen.findByText(CLAUDE_COPY.pageWaiting)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Open page/ })).toBeNull()

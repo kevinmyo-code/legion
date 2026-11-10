@@ -187,6 +187,11 @@ INSTALLED_APPS = [
 # Storage. A bucket name, not a secret; the bucket is private and each link is signed.
 LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
 
+# Files to phone (ADR 0080): the private bucket a Claude task's delivered files wait in until the
+# phone has them (`deploy/claude_files/setup_bucket.sh`, `claude_session.storage`). Optional:
+# unset, the bytes wait in the task file row's own column instead, deleted on the same triggers.
+LEGION_CLAUDE_FILES_BUCKET = os.environ.get("LEGION_CLAUDE_FILES_BUCKET", "").strip()
+
 # recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter
 # visitors join. `manage.py seed_demo_household` creates it, and
 # `household.demo.find_demo_household()` is the one lookup both the seed and

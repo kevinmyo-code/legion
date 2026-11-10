@@ -4150,6 +4150,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: A delivered page that is not text/html.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The files bucket refused it (ADR 0080).
   /api/claude/tasks/{task_id}/files/{file_id}/:
     get:
       operationId: api_claude_tasks_files_retrieve
@@ -4183,6 +4189,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A delivered file already received or past its 24 h (ADR 0080).
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The bucket refused.
+  /api/claude/tasks/{task_id}/files/{file_id}/received/:
+    post:
+      operationId: api_claude_tasks_files_received
+      description: |-
+        `POST tasks/{id}/files/{file_id}/received/`: the phone has a delivered file (ADR 0080), so
+        the engine's copy is deleted now rather than at 24 h. Only the member who asked for it.
+        Idempotent: a second call, or one after the prune, says it is already gone.
+      parameters:
+      - in: path
+        name: file_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: task_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - claude
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeFileReceived'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not uploaded yet.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The bucket refused.
   /api/claude/tasks/{task_id}/finish/:
     post:
       operationId: api_claude_tasks_finish
@@ -12858,6 +12924,20 @@ components:
           maxLength: 100
       required:
       - name
+    ClaudeFileReceived:
+      type: object
+      properties:
+        file_id:
+          type: integer
+        deleted:
+          type: boolean
+          description: The engine's copy is gone.
+        detail:
+          type: string
+      required:
+      - deleted
+      - detail
+      - file_id
     ClaudeFileRequested:
       type: object
       properties:
@@ -13213,10 +13293,11 @@ components:
         deliver:
           nullable: true
           description: |-
-            email_self only when Kevin named his own email in the request (ruling 17).
+            email_self only when Kevin named his own email in the request (ruling 17); phone for a researched page (ticket 09); files when he asked for files on his phone (ADR 0080). A confirms follow-up to a files task inherits files.
 
             * `email_self` - email_self
             * `phone` - phone
+            * `files` - files
           oneOf:
           - $ref: '#/components/schemas/ClaudeTaskDeliverEnum'
           - $ref: '#/components/schemas/NullEnum'
@@ -13246,10 +13327,12 @@ components:
       enum:
       - email_self
       - phone
+      - files
       type: string
       description: |-
         * `email_self` - email_self
         * `phone` - phone
+        * `files` - files
     ClaudeTaskFileRow:
       type: object
       properties:
@@ -13264,9 +13347,23 @@ components:
           type: boolean
         requested:
           type: boolean
+        content_type:
+          type: string
+          description: The type it was uploaded as; blank until it is uploaded.
+        received:
+          type: boolean
+          description: The asking member's phone said it has it (files to phone, ADR
+            0080).
+        gone:
+          type: boolean
+          description: 'Its bytes were deleted from the engine: received, or 24 h
+            after upload.'
       required:
+      - content_type
+      - gone
       - id
       - name
+      - received
       - requested
       - size
       - uploaded
