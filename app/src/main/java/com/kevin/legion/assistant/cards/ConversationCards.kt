@@ -41,8 +41,12 @@ object ConversationCards {
     /** Cards kept per conversation; older ones drop off the front. */
     private const val KEEP = 8
 
+    /**
+     * A voice conversation starts. It adopts a stack a typed ask opened (the cards stay), and that
+     * conversation's end then clears them, as ADR 0081 says.
+     */
     fun begin() {
-        _state.update { if (it.open) it else ConversationCardsState(open = true) }
+        _state.update { if (it.open) it.copy(typed = false) else ConversationCardsState(open = true) }
     }
 
     /** A typed question was sent: open the stack (or keep it) and mark it as a typed ask's. */
@@ -91,7 +95,8 @@ object ConversationCards {
             codes = pick(CarPart.CODES) { it.codes },
             parts = older.parts + newer.parts,
             extraNote = newer.extraNote ?: older.extraNote,
-            provenance = newer.provenance ?: older.provenance,
+            // The line must describe everything on the card: kept only when the two reads agree.
+            provenance = if (older.parts.isEmpty() || older.provenance == newer.provenance) newer.provenance else null,
         )
     }
 }

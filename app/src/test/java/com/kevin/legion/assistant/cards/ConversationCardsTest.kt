@@ -69,6 +69,24 @@ class ConversationCardsTest {
     }
 
     @Test
+    fun `a merged car card keeps a source line only when both reads share it`() {
+        ConversationCards.begin()
+        ConversationCards.publish(car(due = NextServiceDue("Oil change")))
+        ConversationCards.publish(car(codes = emptyList()).copy(provenance = CardProvenance("OBD port", readAtMs = 1L)))
+        assertNull("service data is not from the OBD port", ConversationCards.state.value.latest?.provenance)
+    }
+
+    @Test
+    fun `a voice conversation adopts a typed ask's cards, and its end clears them`() {
+        ConversationCards.beginTyped()
+        ConversationCards.publish(list("Groceries"))
+        ConversationCards.begin()
+        assertEquals(1, ConversationCards.state.value.cards.size)
+        ConversationCards.endVoice()
+        assertFalse(ConversationCards.state.value.open)
+    }
+
+    @Test
     fun `a voice conversation ending clears its own cards`() {
         ConversationCards.begin()
         ConversationCards.publish(list("Groceries"))
