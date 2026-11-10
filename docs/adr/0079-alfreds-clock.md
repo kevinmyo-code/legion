@@ -1,7 +1,8 @@
 ---
-status: accepted
+status: amended
 decided: 2026-11-09
 decided-by: Kevin
+amended: 2026-11-10
 supersedes: []
 source: "[[decisions#2026-11-09 - Alfred's clock inside LEGION (Kevin)]]"
 tags: [adr]
@@ -10,6 +11,13 @@ tags: [adr]
 # 79. Alfred's clock lives inside LEGION, rings on its own, and briefs only on a tap
 
 ## Standing
+
+**AMENDED 2026-11-10 by [[0082-proactive-speech-uncapped-and-briefs]] (Kevin).** A tap Dismiss of a
+morning alarm (04:00 to 11:00, once a day) now also has Alfred speak the brief unprompted, through
+the proactive bus; Brief me stays as the replay. The ring screen also shows an emergency alert's
+ring (Safety, ALARM urgency) with one Dismiss. The "plain ring" paragraph below is the original
+ruling, kept as written; the ring itself still never touches the network or the Live session, and
+the brief runs only after the dismiss.
 
 **LEGION has its own clock: Alarms, Timers, Stopwatch and Bedtime** (Kevin, 2026-11-09, map
 `.scratch/alfred-clock/`). It is a screen inside LEGION, not a separate app. Matrix home's big clock

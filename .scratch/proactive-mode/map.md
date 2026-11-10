@@ -34,7 +34,11 @@ live-calendar check picks the right moments, whether the switches and the raise 
 survive the `START_STICKY` restart they exist to survive, and whether a fired reminder now delivers
 exactly once - which is a change to behaviour Kevin already had, not a pure addition.
 
-**Still unbuilt, deliberately: the RULES themselves.** The engine, the switches, the budget and the
+**2026-11-10 ([ticket 14](issues/14-no-cap-screen-off-briefs-alarm.md), ADR 0082):** the cap is gone,
+the gate no longer needs the screen on, Digest has two raises (the wake-up and home briefs), and a
+Safety raise may ring as an emergency alarm.
+
+**Still unbuilt, deliberately (2026-08-21): the RULES themselves.** The engine, the switches, the budget and the
 delivery layer all exist; what does not is a single Wellbeing or Digest raise. Those two categories
 ship switched off and say "Nothing uses this yet" on their own rows. The founding line - *"it's past
 10pm, perhaps rest is in order"* - is now legal by construction and still unwritten, because its
@@ -89,9 +93,9 @@ ticket carried eight decision clusters plus a build.
 | 12 | **The compulsion test, four clauses.** A raise is anchored to a fact Kevin could verify, actionable now, never references his absence or streak or engagement, and is silenceable forever in one instruction. **Lives in CLAUDE.md §7**, checked by a test over the raise registry. (Kevin, 2026-08-21, [ticket 03](issues/03-compulsion-test.md).) | Clauses (a) and (d) become machine-checked. **(b) and (c) stay human-reviewed** - do not let the test's existence imply all four are covered. |
 | 13 | **A nudge about a goal Kevin set and then ignored is PERMITTED.** (Kevin, 2026-08-21, against the recommendation.) | The useful/guilt line is now TONE, not a checkable rule, and it rests on [ticket 08](issues/08-proactive-register.md)'s clause - the weakest lever available. Recorded so nobody re-derives the rejected fifth clause and thinks it is new. |
 | 14 | **Master + five categories live in Room, not SharedPreferences.** Fresh install is QUIET (master on, every category off); an existing `muted=false` upgrades to Safety+Fleet+Timing on, so Kevin's behaviour does not change. (Kevin, 2026-08-21, [ticket 04](issues/04-categories-storage-and-surface.md).) | Eligible to sync, which is not the same as syncing - `sync/` has never executed. Do not document these as synced until a device pair proves it. |
-| 15 | **Three unprompted SPOKEN lines a day. Safety is outside the cap, inside the master.** (Kevin, 2026-08-21, [ticket 05](issues/05-quiet-hours-and-budget.md).) | The only anti-compulsion guarantee that is countable. "Always speaks" is always shorthand for *while the master is on* - read every future exemption against that. |
+| 15 | **SUPERSEDED 2026-11-10 (Kevin, ADR 0082, [ticket 14](issues/14-no-cap-screen-off-briefs-alarm.md)): there is no daily cap.** Was: three unprompted spoken lines a day, Safety outside the cap, inside the master (Kevin, 2026-08-21, [ticket 05](issues/05-quiet-hours-and-budget.md)); history in `memory/library/decisions.md` 2026-11-10. | The only anti-compulsion guarantee that is countable. "Always speaks" is always shorthand for *while the master is on* - read every future exemption against that. |
 | 16 | **Quiet hours are per category per window. Wellbeing may speak inside the night window; Digest, Fleet and Timing may not.** (Kevin, 2026-08-21.) | Resolves the founding tension by design rather than by exception: the rest nudge that started this map is legal where it lives. |
-| 17 | **It speaks aloud THROUGH THE DAY, not only in a car** - gated on screen-on AND no live calendar event. (Kevin, 2026-08-21, [ticket 06](issues/06-delivery.md): *"thats the whole point of something like jarvis or alfred"*.) | The delivery-layer counterpart to the concierge reframe. Every existing raise assumes driving; none may after this. No calendar permission resolves to *unknown, so notify*, never *free, so speak*. |
+| 17 | **It speaks aloud THROUGH THE DAY, not only in a car** - gated on the phone not being silenced AND no live calendar event. (Kevin, 2026-08-21, [ticket 06](issues/06-delivery.md): *"thats the whole point of something like jarvis or alfred"*. **The screen-on half is SUPERSEDED 2026-11-10**, Kevin, ADR 0082: *"can speak at screen off. unless i silent the phone ofc"*.) | The delivery-layer counterpart to the concierge reframe. Every existing raise assumes driving; none may after this. No calendar permission resolves to *unknown, so notify*, never *free, so speak*. |
 | 18 | **A raise that cannot be spoken is NOTIFIED, never dropped**, on its own proactive channel. One delivery per raise - never both. (Kevin, 2026-08-21.) | The cap governs SPEECH, not existence. An OS channel is a second kill switch Kevin can use without the app knowing, so nothing may ever claim a notification was delivered or seen. |
 | 19 | **A raise is a typed object, not a String** - id, category, rule, facts - and the bus refuses one whose facts are empty for a subject it invites the model to mention. (Kevin, 2026-08-21, [ticket 10](issues/10-what-a-raise-may-say.md).) | Churns all 11 call sites once and pays for three things: decision 7's contract, decision 9's raise row, and decision 18's "spoke, so do not notify". |
 | 20 | **Unreadable and empty are different sentences, for every permissioned source.** (2026-08-21, generalised from `OpenerCalendarBriefing`.) | Applies to contacts, health, notifications, anything added later - not just the calendar. |
@@ -115,7 +119,8 @@ ticket carried eight decision clusters plus a build.
   governs nothing must not imply it does.
 
 - [Quiet hours, and how often it may speak](issues/05-quiet-hours-and-budget.md) — **Three spoken
-  lines a day, Safety uncapped, quiet hours per category per window.** The founding tension is resolved
+  lines a day, Safety uncapped, quiet hours per category per window.** (The cap was removed
+  2026-11-10, decision 15.) The founding tension is resolved
   by design: Wellbeing may speak inside the night window, which is where the rest nudge lives. Over the
   cap means *not spoken*, never *lost* - it becomes a notification. A brush-off spends a slot and is
   inferred from the reply, with the imperfection of that inference stated and bounded.
