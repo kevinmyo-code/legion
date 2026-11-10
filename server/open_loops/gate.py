@@ -4,10 +4,10 @@ code, none depends on the prompt.
 
 A proposal from the helper is `{"text", "evidence": [W labels], "reason"}`. It passes when:
 
-1. `text` is short, plain and **made only of words he said in one line** of the cited records (his own words
-   from clean turns, recomputed here from the stored records, never trusted from the laptop). This
-   is the anchor (compulsion test clause a): the proposal is his words, not the model's reading of
-   them. It is also what makes the dedupe key hold across nights (rule 4).
+1. `text` is short, plain and **made only of words he said in one line** of the cited records
+   (his own words from clean turns, recomputed here from the stored records, never trusted from
+   the laptop). This is the anchor (compulsion test clause a): the proposal is his words, not
+   the model's reading of them. It is also what makes the dedupe key hold across nights (rule 4).
 2. It carries **no identity or bank number** (`member_memory.sensitive.looks_sensitive`, the
    vault's filter) and **nothing about money** (`names_money`: an amount, a currency, or a word
    that moves money). Deliberately broad: a money task he wants tracked he can still say as

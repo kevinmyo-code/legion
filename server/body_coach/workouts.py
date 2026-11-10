@@ -95,7 +95,9 @@ def state_of(row: TrainingProgramme) -> change.State:
         template=row.template if row.template in rules.TEMPLATES else rules.DEFAULT_TEMPLATE,
         training_days=tuple(row.day_list()),
         swaps={k: v for k, v in (row.swaps or {}).items() if v in rules.CATALOG},
-        exclude_equipment=frozenset(e for e in (row.exclude_equipment or []) if e in rules.EQUIPMENT),
+        exclude_equipment=frozenset(
+            e for e in (row.exclude_equipment or []) if e in rules.EQUIPMENT
+        ),
         avoid=frozenset(j for j in (row.avoid or []) if j in rules.JOINTS),
         cardio=bool(row.cardio),
     )
@@ -117,7 +119,9 @@ def programme_dict(row: TrainingProgramme | None) -> dict | None:
         "days_per_week": len(row.day_list()),
         # Kevin, 2026-11-06: sessions a week is the target; the weekdays above are inert.
         "sessions_per_week": len(row.day_list()),
-        "swaps": {k: rules.CATALOG[v].name for k, v in (row.swaps or {}).items() if v in rules.CATALOG},
+        "swaps": {
+            k: rules.CATALOG[v].name for k, v in (row.swaps or {}).items() if v in rules.CATALOG
+        },
         "started_on": row.started_on.isoformat(),
         # body coach 2: the filters and every day of the template, so a voice can answer "what
         # is my programme" and "what would Upper 2 be" from one read.
@@ -140,7 +144,9 @@ def _counted_sessions(request, programme: TrainingProgramme):
     )
 
 
-def history_for(request, exercise_key: str, before: WorkoutSession | None = None) -> list[rules.Performance]:
+def history_for(
+    request, exercise_key: str, before: WorkoutSession | None = None
+) -> list[rules.Performance]:
     """Finished sessions with this exercise, newest first, as the rules read them."""
     sessions = scoped(WorkoutSession, request).filter(
         status=SESSION_FINISHED, sets__exercise_key=exercise_key
@@ -304,7 +310,9 @@ def start(
     if day_key is not None and day_key not in rules.ALL_DAY_KEYS:
         raise WorkoutRefused(f"Nothing was started. day_key must be A to D; got {day_key!r}.")
     if location is not None and location not in rules.LOCATIONS:
-        raise WorkoutRefused(f"Nothing was started. location must be gym or home; got {location!r}.")
+        raise WorkoutRefused(
+            f"Nothing was started. location must be gym or home; got {location!r}."
+        )
     with transaction.atomic():
         if session_id is not None:
             existing = scoped(WorkoutSession, request).filter(pk=session_id).first()
@@ -321,7 +329,8 @@ def start(
         keys = rules.day_keys(state_of(programme).template)
         if day_key is not None and day_key not in keys:
             raise WorkoutRefused(
-                f"Nothing was started. This programme's days are {', '.join(keys)}; got {day_key!r}."
+                f"Nothing was started. This programme's days are {', '.join(keys)}; "
+                f"got {day_key!r}."
             )
         plan = next_plan(request, programme, day_key, location)
         now = timezone.now()
@@ -353,8 +362,12 @@ def _session_or_refusal(request, session_id, verb: str) -> WorkoutSession:
 
 
 def _check_actuals(reps, weight) -> None:
-    if reps is not None and (isinstance(reps, bool) or not isinstance(reps, int) or not 0 <= reps <= 1000):
-        raise WorkoutRefused(f"Nothing was saved. reps must be a whole number 0 to 1000; got {reps!r}.")
+    if reps is not None and (
+        isinstance(reps, bool) or not isinstance(reps, int) or not 0 <= reps <= 1000
+    ):
+        raise WorkoutRefused(
+            f"Nothing was saved. reps must be a whole number 0 to 1000; got {reps!r}."
+        )
     if weight is not None and (
         isinstance(weight, bool) or not isinstance(weight, (int, float)) or not 0 <= weight < 2000
     ):
@@ -366,7 +379,11 @@ def _check_actuals(reps, weight) -> None:
 def _apply(row: WorkoutSet, done: bool, reps, weight) -> None:
     row.done = done
     if done:
-        row.reps_done = reps if reps is not None else (row.reps_done if row.reps_done is not None else row.reps_high)
+        row.reps_done = (
+            reps
+            if reps is not None
+            else (row.reps_done if row.reps_done is not None else row.reps_high)
+        )
         if weight is not None:
             row.weight_lbs = float(weight)
         elif row.weight_lbs is None:
@@ -626,7 +643,11 @@ def week_dict(request, programme: TrainingProgramme | None, today: date) -> dict
     start_day = week_start(today)
     finished = (
         scoped(WorkoutSession, request)
-        .filter(status=SESSION_FINISHED, session_date__gte=start_day, session_date__lt=start_day + timedelta(days=7))
+        .filter(
+            status=SESSION_FINISHED,
+            session_date__gte=start_day,
+            session_date__lt=start_day + timedelta(days=7),
+        )
         .order_by("session_date", "finished_at")
     )
     done = [{"date": s.session_date.isoformat(), "day_key": s.day_key} for s in finished]
@@ -710,7 +731,9 @@ TODAY_IN_PROGRESS = "in_progress"
 TODAY_DONE = "done"  # a session was finished today
 
 
-def programme_days(request, programme: TrainingProgramme | None, upcoming: list[rules.Upcoming]) -> list[dict]:
+def programme_days(
+    request, programme: TrainingProgramme | None, upcoming: list[rules.Upcoming]
+) -> list[dict]:
     """Every day of the programme with the rules' current targets (gym variants), and where each
     comes in the rotation. A deload is not applied here: `next` and `upcoming` say which session is
     one, and its lighter targets are the rules' when that session starts."""
@@ -754,7 +777,9 @@ def upcoming_dict(u: rules.Upcoming) -> dict:
     }
 
 
-def _programme_words(programme, status: str, week: dict, days: list[dict], upcoming: list[dict]) -> str:
+def _programme_words(
+    programme, status: str, week: dict, days: list[dict], upcoming: list[dict]
+) -> str:
     state = (
         state_of(programme)
         if programme
@@ -777,9 +802,7 @@ def _programme_words(programme, status: str, week: dict, days: list[dict], upcom
         parts.append("Today's session is done.")
     elif status == TODAY_REST:
         parts.append("This week's sessions are done.")
-    order = ", then ".join(
-        u["day_label"] + (" (deload)" if u["deload"] else "") for u in upcoming
-    )
+    order = ", then ".join(u["day_label"] + (" (deload)" if u["deload"] else "") for u in upcoming)
     parts.append(f"Next sessions, in order: {order}.")
     parts.append(f"This week: {week['done']} of {week['planned']} sessions done.")
     return " ".join(parts)
@@ -795,7 +818,11 @@ def _default_plan(request) -> Plan:
 
 
 def describe_target(t: dict) -> str:
-    reps = f"{t['reps_low']}-{t['reps_high']}" if t["reps_low"] != t["reps_high"] else f"{t['reps_low']}"
+    reps = (
+        f"{t['reps_low']}-{t['reps_high']}"
+        if t["reps_low"] != t["reps_high"]
+        else f"{t['reps_low']}"
+    )
     unit = {"seconds": " s", "minutes": " min"}.get(t["unit"], "")
     weight = t.get("weight_lbs", t.get("target_weight_lbs"))
     if t["kind"] != rules.KIND_WEIGHTED:
@@ -822,7 +849,10 @@ def _today_words(running, finished_today, plan, week, training_day) -> str:
     lead = "Next session" if training_day else "This week's sessions are done. The next one"
     extra = ""
     if plan["calibrating"]:
-        extra = " Calibration: where it says your pick, choose a weight you could lift for 2 more reps than the top of the range."
+        extra = (
+            " Calibration: where it says your pick, choose a weight you could lift for 2 more reps"
+            " than the top of the range."
+        )
     if plan["deload"]:
         extra += " This is a deload session: lighter and one set fewer."
     return f"{lead} is {plan['day_label']}: {lines}.{extra}{tail}"
@@ -934,7 +964,9 @@ def _proposal_or_refusal(request, proposal_id, verb: str) -> ProgrammeProposal:
         return row
     row = scoped(ProgrammeProposal, request).filter(pk=proposal_id).first()
     if row is None:
-        raise WorkoutRefused(f"Nothing was {verb}. There is no programme proposal with that id.", 404)
+        raise WorkoutRefused(
+            f"Nothing was {verb}. There is no programme proposal with that id.", 404
+        )
     if row.status != STATUS_PENDING:
         raise WorkoutRefused(f"Nothing was {verb}. That proposal is already {row.status}.", 409)
     return row
@@ -952,11 +984,7 @@ def accept_proposal(request, proposal_id) -> tuple[ProgrammeProposal, TrainingPr
             .filter(pk=row.programme_id)
             .first()
         )
-        if (
-            programme is None
-            or not programme.active
-            or state_of(programme).as_dict() != row.before
-        ):
+        if programme is None or not programme.active or state_of(programme).as_dict() != row.before:
             raise WorkoutRefused(
                 "Nothing was accepted. The programme changed after this proposal was made; ask "
                 "for the change again.",
@@ -1008,14 +1036,16 @@ def dismiss_proposal(request, proposal_id) -> ProgrammeProposal:
 
 def accept_words(request, programme: TrainingProgramme) -> str:
     nxt = next_plan(request, programme)
-    words = f"The programme is now {change.summary(state_of(programme))}. Next workout is {nxt.label}."
+    words = (
+        f"The programme is now {change.summary(state_of(programme))}. Next workout is {nxt.label}."
+    )
     if in_progress(request) is not None:
         words += " The workout already running stays as it was."
     return words
 
 
 def alternatives_body(request, exercise) -> dict:
-    """"Alternatives to bench": the slot's other choices, each allowed by the programme's
+    """ "Alternatives to bench": the slot's other choices, each allowed by the programme's
     equipment and joints or not and why, and whether its progress would carry (decision 11)."""
     if not exercise or not str(exercise).strip():
         raise WorkoutRefused("Nothing was read. Say which exercise.")
@@ -1065,7 +1095,15 @@ def apply_state(request, state: change.State) -> TrainingProgramme:
     programme = ensure_programme(request)
     if state_of(programme) == state:
         return programme
-    fields = ["template", "training_days", "swaps", "exclude_equipment", "avoid", "cardio", "updated_at"]
+    fields = [
+        "template",
+        "training_days",
+        "swaps",
+        "exclude_equipment",
+        "avoid",
+        "cardio",
+        "updated_at",
+    ]
     if state.template != programme.template:
         programme.template_since = timezone.now()
         fields.append("template_since")

@@ -87,18 +87,25 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--last", type=int, default=None,
-            help=f"How many batches (default 5; with --since or --until, up to {WINDOW_BATCH_LIMIT}).",
+            help=(
+                "How many batches (default 5; with --since or --until, "
+                f"up to {WINDOW_BATCH_LIMIT})."
+            ),
         )
         parser.add_argument("--grep", default=None, help="Keep only lines containing this text.")
         parser.add_argument(
             "--reason", choices=REASONS, action="append", default=None, help="Repeatable."
         )
-        parser.add_argument("--since", default=None, help="ISO time (UTC) or a span back: 90m, 2h, 1d.")
+        parser.add_argument(
+            "--since", default=None, help="ISO time (UTC) or a span back: 90m, 2h, 1d."
+        )
         parser.add_argument("--until", default=None, help="ISO time (UTC) or a span back: 30m.")
         parser.add_argument(
             "--tag", action="append", default=None, help="Keep only this logcat tag. Repeatable."
         )
-        parser.add_argument("--run", default=None, help="Keep only this phone process run (run_id).")
+        parser.add_argument(
+            "--run", default=None, help="Keep only this phone process run (run_id)."
+        )
         parser.add_argument(
             "--raw", action="store_true",
             help="Only the lines, every batch merged in time order (no batch headers).",
@@ -126,13 +133,19 @@ class Command(BaseCommand):
         since = parse_when(options["since"]) if options["since"] else None
         until = parse_when(options["until"]) if options["until"] else None
         windowed = since is not None or until is not None
-        last = options["last"] if options["last"] is not None else (WINDOW_BATCH_LIMIT if windowed else 5)
+        last = (
+            options["last"]
+            if options["last"] is not None
+            else (WINDOW_BATCH_LIMIT if windowed else 5)
+        )
         if last < 1:
             raise CommandError("--last must be at least 1.")
         if options["render"] and options["grep"]:
             raise CommandError("--render reads whole batches; it cannot be combined with --grep.")
         if options["render"] and (options["raw"] or options["tag"]):
-            raise CommandError("--render prints a timeline; it cannot be combined with --raw or --tag.")
+            raise CommandError(
+                "--render prints a timeline; it cannot be combined with --raw or --tag."
+            )
         if options["b64"] and not options["raw"]:
             raise CommandError("--b64 encodes the --raw output; pass both.")
         rows = DeviceLog.objects.all()
@@ -169,7 +182,9 @@ class Command(BaseCommand):
                 continue
             if header is None:
                 if needle or tags is not None or windowed:
-                    lines = [line for _when, line in _filtered(row, lines, since, until, tags, needle)]
+                    lines = [
+                        line for _when, line in _filtered(row, lines, since, until, tags, needle)
+                    ]
                     if not lines:
                         continue
                 header = batch_header(row, len(lines))
@@ -177,7 +192,9 @@ class Command(BaseCommand):
             self.stdout.write(header)
             self.stdout.write("\n".join(lines))
         if not shown:
-            self.stdout.write(f"No lines matching the filters in the newest {len(batches)} batches.")
+            self.stdout.write(
+                f"No lines matching the filters in the newest {len(batches)} batches."
+            )
 
     def _raw(self, batches, since, until, tags, needle, b64: bool) -> None:
         per_batch = []
@@ -199,13 +216,16 @@ class Command(BaseCommand):
 
 
 def _in_window(rows, since, until):
-    """Batches whose device window overlaps [since, until]; a batch with no window by received_at."""
+    """Batches whose device window overlaps [since, until]; a batch with no window by
+    received_at."""
     if since is not None:
         lo = since - WINDOW_SLACK
         rows = rows.filter(Q(window_end__gte=lo) | Q(window_end__isnull=True, received_at__gte=lo))
     if until is not None:
         hi = until + WINDOW_SLACK
-        rows = rows.filter(Q(window_start__lte=hi) | Q(window_start__isnull=True, received_at__lte=hi))
+        rows = rows.filter(
+            Q(window_start__lte=hi) | Q(window_start__isnull=True, received_at__lte=hi)
+        )
     return rows
 
 

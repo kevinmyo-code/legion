@@ -417,7 +417,10 @@ def test_about_kevin_is_declared_to_a_recruiter_with_its_rule():
 
 def test_the_legion_section_is_optional_and_closed():
     assert problems(fake_content()) == []
-    good = dict(fake_content(), legion={"title": "How", "intro": "It", "parts": [{"title": "a", "body": "b"}]})
+    good = dict(
+        fake_content(),
+        legion={"title": "How", "intro": "It", "parts": [{"title": "a", "body": "b"}]},
+    )
     assert problems(good) == []
     bad = dict(fake_content(), legion={"title": "How", "intro": "It", "parts": [], "extra": 1})
     assert problems(bad)

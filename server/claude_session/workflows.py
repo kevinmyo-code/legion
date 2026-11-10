@@ -90,7 +90,11 @@ def clean_entry(raw) -> dict:
     for p in params:
         if not isinstance(p, dict) or set(p) - {"name", "says", "required"}:
             raise Bad("param")
-        if not isinstance(p.get("name"), str) or not PARAM_RE.match(p["name"]) or len(p["name"]) > 30:
+        if (
+            not isinstance(p.get("name"), str)
+            or not PARAM_RE.match(p["name"])
+            or len(p["name"]) > 30
+        ):
             raise Bad("param")
         clean_params.append({"name": p["name"], "says": _text(p.get("says"), SAYS_MAX),
                              "required": p.get("required") is True})
@@ -143,7 +147,8 @@ def clean_entry(raw) -> dict:
 def clean_catalog(raw, previous: list | None, now) -> tuple[list[dict], int]:
     """The entries worth keeping and how many were dropped. A name or phrase already taken by an
     earlier entry is dropped too. Each kept entry carries `seen_at`, the first time this machine
-    published that name (carried over from `previous`), the clock a never-run schedule counts from."""
+    published that name (carried over from `previous`), the clock a never-run schedule counts
+    from."""
     seen_before = {
         e.get("name"): e.get("seen_at") for e in previous or [] if isinstance(e, dict)
     }
@@ -414,11 +419,10 @@ def maybe_mint_workflow(request, machine, now):
         KIND_WORKFLOW,
         ORIGIN_SCHEDULE,
         QUEUED,
+        SCOPE_LISTED,
         ClaudeTask,
     )
     from household.models import DeviceToken, is_recruiter
-
-    from claude_session.models import SCOPE_LISTED
 
     if not schedules_on() or not machine.workflows:
         return None

@@ -40,7 +40,6 @@ from api.schema import DetailSerializer
 from devicelogs import records
 from devicelogs.models import (
     MAX_UPLOAD_BYTES,
-    MAX_UPLOAD_BYTES,
     NAV_AUDIT_RETENTION_DAYS,
     REASONS,
     RETENTION_DAYS,
@@ -60,7 +59,9 @@ class UploadSerializer(serializers.Serializer):
         help_text="The device's idempotency key. A retry of the same batch is answered 200, once."
     )
     device_label = serializers.CharField(max_length=_LABEL_MAX)
-    app_version_name = serializers.CharField(required=False, allow_blank=True, default="", max_length=64)
+    app_version_name = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=64
+    )
     app_version_code = serializers.IntegerField(required=False, allow_null=True, default=None)
     reason = serializers.ChoiceField(choices=list(REASONS))
     window_start_ms = serializers.IntegerField(
@@ -121,7 +122,9 @@ class DeviceLogUploadView(APIView):
         tags=TAGS,
         parameters=records.LIST_PARAMETERS,
         responses={
-            200: OpenApiResponse(response=records.RecordListSerializer, description="Newest first."),
+            200: OpenApiResponse(
+                response=records.RecordListSerializer, description="Newest first."
+            ),
             400: OpenApiResponse(response=DetailSerializer, description="A filter was malformed."),
         },
     )
@@ -135,10 +138,13 @@ class DeviceLogUploadView(APIView):
         responses={
             201: OpenApiResponse(response=StoredSerializer, description="Stored."),
             200: OpenApiResponse(
-                response=StoredSerializer, description="This batch_id was already stored; nothing new."
+                response=StoredSerializer,
+                description="This batch_id was already stored; nothing new.",
             ),
             400: OpenApiResponse(response=DetailSerializer, description="Refused, nothing stored."),
-            413: OpenApiResponse(response=DetailSerializer, description="Over the size cap, nothing stored."),
+            413: OpenApiResponse(
+                response=DetailSerializer, description="Over the size cap, nothing stored."
+            ),
         },
     )
     def post(self, request):
@@ -146,7 +152,8 @@ class DeviceLogUploadView(APIView):
         serializer = UploadSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
-                {"detail": f"Nothing was stored. {serializer.errors}"}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": f"Nothing was stored. {serializer.errors}"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         data = serializer.validated_data
         upload = data["file"]
@@ -194,7 +201,10 @@ class DeviceLogUploadView(APIView):
 
 def _too_large(cap: int = MAX_UPLOAD_BYTES) -> Response:
     return Response(
-        {"detail": f"Nothing was stored. A log upload of this kind is capped at {cap // (1024 * 1024)} MB."},
+        {
+            "detail": "Nothing was stored. A log upload of this kind is capped at "
+            f"{cap // (1024 * 1024)} MB."
+        },
         status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     )
 
@@ -208,7 +218,8 @@ def _stored(row: DeviceLog, detail: str) -> dict:
     }
 
 
-# One NAV_AUDIT line in a logcat `threadtime` batch: `MM-dd HH:mm:ss.SSS  pid  tid I NAV_AUDIT: ...`.
+# One NAV_AUDIT line in a logcat `threadtime` batch:
+# `MM-dd HH:mm:ss.SSS  pid  tid I NAV_AUDIT: ...`.
 _NAV_AUDIT_LINE = re.compile(rb"^\S+ \S+\s+\d+\s+\d+ [VDIWEF] NAV_AUDIT: ")
 
 
@@ -234,8 +245,10 @@ def prune(household) -> int:
     rows = DeviceLog.objects.filter(household=household)
     special = set(RETENTION_DAYS_BY_REASON)
     # (reason filter, cutoff): each special reason at its own retention, every other at the default.
-    groups = [(rows.filter(reason=reason), now - datetime.timedelta(days=retention_days(reason)))
-              for reason in special]
+    groups = [
+        (rows.filter(reason=reason), now - datetime.timedelta(days=retention_days(reason)))
+        for reason in special
+    ]
     groups.append((rows.exclude(reason__in=special), now - datetime.timedelta(days=RETENTION_DAYS)))
     deleted = 0
     for group, cutoff in groups:
@@ -245,8 +258,9 @@ def prune(household) -> int:
     nav_deleted, _ = rows.filter(received_at__lt=nav_cutoff).delete()
     # Cut once: a cut row's line_count equals its nav_audit_lines, so it never matches again.
     for group, cutoff in groups:
-        for row in group.filter(received_at__lt=cutoff, nav_audit_lines__gt=0,
-                                line_count__gt=F("nav_audit_lines")):
+        for row in group.filter(
+            received_at__lt=cutoff, nav_audit_lines__gt=0, line_count__gt=F("nav_audit_lines")
+        ):
             _keep_nav_audit_only(row)
     return deleted + nav_deleted
 

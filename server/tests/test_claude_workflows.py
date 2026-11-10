@@ -280,7 +280,9 @@ def test_an_offline_machine_that_has_it_takes_it_and_it_waits(household_user, to
     created = _create(token_a, "tidy my downloads")
     assert created.data["status"] == "queued"
     assert created.data["machine"] == {
-        "name": "Alienware", "state": "offline", "last_seen_at": created.data["machine"]["last_seen_at"]
+        "name": "Alienware",
+        "state": "offline",
+        "last_seen_at": created.data["machine"]["last_seen_at"],
     }
 
 

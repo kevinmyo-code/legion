@@ -361,7 +361,8 @@ def words(before: State, after: State, d: dict, choices: Choices) -> str:
         new = [x["name"] for x in d["added"]]
         calibrate = any(x["calibrates"] for x in d["added"])
         parts.append(
-            f"In: {join_words(new)}" + ("; new ones start with a calibration set." if calibrate else ".")
+            f"In: {join_words(new)}"
+            + ("; new ones start with a calibration set." if calibrate else ".")
         )
     if d["kept"] and (d["dropped"] or d["added"]):
         parts.append(f"{len(d['kept'])} exercises stay and keep their progress.")
@@ -381,9 +382,7 @@ def words(before: State, after: State, d: dict, choices: Choices) -> str:
 
 def summary(state: State) -> str:
     """The programme in one sentence, for the read and the accept."""
-    bits = [
-        f"{len(state.training_days)} sessions a week, {rules.TEMPLATE_NAMES[state.template]}"
-    ]
+    bits = [f"{len(state.training_days)} sessions a week, {rules.TEMPLATE_NAMES[state.template]}"]
     if state.exclude_equipment:
         bits.append(
             "no " + join_words([rules.EQUIPMENT_WORDS[e] for e in sorted(state.exclude_equipment)])

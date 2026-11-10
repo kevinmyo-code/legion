@@ -67,7 +67,8 @@ class LibraryBookSerializer(serializers.Serializer):
     size = serializers.IntegerField(help_text="Bytes.")
     source_url = serializers.CharField(help_text="Where the copy came from.")
     licence_note = serializers.CharField(
-        help_text='Why the household may hold it: "public domain (Gutenberg)", "free from the author".'
+        help_text='Why the household may hold it: "public domain (Gutenberg)", '
+        '"free from the author".'
     )
     added_by = serializers.CharField(allow_null=True, help_text="The member who added it.")
     added_at = serializers.DateTimeField()
@@ -90,7 +91,9 @@ class LibraryUploadSerializer(serializers.Serializer):
 
 
 class DownloadLinkSerializer(serializers.Serializer):
-    url = serializers.CharField(help_text="Fetch with GET, no header. Valid for `expires_in` seconds.")
+    url = serializers.CharField(
+        help_text="Fetch with GET, no header. Valid for `expires_in` seconds."
+    )
     expires_in = serializers.IntegerField()
 
 
@@ -248,9 +251,13 @@ class LibraryFileView(APIView):
         operation_id="api_books_library_file",
         tags=TAGS,
         auth=[],
-        parameters=[OpenApiParameter("t", str, required=True, description="The signed link token.")],
+        parameters=[
+            OpenApiParameter("t", str, required=True, description="The signed link token.")
+        ],
         responses={
-            (200, EPUB_TYPE): OpenApiResponse(response=OpenApiTypes.BINARY, description="The EPUB."),
+            (200, EPUB_TYPE): OpenApiResponse(
+                response=OpenApiTypes.BINARY, description="The EPUB."
+            ),
             404: DetailSerializer,
         },
     )

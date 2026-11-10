@@ -55,7 +55,8 @@ for it, and their docstrings say so.
 3. **The pull is windowed and per-vehicle by design.**
    `FleetBackend.fetchObdSamplesSince(vehicleServerId, sinceMs)` has no
    whole-table form, and Kevin's 2026-09-03 OBD-volume ruling is "recent window
-   only, roughly the last 30 days" - WIDENED to 365 days on 2026-10-17 (Kevin) so the Year chart fills with head-unit data. The phone is a CACHE for this table, not
+   only, roughly the last 30 days" - WIDENED to 365 days on 2026-10-17 (Kevin) so the Year
+   chart fills with head-unit data. The phone is a CACHE for this table, not
    the archive.
 4. **Upload is a resumable batch, not a per-row upsert.**
    `ObdSampleReconcile` pages 500 rows at a time; a PUT per sample would be

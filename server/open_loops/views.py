@@ -1,5 +1,5 @@
-"""`/api/open-loops/`: proposed to-dos over REST (ADR 0085). The phone's brief line, its voice answers
-(`manage_item` add/remove resolved against these rows) and its Proposed to-dos list all call
+"""`/api/open-loops/`: proposed to-dos over REST (ADR 0085). The phone's brief line, its voice
+answers (`manage_item` add/remove resolved against these rows) and its Proposed to-dos list all call
 these (ADR 0035). Every route runs `service.door` first (recruiters, Claude worker tokens of any
 scope, the work laptop, demo households), then reads through `visible()`: another member's
 proposal is a 404 or simply absent.
@@ -117,7 +117,12 @@ class OpenLoopTrackView(APIView):
         operation_id="api_open_loops_track",
         tags=TAGS,
         request=OpenLoopTrackSerializer,
-        responses={200: OpenLoopTrackedSerializer, **REFUSALS, 404: DetailSerializer, 409: DetailSerializer},
+        responses={
+            200: OpenLoopTrackedSerializer,
+            **REFUSALS,
+            404: DetailSerializer,
+            409: DetailSerializer,
+        },
         description=(
             "The member's yes. With a date (his own words, or `due_date` from his answer) it "
             "becomes a reminder in `events`; without one, a line on his Todo checklist. A second "

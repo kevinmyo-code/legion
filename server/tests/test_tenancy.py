@@ -298,7 +298,8 @@ def test_obd_samples_are_scoped_by_household(token_a, token_b):
     arrival = "received_after=1970-01-01T00:00:00Z"
     assert token_b.get(f"/api/fleet/obd_samples/?vehicle={a_car}&{arrival}").status_code == 404
     assert token_b.get(f"/api/fleet/obd_samples/?vehicle={b_car}&{arrival}").data["results"] == []
-    assert len(token_a.get(f"/api/fleet/obd_samples/?vehicle={a_car}&{arrival}").data["results"]) == 1
+    a_rows = token_a.get(f"/api/fleet/obd_samples/?vehicle={a_car}&{arrival}").data["results"]
+    assert len(a_rows) == 1
 
 
 def test_voice_notes_are_scoped_by_household(token_a, token_b):
@@ -1672,7 +1673,9 @@ def test_every_mcp_tool_is_scoped_by_household(
     a_marks = (*a_marks, alpha_workout.data["session"]["id"])
     assert "in progress" not in b_reads("get_todays_workout", {})
     b_writes("finish_workout", {}, lands_in_b=False)
-    b_writes("tick_workout_set", {"exercise": "bench", "reps": 8, "weight_lbs": 135}, lands_in_b=True)
+    b_writes(
+        "tick_workout_set", {"exercise": "bench", "reps": 8, "weight_lbs": 135}, lands_in_b=True
+    )
     b_writes("start_workout", {}, lands_in_b=True)
     b_writes("swap_exercise", {"exercise": "squats"}, lands_in_b=True)
     from body_coach.models import TrainingProgramme, WorkoutSession, WorkoutSet
@@ -1702,14 +1705,20 @@ def test_every_mcp_tool_is_scoped_by_household(
     assert ProgrammeProposal.objects.get(pk=alpha_proposal_id).status == "pending"
     # The plan is private to its member: B cannot read, lock or discard A's draft.
     alpha_plan = BodyPlan.objects.create(
-        household=household_user.household, owner_user=household_user, kcal_target=2100,
-        protein_g=150, programme={}, reason="alpha-plan",
+        household=household_user.household,
+        owner_user=household_user,
+        kcal_target=2100,
+        protein_g=150,
+        programme={},
+        reason="alpha-plan",
     )
     a_marks = (*a_marks, str(alpha_plan.id), "alpha-plan")
     b_reads("get_body_plan", {})
     b_writes("lock_body_plan", {"id": str(alpha_plan.id)}, lands_in_b=False)
     b_writes("discard_body_plan", {"id": str(alpha_plan.id)}, lands_in_b=False)
-    b_writes("draft_body_plan", {"sessions_per_week": 2}, lands_in_b=False)  # B's profile is not complete
+    b_writes(
+        "draft_body_plan", {"sessions_per_week": 2}, lands_in_b=False
+    )  # B's profile is not complete
     assert BodyPlan.objects.get(pk=alpha_plan.pk).status == "draft"
     assert TrainingProgramme.objects.get(household=household_user.household).template == (
         "full_body_ab"

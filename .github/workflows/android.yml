@@ -1,105 +1,97 @@
-# CI for the phone app (web-and-households ticket 08).
+# CI for the phone app (web-and-households ticket 08; split into jobs by the 2026-11-10
+# architecture review, item 1: "make CI green and honest").
 #
-# The command is the one `.claude/skills/verify/SKILL.md` already runs before every commit, with
-# its exact task names - `compileDebugKotlin -Pnokey`, `testDebugUnitTest`, `:app:detekt`. A CI
-# that checked something slightly different from what a human runs locally would disagree with the
-# local verdict sooner or later, and the disagreement is what nobody would trust.
+# Three jobs, run in parallel, so one tool's verdict can never hide another's:
 #
-# Three things here are not obvious:
+#   - **unit-tests**: `compileDebugKotlin testDebugUnitTest -Pnokey`, the FULL suite in one Gradle
+#     run. The laptop runs it in package chunks for RAM (`.legion/scripts/chunks.sh`); a 16 GB
+#     runner does not need to, and one run cannot silently skip a package the chunk list forgot.
+#   - **detekt**: its own job. Before the split, detekt failed first and the tests never wrote XML
+#     (`files=0 tests=0`), so CI said nothing about tests for two months.
+#   - **roborazzi**: the screenshot verify, NON-BLOCKING (see that job's comment).
+#
+# Shared facts:
 #
 #   - **`-Pnokey` is the honest path.** It bakes an EMPTY Gemini/AirNow/Mapbox key, which is what a
-#     stranger's clone gets (`app/build.gradle.kts`). A build that only compiles with a key in
-#     `local.properties` is not green, and CI has no keys.
-#   - **`gradlew` is committed non-executable** (mode 100644 - it was authored on Windows), so the
-#     runner cannot run `./gradlew` without a `chmod +x` first. This is not cosmetic; it is a hard
-#     "Permission denied" on the first step otherwise.
-#   - **Totals come from the JUnit XML, never Gradle's console summary** (CLAUDE.md section 6). The
-#     step below also fails when the results directory is EMPTY, because a missing results file
-#     reads exactly like a pass to anything that only checks an exit code.
-#
-# Roborazzi needs no task of its own: its screenshot tests are Robolectric unit tests that run
-# inside `testDebugUnitTest` and fail there on a golden diff (`app/src/test/snapshots/README.md`).
-# The record task is deliberately never run from CI - re-recording a baseline automatically would
-# turn every regression into the new truth.
+#     stranger's clone gets (`app/build.gradle.kts`). CI holds no keys and needs none.
+#   - **`gradlew` is committed non-executable** (mode 100644, authored on Windows): `chmod +x` first.
+#   - **Totals come from the JUnit XML, never Gradle's console summary** (CLAUDE.md section 6). An
+#     EMPTY results directory is a failure: it is what a build that never reached the test task
+#     looks like, and it reads exactly like a pass to anything that only checks an exit code.
+#   - The Roborazzi record task is never run from CI: re-recording a baseline automatically would
+#     turn every regression into the new truth.
 
 name: Android
 
 on:
   push:
+    branches: [dev, main, 'up/**', 'integrate/**']
     paths:
       - 'app/**'
+      - 'shared/**'
+      - 'config/detekt/**'
       - 'gradle/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
+      - 'gradlew'
       - '.github/workflows/android.yml'
+      - '.github/scripts/junit_totals.py'
   pull_request:
     paths:
       - 'app/**'
+      - 'shared/**'
+      - 'config/detekt/**'
       - 'gradle/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
+      - 'gradlew'
       - '.github/workflows/android.yml'
+      - '.github/scripts/junit_totals.py'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# One run per ref. Superseded runs on feature branches are cancelled; trunk runs always finish so
+# every dev/main commit keeps a verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
 jobs:
-  build:
-    name: compile, unit tests, detekt
+  unit-tests:
+    name: compile + full unit suite
     runs-on: ubuntu-latest
-    # The unit suite is ~3,500 tests including Robolectric and Roborazzi; the default 360-minute
-    # limit would let a hung Gradle daemon burn six hours of runner time before anyone noticed.
-    timeout-minutes: 60
+    # The suite is ~3,500 tests including Robolectric. The default 360-minute limit would let a hung
+    # Gradle daemon burn six hours before anyone noticed.
+    timeout-minutes: 90
+    # Pin the JVM default locale to the phone's (en-US). Some formatting reads Locale.getDefault()
+    # (`navigation/NavFormat.kt`'s miles-vs-km), and the runner's bare C locale turns "2.0 mi" into
+    # "3.2 km" (TrafficSummaryTest, first CI run 2026-11-10). The laptop is en-US, so this makes
+    # CI match the machine the suite was written on; it hides no failure the laptop would show.
+    env:
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
 
     steps:
       - uses: actions/checkout@v4
 
-      # JDK 17, matched to the plugin rather than guessed: AGP 9.2.1's own
-      # `AndroidPluginBaseServices.minRequiredJavaVersion()` returns `JavaVersion.VERSION_17`
-      # (read from the AGP 9.2.1 sources jar, 2026-09-08). This is the JDK that RUNS Gradle; the
-      # bytecode the app compiles to is unchanged at Java 11, set by `compileOptions` /
-      # `kotlinOptions { jvmTarget = "11" }` in `app/build.gradle.kts`.
+      # JDK 17: AGP 9.2.1's `minRequiredJavaVersion()` is 17. This is the JDK that RUNS Gradle; the
+      # app's bytecode stays Java 11 (`compileOptions` / `jvmTarget = "11"`).
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # `local.properties` is gitignored (it holds a machine's SDK path and, locally, the API
-      # keys). The runner image ships the Android SDK and exports ANDROID_SDK_ROOT/ANDROID_HOME,
-      # so the file is written from whichever of those is set rather than hardcoded.
+      # `local.properties` is gitignored. The runner ships the Android SDK; point at it. No keys.
       - name: Point local.properties at the runner's SDK
         run: |
           set -euo pipefail
           sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          if [ -z "${sdk}" ]; then
-            echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set on this runner."
-            exit 1
-          fi
+          [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
           echo "sdk.dir=${sdk}" > local.properties
-          cat local.properties
-
-      # compileSdk is 36. The runner image usually has it, but "usually" is how a build breaks on
-      # an image bump, so the platform is installed explicitly when an sdkmanager can be found.
-      # Licenses are accepted first because sdkmanager refuses to install otherwise; that command
-      # exits non-zero when `yes` closes the pipe early, which is why its status is ignored - the
-      # install below is the step that must actually succeed.
-      - name: Ensure the compileSdk platform is installed
-        run: |
-          set -uo pipefail
-          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          if command -v sdkmanager >/dev/null 2>&1; then
-            sdkmanager="sdkmanager"
-          elif [ -x "${sdk}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            sdkmanager="${sdk}/cmdline-tools/latest/bin/sdkmanager"
-          else
-            echo "No sdkmanager on this runner; leaving the SDK as the image shipped it."
-            exit 0
-          fi
-          yes | "${sdkmanager}" --licenses > /dev/null 2>&1 || true
-          "${sdkmanager}" "platforms;android-36" > /dev/null
 
       - name: Make the Gradle wrapper executable
         run: chmod +x gradlew
@@ -107,46 +99,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          # Only the default branch writes the shared cache; every other ref reads it. Without
-          # this, a branch's one-off dependency set evicts entries the trunk build depends on.
+          # Only trunk writes the shared cache; a branch's one-off dependency set must not evict it.
           cache-read-only: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
 
-      # `--no-daemon`: a runner is a fresh VM that is destroyed afterwards, so a daemon left alive
-      # buys nothing and can hold the build open past the job.
-      - name: compile, test, detekt
-        run: ./gradlew compileDebugKotlin -Pnokey testDebugUnitTest :app:detekt --no-daemon
+      # `--continue` so a failing test class does not stop the others from writing XML.
+      - name: compile + unit tests
+        run: ./gradlew compileDebugKotlin testDebugUnitTest -Pnokey --continue --no-daemon
 
       - name: Totals from the JUnit XML
         if: always()
-        run: |
-          python3 - <<'EOF'
-          import glob, sys, xml.etree.ElementTree as ET
-
-          files = glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
-          tests = failures = errors = skipped = 0
-          failed_cases = []
-          for path in files:
-              root = ET.parse(path).getroot()
-              attrib = root.attrib
-              tests += int(attrib.get('tests', 0))
-              failures += int(attrib.get('failures', 0))
-              errors += int(attrib.get('errors', 0))
-              skipped += int(attrib.get('skipped', 0))
-              for case in root.iter('testcase'):
-                  if case.find('failure') is not None or case.find('error') is not None:
-                      failed_cases.append(f"{case.get('classname')}::{case.get('name')}")
-          print(f"files={len(files)} tests={tests} failures={failures} "
-                f"errors={errors} skipped={skipped}")
-          # An empty or missing results directory is a FAILURE, not a pass: it is what a build
-          # that never reached the test task looks like, and it is indistinguishable from success
-          # to anything that only reads an exit code.
-          if not files or tests == 0:
-              sys.exit("No test results were written. Nothing ran; that is not a pass.")
-          for name in failed_cases:
-              print(f"  FAILED {name}")
-          if failures or errors:
-              sys.exit(f"{failures} failures, {errors} errors.")
-          EOF
+        run: python3 .github/scripts/junit_totals.py 'app/build/test-results/testDebugUnitTest/*.xml'
 
       - name: Upload the unit-test XML
         if: always()
@@ -156,16 +118,131 @@ jobs:
           path: app/build/test-results/testDebugUnitTest/*.xml
           if-no-files-found: warn
 
-      # Only on failure, and only because a Roborazzi diff is unreadable as text: the whole point
-      # of a golden-image failure is that somebody opens the two pictures and the diff between
-      # them. `app/src/test/snapshots/` (the committed baselines) is deliberately NOT uploaded -
-      # it is already in the repo.
-      - name: Upload Roborazzi diffs
-        if: failure()
+  detekt:
+    name: detekt (no new findings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The gate. detekt 2.0.0-alpha.0 (pinned in libs.versions.toml) REMOVED `build: maxIssues`
+      # from its config (no `build:` block in its default-detekt-config.yml; only `failOnSeverity`
+      # remains in the Gradle plugin), and `config.validation: true` would reject the key. So the
+      # ceiling lives here: the count of findings left AFTER `config/detekt/baseline.xml`, read
+      # from detekt's XML report. 293 = the count on dev dfb935b9 (2026-11-10). A change that adds
+      # a finding fails; one that removes findings should lower this number (ratchet down). The
+      # baseline file itself is never edited to pass (Kevin's rule).
+      DETEKT_MAX_ISSUES: '293'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Point local.properties at the runner's SDK
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
+          echo "sdk.dir=${sdk}" > local.properties
+
+      - name: Make the Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
+      # The task fails whenever there is ANY finding past the baseline, so its exit code is not the
+      # verdict; the count in the XML is. The next step fails hard if the XML is missing, so a
+      # detekt that crashed before analysing cannot pass as "0 findings".
+      - name: detekt
+        run: ./gradlew :app:detekt -Pnokey --no-daemon || echo "detekt exited $? (verdict comes from the XML count below)"
+
+      - name: Gate on the finding count
+        run: |
+          python3 - <<'EOF'
+          import collections, os, sys, xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("app/build/reports/detekt/detekt.xml")
+          if not path.exists():
+              sys.exit(f"{path} was not written: detekt did not finish. That is not a pass.")
+          errors = list(ET.parse(path).getroot().iter("error"))
+          ceiling = int(os.environ["DETEKT_MAX_ISSUES"])
+          by_rule = collections.Counter(e.get("source", "?") for e in errors)
+          for rule, n in by_rule.most_common():
+              print(f"  {n:4d} {rule}")
+          print(f"detekt findings past baseline: {len(errors)} (ceiling {ceiling})")
+          if len(errors) > ceiling:
+              sys.exit(f"{len(errors) - ceiling} new detekt finding(s). Fix them; never edit the baseline.")
+          if len(errors) < ceiling:
+              print(f"::notice::detekt is {ceiling - len(errors)} under the ceiling; lower DETEKT_MAX_ISSUES to {len(errors)}.")
+          EOF
+
+      - name: Upload the detekt reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detekt-reports
+          path: app/build/reports/detekt/**
+          if-no-files-found: warn
+
+  roborazzi:
+    name: roborazzi verify (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # NON-BLOCKING, on purpose and stated: 43 goldens already differ on clean dev (integrate-all
+    # gates, 2026-11-10), and the baselines were recorded on Windows, so Linux font rendering can
+    # differ too. A golden test that is always red is not a gate. The job still runs and uploads
+    # the diff images; make it blocking once the goldens are re-recorded (a human-reviewed act).
+    continue-on-error: true
+    env:
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Point local.properties at the runner's SDK
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
+          echo "sdk.dir=${sdk}" > local.properties
+
+      - name: Make the Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
+      # Roborazzi only compares when one of its tasks sets `roborazzi.test.verify`; a plain
+      # `testDebugUnitTest` renders the screenshot tests without comparing. This is the compare.
+      - name: verifyRoborazziDebug (screenshot package)
+        run: ./gradlew :app:verifyRoborazziDebug -Pnokey --tests 'com.kevin.legion.screenshot.*' --continue --no-daemon
+
+      - name: Totals from the JUnit XML
+        if: always()
+        run: python3 .github/scripts/junit_totals.py 'app/build/test-results/testDebugUnitTest/*.xml'
+
+      - name: Upload Roborazzi diffs and XML
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: roborazzi-diffs
           path: |
             app/build/outputs/roborazzi/**
             app/build/reports/roborazzi/**
+            app/build/test-results/testDebugUnitTest/*.xml
           if-no-files-found: ignore

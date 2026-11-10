@@ -154,7 +154,9 @@ class DeviceLog(models.Model):
 
     class Meta:
         db_table = "device_logs"
-        indexes = [models.Index(fields=["household", "-received_at"], name="device_logs_household_recv")]
+        indexes = [
+            models.Index(fields=["household", "-received_at"], name="device_logs_household_recv")
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=("household", "batch_id"), name="device_logs_household_batch_id_uniq"

@@ -53,7 +53,8 @@ def _naive(fields: dict, year: int) -> datetime.datetime | None:
 
 
 def utc_offset(lines: list[str], window_start: datetime.datetime | None) -> datetime.timedelta:
-    """The phone's local-minus-UTC offset for this batch, rounded to 15 minutes; zero when unknown."""
+    """The phone's local-minus-UTC offset for this batch, rounded to 15 minutes; zero when
+    unknown."""
     if window_start is None:
         return datetime.timedelta(0)
     start = window_start.astimezone(datetime.UTC).replace(tzinfo=None)

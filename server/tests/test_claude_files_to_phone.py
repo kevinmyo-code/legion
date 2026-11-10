@@ -87,7 +87,8 @@ def _found(n=2, size=1000):
 def _claimed(client, deliver="files", **extra):
     _beat(client)
     task_id = _create(client, deliver=deliver, **extra).data["id"]
-    assert client.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json").status_code == 200
+    claimed = client.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    assert claimed.status_code == 200
     return task_id
 
 

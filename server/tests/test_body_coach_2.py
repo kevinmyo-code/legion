@@ -67,7 +67,7 @@ def test_the_default_lower_body_is_knee_friendly():
     unless he asks for it."""
     for template in rules.TEMPLATES:
         for day in rules.day_keys(template):
-            for slot, key in rules.slots_for(template, day):
+            for _slot, key in rules.slots_for(template, day):
                 assert rules.KNEE not in rules.CATALOG[key].joints, (template, day, key)
 
 
@@ -259,7 +259,8 @@ def test_accept_refuses_when_the_programme_moved_and_a_new_proposal_expires_the_
     stale = auth_client.post(f"{WORKOUT}/proposals/{first['proposal']['id']}/accept/")
     assert stale.status_code == 409 and "already expired" in stale.data["detail"]
     # The programme moves under the pending one (an immediate swap), so accept refuses.
-    assert auth_client.post(f"{WORKOUT}/swap/", {"exercise": "bench"}, format="json").status_code == 200
+    swapped = auth_client.post(f"{WORKOUT}/swap/", {"exercise": "bench"}, format="json")
+    assert swapped.status_code == 200
     moved = auth_client.post(f"{WORKOUT}/proposals/{second['proposal']['id']}/accept/")
     assert moved.status_code == 409 and moved.data["detail"].startswith("Nothing was accepted")
     assert TrainingProgramme.objects.get().day_list() == list(rules.DEFAULT_TRAINING_DAYS)

@@ -1,6 +1,16 @@
 # CD to the household's Oracle VM (web-and-households ticket 08's CD half,
 # rewritten for ticket 12's hosting decision).
 #
+# **MANUAL ONLY, and it targets a VM that was never built (2026-11-10).** The
+# engine runs on Cloud Run (`deploy/cloudrun/`); this workflow fired on every
+# `main` push at an empty `VM_HOST` and went red with an ssh usage error each
+# time. It is now `workflow_dispatch` only, so it never runs by itself. The
+# workflow and `deploy/vm/*` are KEPT on purpose: ADR 0003 (clone-and-run)
+# leans on the self-hosted path for a stranger's own box. Whether to delete
+# that path is open question 8 in the 2026-11-10 architecture review.
+#
+# Everything below describes the design as written for the VM, unchanged.
+#
 # The whole workflow is one SSH call. That is the design, not a shortcut, and
 # the four things a reader usually asks about:
 #
@@ -51,8 +61,8 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main]
+  # Manual only: no VM exists (see the header). Do not add a push trigger back
+  # until `VM_HOST` and the other three secrets point at a real box.
   workflow_dispatch:
 
 permissions:
