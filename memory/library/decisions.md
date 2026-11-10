@@ -7540,3 +7540,22 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   a day, then the rest waits and the 16 MB spool drops the oldest; `logcat` kept 30 days on the
   engine, `crash` and `conversation` 60; nothing dropped as noise (Samsung's per-frame
   `View: setRequestedFrameRate` is about half the compressed bytes; one constant drops it).
+
+## 2026-11-09 - Claude files to phone (Kevin)
+
+- **Asked (paraphrased, the repo is public):** ask Claude to find photos or a scanned document on
+  the PC and send them to the phone; *"The file lands on the phone and Alfred opens the file on the
+  phone. I then send via WhatsApp if I want."*
+- **Ruled (Kevin):** Claude finds the file on the Alienware, the engine holds it privately and
+  deletes it after download or 24 h, the phone opens it, and Kevin shares to WhatsApp himself
+  through Android's share sheet. No WhatsApp API or unofficial client: the 2026-11-01 "WhatsApp
+  dropped" ruling stands except for the normal share.
+- **Standing rulings applied:** "files to phone only on yes" (naming the file is the yes; a
+  different find, or more than 20 files or 100 MB, asks first); `deliver: email_self` kept beside
+  the new `deliver: files`; delivering to his own phone is not "send" on the ask list.
+- **Decided in the build, open to Kevin:** delivered files are kept app-private on the phone, not
+  in Downloads (the 11-01 "keep auto-save to Downloads" stays for the offered-file `send_file`
+  path; a delivered file may be an ID scan); a bucket with a one-day lifecycle rule, or the row when
+  none is set; the viewer opens at once only when a LEGION screen is in front, otherwise a
+  notification naming a count; phone copies kept 30 days. ADR 0080, branch
+  `feat/claude-files-to-phone`.

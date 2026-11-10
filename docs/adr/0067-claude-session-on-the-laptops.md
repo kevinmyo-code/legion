@@ -2,7 +2,7 @@
 status: accepted
 decided: 2026-10-29
 decided-by: Kevin
-amended: 2026-11-03
+amended: 2026-11-09
 source: "[[decisions#2026-10-29 - Claude session: Alfred hands tasks to Claude Code on Kevin's laptops (Kevin)]]"
 tags: [adr]
 ---
@@ -72,6 +72,9 @@ can take several messages, start a background helper per task, stay free, and re
   does not persist. Results and files are deleted after 30 days (`manage.py
   claude_session_prune`, daily, from `deploy/crontab`). **On deploy,
   `deploy/cloudrun/install_schedule.py` must be run** or Cloud Scheduler never runs the prune.
+  **Files Kevin names in the request (amended 2026-11-09, Kevin, ADR 0080)** take a different
+  path: `deliver: files`, no second yes, a private bucket, deleted on receipt and at 24 hours, kept
+  app-private on the phone. The offered-file flow above is unchanged.
 - **Interactive sessions are readable** (machine, project, state, a one-line summary of the last
   prompt, except from a `listed` machine). A session waiting on Kevin is listed first, and a
   running task shows its helper's current step (120 characters, cleared when it finishes).
