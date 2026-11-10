@@ -47,15 +47,26 @@ object GmailAuth {
     /** Read Gmail messages and search them. Cannot send, reply, delete, or modify anything. */
     const val GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 
+    /**
+     * Create, read, update and send DRAFTS (ADR 0086, Kevin 2026-11-10: Alfred drafts, Kevin checks
+     * or says send). Asked for only by the `email` tool, alongside [GMAIL_READONLY_SCOPE], in its own
+     * incremental request: the read tools keep asking for read-only alone, so a refused or lapsed
+     * compose grant never touches mail reading. Cannot delete mail or change labels.
+     */
+    const val GMAIL_COMPOSE_SCOPE = "https://www.googleapis.com/auth/gmail.compose"
+
+    /** What the `email` tool asks for: read (recipient lookup in recent mail) plus compose. */
+    val COMPOSE_SCOPES: List<String> = listOf(GMAIL_READONLY_SCOPE, GMAIL_COMPOSE_SCOPE)
+
     sealed interface Outcome {
         data class Authorized(val accessToken: String) : Outcome
         data class NeedsConsent(val pendingIntent: PendingIntent) : Outcome
         data class Failed(val error: Throwable) : Outcome
     }
 
-    private fun request(): AuthorizationRequest =
+    private fun request(scopes: List<String>): AuthorizationRequest =
         AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(GMAIL_READONLY_SCOPE)))
+            .setRequestedScopes(scopes.map { Scope(it) })
             .build()
 
     /**
@@ -65,9 +76,9 @@ object GmailAuth {
      * Play Services missing, unregistered signing cert, or - the live test this ticket runs - a
      * restricted-scope refusal from Google).
      */
-    suspend fun authorize(context: Context): Outcome =
+    suspend fun authorize(context: Context, scopes: List<String> = listOf(GMAIL_READONLY_SCOPE)): Outcome =
         try {
-            Identity.getAuthorizationClient(context).authorize(request()).await().toOutcome()
+            Identity.getAuthorizationClient(context).authorize(request(scopes)).await().toOutcome()
         } catch (t: Throwable) {
             Outcome.Failed(t)
         }
@@ -115,8 +126,8 @@ object GmailAuth {
      * needs re-authorising"), never resolved interactively mid-conversation. Interactive consent
      * only ever happens from [com.kevin.legion.ui.sync.GoogleAccessScreen]'s Gmail row.
      */
-    suspend fun tokenOrReason(context: Context): TokenResult =
-        when (val outcome = authorize(context)) {
+    suspend fun tokenOrReason(context: Context, scopes: List<String> = listOf(GMAIL_READONLY_SCOPE)): TokenResult =
+        when (val outcome = authorize(context, scopes)) {
             is Outcome.Authorized -> TokenResult.Token(outcome.accessToken)
             is Outcome.NeedsConsent -> TokenResult.NeedsConsent
             is Outcome.Failed -> TokenResult.Failed(outcome.error)
