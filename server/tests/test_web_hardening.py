@@ -57,7 +57,8 @@ def test_inline_scripts_are_allowed_by_hash_only(monkeypatch):
     header = csp.ContentSecurityPolicyMiddleware(view)(RequestFactory().get("/"))[csp.HEADER]
     assert csp.inline_script_hashes(html)[0] in header
     assert len(csp.inline_script_hashes(html)) == 1
-    assert "'unsafe-inline'" not in next(d for d in header.split("; ") if d.startswith("script-src"))
+    script_src = next(d for d in header.split("; ") if d.startswith("script-src"))
+    assert "'unsafe-inline'" not in script_src
 
 
 def test_a_response_with_its_own_policy_keeps_it(monkeypatch):

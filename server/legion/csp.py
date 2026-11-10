@@ -1,4 +1,5 @@
-"""Content-Security-Policy for every response that has none (architecture review 2026-11-10, item 5).
+"""Content-Security-Policy for every response that has none (architecture review 2026-11-10,
+item 5).
 
 **Modes**, `LEGION_CSP`: `on` sends `Content-Security-Policy`; `report` (the default) sends
 `Content-Security-Policy-Report-Only`, so a source this list forgot shows in the browser

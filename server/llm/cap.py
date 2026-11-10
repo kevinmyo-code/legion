@@ -51,8 +51,10 @@ def _micro_usd(name: str, default: str) -> int:
         return 0
     try:
         value = Decimal(raw)
-    except InvalidOperation:
-        raise ImproperlyConfigured(f"{name} must be an amount in USD, like 3 or 0.50; got {raw!r}.")
+    except InvalidOperation as err:
+        raise ImproperlyConfigured(
+            f"{name} must be an amount in USD, like 3 or 0.50; got {raw!r}."
+        ) from err
     if value < 0 or not value.is_finite():
         raise ImproperlyConfigured(f"{name} must be zero or more; got {raw!r}.")
     return math.ceil(value * 1_000_000)

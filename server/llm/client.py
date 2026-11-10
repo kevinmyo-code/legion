@@ -76,7 +76,9 @@ def retrying(transport, *, attempts: int = 3):
             except (urllib.error.URLError, ConnectionError) as exc:
                 if last or isinstance(getattr(exc, "reason", None), TimeoutError):
                     raise
-                logger.warning("llm: %s, retrying (%d/%d)", type(exc).__name__, attempt + 1, attempts)
+                logger.warning(
+                    "llm: %s, retrying (%d/%d)", type(exc).__name__, attempt + 1, attempts
+                )
                 _sleep(_delay(attempt))
                 continue
             if response.status not in RETRY_STATUSES or last:
