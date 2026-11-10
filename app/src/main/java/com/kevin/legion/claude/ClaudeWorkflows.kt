@@ -80,15 +80,16 @@ object ClaudeWorkflowWording {
         val m = created.machine
         val where = when {
             m == null -> "Queued $name for whichever machine has it and comes on first."
-            m.state != ClaudeMachine.STATE_OFFLINE -> "Sent to the ${m.name}: $name. It is not done yet; I'll say when " +
-                "there is a result."
-            else -> "The ${m.name} is ${wording.machineState(m.state, m.lastSeenAt)}, so $name is queued and runs when " +
-                "it is back on. Nothing has run yet."
+            m.state != ClaudeMachine.STATE_OFFLINE ->
+                "Sent to the ${m.name}: $name. It is not done yet; I'll say when there is a result."
+            else -> "The ${m.name} is ${wording.machineState(m.state, m.lastSeenAt)}, so $name is queued and " +
+                "runs when it is back on. Nothing has run yet."
         }
         return where + stops(created.asks)
     }
 
     /** The schedule in words for the screen: "Runs on its own about every day when the Alienware is idle." */
+    @Suppress("ReturnCount") // no schedule, refused on this machine, or the schedule
     fun schedule(w: ClaudeWorkflow): String? {
         val every = w.every ?: return null
         w.scheduleRefused?.let { return it }

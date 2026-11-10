@@ -50,6 +50,9 @@ class ClaudeWorkflowsSectionTest {
         due = false,
     )
 
+    private fun viewModel(backend: FakeClaudeBackend) =
+        ClaudeSessionViewModel(RuntimeEnvironment.getApplication(), ClaudeSessionController(backend), FakeWatch())
+
     private fun at(text: String) =
         rule.onNodeWithTag(LIST_TAG).performScrollToNode(hasText(text)).let { rule.onNodeWithText(text) }
 
@@ -91,7 +94,8 @@ class ClaudeWorkflowsSectionTest {
             ),
         )
         assertTrue(rows.single().scheduled)
-        rule.setContent { SoftTheme { ClaudeSessionContent(ClaudeSessionUiState(loading = false, tasks = rows), ClaudeSessionCallbacks()) } }
+        val state = ClaudeSessionUiState(loading = false, tasks = rows)
+        rule.setContent { SoftTheme { ClaudeSessionContent(state, ClaudeSessionCallbacks()) } }
         at("Scheduled, Weekly digest").assertExists()
     }
 
@@ -100,7 +104,7 @@ class ClaudeWorkflowsSectionTest {
         val backend = FakeClaudeBackend()
         backend.machines(machine("Alienware"))
         backend.workflowsOut = ClaudeOutcome.Ok(listOf(digest))
-        val vm = ClaudeSessionViewModel(RuntimeEnvironment.getApplication(), ClaudeSessionController(backend), FakeWatch())
+        val vm = viewModel(backend)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(1, vm.state.value.workflows.size)
         vm.setWorkflowParams("Alienware/weekly-digest", "only the Alienware's tasks")
@@ -118,7 +122,7 @@ class ClaudeWorkflowsSectionTest {
         val backend = FakeClaudeBackend()
         backend.machines(machine("Alienware"))
         backend.workflowsOut = ClaudeOutcome.Unreachable("down")
-        val vm = ClaudeSessionViewModel(RuntimeEnvironment.getApplication(), ClaudeSessionController(backend), FakeWatch())
+        val vm = viewModel(backend)
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue(vm.state.value.workflowsNote!!.contains("read the workflows"))
     }

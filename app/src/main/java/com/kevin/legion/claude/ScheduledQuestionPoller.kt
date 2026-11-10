@@ -17,7 +17,8 @@ interface ScheduledQuestionSeen {
 class ScheduledQuestionSeenStore(context: Context) : ScheduledQuestionSeen {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    override fun seen(): Set<Int> = prefs.getStringSet(KEY, emptySet()).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
+    override fun seen(): Set<Int> =
+        prefs.getStringSet(KEY, emptySet()).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
 
     @Synchronized
     override fun mark(id: Int) = put(seen() + id)

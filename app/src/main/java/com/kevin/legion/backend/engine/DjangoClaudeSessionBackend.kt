@@ -265,6 +265,7 @@ private fun instant(text: String?): Instant? = text?.let { OffsetDateTime.parse(
  * 403 this API sends on purpose is send-file for a `listed` machine, which the controller never
  * asks for, so a 403 here does mean the token.
  */
+@Suppress("TooManyFunctions") // one function per engine route, as the interface declares them
 class DjangoClaudeSessionBackend(private val http: EngineHttp) : ClaudeSessionBackend {
 
     override suspend fun status(): ClaudeOutcome<ClaudeStatus> =

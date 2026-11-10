@@ -52,7 +52,9 @@ data class ClaudeOverview(val status: ClaudeStatus, val tasks: List<ClaudeTask>)
  *
  * [onSent] is told each task id the engine accepted, so the result watcher can announce it.
  */
-@Suppress("ReturnCount") // each rule is a guard clause that returns the sentence saying what did not happen
+// ReturnCount: each rule is a guard clause that returns the sentence saying what did not happen.
+// TooManyFunctions: one function per thing either door can do (ADR 0035).
+@Suppress("ReturnCount", "TooManyFunctions")
 class ClaudeSessionController(
     private val backend: ClaudeSessionBackend,
     val wording: ClaudeWording = ClaudeWording(),

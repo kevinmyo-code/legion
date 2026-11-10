@@ -82,7 +82,10 @@ class ClaudeWorkflowsTest {
         )
         assertEquals("Every run emails its result to you.", ClaudeWorkflowWording.deliverLine(w))
         assertTrue(ClaudeWorkflowWording.lastRun(w, ClaudeWording()).startsWith("Last run (scheduled): done"))
-        val refused = w.copy(machine = "work laptop", scheduleRefused = "Scheduled runs only happen on a full-access machine.")
+        val refused = w.copy(
+            machine = "work laptop",
+            scheduleRefused = "Scheduled runs only happen on a full-access machine.",
+        )
         assertEquals("Scheduled runs only happen on a full-access machine.", ClaudeWorkflowWording.schedule(refused))
     }
 
@@ -118,7 +121,10 @@ class ClaudeWorkflowsTest {
         assertEquals(70, id)
         assertTrue(text, text.startsWith("Scheduled weekly digest on the Alienware (task 70) stopped to ask:"))
         assertEquals("On a yes: claude_session answer, task_id 70, yes true.", hint)
-        assertEquals(listOf(ClaudeTaskDraft.ORIGIN_SCHEDULE to ClaudeTask.NEEDS_CONFIRMATION), backend.whereAsked.distinct())
+        assertEquals(
+            listOf(ClaudeTaskDraft.ORIGIN_SCHEDULE to ClaudeTask.NEEDS_CONFIRMATION),
+            backend.whereAsked.distinct(),
+        )
     }
 
     @Test

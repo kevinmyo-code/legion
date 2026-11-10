@@ -87,7 +87,8 @@ class ClaudeWorkflowToolboxTest {
     @Test
     fun `an unknown name reads the engine's sentence, which names the workflows there are`() {
         backend.machines(machine("Alienware", workflows = listOf(tidy, digest)))
-        val detail = "Nothing was sent. No machine has no workflow called that. There are: tidy downloads, weekly digest."
+        val detail = "Nothing was sent. No machine has no workflow called that. " +
+            "There are: tidy downloads, weekly digest."
         backend.createOut = { ClaudeOutcome.Refused(detail, 400) }
         val out = call(false, "action" to "workflow", "request" to "audit my car")
         assertFalse(out.getBoolean("success"))

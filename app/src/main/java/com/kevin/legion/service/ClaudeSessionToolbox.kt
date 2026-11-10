@@ -1,6 +1,7 @@
 package com.kevin.legion.service
 
 import android.content.Context
+import com.kevin.legion.claude.ClaudeMachine
 import com.kevin.legion.claude.ClaudeModalHolder
 import com.kevin.legion.claude.ClaudeOutcome
 import com.kevin.legion.claude.ClaudePageOpener
@@ -49,8 +50,8 @@ object ClaudeSessionToolbox {
             "one check lists; check only " +
             "reads results already in; \"ask Claude to...\" is always a new send; answer follows up a " +
             "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
-            "send_file only on his yes to a found file; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
-            "result announcements. A sent task is not done."
+            "send_file only on his yes to a found file; open_page opens a task's page on his yes; " +
+            "quiet/unquiet stop/restart result announcements. A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
         fn(
@@ -63,7 +64,8 @@ object ClaudeSessionToolbox {
                         "string",
                         null,
                         listOf(
-                            "send", "workflow", "check", "answer", "assign", "send_file", "open_page", "quiet", "unquiet",
+                            "send", "workflow", "check", "answer", "assign", "send_file", "open_page", "quiet",
+                            "unquiet",
                         ),
                     ),
                 )
@@ -106,7 +108,9 @@ object ClaudeSessionToolbox {
      * schedule's questions), so text other people wrote must never be able to start one: `workflow`
      * is refused in such a turn before anything is sent.
      */
-    @Suppress("CyclomaticComplexMethod") // one branch per action, each a one-line call to the controller
+    // One branch per action, each a one-line call to the controller; the returns are "not this
+    // tool", the read-through refusal, and the action's result.
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
     suspend fun dispatch(
         context: Context,
         name: String,
@@ -224,10 +228,7 @@ object ClaudeSessionToolbox {
         if (o.status.machines.isEmpty()) return result(true, ClaudeWording.NO_MACHINE_EVER.substringBefore(","))
         val lines = mutableListOf<String>()
         machines.forEach { lines += c.wording.machineLine(it) }
-        // Worker workflows (ticket 06): names per online machine; "what does log audit do?" is
-        // answered from the same list (the one-liner of each workflow the question names).
-        machines.filter { it.isOnline }.forEach { m -> ClaudeWorkflowWording.checkLine(m)?.let { lines += it } }
-        lines += ClaudeWorkflowWording.describe(question, machines)
+        lines += workflowLines(machines, question)
         val tasks = o.tasks.filter { wanted(it.machine) }.take(CHECK_TASKS)
         if (tasks.isEmpty()) lines += "No tasks yet."
         tasks.forEach { t ->
@@ -248,6 +249,14 @@ object ClaudeSessionToolbox {
         }
         return result(true, lines.joinToString("\n"))
     }
+
+    /**
+     * Worker workflows (ticket 06): `check`'s names per online machine, then "what does log audit
+     * do?" answered from the same list (the one-liner of each workflow [question] names).
+     */
+    private fun workflowLines(machines: List<ClaudeMachine>, question: String): List<String> =
+        machines.filter { it.isOnline }.mapNotNull(ClaudeWorkflowWording::checkLine) +
+            ClaudeWorkflowWording.describe(question, machines)
 
     /**
      * A finished task whose result [check] just handed the model: forgotten by the watch, and its
