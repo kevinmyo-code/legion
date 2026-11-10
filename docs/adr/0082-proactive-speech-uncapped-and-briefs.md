@@ -57,8 +57,12 @@ mic only while the service holds that type; otherwise the line is spoken without
 **The wake-up brief** (`spokenbrief/WakeBrief.kt`). On a tap Dismiss of an ALARM on the ring screen,
 after the first unlock, between 04:00 and 11:00, once per local day (a Brief me tap counts), it reads
 `BriefController.forVoice`, the same controller Brief me's `get_sitrep` reads, and raises that text
-as its facts. It may include the Gmail newsletter summary, so the raise is read-through. **This
-rule alone is exempt from quiet hours** (a per-rule flag, `ProactiveRaise.exemptFromQuietHours`):
+as its facts. **It reads no mail** (`WakeBrief.READS_MAIL = false`): no Gmail call, no newsletter
+line, and its prompt forbids the subject in words without implying mail was checked. Mail is read
+only to answer something Kevin asked, and ticket 32 existed to stop an unasked fetch; his yes would
+flip that one constant. Brief me and a spoken "sitrep" still read the newsletters. The turn stays
+read-through because the engine's News section is web text. **This rule alone is exempt from quiet
+hours** (a per-rule flag, `ProactiveRaise.exemptFromQuietHours`):
 dismissing an alarm he set proves he is awake. It still honours a silenced phone, a live meeting
 and every switch. Brief me stays as the replay. A timer, an emergency ring and a ring-out never
 brief.
@@ -94,12 +98,13 @@ background, the alert is posted. The feed that raises these is not part of this 
   refusal except the kill switch and a decline still becomes a notification.
 - Both briefs ride the Digest switch, which a fresh install has off. Its state on Kevin's phone is
   not known (Digest had a live raise until ticket 32); if it is on, both briefs start at install,
-  the wake-up one reading the Gmail newsletters at the alarm.
+  with no mail read.
 - `why_did_you_say_that` gained one optional argument; its description was tightened to pay for it
   (`LiveSetupPayloadSizeTest`).
 - Built picks Kevin did not rule on, each reversible in one place: the 04:00 to 11:00 window, the
   6 h home limit, "silenced" including vibrate and any DND, the wake-up brief honouring a silenced
-  phone, an alarm in a daytime meeting being posted rather than rung, and the wake-up brief
-  reading the Gmail newsletters at an alarm.
+  phone, and an alarm in a daytime meeting being posted rather than rung. Held for Kevin's yes, off:
+  the wake-up brief reading the Gmail newsletters (`WakeBrief.READS_MAIL`).
+- The home brief makes no Gmail call: its facts are the calendar store and reminders only.
 - Never verified on hardware at the time of writing: speech with the screen off and the phone
   locked, the ring started from the background, the geofence EXIT, and the brief at a real alarm.

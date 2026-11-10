@@ -7650,7 +7650,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   brief", through `why_did_you_say_that`'s new `stop` argument; hands path under Digest on Settings,
   Proactive speech). Picks Kevin did not rule on, vetoable: wake-up on a tap Dismiss of an alarm,
   04:00 to 11:00, once a day, reading the same `BriefController.forVoice` text Brief me's
-  `get_sitrep` reads (so it may read Gmail newsletters at the alarm), exempt from quiet hours for
+  `get_sitrep` reads but with NO mail (`WakeBrief.READS_MAIL` off until Kevin says yes; mail is read
+  only to answer something he asked, ticket 32's reason), exempt from quiet hours for
   that rule alone because dismissing an alarm proves he is awake, still honouring a silenced phone;
   home on arrival at the `home` label after a recorded departure, at most once per 6 h, facts =
   still due today, tomorrow's first event, reminders left for home and undated to-dos, home's

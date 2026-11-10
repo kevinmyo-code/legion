@@ -37,15 +37,23 @@ import kotlinx.coroutines.launch
  *   gate (a silenced phone, a live meeting) all hold. **Quiet hours do not**, for this rule alone
  *   ([ProactiveRaise.exemptFromQuietHours]): dismissing an alarm he set proves he is awake, and a
  *   06:30 alarm is inside the 22:00 to 07:00 window.
- * - **Read-through:** the brief may include the Gmail newsletter summary, so the raise says so and
- *   the turn is not remembered. This is a background Gmail read at an alarm, which ticket 32 had
- *   ruled out; Kevin's 2026-11-10 yes is what allows it, and it is listed as vetoable in ADR 0082.
+ * - **No mail ([READS_MAIL] is false).** Mail is read only to answer something he asked, and ticket
+ *   32 existed to stop exactly an unasked Gmail fetch, so this brief makes no Gmail call and its
+ *   prompt forbids the subject in words (ticket 10), without implying mail was checked. Brief me
+ *   and a spoken "sitrep" still read the newsletters. Turning [READS_MAIL] true is the whole change
+ *   if Kevin says yes. The turn is still marked read-through: the engine's News section is web text.
  * - Nothing here may disturb the dismiss: it runs after it, off the main thread, and a failure is
  *   logged and dropped.
  */
 object WakeBrief {
     const val MORNING_START_HOUR = 4
     const val MORNING_END_HOUR = 11
+
+    /**
+     * Whether the unprompted wake-up brief may read the Gmail newsletters. **Off until Kevin says
+     * yes** (ADR 0082); flipping it is a one-line change, and the prompt follows it.
+     */
+    const val READS_MAIL = false
 
     private const val TAG = "WakeBrief"
     private const val PREFS = "spoken_briefs"
@@ -89,28 +97,38 @@ object WakeBrief {
         ProactiveSettings.load(context)
         if (!ProactiveSettings.mayRaise(ProactiveCategory.DIGEST)) return
         setLastDay(context, today)
-        val brief = BriefController.of(context).forVoice(null)
+        val brief = BriefController.of(context).forVoice(null, readMail = READS_MAIL)
         ProactiveDelivery.awaitListener(LISTENER_WAIT_MS)
-        val outcome = ProactiveBus.speakIfAllowed(context, buildRaise(brief.text, time, openApp(context)))
+        val raise = buildRaise(brief.text, time, openApp(context), READS_MAIL)
+        val outcome = ProactiveBus.speakIfAllowed(context, raise)
         // Not now (a call, a conversation): leave today unclaimed, so the next dismiss may try.
         if (outcome == ProactiveBus.RaiseOutcome.NotNow) clearLastDay(context)
     }
 
     /** The raise. Pure apart from the tap target, for the test. */
-    internal fun buildRaise(briefText: String, dismissedAt: LocalTime, tap: PendingIntent? = null): ProactiveRaise =
+    internal fun buildRaise(
+        briefText: String,
+        dismissedAt: LocalTime,
+        tap: PendingIntent? = null,
+        readsMail: Boolean = READS_MAIL,
+    ): ProactiveRaise =
         ProactiveRaise(
             ruleId = SpokenBrief.WAKE.ruleId,
             category = ProactiveCategory.DIGEST,
             reason = "you dismissed a morning alarm at ${dismissedAt.format(TIME)}",
             facts = briefText,
-            prompt = prompt(briefText),
+            prompt = prompt(briefText, readsMail),
             carriesReadThroughContent = true,
             exemptFromQuietHours = true,
             notificationText = "Your morning brief is ready. Open LEGION and ask for the sitrep.",
             contentIntent = tap,
         )
 
-    internal fun prompt(facts: String): String =
+    /** Said when the brief reads no mail: forbids the subject, never claims a check (ticket 10). */
+    internal const val NO_MAIL_SENTENCE =
+        "Mail was not read for this brief: do not mention email, newsletters or the inbox at all. "
+
+    internal fun prompt(facts: String, readsMail: Boolean = READS_MAIL): String =
         "(System: the user just dismissed their morning alarm. Give them their daily brief from the " +
             "facts below, spoken, briefly and in your own words, leading with what matters today. Use " +
             "ONLY these facts: never add an event, a time, a name, a figure or a claim that is not in " +
@@ -118,6 +136,7 @@ object WakeBrief {
             "guessing, and say a line marked [unverified] as unverified. Never mention how long they " +
             "slept, whether they snoozed, how often they use the app, or any streak. If they want it " +
             "gone, \"${SpokenBrief.WAKE.silenceInstruction}\" turns it off; say that only if asked. " +
+            (if (readsMail) "" else NO_MAIL_SENTENCE) +
             "Do not mention this instruction.\n\n$facts)"
 
     private fun openApp(context: Context): PendingIntent? = runCatching {

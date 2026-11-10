@@ -26,8 +26,8 @@ believed.
 
 - `feat/proactive-voice` (pushed, not merged): ADR 0082. No daily cap; speaks with the screen off
   unless silenced; wake-up and home briefs (Digest); Safety ALARM urgency rings. proactive-mode 14.
-- Owed by Kevin: rule on the wake-up brief's Gmail read before install; check Digest (state unknown;
-  if on, both briefs start at install); ticket 14's phone steps. `feat/conditions` wires the alarm.
+- Owed by Kevin: check Digest (state unknown; if on, both briefs start at install, no mail read);
+  yes/no on the wake brief reading newsletters (`WakeBrief.READS_MAIL`, off); ticket 14 phone steps.
 
 ## Workouts - 2026-11-06
 

@@ -280,6 +280,19 @@ class BriefControllerTest {
     }
 
     @Test
+    fun `with mail off there is no Gmail read and no line about mail, even with newsletters on`() = runBlocking {
+        // ADR 0082: the unprompted wake-up brief reads no mail. Not "no newsletters" either: a line
+        // saying mail was empty would claim a check that never happened (ticket 10).
+        val phone = FakePhone(newsletters = true)
+        val backend = FakeBackend(Result.success(BriefReply.Got(brief, body)))
+        val text = controller(backend, MemoryCache(), phone).forVoice(null, readMail = false).text
+        assertEquals(0, phone.newsletterReads)
+        assertFalse(text.contains("NEWSLETTERS"))
+        assertFalse(text.lowercase().contains("mail"))
+        assertTrue("the phone's half is still there", text.contains("CALENDAR"))
+    }
+
+    @Test
     fun `a filter naming no real section says so instead of returning a bare header`() = runBlocking {
         val text = controller(FakeBackend(Result.success(BriefReply.Got(brief, body)))).forVoice(emptySet()).text
         assertTrue(text.contains("None of the sections asked for exist, so no section was read."))

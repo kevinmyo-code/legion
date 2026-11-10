@@ -99,6 +99,30 @@ class SpokenBriefsTest {
         assertTrue(p.contains("streak"))
     }
 
+    @Test
+    fun `the automatic wake-up brief reads no mail by default and forbids the subject in words`() {
+        // ADR 0082: mail is read only to answer something he asked; a yes from Kevin flips READS_MAIL.
+        assertFalse(WakeBrief.READS_MAIL)
+        val p = WakeBrief.buildRaise("BRIEF facts", LocalTime.of(7, 0)).prompt
+        assertTrue(p.contains(WakeBrief.NO_MAIL_SENTENCE))
+        assertFalse("never implies mail was checked", p.lowercase().contains("no newsletters"))
+        assertFalse(WakeBrief.prompt("facts", readsMail = true).contains(WakeBrief.NO_MAIL_SENTENCE))
+    }
+
+    @Test
+    fun `the home brief and the wake-up brief make no Gmail call - traced in their sources`() {
+        // The home brief reads the calendar store and reminders only; the wake-up brief reaches
+        // mail only through BriefController's readMail, which it passes as READS_MAIL.
+        val home = java.io.File("src/main/java/com/kevin/legion/spokenbrief/HomeBrief.kt").readText()
+        listOf("gmail", "Gmail", "SitrepBuilder", "BriefController", "newsletters").forEach {
+            val touches = home.contains("import com.kevin.legion.$it") || home.contains("$it.")
+            assertFalse("HomeBrief must not touch $it", touches)
+        }
+        val wake = java.io.File("src/main/java/com/kevin/legion/spokenbrief/WakeBrief.kt").readText()
+        assertTrue(wake.contains("forVoice(null, readMail = READS_MAIL)"))
+        assertFalse(wake.contains("gmail"))
+    }
+
     // ---------------------------------------------------------------- the home brief
 
     @Test
