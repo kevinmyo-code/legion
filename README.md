@@ -136,8 +136,13 @@ Counted from build output, not memory. Live ticket board: <https://kevinmyo-code
 ./gradlew compileDebugKotlin -Pnokey   # compiles with no baked-in key
 ./gradlew testDebugUnitTest            # read totals from app/build/test-results
 ./gradlew assembleFast                 # daily driver: release build, debug-signed
+./gradlew assembleFast -Pnokey         # an APK that leaves the laptop (OTA): no secret baked in
 adb shell cmd package compile -m speed -f com.kevin.legion   # after each install
 ```
+
+`tools/release_apk.py` refuses an APK whose BuildConfig carries a Gemini or AirNow key; build
+releases with `-Pnokey`. The phone then uses the key pasted in Setup. `-Pnokey` also leaves the
+public Mapbox token out, so paste that in Setup too before the first such release.
 
 `local.properties` needs `sdk.dir`. The API key is optional at build time; the app asks for the
 user's own on first launch.

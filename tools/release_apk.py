@@ -14,6 +14,12 @@ It builds nothing. In order, it:
      only `assembleRelease`, which is not what goes on the car;
   1b. checks the APK's package is the one `--app` names (aapt2): the phone and head unit share
      the debug key, so the signer alone cannot tell their APKs apart;
+  1c. refuses an APK whose BuildConfig carries a non-empty GEMINI_API_KEY or AIRNOW_API_KEY
+     (read from the dex files in pure Python, no SDK tool). A build made without `-Pnokey` bakes
+     the laptop's dev keys from local.properties, and anyone holding the APK can read them out.
+     `--allow-baked-keys` overrides it, with a warning, until the phone runs on a pasted key
+     (architecture review 2026-11-10, item 6). The Mapbox `pk.` token is public by design and
+     is not checked;
   2. reads the APK's versionCode and versionName (aapt2) and checks the code is higher than the
      newest release on the engine;
   3. computes the APK's sha256;
@@ -42,10 +48,12 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import urllib.error
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -113,6 +121,124 @@ def sha256_of(path: Path) -> str:
 
 def object_name_for(app: str, version_code: int, sha256: str) -> str:
     return f"{app}/{version_code}-{sha256[:12]}.apk"
+
+
+# -----------------------------------------------------------------------------
+# Baked keys: BuildConfig's static String values, read straight from the dex files
+# -----------------------------------------------------------------------------
+
+# The BuildConfig fields that hold a SECRET key. MAPBOX_ACCESS_TOKEN is a public `pk.` token,
+# shipped inside every Mapbox app by design, so it is not here.
+SECRET_FIELDS = ("GEMINI_API_KEY", "AIRNOW_API_KEY")
+BUILDCONFIG = {
+    "phone": "Lcom/kevin/legion/BuildConfig;",
+    "headunit": "Lcom/kevin/midnightai/BuildConfig;",
+}
+
+
+def _uleb128(data: bytes, pos: int) -> tuple[int, int]:
+    result = shift = 0
+    while True:
+        byte = data[pos]
+        pos += 1
+        result |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return result, pos
+        shift += 7
+
+
+def _dex_string(data: bytes, string_ids_off: int, index: int) -> str:
+    (data_off,) = struct.unpack_from("<I", data, string_ids_off + 4 * index)
+    _, pos = _uleb128(data, data_off)  # utf16 length, unused
+    end = data.index(b"\x00", pos)
+    # MUTF-8. An API key is ASCII, and anything else only has to be told apart from empty.
+    return data[pos:end].decode("utf-8", errors="replace")
+
+
+def _encoded_value(data: bytes, pos: int) -> tuple[int | None, int]:
+    """One dex encoded_value: (string index, next pos) for a string, (None, next pos) otherwise."""
+    head = data[pos]
+    pos += 1
+    value_type, value_arg = head & 0x1F, head >> 5
+    if value_type in (0x1E, 0x1F):  # null, boolean: no payload
+        return None, pos
+    if value_type == 0x1C:  # nested array
+        size, pos = _uleb128(data, pos)
+        for _ in range(size):
+            _, pos = _encoded_value(data, pos)
+        return None, pos
+    if value_type == 0x1D:
+        raise ValueError("annotation in a static value array")
+    width = value_arg + 1
+    raw = data[pos:pos + width]
+    pos += width
+    if value_type == 0x17:
+        return int.from_bytes(raw, "little"), pos
+    return None, pos
+
+
+def dex_static_strings(data: bytes, class_descriptor: str) -> dict[str, str] | None:
+    """One class's static String field values in one dex file; None when the class is not in it.
+
+    Only fields with an initial value in the dex (`static_values`) appear; a `static final String`
+    constant such as a BuildConfig field always has one."""
+    if data[:4] != b"dex\n":
+        raise ValueError("not a dex file")
+    (string_ids_off,) = struct.unpack_from("<I", data, 0x3C)
+    (type_ids_off,) = struct.unpack_from("<I", data, 0x44)
+    (field_ids_off,) = struct.unpack_from("<I", data, 0x54)
+    class_defs_size, class_defs_off = struct.unpack_from("<II", data, 0x60)
+    for i in range(class_defs_size):
+        base = class_defs_off + 32 * i
+        (class_idx,) = struct.unpack_from("<I", data, base)
+        (descriptor_idx,) = struct.unpack_from("<I", data, type_ids_off + 4 * class_idx)
+        if _dex_string(data, string_ids_off, descriptor_idx) != class_descriptor:
+            continue
+        class_data_off, static_values_off = struct.unpack_from("<II", data, base + 24)
+        if not class_data_off:
+            return {}
+        static_count, pos = _uleb128(data, class_data_off)
+        for _ in range(3):  # instance fields, direct methods, virtual methods
+            _, pos = _uleb128(data, pos)
+        names = []
+        field_idx = 0
+        for _ in range(static_count):
+            diff, pos = _uleb128(data, pos)
+            _, pos = _uleb128(data, pos)  # access flags
+            field_idx += diff
+            (name_idx,) = struct.unpack_from("<I", data, field_ids_off + 8 * field_idx + 4)
+            names.append(_dex_string(data, string_ids_off, name_idx))
+        values: dict[str, str] = {}
+        if static_values_off:
+            size, pos = _uleb128(data, static_values_off)
+            for name in names[:size]:
+                string_idx, pos = _encoded_value(data, pos)
+                if string_idx is not None:
+                    values[name] = _dex_string(data, string_ids_off, string_idx)
+        return values
+    return None
+
+
+def apk_buildconfig_strings(apk: Path, class_descriptor: str) -> dict[str, str] | None:
+    """BuildConfig's static String values, from whichever classes*.dex in the APK holds it."""
+    with zipfile.ZipFile(apk) as archive:
+        for name in sorted(archive.namelist()):
+            if re.fullmatch(r"classes\d*\.dex", name):
+                found = dex_static_strings(archive.read(name), class_descriptor)
+                if found is not None:
+                    return found
+    return None
+
+
+def baked_secret_fields(apk: Path, app: str) -> list[str]:
+    """Names (never values) of the SECRET_FIELDS that carry a non-empty value in this APK."""
+    try:
+        values = apk_buildconfig_strings(apk, BUILDCONFIG[app])
+    except (zipfile.BadZipFile, ValueError, IndexError, struct.error) as exc:
+        raise Refused(f"Could not read BuildConfig from {apk.name} ({exc}); is it an APK?") from exc
+    if values is None:
+        raise Refused(f"{apk.name} has no {BUILDCONFIG[app]} class, so its keys cannot be checked.")
+    return [name for name in SECRET_FIELDS if values.get(name, "").strip()]
 
 
 # -----------------------------------------------------------------------------
@@ -209,7 +335,9 @@ class Plan:
     notes: str
 
 
-def inspect(app: str, apk: Path, notes: str, pinned: str) -> Plan:
+def inspect(
+    app: str, apk: Path, notes: str, pinned: str, allow_baked_keys: bool = False, out=print
+) -> Plan:
     """Steps 1 to 3: everything that needs only the file."""
     if app not in APPS:
         raise Refused(f"--app must be one of {', '.join(APPS)}.")
@@ -230,6 +358,15 @@ def inspect(app: str, apk: Path, notes: str, pinned: str) -> Plan:
         raise Refused(
             f"{apk.name} is {package}, not the {app} app ({PACKAGES[app]}). Nothing was uploaded."
         )
+    baked = baked_secret_fields(apk, app)
+    if baked and not allow_baked_keys:
+        raise Refused(
+            f"{apk.name} carries a baked {' and '.join(baked)} in BuildConfig: anyone with the "
+            f"APK can read it out. Build with -Pnokey (the {app} then uses the key pasted in "
+            f"Setup), or pass --allow-baked-keys to ship it anyway. Nothing was uploaded."
+        )
+    if baked:
+        out(f"WARNING      baked {', '.join(baked)} shipped on --allow-baked-keys")
     version_code, version_name = parse_badging(badging)
     sha256 = sha256_of(apk)
     return Plan(
@@ -278,7 +415,14 @@ def publish_body(plan: Plan) -> dict:
 
 def run(args, out=print) -> int:
     pinned = read_pinned_signer(Path(args.signer_file) if args.signer_file else PINNED_SIGNER)
-    plan = inspect(args.app, Path(args.apk), args.notes, pinned)
+    plan = inspect(
+        args.app,
+        Path(args.apk),
+        args.notes,
+        pinned,
+        allow_baked_keys=getattr(args, "allow_baked_keys", False),
+        out=out,
+    )
     out(f"signer       {plan.signer_sha256} (matches the pin)")
     out(f"version      {plan.version_code} ({plan.version_name})")
     out(f"sha256       {plan.sha256}")
@@ -333,6 +477,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bucket", default=None, help="overrides LEGION_APK_BUCKET")
     parser.add_argument(
         "--signer-file", default=None, help="overrides deploy/release/signer.sha256"
+    )
+    parser.add_argument(
+        "--allow-baked-keys",
+        action="store_true",
+        help="publish even if BuildConfig carries a GEMINI/AIRNOW key (temporary override)",
     )
     args = parser.parse_args(argv)
     try:

@@ -68,6 +68,8 @@ def tools(monkeypatch):
     monkeypatch.setattr(ra, "apksigner_output", lambda apk: state["signer_output"])
     monkeypatch.setattr(ra, "aapt2_output", lambda apk: state["badging"])
     monkeypatch.setattr(ra, "upload", lambda apk, dest: calls["uploads"].append(dest))
+    state["baked"] = []
+    monkeypatch.setattr(ra, "baked_secret_fields", lambda apk, app: list(state["baked"]))
 
     def _request(method, url, token, body=None):
         calls["requests"].append((method, url, token, body))
@@ -94,6 +96,7 @@ def _args(apk, pin, **overrides):
         token="owner-token",
         bucket="legion-apk-test",
         signer_file=str(pin),
+        allow_baked_keys=False,
     )
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -229,3 +232,156 @@ def test_an_apk_of_the_other_app_is_refused(apk, pin, tools):
     with pytest.raises(ra.Refused, match="com.kevin.midnightai, not the phone app"):
         ra.run(_args(apk, pin, dry_run=True), out=lambda line: None)
     assert tools["uploads"] == [] and tools["requests"] == []
+
+
+# -----------------------------------------------------------------------------
+# Baked keys (architecture review 2026-11-10, item 6): a real dex, built by hand
+# -----------------------------------------------------------------------------
+
+
+NUL = bytes(1)
+DEX_MAGIC = b"dex" + bytes([10]) + b"035" + NUL
+
+
+def _uleb(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        if value:
+            out.append(byte | 0x80)
+        else:
+            out.append(byte)
+            return bytes(out)
+
+
+def _dex(descriptor: str, fields: list[tuple[str, object]]) -> bytes:
+    """A minimal dex holding one class with static fields and their initial values.
+
+    Only the parts `dex_static_strings` reads are real: header offsets, string_ids, type_ids,
+    field_ids, one class_def, class_data and the static value array."""
+    import struct
+
+    strings = [descriptor, "Ljava/lang/String;", "Z"] + [name for name, _ in fields]
+    value_index = {}
+    for _, value in fields:
+        if isinstance(value, str):
+            value_index[value] = len(strings)
+            strings.append(value)
+    header, n_str, n_type, n_field = 0x70, len(strings), 3, len(fields)
+    string_ids_off = header
+    type_ids_off = string_ids_off + 4 * n_str
+    field_ids_off = type_ids_off + 4 * n_type
+    class_defs_off = field_ids_off + 8 * n_field
+    data = bytearray()
+    data_off = class_defs_off + 32
+    string_offsets = []
+    for text in strings:
+        string_offsets.append(data_off + len(data))
+        raw = text.encode("utf-8")
+        data += _uleb(len(text)) + raw + NUL
+    class_data_off = data_off + len(data)
+    data += _uleb(n_field) + _uleb(0) + _uleb(0) + _uleb(0)
+    for i in range(n_field):
+        data += _uleb(0 if i == 0 else 1) + _uleb(0x19)
+    static_values_off = data_off + len(data)
+    data += _uleb(n_field)
+    for _, value in fields:
+        if isinstance(value, bool):
+            data.append((int(value) << 5) | 0x1F)
+        else:
+            data += bytes([0x17]) + bytes([value_index[value]])
+    blob = bytearray(header)
+    blob[:8] = DEX_MAGIC
+    struct.pack_into("<II", blob, 0x38, n_str, string_ids_off)
+    struct.pack_into("<II", blob, 0x40, n_type, type_ids_off)
+    struct.pack_into("<II", blob, 0x50, n_field, field_ids_off)
+    struct.pack_into("<II", blob, 0x60, 1, class_defs_off)
+    for offset in string_offsets:
+        blob += struct.pack("<I", offset)
+    blob += struct.pack("<III", 0, 1, 2)  # type_ids -> descriptor, String, Z
+    for i, (_, value) in enumerate(fields):
+        blob += struct.pack("<HHI", 0, 2 if isinstance(value, bool) else 1, 3 + i)
+    blob += struct.pack("<IIIIIIII", 0, 1, 0, 0, 0, 0, class_data_off, static_values_off)
+    return bytes(blob + data)
+
+
+def _apk_with(tmp_path, dex: bytes, name="app-fast.apk"):
+    import zipfile
+
+    path = tmp_path / name
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("AndroidManifest.xml", b"not read")
+        archive.writestr("classes.dex", DEX_MAGIC + bytes(0x68))  # empty: no classes
+        archive.writestr("classes2.dex", dex)
+    return path
+
+
+FAKE_GEMINI = "AIza" + "x" * 35  # shape only; never a real key
+PHONE_BC = "Lcom/kevin/legion/BuildConfig;"
+
+
+def test_dex_reader_returns_buildconfig_strings_and_skips_non_strings():
+    dex = _dex(
+        PHONE_BC,
+        [("AIRNOW_API_KEY", ""), ("DEBUG", False), ("GEMINI_API_KEY", FAKE_GEMINI)],
+    )
+    assert ra.dex_static_strings(dex, PHONE_BC) == {
+        "AIRNOW_API_KEY": "",
+        "GEMINI_API_KEY": FAKE_GEMINI,
+    }
+    assert ra.dex_static_strings(dex, "Lcom/kevin/midnightai/BuildConfig;") is None
+
+
+def test_a_baked_key_is_found_by_name_in_a_second_dex(tmp_path):
+    apk = _apk_with(
+        tmp_path, _dex(PHONE_BC, [("AIRNOW_API_KEY", "ABC-123"), ("GEMINI_API_KEY", FAKE_GEMINI)])
+    )
+    assert ra.baked_secret_fields(apk, "phone") == ["GEMINI_API_KEY", "AIRNOW_API_KEY"]
+
+
+def test_a_nokey_build_passes_and_the_public_mapbox_token_is_ignored(tmp_path):
+    apk = _apk_with(
+        tmp_path,
+        _dex(
+            PHONE_BC,
+            [("AIRNOW_API_KEY", ""), ("GEMINI_API_KEY", ""), ("MAPBOX_ACCESS_TOKEN", "pk.public")],
+        ),
+    )
+    assert ra.baked_secret_fields(apk, "phone") == []
+
+
+def test_an_apk_without_buildconfig_or_not_a_zip_is_refused(tmp_path):
+    apk = _apk_with(tmp_path, _dex("Lcom/other/BuildConfig;", [("GEMINI_API_KEY", "")]))
+    with pytest.raises(ra.Refused, match="cannot be checked"):
+        ra.baked_secret_fields(apk, "phone")
+    junk = tmp_path / "junk.apk"
+    junk.write_bytes(b"not a zip")
+    with pytest.raises(ra.Refused, match="is it an APK"):
+        ra.baked_secret_fields(junk, "phone")
+
+
+def test_a_baked_key_is_refused_before_hashing_or_upload(apk, pin, tools):
+    tools["state"]["baked"] = ["GEMINI_API_KEY"]
+    with pytest.raises(ra.Refused, match="baked GEMINI_API_KEY.*-Pnokey"):
+        ra.run(_args(apk, pin), out=lambda line: None)
+    assert tools["uploads"] == [] and tools["requests"] == []
+
+
+def test_allow_baked_keys_publishes_with_a_warning_that_names_but_never_prints_the_key(
+    apk, pin, tools
+):
+    tools["state"]["baked"] = ["GEMINI_API_KEY", "AIRNOW_API_KEY"]
+    lines = []
+    assert ra.run(_args(apk, pin, dry_run=True, allow_baked_keys=True), out=lines.append) == 0
+    assert any(
+        line.startswith("WARNING") and "GEMINI_API_KEY, AIRNOW_API_KEY" in line for line in lines
+    )
+
+
+def test_main_takes_the_override_flag(apk, pin, tools):
+    tools["state"]["baked"] = ["GEMINI_API_KEY"]
+    base = ["--app", "phone", "--apk", str(apk), "--notes", "x", "--dry-run"]
+    base += ["--signer-file", str(pin)]
+    assert ra.main(base) == 1
+    assert ra.main(base + ["--allow-baked-keys"]) == 0
