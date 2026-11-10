@@ -11,8 +11,8 @@ see (Canvas items are private to their member, ADR 0052).
 - charges and deposits: a row stored (`created_at`) after the watch was armed AND dated no more
   than `RECENT_DAYS` before it. A first bank link after the watch was set brings months of rows
   with a fresh `created_at`; the date bound keeps them quiet. A pending row that the bank later
-  posts is one fact: the posted row is recorded as a baseline (never said) when a firing for the
-  same account and amount, within `PENDING_POST_DAYS`, named a pending row that is gone.
+  posts is one fact, by the bank's own link (`pending_transaction_id`): `ingest/plaid_sync` hands
+  it to `watches/links.py`, which records the posted id as already said in the same transaction.
 - grades: every grade already on file when the watch was armed is recorded as a baseline first.
 - balances: edge-triggered. It fires when an account crosses under, and re-arms only once that
   account's balance is back at or over the amount (`Watch.state`).
@@ -46,7 +46,6 @@ from watches.registry import DEFAULT_FIRING_LIFE
 
 RECENT_DAYS = 3
 LOOKBACK = dt.timedelta(days=7)
-PENDING_POST_DAYS = 10
 # A service item overdue by more than this is old data, not news (vetoable pick).
 SERVICE_OVERDUE_DAYS = 30
 FIRING_KEEP = dt.timedelta(days=60)
@@ -142,30 +141,6 @@ def _txn_rows(viewer, watch: Watch, now: dt.datetime, outgoing: bool):
     return rows.order_by("created_at", "id")
 
 
-def _posted_twin(viewer, watch: Watch, row, now: dt.datetime) -> bool:
-    """True when [row] is the posted copy of a pending row that already fired (plaid_sync deletes
-    the pending row and inserts the posted one, with a new id and `created_at`)."""
-    from legacy.models.ledger import LedgerTransaction
-
-    if row.bank_pending:
-        return False
-    earlier = WatchFiring.objects.filter(
-        household=watch.household,
-        owner_user=watch.owner_user,
-        kind=watch.kind,
-        baseline=False,
-        detail__pending=True,
-        detail__account=row.account_last4,
-        detail__amount_cents=row.amount_cents,
-        fired_at__gte=now - dt.timedelta(days=PENDING_POST_DAYS),
-    )
-    for firing in earlier:
-        ids = [s.get("id") for s in firing.sources if s.get("table") == "ledger_transactions"]
-        if ids and not scoped(LedgerTransaction, viewer).filter(id__in=ids).exists():
-            return True
-    return False
-
-
 def _money_fact(viewer, watch: Watch, now: dt.datetime, outgoing: bool) -> list[Fact]:
     types = _account_types(viewer) if not outgoing else {}
     seen = set(
@@ -182,7 +157,6 @@ def _money_fact(viewer, watch: Watch, now: dt.datetime, outgoing: bool) -> list[
         key = f"txn:{key_id}"
         if key in seen:
             continue
-        twin = _posted_twin(viewer, watch, row, now)
         what = "charge" if outgoing else "deposit"
         prep = "at" if outgoing else "from"
         into = "on" if outgoing else "into"
@@ -204,7 +178,6 @@ def _money_fact(viewer, watch: Watch, now: dt.datetime, outgoing: bool) -> list[
                     "pending": bool(row.bank_pending),
                     "date": row.txn_date.isoformat(),
                 },
-                baseline=twin,
             )
         )
     return out
@@ -484,6 +457,14 @@ def record(watch: Watch, fact: Fact, now: dt.datetime) -> WatchFiring | None:
 
 
 def evaluate_watch(watch: Watch, now: dt.datetime, report: Report) -> None:
+    # One transaction per watch: its firings and its state (balance_under's "already under",
+    # grade_posted's baseline) commit together, so a crash between them can never make the next
+    # run fire the same fact again.
+    with transaction.atomic():
+        _evaluate_watch(watch, now, report)
+
+
+def _evaluate_watch(watch: Watch, now: dt.datetime, report: Report) -> None:
     viewer = Viewer(watch.owner_user)
     facts = EVALUATORS[watch.kind](viewer, watch, now)
     fired = False

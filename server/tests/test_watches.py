@@ -308,18 +308,95 @@ def test_a_charge_fires_once_and_never_backfills(auth_client, kevin, household_a
     assert _watch(wid).last_fired_at is not None
 
 
-def test_a_pending_charge_that_posts_is_one_fact(auth_client, kevin, household_a):
-    wid = _set(auth_client, "charge_over", {"amount_cents": 50_000})
-    pending = _txn(household_a, -55_000, pending=True)
+_CHECKING = {"account_id": "acc-chk", "mask": "1111", "name": "Everyday", "type": "depository"}
+
+
+def _bank(tid, dollars, *, name="EXAMPLE DINER", pending=False, pending_of=None):
+    """One Plaid transaction as `/transactions/sync` sends it (positive amount is money out)."""
+    return {
+        "transaction_id": tid,
+        "account_id": "acc-chk",
+        "amount": dollars,
+        "iso_currency_code": "USD",
+        "date": timezone.now().date().isoformat(),
+        "name": name,
+        "original_description": None,
+        "merchant_name": None,
+        "pending": pending,
+        "pending_transaction_id": pending_of,
+    }
+
+
+def _sync(household, added=(), removed=()):
+    from ingest.plaid_sync import apply_changes
+
+    with transaction.atomic():
+        apply_changes(
+            household, added=list(added), modified=[], removed=list(removed), accounts=[_CHECKING]
+        )
+
+
+def test_a_tipped_charge_is_said_once_pending_then_posted_higher(auth_client, kevin, household_a):
+    wid = _set(auth_client, "charge_over", {"amount_cents": 3_000})
+    _sync(household_a, added=[_bank("t-pend", 40.00, pending=True)])
     evaluate_household(household_a, _later())
-    # plaid_sync's pending-to-posted: the pending row is deleted (a BANK_API row may be) and the
-    # posted one inserted with a new id.
-    LedgerTransaction.objects.filter(pk=pending).delete()
-    _txn(household_a, -55_000)
+    # The bank posts it with the tip, under a new id that names the pending one, and drops it.
+    _sync(household_a, added=[_bank("t-post", 48.00, pending_of="t-pend")], removed=["t-pend"])
     evaluate_household(household_a, _later(2))
     said = _firings(kevin, watch_id=wid, baseline=False)
-    assert len(said) == 1 and "pending" in said[0].facts
-    assert len(_firings(kevin, watch_id=wid, baseline=True)) == 1
+    assert len(said) == 1 and "$40.00" in said[0].facts and "pending" in said[0].facts
+    (carried,) = _firings(kevin, baseline=True)
+    assert carried.fact_key == "txn:t-post" and carried.detail["posted_of"] == "t-pend"
+
+
+def test_a_pending_charge_under_the_line_that_posts_over_it_is_said_once_at_posting(
+    auth_client, kevin, household_a
+):
+    _set(auth_client, "charge_over", {"amount_cents": 5_000})
+    _sync(household_a, added=[_bank("t-pend", 45.00, pending=True)])
+    evaluate_household(household_a, _later())
+    assert _firings(kevin) == []
+    _sync(household_a, added=[_bank("t-post", 52.00, pending_of="t-pend")], removed=["t-pend"])
+    evaluate_household(household_a, _later(2))
+    evaluate_household(household_a, _later(3))
+    (said,) = _firings(kevin)
+    assert said.fact_key == "txn:t-post" and "$52.00" in said.facts and "pending" not in said.facts
+
+
+def test_pending_and_posted_between_two_runs_is_one_fact(auth_client, kevin, household_a):
+    _set(auth_client, "charge_over", {"amount_cents": 3_000})
+    _sync(household_a, added=[_bank("t-pend", 40.00, pending=True)])
+    _sync(household_a, added=[_bank("t-post", 41.00, pending_of="t-pend")], removed=["t-pend"])
+    evaluate_household(household_a, _later())
+    assert len(_firings(kevin, baseline=False)) == 1
+
+
+def test_a_pending_deposit_that_posts_is_said_once(auth_client, kevin, household_a):
+    _set(auth_client, "deposit_over", {"amount_cents": 100_000, "payer": "payroll"})
+    _sync(household_a, added=[_bank("d-pend", -1500.00, name="EXAMPLE PAYROLL", pending=True)])
+    evaluate_household(household_a, _later())
+    _sync(
+        household_a,
+        added=[_bank("d-post", -1500.00, name="EXAMPLE PAYROLL", pending_of="d-pend")],
+        removed=["d-pend"],
+    )
+    evaluate_household(household_a, _later(2))
+    assert len(_firings(kevin, baseline=False)) == 1
+
+
+def test_one_members_said_charge_is_carried_for_that_member_only(
+    auth_client, kevin, mia, mia_client, household_a
+):
+    _set(auth_client, "charge_over", {"amount_cents": 3_000})
+    _sync(household_a, added=[_bank("t-pend", 40.00, pending=True)])
+    evaluate_household(household_a, _later())
+    _set(mia_client, "charge_over", {"amount_cents": 3_000})
+    _sync(household_a, added=[_bank("t-post", 48.00, pending_of="t-pend")], removed=["t-pend"])
+    evaluate_household(household_a, _later(2))
+    assert len(_firings(kevin, baseline=False)) == 1
+    # Mia's watch was armed after the pending row: the posted row is her first sighting.
+    (hers,) = _firings(mia, baseline=False)
+    assert hers.fact_key == "txn:t-post"
 
 
 def test_a_deposit_on_a_card_is_not_a_deposit(auth_client, kevin, household_a):

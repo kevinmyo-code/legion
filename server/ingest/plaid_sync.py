@@ -435,6 +435,7 @@ def apply_changes(
     new_rows: list[LedgerTransaction] = []
     to_delete: set = set()
     carry: list[tuple[Any, str]] = []  # (replaced row id, bank id of its replacement)
+    posted_links: list[tuple[str, LedgerTransaction]] = []  # (pending bank id, posted row)
     for transaction_id, (txn, is_added) in upserts.items():
         try:
             row = _build_row(household, txn, by_account, rules)
@@ -456,6 +457,8 @@ def apply_changes(
         else:
             report.modified += 1
         pending_id = txn.get("pending_transaction_id")
+        if pending_id:
+            posted_links.append((str(pending_id), row))
         pending_row = existing.get(str(pending_id)) if pending_id else None
         if pending_row is not None and pending_row.id not in to_delete:
             to_delete.add(pending_row.id)
@@ -475,6 +478,13 @@ def apply_changes(
     if to_delete:
         LedgerTransaction.objects.filter(household=household, id__in=list(to_delete)).delete()
     LedgerTransaction.objects.bulk_create(new_rows)
+    if posted_links:
+        # ADR 0083: a posted row is the same real-world transaction as the pending one it
+        # names, so a money watch that said the pending one never says it again
+        # (`watches/links.py`).
+        from watches.links import carry_pending_firings
+
+        carry_pending_firings(household, posted_links)
 
     new_by_bank_id = {row.bank_transaction_id: row for row in new_rows}
     for replaced_id, bank_id in carry:
