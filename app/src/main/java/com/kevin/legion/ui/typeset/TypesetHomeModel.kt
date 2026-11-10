@@ -58,6 +58,8 @@ data class TypesetHomeActions(
     val onDismissCard: () -> Unit = {},
     val onOpenApp: (TypesetDockTile) -> Unit = {},
     val onAllApps: () -> Unit = {},
+    /** Today's More sheet, so every area keeps a way in until it has a Typeset page. */
+    val onMore: () -> Unit = {},
 )
 
 /** The three figures, pure, from the view models HOME already has. Pinned by `TypesetHomeDeriveTest`. */

@@ -112,120 +112,18 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun AssistantStrip(onOpenSettings: () -> Unit) {
-    val context = LocalContext.current
-
-    // Off by default. Used to be the sole gate on whether this composable drew anything at all
-    // (see this file's own class doc for why that changed 2026-09-01) - now it only chooses which
-    // of the two rows below renders.
-    val assistantEnabled by AssistantIgnition.enabledState(context).collectAsStateWithLifecycle()
-    if (!assistantEnabled) {
+    // One resolution shared with the Typeset front page's orb (ADR 0081): rememberAssistantVoice.
+    val voice = rememberAssistantVoice(onOpenSettings)
+    if (!voice.enabled) {
         AssistantOffRow(onTap = onOpenSettings)
         return
     }
-
-    val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
-    val caption by CompanionPhase.caption.collectAsStateWithLifecycle()
-    val toolRunning by CompanionPhase.toolRunning.collectAsStateWithLifecycle()
-
-    // Ticket 15's signal, finally reaching the driver. It used to stop at
-    // CarProbeLog and the Settings diagnostic page, which meant the one state
-    // where LEGION cannot hear was the one state it never said out loud.
-    // False on API 28 and below means "not known to be silenced" - the platform
-    // offers no signal there at all - never "confirmed hearing you".
-    val silenced by CompanionPhase.silenced.collectAsStateWithLifecycle()
-
-    // The permission is real Android state, not implied by the toggle - a
-    // driver can revoke RECORD_AUDIO from system Settings at any point while
-    // the assistant stays "on" (the service keeps running; it just fails the
-    // next tap). Checked live rather than assumed from AssistantIgnition,
-    // per the ticket's explicit instruction, and re-checked on ON_RESUME so
-    // a driver who backs out to system Settings and grants/revokes it comes
-    // back to an accurate strip without needing to leave and re-enter this
-    // screen - same "can go stale for reasons outside this app" shape as
-    // LedgerScreen's own ON_RESUME recheck of its Drive/key signals.
-    var micGranted by remember { mutableStateOf(hasRecordAudio(context)) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        micGranted = hasRecordAudio(context)
+    CompositionLocalProvider(LocalTypedChat provides voice.typedChat) {
+        AssistantStripWithCard(state = voice.state, onTap = voice.talk)
     }
-
-    // CompanionPhase.notice is a SharedFlow, not a StateFlow (see its own doc: a frustrated
-    // double-tap must flash the same string twice, which a StateFlow's conflation would swallow) -
-    // collect it here and hold the latest one for a few seconds so the strip flashes it the same
-    // way the now-dead Cruise/Lights Out screens did.
-    //
-    // **The freshness check is the 2026-09-07 half.** That flow now replays its last value to a
-    // late subscriber, precisely so a refusal raised by a wake word while this composable did not
-    // exist is still readable when the app is opened. The cost of replay is that the value can be
-    // OLD, and a stale flash reads as a live failure - so a replayed notice past
-    // CompanionPhase.NOTICE_REPLAY_MAX_AGE_MS is dropped rather than shown. A live emission always
-    // passes; this only ever rejects the buffer's own leftovers.
-    var notice by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        CompanionPhase.notice.collect { raised ->
-            if (!CompanionPhase.noticeStillWorthShowing(raised.atMs, System.currentTimeMillis())) {
-                return@collect
-            }
-            val text = raised.text
-            notice = text
-            delay(NOTICE_DISPLAY_MS)
-            // Only clear if nothing newer has already replaced it - a second
-            // notice arriving mid-flash would otherwise have its own delayed
-            // clear stomp on it early.
-            if (notice == text) notice = null
-        }
-    }
-
-    // The resolver lets a notice outrank the phase, so a failure flashed just before a conversation
-    // connected would hide "Listening" until its timer ran out. Listening means the socket really
-    // connected; whatever error was on screen is over (2026-10-02).
-    LaunchedEffect(phase) { if (phase == Phase.LISTENING) notice = null }
-
-    // The chat button and chat panel (web-assistant ticket 09, panel rework 2026-10-05) ride in on a
-    // CompositionLocal so the strip's own signatures stay as they were. See [TypedChatUi]. The
-    // panel's open flag and unread dot live in [ChatPanelState]; nothing here focuses a field.
-    val chatViewModel: AssistantChatViewModel = viewModel()
-    val chat by chatViewModel.state.collectAsStateWithLifecycle()
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { chatViewModel.refreshCompanionName() }
-    val panel = remember { ChatPanelState() }
-    LaunchedEffect(chat.entries) { panel.observe(chat.entries) }
-    val typedChat = TypedChatUi(
-        companionName = chat.companionName,
-        entries = chat.entries,
-        pendingReply = chat.pendingReply,
-        onSend = chatViewModel::send,
-        onNewConversation = chatViewModel::newConversation,
-        unreadReply = panel.unread,
-        onOpenChat = panel::show,
-    )
-
-    // Same path for the pill and the panel's mic button: never binds, never constructs
-    // LiveSessionController here - the controller is service-owned; this is the ACTION_TALK
-    // start-intent path AriaForegroundService.onStartCommand already handles.
-    val talk: () -> Unit = {
-        if (micGranted) {
-            context.startService(
-                Intent(context, AriaForegroundService::class.java)
-                    .setAction(AriaForegroundService.ACTION_TALK)
-            )
-        } else {
-            onOpenSettings()
-        }
-    }
-
-    CompositionLocalProvider(LocalTypedChat provides typedChat) {
-        AssistantStripWithCard(
-            state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced, toolRunning),
-            onTap = talk,
-        )
-    }
-    if (panel.open) ChatPanelSheet(typedChat, onTalk = talk, onClose = panel::hide)
+    if (voice.panel.open) ChatPanelSheet(voice.typedChat, onTalk = voice.talk, onClose = voice.panel::hide)
 }
 
-/**
- * [AssistantStripContent] with the voice conversation's latest card (generative UI, 2026-11-04):
- * built from a tool's own result, cleared when the conversation ends, dismissable by hand. Its own
- * function so the strip's state holder above stays one screen long.
- */
 @Composable
 private fun AssistantStripWithCard(state: AssistantStripResolver.State, onTap: () -> Unit) {
     val cards by ConversationCards.state.collectAsStateWithLifecycle()
@@ -445,12 +343,7 @@ private fun pulseAlpha(active: Boolean): State<Float> {
     }
 }
 
-private fun hasRecordAudio(context: android.content.Context): Boolean =
-    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-        PackageManager.PERMISSION_GRANTED
 
-/** How long a flashed [CompanionPhase] notice stays on the strip before clearing. */
-private const val NOTICE_DISPLAY_MS = 4_000L
 
 // --- previews ---------------------------------------------------------
 // Wrapped in SoftTheme, not LegionTheme, since that is what MainActivity.kt's real call site wraps

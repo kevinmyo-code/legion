@@ -227,6 +227,7 @@ class TypesetShotsTest {
                 glance = glance,
                 phase = phase,
                 status = if (phase == OrbPhase.SPEAKING) "Alfred is talking" else "Tap to talk",
+                statusWords = null,
                 night = night,
                 cards = cards,
                 actions = TypesetHomeActions(),

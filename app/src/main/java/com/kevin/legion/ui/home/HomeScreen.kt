@@ -131,6 +131,13 @@ fun HomeScreen(
     onOpenClaudeSession: () -> Unit = {},
     /** A Money panel bar: that category's transactions in the Money view (household-finance 13). */
     onOpenMoneyCategory: (category: String) -> Unit = { onOpenMoney() },
+    /** Typeset (ADR 0081): the shell's clock, its off-normal words, and where the page can go. */
+    clock: String = "",
+    statusWords: String? = null,
+    onOpenApps: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    onOpenClock: () -> Unit = {},
+    onOpenField: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -232,52 +239,10 @@ fun HomeScreen(
         }
     }
 
-    HomeContent(
-        calendar = calendar,
-        calendarCallbacks = HomeCalendarCallbacks(
-            onPreviousMonth = calendarViewModel::previousMonth,
-            onNextMonth = calendarViewModel::nextMonth,
-            onSelectDay = calendarViewModel::selectDay,
-            onOpenRow = { day, row -> onOpenDay(day, row.reminderId) },
-            onOpenDay = { day -> onOpenDay(day, null) },
-            onOpenSheet = calendarViewModel::openSheet,
-            onCloseSheet = calendarViewModel::closeSheet,
-            onToggleTodo = calendarViewModel::setTodoDone,
-            onOpenList = { list ->
-                calendarViewModel.closeSheet()
-                onOpenList(list.id)
-            },
-            onAddIdea = calendarViewModel::addIdeaToPlans,
-            onDropIdea = calendarViewModel::dropIdea,
-        ),
-        games = GamesHome(
-            state = gamesState,
-            callbacks = GamesCallbacks(
-                onPlay = gamesViewModel::play,
-                onPlayResume = gamesViewModel::playResume,
-                onPlayApp = gamesViewModel::playApp,
-                onPickFolder = pickRomFolder,
-                onSheetOpened = gamesViewModel::loadOpponents,
-                onPlayTetris = onPlayTetris,
-            ),
-            cover = gamesViewModel::cover,
-            appIcon = gamesViewModel::appIcon,
-        ),
-        books = BooksHome(
-            state = booksState,
-            callbacks = BooksCallbacks(
-                onRead = booksViewModel::read,
-                onListen = booksViewModel::listen,
-                onContinue = booksViewModel::continueReading,
-                onPickFolder = pickBooksFolder,
-                onDismissNotice = booksViewModel::dismissNotice,
-            ),
-            cover = booksViewModel::cover,
-        ),
-        tiles = tiles,
-        recording = recording,
-        recordRefusal = recordRefusal,
-        tileCallbacks = HomeCallbacks(
+    // Typeset (ADR 0081): the front page replaces the calendar-first home. `HomeContent` stays
+    // compiled for its screenshot tests and the More sheet it owns, until it is retired. Games and
+    // Books lose their home chips here: follow-up, they need a Typeset entry.
+    val tileCallbacks = HomeCallbacks(
             onOpenCalendar = onOpenCalendar,
             onOpenLists = onOpenLists,
             onOpenMoney = onOpenMoney,
@@ -300,42 +265,37 @@ fun HomeScreen(
                 recordRefusal = null
                 scope.launch { VoiceNoteController.stop(context) }
             },
-        ),
-        nowPlaying = nowPlaying,
-        onOpenMedia = onOpenMedia,
-        dockSlots = buildDockSlots(pins, drawerSnapshot),
-        dock = DockCallbacks(
-            onLaunch = launchSlot,
-            onUnpin = { pin ->
-                pins = DockPins.unpin(pins, pin)
-                DockPinsStore.write(context, pins)
-            },
-            onMoveLeft = { pin ->
-                pins = DockPins.move(pins, pin, delta = -1)
-                DockPinsStore.write(context, pins)
-            },
-            onMoveRight = { pin ->
-                pins = DockPins.move(pins, pin, delta = 1)
-                DockPinsStore.write(context, pins)
-            },
-        ),
-        dockMessage = if (appsUnreadable && drawerSnapshot == null) "Couldn't read your apps." else dockMessage,
-        categories = HomeCategory.entries.map {
-            CategoryUi(it, buildDockSlots(categoryPicks[it].orEmpty(), drawerSnapshot))
-        },
-        chooserRows = buildChooserRows(drawerSnapshot),
-        categoryCallbacks = CategoryCallbacks(
-            onLaunch = launchSlot,
-            onSave = { category, picks ->
-                CategoryPicksStore.write(context, category, picks)
-                categoryPicks = categoryPicks + (category to picks)
-            },
-        ),
-        onBrief = { briefOpen = true },
-        claudeLine = claudeLine,
+        )
+    var moreOpen by remember { mutableStateOf(false) }
+    com.kevin.legion.ui.typeset.TypesetHomeHost(
+        calendar = calendar,
         money = money,
-        onOpenMoneyCategory = onOpenMoneyCategory,
+        clock = clock,
+        statusWords = statusWords,
+        dockSlots = buildDockSlots(pins, drawerSnapshot),
+        onLaunchSlot = launchSlot,
+        nav = com.kevin.legion.ui.typeset.TypesetHomeNav(
+            onOpenToday = onOpenCalendar,
+            onOpenMoney = onOpenMoney,
+            onOpenCar = onOpenFleet,
+            onOpenClock = onOpenClock,
+            onOpenField = onOpenField,
+            onOpenApps = onOpenApps,
+            onOpenSettings = onOpenSettings,
+            onOpenClaude = onOpenClaudeSession,
+            onOpenMore = { moreOpen = true },
+        ),
     )
+    if (moreOpen) {
+        MoreSheet(
+            state = tiles,
+            money = money,
+            recording = recording,
+            recordRefusal = recordRefusal,
+            callbacks = tileCallbacks,
+            onDismiss = { moreOpen = false },
+        )
+    }
     SoftTheme { com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false }) }
 }
 

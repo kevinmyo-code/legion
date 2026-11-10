@@ -50,6 +50,8 @@ fun TypesetHomeContent(
     glance: TypesetGlance,
     phase: OrbPhase,
     status: String,
+    /** Off-normal shell words under the Controls link (not synced, OBD, quiet, alarms); null draws nothing. */
+    statusWords: String?,
     night: Boolean,
     cards: List<ConversationCard>,
     actions: TypesetHomeActions,
@@ -58,7 +60,7 @@ fun TypesetHomeContent(
 ) {
     val answering = cards.isNotEmpty()
     Column(modifier.fillMaxWidth().padding(horizontal = Gutter)) {
-        Masthead(answering, night, actions)
+        Masthead(answering, night, statusWords, actions)
         if (!answering) Glance(glance, actions)
         Stage(phase, status, large = phase != OrbPhase.IDLE && !answering, actions)
         // Newest answer directly under the orb.
@@ -71,7 +73,7 @@ fun TypesetHomeContent(
 }
 
 @Composable
-private fun Masthead(answering: Boolean, night: Boolean, actions: TypesetHomeActions) {
+private fun Masthead(answering: Boolean, night: Boolean, statusWords: String?, actions: TypesetHomeActions) {
     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
         if (answering) {
             Text(
@@ -84,12 +86,17 @@ private fun Masthead(answering: Boolean, night: Boolean, actions: TypesetHomeAct
             Text("LEGION", style = TypesetType.caps, color = SoftColors.text)
         }
         Spacer(Modifier.weight(1f))
-        Text(
-            "CONTROLS",
-            style = TypesetType.caps.copy(textDecoration = TextDecoration.Underline),
-            color = SoftColors.text,
-            modifier = Modifier.tap("Controls", actions.onControls),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            statusWords?.let {
+                Text(it, style = TypesetType.small, color = SoftColors.text2, modifier = Modifier.padding(end = 8.dp))
+            }
+            Text(
+                "CONTROLS",
+                style = TypesetType.caps.copy(textDecoration = TextDecoration.Underline),
+                color = SoftColors.text,
+                modifier = Modifier.tap("Controls", actions.onControls),
+            )
+        }
         Box(
             Modifier.size(MinTarget).clickable(role = Role.Button, onClick = actions.onToggleEdition)
                 .semantics { contentDescription = "Switch between day and night paper" },
@@ -116,11 +123,13 @@ private fun Glance(g: TypesetGlance, actions: TypesetHomeActions) {
         Figure(g.next, actions.onOpenToday)
         Figure(g.due, actions.onOpenToday)
         Figure(g.left, actions.onOpenMoney)
-        // The contents line: the screens behind, plus Field and Breathe, one tap each (Kevin,
-        // 2026-11-10). Two rows of three, the prototype's ruled grid, nothing new on the page.
+        // The contents line: the screens behind, Field and Breathe (Kevin, 2026-11-10), and More
+        // (today's sheet: Body, News, Reports, Media, Recordings, Lists, Games, Books keep a way in).
+        // Two rows of four, the prototype's grid.
         val contents = listOf(
             "Today" to actions.onOpenToday, "Money" to actions.onOpenMoney, "Car" to actions.onOpenCar,
             "Clock" to actions.onOpenClock, "Field" to actions.onOpenField, "Breathe" to actions.onBreathe,
+            "More" to actions.onMore,
         )
         contents.chunked(CONTENTS_PER_ROW).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
@@ -214,7 +223,7 @@ private fun Modifier.tap(label: String, onClick: () -> Unit): Modifier =
         .wrapContentHeight()
         .padding(horizontal = 2.dp)
 
-private const val CONTENTS_PER_ROW = 3
+private const val CONTENTS_PER_ROW = 4
 private val Gutter = 16.dp
 private val MinTarget = 48.dp
 private val FigureColumn = 100.dp
