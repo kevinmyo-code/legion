@@ -3,7 +3,7 @@
 # compileSdk 37, so 3.3.0 (Kotlin 2.3.20 metadata, readable by the 2.2.10 compiler). See .scratch/books/research/engine.md.
 readium = "3.3.0"
 agp = "9.2.1"
-kotlin = "2.1.0"
+kotlin = "2.2.10"
 coreKtx = "1.13.1"
 junit = "4.13.2"
 junitVersion = "1.1.5"
