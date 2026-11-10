@@ -161,6 +161,9 @@ class MainActivity : ComponentActivity() {
             androidx.compose.runtime.CompositionLocalProvider(
                 com.kevin.legion.ui.theme.LocalMatrixMode provides matrixOn,
             ) {
+            // Typeset edition (ADR 0081): day or night paper, bedtime, the one-tap switch; also the
+            // system bar colour, which follows the page.
+            com.kevin.legion.ui.theme.soft.ProvideTypesetEdition {
             LegionTheme {
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.kevin.legion.ui.navigation.LocalTripResumeNonce provides tripResumeNonce,
@@ -178,6 +181,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
             }
         }

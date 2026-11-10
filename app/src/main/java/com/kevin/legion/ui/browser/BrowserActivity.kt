@@ -21,6 +21,7 @@ import com.kevin.legion.browser.FeedBlock
 import com.kevin.legion.ui.MainActivity
 import com.kevin.legion.ui.dumb.DumbBounceScreen
 import com.kevin.legion.ui.dumb.FeedBlockedScreen
+import com.kevin.legion.ui.theme.soft.ProvideTypesetEdition
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import kotlinx.coroutines.launch
 
@@ -40,7 +41,7 @@ class BrowserActivity : ComponentActivity() {
         val controller = app.browser
         lifecycleScope.launch { controller.closeRequests.collect { finish() } }
         setContent {
-            SoftTheme {
+            ProvideTypesetEdition { SoftTheme {
                 val state by model.state.collectAsStateWithLifecycle()
                 BackHandler(enabled = state.blocked == null) {
                     if (state.canGoBack) model.back() else finish()
@@ -63,7 +64,7 @@ class BrowserActivity : ComponentActivity() {
                     },
                     blocked = { BlockedPage(it) },
                 )
-            }
+            } }
         }
     }
 

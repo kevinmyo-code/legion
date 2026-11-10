@@ -1,6 +1,8 @@
 package com.kevin.legion.ui.theme.soft
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -200,7 +202,14 @@ internal val SoftSemantics = softSemantics(SoftDarkPalette)
  * theme at each converted call site, not a replacement for it at the root - `MaterialTheme` and the
  * locals below are CompositionLocal providers, so a nested one overrides for its own subtree only.
  *
- * Also provides [LocalLegionSemantics] = [SoftSemantics] and [LocalSoftActive] = true, which is what
+ * **Typeset (ADR 0081).** Outside Matrix mode the look is the Typeset edition ([softLook]): paper
+ * and ink by day, cream on warm black by night, chosen by [LocalTypesetEdition] (the activity's
+ * [ProvideTypesetEdition]) or, where nothing provides one, the phone's own dark theme. It provides
+ * [LocalSoftPalette] too, so every `SoftColors.x` read under it follows the edition. Under Matrix
+ * mode soft screens keep exactly their old look: [SoftDarkPalette] behind `SoftColors`, Matrix's
+ * scheme and semantics on top.
+ *
+ * Also provides [LocalLegionSemantics] (the look's semantics) and [LocalSoftActive] = true, which is what
  * turns the shared `ui/common` primitives (`DeckPane`, `DeckScreenHeader`, `DeckRow`, ...) and
  * `LegionType.amount/reading/stamp` soft.
  *
@@ -224,15 +233,36 @@ internal val SoftSemantics = softSemantics(SoftDarkPalette)
 @Composable
 fun SoftTheme(content: @Composable () -> Unit) {
     val matrix = LocalMatrixMode.current
+    val look = softLook(matrix, LocalTypesetEdition.current ?: systemEdition())
     CompositionLocalProvider(
-        LocalLegionSemantics provides pickSemantics(matrix, SoftSemantics),
+        LocalSoftPalette provides look.palette,
+        LocalLegionSemantics provides look.semantics,
         LocalSoftActive provides true,
     ) {
         MaterialTheme(
-            colorScheme = pickColorScheme(matrix, SoftColorScheme),
+            colorScheme = look.scheme,
             typography = SoftTypography,
             shapes = SoftShapes,
             content = content,
         )
     }
+}
+
+/** The edition when no activity resolved one (previews, screenshot tests): the phone's own theme. */
+@Composable
+private fun systemEdition(): TypesetEdition =
+    if (isSystemInDarkTheme()) TypesetEdition.NIGHT else TypesetEdition.DAY
+
+/** What [SoftTheme] provides: the palette behind `SoftColors`, the Material scheme, the semantics. */
+internal data class SoftLook(val palette: SoftPalette, val scheme: ColorScheme, val semantics: LegionSemantics)
+
+/**
+ * Pure choice of look (ADR 0081). Matrix mode keeps exactly the look soft screens had before
+ * Typeset: the soft-dark palette behind `SoftColors`, with Matrix's scheme and semantics on top.
+ * Otherwise the Typeset edition: paper by day, cream on warm black by night.
+ */
+internal fun softLook(matrix: Boolean, edition: TypesetEdition): SoftLook = when {
+    matrix -> SoftLook(SoftDarkPalette, pickColorScheme(true, SoftColorScheme), pickSemantics(true, SoftSemantics))
+    edition == TypesetEdition.DAY -> SoftLook(TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics)
+    else -> SoftLook(TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics)
 }

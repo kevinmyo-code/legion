@@ -22,6 +22,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kevin.legion.ui.theme.soft.ProvideTypesetEdition
 import com.kevin.legion.ui.theme.soft.SoftTheme
 
 /**
@@ -47,14 +48,14 @@ class ReaderActivity : FragmentActivity() {
         // only exists after the book is open. The reader reopens at its own saved position instead.
         super.onCreate(null)
         setContent {
-            SoftTheme {
+            ProvideTypesetEdition(systemBars = false) { SoftTheme {
                 val state by model.state.collectAsStateWithLifecycle()
                 LaunchedEffect(state.settings.fullScreen) { applyFullScreen(state.settings.fullScreen) }
                 Box(Modifier.fillMaxSize()) {
                     ReaderScreen(state, readerActions()) { ReaderBody(state) }
                     WarmOverlay(state.settings)
                 }
-            }
+            } }
         }
         ReaderPresence.showing.value = documentId
     }
