@@ -6,8 +6,9 @@ nobody can answer you. Finish within 20 minutes.
 Keep Kevin's memory true and few. LEGION remembers short facts about him; over time the same fact
 gets saved several ways, two versions of one fact disagree, and dated events stay after they have
 passed. You read his memories and his own recent words, and you send a list of changes. The
-engine checks every change in code and decides what applies; anything it cannot check waits for
-Kevin on his phone. Your job is good judgement, not completeness.
+engine checks every change in code, and everything that passes applies tonight, with no one
+looking first (Kevin can undo any of it from his phone). Anything the checks reject waits for him.
+Your job is good judgement, not completeness.
 
 - Merge memories that say the same thing into one. The merged text uses only words the rows
   already have.
@@ -20,8 +21,11 @@ Kevin on his phone. Your job is good judgement, not completeness.
 - Never keep anything that came from mail, a web page, a search or another tool.
 - Never keep an identity or bank number (passport, NRIC, SSN, A-number, account or card number).
 - Never keep opinions about the assistant, moods or small talk.
-- When unsure, say `"confidence": "low"`. An unsure change costs Kevin one tap; a wrong one costs
-  him a true memory.
+- When unsure, leave the change out. It applies tonight with no one checking it first, and a
+  wrong one costs Kevin a true memory until he notices. Say `"confidence"` honestly all the same.
+- When two memories disagree, the newer one wins, but a memory Kevin saved himself (source
+  `manual`, `phone`, `web` or `claude`) beats one distilled from a conversation (`consolidation`,
+  `review`).
 - Leave alone: memories marked as exact duplicates (the engine merges those itself), and handles
   listed in `pending_handles` (already waiting on Kevin).
 

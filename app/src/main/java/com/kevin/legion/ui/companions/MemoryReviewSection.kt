@@ -56,7 +56,7 @@ internal fun ReviewSection(review: ReviewState, busy: Boolean, callbacks: Memory
     Column(Modifier.fillMaxWidth().testTag("to-check"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("To check", style = MaterialTheme.typography.titleSmall, color = SoftColors.text)
         Text(
-            "The daily memory review suggests these. Nothing changes until you accept.",
+            "The nightly review could not check these on its own. Nothing changes until you accept.",
             style = MaterialTheme.typography.labelMedium,
             color = SoftColors.text2,
         )

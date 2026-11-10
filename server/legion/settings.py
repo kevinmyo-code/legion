@@ -190,9 +190,15 @@ LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
 # memory-review (Kevin, 2026-11-09): the daily memory review on the Claude worker. `off` (the
 # default): no review task is minted and the review endpoints refuse in words. `shadow`: tasks are
 # minted on the member's idle Alienware, exact duplicates merge by code, and everything Claude
-# judges waits on the Memory screen. `on`: gated merges and past-date expiries also apply on their
-# own, and only after 14 shadow runs (ruling 01; `member_memory.review.effective_mode`).
+# judges waits on the Memory screen. `on` ("Everything auto", Kevin 2026-11-09): every change that
+# passes the code checks applies on the night, up to LEGION_MEMORY_REVIEW_CAP; each one is undone
+# from the Retired screen (`member_memory.review.effective_mode`).
 LEGION_MEMORY_REVIEW = os.environ.get("LEGION_MEMORY_REVIEW", "").strip().lower() or "off"
+# The most changes one night's review applies; the rest wait for the next night. Default 25.
+try:
+    LEGION_MEMORY_REVIEW_CAP = max(0, int(os.environ.get("LEGION_MEMORY_REVIEW_CAP", "") or 25))
+except ValueError:
+    LEGION_MEMORY_REVIEW_CAP = 25
 
 # recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter
 # visitors join. `manage.py seed_demo_household` creates it, and

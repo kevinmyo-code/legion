@@ -19,10 +19,15 @@ prompt.
   Alienware, a review task is minted when one is due. It does nothing while
   `LEGION_MEMORY_REVIEW` is `off`, which is the default.
 
-Kevin's rulings (2026-11-09, all as proposed): R1 shadow first, then only gated merges and
-past-date expiries apply on their own, corrections never; R2 the Memory screen plus a recall flag,
-never raised unprompted; R3 exact duplicates merged by code; R4 a paraphrased reason plus record
-ids, never a verbatim quote.
+Kevin's rulings (2026-11-09): R2 the Memory screen plus a recall flag, never raised unprompted;
+R4 a paraphrased reason plus record ids, never a verbatim quote. R1 (14 shadow runs first) and R3
+(everything but exact duplicates a proposal) were replaced the same evening by **"Everything
+auto"** (Kevin): with the switch `on`, every change that passes the code checks below applies on
+the night, at most `LEGION_MEMORY_REVIEW_CAP` (25) a night, the rest left for the next night; each
+applied change is undone from the Retired screen (`revert`). To check holds only what the code
+checks reject. Contradictions: a memory Kevin saved himself (`EXPLICIT_SOURCES`) is never replaced
+by a correction distilled from a conversation; otherwise the newer words win. A row Kevin restored
+is never changed on its own again.
 
 **Nothing here logs.** No logger is imported. Memory text travels only in JSON bodies and answers;
 `detail`, `gate` and every refusal are words about the change, never a quote of a row.
@@ -94,13 +99,11 @@ MODES = (MODE_OFF, MODE_SHADOW, MODE_ON)
 REVIEW_DAYS = 7
 REVIEW_MAX_CHARS = 40_000
 CONTEXT_TTL = datetime.timedelta(hours=1)
-AUTO_CAP = 10
+AUTO_CAP_DEFAULT = 25
 CHANGES_MAX = 200
-# Ruling 01: auto-apply only after this many shadow runs, and only these actions.
-SHADOW_RUNS_BEFORE_AUTO = 14
-AUTO_ACTIONS = frozenset({ACTION_MERGE, ACTION_EXPIRE})
-# Ticket 07's dismissal guard: over the last 14 runs, more than 30% of decided proposals
-# dismissed (with at least 10 decided) and `on` behaves as `shadow`.
+# The undo guard (ticket 07's dismissal guard, recast for "Everything auto"): over the last 14
+# runs, more than 30% of the changes the review applied undone from Retired (with at least 10)
+# and `on` behaves as `shadow` until that falls.
 GUARD_RUNS = 14
 GUARD_RATE = 0.30
 GUARD_MIN_DECIDED = 10
@@ -115,6 +118,11 @@ TASK_REQUEST = "Run the daily memory review (task kind memory_review)."
 # Strongest first: "you asked me to keep this" survives a merge (map, "Shape of a change").
 SOURCE_RANK = (SOURCE_MANUAL, SOURCE_PHONE, SOURCE_WEB, SOURCE_CLAUDE, SOURCE_CONSOLIDATION,
                SOURCE_REVIEW)
+# Rows Kevin asked for himself: typed on the Memory screen (manual), or "remember ..." said to the
+# phone, the web assistant or Claude (phone, web, claude). The other two are distilled: the hourly
+# consolidation job and the review's own corrections. A correction (itself distilled) never
+# replaces one of these on its own ("Everything auto", contradictions rule).
+EXPLICIT_SOURCES = frozenset({SOURCE_MANUAL, SOURCE_PHONE, SOURCE_WEB, SOURCE_CLAUDE})
 
 OFF_REFUSAL = (
     "Nothing was read or changed. The memory review is off on this engine "
@@ -147,43 +155,44 @@ def configured_mode() -> str:
     return value if value in MODES else MODE_OFF
 
 
-def _ok_runs(member) -> int:
-    return MemoryReview.objects.filter(member=member, outcome=REVIEW_OK).count()
+def auto_cap() -> int:
+    """The most changes one night applies (`LEGION_MEMORY_REVIEW_CAP`, default 25)."""
+    try:
+        return max(0, int(getattr(settings, "LEGION_MEMORY_REVIEW_CAP", AUTO_CAP_DEFAULT)))
+    except (TypeError, ValueError):
+        return AUTO_CAP_DEFAULT
 
 
-def dismissal_rate(member) -> tuple[float, int]:
-    """Dismissed / decided over the proposals of the last `GUARD_RUNS` successful runs."""
+def undo_rate(member) -> tuple[float, int]:
+    """Undone / applied over the changes Claude judged in the last `GUARD_RUNS` successful runs
+    (code merges left out: they are not judgement)."""
     runs = list(
         MemoryReview.objects.filter(member=member, outcome=REVIEW_OK)
         .order_by("-submitted_at")
         .values_list("id", flat=True)[:GUARD_RUNS]
     )
-    decided = MemoryReviewChange.objects.filter(
-        review_id__in=runs, by_code=False, status__in=(CHANGE_ACCEPTED, CHANGE_DISMISSED)
+    applied = MemoryReviewChange.objects.filter(
+        review_id__in=runs, by_code=False,
+        status__in=(CHANGE_APPLIED, CHANGE_ACCEPTED, CHANGE_REVERTED),
     )
-    total = decided.count()
+    total = applied.count()
     if not total:
         return 0.0, 0
-    return decided.filter(status=CHANGE_DISMISSED).count() / total, total
+    return applied.filter(status=CHANGE_REVERTED).count() / total, total
 
 
 def effective_mode(member) -> tuple[str, str]:
-    """The mode a run for `member` works in now, and why in words. `on` is only ever a manual
-    flip, and even then it behaves as `shadow` until 14 shadow runs exist (ruling 01) and while
-    the dismissal guard holds."""
+    """The mode a run for `member` works in now, and why in words. `on` applies everything that
+    passes the code checks from the first night ("Everything auto", Kevin 2026-11-09); only the
+    undo guard pauses it, into `shadow`."""
     mode = configured_mode()
     if mode != MODE_ON:
         return mode, ""
-    runs = _ok_runs(member)
-    if runs < SHADOW_RUNS_BEFORE_AUTO:
+    rate, applied = undo_rate(member)
+    if applied >= GUARD_MIN_DECIDED and rate > GUARD_RATE:
         return MODE_SHADOW, (
-            f"Auto-apply waits for {SHADOW_RUNS_BEFORE_AUTO} shadow runs; {runs} so far."
-        )
-    rate, decided = dismissal_rate(member)
-    if decided >= GUARD_MIN_DECIDED and rate > GUARD_RATE:
-        return MODE_SHADOW, (
-            f"Auto-apply is paused: {round(rate * 100)}% of the last {decided} proposals were "
-            "dismissed, over the 30% line."
+            f"Auto-apply is paused: {round(rate * 100)}% of the last {applied} changes it made "
+            "were undone, over the 30% line."
         )
     return MODE_ON, ""
 
@@ -239,6 +248,17 @@ def _live_private(member, household):
     return MemberMemory.objects.filter(
         household=household, member=member, owner_user=member, superseded_at__isnull=True
     )
+
+
+def restored_ids(member, household) -> set[str]:
+    """Ids of rows Kevin brought back from Retired (an undone change named them). The review
+    never changes one of these on its own again; it can still propose."""
+    found: set[str] = set()
+    for targets in MemoryReviewChange.objects.filter(
+        member=member, household=household, status=CHANGE_REVERTED
+    ).values_list("targets", flat=True):
+        found.update(targets or [])
+    return found
 
 
 def _strongest(rows) -> str:
@@ -317,11 +337,16 @@ def build_context(request, *, task_id=None, machine: str = "") -> dict:
     groups: dict[str, list[MemberMemory]] = {}
     for row in rows:
         groups.setdefault(_norm(row.text), []).append(row)
+    restored = restored_ids(member, household)
     representatives, code_groups = [], []
     for row in rows:
         group = groups[_norm(row.text)]
         keep = max(group, key=lambda r: (r.created_at, str(r.pk)))
         if row.pk != keep.pk:
+            continue
+        if len(group) > 1 and any(str(r.pk) in restored for r in group):
+            # Kevin undid an earlier merge of these copies: leave them all, and show them all.
+            representatives.extend((r, 1) for r in group)
             continue
         representatives.append((row, len(group)))
         if len(group) > 1:
@@ -391,7 +416,7 @@ def build_context(request, *, task_id=None, machine: str = "") -> dict:
         "today": timezone.localdate().isoformat(),
         "mode": mode,
         "mode_note": why,
-        "auto_cap": AUTO_CAP,
+        "auto_cap": auto_cap(),
         "memories": memories,
         "shared_context": shared,
         "exact_duplicates": duplicates,
@@ -588,6 +613,7 @@ class Verdict:
 
 REFUSED = "refused"
 STALE = "stale"
+DEFERRED = "deferred"
 
 
 def _refuse(v: Verdict, why: str) -> Verdict:
@@ -623,6 +649,7 @@ def judge(
     expected: dict[str, str],
     gone: set[str],
     today: datetime.date,
+    restored: frozenset[str] | set[str] = frozenset(),
 ) -> Verdict:
     """One change against its gate. `live` is every private live row by id; `expected` is the
     `updated_at` each was judged at; `gone` holds ids an earlier change in this submit retired."""
@@ -678,10 +705,6 @@ def judge(
         added = tokens(v.proposed["text"]) - set().union(*(tokens(r.text) for r in v.rows))
         if added:
             v.gate = f"The merged text adds {len(added)} word(s) none of the rows has."
-        elif labels["decay_class"] == DECAY_EPISODIC and any(
-            r.decay_class == DECAY_DURABLE for r in v.rows
-        ):
-            v.gate = "The merge would make a lasting fact fade."
         else:
             v.passed, v.gate = True, "passed"
     elif action == ACTION_CORRECT:
@@ -704,6 +727,9 @@ def judge(
                 v.gate = (
                     f"{len(added - heard)} new word(s) do not appear in the cited conversation."
                 )
+            elif old.source in EXPLICIT_SOURCES:
+                # Contradictions rule: what Kevin saved himself beats a distilled correction.
+                v.gate = "Kevin saved this one himself; a correction never replaces it on its own."
             else:
                 v.passed, v.gate = True, "passed"
     elif action == ACTION_EXPIRE:
@@ -732,12 +758,12 @@ def judge(
         ):
             return _refuse(v, "The relabel changes nothing.")
         v.proposed.update(labels)
-        if old.decay_class == DECAY_DURABLE and labels["decay_class"] == DECAY_EPISODIC:
-            v.gate = "Making a lasting fact fade is always Kevin's call."
-        else:
-            v.passed, v.gate = True, "passed"
+        v.passed, v.gate = True, "passed"
     elif action == ACTION_RETIRE:
-        v.gate = "Retiring a memory is always Kevin's call."
+        v.passed, v.gate = True, "passed"
+    if v.passed and any(str(r.pk) in restored for r in v.rows):
+        v.passed = False
+        v.gate = "Kevin restored a memory it names; changing it again is his call."
     return v
 
 
@@ -786,6 +812,8 @@ def words(counts: dict, by_action: dict, code_merged: int) -> str:
             parts.append(f"{by_action[action]} {word}")
     if counts.get("proposed"):
         parts.append(f"{counts['proposed']} to check")
+    if counts.get("deferred"):
+        parts.append(f"{counts['deferred']} left for tomorrow")
     if counts.get("stale"):
         parts.append(f"{counts['stale']} stale")
     if counts.get("refused"):
@@ -841,7 +869,9 @@ def submit(request, body) -> dict:
         }
         expected = {entry["id"]: entry["updated_at"] for entry in review.handles.values()}
         gone: set[str] = set()
-        counts = {"applied": 0, "proposed": 0, "refused": 0, "stale": 0}
+        counts = {"applied": 0, "proposed": 0, "refused": 0, "stale": 0, "deferred": 0}
+        restored = restored_ids(member, household)
+        cap = auto_cap()
         by_action: dict[str, int] = {}
 
         # Ruling 03: exact-text duplicates, merged by code in every mode but off.
@@ -873,16 +903,18 @@ def submit(request, body) -> dict:
         auto = 0
         for index, raw in enumerate(changes):
             v = judge(index, raw, review=review, live=live, expected=expected, gone=gone,
-                      today=today)
+                      today=today, restored=restored)
             verdicts.append(v)
             if v.status in (REFUSED, STALE):
                 counts["refused" if v.status == REFUSED else "stale"] += 1
                 continue
-            may_apply = (
-                mode == MODE_ON and v.passed and v.action in AUTO_ACTIONS
-                and v.confidence == "high" and auto < AUTO_CAP
-            )
-            if may_apply:
+            if mode == MODE_ON and v.passed and auto >= cap:
+                # Over tonight's cap: no row, no proposal. Its rows stay live, so the next
+                # night's review sees them again.
+                v.status, v.gate = DEFERRED, f"passed; over tonight's cap of {cap}"
+                counts["deferred"] += 1
+                continue
+            if mode == MODE_ON and v.passed:
                 result, before = apply(v.action, v.rows, v.proposed)
                 v.status = CHANGE_APPLIED
                 auto += 1
@@ -893,8 +925,6 @@ def submit(request, body) -> dict:
                 result, before = None, {}
                 v.status = CHANGE_PENDING
                 counts["proposed"] += 1
-                if v.passed and v.action in AUTO_ACTIONS and mode == MODE_ON and auto >= AUTO_CAP:
-                    v.gate = f"passed; over this run's cap of {AUTO_CAP}"
             v.result, v.before = result, before
         _clusters([v for v in verdicts if v.status in (CHANGE_APPLIED, CHANGE_PENDING)])
         for v in verdicts:
@@ -1053,6 +1083,57 @@ def dismiss(request, change_id) -> dict:
     return {"id": change.id, "status": change.status, "words": "Dismissed. Nothing was changed."}
 
 
+REVERT_DEPTH_MAX = 20
+
+
+def _later_change_retiring(change: MemoryReviewChange, row_id) -> MemoryReviewChange | None:
+    """The applied or accepted review change that later retired `row_id` (a row `change` wrote),
+    or None when something other than the review replaced or forgot it."""
+    for later in MemoryReviewChange.objects.filter(
+        member=change.member, household_id=change.household_id, id__gt=change.id,
+        status__in=(CHANGE_APPLIED, CHANGE_ACCEPTED),
+    ).order_by("-id"):
+        if str(row_id) in (later.targets or []):
+            return later
+    return None
+
+
+def _revert_one(change: MemoryReviewChange, user, now, depth: int = 0) -> int:
+    """Undoes one applied change inside the caller's transaction and lock; returns how many rows
+    came back. When a later night's change retired the row this one wrote (a merge of a merge),
+    that later change is undone first, so every row on the Retired screen can be restored."""
+    result = (
+        MemberMemory.objects.select_for_update().filter(pk=change.result_id).first()
+        if change.result_id else None
+    )
+    if result is not None and result.superseded_at is not None and result.retired_reason:
+        later = _later_change_retiring(change, result.pk)
+        if later is not None and depth < REVERT_DEPTH_MAX:
+            _revert_one(later, user, now, depth + 1)
+            result.refresh_from_db()
+    if change.result_id and (result is None or result.superseded_at is not None):
+        raise ReviewRefused(
+            "Nothing was changed. The memory this change wrote has since been replaced or "
+            "forgotten.",
+            status=409,
+        )
+    restored = MemberMemory.objects.filter(
+        pk__in=change.targets, member=change.member,
+        retired_reason=RETIRED_FOR[change.action],
+    ).update(superseded_at=None, retired_by=None, retired_reason=None, updated_at=Now())
+    if change.by_code and result is not None:
+        MemberMemory.objects.filter(pk=result.pk).update(
+            source=change.before.get("source", result.source),
+            recall_count=change.before.get("recall_count", result.recall_count),
+            updated_at=Now(),
+        )
+    elif result is not None:
+        result.delete()
+    change.status, change.decided_at, change.decided_by = CHANGE_REVERTED, now, user
+    change.save(update_fields=["status", "decided_at", "decided_by"])
+    return restored
+
+
 def revert(request, change_id) -> dict:
     """Restores the rows a change retired and deletes only the row the review itself wrote."""
     _answer_door(request)
@@ -1067,30 +1148,7 @@ def revert(request, change_id) -> dict:
     with transaction.atomic():
         if not _memory_lock(change.household_id):
             raise ReviewRefused(LOCKED, status=409)
-        result = (
-            MemberMemory.objects.select_for_update().filter(pk=change.result_id).first()
-            if change.result_id else None
-        )
-        if change.result_id and (result is None or result.superseded_at is not None):
-            raise ReviewRefused(
-                "Nothing was changed. The memory this change wrote has since been replaced or "
-                "forgotten.",
-                status=409,
-            )
-        restored = MemberMemory.objects.filter(
-            pk__in=change.targets, member=change.member,
-            retired_reason=RETIRED_FOR[change.action],
-        ).update(superseded_at=None, retired_by=None, retired_reason=None, updated_at=Now())
-        if change.by_code and result is not None:
-            MemberMemory.objects.filter(pk=result.pk).update(
-                source=change.before.get("source", result.source),
-                recall_count=change.before.get("recall_count", result.recall_count),
-                updated_at=Now(),
-            )
-        elif result is not None:
-            result.delete()
-        change.status, change.decided_at, change.decided_by = CHANGE_REVERTED, now, request.user
-        change.save(update_fields=["status", "decided_at", "decided_by"])
+        restored = _revert_one(change, request.user, now)
     return {
         "id": change.id,
         "status": change.status,

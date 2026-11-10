@@ -7529,6 +7529,19 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   To check and Retired. `LEGION_MEMORY_REVIEW` defaults to `off`; ADR 0067 amended for the one
   built-in recurring kind.
 
+## 2026-11-09 - The nightly memory review is "Everything auto" (Kevin)
+
+- **Kevin's words:** *"Everything auto"*, the same evening as the entry above. Replaces R1 (14 shadow
+  runs, then only merges and expiries) and R3 (proposals with Accept all). R2 and R4 stand.
+- **Ruled:** with `LEGION_MEMORY_REVIEW=on`, every change that passes the code checks applies on the
+  night, at most 25 (`LEGION_MEMORY_REVIEW_CAP`), the rest the next night; each one is undone from
+  Retired. Contradictions: newer wins, but a memory Kevin saved himself (`manual`, `phone`, `web`,
+  `claude`) beats a distilled one (`consolidation`, `review`). The full rule set is in ADR 0067's
+  2026-11-09 evening amendment.
+- **Choices made in the build, not ruled:** the dismissal guard became an undo guard (more than 30%
+  of applied changes undone over 14 runs pauses auto); a restored row is never changed on its own
+  again; retire and lasting-to-fading relabels apply like the rest.
+
 ## 2026-11-09 - Bedtime never turns the feed blocker off (Kevin)
 
 - **Asked:** the build's flagged bypass: bedtime's own feed block went off at the alarm's dismiss,

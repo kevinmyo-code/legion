@@ -101,4 +101,27 @@ can take several messages, start a background helper per task, stay free, and re
   `schedule`) is minted by the engine inside a claim from Kevin's own idle Alienware, at most once
   a day and one at a time, catching up once after the laptop was off; never on the work laptop.
   Its request is fixed text and its summary is counts only. Off until `LEGION_MEMORY_REVIEW` is set.
+- **Amended 2026-11-09 evening (Kevin: "Everything auto"): the review applies what passes.**
+  Replaces memory-review rulings R1 (proposals only for 14 runs) and R3 (everything but exact
+  duplicates a proposal with Accept all). With `LEGION_MEMORY_REVIEW=on` there is no shadow
+  period and no `confidence: high` gate: every change the helper sends (merge, fuzzy merge,
+  correction, expiry, relabel, retire) that passes the engine's code checks applies on the night.
+  - **Cap:** at most `LEGION_MEMORY_REVIEW_CAP` (default 25) applied a night; the rest leave no row
+    and wait for the next night.
+  - **Code checks kept:** every row named exists, is live and is the member's own; a merge or
+    correction adds no word its rows (or Kevin's cited newer words) lack; an expiry names a date the
+    memory prints, at least 2 days past; nothing identity- or bank-shaped; retire and expire never
+    hard-delete (the row leaves recall with `retired_reason`); R4 evidence (a paraphrased reason plus
+    record ids); the household memory lock; the off switch and the demo door.
+  - **Contradictions:** the newer words win, except that a memory Kevin saved himself beats one
+    distilled. Explicit sources are `manual` (typed on the Memory screen), `phone`, `web` and
+    `claude` ("remember ..." said to an assistant); distilled are `consolidation` (the hourly job)
+    and `review`. A correction is itself distilled, so it applies on its own only to a distilled
+    row; against an explicit row it waits in To check.
+  - **Undo:** every applied change is restored from the Retired screen (`revert`); undoing a row a
+    later night merged again undoes that later change first. A row Kevin restored is never changed
+    on its own again (the review may still propose), and restored exact copies are not merged by code
+    again.
+  - **Guard:** if Kevin undoes more than 30% of the last 14 runs' applied changes (at least 10), `on`
+    behaves as `shadow` until that falls. To check holds only what the code checks reject.
 - Source: `.scratch/claude-session/map.md` rulings 1 to 17, tickets 01 to 03.

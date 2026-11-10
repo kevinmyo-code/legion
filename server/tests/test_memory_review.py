@@ -1,10 +1,11 @@
 # ruff: noqa: E501 - the LIVE_AUDIT fixture is copied as the phone writes it, one line each
 """The daily memory review, engine half (memory-review tickets 05, 06, 07, 08, 11 and 15).
 
-Kevin's rulings, 2026-11-09: the review runs on the Claude worker (the Alienware); R1 shadow
-first, then only gated merges and past-date expiries apply on their own, corrections never; R2 the
-Memory screen plus a recall flag; R3 exact duplicates merge by code; R4 a paraphrased reason plus
-record ids, never a quote.
+Kevin's rulings, 2026-11-09: the review runs on the Claude worker (the Alienware); R2 the Memory
+screen plus a recall flag; R4 a paraphrased reason plus record ids, never a quote. "Everything
+auto" (Kevin, the same evening) replaced R1 and R3: with the switch `on`, every change that passes
+the code checks applies on the night, at most 25 (a setting), each undone from Retired; a memory
+Kevin saved himself beats a distilled correction; a row he restored is never changed on its own.
 
 **Every example here is invented** (the repo is public). One made-up member, "Sam", with a made-up
 pharmacy, street and book club. No model is ever called: the change lists below are recorded
@@ -101,7 +102,7 @@ def _live(user) -> list[str]:
     )
 
 
-def _ok_runs(user, household, n=review.SHADOW_RUNS_BEFORE_AUTO):
+def _ok_runs(user, household, n=14):
     for _ in range(n):
         MemoryReview.objects.create(
             household=household, member=user, owner_user=user, outcome="ok",
@@ -252,7 +253,9 @@ def test_a_merge_that_adds_a_word_is_a_proposal(on, auth_client, household_user,
         "new_text": "Sam enjoys hiking but dislikes crowded trails.",
         "reason": "Both about hiking.", "confidence": "high",
     }]).data
-    assert answer["counts"] == {"applied": 0, "proposed": 1, "refused": 0, "stale": 0}
+    assert answer["counts"] == {
+        "applied": 0, "proposed": 1, "refused": 0, "stale": 0, "deferred": 0,
+    }
     assert "adds" in answer["verdicts"][0]["gate"]
     assert len(_live(household_user)) == 2
 
@@ -271,14 +274,47 @@ def test_shadow_turns_every_gated_change_into_a_proposal(
     assert len(_live(household_user)) == 2
 
 
-def test_on_still_behaves_as_shadow_before_fourteen_runs(
+def test_on_applies_from_the_first_night_whatever_the_confidence(
     on, auth_client, household_user, household_a
 ):
-    _ok_runs(household_user, household_a, n=3)
     _row(household_user, household_a, "Sam's dentist is Dr Reed.")
     _row(household_user, household_a, "Dr Reed is Sam's dentist.")
     context = _context(auth_client)
-    assert context["mode"] == "shadow" and "3 so far" in context["mode_note"]
+    assert context["mode"] == "on" and context["mode_note"] == ""
+    assert context["auto_cap"] == 25
+    answer = _submit(auth_client, context, [{
+        "action": "merge", "handles": ["m1", "m2"], "new_text": "Sam's dentist is Dr Reed.",
+        "reason": "Same dentist.", "confidence": "low",
+    }]).data
+    assert answer["counts"]["applied"] == 1, answer
+    assert _live(household_user) == ["Sam's dentist is Dr Reed."]
+
+
+def _undone(user, household, *, applied, reverted):
+    run = MemoryReview.objects.create(
+        household=household, member=user, owner_user=user, outcome="ok",
+        submitted_at=timezone.now() - datetime.timedelta(days=1),
+    )
+    for i in range(applied + reverted):
+        MemoryReviewChange.objects.create(
+            review=run, household=household, member=user, owner_user=user, action="expire",
+            status="reverted" if i < reverted else "applied", targets=[], targets_updated_at=[],
+        )
+
+
+def test_the_undo_guard_pauses_auto_when_kevin_undoes_over_30_percent(
+    on, auth_client, household_user, household_a
+):
+    _undone(household_user, household_a, applied=6, reverted=4)
+    _row(household_user, household_a, "Sam likes green tea.")
+    context = _context(auth_client)
+    assert context["mode"] == "shadow" and "undone" in context["mode_note"]
+
+
+def test_the_undo_guard_waits_for_ten_changes(on, auth_client, household_user, household_a):
+    _undone(household_user, household_a, applied=3, reverted=3)
+    _row(household_user, household_a, "Sam likes green tea.")
+    assert _context(auth_client)["mode"] == "on"
 
 
 def test_expiry_needs_a_printed_past_date(on, auth_client, household_user, household_a):
@@ -322,11 +358,29 @@ def test_printed_dates_never_guess_an_earlier_year():
     assert review.printed_dates("on Friday", written) == []
 
 
-def test_a_correction_is_never_auto_even_when_the_transcript_supports_it(
+def test_a_supported_correction_of_a_distilled_memory_applies_when_on(
     on, auth_client, household_user, household_a
 ):
-    _ok_runs(household_user, household_a)
-    _row(household_user, household_a, "Sam lives on Elm Road.", days_ago=30)
+    old = _row(household_user, household_a, "Sam lives on Elm Road.", days_ago=30,
+               source=SOURCE_CONSOLIDATION)
+    _log(household_a, household_user, SAM_SAYS_OAK_LANE)
+    context = _context(auth_client)
+    answer = _submit(auth_client, context, [
+        {"action": "correct", "handle": "m1", "new_text": "Sam lives on Oak Lane.",
+         "evidence": ["L1"], "reason": "Sam said they moved.", "confidence": "high"},
+    ]).data
+    assert answer["verdicts"][0]["status"] == "applied", answer
+    assert _live(household_user) == ["Sam lives on Oak Lane."]
+    old.refresh_from_db()
+    assert old.retired_reason == "contradicted"
+    change = MemoryReviewChange.objects.get(action="correct")
+    assert change.evidence_logs and change.reason == "Sam said they moved."
+
+
+def test_a_memory_kevin_saved_himself_beats_a_distilled_correction(
+    on, auth_client, household_user, household_a
+):
+    _row(household_user, household_a, "Sam lives on Elm Road.", days_ago=30, source=SOURCE_PHONE)
     _log(household_a, household_user, SAM_SAYS_OAK_LANE)
     context = _context(auth_client)
     answer = _submit(auth_client, context, [
@@ -334,9 +388,8 @@ def test_a_correction_is_never_auto_even_when_the_transcript_supports_it(
          "evidence": ["L1"], "reason": "Sam said they moved.", "confidence": "high"},
     ]).data
     assert answer["verdicts"][0]["status"] == "pending"
-    assert answer["verdicts"][0]["gate"] == "passed"
-    change = MemoryReviewChange.objects.get(action="correct")
-    assert change.evidence_logs and change.reason == "Sam said they moved."
+    assert "himself" in answer["verdicts"][0]["gate"]
+    assert _live(household_user) == ["Sam lives on Elm Road."]
 
 
 def test_a_correction_the_transcript_does_not_support_says_so(
@@ -352,11 +405,10 @@ def test_a_correction_the_transcript_does_not_support_says_so(
     assert "do not appear" in answer["verdicts"][0]["gate"]
 
 
-def test_retire_and_durable_to_episodic_are_always_proposals(
+def test_retire_and_durable_to_episodic_apply_when_on_and_retire_never_deletes(
     on, auth_client, household_user, household_a
 ):
-    _ok_runs(household_user, household_a)
-    _row(household_user, household_a, "The assistant cannot see the step count.")
+    app = _row(household_user, household_a, "The assistant cannot see the step count.")
     _row(household_user, household_a, "Sam's favourite tea is green tea.")
     context = _context(auth_client)
     answer = _submit(auth_client, context, [
@@ -364,7 +416,11 @@ def test_retire_and_durable_to_episodic_are_always_proposals(
         {"action": "relabel", "handle": "m2", "kind": "preference", "durable": False,
          "reason": "x", "confidence": "high"},
     ]).data
-    assert [v["status"] for v in answer["verdicts"]] == ["pending", "pending"]
+    assert [v["status"] for v in answer["verdicts"]] == ["applied", "applied"]
+    app.refresh_from_db()
+    assert app.superseded_at is not None and app.retired_reason == "not_about_person"
+    relabelled = MemberMemory.objects.get(member=household_user, superseded_at__isnull=True)
+    assert relabelled.decay_class == DECAY_EPISODIC and relabelled.kind == "preference"
 
 
 def test_an_unknown_handle_refuses_the_whole_change(shadow, auth_client, household_user,
@@ -393,18 +449,34 @@ def test_a_row_edited_after_the_context_is_stale(shadow, auth_client, household_
     assert answer["counts"]["stale"] == 1
 
 
-def test_the_cap_holds_at_ten(on, auth_client, household_user, household_a):
-    _ok_runs(household_user, household_a)
-    for i in range(11):
-        _row(household_user, household_a, f"Sam has a call on 2026-01-{i + 1:02d}.", kind="event")
-    context = _context(auth_client)
-    changes = [
+def _calls(client, user, household, n):
+    for i in range(n):
+        _row(user, household, f"Sam has a call on 2026-01-{i + 1:02d}.", kind="event")
+    context = _context(client)
+    return context, [
         {"action": "expire", "handle": m["handle"], "event_date": m["text"][-11:-1],
          "reason": "Passed.", "confidence": "high"}
         for m in context["memories"]
     ]
+
+
+def test_the_cap_holds_at_25_a_night_and_the_rest_wait(on, auth_client, household_user,
+                                                       household_a):
+    context, changes = _calls(auth_client, household_user, household_a, 26)
     answer = _submit(auth_client, context, changes).data
-    assert answer["counts"]["applied"] == 10 and answer["counts"]["proposed"] == 1
+    assert answer["counts"]["applied"] == 25 and answer["counts"]["deferred"] == 1
+    assert answer["counts"]["proposed"] == 0 and "1 left for tomorrow" in answer["words"]
+    assert MemoryReviewChange.objects.count() == 25  # the deferred one leaves no row
+    assert len(_live(household_user)) == 1
+
+
+def test_the_cap_is_a_setting(on, settings, auth_client, household_user, household_a):
+    settings.LEGION_MEMORY_REVIEW_CAP = 3
+    context, changes = _calls(auth_client, household_user, household_a, 5)
+    assert context["auto_cap"] == 3
+    answer = _submit(auth_client, context, changes).data
+    assert answer["counts"]["applied"] == 3 and answer["counts"]["deferred"] == 2
+    assert len(_live(household_user)) == 2
 
 
 def test_dry_run_writes_nothing_and_a_repeat_changes_nothing(
@@ -598,6 +670,65 @@ def test_forgetting_a_merged_row_takes_its_duplicates_and_an_old_one_only_itself
     assert {str(pk) for pk in service._chain(a)} == {str(a.pk)}
     assert auth_client.delete(f"{BASE}{merged.id}").status_code == 204
     assert not MemberMemory.objects.filter(pk__in=[a.pk, b.pk, merged.pk]).exists()
+
+
+def test_a_restored_row_is_never_changed_on_its_own_again(
+    on, auth_client, household_user, household_a
+):
+    _row(household_user, household_a, "Sam's dentist is Dr Reed.")
+    _row(household_user, household_a, "Dr Reed is Sam's dentist.")
+    merge = {"action": "merge", "handles": ["m1", "m2"], "new_text": "Sam's dentist is Dr Reed.",
+             "reason": "Same dentist."}
+    first = _submit(auth_client, _context(auth_client), [merge]).data
+    assert first["counts"]["applied"] == 1
+    change = MemoryReviewChange.objects.get()
+    assert auth_client.post(f"{CHANGES}/{change.id}/revert").status_code == 200
+    second = _submit(auth_client, _context(auth_client), [merge]).data
+    assert second["verdicts"][0]["status"] == "pending"
+    assert "restored" in second["verdicts"][0]["gate"]
+    assert len(_live(household_user)) == 2
+
+
+def test_restored_exact_copies_are_not_merged_by_code_again(
+    on, auth_client, household_user, household_a
+):
+    _row(household_user, household_a, "Sam likes green tea.", days_ago=40)
+    _row(household_user, household_a, "sam likes green tea", days_ago=20)
+    assert _submit(auth_client, _context(auth_client), []).data["code_merged"] == 1
+    change = MemoryReviewChange.objects.get(by_code=True)
+    assert auth_client.post(f"{CHANGES}/{change.id}/revert").status_code == 200
+    context = _context(auth_client)
+    assert context["exact_duplicates"] == [] and len(context["memories"]) == 2
+    assert _submit(auth_client, context, []).data["code_merged"] == 0
+    assert len(_live(household_user)) == 2
+
+
+def test_every_retired_row_restores_even_after_a_merge_of_a_merge(
+    on, auth_client, household_user, household_a
+):
+    a = _row(household_user, household_a, "Sam's dentist is Dr Reed.", days_ago=50)
+    b = _row(household_user, household_a, "Dr Reed is Sam's dentist.", days_ago=40)
+    _submit(auth_client, _context(auth_client), [{
+        "action": "merge", "handles": ["m1", "m2"], "new_text": "Sam's dentist is Dr Reed.",
+        "reason": "Same dentist."}])
+    _row(household_user, household_a, "Sam's dentist Dr Reed is on Elm Road.", days_ago=10)
+    context = _context(auth_client)
+    _submit(auth_client, context, [{
+        "action": "merge", "handles": ["m1", "m2"],
+        "new_text": "Sam's dentist is Dr Reed on Elm Road.", "reason": "Same dentist."}])
+    assert _live(household_user) == ["Sam's dentist is Dr Reed on Elm Road."]
+    rows = auth_client.get(BASE, {"include_superseded": "true"}).data["results"]
+    retired = {r["id"]: r for r in rows if r["retired_reason"]}
+    assert all(r["retired_change"] for r in retired.values()) and len(retired) == 4
+    first = retired[str(a.pk)]["retired_change"]
+    undone = auth_client.post(f"{CHANGES}/{first}/revert")
+    assert undone.status_code == 200, undone.data
+    live = _live(household_user)
+    assert "Sam's dentist is Dr Reed." in live and "Dr Reed is Sam's dentist." in live
+    assert "Sam's dentist Dr Reed is on Elm Road." in live and len(live) == 3
+    assert MemoryReviewChange.objects.filter(status="reverted").count() == 2
+    b.refresh_from_db()
+    assert b.superseded_at is None
 
 
 def test_a_correction_accepted_writes_a_review_row(shadow, auth_client, household_user,
