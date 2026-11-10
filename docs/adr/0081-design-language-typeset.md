@@ -41,6 +41,11 @@ conversation surface (Typeset, Matrix mono, City pop) and picked Typeset: *"i wa
 - **One surface for home and conversation.** The glance (time, next event, due today, budget left)
   gives way to captions and cards when Alfred is asked, and returns when they are cleared. One card
   host for every answer. Captions show the last line; only a typed ask shows a transcript.
+- **The contents line** under the figures is two rows of three: Today, Money, Car / Clock, Field,
+  Breathe (Kevin, 2026-11-10: box breathing one tap from home, and the Field screen "somewhere
+  coherent"; [[decisions#2026-11-10 - Box breathing and Field on the Typeset home (Kevin)]]). Box
+  breathing is a native ink animation, never a GIF, opened only by a tap; the blocked-feed screen
+  offers "Breathe instead".
 - **One Controls panel** with six entries: Quiet, Feed blocker, Clock, Claude sessions, LEGION
   settings, Phone settings. An app dock of six monogram tiles, and an "All apps" tray set as an
   index with a find line.

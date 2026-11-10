@@ -7594,3 +7594,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   3. **A card shows its source and age** ("Bank feed, 2 h ago") **only when the tool result or
      record actually carries that provenance or timestamp.** Never inferred. With no data, no line.
 - **Recorded in:** ADR 0081 (section "Voice and cards"), cross-linked from ADR 0064.
+
+## 2026-11-10 - Box breathing and Field on the Typeset home (Kevin)
+
+- **Kevin's words:** *"box breathing. when i feel like scrolling or etc. i want to have a button to
+  press that opens up a box breathing gif in full screen."* and *"same for compass. add to ui
+  somewhere coherent."*
+- **Ruled:** both ship with Typeset (ADR 0081). Box breathing is a native full-screen Compose
+  animation in the Typeset style, not a GIF (assets are bundled, CLAUDE.md section 7): an ink dot
+  traces a square, in, hold, out, hold, 4 s each, the phase word and a count in Source Serif, the
+  screen stays on, a tap or Back ends it, reduced motion gets a fading square. It opens only when
+  Kevin taps: no streak, counter or nudge (the section 7 compulsion test). Hands only, no voice tool.
+- **Entry points, build choice:** home's contents line becomes two rows of three (Today, Money, Car /
+  Clock, Field, Breathe), and the blocked-feed screen offers "Breathe instead". Field is the screen
+  being built on `feat/field-nav` (compass, MGRS, waypoints, sun and moon); Typeset supplies its entry
+  point, the ink compass rose and a night-first spec (`C:\Users\kevin\.legion\reports\typeset-build.md`).
