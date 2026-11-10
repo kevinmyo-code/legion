@@ -24,5 +24,5 @@ tags: [ticket]
 ## Verification
 
 - `WatchFiringPollerTest`, `WatchesControllerTest`, `WatchesToolboxTest`.
-- `LiveSetupPayloadSizeTest` under its ceiling (numbers in the ADR).
+- `LiveSetupPayloadSizeTest` under its ceiling (numbers in that test's own doc entry, 2026-11-10).
 - On the phone: ticket 04.

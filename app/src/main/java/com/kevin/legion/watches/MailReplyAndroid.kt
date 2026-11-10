@@ -39,13 +39,14 @@ internal object MailReplyAndroid {
     private const val MAX_RESULTS = 50
 
     fun check(app: Context): MailReplyCheck = MailReplyCheck(
-        // With the master or Watches switch off, no mail is read at all.
+        // With the master or Watches switch off, no mail is read at all, and the clock is reset
+        // (an empty list), so switching back on never reads out the replies from while it was off.
         companyLists = {
             ProactiveSettings.load(app)
             if (ProactiveSettings.mayRaise(ProactiveCategory.WATCHES)) {
                 companyLists(WatchesController.forContext(app))
             } else {
-                null
+                emptyList()
             }
         },
         search = { query -> search(app, query) },

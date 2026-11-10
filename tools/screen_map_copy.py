@@ -160,6 +160,17 @@ ROUTES = {
             ("text", "ID vault", "opens VaultActivity (FLAG_SECURE)"),
         ],
     ),
+    "settings/watches": dict(
+        name="Watches",
+        what="Standing watches (ADR 0083): what Alfred tells you about when it happens, the built-in "
+             "money, school and car signals among them. Pause, remove, add one, and what they found.",
+        marker="What it watches",
+        controls=[
+            ("tag", "watches-message", "the result of the last change, in words"),
+            ("tag", "watch-", "one watch row (`watch-<id>`): its switch pauses it, Remove stops it"),
+        ],
+        voice=["watch"],
+    ),
     "settings/memory": dict(
         name="Memory",
         what="What LEGION remembers about the member, from the engine (ADR 0075). Each row can be "
