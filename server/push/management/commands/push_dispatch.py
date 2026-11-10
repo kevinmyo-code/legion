@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
+from claude_session.health import check_offline
 from games.matches import sweep
 from ingest.jobs import JobCommand
 from ingest.models import IngestRun, Source
@@ -45,6 +46,10 @@ class Command(JobCommand):
             self.stdout.write(PUSH_OFF_NOTHING_SENT)
             return
         self.sender = webpush_sender(config)
+        # laptop-health (2026-11-10): a silent laptop cannot report itself, so the tick does.
+        fired = check_offline(timezone.now(), self.sender)
+        if fired:
+            self.stdout.write(f"Sent {fired} laptop offline alert(s).")
         super().handle(*args, **options)
 
     def job(self, run: IngestRun) -> str | None:

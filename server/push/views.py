@@ -87,12 +87,13 @@ class PreferenceSerializer(serializers.Serializer):
     # Optional on a write so a client from before this kind existed leaves it
     # as it is rather than being refused; always present on a read.
     game_invite = serializers.BooleanField(required=False)
+    laptop_health = serializers.BooleanField(required=False)
     morning_time = serializers.TimeField(format="%H:%M", input_formats=["%H:%M", "%H:%M:%S"])
 
 
 class OffRequestSerializer(serializers.Serializer):
     kind = serializers.CharField(
-        help_text="list_changes, event_reminders, task_due_morning or game_invite."
+        help_text="list_changes, event_reminders, task_due_morning, game_invite or laptop_health."
     )
 
 
@@ -114,6 +115,7 @@ def _preference_body(pref: PushPreference) -> dict:
             "event_reminders": pref.event_reminders,
             "task_due_morning": pref.task_due_morning,
             "game_invite": pref.game_invite,
+            "laptop_health": pref.laptop_health,
             "morning_time": pref.morning_time,
         }
     ).data

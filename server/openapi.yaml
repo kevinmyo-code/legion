@@ -13972,6 +13972,9 @@ components:
         workflows:
           description: The catalog (at most 50 entries, each at most 2 KB), only when
             the hash moved.
+        health:
+          description: 'Health snapshot: temps, fans, load, RAM, C: free, uptime,
+            laptopctl agent.'
       required:
       - name
       - scope
@@ -14007,6 +14010,82 @@ components:
       - workflows_dropped
       - workflows_hash
       - workflows_refused
+    ClaudeMachineHealth:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: When the engine received this snapshot.
+        cpu_c:
+          type: number
+          format: double
+          nullable: true
+        gpu_c:
+          type: number
+          format: double
+          nullable: true
+        fans_rpm:
+          type: object
+          additionalProperties:
+            type: integer
+          nullable: true
+        cpu_load_pct:
+          type: number
+          format: double
+          nullable: true
+        ram_used_pct:
+          type: number
+          format: double
+          nullable: true
+        disk_free_gb:
+          type: number
+          format: double
+          nullable: true
+          description: 'C: free, GB.'
+        uptime_s:
+          type: integer
+          nullable: true
+        boot_at:
+          type: string
+          nullable: true
+        laptopctl_agent:
+          type: boolean
+          nullable: true
+          description: laptopctl-agent answering; null when not installed.
+        on_mains:
+          type: boolean
+          nullable: true
+        reboot_pending:
+          type: boolean
+          nullable: true
+        alerts:
+          type: array
+          items:
+            type: string
+          description: 'Open alerts: offline, hot, disk_low, ram_high, agent_down.'
+        temps_24h:
+          type: array
+          items:
+            type: array
+            items: {}
+          description: '[time, cpu_c, gpu_c] every 10 minutes over the last 24 h,
+            oldest first.'
+      required:
+      - alerts
+      - at
+      - boot_at
+      - cpu_c
+      - cpu_load_pct
+      - disk_free_gb
+      - fans_rpm
+      - gpu_c
+      - laptopctl_agent
+      - on_mains
+      - ram_used_pct
+      - reboot_pending
+      - temps_24h
+      - uptime_s
     ClaudeMachineRef:
       type: object
       properties:
@@ -14170,7 +14249,13 @@ components:
           items:
             $ref: '#/components/schemas/ClaudeWorkflowName'
           description: The workflows this machine published, by name (for check).
+        health:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeMachineHealth'
+          nullable: true
+          description: Latest health snapshot; null for a machine that sends none.
       required:
+      - health
       - last_seen_at
       - name
       - progress
@@ -17633,7 +17718,8 @@ components:
       properties:
         kind:
           type: string
-          description: list_changes, event_reminders, task_due_morning or game_invite.
+          description: list_changes, event_reminders, task_due_morning, game_invite
+            or laptop_health.
       required:
       - kind
     OffResponse:
@@ -17646,6 +17732,8 @@ components:
         task_due_morning:
           type: boolean
         game_invite:
+          type: boolean
+        laptop_health:
           type: boolean
         morning_time:
           type: string
@@ -19323,6 +19411,8 @@ components:
         task_due_morning:
           type: boolean
         game_invite:
+          type: boolean
+        laptop_health:
           type: boolean
         morning_time:
           type: string

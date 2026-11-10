@@ -73,6 +73,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from claude_session import health as hl
 from claude_session import serializers as s
 from claude_session import workflows as wf
 from claude_session.models import (
@@ -768,6 +769,7 @@ class StatusView(APIView):
                             {"name": e["name"], "says": e["says"]}
                             for e in m.workflows or [] if isinstance(e, dict)
                         ],
+                        "health": _health_row(m, now),
                     }
                     for m in machines
                 ],
@@ -783,6 +785,23 @@ class StatusView(APIView):
                 ],
             }
         )
+
+
+def _health_row(m: ClaudeMachine, now) -> dict | None:
+    if not m.health or m.health_at is None:
+        return None
+    return {
+        **{k: m.health.get(k) for k in hl.FIELDS},
+        "at": m.health_at,
+        "alerts": hl.open_kinds(m.health_alerts),
+        "temps_24h": hl.shown_history(m.health_history, now),
+    }
+
+
+TOUCH_FIELDS = [
+    "hostname", "scope", "reported_state", "claude_version", "input_idle_s", "on_mains",
+    "last_seen_at", "token",
+]
 
 
 def _touch_machine(request, data: dict, now) -> ClaudeMachine:
@@ -801,7 +820,12 @@ def _touch_machine(request, data: dict, now) -> ClaudeMachine:
     # and the vault can refuse a `listed` machine's token. A browser session binds nothing.
     if isinstance(getattr(request, "auth", None), DeviceToken):
         machine.token = request.auth
-    machine.save()
+    # Laptop health: an existing row saves only these, so the 7-day history is not rewritten on
+    # every 20 s heartbeat (it is written by `health.on_heartbeat`, once a minute at most).
+    if machine._state.adding:
+        machine.save()
+    else:
+        machine.save(update_fields=TOUCH_FIELDS)
     return machine
 
 
@@ -878,6 +902,7 @@ class HeartbeatView(APIView):
         now = timezone.now()
         machine = _touch_machine(request, serializer.validated_data, now)
         dropped = _store_catalog(machine, serializer.validated_data, now)
+        hl.on_heartbeat(machine, serializer.validated_data.get("health"), now)
         tasks = scoped(ClaudeTask, request).filter(machine=machine)
         _store_progress(
             tasks, serializer.validated_data["progress"], now,

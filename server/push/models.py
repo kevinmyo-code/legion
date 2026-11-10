@@ -30,7 +30,12 @@ TASK_DUE_MORNING = "task_due_morning"
 # retro-games ticket 05 (ADR 0060): sent the moment a member invites another to
 # a Tetris race, by the invite view rather than by `push_dispatch`.
 GAME_INVITE = "game_invite"
-KINDS: tuple[str, ...] = (LIST_CHANGES, EVENT_REMINDERS, TASK_DUE_MORNING, GAME_INVITE)
+# laptop-health (2026-11-10): a Claude worker machine went silent, ran hot, or ran out of disk
+# or RAM. Sent by the heartbeat and the push tick (`claude_session/health.py`).
+LAPTOP_HEALTH = "laptop_health"
+KINDS: tuple[str, ...] = (
+    LIST_CHANGES, EVENT_REMINDERS, TASK_DUE_MORNING, GAME_INVITE, LAPTOP_HEALTH,
+)
 DEFAULT_MORNING_TIME = datetime.time(7, 30)
 
 
@@ -68,6 +73,7 @@ class PushPreference(models.Model):
     event_reminders = models.BooleanField(default=True)
     task_due_morning = models.BooleanField(default=True)
     game_invite = models.BooleanField(default=True)
+    laptop_health = models.BooleanField(default=True)
     morning_time = models.TimeField(default=DEFAULT_MORNING_TIME)
     updated_at = models.DateTimeField(db_default=Now())
 
