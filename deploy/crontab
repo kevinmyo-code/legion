@@ -72,3 +72,7 @@
 # the rows the jobs above keep; firings wait for the phone's own engine poll. Every fifteen minutes
 # at :07, :22, :37, :52, so one lands seven minutes after each plaid_sync (30 */3) and canvas_poll.
 7,22,37,52 * * * * python manage.py evaluate_watches
+
+# Groceries lines ticked more than a day ago leave the list (Kevin, 2026-11-10; the window is
+# checklists/ticked_prune.py's TICKED_ITEM_TTL). Ticks are kept for the bought log. Hourly at :15.
+15 * * * * python manage.py prune_ticked_items
