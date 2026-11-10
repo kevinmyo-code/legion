@@ -19,6 +19,8 @@ import com.kevin.legion.claude.ClaudeWorkflowEvery
 import com.kevin.legion.claude.ClaudeWorkflowName
 import com.kevin.legion.claude.ClaudeWorkflowParam
 import com.kevin.legion.claude.ClaudeWorkflowRun
+import com.kevin.legion.claude.LaptopHealth
+import com.kevin.legion.claude.TempPoint
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
@@ -27,8 +29,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 private const val CLAUDE_ROOT = "/api/claude/"
 
@@ -123,7 +129,52 @@ private data class MachineRow(
     val progress: List<ProgressRow> = emptyList(),
     // Absent on an engine from before workflows (claude_session 0007): null, never "none".
     val workflows: List<WorkflowNameRow>? = null,
+    // Absent on an engine from before laptop health (claude_session 0008), null for a machine
+    // that sends none.
+    val health: HealthRow? = null,
 )
+
+@Serializable
+private data class HealthRow(
+    val at: String? = null,
+    @SerialName("cpu_c") val cpuC: Double? = null,
+    @SerialName("gpu_c") val gpuC: Double? = null,
+    @SerialName("fans_rpm") val fansRpm: Map<String, Int>? = null,
+    @SerialName("cpu_load_pct") val cpuLoadPct: Double? = null,
+    @SerialName("ram_used_pct") val ramUsedPct: Double? = null,
+    @SerialName("disk_free_gb") val diskFreeGb: Double? = null,
+    @SerialName("uptime_s") val uptimeS: Long? = null,
+    @SerialName("laptopctl_agent") val laptopctlAgent: Boolean? = null,
+    @SerialName("on_mains") val onMains: Boolean? = null,
+    @SerialName("reboot_pending") val rebootPending: Boolean? = null,
+    val alerts: List<String> = emptyList(),
+    // [iso time, cpu_c, gpu_c]; mixed types, so read as raw JSON.
+    @SerialName("temps_24h") val temps24h: List<JsonArray> = emptyList(),
+) {
+    fun toHealth() = LaptopHealth(
+        at = instant(at),
+        cpuC = cpuC,
+        gpuC = gpuC,
+        fansRpm = fansRpm.orEmpty(),
+        cpuLoadPct = cpuLoadPct,
+        ramUsedPct = ramUsedPct,
+        diskFreeGb = diskFreeGb,
+        uptimeS = uptimeS,
+        laptopctlAgent = laptopctlAgent,
+        onMains = onMains,
+        rebootPending = rebootPending,
+        alerts = alerts,
+        temps24h = temps24h.mapNotNull { row ->
+            runCatching {
+                TempPoint(
+                    instant(row.getOrNull(0)?.jsonPrimitive?.contentOrNull),
+                    row.getOrNull(1)?.jsonPrimitive?.doubleOrNull,
+                    row.getOrNull(2)?.jsonPrimitive?.doubleOrNull,
+                )
+            }.getOrNull()
+        },
+    )
+}
 
 @Serializable
 private data class WorkflowNameRow(val name: String, val says: String = "")
@@ -283,6 +334,7 @@ class DjangoClaudeSessionBackend(private val http: EngineHttp) : ClaudeSessionBa
                         running = m.running,
                         progress = m.progress.mapNotNull { p -> p.progress?.let { p.task to it } }.toMap(),
                         workflows = m.workflows.orEmpty().map { ClaudeWorkflowName(it.name, it.says) },
+                        health = m.health?.toHealth(),
                     )
                 },
                 sessions = parsed.sessions.map {

@@ -169,6 +169,14 @@ class ClaudeMachine(models.Model):
     workflows = models.JSONField(default=list, blank=True)
     workflows_hash = models.TextField(blank=True, default="")
     workflows_at = models.DateTimeField(null=True, blank=True)
+    # Laptop health (2026-11-10, `claude_session/health.py`): the latest snapshot the worker sent
+    # (`health.FIELDS`, nulls for unknown readings), when, one point every 10 minutes for 7 days
+    # (`[epoch, cpu_c, gpu_c, ram_used_pct, disk_free_gb]`), and the alert rules' state. All null
+    # or empty for a worker that sends no snapshot (the work laptop, or one from before this).
+    health = models.JSONField(null=True, blank=True)
+    health_at = models.DateTimeField(null=True, blank=True)
+    health_history = models.JSONField(default=list, blank=True)
+    health_alerts = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = "claude_machines"

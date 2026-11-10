@@ -15,6 +15,8 @@ data class ClaudeMachine(
     val progress: Map<Int, String>,
     /** The workflows this machine published (worker-workflows ticket 03), names and one-liners. */
     val workflows: List<ClaudeWorkflowName> = emptyList(),
+    /** Latest health snapshot (laptop-health 2026-11-10); null for a machine that sends none. */
+    val health: LaptopHealth? = null,
 ) {
     val isOnline: Boolean get() = state != STATE_OFFLINE
     val summariesOnly: Boolean get() = scope == SCOPE_LISTED

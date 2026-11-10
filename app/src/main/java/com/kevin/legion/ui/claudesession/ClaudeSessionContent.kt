@@ -129,6 +129,8 @@ private fun MachineRow(m: MachineRowUi) = Card {
         color = if (m.online) SoftColors.good else SoftColors.caution,
     )
     if (m.summariesOnly) Line("Summaries only, never files.")
+    m.health.forEach { Line(it, if (m.alert) SoftColors.caution else SoftColors.text2) }
+    if (m.spark.size >= 2) LaptopSparkline(m.spark)
 }
 
 @Composable

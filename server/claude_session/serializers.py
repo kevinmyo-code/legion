@@ -122,6 +122,12 @@ class ClaudeHeartbeatSerializer(serializers.Serializer):
         required=False, default=None,
         help_text="The catalog (at most 50 entries, each at most 2 KB), only when the hash moved.",
     )
+    # Laptop health (2026-11-10): about once a minute. Cleaned by `claude_session.health.clean`;
+    # an unknown field is dropped and a bad value is null, never a refusal.
+    health = serializers.JSONField(
+        required=False, default=None,
+        help_text="Health snapshot: temps, fans, load, RAM, C: free, uptime, laptopctl agent.",
+    )
 
 
 class ClaudeWorkflowRunSerializer(serializers.Serializer):
@@ -312,6 +318,31 @@ class ClaudeWorkflowNameSerializer(serializers.Serializer):
     says = serializers.CharField()
 
 
+class ClaudeMachineHealthSerializer(serializers.Serializer):
+    at = serializers.DateTimeField(help_text="When the engine received this snapshot.")
+    cpu_c = serializers.FloatField(allow_null=True)
+    gpu_c = serializers.FloatField(allow_null=True)
+    fans_rpm = serializers.DictField(child=serializers.IntegerField(), allow_null=True)
+    cpu_load_pct = serializers.FloatField(allow_null=True)
+    ram_used_pct = serializers.FloatField(allow_null=True)
+    disk_free_gb = serializers.FloatField(allow_null=True, help_text="C: free, GB.")
+    uptime_s = serializers.IntegerField(allow_null=True)
+    boot_at = serializers.CharField(allow_null=True)
+    laptopctl_agent = serializers.BooleanField(
+        allow_null=True, help_text="laptopctl-agent answering; null when not installed."
+    )
+    on_mains = serializers.BooleanField(allow_null=True)
+    reboot_pending = serializers.BooleanField(allow_null=True)
+    alerts = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Open alerts: offline, hot, disk_low, ram_high, agent_down.",
+    )
+    temps_24h = serializers.ListField(
+        child=serializers.ListField(),
+        help_text="[time, cpu_c, gpu_c] every 10 minutes over the last 24 h, oldest first.",
+    )
+
+
 class ClaudeStatusMachineSerializer(serializers.Serializer):
     name = serializers.CharField()
     scope = serializers.ChoiceField(choices=list(SCOPES))
@@ -321,6 +352,9 @@ class ClaudeStatusMachineSerializer(serializers.Serializer):
     progress = ClaudeRunningProgressSerializer(many=True)
     workflows = ClaudeWorkflowNameSerializer(
         many=True, help_text="The workflows this machine published, by name (for check)."
+    )
+    health = ClaudeMachineHealthSerializer(
+        allow_null=True, help_text="Latest health snapshot; null for a machine that sends none."
     )
 
 

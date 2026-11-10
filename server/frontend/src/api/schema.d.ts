@@ -6010,6 +6010,8 @@ export interface components {
             workflows_hash?: string | null;
             /** @description The catalog (at most 50 entries, each at most 2 KB), only when the hash moved. */
             workflows?: unknown;
+            /** @description Health snapshot: temps, fans, load, RAM, C: free, uptime, laptopctl agent. */
+            health?: unknown;
         };
         ClaudeHeartbeatResult: {
             cancel_requested: number[];
@@ -6020,6 +6022,39 @@ export interface components {
             workflows_dropped: number;
             /** @description Schedules this machine will not run on its own, each in words (a listed machine runs a workflow only when Kevin asks, unless LEGION_WORKFLOW_SCHEDULES_LISTED). */
             workflows_refused: string[];
+        };
+        ClaudeMachineHealth: {
+            /**
+             * Format: date-time
+             * @description When the engine received this snapshot.
+             */
+            at: string;
+            /** Format: double */
+            cpu_c: number | null;
+            /** Format: double */
+            gpu_c: number | null;
+            fans_rpm: {
+                [key: string]: number;
+            } | null;
+            /** Format: double */
+            cpu_load_pct: number | null;
+            /** Format: double */
+            ram_used_pct: number | null;
+            /**
+             * Format: double
+             * @description C: free, GB.
+             */
+            disk_free_gb: number | null;
+            uptime_s: number | null;
+            boot_at: string | null;
+            /** @description laptopctl-agent answering; null when not installed. */
+            laptopctl_agent: boolean | null;
+            on_mains: boolean | null;
+            reboot_pending: boolean | null;
+            /** @description Open alerts: offline, hot, disk_low, ram_high, agent_down. */
+            alerts: string[];
+            /** @description [time, cpu_c, gpu_c] every 10 minutes over the last 24 h, oldest first. */
+            temps_24h: unknown[][];
         };
         ClaudeMachineRef: {
             name: string;
@@ -6091,6 +6126,8 @@ export interface components {
             progress: components["schemas"]["ClaudeRunningProgress"][];
             /** @description The workflows this machine published, by name (for check). */
             workflows: components["schemas"]["ClaudeWorkflowName"][];
+            /** @description Latest health snapshot; null for a machine that sends none. */
+            health: components["schemas"]["ClaudeMachineHealth"] | null;
         };
         ClaudeStatusSession: {
             machine: string;
@@ -7779,7 +7816,7 @@ export interface components {
             lng?: number | null;
         };
         OffRequest: {
-            /** @description list_changes, event_reminders, task_due_morning or game_invite. */
+            /** @description list_changes, event_reminders, task_due_morning, game_invite or laptop_health. */
             kind: string;
         };
         OffResponse: {
@@ -7787,6 +7824,7 @@ export interface components {
             event_reminders: boolean;
             task_due_morning: boolean;
             game_invite?: boolean;
+            laptop_health?: boolean;
             /** Format: time */
             morning_time: string;
             detail: string;
@@ -8544,6 +8582,7 @@ export interface components {
             event_reminders: boolean;
             task_due_morning: boolean;
             game_invite?: boolean;
+            laptop_health?: boolean;
             /** Format: time */
             morning_time: string;
         };

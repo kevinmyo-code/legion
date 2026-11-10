@@ -26,6 +26,7 @@ KIND_NAMES = {
     "event_reminders": "event reminders",
     "task_due_morning": "the morning list of what is due",
     "game_invite": "Tetris invites",
+    "laptop_health": "laptop health alerts",
 }
 
 TITLE_GAME_INVITE = "Tetris"
