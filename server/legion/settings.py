@@ -193,6 +193,11 @@ INSTALLED_APPS = [
 # Storage. A bucket name, not a secret; the bucket is private and each link is signed.
 LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
 
+# open-loops (ADR 0085): the nightly review also proposes to-dos from what the member said he
+# would do. `off` (the default): no words are offered and no proposal is written. `on`: offered
+# and written (still nothing without the review itself on); each is a question until his yes.
+LEGION_OPEN_LOOPS = os.environ.get("LEGION_OPEN_LOOPS", "").strip().lower() or "off"
+
 # memory-review (Kevin, 2026-11-09): the daily memory review on the Claude worker. `off` (the
 # default): no review task is minted and the review endpoints refuse in words. `shadow`: tasks are
 # minted on the member's idle Alienware, exact duplicates merge by code, and everything Claude
@@ -205,10 +210,6 @@ try:
     LEGION_MEMORY_REVIEW_CAP = max(0, int(os.environ.get("LEGION_MEMORY_REVIEW_CAP", "") or 25))
 except ValueError:
     LEGION_MEMORY_REVIEW_CAP = 25
-# open-loops (ADR 0085): the nightly review also proposes to-dos from what the member said he
-# would do. `off` (the default): no words are offered and no proposal is written. `on`: offered
-# and written (still nothing without the review itself on); each is a question until his yes.
-LEGION_OPEN_LOOPS = os.environ.get("LEGION_OPEN_LOOPS", "").strip().lower() or "off"
 
 # Files to phone (ADR 0080): the private bucket a Claude task's delivered files wait in until the
 # phone has them (`deploy/claude_files/setup_bucket.sh`, `claude_session.storage`). Optional:
