@@ -15,7 +15,7 @@ tags: [ticket]
 
 ## Question
 
-The Galaxy A25 has no satellite messaging or satellite SOS (research 03). With no signal the phone
+The Galaxy A25 has no built-in satellite SOS (research 03; carrier satellite text is unconfirmed). With no signal the phone
 cannot call for help, and LEGION cannot either. What may LEGION do about safety, and does an
 "if I'm not back by X, tell someone" alert get built?
 

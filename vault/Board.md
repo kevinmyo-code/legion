@@ -58,11 +58,11 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
-| [[.scratch/offline-hiking/map\|offline-hiking]] | [[04-downloaded-regions-vs-bundled-assets\|04]] | decision | Decision: downloaded map regions against "assets are bundled" |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[04-downloaded-regions-vs-bundled-assets\|04]] | decision | Decision: downloaded map regions against \"assets are bundled\ |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[05-offline-map-style\|05]] | decision | Decision: the offline map style (Outdoors, or Standard with topo added) |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[07-offline-voice\|07]] | decision | Decision: voice with no signal (on-device commands, or nothing) |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[08-where-a-hike-lives\|08]] | decision | Decision: where a hike lives among the seven aspects |
-| [[.scratch/offline-hiking/map\|offline-hiking]] | [[09-trip-plan-and-overdue-alert\|09]] | decision | Decision: trip plan before leaving signal, and "if not back by X" |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[09-trip-plan-and-overdue-alert\|09]] | decision | Decision: trip plan before leaving signal, and \"if not back by X\ |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[10-storage-and-refresh\|10]] | decision | Decision: storage budget, Wi-Fi only, and refresh cadence for offline areas |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[11-how-an-area-is-picked\|11]] | decision | Decision: how an offline area is picked and named |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[22-routing-spike\|22]] | task | Task: spike, offline trail routing on the A25 (Mapbox walking vs BRouter) |
@@ -358,7 +358,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[12-phone-id-vault\|12]] | build | Phone: ID vault screen behind fingerprint  waiting on [[05-id-vault-engine\|05]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[13-phone-vehicle-plate\|13]] | build | Phone: plate on the vehicle  waiting on [[06-vehicle-plate\|06]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[14-acceptance-run\|14]] | test | Acceptance run  waiting on [[08-worker-memory-tools\|08]], [[09-phone-memory-on-engine\|09]], [[10-phone-upload-and-retire\|10]], [[11-phone-memory-screen\|11]], [[12-phone-id-vault\|12]], [[13-phone-vehicle-plate\|13]] |
-| [[.scratch/offline-hiking/map\|offline-hiking]] | [[06-offline-routing-engine\|06]] | decision | Decision: offline trail routing ("pathfinder"), which engine, and when  waiting on [[22-routing-spike\|22]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[06-offline-routing-engine\|06]] | decision | Decision: offline trail routing (\"pathfinder\"), which engine, and when  waiting on [[22-routing-spike\|22]] |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[12-voice-surface-while-online\|12]] | decision | Decision: Alfred's hiking tools while online  waiting on [[11-how-an-area-is-picked\|11]] |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[13-offline-areas-screen\|13]] | build | Build: offline areas (download, list, refresh, delete) and the download controller  waiting on [[04-downloaded-regions-vs-bundled-assets\|04]], [[05-offline-map-style\|05]], [[10-storage-and-refresh\|10]], [[11-how-an-area-is-picked\|11]] |
 | [[.scratch/offline-hiking/map\|offline-hiking]] | [[14-hike-screen\|14]] | build | Build: the hike screen (offline map, own GPS puck, compass heading)  waiting on [[05-offline-map-style\|05]] |

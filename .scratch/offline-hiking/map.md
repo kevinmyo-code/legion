@@ -112,6 +112,13 @@ sync) charted as tickets. Execution is in scope after the rulings.
 
 ## Decisions so far
 
+Research only so far; no Kevin ruling yet, so nothing is filed to `memory/library/decisions.md`
+(file each ruling there when it is made).
+
+- [Research: Mapbox offline maps and topography on Maps SDK 11.32](issues/01-mapbox-offline-facts.md): offline works in the SDK already in the build; Outdoors has topo but is unmaintained; ~7 packs per park vs a 750 cap; MAU-billed, $0 for two users.
+- [Research: offline trail routing on Android](issues/02-offline-routing-facts.md): Mapbox routes offline, but offline walking on trails is unconfirmed; BRouter is the best on-device fallback; offline search is sales-gated.
+- [Research: trail data, GPX imports, the A25's sensors, and safety](issues/03-trail-data-and-safety-facts.md): OSM trails present, difficulty and trailheads mostly untagged; A25 has a compass, no barometer, no built-in satellite SOS.
+
 ## Not yet specified
 
 - Wife's phone: whether she records hikes too (ticket 08 owner column) and shares areas.
