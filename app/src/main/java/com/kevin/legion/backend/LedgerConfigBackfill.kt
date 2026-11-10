@@ -56,6 +56,8 @@ object LedgerConfigBackfill {
         val alreadyPresent: Int,
         val skippedLocalOnlyDeleted: Int,
         val failed: List<String>,
+        /** Categories the engine already had under the same name, linked rather than pushed. */
+        val linkedByName: Int = 0,
     )
 
     private suspend fun <L> backfillTable(
@@ -137,10 +139,20 @@ object LedgerConfigBackfill {
     suspend fun run(context: Context, backend: LedgerConfigBackend): Report {
         val db = CarDatabase.getDatabase(context)
 
+        var linked = 0
         val categories = backfillTable(
             context, OutboxTarget.LEDGER_CATEGORIES, db.categoryDao().getAllIncludingDeleted(),
             localId = { it.id }, localGuid = { it.guid }, localServerId = { it.serverId }, localDeleted = { it.deleted },
-            push = { row: Category -> backend.upsertCategory(row.guid, LedgerConfigWriteThrough.CategoryPayload.from(row).toFields()) },
+            push = { row: Category ->
+                val pushed = backend.upsertCategory(row.guid, LedgerConfigWriteThrough.CategoryPayload.from(row).toFields())
+                val refused = pushed.isFailure && isDefinitiveRefusal(pushed.exceptionOrNull())
+                if (refused && linkCategoryByName(db, backend, row)) {
+                    linked++
+                    Result.success(Unit)
+                } else {
+                    pushed
+                }
+            },
         )
         val categoryRules = backfillTable(
             context, OutboxTarget.LEDGER_CATEGORY_RULES, db.categoryRuleDao().getAllIncludingDeleted(),
@@ -168,7 +180,28 @@ object LedgerConfigBackfill {
             alreadyPresent = results.sumOf { it.alreadyPresent },
             skippedLocalOnlyDeleted = results.sumOf { it.skippedLocalOnlyDeleted },
             failed = results.mapNotNull { it.failure },
+            linkedByName = linked,
         )
+    }
+
+    /**
+     * Kevin's ruling (2026-11-10): a phone category the engine refuses because the engine already
+     * has one with the same name is LINKED to that row, not skipped. The engine log showed
+     * `PUT /api/ledger/categories/<guid>/` answered 400 on every run: the phone seeds its starter
+     * categories with fresh guids, the engine already holds those names under other guids, and
+     * `categories_name_unique` (household, name) refuses the second. The local row takes the
+     * engine row's guid and id, so the next pull merges the two as one and nothing is pushed
+     * again; the engine's values win on that pull. True when a row was linked. Matched by exact
+     * name first, then ignoring case (the phone's own name index is case-insensitive in use).
+     */
+    internal suspend fun linkCategoryByName(db: CarDatabase, backend: LedgerConfigBackend, row: Category): Boolean {
+        val remote = backend.fetchChangedCategoriesSince(0L).getOrNull()?.filterNot { it.deleted } ?: return false
+        val match = remote.firstOrNull { it.name == row.name }
+            ?: remote.firstOrNull { it.name.equals(row.name, ignoreCase = true) }
+            ?: return false
+        return runCatching {
+            db.categoryDao().update(row.copy(guid = match.originGuid, serverId = match.serverId))
+        }.isSuccess
     }
 
     // --- Foreground auto-trigger ------------------------------------------------------------------

@@ -3,6 +3,7 @@ package com.kevin.legion.backend
 import com.kevin.legion.backend.engine.EngineFailure
 import com.kevin.legion.backend.engine.EngineHttpException
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Category
 import com.kevin.legion.data.local.CategoryRule
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
@@ -38,9 +39,20 @@ class LedgerConfigBackfillTest {
         // [LedgerConfigBackfill.run]'s own categories sub-call is never actually idle here the way
         // memory's three tables are for MemoryBackfillTest. See primeCategoriesBackfillCursor's own
         // comment for how the seeded rows are kept out of every test's own assertions.
-        override suspend fun fetchChangedCategoriesSince(sinceMs: Long) = Result.success(emptyList<RemoteCategory>())
-        override suspend fun upsertCategory(originGuid: String, fields: CategoryFields) =
-            Result.success(RemoteCategory(originGuid, fields.name, fields.isFoodCategory, 0L, false, originGuid))
+        /** Categories the engine already holds; a push of one of these names is refused like
+         * `categories_name_unique` refuses it. */
+        val engineCategories = mutableListOf<RemoteCategory>()
+        val categoryUpsertCalls = mutableListOf<String>()
+
+        override suspend fun fetchChangedCategoriesSince(sinceMs: Long) = Result.success(engineCategories.toList())
+        override suspend fun upsertCategory(originGuid: String, fields: CategoryFields): Result<RemoteCategory> {
+            categoryUpsertCalls.add(originGuid)
+            if (engineCategories.any { it.name == fields.name && it.originGuid != originGuid }) {
+                val refusal = EngineFailure.Refused(400, "That write was refused by the database: duplicate key (name)")
+                return Result.failure(EngineHttpException(refusal))
+            }
+            return Result.success(RemoteCategory(originGuid, fields.name, fields.isFoodCategory, 0L, false, originGuid))
+        }
         override suspend fun softDeleteCategory(originGuid: String) = Result.success(true)
 
         override suspend fun fetchChangedCategoryRulesSince(sinceMs: Long) = Result.success(emptyList<RemoteCategoryRule>())
@@ -252,5 +264,43 @@ class LedgerConfigBackfillTest {
 
         assertEquals(1, report?.pushed)
         assertEquals(listOf("guid-cold-start"), backend.ruleUpsertCalls)
+    }
+
+    // Kevin's ruling 2026-11-10: a category the engine already has under the same name is linked
+    // to that row (its guid and id), not skipped, so nothing is re-sent and the next pull merges.
+    @Test
+    fun `a category the engine already has by name is linked to its row, not re-sent`() = runBlocking {
+        primeCategoriesBackfillCursor()
+        val db = CarDatabase.getDatabase(context)
+        db.categoryDao().insert(Category(name = "Kite Supplies", isFoodCategory = false, guid = "phone-guid-1"))
+        backend.engineCategories += RemoteCategory("srv-9", "Kite Supplies", false, 5L, false, "engine-guid-1")
+
+        val first = LedgerConfigBackfill.run(context, backend)
+
+        assertEquals(1, first.linkedByName)
+        assertTrue(first.failed.toString(), first.failed.isEmpty())
+        val row = db.categoryDao().getAllIncludingDeleted().single { it.name == "Kite Supplies" }
+        assertEquals("engine-guid-1", row.guid)
+        assertEquals("srv-9", row.serverId)
+
+        val calls = backend.categoryUpsertCalls.size
+        val second = LedgerConfigBackfill.run(context, backend)
+        assertEquals(0, second.linkedByName)
+        assertEquals("nothing is pushed again", calls, backend.categoryUpsertCalls.size)
+    }
+
+    @Test
+    fun `a refused category with no engine row of that name is still stepped over`() = runBlocking {
+        primeCategoriesBackfillCursor()
+        val db = CarDatabase.getDatabase(context)
+        db.categoryDao().insert(Category(name = "Kite Supplies", isFoodCategory = false, guid = "phone-guid-2"))
+        // Refused under a name the fetch then does not return (deleted on the engine meanwhile).
+        backend.engineCategories += RemoteCategory("srv-10", "Kite Supplies", false, 5L, true, "engine-guid-2")
+
+        val report = LedgerConfigBackfill.run(context, backend)
+
+        assertEquals(0, report.linkedByName)
+        assertTrue(report.failed.single(), report.failed.single().contains("refused by the engine, skipped"))
+        assertEquals("phone-guid-2", db.categoryDao().getAllIncludingDeleted().single { it.name == "Kite Supplies" }.guid)
     }
 }
