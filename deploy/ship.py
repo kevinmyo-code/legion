@@ -1146,7 +1146,14 @@ class Ship:
         if hasattr(self.deploy_mod, "connection_plan"):
             # Same sizing as deploy.py: concurrency = workers x threads; max-instances lowered
             # (with a printed note) when it would overrun LEGION_DB_CONN_BUDGET.
-            concurrency, max_inst, note = self.deploy_mod.connection_plan(env_values, max_inst)
+            try:
+                concurrency, max_inst, note = self.deploy_mod.connection_plan(env_values, max_inst)
+            except SystemExit as exc:  # deploy.die(): a bad gunicorn/budget value in .env
+                raise Stop(
+                    "the .env's LEGION_GUNICORN_* / LEGION_DB_CONN_BUDGET values do not size a "
+                    "service (deploy.py printed why above). Nothing deployed past the job.\n"
+                    + self.rollback_text()
+                ) from exc
             if note:
                 self.say(f"NOTE {note}")
             plan_kw = {"concurrency": concurrency}
