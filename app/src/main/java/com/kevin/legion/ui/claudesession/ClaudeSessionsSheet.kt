@@ -61,7 +61,11 @@ fun ClaudeSessionsSheetHost(onDismiss: () -> Unit, onOpenAll: () -> Unit) {
                 ui = when (val out = controller.overview()) {
                     is ClaudeOutcome.Ok -> {
                         live.seen(out.value)
-                        ClaudeSheetUi(loading = false, rows = ClaudeQuickRows.sheet(out.value, controller.wording))
+                        ClaudeSheetUi(
+                            loading = false,
+                            rows = ClaudeQuickRows.sheet(out.value, controller.wording),
+                            laptops = ClaudeQuickRows.laptops(out.value, controller.wording),
+                        )
                     }
                     else -> {
                         live.unreadable()
@@ -112,6 +116,14 @@ fun ClaudeSessionsSheetBody(ui: ClaudeSheetUi, onOpenTask: (Int) -> Unit, onOpen
             color = SoftColors.text,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
+        ui.laptops.forEach { line ->
+            Text(
+                line,
+                style = MaterialTheme.typography.bodySmall,
+                color = SoftColors.text2,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag(SHEET_LAPTOP_TAG),
+            )
+        }
         when {
             ui.unavailable != null && ui.rows.isEmpty() -> SheetLine(ui.unavailable, SoftColors.onAlert)
             ui.loading && ui.rows.isEmpty() -> SheetLine("Reading...")
@@ -178,3 +190,4 @@ private val ROWS_MAX_HEIGHT = 420.dp
 const val EMPTY_SHEET = "No Claude tasks or sessions yet. Ask by voice, or send one from the Claude sessions screen."
 const val SHEET_TAG = "claude-sessions-sheet"
 const val SHEET_ROW_TAG = "claude-sessions-sheet-row"
+const val SHEET_LAPTOP_TAG = "claude-sessions-sheet-laptop"

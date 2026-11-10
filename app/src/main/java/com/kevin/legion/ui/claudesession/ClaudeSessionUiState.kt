@@ -8,8 +8,20 @@ import com.kevin.legion.claude.ClaudeSteps
 import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.claude.ClaudeWorkflowWording
 import com.kevin.legion.claude.ClaudeWording
+import com.kevin.legion.claude.LaptopHealthWording
 
-data class MachineRowUi(val name: String, val stateText: String, val online: Boolean, val summariesOnly: Boolean)
+data class MachineRowUi(
+    val name: String,
+    val stateText: String,
+    val online: Boolean,
+    val summariesOnly: Boolean,
+    /** Laptop health lines (temps, RAM, disk, uptime); empty for a machine that sends none. */
+    val health: List<String> = emptyList(),
+    /** The hotter of CPU and GPU, every 10 minutes over 24 h, oldest first. */
+    val spark: List<Float> = emptyList(),
+    /** An open health alert: the lines are drawn in the caution colour. */
+    val alert: Boolean = false,
+)
 
 /** One kept step under a task: "3:40 PM" and "reading Downloads". */
 data class StepRowUi(val time: String, val text: String)
@@ -88,7 +100,17 @@ data class ClaudeSessionUiState(
 object ClaudeSessionRows {
 
     fun machines(list: List<ClaudeMachine>, wording: ClaudeWording): List<MachineRowUi> =
-        list.map { MachineRowUi(it.name, wording.machineState(it.state, it.lastSeenAt), it.isOnline, it.summariesOnly) }
+        list.map { m ->
+            MachineRowUi(
+                m.name,
+                wording.machineState(m.state, m.lastSeenAt),
+                m.isOnline,
+                m.summariesOnly,
+                health = m.health?.let { LaptopHealthWording.lines(it, wording) }.orEmpty(),
+                spark = m.health?.let(LaptopHealthWording::spark).orEmpty(),
+                alert = m.health?.alerts?.isNotEmpty() == true,
+            )
+        }
 
     fun tasks(
         overview: ClaudeOverview,

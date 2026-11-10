@@ -5,6 +5,7 @@ import com.kevin.legion.claude.ClaudeOverview
 import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.claude.ClaudeWording
+import com.kevin.legion.claude.LaptopHealthWording
 import java.time.Duration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -45,6 +46,8 @@ data class ClaudeSheetUi(
     val loading: Boolean = true,
     val unavailable: String? = null,
     val rows: List<ClaudeSheetRowUi> = emptyList(),
+    /** One line per machine that sends health (laptop-health 2026-11-10), above the rows. */
+    val laptops: List<String> = emptyList(),
 )
 
 /** Pure: the engine's rows to the dialog and the sheet. Every status word from [ClaudeSessionRows]. */
@@ -98,6 +101,10 @@ object ClaudeQuickRows {
     }
 
     /** Newest tasks first (the engine's order), then the interactive sessions, waiting on Kevin first. */
+    /** "Alienware: online, CPU 61 C, ..." for each machine that sends health. */
+    fun laptops(o: ClaudeOverview, wording: ClaudeWording): List<String> =
+        o.status.machines.mapNotNull { LaptopHealthWording.summary(it, wording) }
+
     fun sheet(o: ClaudeOverview, wording: ClaudeWording): List<ClaudeSheetRowUi> {
         val tasks = o.tasks.take(SHEET_TASKS).map { t ->
             val step = if (t.status == ClaudeTask.RUNNING) currentStep(t) else null
