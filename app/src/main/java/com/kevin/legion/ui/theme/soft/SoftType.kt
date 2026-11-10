@@ -92,7 +92,8 @@ val SoftFigtreeTypography = Typography(
 
 /**
  * Soft (Figtree) equivalents of [com.kevin.legion.ui.theme.LegionType]'s three extra roles, picked by
- * that object's getters when [LocalSoftActive] is true under Matrix mode so no call site changes. Figtree is proportional,
+ * that object's getters when [LocalSoftActive] is true under Matrix mode so no call site changes.
+ * Figtree is proportional,
  * so the tabular `tnum` OpenType feature stands in for the monospace that kept money and reading
  * columns aligned under Martian Mono (same technique [com.kevin.legion.ui.common.StatusLine]'s clock
  * already uses). No letterSpacing stamp: sentence case needs none.

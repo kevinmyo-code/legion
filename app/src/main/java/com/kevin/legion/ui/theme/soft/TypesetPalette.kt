@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber") // palette hex literals, the prototype's tokens (MatrixScheme's shape)
+
 package com.kevin.legion.ui.theme.soft
 
 import androidx.compose.material3.darkColorScheme

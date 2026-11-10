@@ -180,17 +180,29 @@ object LegionType {
     /** A transaction amount in a list. Tabular by construction. */
     val amount: TextStyle
         @Composable @ReadOnlyComposable
-        get() = if (LocalSoftActive.current) softLegionStyle(SoftLegionType.amount, SoftFigtreeLegionType.amount) else MonoAmount
+        get() = if (LocalSoftActive.current) {
+            softLegionStyle(SoftLegionType.amount, SoftFigtreeLegionType.amount)
+        } else {
+            MonoAmount
+        }
 
     /** A secondary figure: a live PID value, an item count, a macro number. */
     val reading: TextStyle
         @Composable @ReadOnlyComposable
-        get() = if (LocalSoftActive.current) softLegionStyle(SoftLegionType.reading, SoftFigtreeLegionType.reading) else MonoReading
+        get() = if (LocalSoftActive.current) {
+            softLegionStyle(SoftLegionType.reading, SoftFigtreeLegionType.reading)
+        } else {
+            MonoReading
+        }
 
     /** A date or unit sitting beneath a description. */
     val stamp: TextStyle
         @Composable @ReadOnlyComposable
-        get() = if (LocalSoftActive.current) softLegionStyle(SoftLegionType.stamp, SoftFigtreeLegionType.stamp) else MonoStamp
+        get() = if (LocalSoftActive.current) {
+            softLegionStyle(SoftLegionType.stamp, SoftFigtreeLegionType.stamp)
+        } else {
+            MonoStamp
+        }
 }
 
 private val MonoAmount = TextStyle(

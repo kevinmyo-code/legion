@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber") // a port of the prototype's orb: its tuning constants are the spec
+
 package com.kevin.legion.ui.typeset
 
 import android.provider.Settings

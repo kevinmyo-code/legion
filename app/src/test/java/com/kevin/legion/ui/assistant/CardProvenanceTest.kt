@@ -22,20 +22,20 @@ class CardProvenanceTest {
         ConversationCard.Checklist("Groceries", "Groceries", listOf(ChecklistLine("Milk", false)), provenance = p)
 
     @Test
-    fun `no provenance draws no line`() = assertNull(CardWords.provenance(card(null), now, zone))
+    fun `no provenance draws no line`() = assertNull(CardProvenanceWords.provenance(card(null), now, zone))
 
     @Test
-    fun `an empty provenance draws no line`() = assertNull(CardWords.provenance(card(CardProvenance()), now, zone))
+    fun `an empty provenance draws no line`() = assertNull(CardProvenanceWords.provenance(card(CardProvenance()), now, zone))
 
     @Test
     fun `a live read says where and how long ago`() {
-        assertEquals("OBD port, just now", CardWords.provenance(card(CardProvenance("OBD port", now - 5_000)), now, zone))
-        assertEquals("NHTSA, 2 hours ago", CardWords.provenance(card(CardProvenance("NHTSA", now - 7_200_000)), now, zone))
+        assertEquals("OBD port, just now", CardProvenanceWords.provenance(card(CardProvenance("OBD port", now - 5_000)), now, zone))
+        assertEquals("NHTSA, 2 hours ago", CardProvenanceWords.provenance(card(CardProvenance("NHTSA", now - 7_200_000)), now, zone))
     }
 
     @Test
     fun `a coverage date says through when, with no source invented`() {
         val through = LocalDate.of(2026, 11, 8).atTime(23, 0).toInstant(zone).toEpochMilli()
-        assertEquals("Through 8 Nov", CardWords.provenance(card(CardProvenance(throughMs = through)), now, zone))
+        assertEquals("Through 8 Nov", CardProvenanceWords.provenance(card(CardProvenance(throughMs = through)), now, zone))
     }
 }

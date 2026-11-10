@@ -291,6 +291,10 @@ internal fun softLook(matrix: Boolean, edition: TypesetEdition): SoftLook = when
         SoftDarkPalette, pickColorScheme(true, SoftColorScheme), pickSemantics(true, SoftSemantics),
         SoftFigtreeTypography, SoftRoundedShapes,
     )
-    edition == TypesetEdition.DAY -> SoftLook(TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics, SoftTypography, TypesetShapes)
-    else -> SoftLook(TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics, SoftTypography, TypesetShapes)
+    edition == TypesetEdition.DAY -> SoftLook(
+        TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics, SoftTypography, TypesetShapes,
+    )
+    else -> SoftLook(
+        TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics, SoftTypography, TypesetShapes,
+    )
 }

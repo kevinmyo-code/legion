@@ -119,7 +119,7 @@ private fun CardHeader(card: ConversationCard, onDismiss: () -> Unit) {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = SoftColors.text2, maxLines = 1)
             }
             // Source and age only when the card's data carries them (ADR 0081, 2026-11-10).
-            CardWords.provenance(card, System.currentTimeMillis(), ZoneId.systemDefault())?.let {
+            CardProvenanceWords.provenance(card, System.currentTimeMillis(), ZoneId.systemDefault())?.let {
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),

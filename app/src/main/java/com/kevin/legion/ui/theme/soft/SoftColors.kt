@@ -64,6 +64,7 @@ data class SoftPalette(
  * canvas `research/prototype-canvas/Main.dc.html`). The default of [LocalSoftPalette], so a call
  * site outside any theme still resolves to the values it always had.
  */
+@Suppress("MagicNumber") // palette hex literals, the same shape as MatrixScheme
 val SoftDarkPalette = SoftPalette(
     ground = Color(0xFF121317),
     barLow = Color(0xFF16181D),
