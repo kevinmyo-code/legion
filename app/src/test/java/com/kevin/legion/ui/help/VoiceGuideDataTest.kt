@@ -36,6 +36,16 @@ class VoiceGuideDataTest {
      * `TOOLBOXES` list, which this must stay in sync with by hand (this test's own name still says
      * "LiveToolbox_kt" for that reason - it predates the split and renaming it is out of scope
      * here). */
+    private fun domainDeclarationFiles(): List<java.io.File> {
+        val dir = java.io.File("src/main/java/com/kevin/legion/service/tools")
+            .takeIf { it.isDirectory }
+            ?: java.io.File("app/src/main/java/com/kevin/legion/service/tools")
+        return dir.listFiles().orEmpty()
+            .map { java.io.File(it, "Declarations.kt") }
+            .filter { it.isFile }
+            .sortedBy { it.path }
+    }
+
     private fun scrapedNamesFromSource(): Set<String> {
         fun read(relative: String): String {
             val src = java.io.File("src/main/java/com/kevin/legion/service/$relative")
@@ -56,7 +66,9 @@ class VoiceGuideDataTest {
                 nameRe.findAll(read("VaultToolbox.kt")) +
                 nameRe.findAll(read("BodyCoachToolbox.kt")) +
                 nameRe.findAll(read("ClockToolbox.kt")) +
-                nameRe.findAll(read("WatchesToolbox.kt"))
+                nameRe.findAll(read("WatchesToolbox.kt")) +
+                // architecture review 2026-11-10 item 8: LiveToolbox's declarations, split by domain.
+                domainDeclarationFiles().flatMap { nameRe.findAll(it.readText()) }
         )
             .map { it.groupValues[1] }
             .toSet()
