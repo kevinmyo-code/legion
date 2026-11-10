@@ -7838,3 +7838,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   yes). Map: `.scratch/open-loops/`.
 - **Owed:** worker update from a checkout carrying `feat/open-loops`; engine deploy with
   `open_loops.0001_initial` and `LEGION_OPEN_LOOPS=on`; a phone build and run.
+
+## 2026-11-10 - One branch for the phone and the engine: integrate/2026-11-10-all (agent)
+
+- **Context:** Kevin, 2026-11-10, "i want everything on the phone and engine done". Round 5 +
+  proactive voice + watches + look + worker workflows (both halves) + open loops on one branch.
+- **Memory consolidation now drops every read-through or redacted turn** (open-loops ticket 07):
+  a `read_through` mark (look, carry, spoken brief, grounding, web or GitHub text) or a redacted
+  line drops the whole turn, the person's words included, for the hourly job and the nightly review
+  alike; the engine's third-party tools join the tool list. A source that cannot mark turns (the
+  head unit) gives his own words only: its grounded replies never reach memory. Agent's default;
+  Kevin may veto the head unit half (alternatives: leave it, or drop head unit records whole).
+- **A phone ahead of its engine fails quietly.** Against an engine without a feature's routes the
+  phone speaks nothing, raises nothing, and says in words that the feature is not available yet;
+  a voice workflow is refused before anything is queued; the scheduled-question poller raises only
+  rows the engine marks scheduled.
+- **Flags reach Cloud Run:** the open-loops and workflow-schedule flags were never passed by the
+  deploy scripts; now they are, blank keeping today's defaults.
