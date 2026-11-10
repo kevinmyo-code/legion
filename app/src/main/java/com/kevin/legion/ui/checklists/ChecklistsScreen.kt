@@ -77,6 +77,9 @@ fun ChecklistsScreen(
                             onMoveUp = viewModel::moveUp,
                             onMoveDown = viewModel::moveDown,
                             onDeleteItem = viewModel::deleteItem,
+                            onClearTicked = viewModel::clearTicked,
+                            onUndoClearTicked = viewModel::undoClearTicked,
+                            onCommitClearTicked = viewModel::commitClearTicked,
                         ),
                     )
                 }

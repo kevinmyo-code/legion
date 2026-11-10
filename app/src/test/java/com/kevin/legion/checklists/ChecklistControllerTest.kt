@@ -515,4 +515,51 @@ class ChecklistControllerTest {
         val result = ChecklistController.itemsWithTickState(context, checklist.id)
         assertTrue("a thrown DAO read must not read as a quiet empty checklist", result is ChecklistController.ChecklistItemsResult.Failed)
     }
+
+    // ---- clear ticked (2026-11-10: "delete all the ticked grocery items") ----------------------
+
+    @Test
+    fun `clearTicked removes every ticked line of a plain list in one call and keeps the ticks`() = runBlocking {
+        val list = backdatedChecklist("Party supplies", createdAt = epochMs(2026, 1, 1), recursDaily = false)
+        val cups = ChecklistController.addItem(context, list.id, "paper cups")
+        val ice = ChecklistController.addItem(context, list.id, "bag of ice")
+        val napkins = ChecklistController.addItem(context, list.id, "napkins")
+        ChecklistController.tick(context, cups.id, day(2026, 3, 1))
+        ChecklistController.tick(context, napkins.id, day(2026, 3, 2))
+
+        val outcome = ChecklistController.clearTicked(context, list.id)
+
+        val cleared = (outcome as ChecklistController.ClearTickedOutcome.Cleared).items.map { it.text }.sorted()
+        assertEquals(listOf("napkins", "paper cups"), cleared)
+        assertEquals(listOf(ice.id), ChecklistController.itemsFor(context, list.id).map { it.id })
+        // Soft delete only, never cascaded: the tick history (and the bought log fed by it) stays.
+        assertEquals(1, CarDatabase.getDatabase(context).checklistTickDao().allForItem(cups.id).size)
+    }
+
+    @Test
+    fun `clearTicked with onlyIds removes just those lines, and nothing ticked is an empty clear`() = runBlocking {
+        val list = backdatedChecklist("Hardware run", createdAt = epochMs(2026, 1, 1), recursDaily = false)
+        val screws = ChecklistController.addItem(context, list.id, "wood screws")
+        val glue = ChecklistController.addItem(context, list.id, "wood glue")
+        ChecklistController.tick(context, screws.id, day(2026, 3, 1))
+        ChecklistController.tick(context, glue.id, day(2026, 3, 1))
+
+        val first = ChecklistController.clearTicked(context, list.id, onlyIds = setOf(screws.id))
+        assertEquals(listOf(screws.id), (first as ChecklistController.ClearTickedOutcome.Cleared).items.map { it.id })
+        assertEquals(listOf(glue.id), ChecklistController.itemsFor(context, list.id).map { it.id })
+
+        ChecklistController.untick(context, glue.id, day(2026, 3, 1))
+        val none = ChecklistController.clearTicked(context, list.id)
+        assertTrue((none as ChecklistController.ClearTickedOutcome.Cleared).items.isEmpty())
+    }
+
+    @Test
+    fun `clearTicked refuses a routine and removes nothing`() = runBlocking {
+        val routine = backdatedChecklist("Stretch", createdAt = epochMs(2026, 1, 1), scheduleKind = "DAILY", scheduleEvery = 1)
+        val line = ChecklistController.addItem(context, routine.id, "hamstrings")
+        ChecklistController.tick(context, line.id, ChecklistController.today())
+        val outcome = ChecklistController.clearTicked(context, routine.id)
+        assertTrue(outcome is ChecklistController.ClearTickedOutcome.Refused)
+        assertEquals(1, ChecklistController.itemsFor(context, routine.id).size)
+    }
 }

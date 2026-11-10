@@ -139,6 +139,8 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun backToPage() {
+        // Leaving the list ends the Undo window: what was hidden is removed now.
+        commitClearTicked()
         _state.update { it.copy(mode = ListsMode.Page, detail = null, history = null) }
         refresh()
     }
@@ -165,7 +167,8 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
                 val rows = result.items
                     .sortedBy { it.item.sortOrder }
                     .map { st -> ListItemUi(st.item, st.ticked, st.value, st.tickDay, queued = st.item.id in queued) }
-                val (ticked, unticked) = rows.partition { it.ticked }
+                val pending = _state.value.detail?.pendingClear.orEmpty()
+                val (ticked, unticked) = withoutPendingClear(rows, pending).partition { it.ticked }
                 _state.update {
                     it.copy(
                         detail = (it.detail ?: ListDetailState()).copy(
@@ -326,6 +329,61 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
             guardedWrite("delete that item") {
                 ChecklistController.deleteItem(app, itemId)
                 _state.update { it.copy(detail = it.detail?.copy(longPressItem = null)) }
+                refresh()
+            }
+        }
+    }
+
+    /** Overflow "Clear ticked items": hides every ticked line now and leaves the removal to
+     * [commitClearTicked], after the Undo snackbar (2026-11-10). */
+    fun clearTicked() {
+        val detail = _state.value.detail ?: return
+        val ids = detail.ticked.map { it.item.id }
+        if (ids.isEmpty()) return
+        _state.update {
+            it.copy(
+                detail = it.detail?.copy(
+                    pendingClear = it.detail.pendingClear + ids,
+                    ticked = emptyList(),
+                    showOverflowMenu = false,
+                ),
+            )
+        }
+    }
+
+    /** The screen went away inside the Undo window: what it hid is still removed, off this scope. */
+    override fun onCleared() {
+        val detail = _state.value.detail
+        val checklistId = detail?.checklist?.id
+        val ids = detail?.pendingClear.orEmpty().toSet()
+        if (checklistId != null && ids.isNotEmpty()) {
+            val context = app
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+                runCatching { ChecklistController.clearTicked(context, checklistId, onlyIds = ids) }
+            }
+        }
+        super.onCleared()
+    }
+
+    /** Undo: nothing was removed; the hidden lines come back on the next read. */
+    fun undoClearTicked() {
+        _state.update { it.copy(detail = it.detail?.copy(pendingClear = emptyList())) }
+        refresh()
+    }
+
+    /** Removes the lines [clearTicked] hid, exactly those, through the same controller call voice uses. */
+    fun commitClearTicked() {
+        val detail = _state.value.detail ?: return
+        val checklistId = detail.checklist?.id ?: return
+        val ids = detail.pendingClear.toSet()
+        if (ids.isEmpty()) return
+        _state.update { it.copy(detail = it.detail?.copy(pendingClear = emptyList())) }
+        viewModelScope.launch {
+            guardedWrite("clear the ticked items") {
+                val outcome = ChecklistController.clearTicked(app, checklistId, onlyIds = ids)
+                if (outcome is ChecklistController.ClearTickedOutcome.Refused) {
+                    _state.update { it.copy(detail = it.detail?.copy(writeError = outcome.message)) }
+                }
                 refresh()
             }
         }
