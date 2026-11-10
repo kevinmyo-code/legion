@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -84,7 +85,7 @@ data class CategoryButtonSpec(
 private fun DockSlotUi.usable(): Boolean = loading || (app != null && !paused)
 
 /** Pure, so `CategoryButtonSpecTest` can pin every state without a composition. */
-internal fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
+fun categoryButtonSpec(ui: CategoryUi): CategoryButtonSpec {
     val category = ui.category
     val slots = ui.slots
     return when {
@@ -196,6 +197,13 @@ fun CategoryRow(
     categories: List<CategoryUi>,
     chooserRows: List<ChooserRow>,
     callbacks: CategoryCallbacks,
+    /** How one category draws; the Typeset front page passes its ruled label. Taps and sheets are shared. */
+    button: @Composable RowScope.(ui: CategoryUi, onClick: () -> Unit, onLongClick: () -> Unit) -> Unit =
+        { ui, onClick, onLongClick ->
+            CategoryButton(ui = ui, modifier = Modifier.weight(1f), onClick = onClick, onLongClick = onLongClick)
+        },
+    /** The "Open with" sheet's body; null keeps today's. */
+    openWith: GroupSheetContent? = null,
 ) {
     if (categories.isEmpty()) return
     var chooserFor by remember { mutableStateOf<HomeCategory?>(null) }
@@ -207,10 +215,9 @@ fun CategoryRow(
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         categories.forEach { ui ->
             val isMaps = ui.category == HomeCategory.MAPS
-            CategoryButton(
-                ui = ui,
-                modifier = Modifier.weight(1f),
-                onClick = {
+            button(
+                ui,
+                {
                     if (isMaps) {
                         // ADR 0054 forbids handing NAVIGATION to another map app; it says nothing about
                         // a map app sitting in a launcher bucket. Maps asks which once an app is picked,
@@ -229,7 +236,7 @@ fun CategoryRow(
                 },
                 // Long-press is the chooser for every bucket, Maps included (it used to open navigation,
                 // which left no way to add a map app at all - commit 3d5376a6).
-                onLongClick = { chooserFor = ui.category },
+                { chooserFor = ui.category },
             )
         }
     }
@@ -247,6 +254,7 @@ fun CategoryRow(
                 } else {
                     null
                 },
+                content = openWith,
             )
         }
     }
