@@ -62,6 +62,21 @@ data class TypesetHomeActions(
     val onMore: () -> Unit = {},
 )
 
+/** Where the front page can go. One bag, filled by `HomeScreen` from the shell's navigation. */
+data class TypesetHomeNav(
+    val onOpenToday: () -> Unit,
+    val onOpenMoney: () -> Unit,
+    val onOpenCar: () -> Unit,
+    val onOpenClock: () -> Unit,
+    /** The Field screen (feat/field-nav). A no-op until that branch lands beside this one. */
+    val onOpenField: () -> Unit,
+    val onOpenApps: () -> Unit,
+    val onOpenSettings: () -> Unit,
+    val onOpenClaude: () -> Unit,
+    /** Today's More sheet: Body, News, Reports, Media, Recordings and the rest keep a way in. */
+    val onOpenMore: () -> Unit,
+)
+
 /** The three figures, pure, from the view models HOME already has. Pinned by `TypesetHomeDeriveTest`. */
 object TypesetHomeDerive {
 

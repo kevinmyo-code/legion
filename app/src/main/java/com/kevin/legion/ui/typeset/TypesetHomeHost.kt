@@ -47,21 +47,6 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** Where the front page can go. One bag, filled by `HomeScreen` from the shell's navigation. */
-data class TypesetHomeNav(
-    val onOpenToday: () -> Unit,
-    val onOpenMoney: () -> Unit,
-    val onOpenCar: () -> Unit,
-    val onOpenClock: () -> Unit,
-    /** The Field screen (feat/field-nav). A no-op until that branch lands beside this one. */
-    val onOpenField: () -> Unit,
-    val onOpenApps: () -> Unit,
-    val onOpenSettings: () -> Unit,
-    val onOpenClaude: () -> Unit,
-    /** Today's More sheet: Body, News, Reports, Media, Recordings and the rest keep a way in. */
-    val onOpenMore: () -> Unit,
-)
-
 /**
  * The Typeset front page, stateful (ADR 0081): HOME's own view-model state in, the glance and the
  * conversation out. Owns nothing the shell already owns: the clock string is the shell's ticker, the
@@ -156,6 +141,7 @@ internal fun slotTile(slot: DockSlotUi): TypesetDockTile {
  * the ADR 0066 gate, unchanged, under its row.
  */
 @Composable
+@Suppress("LongMethod") // one overlay: the panel's state and its six taps, read top to bottom
 private fun ControlsOverlay(onClose: () -> Unit, nav: TypesetHomeNav) {
     val context = LocalContext.current
     val graph = remember(context) { (context.applicationContext as MidnightApplication).dumb }

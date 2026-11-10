@@ -939,7 +939,9 @@ private fun LegionShell(
                         statusWords = typesetStatusWords(shellStatus.parts, quietOn, shellStatus.alarmCount),
                         onOpenApps = { navController.navigate(LegionRoute.APPS) { launchSingleTop = true } },
                         onOpenSettings = { navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true } },
-                        onOpenClock = { context.startActivity(com.kevin.legion.ui.clock.ClockActivity.intent(context)) },
+                        onOpenClock = {
+                            context.startActivity(com.kevin.legion.ui.clock.ClockActivity.intent(context))
+                        },
                         onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
                         onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
                         onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },

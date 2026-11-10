@@ -110,7 +110,10 @@ data class HomeCallbacks(
  * The six area tiles live in the More sheet (Kevin, 2026-10-09: "4th button: More").
  */
 @Composable
-@Suppress("LongMethod", "LongParameterList") // one screen composable; one callback per screen HOME can open
+@Suppress("LongMethod", "LongParameterList", "UnusedParameter")
+// one screen composable; one callback per screen HOME can open. onOpenDay, onOpenList, onPlayTetris and
+// onOpenMoneyCategory are unused since the Typeset front page replaced HomeContent (ADR 0081): kept so
+// the shell's wiring stands for the Calendar, Lists, Games and Money entries the page is still owed.
 fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenLists: () -> Unit,
