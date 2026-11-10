@@ -817,7 +817,10 @@ class Worker:
 
     def log_task(self, t: dict, status: str) -> None:
         """One line per finished task for the workflow miner (R4): request text included, so it
-        stays on this laptop and is pruned at `keep_task_log_days`."""
+        stays on this laptop and is pruned at `keep_task_log_days`. The Alienware only: the miner
+        reads its own worker's tasks, and the work laptop keeps no such log."""
+        if self.scope != "full":
+            return
         line = {"date": datetime.datetime.fromtimestamp(self.clock()).isoformat(timespec="seconds"),
                 "task": int(t["id"]), "kind": t.get("kind") or "ask", "workflow": t.get("workflow"),
                 "origin": t.get("origin"), "status": status, "request": t.get("request", "")}
@@ -958,6 +961,8 @@ class Worker:
         reason = None
         if self.scope != "full":
             reason = "work laptop never uploads"
+        elif t and t.get("deliver_refused"):
+            reason = "a scheduled run never sends files"
         elif not t or norm(path) not in allowed:
             reason = "not a file that task listed"
         elif not Path(path).is_file():
@@ -997,6 +1002,11 @@ class Worker:
              "params": task.get("params")}
         self.state["tasks"][str(tid)] = t
         self.dirty = True
+        if (t.get("origin") == ORIGIN_SCHEDULE and not parent
+                and t["deliver"] in (DELIVER_PHONE, DELIVER_FILES)):
+            # R3: an unattended run never sends a page or files on its own; only the standing
+            # email_self may ride it. The engine never mints one; this holds if it ever did.
+            t["deliver_refused"], t["deliver"] = t["deliver"], None
         if t["kind"] == KIND_WORKFLOW:
             self.refresh_catalog(now, force=True)
             if not t["workflow"] or self.workflow(t["workflow"]) is None:

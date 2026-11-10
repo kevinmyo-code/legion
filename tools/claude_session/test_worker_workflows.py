@@ -163,6 +163,25 @@ class TestWorkflowTasks(WorkflowCase):
         self.assertTrue((self.paths.tokens / "64-email_self.json").exists())
         self.assertFalse((self.paths.tokens / "64-yes.json").exists())
 
+    def test_a_scheduled_run_never_takes_a_page_or_files_yes(self):
+        self.engine.queue(id=68, kind="workflow", workflow="rates-sheet", origin="schedule",
+                          deliver="files", request="Scheduled run of rates sheet.")
+        self.engine.queue(id=69, kind="workflow", workflow="rates-sheet", origin="schedule",
+                          deliver="phone", request="Scheduled run of rates sheet.")
+        self.start()
+        self.wait(lambda: self.engine.finished(68) and self.engine.finished(69), what="68, 69")
+        for tid in (68, 69):
+            msg = self.msg(tid)
+            self.assertNotIn("his yes", msg)
+            self.assertNotIn("LEGION sends", msg)
+        w = self.workers[-1][2]
+        self.assertEqual(w._task(68).get("deliver_refused"), "files")
+        f = self.paths.task_work(68) / "x.txt"
+        f.write_text("x", encoding="utf-8")
+        w._task(68)["found"] = [{"path": str(f), "name": "x.txt", "size": 1}]
+        w.upload_requested({"task": 68, "file_id": 7, "path": str(f)})
+        self.assertEqual(self.engine.uploads, [])
+
     def test_a_workflow_this_laptop_does_not_have_fails_in_words_and_never_runs(self):
         self.engine.queue(id=65, kind="workflow", workflow="log-autopsy", origin="named",
                           request="run a log autopsy")
@@ -188,6 +207,16 @@ class TestWorkflowTasks(WorkflowCase):
                       msg)
         self.assertIn("Confirmation token:", msg)
         self.assertNotIn("Scheduled run", msg)
+
+
+class TestListedTaskLog(WorkflowCase):
+    cfg_extra = {"scope": "listed", "repos_root": "C:/repos"}
+
+    def test_the_work_laptop_keeps_no_task_log(self):
+        self.engine.queue(id=72, request=f"read the readme {fake(sleep=0.1)}")
+        self.start()
+        self.wait(lambda: self.engine.finished(72), what="task 72")
+        self.assertFalse(self.task_log.exists())
 
 
 class TestTaskLog(WorkflowCase):
