@@ -132,6 +132,42 @@ Off until you do this; the web's notifications page says so in words. web-revamp
 4. `python deploy.py`, then `python deploy_job.py --image <tag it printed>`, then
    `python install_schedule.py` for the `push_dispatch` line.
 
+## Conditions keys (optional)
+
+`check_conditions` reads NWS, USGS and the National Hurricane Center with no key. Two sources need
+one and say "not set up" until then. Round 5, 2026-11-10.
+
+1. **NASA FIRMS** (satellite fire detections): request a free MAP_KEY at
+   https://firms.modaps.eosdis.nasa.gov/api/map_key/ (an email address; the key arrives by email).
+   ```
+   echo -n "<MAP_KEY>" | gcloud secrets create LEGION_FIRMS_MAP_KEY --data-file=-
+   gcloud secrets add-iam-policy-binding LEGION_FIRMS_MAP_KEY --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+   ```
+   then `LEGION_FIRMS=on` in `deploy/cloudrun/.env`.
+2. **DriveTexas** (Texas road closures and flooding): sign up for an API key at
+   https://api.drivetexas.org/ and accept its terms (its data feed answers 401 without one).
+   Same two commands with `LEGION_DRIVETEXAS_KEY`, then `LEGION_DRIVETEXAS=on`. The feed's
+   fields were not visible without a key, so re-record `server/tests/fixtures/conditions/
+   drivetexas_standin.geojson` from a real answer and check `conditions/sources.py`'s `_road_text`.
+3. `python deploy.py`.
+
+## GitHub status (optional, read-only)
+
+Off until you do this; `github_status` says GitHub is not set up. Round 5, 2026-11-10.
+
+1. On GitHub: Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate
+   new token. Resource owner: you. Repository access: Only select repositories (pick yours).
+   Repository permissions, all **Read-only**: Actions, Contents, Issues, Pull requests, Pages
+   (Metadata is read-only automatically). Nothing else, and never write.
+2. Store it as a secret and let the runtime account read it:
+   ```
+   echo -n "<TOKEN>" | gcloud secrets create LEGION_GITHUB_TOKEN --data-file=-
+   gcloud secrets add-iam-policy-binding LEGION_GITHUB_TOKEN --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+   ```
+3. Put `LEGION_GITHUB_REPOS=<owner>/<repo>[,<owner>/<repo>]` in `deploy/cloudrun/.env`. Setting it
+   is what mounts the secret, so do step 2 first or the deploy fails.
+4. `python deploy.py`.
+
 ## What is pure standard library and what is not
 
 `deploy.py`, `deploy_job.py`, `install_schedule.py` and `_common.py` import only `argparse`,

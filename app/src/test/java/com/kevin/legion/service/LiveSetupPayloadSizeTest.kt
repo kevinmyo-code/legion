@@ -274,6 +274,27 @@ class LiveSetupPayloadSizeTest {
      * declarations, 88,179 + 10,356 = 98,535 chars, ~24,633 tokens. Headroom ~17 tokens. Priced
      * for Kevin in the integration report: the setup text is re-billed on every turn of every
      * connect, so a raise is a per-turn cost, not a one-off.
+     *
+     * **NOT raised on 2026-11-10 (round 5, `feat/field-nav`).** No new declaration: the offline field
+     * readout (heading, true north, grid, sun, moon, turnaround, bearing to saved places) rides in
+     * `get_current_location`'s RESULT (`FieldToolbox`), billed per call; its description gained one
+     * clause naming it. Measured on dev `ea6e968b` plus the branch: 95 declarations, 88,110 chars of
+     * tools JSON plus 10,356 chars of system instruction = 98,466 chars, ~24,616 tokens (+17).
+     * Headroom is ~34 tokens.
+     *
+     * **NOT raised on 2026-11-10 (round 5, `feat/conditions`).** No new declaration: rivers, alerts,
+     * storms, roads and fire are the engine's `check_conditions`, reached through `ask_engine`, whose
+     * description gained "rivers, floods, storms, road closures"; the phone's GPS fix rides the
+     * sub-agent's instruction per call, not the setup. Measured on dev `ea6e968b` plus the branch:
+     * 95 declarations, 88,081 chars of tools JSON plus 10,356 chars of system instruction = 98,437
+     * chars, ~24,609 tokens (+10). Headroom is ~41 tokens.
+     *
+     * **NOT raised on 2026-11-10 (round 5, `feat/github-status`).** No new declaration: GitHub status
+     * is the engine's `github_status`, reached through `ask_engine`, whose description gained
+     * "GitHub builds and PRs". Measured on dev `ea6e968b` plus the branch: 95 declarations, 88,065
+     * chars of tools JSON plus 10,356 chars of system instruction = 98,421 chars, ~24,605 tokens
+     * (+6). Headroom is ~45 tokens. With round 5's field-nav (+68 chars) and conditions (+39) on top:
+     * 98,528 chars, ~24,632 tokens, headroom ~18 (computed from the three measurements).
      */
     private val ceilingTokens = 24_650
 

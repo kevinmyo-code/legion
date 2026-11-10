@@ -182,6 +182,14 @@ object LegionRoute {
     const val BOUGHT = "bought"
 
     /**
+     * Conditions around here or a saved place (round 5, 2026-11-10): rivers and flood stage, NWS
+     * alerts, tropical storms, road closures and satellite fire detections, all from the engine's
+     * `check_conditions`. Reached from Saved places' "Conditions" button and from a severe-alert
+     * notification (EXTRA_ROUTE). Online only: offline it says nothing could be read.
+     */
+    const val CONDITIONS = "conditions"
+
+    /**
      * The Claude session screen (claude-session ticket 05, ADR 0067): machines, sending a task,
      * results, questions, found files and the interactive sessions. The hands path for the
      * `claude_session` voice tool (ADR 0035), reached from a row in HOME's More sheet.

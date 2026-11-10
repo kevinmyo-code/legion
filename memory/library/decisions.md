@@ -7691,3 +7691,91 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   by default; evaluation every 15 min; the phone asks every 3 min on the existing loop; mail_reply
   checks about every 15 min, says only the company name from his list. "Event or task due" dropped
   (already spoken by reminders and push). ADR 0083, map `.scratch/watches/`.
+
+## 2026-11-10 - Field navigation: offline compass, grid, waypoints, sun and moon (round 5)
+
+- **Kevin's ask (2026-11-10):** *"can i have a working offline compass on the phone? ... basically
+  field navigation"*. Everything with no signal: phone sensors and on-device maths only.
+- **A Field screen with its own app drawer entry** (`ui/field/FieldActivity`, alias "Field"), the
+  Clock's shape, so it is one tap from Matrix home or the drawer with no conversation and no
+  signal. Portrait-locked. One `FieldViewModel` and a data-only `FieldUiState`
+  (`field/FieldState.kt`), so the Typeset restyle swaps the composables and keeps the state.
+- **Compass:** rotation-vector sensor, else accelerometer plus magnetometer; smoothed as a unit
+  vector; magnetometer accuracy drives the figure-8 prompt; held upright, the heading is where the
+  back points. True north from `android.hardware.GeomagneticField` (World Magnetic Model, offline)
+  at the last fix. Back azimuth shown.
+- **Position is GPS only** (`LocationManager.GPS_PROVIDER`, never the fused or network provider),
+  with MGRS and UTM from a hand-written converter (`field/Grid.kt`, USGS and NGA formulas, checked
+  against the `mgrs`/`utm` Python packages; no new dependency), altitude and accuracy in words.
+- **Waypoints are places** (no eighth aspect). **A deliberate, narrow exception to
+  `PlaceController`'s write-through rule:** a Field mark is written to `sync_outbox`
+  (`OutboxTarget.FIELD_WAYPOINTS`, TEXT target, no migration) first and drains into
+  `PlaceController.savePlaceAt` when the engine answers; everywhere else places stay write-through.
+  On the Field screen, marking an existing name moves it (re-parking moves "car"); PlaceController's
+  own sentence says what was replaced. A failed drain never drops a mark (bounded retries).
+- **Sun:** `SunTimes` gained an altitude parameter (-0.833, -6, -12). **Moon:** a truncated Meeus
+  lunar theory with a scanned rise and set, within about a minute of PyEphem. Turnaround = sunset
+  less a margin (default 60 min, 15-minute steps on the screen).
+- **Voice: no new declaration.** `get_current_location`'s RESULT now carries the field readout
+  (heading, where true north is, grid, sun, moon, turnaround, the five nearest saved places with
+  bearing and distance), and its description gained one clause. Measured in
+  `LiveSetupPayloadSizeTest` (NOT raised).
+- **Offline-hiking overlap:** tickets 16 and 17 on `docs/offline-hiking` note what this covers; no
+  offline maps were built.
+
+## 2026-11-10 - Conditions: engine-first agency feeds and the severe-weather raise (round 5)
+
+- **Kevin's ask (2026-11-10, round 5 picks):** river and flood (USGS gauges, NWS flood stage,
+  DriveTexas closures), weather alerts (NWS point alerts, NHC storms) and wildfire (NASA FIRMS),
+  engine-first, one voice entry, and a proactive raise for severe alerts at his current or home
+  location: default on for Severe/Extreme and hurricane watches/warnings only.
+- **One engine tool, `check_conditions`** (`server/conditions/`, read only, kinds alerts, rivers,
+  storms, roads, fire). The point is lat/lon, a saved place's label, or the place labelled home.
+  Every section says its source and time, and "could not be read" is never worded as clear.
+  Per-process locmem cache for minutes; nothing stored.
+- **Voice rides `ask_engine`, no new declaration.** `AskEngine.DESCRIPTION` gained "rivers, floods,
+  storms, road closures" and the sub-agent's instruction now carries the phone's last GPS fix (per
+  call, never the Live setup) so it can pass lat/lon. The phone's own `area_info` (NWS alerts,
+  quakes, NIFC fires, FEMA) is untouched and stays the phone-direct precedent.
+- **FIRMS sits beside NIFC, it does not replace it.** `area_info`'s map chose NIFC named incidents
+  over FIRMS hot pixels to avoid false alarms; FIRMS here is worded every time as "a hot spot seen
+  from orbit, not a confirmed wildfire". Behind `LEGION_FIRMS_MAP_KEY`.
+- **DriveTexas needs a key** (its feed answered 401 on 2026-11-10); behind `LEGION_DRIVETEXAS_KEY`,
+  "not set up" until then. Its field names are unverified; the fixture is a stand-in, to re-record.
+- **The raise uses the SAFETY switch, no new category** (`ProactiveCategory`'s rule: every raise maps
+  onto an existing switch). "Default on" is the severity filter inside the raise
+  (`conditions.sources.is_severe`, the engine's one copy of the rule), not a new opt-in. Rule id
+  `severe_alert:<NWS id>`, so a brush-off silences that alert only. It polls every 15 minutes on the
+  `ClaudeResultPolling` loops (app in front, assistant on), asks nothing while Safety is off, and
+  each alert raises once (ids kept 48 h). Compulsion test: (a) an NWS alert he can look up, (b) a
+  current warning for where he is or home, (c) facts and prompt name only the alert, (d) the Safety
+  switch silences it. A fresh install has Safety off, so the raise is on for Kevin's upgraded phone
+  (Safety carried over) and off for a stranger's until they turn Safety on.
+- **Hands path (ADR 0035):** a Conditions screen (route `conditions`), from Saved places and from the
+  raise's notification, calling the same engine tool.
+- **Recruiter:** `check_conditions` excluded.
+- **Owed by Kevin:** FIRMS MAP_KEY, DriveTexas API key (`deploy/cloudrun/README.md`, "Conditions
+  keys"); a saved place labelled `home` for the home half of the raise.
+
+## 2026-11-10 - GitHub status is a read-only engine tool behind the household's own token (round 5)
+
+- **Kevin's ask (2026-11-10, round 5 picks):** Alfred and the web assistant answer "did the build
+  pass", "what's open on legion", "recent commits" and Pages/Actions status. Read only, scoped to his
+  repos, never write.
+- **Built as one engine tool, `github_status`** (`server/engine_mcp/github_status.py`), aspects
+  `builds`, `open`, `commits`, `pages`. It reaches the phone through `ask_engine` (constant Live
+  cost; `AskEngine.DESCRIPTION` gained "GitHub builds and PRs" so the live model routes there) and
+  the web assistant through the registry. No new phone declaration.
+- **Read only by construction:** the module's one network function sends GET and nothing else, the
+  tool is `writes=False`, and `tests/test_github_status.py` asserts both. The token is a
+  fine-grained PAT with read-only Actions, Contents, Issues, Pull requests and Pages.
+- **Scoped by configuration, not code:** `LEGION_GITHUB_REPOS` (comma list of owner/name) is the
+  allowlist; a repo off it is refused before any request. `LEGION_GITHUB_TOKEN` is a Secret Manager
+  secret mounted only when the repo list is set. Missing either: "not set up", nothing read.
+- **Read-through:** issue and PR titles may be written by strangers on a public repo, so the tool is
+  in `assistant.read_through.THIRD_PARTY_TOOLS` (no `remember` in the same web turn).
+- **Recruiter:** excluded (`RECRUITER_EXCLUDED`): it reads through the owner's own credential.
+- **Hands path (ADR 0035):** GitHub's own site and app show the same facts; LEGION adds no screen.
+  Recorded as the hands path rather than building a GitHub screen.
+- **Owed by Kevin:** create the token and the secret, set `LEGION_GITHUB_REPOS`, redeploy
+  (`deploy/cloudrun/README.md`, "GitHub status").

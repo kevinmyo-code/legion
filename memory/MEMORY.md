@@ -29,6 +29,25 @@ believed.
 - Owed by Kevin: check Digest (state unknown; if on, both briefs start at install, no mail read);
   yes/no on the wake brief reading newsletters (`WakeBrief.READS_MAIL`, off); ticket 14 phone steps.
 
+## Field navigation - 2026-11-10
+
+- `feat/field-nav` (pushed, not merged): offline Field screen (app drawer "Field"): compass, true north,
+  GPS-only position with MGRS/UTM, waypoints as places (local first via `sync_outbox`), sun, moon,
+  turnaround; voice rides `get_current_location`'s result. Owed by Kevin: install `fast`, the compass run
+  on the phone (steps in the round 5 report).
+
+## Conditions - 2026-11-10
+
+- `feat/conditions` (pushed, not merged): engine `check_conditions` (NWS alerts, USGS + NWS flood stage,
+  NHC, DriveTexas, FIRMS), Conditions screen, severe-alert raise on SAFETY. Owed by Kevin: engine deploy,
+  FIRMS MAP_KEY and DriveTexas key (`deploy/cloudrun/README.md`, Conditions keys), a place labelled home.
+
+## GitHub status - 2026-11-10
+
+- `feat/github-status` (pushed, not merged): engine `github_status` (builds, open, commits, pages), GET
+  only, via ask_engine and the web assistant. Owed by Kevin: fine-grained read-only token as secret
+  LEGION_GITHUB_TOKEN plus LEGION_GITHUB_REPOS, then engine deploy (`deploy/cloudrun/README.md`).
+
 ## Workouts - 2026-11-06
 
 - `feat/workouts` (pushed, not merged): deterministic 3-day A/B programme on the engine

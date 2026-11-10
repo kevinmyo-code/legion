@@ -1619,9 +1619,11 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "get_current_location",
-            description = "Get the user's current GPS location and human-readable address. Use " +
-                "whenever the user asks 'where am I', or to ground a web search. navigate finds " +
-                "its own location.",
+            // Round 5 (field navigation): the result also carries the offline field readout
+            // (FieldToolbox), so north, sunset and "bearing to the car" need no new declaration.
+            description = "Get the user's GPS location and address, compass heading, sun and moon " +
+                "times, and bearing to saved places: 'where am I', 'which way is north', sunset, " +
+                "'bearing to the car', or to ground a web search. navigate finds its own location.",
             params = obj(),
             required = listOf(),
         ))
@@ -6981,6 +6983,9 @@ object LiveToolbox {
             },
             identityClause = { AssistantIdentity.shortClause(context) },
             nowText = { java.time.OffsetDateTime.now().toString() },
+            // Round 5 (conditions): the live fix for a point-taking engine tool. Location only, never
+            // a guessed one: no fix is a blank, and the engine then falls back to a saved place.
+            whereText = { com.kevin.legion.conditions.ConditionsWords.fix(LocationController.state.value) },
             onAgentResult = { r ->
                 when (r) {
                     is AgentResult.Success -> KeyHealth.noteOk()
@@ -8016,11 +8021,16 @@ object LiveToolbox {
                 message = "Location services are switched off on the phone. Turn on GPS or " +
                     "network location and try again.")
             // The ONLY case the old blanket message was actually true for.
-            LocationReadout.NoFix -> result(success = false, message = "I don't have a GPS fix yet.")
+            LocationReadout.NoFix -> result(
+                success = false,
+                message = "I don't have a GPS fix yet. ${FieldToolbox.readout(context)}",
+            )
             is LocationReadout.Available -> if (readout.label != null)
-                result(success = true, message = "Current location: ${readout.label} ${readout.coords}")
+                result(success = true, message = "Current location: ${readout.label} ${readout.coords}. " +
+                    FieldToolbox.readout(context))
             else
-                result(success = true, message = "Current location: ${readout.coords} (couldn't resolve an address)")
+                result(success = true, message = "Current location: ${readout.coords} (couldn't resolve an address). " +
+                    FieldToolbox.readout(context))
         }
 
     // --------------------------------------------------------------- voice notes (ticket 04)

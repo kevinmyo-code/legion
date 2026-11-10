@@ -74,6 +74,11 @@ ROUTES = {
                      needs="", voice=[]),
     "checklists": dict(name="Lists", what="Checklists and to-dos; the Bought log is in its top bar.",
                        marker="Bought log"),
+    "conditions": dict(name="Conditions", what="Rivers and flood stage, NWS alerts, tropical storms, road "
+                       "closures and satellite fire detections here or at a saved place, from the "
+                       "engine's check_conditions (round 5). Online only; offline it says nothing was read.",
+                       parent="fleet/places", reach=[("text", "Conditions: rivers, alerts, storms")],
+                       voice=["ask_engine"]),
     "bought": dict(name="Bought log", what="What the household bought (purchase-log).",
                    parent="checklists", reach=[("text", "Bought log")], voice=["bought_log"]),
     "money": dict(
@@ -237,6 +242,13 @@ ACTIVITIES = {
     ".ui.browser.BrowserActivity": dict(id="browser", name="Browser", what="LEGION's own browser (ADR 0071).",
                                         parent="matrix/home", reach=[("text", "Browser")], voice=["browser"],
                                         needs="Matrix mode for the tap path; voice opens it anywhere"),
+    ".ui.field.FieldActivity": dict(id="field", name="Field",
+                                    what="Offline field navigation (round 5): compass (magnetic, true, back "
+                                         "azimuth, calibration prompt), GPS-only position with MGRS/UTM, "
+                                         "altitude and accuracy, waypoints with bearing and distance, sun, "
+                                         "moon and turnaround. Its own app drawer entry, \"Field\".",
+                                    parent="apps", reach=[("text", "Field")], voice=["get_current_location"],
+                                    needs="real sensors: the compass and GPS do nothing on an emulator"),
     ".ui.claudesession.ClaudePageActivity": dict(id="claude-page", name="Claude page",
                                                  what="A page a Claude session task delivered to the phone "
                                                       "(signed, sandboxed). Opened from a task on the Claude "
@@ -256,6 +268,12 @@ IGNORED_ACTIVITIES = {
     ".ui.mirror.MirrorSyncActivity": "a sync handoff with no UI of its own to verify",
     ".ui.dumb.DumbBounceActivity": "the screen a blocked app bounces to in Matrix mode; reached by "
                                    "opening a blocked app, which an agent does not do",
+    # Round 5 (2026-11-10): three activities dev already carried with no entry (screen_map.py drifted).
+    ".ui.clock.ClockActivity": "the Clock (ADR 0079): its own task, opened from its app drawer entry or "
+                               "Matrix home's clock; tabs are in-screen state",
+    ".ui.clock.RingActivity": "the alarm ring over the lock screen; reached only by an alarm firing",
+    ".ui.claudesession.ClaudeFileActivity": "files a Claude task delivered (ADR 0080); opened from a "
+                                            "task or its notification, needs a delivered file",
 }
 
 MATRIX_NEEDS = ("Matrix mode on (Settings > Matrix mode). `tools/phone open` checks for Matrix HOME "

@@ -101,7 +101,8 @@ private data class DjangoPlaceWrite(
  * [com.kevin.legion.location.PlaceController] is pure write-through: a failed write is spoken as a
  * failure and nothing is queued. Handing it a transport with durability the Supabase transport
  * does not have would make "did that save?" depend on which row the debug Setup screen has flipped,
- * which is the kind of divergence the whole two-transport period exists to avoid.
+ * which is the kind of divergence the whole two-transport period exists to avoid. (Round 5's Field
+ * waypoints queue ABOVE PlaceController, in `field/FieldWaypoints.kt`, not in this transport.)
  */
 class DjangoPlacesBackend(private val http: EngineHttp) : PlacesBackend, PlacesIncrementalPull {
 

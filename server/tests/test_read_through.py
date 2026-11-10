@@ -270,5 +270,5 @@ def test_each_door_logs_read_through_and_other_tools_log_nothing(household_user,
 
 
 def test_the_third_party_set_is_what_the_module_doc_says():
-    assert read_through.THIRD_PARTY_TOOLS == {"web_search", "brief_latest"}
+    assert read_through.THIRD_PARTY_TOOLS == {"web_search", "brief_latest", "github_status"}
     assert read_through.THIRD_PARTY_TOOLS <= set(engine_tools.TOOLS_BY_NAME)

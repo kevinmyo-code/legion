@@ -1051,8 +1051,18 @@ private fun LegionShell(
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.kevin.legion.ui.navigation.LocalNavEntryPoints provides navEntryPoints,
                 ) {
-                    SavedPlacesScreen(onBack = { navController.popBackStack() })
+                    SavedPlacesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenConditions = {
+                            navController.navigate(LegionRoute.CONDITIONS) { launchSingleTop = true }
+                        },
+                    )
                 }
+            }
+            // Round 5 (conditions): rivers, alerts, storms, roads and fire from the engine's
+            // check_conditions; reached from Saved places and from a severe-alert notification.
+            composable(LegionRoute.CONDITIONS) {
+                com.kevin.legion.ui.conditions.ConditionsScreen(onBack = { navController.popBackStack() })
             }
             composable(LegionRoute.FLEET_CARS) {
                 CarsScreen(onBack = { navController.popBackStack() })

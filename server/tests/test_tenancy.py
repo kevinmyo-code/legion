@@ -1524,6 +1524,17 @@ def test_every_mcp_tool_is_scoped_by_household(
     covered.add("show_diagram")
     is_error, text, _ = call(mcp_b, "show_diagram", {"project": "legion", "view": "data_model"})
     assert is_error and "Nothing was shown" in text, text
+    # check_conditions (round 5) resolves a place label through B's own places only: A's place
+    # is not a point B can check, and B's own place is (offline here, so it fails in words).
+    covered.add("check_conditions")
+    is_error, text, _ = call(mcp_b, "check_conditions", {"place": "alpha-place"})
+    assert is_error and "No saved place is labelled 'alpha-place'" in text, text
+    is_error, text, _ = call(mcp_b, "check_conditions", {"place": "bravo-place"})
+    assert is_error and "the saved place 'bravo-place'" in text, text
+    # github_status (round 5) reads no household row; with no token it is not set up.
+    covered.add("github_status")
+    is_error, text, _ = call(mcp_b, "github_status", {"aspect": "builds"})
+    assert is_error and text.startswith("Nothing was read."), text
     # web_search reads no row at all; offline here, it fails in words.
     covered.add("web_search")
     is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})

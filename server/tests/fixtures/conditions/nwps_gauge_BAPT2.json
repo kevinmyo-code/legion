@@ -1,0 +1,25 @@
+{
+ "lid": "BAPT2",
+ "name": "Blanco River at Crabapple Road",
+ "flood": {
+  "stageUnits": "ft",
+  "categories": {
+   "major": {
+    "stage": 30,
+    "flow": 50000
+   },
+   "moderate": {
+    "stage": 17,
+    "flow": 20350
+   },
+   "minor": {
+    "stage": 7,
+    "flow": 4997
+   },
+   "action": {
+    "stage": 4,
+    "flow": 2061
+   }
+  }
+ }
+}

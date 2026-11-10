@@ -531,6 +531,35 @@ def _no_nhtsa(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_conditions_network(monkeypatch):
+    """No test reaches NWS, USGS, NHC, DriveTexas or FIRMS: `check_conditions`' one fetch fails
+    in words unless a test hands it answers (`tests/test_conditions.py`), and no ambient key
+    configures DriveTexas or FIRMS."""
+    from conditions import sources
+
+    def _offline(url, headers=None):
+        raise sources.SourceFailed("could not be reached (the network is off in tests)")
+
+    monkeypatch.setattr(sources, "_fetch", _offline)
+    monkeypatch.delenv(sources.DRIVETEXAS_KEY_ENV, raising=False)
+    monkeypatch.delenv(sources.FIRMS_KEY_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_github(monkeypatch):
+    """No test reaches GitHub: `github_status`'s one GET fails in words unless a test hands it
+    answers (`tests/test_github_status.py`), and no ambient token configures it."""
+    from engine_mcp import github_status
+
+    def _offline(cfg, path):
+        raise github_status.GitHubFailed("the network is off in tests")
+
+    monkeypatch.setattr(github_status, "_get", _offline)
+    monkeypatch.delenv(github_status.TOKEN_ENV, raising=False)
+    monkeypatch.delenv(github_status.REPOS_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_decide_model(monkeypatch):
     """No test reaches Google from a procedure's `decide` step: its one call fails as
     unreachable unless a test hands it a transport (`tests/test_procedures_runner.py`)."""
