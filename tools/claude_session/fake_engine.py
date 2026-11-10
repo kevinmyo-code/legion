@@ -26,6 +26,14 @@ class FakeEngine:
         self.delay = 0.0  # seconds to stall each request (timeout tests)
         self.down = False
         self.requests = 0
+        # memory-review ticket 16: `/api/member-memories/review/` stand-ins.
+        self.review_context: dict | None = None
+        self.review_submits: list[dict] = []
+        self.review_answer: dict = {"words": "1 merged, 2 to check.", "mode": "shadow",
+                                    "counts": {"applied": 0, "proposed": 2, "refused": 0,
+                                               "stale": 0}, "verdicts": []}
+        self.review_status = 200
+        self.review_runs = 0
         engine = self
 
         class H(BaseHTTPRequestHandler):
@@ -39,6 +47,19 @@ class FakeEngine:
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+
+            def do_GET(self):
+                with engine.lock:
+                    engine.requests += 1
+                    if engine.down:
+                        return self._reply(503, {"detail": "down"})
+                    if self.headers.get("Authorization") != f"Token {TOKEN}":
+                        return self._reply(401, {"detail": "Invalid token."})
+                    if self.path.startswith("/api/member-memories/review/context"):
+                        if engine.review_status != 200:
+                            return self._reply(engine.review_status, {"detail": "The review is off."})
+                        return self._reply(200, engine.review_context or {})
+                    return self._reply(404, {"detail": "no route"})
 
             def do_POST(self):
                 n = int(self.headers.get("Content-Length") or 0)
@@ -64,6 +85,12 @@ class FakeEngine:
                             return self._reply(204)
                         out, engine.queued = engine.queued, []
                         return self._reply(200, out)
+                    if p == "/api/member-memories/review/changes":
+                        engine.review_submits.append(json.loads(raw))
+                        return self._reply(engine.review_status, engine.review_answer)
+                    if p == "/api/member-memories/review/run":
+                        engine.review_runs += 1
+                        return self._reply(200, {"task": 9, "words": "Queued a memory review."})
                     if p == "/api/claude/sessions/":
                         engine.sessions.append(json.loads(raw))
                         return self._reply(200, {"ok": True})

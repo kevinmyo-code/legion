@@ -52,16 +52,34 @@ SOURCE_WEB = "web"
 SOURCE_CLAUDE = "claude"
 SOURCE_MANUAL = "manual"
 SOURCE_CONSOLIDATION = "consolidation"
+# memory-review ticket 05: a row the daily memory review wrote (a correction). Never a client's.
+SOURCE_REVIEW = "review"
 SOURCES: tuple[str, ...] = (
     SOURCE_PHONE,
     SOURCE_WEB,
     SOURCE_CLAUDE,
     SOURCE_MANUAL,
     SOURCE_CONSOLIDATION,
+    SOURCE_REVIEW,
 )
 # What a client may say it is when it writes over REST. The other three are the engine's own
 # doors (the web assistant, `/mcp`, the consolidation job) and are set by the engine.
 CLIENT_SOURCES: tuple[str, ...] = (SOURCE_PHONE, SOURCE_MANUAL)
+
+# Why a row left recall through the memory review (memory-review ticket 05). Null for a row a
+# newer fact superseded the ordinary way, and for every live row.
+RETIRED_MERGED = "merged"
+RETIRED_CONTRADICTED = "contradicted"
+RETIRED_EXPIRED = "expired"
+RETIRED_RELABELLED = "relabelled"
+RETIRED_NOT_ABOUT_PERSON = "not_about_person"
+RETIRED_REASONS: tuple[str, ...] = (
+    RETIRED_MERGED,
+    RETIRED_CONTRADICTED,
+    RETIRED_EXPIRED,
+    RETIRED_RELABELLED,
+    RETIRED_NOT_ABOUT_PERSON,
+)
 
 TEXT_MAX_CHARS = 500
 IMPORTANCE_MIN, IMPORTANCE_MAX = 1, 10
@@ -96,6 +114,13 @@ class MemberMemory(models.Model):
     source_log = models.ForeignKey(
         "devicelogs.DeviceLog", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
+    # memory-review ticket 05: the row that replaced this one (a merge, a correction or a
+    # relabel), and why it left recall. `forget()` follows `retired_by` as well as `supersedes`,
+    # so forgetting a merged row takes every duplicate it absorbed.
+    retired_by = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="retired_rows"
+    )
+    retired_reason = models.TextField(null=True, blank=True)
     # Idempotency for the one-time import (`phone:<store>:<origin_guid>`).
     origin_key = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
@@ -130,6 +155,11 @@ class MemberMemory(models.Model):
                 condition=models.Q(importance__gte=IMPORTANCE_MIN)
                 & models.Q(importance__lte=IMPORTANCE_MAX),
                 name="member_memories_importance_range",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(retired_reason__isnull=True)
+                | models.Q(retired_reason__in=RETIRED_REASONS),
+                name="member_memories_retired_reason_valid",
             ),
         ]
 
@@ -172,3 +202,160 @@ class MemoryConsolidation(models.Model):
                 condition=models.Q(outcome__in=OUTCOMES), name="memory_consolidations_outcome_valid"
             ),
         ]
+
+
+# ---------------------------------------------------------------------------------------------
+# The daily memory review's ledger (memory-review ticket 05). The review runs on the Claude
+# worker on the Alienware; the engine hands it a snapshot (`GET review/context`), gates what it
+# sends back (`POST review/changes`), and records both here. Private to the member like the
+# memories themselves: `owner_user` is never null and always equals `member` (`OWNER_PATHS`).
+# Nothing here stores transcript text (ruling 04): a change keeps a paraphrased `reason` and the
+# ids of the conversation records it cites.
+# ---------------------------------------------------------------------------------------------
+
+REVIEW_CONTEXT_ONLY = "context_only"
+REVIEW_OK = "ok"
+REVIEW_FAILED = "failed"
+REVIEW_OUTCOMES: tuple[str, ...] = (REVIEW_CONTEXT_ONLY, REVIEW_OK, REVIEW_FAILED)
+
+
+class MemoryReview(models.Model):
+    """One review run for one member: the snapshot it was judged on, and what came of it."""
+
+    id = models.BigAutoField(primary_key=True)
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    member = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    owner_user = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    # The worker task that ran it. SET_NULL: tasks are pruned at 30 days, the ledger is not.
+    task = models.ForeignKey(
+        "claude_session.ClaudeTask", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    context_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    context_at = models.DateTimeField(db_default=Now())
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    # `shadow` or `on`, as it applied to this run (the effective mode, after the guards).
+    mode = models.TextField(default="shadow")
+    machine = models.TextField(blank=True, default="")
+    model = models.TextField(blank=True, default="")
+    chars_in = models.IntegerField(default=0)
+    chars_out = models.IntegerField(default=0)
+    rows_seen = models.IntegerField(default=0)
+    logs_read = models.IntegerField(default=0)
+    # handle -> {"id": memory id, "updated_at": iso}; label -> device_log id; exact-text groups.
+    # Ids and stamps only, never text, so a submit maps back to the snapshot it was judged on.
+    handles = models.JSONField(default=dict, blank=True)
+    logs = models.JSONField(default=dict, blank=True)
+    code_groups = models.JSONField(default=list, blank=True)
+    applied = models.IntegerField(default=0)
+    proposed = models.IntegerField(default=0)
+    refused = models.IntegerField(default=0)
+    stale = models.IntegerField(default=0)
+    counts = models.JSONField(default=dict, blank=True)
+    # Token counts from the helper's stream-json, when the worker sent them. Numbers only.
+    usage = models.JSONField(default=dict, blank=True)
+    # The submit's answer, replayed unchanged for a repeated submit (idempotent).
+    answer = models.JSONField(default=dict, blank=True)
+    outcome = models.TextField(default=REVIEW_CONTEXT_ONLY)
+    # Words only, never memory or transcript text.
+    detail = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "memory_reviews"
+        indexes = [
+            models.Index(
+                fields=["household", "member", "-context_at"], name="memory_reviews_member_idx"
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(outcome__in=REVIEW_OUTCOMES), name="memory_reviews_outcome_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(owner_user=models.F("member")),
+                name="memory_reviews_private_to_its_member",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"memory review {self.id} ({self.outcome})"
+
+
+ACTION_MERGE = "merge"
+ACTION_CORRECT = "correct"
+ACTION_EXPIRE = "expire"
+ACTION_RELABEL = "relabel"
+ACTION_RETIRE = "retire"
+ACTIONS: tuple[str, ...] = (
+    ACTION_MERGE, ACTION_CORRECT, ACTION_EXPIRE, ACTION_RELABEL, ACTION_RETIRE,
+)
+
+CHANGE_APPLIED = "applied"
+CHANGE_PENDING = "pending"
+CHANGE_ACCEPTED = "accepted"
+CHANGE_DISMISSED = "dismissed"
+CHANGE_STALE = "stale"
+CHANGE_REVERTED = "reverted"
+CHANGE_STATUSES: tuple[str, ...] = (
+    CHANGE_APPLIED, CHANGE_PENDING, CHANGE_ACCEPTED, CHANGE_DISMISSED, CHANGE_STALE,
+    CHANGE_REVERTED,
+)
+REASON_MAX_CHARS = 200
+
+
+class MemoryReviewChange(models.Model):
+    """One change a review applied or proposed. `proposed` holds the new text and labels of a
+    pending change (gate-checked words the helper wrote, never a transcript quote)."""
+
+    id = models.BigAutoField(primary_key=True)
+    review = models.ForeignKey(MemoryReview, on_delete=models.CASCADE, related_name="changes")
+    household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
+    member = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    owner_user = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
+    action = models.TextField()
+    status = models.TextField()
+    # True for the engine's own exact-text merge (ruling 03): no model judged it.
+    by_code = models.BooleanField(default=False)
+    # Memory ids and their `updated_at` as judged, for the staleness check.
+    targets = models.JSONField(default=list)
+    targets_updated_at = models.JSONField(default=list)
+    result = models.ForeignKey(
+        MemberMemory, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    proposed = models.JSONField(default=dict, blank=True)
+    # What an applied change overwrote on a row it kept (a code merge's kept row's source).
+    before = models.JSONField(default=dict, blank=True)
+    reason = models.TextField(blank=True, default="")
+    confidence = models.TextField(blank=True, default="")
+    evidence_logs = models.JSONField(default=list, blank=True)
+    gate = models.TextField(blank=True, default="")
+    cluster = models.IntegerField(default=0)
+    created_at = models.DateTimeField(db_default=Now())
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        "household.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        db_table = "memory_review_changes"
+        indexes = [
+            models.Index(
+                fields=["household", "member", "status"], name="memory_review_changes_idx"
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(action__in=ACTIONS), name="memory_review_changes_action_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=CHANGE_STATUSES),
+                name="memory_review_changes_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(owner_user=models.F("member")),
+                name="memory_review_changes_private_to_its_member",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"memory review change {self.id} ({self.action}, {self.status})"

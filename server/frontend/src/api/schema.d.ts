@@ -3889,6 +3889,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/member-memories/review/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The review's changes about the caller, newest first: pending by default. */
+        get: operations["api_member_memories_review_changes_list"];
+        put?: never;
+        /** @description The worker's change list for one context. Exact duplicates merge by code; every other change passes its gate or becomes a proposal. One transaction. A repeated submit answers the first result. `dry_run` writes nothing. The answer carries counts and verdicts by handle, never memory text. */
+        post: operations["api_member_memories_review_changes_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/review/changes/{change_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Applies a pending change. 409 and `stale` when its memories moved since. */
+        post: operations["api_member_memories_review_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/review/changes/{change_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Dismisses a pending change. Nothing about the memories changes. */
+        post: operations["api_member_memories_review_dismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/review/changes/{change_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Undoes an applied or accepted change: restores the rows it retired and deletes only the row the review wrote. */
+        post: operations["api_member_memories_review_revert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/review/clusters/{cluster}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Accept all: every pending change in one group, each checked for staleness. */
+        post: operations["api_member_memories_review_cluster_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/review/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The snapshot the Claude worker's review judges: the caller's private live memories with handles, household facts about them as context only, the last 7 days of their own words (tool and mail turns dropped on the engine), and the exact duplicates the engine merges itself. Refused while LEGION_MEMORY_REVIEW is off. */
+        get: operations["api_member_memories_review_context"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/member-memories/review/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Queues one memory review on the caller's own Alienware now. */
+        post: operations["api_member_memories_review_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/companion_memories/": {
         parameters: {
             query?: never;
@@ -5629,6 +5749,9 @@ export interface components {
             progress?: {
                 [key: string]: string;
             };
+            /** @description Seconds since Windows last saw keyboard or mouse input. */
+            input_idle_s?: number | null;
+            on_mains?: boolean | null;
         };
         ClaudeHeartbeatResult: {
             cancel_requested: number[];
@@ -5716,7 +5839,7 @@ export interface components {
             /** @description The spoken machine name, or null to let the engine choose. */
             machine?: string | null;
             parent?: number | null;
-            origin: components["schemas"]["ClaudeTaskOriginEnum"];
+            origin: components["schemas"]["ClaudeTaskCreateOriginEnum"];
             /**
              * @description email_self only when Kevin named his own email in the request (ruling 17).
              *
@@ -5730,6 +5853,12 @@ export interface components {
              */
             confirms: boolean;
         };
+        /**
+         * @description * `named` - named
+         *     * `offered` - offered
+         * @enum {string}
+         */
+        ClaudeTaskCreateOriginEnum: "named" | "offered";
         ClaudeTaskCreated: {
             id: number;
             status: components["schemas"]["ClaudeTaskStatusEnum"];
@@ -5751,9 +5880,10 @@ export interface components {
         /**
          * @description * `named` - named
          *     * `offered` - offered
+         *     * `schedule` - schedule
          * @enum {string}
          */
-        ClaudeTaskOriginEnum: "named" | "offered";
+        ClaudeTaskOriginEnum: "named" | "offered" | "schedule";
         ClaudeTaskRow: {
             id: number;
             request: string;
@@ -5770,6 +5900,13 @@ export interface components {
             artifacts: components["schemas"]["ClaudeArtifact"][];
             parent: number | null;
             origin: components["schemas"]["ClaudeTaskOriginEnum"];
+            /**
+             * @description `ask` for Kevin's own tasks; `memory_review` for the daily memory review.
+             *
+             *     * `ask` - ask
+             *     * `memory_review` - memory_review
+             */
+            kind: components["schemas"]["ClaudeTaskRowKindEnum"];
             deliver: (components["schemas"]["ClaudeTaskDeliverEnum"] | components["schemas"]["NullEnum"]) | null;
             confirms: boolean;
             /** @description The current step while running. */
@@ -5779,6 +5916,12 @@ export interface components {
             /** @description The last 20 distinct steps, newest first; kept after the task finishes. Always empty for a summaries-only (listed) machine. */
             steps: components["schemas"]["ClaudeTaskStep"][];
         };
+        /**
+         * @description * `ask` - ask
+         *     * `memory_review` - memory_review
+         * @enum {string}
+         */
+        ClaudeTaskRowKindEnum: "ask" | "memory_review";
         /**
          * @description * `queued` - queued
          *     * `needs_machine` - needs_machine
@@ -6897,6 +7040,17 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** @description Why the memory review retired it: merged, contradicted, expired, relabelled or not_about_person. Null for a live row. */
+            retired_reason: string | null;
+            /**
+             * Format: uuid
+             * @description The row that replaced it.
+             */
+            retired_by: string | null;
+            /** @description The review change that retired it; revert it to restore. */
+            retired_change: number | null;
+            /** @description A pending memory-review change names this row: confirm it on the Memory screen. Never treat it as fact. */
+            pending_review: components["schemas"]["PendingReview"] | null;
         };
         /**
          * @description * `phone` - phone
@@ -6929,9 +7083,10 @@ export interface components {
          *     * `claude` - claude
          *     * `manual` - manual
          *     * `consolidation` - consolidation
+         *     * `review` - review
          * @enum {string}
          */
-        MemberMemorySourceEnum: "phone" | "web" | "claude" | "manual" | "consolidation";
+        MemberMemorySourceEnum: "phone" | "web" | "claude" | "manual" | "consolidation" | "review";
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -7845,6 +8000,11 @@ export interface components {
             /** @description Sealed before it is stored. Never returned by this route. */
             value?: string;
         };
+        PendingReview: {
+            change_id: number;
+            action: string;
+            after: string;
+        };
         PinnedBy: {
             /**
              * Format: uuid
@@ -8180,6 +8340,17 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** @description Why the memory review retired it: merged, contradicted, expired, relabelled or not_about_person. Null for a live row. */
+            retired_reason: string | null;
+            /**
+             * Format: uuid
+             * @description The row that replaced it.
+             */
+            retired_by: string | null;
+            /** @description The review change that retired it; revert it to restore. */
+            retired_change: number | null;
+            /** @description A pending memory-review change names this row: confirm it on the Memory screen. Never treat it as fact. */
+            pending_review: components["schemas"]["PendingReview"] | null;
             /** Format: double */
             score: number;
         };
@@ -8422,6 +8593,106 @@ export interface components {
          * @enum {string}
          */
         ResultEnum: "won" | "lost" | "draw";
+        ReviewAnswer: {
+            /** Format: uuid */
+            context_id: string;
+            dry_run: boolean;
+            mode: string;
+            code_merged: number;
+            counts: components["schemas"]["ReviewCounts"];
+            by_action: {
+                [key: string]: number;
+            };
+            words: string;
+            verdicts: components["schemas"]["ReviewVerdict"][];
+        };
+        ReviewBefore: {
+            /** Format: uuid */
+            id: string;
+            text: string | null;
+            kind: string | null;
+            durable: boolean | null;
+        };
+        ReviewChange: {
+            id: number;
+            action: string;
+            status: components["schemas"]["ReviewChangeStatusEnum"];
+            by_code: boolean;
+            /** @description `<review id>.<n>`; Accept all takes it. */
+            cluster: string;
+            before: components["schemas"]["ReviewBefore"][];
+            after: {
+                [key: string]: unknown;
+            } | null;
+            after_words: string;
+            reason: string;
+            action_words: string;
+            confidence: string;
+            gate: string;
+            /** Format: date */
+            evidence_date: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            result: string | null;
+        };
+        ReviewChangeList: {
+            results: components["schemas"]["ReviewChange"][];
+        };
+        /**
+         * @description * `applied` - applied
+         *     * `pending` - pending
+         *     * `accepted` - accepted
+         *     * `dismissed` - dismissed
+         *     * `stale` - stale
+         *     * `reverted` - reverted
+         * @enum {string}
+         */
+        ReviewChangeStatusEnum: "applied" | "pending" | "accepted" | "dismissed" | "stale" | "reverted";
+        ReviewCluster: {
+            accepted: number;
+            stale: number;
+            words: string;
+        };
+        ReviewCounts: {
+            applied: number;
+            proposed: number;
+            refused: number;
+            stale: number;
+        };
+        ReviewDecision: {
+            id: number;
+            status: string;
+            words: string;
+        };
+        ReviewRun: {
+            task: number;
+            words: string;
+        };
+        ReviewSubmit: {
+            /** Format: uuid */
+            context_id: string;
+            changes: {
+                [key: string]: unknown;
+            }[];
+            /** @default false */
+            dry_run: boolean;
+            /** @description Token counts only. */
+            usage?: {
+                [key: string]: unknown;
+            };
+            model?: string;
+        };
+        ReviewVerdict: {
+            index: number;
+            action: string;
+            handles: string[];
+            /** @description Memory id prefixes. */
+            ids: string[];
+            status: string;
+            gate: string;
+            cluster: number;
+        };
         /**
          * @description * `inviter` - inviter
          *     * `invitee` - invitee
@@ -17473,6 +17744,362 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_changes_list: {
+        parameters: {
+            query?: {
+                /** @description Default pending. */
+                status?: "accepted" | "all" | "applied" | "dismissed" | "pending" | "reverted" | "stale";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewChangeList"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_changes_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewSubmit"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewAnswer"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewDecision"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_dismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewDecision"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_revert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewDecision"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_cluster_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewCluster"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_context: {
+        parameters: {
+            query?: {
+                /** @description The worker's task id, if any. */
+                task?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_member_memories_review_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRun"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

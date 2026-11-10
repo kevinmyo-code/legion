@@ -13,6 +13,8 @@ from rest_framework import serializers
 from claude_session.models import (
     DELIVERIES,
     FINISH_STATUSES,
+    ORIGIN_NAMED,
+    ORIGIN_OFFERED,
     ORIGINS,
     PROGRESS_MAX_CHARS,
     REPORTED_MACHINE_STATES,
@@ -20,6 +22,7 @@ from claude_session.models import (
     SCOPES,
     SHOWN_MACHINE_STATES,
     SUMMARY_MAX_BYTES,
+    TASK_KINDS,
     TASK_STATUSES,
 )
 
@@ -53,7 +56,8 @@ class ClaudeTaskCreateSerializer(serializers.Serializer):
         help_text="The spoken machine name, or null to let the engine choose.",
     )
     parent = serializers.IntegerField(required=False, allow_null=True, default=None)
-    origin = serializers.ChoiceField(choices=list(ORIGINS))
+    # `schedule` is the engine's own (the memory review); a client never sends it.
+    origin = serializers.ChoiceField(choices=[ORIGIN_NAMED, ORIGIN_OFFERED])
     deliver = serializers.ChoiceField(
         choices=list(DELIVERIES), required=False, allow_null=True, default=None,
         help_text="email_self only when Kevin named his own email in the request (ruling 17).",
@@ -89,6 +93,12 @@ class ClaudeHeartbeatSerializer(serializers.Serializer):
         required=False, default=dict,
         help_text="Task id to the helper's current step, for tasks running on this machine.",
     )
+    # memory-review ticket 15: whether the laptop is idle enough for the daily review.
+    input_idle_s = serializers.IntegerField(
+        required=False, allow_null=True, default=None, min_value=0,
+        help_text="Seconds since Windows last saw keyboard or mouse input.",
+    )
+    on_mains = serializers.BooleanField(required=False, allow_null=True, default=None)
 
 
 class ClaudeClaimSerializer(serializers.Serializer):
@@ -192,6 +202,10 @@ class ClaudeTaskRowSerializer(serializers.Serializer):
     artifacts = ClaudeArtifactSerializer(many=True)
     parent = serializers.IntegerField(allow_null=True)
     origin = serializers.ChoiceField(choices=list(ORIGINS))
+    kind = serializers.ChoiceField(
+        choices=list(TASK_KINDS),
+        help_text="`ask` for Kevin's own tasks; `memory_review` for the daily memory review.",
+    )
     deliver = serializers.ChoiceField(choices=list(DELIVERIES), allow_null=True)
     confirms = serializers.BooleanField()
     progress = serializers.CharField(allow_null=True, help_text="The current step while running.")

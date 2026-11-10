@@ -77,6 +77,15 @@ SAY_NO_REPORT = ("The helper finished without reporting a result, and a reminder
                  "not get one.")
 SAY_KILLED = "The helper was stopped before it finished."
 
+# memory-review ticket 16: the daily memory review is one built-in task kind. Its progress line is
+# this fixed phrase, never the helper's own step text, and its summary is the engine's counts
+# line from result.json, never what the helper wrote, so no memory text reaches the engine's task
+# row, its steps or the main session.
+KIND_MEMORY_REVIEW = "memory_review"
+REVIEW_PROGRESS = "Reviewing memories"
+SAY_REVIEW_NO_RESULT = "The memory review ended without sending its changes."
+REVIEW_TEXT_FILES = ("context.json", "changes.json")
+
 
 # ---------------------------------------------------------------- machine helpers (Windows)
 
@@ -115,6 +124,26 @@ class Power:
         if self.enabled and self.holding:
             ctypes.windll.kernel32.SetThreadExecutionState(self.ES_CONTINUOUS)
             self.holding = False
+
+
+def input_idle_seconds() -> int | None:
+    """Seconds since Windows last saw keyboard or mouse input in this session (ticket 15: the
+    engine mints the memory review only on an idle laptop). None when it cannot tell."""
+    if sys.platform != "win32":
+        return None
+
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+    info = LASTINPUTINFO()
+    info.cbSize = ctypes.sizeof(info)
+    try:
+        if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
+            return None
+        now = ctypes.windll.kernel32.GetTickCount() & 0xFFFFFFFF
+    except (AttributeError, OSError):
+        return None
+    return max(0, ((now - info.dwTime) & 0xFFFFFFFF) // 1000)
 
 
 def fixed_drives() -> list[str]:
@@ -182,7 +211,7 @@ def setup_logging(paths: Paths) -> None:
 
 class Worker:
     def __init__(self, paths: Paths, cfg: dict, *, engine=None, power=None, clock=time.time,
-                 today=None, drives=None, base_env=None):
+                 today=None, drives=None, base_env=None, idle=None):
         self.paths = paths.ensure()
         self.cfg = {**DEFAULTS, **cfg}
         self.scope = self.cfg.get("scope", "listed")
@@ -192,6 +221,7 @@ class Worker:
         self.clock = clock
         self.today = today or (lambda: datetime.date.today().isoformat())
         self.drives = drives if drives is not None else fixed_drives
+        self.idle = idle if idle is not None else input_idle_seconds
         self.base_env = dict(os.environ if base_env is None else base_env)
 
         st = read_json(paths.state, {}) or {}
@@ -440,7 +470,10 @@ class Worker:
             if t:
                 t["turns"] = int((ev.get("usage") or {}).get("tool_uses") or t.get("turns", 0))
                 desc = " ".join(str(ev.get("description") or "").split())
-                if desc:
+                if t.get("kind") == KIND_MEMORY_REVIEW:
+                    self.progress[t["id"]] = REVIEW_PROGRESS  # never the helper's own words
+                    self.keep_usage(t, ev.get("usage"))
+                elif desc:
                     self.progress[t["id"]] = desc[:PROGRESS_CAP]  # memory only, never logged
                 self.dirty = True
         elif typ == "system" and sub in ("task_updated", "task_notification"):
@@ -450,6 +483,8 @@ class Worker:
             t = self._task_for_agent(ev.get("task_id"))
             if t and sub == "task_notification":
                 t["turns"] = int((ev.get("usage") or {}).get("tool_uses") or t.get("turns", 0))
+                if t.get("kind") == KIND_MEMORY_REVIEW:
+                    self.keep_usage(t, ev.get("usage"))
             if not t or t["status"] != "running" or t.get("helper_ended_at"):
                 return
             if status == "completed":
@@ -470,6 +505,30 @@ class Worker:
                 self.dirty = True
             self.resume_failures = 0
             self.restart_failures = 0
+
+    def keep_usage(self, t: dict, usage) -> None:
+        """The review helper's token counts, numbers only, for review_memories.py submit to
+        forward (so subscription use is measured, not guessed)."""
+        if not isinstance(usage, dict):
+            return
+        counts = {str(k)[:40]: v for k, v in usage.items()
+                  if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        if counts:
+            try:
+                write_json_atomic(self.paths.task_work(t["id"]) / "usage.json", counts)
+            except OSError:
+                pass
+
+    def review_result(self, t: dict) -> tuple[str, str]:
+        """A memory review's status and summary come from result.json, which
+        review_memories.py writes with the engine's counts (or its own error words). Whatever the
+        helper typed is dropped, so a memory never reaches the task row."""
+        res = read_json(self.paths.task_work(t["id"]) / "result.json", None)
+        if isinstance(res, dict) and isinstance(res.get("words"), str) and res["words"]:
+            return "done", res["words"][:500]
+        if isinstance(res, dict) and isinstance(res.get("error"), str) and res["error"]:
+            return "failed", ("The memory review failed: " + res["error"])[:500]
+        return "failed", SAY_REVIEW_NO_RESULT
 
     def _task_from_text(self, *texts: str) -> int | None:
         for text in texts:
@@ -515,6 +574,10 @@ class Worker:
             if not t or t["status"] != "running":
                 log.info("report for task %s ignored (not running)", r.get("task"))
                 continue
+            if t.get("kind") == KIND_MEMORY_REVIEW:
+                status, summary = self.review_result(t)
+                self.finish(t, status, summary)
+                continue
             self.finish(t, r.get("status", "failed"), r.get("summary", ""), r.get("question", ""),
                         r.get("found") or [])
 
@@ -546,6 +609,13 @@ class Worker:
         now = self.clock()
         found = [] if self.scope != "full" else [
             {"path": f["path"], "name": f["name"], "size": int(f["size"])} for f in found]
+        if t.get("kind") == KIND_MEMORY_REVIEW:
+            found = []  # a review never lists a file
+            for name in REVIEW_TEXT_FILES:  # memory text never outlives the task on the laptop
+                try:
+                    (self.paths.task_work(t["id"]) / name).unlink(missing_ok=True)
+                except OSError:
+                    pass
         t.update(status=status, summary=summary, question=question, found=found, finished_at=now)
         payload = {"status": status, "summary": summary, "question": question,
                    "turns": int(t.get("turns", 0)),
@@ -633,7 +703,9 @@ class Worker:
                 "name": self.name, "hostname": socket.gethostname(), "scope": self.scope,
                 "state": "busy" if running else "idle", "running": running,
                 "progress": {str(k): v for k, v in self.progress.items()},
-                "claude_version": self.claude_version})
+                "claude_version": self.claude_version,
+                # memory-review ticket 15: the engine mints the daily review only when idle.
+                "input_idle_s": self.idle(), "on_mains": self.on_mains()})
             for tid in reply.get("cancel_requested") or []:
                 t = self._task(tid)
                 if t and t["status"] == "running":
@@ -654,6 +726,15 @@ class Worker:
                                self.cfg["backoff_max_s"])
             self.next_contact = now + self.backoff
             log.warning("engine unreachable (%s); next try in %.0f s", e, self.backoff)
+
+    def on_mains(self) -> bool | None:
+        fn = getattr(self.power, "on_mains", None)
+        if fn is None or sys.platform != "win32":
+            return None
+        try:
+            return bool(fn())
+        except Exception:  # noqa: BLE001 - a power query must never stop a heartbeat
+            return None
 
     def flush_outbox(self) -> None:
         while self.state["outbox"]:
@@ -729,6 +810,7 @@ class Worker:
         work.mkdir(parents=True, exist_ok=True)
         parent = task.get("parent")
         t = {"id": tid, "parent": parent, "request": task.get("request", ""), "status": "running",
+             "kind": task.get("kind") or "ask",
              "started_at": now, "turns": 0, "deliver": task.get("deliver"),
              "confirms": bool(parent) and task.get("confirms") is True}
         self.state["tasks"][str(tid)] = t
@@ -736,8 +818,31 @@ class Worker:
         self.pending.append((tid, self.task_message(t, work)))
         log.info("task %s claimed%s", tid, f" (follow-up to {parent})" if parent else "")
 
+    def review_message(self, t: dict, work: Path) -> str:
+        """Ticket 16: the memory review's helper prompt is a file rendered into its work folder,
+        so the main session never carries memory text or the review's rules in its own context."""
+        tid = t["id"]
+        text = (HERE / "memory_review_prompt.md").read_text(encoding="utf-8")
+        for k, v in {"<<TASK>>": str(tid), "<<WORK>>": str(work),
+                     "<<PYTHON>>": cmd_path(helper_python()),
+                     "<<REVIEW>>": cmd_path(HERE / "review_memories.py"),
+                     "<<REPORT>>": cmd_path(HERE / "report.py")}.items():
+            text = text.replace(k, v)
+        (work / "instructions.md").write_text(text, encoding="utf-8")
+        return "\n".join([
+            f"[task {tid}] Memory review (kind memory_review). {t['request']}",
+            f"Start ONE background helper as usual (description starting exactly `task {tid}:`). "
+            f"Its whole prompt: \"Read {work / 'instructions.md'} with the Read tool and follow it "
+            "exactly.\" Add none of the usual helper rules; that file has its own. When it "
+            f"finishes, reply with one line: [task {tid}] memory review finished. Never repeat "
+            "anything it said about memories.",
+            f"Work folder: {work}",
+        ])
+
     def task_message(self, t: dict, work: Path) -> str:
         tid, parent = t["id"], t.get("parent")
+        if t.get("kind") == KIND_MEMORY_REVIEW and self.scope == "full":
+            return self.review_message(t, work)
         lines = []
         if parent:
             p = self._task(parent)

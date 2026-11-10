@@ -96,4 +96,9 @@ can take several messages, start a background helper per task, stay free, and re
   when the engine gets one.
 - Subscription use is not metered or warned about (*"just run it"*).
 - Recurring tasks are not in this decision; they come later, set by voice.
+- **Amended 2026-11-09 (Kevin, memory-review map): one built-in recurring kind.** Recurring
+  tasks set by voice are still later. The daily memory review (`kind = memory_review`, origin
+  `schedule`) is minted by the engine inside a claim from Kevin's own idle Alienware, at most once
+  a day and one at a time, catching up once after the laptop was off; never on the work laptop.
+  Its request is fixed text and its summary is counts only. Off until `LEGION_MEMORY_REVIEW` is set.
 - Source: `.scratch/claude-session/map.md` rulings 1 to 17, tickets 01 to 03.

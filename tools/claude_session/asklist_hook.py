@@ -23,6 +23,9 @@ Decisions:
 - **Kevin's worker skills** (`work/.claude`) are his files, not scratch: writing one, new or
   existing, asks like any of his files. **The worker's own files** (tokens, config, the agents map,
   the ship history `work/ships.jsonl`) are never a helper's to write: a hard denial, token or not.
+- **The daily memory review** (memory-review ticket 16): a `memory_review` task's helper may not
+  run git at all, and may not write outside its own task folder, token or not, so Kevin's memory
+  text can only land in that folder's two work files.
 - Anything unexpected inside this hook denies (fails closed).
 
 The hook log records tool, decision, rule and agent id. Never the command, a path, or any text.
@@ -318,6 +321,34 @@ def _confirmed(paths: Paths, task: int | None, now: float) -> bool:
     return False
 
 
+GIT_RE = re.compile(r"(^|[\s;&|(`'\"])git(\.exe)?(\s|$|[;&|)`'\"])", re.I)
+
+
+def _task_kind(paths: Paths, task: int | None) -> str:
+    if task is None:
+        return ""
+    tasks = (read_json(paths.state, {}) or {}).get("tasks") or {}
+    t = tasks.get(str(task))
+    return str(t.get("kind") or "") if isinstance(t, dict) else ""
+
+
+def _review_reason(what: str) -> str:
+    return (f"MEMORY REVIEW: {what} is not allowed for the memory review task. Memory text stays "
+            "in the task folder's context.json and changes.json. Carry on without it, or report "
+            "--status failed.")
+
+
+def _memory_review(tool: str, inp: dict, task: int, paths: Paths) -> dict | None:
+    work = paths.task_work(task)
+    if tool in WRITE_TOOLS:
+        target = inp.get("file_path") or inp.get("notebook_path") or ""
+        if not target or not is_under(target, work):
+            return _deny(_review_reason("writing outside the task folder"))
+    if tool in SHELL_TOOLS and GIT_RE.search(inp.get("command", "") or ""):
+        return _deny(_review_reason("git"))
+    return None
+
+
 def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> dict | None:
     repos = cfg.get("repos_root")
     work = paths.work
@@ -363,6 +394,11 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
     inp = event.get("tool_input") or {}
     cwd = event.get("cwd") or ""
     task = _agent_task(paths, event.get("agent_id"))
+
+    if task is not None and _task_kind(paths, task) == "memory_review":
+        out = _memory_review(tool, inp, task, paths)
+        if out:
+            return out, "memory review"
 
     if cfg.get("scope") == "listed":
         out = _listed_scope(tool, inp, cwd, cfg, paths)

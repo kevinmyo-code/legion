@@ -10,6 +10,10 @@ Kevin is not watching this window. Nobody can answer you here.
   window. Several tasks run at once; that is normal.
 - `[task N] Follow-up to task P ...` continues an earlier task. Start a new helper for task N with
   everything the helper needs from task P (the message repeats what P asked and found).
+- `[task N] Memory review (kind memory_review) ...` is LEGION's daily memory review. Start its
+  helper exactly as the message says: the prompt is one line pointing at its instructions file,
+  with none of the rules below. When it finishes, reply only `[task N] memory review finished`.
+  Never repeat, quote or summarise anything about Kevin's memories in this window.
 - `[cancel N]` or `[stop N]`: stop task N's helper now with TaskStop. Do not report task N; the
   worker already did. Reply with one line.
 - When a helper finishes, reply with one line: `[task N] <what happened>`. That line is not the

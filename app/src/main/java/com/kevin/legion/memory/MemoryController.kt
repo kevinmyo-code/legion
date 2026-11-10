@@ -2,6 +2,7 @@ package com.kevin.legion.memory
 
 import android.content.Context
 import com.kevin.legion.backend.engine.DjangoMemberMemoryBackend
+import com.kevin.legion.backend.engine.DjangoMemoryReviewBackend
 import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.backend.engine.EngineHttp
 import kotlinx.coroutines.withTimeoutOrNull
@@ -20,12 +21,17 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   engine's 204 and is then refreshed whole, so the forgotten memory is not read back offline.
  *
  * A plain class with its backend, cache and clock injected (CLAUDE.md section 8).
+ *
+ * **The daily memory review** (memory-review tickets 08 and 09) answers through [review]: the
+ * pending changes, Accept, Dismiss, Accept all, Restore, and the retired rows. Never queued
+ * offline: a stale accept must reach the engine's 409, so an accept is only ever sent live.
  */
 @Suppress("TooManyFunctions") // one per memory operation, both doors (tool and screen) share them
 class MemoryController(
     private val backend: MemberMemoryBackend,
     private val cache: MemoryCache,
     private val now: () -> Long = System::currentTimeMillis,
+    private val review: MemoryReviewBackend? = backend as? MemoryReviewBackend,
 ) {
 
     /** A read's answer: the memories, and whether they came from the phone's copy. */
@@ -152,6 +158,41 @@ class MemoryController(
         return MemoryScore.best(memories, "", now(), limit)
     }
 
+    /** The review's pending changes; none when this controller has no review backend. */
+    suspend fun reviewPending(): MemoryOutcome<List<ReviewChange>> =
+        review?.pending() ?: MemoryOutcome.Ok(emptyList())
+
+    /** Accept one pending change. Ok refreshes the list; a 409 comes back as Refused, in words. */
+    suspend fun acceptChange(change: ReviewChange): MemoryOutcome<String> =
+        reviewWrite { it.accept(change.id) }
+
+    suspend fun dismissChange(change: ReviewChange): MemoryOutcome<String> =
+        reviewWrite { it.dismiss(change.id) }
+
+    /** Accept all: every pending change in [cluster]. */
+    suspend fun acceptCluster(cluster: String): MemoryOutcome<String> =
+        reviewWrite { it.acceptCluster(cluster) }
+
+    /** Restore a retired memory by undoing the review change that retired it. */
+    suspend fun restore(memory: MemberMemory): MemoryOutcome<String> {
+        val change = memory.retiredChange
+            ?: return MemoryOutcome.Refused(NOT_REVIEWED)
+        return reviewWrite { it.revert(change) }
+    }
+
+    /** The rows the review retired, newest first. */
+    suspend fun retired(): MemoryOutcome<List<MemberMemory>> =
+        review?.retired(LIST_LIMIT) ?: MemoryOutcome.Ok(emptyList())
+
+    private suspend fun reviewWrite(
+        call: suspend (MemoryReviewBackend) -> MemoryOutcome<String>,
+    ): MemoryOutcome<String> {
+        val backend = review ?: return MemoryOutcome.Unreachable(NO_REVIEW)
+        val outcome = call(backend)
+        if (outcome is MemoryOutcome.Ok) refresh()
+        return outcome
+    }
+
     private suspend fun write(outcome: MemoryOutcome<MemberMemory>): MemoryOutcome<MemberMemory> {
         if (outcome is MemoryOutcome.Ok) refresh()
         return outcome
@@ -180,6 +221,9 @@ class MemoryController(
         private const val CONTINUITY_STALE_MS = 10 * 60_000L
         private const val CONTINUITY_WAIT_MS = 1_500L
         private const val RESUME_STALE_MS = 5 * 60_000L
+        private const val NO_REVIEW = "This phone cannot reach the memory review."
+        private const val NOT_REVIEWED =
+            "This one was not retired by the memory review, so it cannot be restored here."
 
         private fun tooLong(clean: String, verb: String): String =
             "A memory is at most $TEXT_MAX characters; that was ${clean.length}. Nothing was $verb."
@@ -187,9 +231,11 @@ class MemoryController(
         /** The production wiring: the engine over the saved address and device token, the file cache. */
         fun forContext(context: Context): MemoryController {
             val app = context.applicationContext
+            val http = EngineHttp(EngineConfig(app))
             return MemoryController(
-                DjangoMemberMemoryBackend(EngineHttp(EngineConfig(app))),
+                DjangoMemberMemoryBackend(http),
                 FileMemoryCache.forContext(app),
+                review = DjangoMemoryReviewBackend(http),
             )
         }
     }

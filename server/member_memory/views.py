@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from member_memory import importer, scoring, service
+from member_memory import importer, review, scoring, service
 from member_memory.models import (
     CLIENT_SOURCES,
     DECAY_CLASSES,
@@ -37,6 +37,12 @@ from member_memory.models import (
 TAGS = ["member-memories"]
 LIST_LIMIT_DEFAULT = 100
 LIST_LIMIT_MAX = 500
+
+
+class PendingReviewSerializer(serializers.Serializer):
+    change_id = serializers.IntegerField()
+    action = serializers.CharField()
+    after = serializers.CharField()
 
 
 class MemberMemorySerializer(serializers.Serializer):
@@ -60,6 +66,20 @@ class MemberMemorySerializer(serializers.Serializer):
     )
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()
+    retired_reason = serializers.CharField(
+        allow_null=True,
+        help_text="Why the memory review retired it: merged, contradicted, expired, relabelled "
+        "or not_about_person. Null for a live row.",
+    )
+    retired_by = serializers.UUIDField(allow_null=True, help_text="The row that replaced it.")
+    retired_change = serializers.IntegerField(
+        allow_null=True, help_text="The review change that retired it; revert it to restore."
+    )
+    pending_review = PendingReviewSerializer(
+        allow_null=True,
+        help_text="A pending memory-review change names this row: confirm it on the Memory "
+        "screen. Never treat it as fact.",
+    )
 
 
 class MemoryListSerializer(serializers.Serializer):
@@ -203,7 +223,15 @@ class MemoryListCreateView(APIView):
             include_superseded=include,
             limit=limit,
         )
-        return Response({"results": [service.as_dict(row, request) for row in rows]})
+        flags = review.pending_flags(request, rows)
+        retired = review.retired_by_change(request, rows) if include else {}
+        return Response(
+            {
+                "results": [
+                    service.as_dict(row, request, flags=flags, retired=retired) for row in rows
+                ]
+            }
+        )
 
     @extend_schema(
         operation_id="api_member_memories_create",
@@ -327,10 +355,11 @@ class MemoryRecallView(APIView):
         best = service.recall(
             request, serializer.validated_data["query"], serializer.validated_data["limit"]
         )
+        flags = review.pending_flags(request, [s.memory for s in best])
         return Response(
             {
                 "results": [
-                    {**service.as_dict(s.memory, request), "score": round(s.score, 4)}
+                    {**service.as_dict(s.memory, request, flags=flags), "score": round(s.score, 4)}
                     for s in best
                 ]
             }

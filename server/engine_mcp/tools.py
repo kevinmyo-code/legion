@@ -2296,7 +2296,9 @@ def _run_procedure(request, args) -> ToolResult:
 RECALL_USE_NOTE = (
     "Build the answer on these memories only, quoting what they say; anything beyond them is a "
     "guess and must be said as one. A memory is what the person said at the time, dated; a newer "
-    "fact on file wins over an older one."
+    "fact on file wins over an older one. A line ending in \"a review suggests\" is still the "
+    "fact on file: say it, and mention that a newer version waits on the Memory screen; never "
+    "treat the suggestion as fact."
 )
 
 
@@ -2327,10 +2329,15 @@ def provenance(row: dict) -> str:
 def _say_memory(row: dict) -> str:
     who = "shared with the household" if row["shared"] else "private"
     about = "" if row["about_you"] else ", about another member"
-    return (
+    said = (
         f"[{row['id']}] ({row['created_at'][:10]}, {row['kind']}, {who}{about}, "
         f"{provenance(row)}) {row['text']}"
     )
+    flag = row.get("pending_review")
+    if flag:
+        # memory-review ruling 02: the recall flag, said only when this row is recalled.
+        said += f" (a review suggests: {flag['after']}; confirm on the Memory screen)"
+    return said
 
 
 def _recall_memory(request, args) -> ToolResult:
@@ -2341,7 +2348,10 @@ def _recall_memory(request, args) -> ToolResult:
         return door
     query = (args.get("query") or "").strip()
     best = service.recall(request, query, args.get("limit") or scoring.RECALL_LIMIT_DEFAULT)
-    rows = [service.as_dict(s.memory, request) for s in best]
+    from member_memory.review import pending_flags
+
+    flags = pending_flags(request, [s.memory for s in best])
+    rows = [service.as_dict(s.memory, request, flags=flags) for s in best]
     if not rows:
         said = f" for {query!r}" if query else ""
         return ok(

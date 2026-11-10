@@ -188,6 +188,10 @@ TENANT_TABLES: tuple[str, ...] = (
     # tenanted like `finance_*` (`member_memory/models.py`).
     "member_memories",
     "memory_consolidations",
+    # memory-review ticket 05: the daily review's runs and changes, private to the member like
+    # the memories they judge (`OWNER_PATHS`).
+    "memory_reviews",
+    "memory_review_changes",
     # memory-and-vault map (ADR 0076): the ID vault and its reveal audit, always private to one
     # member (`id_vault/models.py`).
     "vault_items",
@@ -257,6 +261,8 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "finance_policies",
         "member_memories",
         "memory_consolidations",
+        "memory_reviews",
+        "memory_review_changes",
         "vault_items",
         "vault_reveals",
         "body_profiles",
@@ -439,6 +445,9 @@ OWNER_PATHS: dict[str, str] = {
     # ADR 0075: a memory is private to the member it is about; null `owner_user` is a shared
     # household fact. A check constraint keeps `owner_user` equal to `member` when set.
     "member_memories": "owner_user",
+    # memory-review ticket 05: never null, always the member the review judged.
+    "memory_reviews": "owner_user",
+    "memory_review_changes": "owner_user",
     # ADR 0076: never null, so `visible()` gives a member their own vault items and no one else's.
     "vault_items": "owner_user",
     "vault_reveals": "owner_user",

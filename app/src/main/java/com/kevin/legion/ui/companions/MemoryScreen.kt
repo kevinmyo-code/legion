@@ -34,6 +34,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kevin.legion.R
 import com.kevin.legion.memory.MemberMemory
 import com.kevin.legion.memory.MemoryWording
+import com.kevin.legion.memory.ReviewChange
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -52,6 +53,8 @@ import com.kevin.legion.ui.theme.soft.SoftTheme
  * - The shared/private switch appears only on your own memories (the engine refuses the rest).
  * - Search narrows the list on the phone, so it works on the cached copy too.
  * - Offline, the phone's copy is shown with a line saying so; a failed read is never an empty list.
+ * - **To check** and **Retired** (memory-review ticket 09): the daily review's suggestions wait at
+ *   the top of the list, and what it retired can be read and restored (`MemoryReviewSection.kt`).
  *
  * The read-through gate does not apply to the add dialog: a typed entry has no conversation turn
  * behind it, so no mail could have been read into it (same reasoning as the v1 screen).
@@ -77,6 +80,11 @@ fun MemoryScreen(onBack: () -> Unit) {
                 onSaveEdit = viewModel::saveEdit,
                 onConfirmForget = viewModel::confirmForget,
                 onDismiss = viewModel::dismissDialog,
+                onFilter = viewModel::setFilter,
+                onAcceptChange = viewModel::acceptChange,
+                onDismissChange = viewModel::dismissChange,
+                onAcceptCluster = viewModel::acceptCluster,
+                onRestore = viewModel::restore,
             ),
         )
     }
@@ -96,6 +104,12 @@ data class MemoryCallbacks(
     val onSaveEdit: () -> Unit = {},
     val onConfirmForget: () -> Unit = {},
     val onDismiss: () -> Unit = {},
+    // memory-review ticket 09: To check and Retired.
+    val onFilter: (MemoryFilter) -> Unit = {},
+    val onAcceptChange: (ReviewChange) -> Unit = {},
+    val onDismissChange: (ReviewChange) -> Unit = {},
+    val onAcceptCluster: (String) -> Unit = {},
+    val onRestore: (MemberMemory) -> Unit = {},
 )
 
 /** Plain UI: state in, callbacks out. Rendered by the screenshot and Compose tests directly. */
@@ -122,7 +136,12 @@ fun MemoryContent(state: MemoryUiState, callbacks: MemoryCallbacks) {
         TextButton(onClick = callbacks.onAdd, enabled = !state.busy, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text("Add a memory by hand")
         }
-        Body(state, callbacks)
+        FilterRow(state.filter, callbacks.onFilter)
+        if (state.filter == MemoryFilter.Retired) {
+            RetiredBody(state.retired, state.busy, callbacks)
+        } else {
+            Body(state, callbacks)
+        }
     }
     when (val dialog = state.dialog) {
         is MemoryDialog.Add -> AddDialog(dialog, state.busy, callbacks)
@@ -179,6 +198,9 @@ private fun Body(state: MemoryUiState, callbacks: MemoryCallbacks) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (state.review.changes.isNotEmpty() || state.review.note != null) {
+                        item(key = "review") { ReviewSection(state.review, state.busy, callbacks) }
+                    }
                     item(key = "count") {
                         Text(
                             "${shown.size} of ${view.memories.size}",

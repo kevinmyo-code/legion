@@ -38,6 +38,7 @@ function task(partial: Partial<ClaudeTask> = {}): ClaudeTask {
     ],
     parent: null,
     origin: 'offered',
+    kind: 'ask',
     deliver: 'phone',
     confirms: false,
     progress: null,

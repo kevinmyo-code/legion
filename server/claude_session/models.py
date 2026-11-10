@@ -62,7 +62,15 @@ IN_FLIGHT: frozenset[str] = frozenset({RUNNING, CANCEL_REQUESTED})
 
 ORIGIN_NAMED = "named"
 ORIGIN_OFFERED = "offered"
-ORIGINS: tuple[str, ...] = (ORIGIN_NAMED, ORIGIN_OFFERED)
+# memory-review ticket 15: minted by the engine itself, the daily memory review being the only one.
+ORIGIN_SCHEDULE = "schedule"
+ORIGINS: tuple[str, ...] = (ORIGIN_NAMED, ORIGIN_OFFERED, ORIGIN_SCHEDULE)
+
+# What a task is. `ask` is everything Kevin sends; `memory_review` is the one built-in kind the
+# engine mints on the Alienware at most once a day (memory-review ticket 15, ADR 0067 amended).
+KIND_ASK = "ask"
+KIND_MEMORY_REVIEW = "memory_review"
+TASK_KINDS: tuple[str, ...] = (KIND_ASK, KIND_MEMORY_REVIEW)
 
 # Ruling 17 (Kevin 2026-11-01): naming his own email in the request is the yes
 # for that one task. The phone sets this; the worker's `send_mail.py` mails the
@@ -122,6 +130,11 @@ class ClaudeMachine(models.Model):
     # What the worker last said: idle or busy. Offline is never stored.
     reported_state = models.TextField(default=MACHINE_IDLE)
     claude_version = models.TextField(blank=True, default="")
+    # memory-review ticket 15: seconds since Windows last saw keyboard or mouse input, and whether
+    # the laptop is on mains, as the last heartbeat said. Null from a worker that sends neither
+    # (treated as not idle, so a review then waits for the 36 hour rule).
+    input_idle_s = models.IntegerField(null=True, blank=True)
+    on_mains = models.BooleanField(null=True, blank=True)
     # Null for a machine only a session hook has ever named.
     last_seen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
@@ -168,6 +181,7 @@ class ClaudeTask(models.Model):
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     origin = models.TextField()
+    kind = models.TextField(default=KIND_ASK)
     deliver = models.TextField(null=True, blank=True)
     # True only on a follow-up that is Kevin's yes to a `needs_confirmation`
     # parent. The worker unlocks the asked ask-list step only when it is set.
@@ -213,6 +227,9 @@ class ClaudeTask(models.Model):
             models.CheckConstraint(
                 condition=models.Q(deliver__isnull=True) | models.Q(deliver__in=DELIVERIES),
                 name="claude_tasks_deliver_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=TASK_KINDS), name="claude_tasks_kind_valid"
             ),
         ]
 
