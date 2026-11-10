@@ -1,0 +1,55 @@
+{
+  "nodes": [
+    {
+      "id": "b66562e24a3616a3",
+      "type": "file",
+      "file": ".scratch/watches/issues/01-engine.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3951353b3ed5c005",
+      "type": "file",
+      "file": ".scratch/watches/issues/02-phone.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b423ff6d5169c9f2",
+      "type": "file",
+      "file": ".scratch/watches/issues/03-mail-reply.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d10ce40a306cad55",
+      "type": "file",
+      "file": ".scratch/watches/issues/04-phone-run.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "cf05272c4d8e3e14",
+      "type": "file",
+      "file": ".scratch/watches/issues/05-web-and-mcp.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": []
+}

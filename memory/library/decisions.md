@@ -7625,3 +7625,16 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   TomTom's developer portal; nothing in the repo or on the engine held it. The location-intelligence
   departure advisor (ticket 06) now gets its traffic ETA from Mapbox Directions; that map's
   TomTom decisions (4, 8, 17, 18, 19) are superseded by this entry.
+
+## 2026-11-10 - Standing watches and engine signals (Kevin)
+
+- **Asked:** "Alfred, tell me when my paycheck lands / a charge goes over $X / a grade posts", and
+  the engine's own signals (bank feed, Canvas, car service due) reaching the phone unprompted.
+- **Ruled (Kevin, "1 and 2 yes"):** both. Later the same day: "notify me whenever a company i
+  applied to emails me back", evaluated on the phone because mail never reaches the engine.
+- **Decided in the build, open to Kevin:** one mechanism (watch + firing; signals are built-in
+  watches); a closed typed registry, no free-text rules; built-ins a charge of $500 or more, Canvas
+  due within 24 h, service due within 14 days or 500 miles; a new `WATCHES` proactive category, on
+  by default; evaluation every 15 min; the phone asks every 3 min on the existing loop; mail_reply
+  checks about every 15 min, says only the company name from his list. "Event or task due" dropped
+  (already spoken by reminders and push). ADR 0083, map `.scratch/watches/`.

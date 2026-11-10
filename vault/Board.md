@@ -79,6 +79,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 | [[.scratch/wake-word/map\|wake-word]] | [[20-tune-to-kevins-voice\|20]] | build | Tune the wake word to Kevin's own voice |
+| [[.scratch/watches/map\|watches]] | [[04-phone-run\|04]] | test | Run watches on the phone |
+| [[.scratch/watches/map\|watches]] | [[05-web-and-mcp\|05]] | grilling | Web assistant and /mcp watch tools |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[07-email-delivery\|07]] | decision | Email delivery: invites by mail, address verification, password reset |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[01-the-calendar-widget\|01]] | build | The calendar widget on the web home - month grid plus day view |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | [[02-delete-a-finished-list\|02]] | build | Delete a list, from Lists and from Home, and offer it when everything is ticked |
@@ -228,6 +230,9 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/wake-word/map\|wake-word]] | [[15-see-a-deaf-mic\|15]] | build | Make a deaf microphone visible |
 | [[.scratch/wake-word/map\|wake-word]] | [[17-follow-up-window\|17]] | build | An 8 second follow-up window closes a conversation nobody continues |
 | [[.scratch/wake-word/map\|wake-word]] | [[18-two-stage-detector\|18]] | build | A two-stage wake detector, the way Siri does it |
+| [[.scratch/watches/map\|watches]] | [[01-engine\|01]] | build | Engine: registry, evaluator, endpoints |
+| [[.scratch/watches/map\|watches]] | [[02-phone\|02]] | build | Phone: delivery, voice tool, Watches screen |
+| [[.scratch/watches/map\|watches]] | [[03-mail-reply\|03]] | build | Phone-evaluated mail_reply: a company you applied to emails back |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[02-household-id-on-every-table\|02]] | build | household_id on every data table, backfilled, and one Django choke point |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[08-ci-cd\|08]] | build | CI for server, Android and frontend; CD to Cloud Run through Workload Identity Federation |
 | [[.scratch/web-and-households/map\|web-and-households]] | [[09-static-domain-dockerfile\|09]] | build | Whitenoise, a multi-stage arm64 image with the Vite build, migrate-on-start, and Caddy on the domain |
@@ -494,6 +499,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/voice-browser/map\|voice-browser]] | 3 | 3 | [[.scratch/voice-browser/voice-browser.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 20 | 10 | [[.scratch/wake-word/wake-word.canvas\|open]] |
+| [[.scratch/watches/map\|watches]] | 5 | 5 | [[.scratch/watches/watches.canvas\|open]] |
 | [[.scratch/web-and-households/map\|web-and-households]] | 14 | 7 | [[.scratch/web-and-households/web-and-households.canvas\|open]] |
 | [[.scratch/web-assistant/map\|web-assistant]] | 10 | 4 | [[.scratch/web-assistant/web-assistant.canvas\|open]] |
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |
