@@ -13,7 +13,13 @@ Behaviour per task comes from a `FAKE{...}` JSON blob in the message text:
     shows it: a child task_started with parent_task_id, the agent's `completed` notification,
     background_tasks_changed, then the child ends and the agent's task_started fires again),
     nudge_report (answer a `[report N]` reminder by running report.py with nudge_status and
-    nudge_summary).
+    nudge_summary),
+    tools (containment, 2026-11-10: a list of {"tool", "input"} the helper calls in order before
+    it reports; each goes through the REAL ask-list hook as a hook process, with the helper's
+    agent id, and the decision is logged as {"hook": tool, "decision", "rule"}. Strings may say
+    {work}, {here} and {python}. Nothing the hook passes is actually run),
+    sub (the helper first starts one subagent, `sub<N>`, whose calls `sub_tools` go through the
+    hook the same way, with its own agent id).
 Writes what it saw (argv, env facts, each message) to $FAKE_CLAUDE_LOG as JSON lines.
 """
 from __future__ import annotations
@@ -54,7 +60,7 @@ def result(text: str) -> None:
 
 
 def parse_fake(text: str) -> dict:
-    i = text.find("FAKE{")
+    i = text.rfind("FAKE{")  # a follow-up quotes its parent's request first; its own comes last
     if i < 0:
         return {}
     try:
@@ -117,9 +123,67 @@ def run_report(n: int, status: str, summary: str, question: str = "", found=()) 
         note({"report_error": r.stderr[-500:]})
 
 
+def _fill(v, subs: dict):
+    if isinstance(v, str):
+        for k, x in subs.items():
+            v = v.replace(k, x)
+        return v
+    if isinstance(v, list):
+        return [_fill(x, subs) for x in v]
+    if isinstance(v, dict):
+        return {k: _fill(x, subs) for k, x in v.items()}
+    return v
+
+
+def _mapped(agent: str, timeout: float = 5.0) -> None:
+    """Wait until the worker has mapped this agent to its task (it reads our events)."""
+    home = os.environ.get("LEGION_CLAUDE_HOME")
+    if not home:
+        return
+    end = time.time() + timeout
+    while time.time() < end:
+        for name in ("agents.json", "subagents.json"):
+            try:
+                if agent in json.loads((Path(home) / name).read_text(encoding="utf-8")):
+                    return
+            except (OSError, ValueError):
+                pass
+        time.sleep(0.05)
+
+
+def run_hook_calls(agent: str, calls: list, work: str) -> None:
+    subs = {"{work}": work, "{here}": str(HERE).replace("\\", "/"),
+            "{python}": sys.executable.replace("\\", "/")}
+    _mapped(agent)
+    for c in calls:
+        event = {"hook_event_name": "PreToolUse", "session_id": SESSION, "agent_id": agent,
+                 "cwd": work, "tool_name": c["tool"], "tool_input": _fill(c.get("input") or {}, subs)}
+        r = subprocess.run([sys.executable, str(HERE / "asklist_hook.py")], input=json.dumps(event),
+                           capture_output=True, text=True)
+        out = json.loads(r.stdout) if r.stdout.strip() else None
+        decision = (out or {}).get("hookSpecificOutput", {}).get("permissionDecision", "pass")
+        note({"hook": c["tool"], "agent": agent, "decision": decision,
+              "reason": (out or {}).get("hookSpecificOutput", {}).get("permissionDecisionReason", "")})
+
+
 def helper(n: int, tool_use_id: str, spec: dict) -> None:
     agent = f"agent{n}"
     agent_started(n, agent, tool_use_id)
+    work = spec.get("_work", "")
+    if spec.get("sub"):
+        sub = f"sub{n}"
+        LIVE[sub] = agent
+        emit({"type": "system", "subtype": "task_started", "task_id": sub,
+              "tool_use_id": f"toolu_sub{n}", "description": "look something up",
+              "parent_task_id": agent, "owned_by_subagent": True, "task_type": "local_agent",
+              "session_id": SESSION})
+        run_hook_calls(sub, spec.get("sub_tools") or [], work)
+        emit({"type": "system", "subtype": "task_notification", "task_id": sub,
+              "tool_use_id": f"toolu_sub{n}", "status": "completed", "summary": "found it",
+              "session_id": SESSION})
+        LIVE.pop(sub, None)
+    if spec.get("tools"):
+        run_hook_calls(agent, spec["tools"], work)
     emit({"type": "system", "subtype": "task_progress", "task_id": agent, "tool_use_id": tool_use_id,
           "description": spec.get("progress", "Working"), "usage": {"tool_uses": 1},
           "session_id": SESSION})
@@ -203,6 +267,8 @@ def main() -> int:
                 result("ok")
             continue
         n = int(m.group(1))
+        w = re.search(r"^Work folder: (.+)$", text, re.M)
+        spec["_work"] = w.group(1).strip().replace("\\", "/") if w else ""
         SPECS[n] = spec
         tuid = f"toolu_{n}"
         emit({"type": "assistant", "parent_tool_use_id": None, "message": {"role": "assistant",

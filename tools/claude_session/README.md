@@ -80,6 +80,7 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `mail` | `{address, app_password, kevin, smtp_host, smtp_port}`; on `listed` only text to `kevin` |
 | optional | `claude_cmd`, `heartbeat_s`, `task_cap_s`, `hang_s`, `add_dirs`, `keep_awake` |
 | workflows, optional | `skills_dir` (default `work\.claude\skills`), `workflow_reports` (default `%USERPROFILE%\.legion\reports`, one folder per workflow, dated reports kept 180 days), `task_log` (default `%USERPROFILE%\.legion\task-log.jsonl`, one line per finished task with its request text, kept 180 days, read only by the workflow miner), `agent_rules`, `catalog_s` (300) |
+| containment, optional | `untrusted_paths` (folders whose files taint a task that reads them, e.g. Downloads), `egress_allow` (extra hosts shell commands may reach, beside github, the engine, pypi and npm), `download_hosts` (where `fetch_file.py` may download from; default free-book sources and GitHub) |
 
 ## Sessions reporter hooks (ticket 06)
 
@@ -113,6 +114,12 @@ question); it keeps existing hooks, writes `settings.json.bak-<stamp>`, and is s
   most 25 MB. The work laptop never uploads and never sends `found`.
 - **Heartbeat `progress`:** each running task's latest helper step (`system/task_progress`
   description), 120 characters at most, held in memory only.
+- **Containment** (architecture upgrade 2, 2026-11-10; `containment.py`): a task that read mail,
+  the web or an untrusted file loses the shell (except this folder's report, mail, ship, undo,
+  fetch_file and to_xlsx scripts, alone), new helpers, and writes outside its own task folder,
+  for the rest of the task, across restarts, and in its follow-ups. Marks live in `taint\`.
+  Shell commands reach only allowlisted hosts; no shell names a file a tainted task wrote. A
+  regex hook is not a sandbox: `containment.py` lists what it cannot stop.
 - **Logs** (`logs\worker.log`, `logs\hook.log`) hold ids, statuses, counts, exit codes. Never a
   request, summary, question, progress text or path. `state.json` does keep requests and
   summaries locally (48 h) so follow-ups can carry context; it is not a log.

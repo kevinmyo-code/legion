@@ -117,6 +117,9 @@ class TestWorkflowTasks(WorkflowCase):
         self.assertIn(f"Report file: {report}", msg)
         self.assertTrue(report.parent.is_dir(), "the worker makes the folder, not the file")
         self.assertFalse(report.exists())
+        # Containment: the hook lets a tainted task create exactly this file, read from state.
+        from common import read_json
+        self.assertEqual(read_json(self.paths.state)["tasks"]["60"]["report_file"], str(report))
         self.assertNotIn("stops for Kevin's yes", msg)
         self.assertNotIn("Scheduled run", msg)
         self.assertNotIn("AGENT-RULES", msg, "no rules file here, so no line for it")

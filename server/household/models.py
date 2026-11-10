@@ -200,7 +200,15 @@ class DeviceToken(models.Model):
     # (`manage.py issue_device_token` defaults to it).
     SCOPE_READ = "read"
     SCOPE_WRITE = "write"
-    SCOPE_CHOICES = [(SCOPE_READ, "read"), (SCOPE_WRITE, "write")]
+    # Architecture upgrade 2 (2026-11-10): the Claude worker's own token. It may write, but only
+    # on the worker's routes (`claude_session.tokens.WORKER_ROUTES`, enforced in
+    # `DeviceTokenAuthentication`). Additive: a token issued before it keeps `write`.
+    SCOPE_CLAUDE_WORKER = "claude_worker"
+    SCOPE_CHOICES = [
+        (SCOPE_READ, "read"),
+        (SCOPE_WRITE, "write"),
+        (SCOPE_CLAUDE_WORKER, "claude_worker"),
+    ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="device_tokens")
     name = models.CharField(max_length=255)
@@ -208,7 +216,7 @@ class DeviceToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
-    scope = models.CharField(max_length=8, choices=SCOPE_CHOICES, default=SCOPE_WRITE)
+    scope = models.CharField(max_length=16, choices=SCOPE_CHOICES, default=SCOPE_WRITE)
     # recruiter-demo ticket 02 (Kevin, 2026-11-02): a token that dies on its
     # own. Null is "never", which is what every token was before this column
     # existed, so the phone, the head unit and every dev token are untouched.
@@ -239,7 +247,7 @@ class DeviceToken(models.Model):
 
     @property
     def can_write(self) -> bool:
-        return self.scope == self.SCOPE_WRITE
+        return self.scope in (self.SCOPE_WRITE, self.SCOPE_CLAUDE_WORKER)
 
     @classmethod
     def issue(
@@ -259,9 +267,10 @@ class DeviceToken(models.Model):
         A token minted for a tool rather than a person passes `read`.
         `expires_at` is None (never) unless the caller says otherwise; only
         a recruiter's visitor token sets it today."""
-        if scope not in {cls.SCOPE_READ, cls.SCOPE_WRITE}:
+        if scope not in {cls.SCOPE_READ, cls.SCOPE_WRITE, cls.SCOPE_CLAUDE_WORKER}:
             raise ValueError(
-                f"Nothing was issued. {scope!r} is not a token scope; use read or write."
+                f"Nothing was issued. {scope!r} is not a token scope; use read, write or "
+                "claude_worker."
             )
         raw_key = _generate_device_key()
         token = cls.objects.create(
