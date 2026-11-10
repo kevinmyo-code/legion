@@ -159,7 +159,8 @@ private fun QuickLine(q: TypesetQuick, actions: TypesetHomeActions) {
         labels.forEachIndexed { i, label ->
             val isSettings = i >= goes.size
             val go = if (isSettings) ({ settingsOpen = true }) else goes[i]
-            Box(Modifier.weight(1f).tap(label, go), contentAlignment = Alignment.Center) {
+            // Width by length: "Alarm 06:30" needs more than "Feed on" (it clipped at 360dp, font 1.3).
+            Box(Modifier.weight(label.length.toFloat()).tap(label, go), contentAlignment = Alignment.Center) {
                 FitLine(
                     label,
                     TypesetType.small.copy(textDecoration = TextDecoration.Underline),

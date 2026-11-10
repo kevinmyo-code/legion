@@ -206,8 +206,6 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { NowPlayingController.init(context) }
     val nowPlaying by NowPlayingController.state.collectAsStateWithLifecycle()
-    // "Claude: 2 running, 1 needs you" (ClaudeWatchLine.kt), polled only while HOME is started.
-    val claudeLine = rememberClaudeWatchLine()
 
     // One launch path for the dock and the category buttons: the drawer's own `launchDrawerApp` and
     // its failure sentence, with a missing app or an unreadable snapshot said in words.
