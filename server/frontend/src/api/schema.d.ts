@@ -1909,6 +1909,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/claude/workflows/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `GET workflows/?machine=`: every machine's published workflows with their last run, for the
+         *     Claude session screen and the web desk (worker-workflows tickets 03, 06, 07). Offline machines
+         *     are listed too and say so: a run queued there waits for it, like any task.
+         */
+        get: operations["api_claude_workflows_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/claude/workflows/run/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description `POST workflows/run/ {machine, name, params}`: queue one run now, by the workflow's exact
+         *     name (the screen's and the web desk's Run button; ticket 04). One at a time, like a scheduled
+         *     run: a run already queued, running or waiting on Kevin's yes is a 409.
+         */
+        post: operations["api_claude_workflows_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/asset/{kind}": {
         parameters: {
             query?: never;
@@ -5947,10 +5989,20 @@ export interface components {
             /** @description Seconds since Windows last saw keyboard or mouse input. */
             input_idle_s?: number | null;
             on_mains?: boolean | null;
+            /** @description The worker's hash of its catalog. Absent: an older worker, catalog untouched. */
+            workflows_hash?: string | null;
+            /** @description The catalog (at most 50 entries, each at most 2 KB), only when the hash moved. */
+            workflows?: unknown;
         };
         ClaudeHeartbeatResult: {
             cancel_requested: number[];
             files_requested: components["schemas"]["ClaudeFileRequested"][];
+            /** @description The catalog hash the engine holds for this machine; blank for none. */
+            workflows_hash: string;
+            /** @description Entries of the catalog just sent that failed the engine's checks; 0 otherwise. */
+            workflows_dropped: number;
+            /** @description Schedules this machine will not run on its own, each in words (a listed machine runs a workflow only when Kevin asks, unless LEGION_WORKFLOW_SCHEDULES_LISTED). */
+            workflows_refused: string[];
         };
         ClaudeMachineRef: {
             name: string;
@@ -6020,6 +6072,8 @@ export interface components {
             last_seen_at: string | null;
             running: number[];
             progress: components["schemas"]["ClaudeRunningProgress"][];
+            /** @description The workflows this machine published, by name (for check). */
+            workflows: components["schemas"]["ClaudeWorkflowName"][];
         };
         ClaudeStatusSession: {
             machine: string;
@@ -6048,6 +6102,8 @@ export interface components {
              * @default false
              */
             confirms: boolean;
+            /** @description Run a named workflow: Kevin's phrase or the exact name. Omitted for a plain task. */
+            workflow?: string | null;
         };
         /**
          * @description * `named` - named
@@ -6059,6 +6115,10 @@ export interface components {
             id: number;
             status: components["schemas"]["ClaudeTaskStatusEnum"];
             machine: components["schemas"]["ClaudeMachineRef"] | null;
+            /** @description The workflow it runs (its name), or null for a plain task. */
+            workflow: string | null;
+            /** @description Where that workflow stops for Kevin's yes, in words; empty for a plain task. */
+            asks: string[];
         };
         /**
          * @description * `email_self` - email_self
@@ -6104,12 +6164,17 @@ export interface components {
             parent: number | null;
             origin: components["schemas"]["ClaudeTaskOriginEnum"];
             /**
-             * @description `ask` for Kevin's own tasks; `memory_review` for the daily memory review.
+             * @description `ask` for Kevin's own tasks; `memory_review` for the daily memory review; `workflow` for a named workflow (its follow-ups too).
              *
              *     * `ask` - ask
              *     * `memory_review` - memory_review
+             *     * `workflow` - workflow
              */
             kind: components["schemas"]["ClaudeTaskRowKindEnum"];
+            /** @description The workflow's name when kind is workflow, else null. */
+            workflow: string | null;
+            /** @description Kevin's words after the workflow's alias, or null. */
+            params: string | null;
             deliver: (components["schemas"]["ClaudeTaskDeliverEnum"] | components["schemas"]["NullEnum"]) | null;
             confirms: boolean;
             /** @description The current step while running. */
@@ -6122,9 +6187,10 @@ export interface components {
         /**
          * @description * `ask` - ask
          *     * `memory_review` - memory_review
+         *     * `workflow` - workflow
          * @enum {string}
          */
-        ClaudeTaskRowKindEnum: "ask" | "memory_review";
+        ClaudeTaskRowKindEnum: "ask" | "memory_review" | "workflow";
         /**
          * @description * `queued` - queued
          *     * `needs_machine` - needs_machine
@@ -6149,6 +6215,73 @@ export interface components {
             file_id: number;
             size: number;
             detail: string;
+        };
+        ClaudeWorkflowEvery: {
+            hours: number;
+            idle_minutes: number;
+            force_after_hours: number;
+            retry_after_hours: number;
+        };
+        ClaudeWorkflowLastRun: {
+            task: number;
+            status: components["schemas"]["ClaudeTaskStatusEnum"];
+            origin: components["schemas"]["ClaudeTaskOriginEnum"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+        };
+        ClaudeWorkflowMiss: {
+            detail: string;
+            /** @description The workflows there are, as Alfred says them. */
+            workflows: string[];
+        };
+        ClaudeWorkflowName: {
+            name: string;
+            says: string;
+        };
+        ClaudeWorkflowParam: {
+            name: string;
+            says: string;
+            required: boolean;
+        };
+        ClaudeWorkflowQueued: {
+            id: number;
+            status: components["schemas"]["ClaudeTaskStatusEnum"];
+            machine: components["schemas"]["ClaudeMachineRef"] | null;
+            workflow: string;
+            /** @description What was queued, in words. */
+            detail: string;
+        };
+        ClaudeWorkflowRow: {
+            machine: string;
+            machine_state: components["schemas"]["ClaudeMachineStateEnum"];
+            name: string;
+            /** @description The name as Alfred says it. */
+            spoken: string;
+            says: string;
+            aliases: string[];
+            params: components["schemas"]["ClaudeWorkflowParam"][];
+            /** @description Where it stops for Kevin's yes, in words. */
+            asks: string[];
+            outputs: string[];
+            deliver: string | null;
+            every: components["schemas"]["ClaudeWorkflowEvery"] | null;
+            last_run: components["schemas"]["ClaudeWorkflowLastRun"] | null;
+            /** @description A run is queued, running, or waiting on Kevin's yes. */
+            waiting: boolean;
+            /** @description Its schedule says a run is due now. */
+            due: boolean;
+            /** @description Why this machine never starts it on its own, in words; null when it may (a schedule on a listed machine while LEGION_WORKFLOW_SCHEDULES_LISTED is off). */
+            schedule_refused: string | null;
+        };
+        ClaudeWorkflowRun: {
+            /** @description The machine's spoken name; null for the only machine that has the workflow. */
+            machine?: string | null;
+            /** @description The workflow's exact name. */
+            name: string;
+            /** @description Optional words for the workflow, as typed. */
+            params?: string | null;
         };
         /**
          * @description Field-for-field `RemoteCodeClearEvent` / `CodeClearEventUpload`: the
@@ -13810,10 +13943,14 @@ export interface operations {
     api_claude_tasks_list: {
         parameters: {
             query?: {
+                /** @description ask, memory_review or workflow. */
+                kind?: string;
                 /** @description Default 20, at most 100. */
                 limit?: number;
                 /** @description A machine's spoken name. */
                 machine?: string;
+                /** @description named, offered or schedule: `schedule` finds the runs the engine started itself (a scheduled workflow waiting on Kevin's yes, for the phone). */
+                origin?: string;
                 /** @description One status, as computed at read time. */
                 status?: string;
             };
@@ -13855,8 +13992,17 @@ export interface operations {
                     "application/json": components["schemas"]["ClaudeTaskCreated"];
                 };
             };
-            /** @description Refused, nothing stored. */
+            /** @description Refused, nothing stored. A workflow nobody has also lists the workflows there are under `workflows`. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeWorkflowMiss"];
+                };
+            };
+            /** @description That workflow already has a run going. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14323,6 +14469,69 @@ export interface operations {
             };
             /** @description No heartbeat yet. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_claude_workflows_list: {
+        parameters: {
+            query?: {
+                /** @description One machine's spoken name. */
+                machine?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeWorkflowRow"][];
+                };
+            };
+        };
+    };
+    api_claude_workflows_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeWorkflowRun"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeWorkflowQueued"];
+                };
+            };
+            /** @description Refused. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeWorkflowMiss"];
+                };
+            };
+            /** @description A run is going. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
