@@ -131,6 +131,14 @@ object WakeWordEngine {
     // WATCHDOG_INTERVAL_MS later on its next poll. Starts true: nothing has asked yet.
     @Volatile private var pausedForMic = true
 
+    // Crash records 2026-11-10: opens, teardowns and every chunk's native work are serialised
+    // through this gate (see [WakeCaptureGate] for the two crashes the missing lock caused).
+    private val gate = WakeCaptureGate()
+
+    // Watchdog back-off after a capture that would not open ([WakeOpenBackoff]).
+    private var openFailures = 0
+    private var skipTicks = 0
+
     // Ticket 05: MicArbiter tells us we lost the mic via this, synchronously, on whichever
     // thread preempted us (a live conversation starting, or a ring-listening window opening).
     // MicArbiter's own doc explains why this must not block that thread - so the actual capture
@@ -200,7 +208,7 @@ object WakeWordEngine {
                 // this exact moment (rare at a cold start, but possible) - the watchdog's loop
                 // below keeps retrying, same as it does after any later preemption.
                 pausedForMic = !MicArbiter.request(MicArbiter.Claimant.WAKE_WORD, micPreemptionListener)
-                if (!pausedForMic) beginListening(loadedModel, appContext)
+                if (!pausedForMic) resumeListening(loadedModel, appContext, "start")
                 startWatchdog(loadedModel, appContext)
             } catch (e: Exception) {
                 Log.e(TAG, "Vosk init failed: ${e.message}", e)
@@ -232,7 +240,7 @@ object WakeWordEngine {
         Log.d(TAG, "refresh: rebuilding grammar, capture open=" + (record != null))
         if (record != null) {
             releaseSpeechService()
-            beginListening(loadedModel, appContext)
+            resumeListening(loadedModel, appContext, "grammar rebuild")
         }
         // else: paused for a conversation - the watchdog will resume with the
         // already-updated targetWords once it ends.
@@ -327,7 +335,20 @@ object WakeWordEngine {
      * Owning it also buys the two things tickets 08 and 07 were blocked on: the silenced-state
      * signal, and a peak level per buffer.
      */
-    private fun beginListening(loadedModel: Model, context: Context) {
+    private fun beginListening(loadedModel: Model, context: Context): Boolean {
+        // Whatever an earlier open left is torn down first, never overwritten (a field overwritten
+        // here was a recognizer nobody would ever close, and a capture loop still running on it).
+        releaseSpeechService()
+        return gate.locked { openCapture(loadedModel, context) }
+    }
+
+    /**
+     * Opens the record, the recognizer and the detector, and starts the capture loop. Runs under
+     * [gate]'s lock, so a concurrent [releaseSpeechService] waits for it rather than freeing half
+     * of it. False when the microphone would not open; everything it built is released again.
+     */
+    @Suppress("LongMethod", "ReturnCount") // one open, three refusals said in words
+    private fun openCapture(loadedModel: Model, context: Context): Boolean {
         val grammar = JSONArray(targetWords + listOf("[unk]")).toString()
         val rec = Recognizer(loadedModel, SAMPLE_RATE, grammar)
         // Ticket 20: per-word confidence in the confirm's result JSON, so the log says how sure
@@ -369,7 +390,8 @@ object WakeWordEngine {
             // start() caught it; keep failing loudly rather than looking like a quiet room.
             Log.e(TAG, "AudioRecord build failed: " + e.message)
             recordEvent("(microphone unavailable)", isFinal = true, hit = false)
-            return
+            discardOpen()
+            return false
         }
         if (r.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord not initialized - microphone may be in use")
@@ -379,7 +401,8 @@ object WakeWordEngine {
             // this engine already logs the open, it just never logged the release.
             Log.d(TAG, "AudioRecord released: sessionId=" + r.audioSessionId + " (init failed)")
             r.release()
-            return
+            discardOpen()
+            return false
         }
         record = r
         effects = if (raw) emptyList() else attachVoiceEffects(r.audioSessionId)
@@ -394,11 +417,32 @@ object WakeWordEngine {
             "AudioRecord opened: source=" + sourceName + " sessionId=" + r.audioSessionId +
                 " effects=" + effects.size + " state=" + r.state,
         )
-        r.startRecording()
+        // Crash records 2026-11-10: this threw IllegalStateException ("uninitialized AudioRecord")
+        // out of the watchdog and killed the process. Under the gate nothing can release `r`
+        // between the state check above and here any more; a platform refusal is still handled.
+        val started = runCatching { r.startRecording() }
+        if (started.isFailure || r.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+            Log.e(TAG, "AudioRecord would not start (state=" + r.state + "): " + started.exceptionOrNull()?.message)
+            recordEvent("(microphone unavailable)", isFinal = true, hit = false)
+            releaseSpeechService()
+            return false
+        }
         _running.value = true
-        captureJob = scope?.launch(Dispatchers.IO) {
+        captureJob = launchCaptureLoop(r, rec, detector, chunk, context)
+        return true
+    }
+
+    /** The read loop for one open capture; it does native work only while its ticket is open. */
+    private fun launchCaptureLoop(
+        r: AudioRecord,
+        rec: Recognizer,
+        twoStage: WakeTwoStageDetector?,
+        chunk: Int,
+        context: Context,
+    ): Job? {
+        val ticket = gate.open()
+        return scope?.launch(Dispatchers.IO) {
             val buf = ShortArray(chunk)
-            val twoStage = detector
             try {
                 while (isActive) {
                     val n = r.read(buf, 0, buf.size)
@@ -410,12 +454,44 @@ object WakeWordEngine {
                         break
                     }
                     if (n == 0) continue
-                    handleChunk(buf, n, rec, twoStage, context)
+                    // Native work only while this capture is still open (see [WakeCaptureGate]).
+                    if (!gate.whileOpen(ticket) { handleChunk(buf, n, rec, twoStage, context) }) break
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "capture loop ended: " + e.message)
             }
         }
+    }
+
+    /** Frees what [openCapture] built before it gave up (no record, no loop yet). */
+    private fun discardOpen() {
+        detector?.release()
+        detector = null
+        recognizer?.let { runCatching { it.close() } }
+        recognizer = null
+    }
+
+    /**
+     * [beginListening] for the watchdog, [start] and a grammar rebuild, never throwing: a capture
+     * that will not open gives the claim back and backs off ([WakeOpenBackoff]) instead of
+     * killing the process, and the watchdog tries again.
+     */
+    private fun resumeListening(loadedModel: Model, context: Context, why: String): Boolean {
+        val opened = runCatching { beginListening(loadedModel, context) }.getOrElse {
+            Log.e(TAG, "open failed ($why): " + it.message)
+            false
+        }
+        if (opened) {
+            openFailures = 0
+            skipTicks = 0
+        } else {
+            openFailures++
+            skipTicks = WakeOpenBackoff.ticksToSkip(openFailures)
+            MicArbiter.release(MicArbiter.Claimant.WAKE_WORD)
+            pausedForMic = true
+            Log.w(TAG, "capture did not open ($why), failure $openFailures - retrying after $skipTicks ticks")
+        }
+        return opened
     }
 
     /**
@@ -441,7 +517,9 @@ object WakeWordEngine {
         val gained = WakeInputGain.apply(buf, n, WAKE_INPUT_GAIN)
         when {
             twoStage != null -> {
-                val open = twoStage.process(gained, n, WakeSampleRecorder::onSignal) { pcm -> confirmWithVosk(rec, pcm) }
+                val open = twoStage.process(gained, n, WakeSampleRecorder::onSignal) { pcm ->
+                    confirmWithVosk(rec, pcm)
+                }
                 if (open) triggerConversation(context)
             }
             rec.acceptWaveForm(gained, n) -> handleResult(rec.result, isFinal = true, context)
@@ -581,7 +659,8 @@ object WakeWordEngine {
         // MIC_HANDOFF_MS is only 250ms), so without this there's a window where both AudioRecords
         // are open on the same mic and the new conversation captures silence. The watchdog's own
         // release call on its next tick is a harmless no-op once this has already run.
-        releaseSpeechService()
+        // Called from inside the capture loop's own chunk, so it must not wait for that loop.
+        releaseSpeechService(joinCapture = false)
         // Ticket 05: yield the claim ourselves rather than waiting to be preempted - the
         // conversation this triggers is about to become the LIVE_TURN holder anyway, and
         // releasing here (not just below in releaseSpeechService's caller) means MicArbiter's
@@ -613,7 +692,20 @@ object WakeWordEngine {
      * is released, then the effects, then the recognizer - releasing a Vosk `Recognizer` while the
      * loop could still call `acceptWaveForm` on it would be a native-side use-after-free.
      */
-    private fun releaseSpeechService() {
+    private fun releaseSpeechService(joinCapture: Boolean = true) {
+        // Close first: a chunk already doing native work finishes, and none starts after. Then
+        // take everything out of the fields in one step, so an open that runs next builds fresh
+        // objects this release can never free (see [WakeCaptureGate]).
+        val taken = gate.locked {
+            gate.close()
+            val t = Taken(captureJob, record, effects, detector, recognizer)
+            captureJob = null
+            record = null
+            effects = emptyList()
+            detector = null
+            recognizer = null
+            t
+        }
         recordingCallback?.let { cb ->
             val am = appContextForCallback?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             runCatching { am?.unregisterAudioRecordingCallback(cb) }
@@ -634,32 +726,30 @@ object WakeWordEngine {
         // this was introduced by taking ownership of the capture loop, and it is exactly the
         // "running but deaf" failure this engine keeps producing. stop() first is what makes the
         // join fast: it forces the in-flight read() to return instead of blocking out its buffer.
-        Log.d(TAG, "releaseSpeechService: hadRecord=" + (record != null) + " hadJob=" + (captureJob != null))
-        val job = captureJob
-        captureJob = null
-        record?.let { r ->
+        Log.d(TAG, "releaseSpeechService: hadRecord=" + (taken.record != null) + " hadJob=" + (taken.job != null))
+        taken.record?.let { r ->
             runCatching { if (r.recordingState == AudioRecord.RECORDSTATE_RECORDING) r.stop() }
         }
-        runCatching {
-            runBlocking { withTimeoutOrNull(CAPTURE_JOIN_TIMEOUT_MS) { job?.cancelAndJoin() } }
+        if (joinCapture) {
+            runCatching {
+                runBlocking { withTimeoutOrNull(CAPTURE_JOIN_TIMEOUT_MS) { taken.job?.cancelAndJoin() } }
+            }
+        } else {
+            taken.job?.cancel()
         }
         // Ticket 15: same pairing as the init-failed release just above - sessionId read before
         // release() so a capture can match this line against its own open.
-        record?.let { r ->
+        taken.record?.let { r ->
             Log.d(TAG, "AudioRecord released: sessionId=" + r.audioSessionId + " (releaseSpeechService)")
             runCatching { r.release() }
         }
-        record = null
         // Ticket 20: the capture loop has stopped, so whatever sample was in progress is complete.
         WakeSampleRecorder.flush()
 
-        effects.forEach { runCatching { it.release() } }
-        effects = emptyList()
-
-        detector?.release()
-        detector = null
-        recognizer?.let { runCatching { it.close() } }
-        recognizer = null
+        taken.effects.forEach { runCatching { it.release() } }
+        // Safe after close(): the loop holding this recognizer and detector runs no more chunks.
+        taken.detector?.release()
+        taken.recognizer?.let { runCatching { it.close() } }
 
         _peakLevel.value = 0
         _running.value = false
@@ -685,11 +775,15 @@ object WakeWordEngine {
             var silencedTicks = 0
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
+                if (skipTicks > 0) {
+                    skipTicks--
+                    continue
+                }
                 if (pausedForMic) {
                     if (MicArbiter.request(MicArbiter.Claimant.WAKE_WORD, micPreemptionListener)) {
                         pausedForMic = false
                         Log.d(TAG, "watchdog: mic granted - resuming")
-                        beginListening(loadedModel, context)
+                        resumeListening(loadedModel, context, "watchdog")
                         silencedTicks = 0
                     }
                 } else if (record != null && _silenced.value) {
@@ -712,8 +806,7 @@ object WakeWordEngine {
                     if (silencedTicks >= SILENCED_TICKS_BEFORE_REACQUIRE) {
                         silencedTicks = 0
                         Log.w(TAG, "watchdog: still silenced - re-acquiring the microphone")
-                        releaseSpeechService()
-                        beginListening(loadedModel, context)
+                        resumeListening(loadedModel, context, "re-acquire")
                     }
                 } else if (!_silenced.value) {
                     silencedTicks = 0
@@ -721,4 +814,13 @@ object WakeWordEngine {
             }
         }
     }
+
+    /** What one [releaseSpeechService] took out of the fields, freed outside the lock. */
+    private class Taken(
+        val job: Job?,
+        val record: AudioRecord?,
+        val effects: List<AudioEffect>,
+        val detector: WakeTwoStageDetector?,
+        val recognizer: Recognizer?,
+    )
 }
