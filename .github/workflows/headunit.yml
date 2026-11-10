@@ -1,0 +1,112 @@
+# CI for the car head unit (`headunit/`, package com.kevin.midnightai, ADR 0059). A SEPARATE Gradle
+# project from the phone's `app/`; they share only the engine API. Added 2026-11-10 by the
+# architecture review's item 1.
+#
+#   - `-Pnokey` always (AGENT-RULES: head unit builds use it): bakes an EMPTY Gemini key, so CI
+#     holds and needs no key. `google-services.json` and `local.properties` are gitignored; the
+#     build must not need either beyond `sdk.dir`, which is written from the runner's SDK.
+#   - `compileDebugKotlin testDebugUnitTest`, totals from the JUnit XML only (CLAUDE.md section 6).
+#   - `headunit/gradlew` is committed mode 100644 (authored on Windows): `chmod +x` first.
+#   - Known flake: `AskEngineTest` timing. A red run there is re-run once before it is called real.
+
+name: Head unit
+
+on:
+  push:
+    branches: [dev, main, 'up/**', 'integrate/**']
+    paths:
+      - 'headunit/**'
+      - '.github/workflows/headunit.yml'
+      - '.github/scripts/junit_totals.py'
+  pull_request:
+    paths:
+      - 'headunit/**'
+      - '.github/workflows/headunit.yml'
+      - '.github/scripts/junit_totals.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
+jobs:
+  unit-tests:
+    name: compile + unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: headunit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 9.2.1 needs JDK 17 to run Gradle; the app's bytecode stays Java 11.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Point local.properties at the runner's SDK
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
+          echo "sdk.dir=${sdk}" > local.properties
+
+      # The google-services plugin refuses to build without `app/google-services.json`, which is
+      # gitignored (it names Kevin's Firebase project). CI writes a PLACEHOLDER with made-up ids:
+      # it lets resources generate, it points at no real project, and it is not a secret. Unit
+      # tests never reach Firebase. Skipped if a real file is somehow present.
+      - name: Placeholder google-services.json (made-up ids)
+        run: |
+          [ -f app/google-services.json ] && exit 0
+          cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "ci-placeholder",
+              "storage_bucket": "ci-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                  "android_client_info": { "package_name": "com.kevin.midnightai" }
+                },
+                "oauth_client": [],
+                "api_key": [ { "current_key": "ci-placeholder-not-a-key" } ],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+
+      - name: Make the Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
+      - name: compile + unit tests
+        run: ./gradlew compileDebugKotlin testDebugUnitTest -Pnokey --continue --no-daemon
+
+      - name: Totals from the JUnit XML
+        if: always()
+        working-directory: .
+        run: python3 .github/scripts/junit_totals.py 'headunit/app/build/test-results/testDebugUnitTest/*.xml'
+
+      - name: Upload the unit-test XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headunit-test-results
+          path: headunit/app/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: warn

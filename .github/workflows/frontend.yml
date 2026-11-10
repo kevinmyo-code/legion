@@ -1,0 +1,78 @@
+# CI for the web app (`server/frontend/`, React + Vite + TanStack). Added 2026-11-10 by the
+# architecture review's item 1.
+#
+#   - `npm ci`: the committed lockfile, exactly. A lockfile drift is a failure, not an update.
+#   - `tsc -b`: every tsconfig reference (app, node, e2e, service worker) type-checks.
+#   - `vitest run`: the unit tests. Playwright (`e2e/`) is NOT run here: it drives a live engine.
+#   - `npm run check:api`: regenerates `src/api/schema.d.ts` from `server/openapi.yaml` and fails
+#     on any diff, so the web client's types can never lag the engine's contract.
+#
+# No secrets: nothing here talks to a server.
+
+name: Frontend
+
+on:
+  push:
+    branches: [dev, main, 'up/**', 'integrate/**']
+    paths:
+      - 'server/frontend/**'
+      - 'server/openapi.yaml'
+      - '.github/workflows/frontend.yml'
+      - '.github/scripts/junit_totals.py'
+  pull_request:
+    paths:
+      - 'server/frontend/**'
+      - 'server/openapi.yaml'
+      - '.github/workflows/frontend.yml'
+      - '.github/scripts/junit_totals.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    name: tsc, vitest, api contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: server/frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: tsc -b
+        run: npx tsc -b
+
+      - name: vitest
+        run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=junit.xml
+
+      - name: Totals from the JUnit XML
+        if: always()
+        working-directory: .
+        run: python3 .github/scripts/junit_totals.py server/frontend/junit.xml
+
+      - name: API types match openapi.yaml
+        run: npm run check:api
+
+      - name: Upload the JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-junit-xml
+          path: server/frontend/junit.xml
+          if-no-files-found: warn
