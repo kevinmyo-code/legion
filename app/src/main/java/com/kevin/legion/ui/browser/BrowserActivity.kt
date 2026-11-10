@@ -96,6 +96,11 @@ class BrowserActivity : ComponentActivity() {
                     graph.feedPass.cancelRequest(pkg)
                     model.dismissBlock()
                 },
+                onBreathe = {
+                    graph.feedPass.cancelRequest(pkg)
+                    model.dismissBlock()
+                    com.kevin.legion.ui.typeset.BreathActivity.start(this)
+                },
                 onOpen = model::openAfterPass,
             )
         }
