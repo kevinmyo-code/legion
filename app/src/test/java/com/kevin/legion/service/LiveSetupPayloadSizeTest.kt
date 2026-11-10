@@ -261,6 +261,19 @@ class LiveSetupPayloadSizeTest {
      * After: 96 declarations, 88,175 + 10,356 = 98,531 chars, ~24,632 (+133 chars, +33 tokens).
      * `look` takes no parameters and a 39-char description; its trust rules ride on the tool RESULT
      * and the button's opener (`LookRules.RULES`), billed per look, not per setup. Headroom ~18.
+     *
+     * **All three together, NOT raised, 2026-11-10 (`integrate/2026-11-10-jarvis`).** Each branch
+     * measured itself against dev alone. Merged (with `why_did_you_say_that` taking proactive-voice's
+     * wording minus the empty-result sentence watches cut, plus `stop`): 97 declarations, 88,404
+     * chars of tools JSON plus 10,356 chars of system instruction = 98,760 chars, ~24,690 tokens,
+     * 40 over. Trimmed text with no steering value, every caveat kept: `play_music` lost its
+     * "if Spotify isn't connected, this fails with a message telling the user to connect it in
+     * Setup..." sentence (the failure RESULT says exactly that, billed per result), description
+     * 1,679 to 1,540 chars; `control_music` lost "hands-free", "(Spotify's own behaviour)" and its
+     * playlist example (the `playlistName` param keeps one), 2,613 to 2,527. After: 97
+     * declarations, 88,179 + 10,356 = 98,535 chars, ~24,633 tokens. Headroom ~17 tokens. Priced
+     * for Kevin in the integration report: the setup text is re-billed on every turn of every
+     * connect, so a raise is a per-turn cost, not a one-off.
      */
     private val ceilingTokens = 24_650
 

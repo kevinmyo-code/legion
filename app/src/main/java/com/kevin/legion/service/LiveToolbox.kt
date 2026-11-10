@@ -443,7 +443,7 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "control_music",
-            description = "Control music playback hands-free: 'play', 'pause', 'next', 'previous' " +
+            description = "Music playback: 'play', 'pause', 'next', 'previous' " +
                 "work with whatever's playing on the phone. 'queue' adds a NAMED track (pass " +
                 "'query') to Spotify's own up-next queue via search - requires Spotify connected " +
                 "in Setup, same as play_music. 'Play X next' and 'add X to the queue' are the " +
@@ -463,8 +463,8 @@ object LiveToolbox {
                 "are genuinely different requests, don't collapse them. 'repeat_off' turns " +
                 "repeat off entirely. 'seek_forward'/'seek_back' jump within the current track " +
                 "- pass 'seconds' if the user named a duration, otherwise it defaults to 30. " +
-                "Seeking forward past the end of the track moves on to the next song (Spotify's " +
-                "own behaviour) - say so plainly if it happens, don't just report a jump. " +
+                "Seeking forward past the end of the track moves on to the next song - say so " +
+                "plainly if it happens, don't just report a jump. " +
                 "'restart' jumps back to the start of the current track. 'more_from_artist' " +
                 "('more from this artist', 'keep going with this artist') plays the CURRENT " +
                 "track's artist directly - no search, no query needed, it's exact catalogue " +
@@ -472,8 +472,7 @@ object LiveToolbox {
                 "if nothing is, or it's a non-Spotify source, say plainly you can't tell who's " +
                 "playing rather than guessing an artist from something heard earlier. " +
                 "'add_to_playlist' adds the CURRENTLY PLAYING track (same subject as 'like') to a " +
-                "playlist the user names, e.g. 'add this to my Roadtrip playlist' - pass " +
-                "'playlistName'. Only matches playlists the user owns or a friend made them a " +
+                "playlist the user names - pass 'playlistName'. Only matches playlists the user owns or a friend made them a " +
                 "collaborator on - it does NOT search the public catalogue for a playlist to add " +
                 "to, and if the name matches a playlist that's followed but not owned or " +
                 "collaborative (an editorial playlist like Discover Weekly), this fails and says " +
@@ -622,9 +621,7 @@ object LiveToolbox {
                 "this checks the user's OWN playlists (including ones friends made him a " +
                 "collaborator on) FIRST, and only falls back to Spotify's public catalogue if " +
                 "nothing there matches - when it falls back, say so and name what actually played, " +
-                "since it may not be what the user meant. If Spotify isn't " +
-                "connected, this fails with a message telling the user to connect it in Setup or " +
-                "pick something on their phone themselves. Once something's playing, control_music " +
+                "since it may not be what the user meant. Once something's playing, control_music " +
                 "handles play/pause/skip. To replay something the user names from LEGION's own " +
                 "history (browse_my_music's legion_history source, e.g. 'play that thing from " +
                 "Tuesday'), OR to play a NAMED album from the current artist's own catalogue " +
