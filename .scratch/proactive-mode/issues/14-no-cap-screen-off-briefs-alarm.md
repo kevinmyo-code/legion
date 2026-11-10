@@ -4,7 +4,7 @@ ticket: 14
 title: "No cap, speech with the screen off, the two spoken briefs, and the emergency alarm"
 type: build
 status: built
-status-detail: "2026-11-10, Kevin - four rulings built on feat/proactive-voice (ADR 0082); owes Digest on, then a phone run"
+status-detail: "2026-11-10, Kevin - four rulings built on feat/proactive-voice (ADR 0082); owes a Digest check, then a phone run"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -26,7 +26,8 @@ Kevin, 2026-11-10, four rulings. Full text and the picks he did not rule on:
 
 ## Owed on the phone (none of this has run on hardware)
 
-1. **Turn Digest on** in Settings, Proactive speech (it ships off; both briefs are silent until then).
+1. **Check Digest** in Settings, Proactive speech. A fresh install has it off; on Kevin's phone it
+   may already be on (it had a raise until ticket 32), in which case both briefs start at install.
 2. Screen off, phone locked, ringer on: a Timing reminder is SPOKEN, not posted. Then ringer on
    vibrate: the same reminder is POSTED.
 3. A raise that asks something (a Claude result with a question) with the screen off: spoken; whether
@@ -36,4 +37,7 @@ Kevin, 2026-11-10, four rulings. Full text and the picks he did not rule on:
    morning: nothing. Brief me still replays.
 5. Leave home past the geofence, come back: the home brief, once. A reboot at home: no brief.
 6. "Stop the morning brief": the row under Digest reads off; the next morning's dismiss is silent.
-7. The emergency ring needs `feat/conditions`; until then only the unit tests cover it.
+7. The emergency ring needs `feat/conditions`; until then only the unit tests cover it. First step
+   then: phone on vibrate at night, trigger an alert, confirm it RINGS. If Android refuses the ring's
+   background start the fallback is a default-importance notification, silent on a silenced phone.
+8. Indoors at home with a weak fix: no "just got home" brief without a real trip.

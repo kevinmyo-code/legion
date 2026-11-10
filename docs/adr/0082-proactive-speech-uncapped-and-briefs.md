@@ -92,8 +92,9 @@ background, the alert is posted. The feed that raises these is not part of this 
   a sitrep on a clock.
 - Ticket 05's "the cap governs speech, not existence" survives as "the gate governs speech": every
   refusal except the kill switch and a decline still becomes a notification.
-- Both briefs ride the Digest switch, which a fresh install and Kevin's phone have off. Nothing
-  speaks until he turns Digest on.
+- Both briefs ride the Digest switch, which a fresh install has off. Its state on Kevin's phone is
+  not known (Digest had a live raise until ticket 32); if it is on, both briefs start at install,
+  the wake-up one reading the Gmail newsletters at the alarm.
 - `why_did_you_say_that` gained one optional argument; its description was tightened to pay for it
   (`LiveSetupPayloadSizeTest`).
 - Built picks Kevin did not rule on, each reversible in one place: the 04:00 to 11:00 window, the
