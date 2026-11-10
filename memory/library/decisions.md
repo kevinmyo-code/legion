@@ -7586,3 +7586,40 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   none is set; the viewer opens at once only when a LEGION screen is in front, otherwise a
   notification naming a count; phone copies kept 30 days. ADR 0080, branch
   `feat/claude-files-to-phone`.
+
+## 2026-11-06 - Navigation quality: what NAV_AUDIT keeps, and TomTom retired (Kevin)
+
+- **Kevin's words:** *"ok for navigation. all of it"*, accepting every recommendation in
+  `.scratch/nav-quality/map.md`'s "Decisions for Kevin".
+- **D1 (ticket 02): a Mapbox hit's `mapbox_id` is logged** (Mapbox Product Terms 2.7.6 lets LEGION
+  store Feature IDs), so a pick can be looked up again. Its name and address are still never logged
+  (2.7.2). The id rides only on `search` hits; a first-party hit carries its label, never an id.
+- **D2 (ticket 02): route distance, ETA and typical duration stay in the log; the risk against
+  2.10.1 is accepted in words**, as mapbox-nav ticket 13 accepted the vehicle clause. The audit is
+  diagnostics on the household's own engine and is never shared. **Destination coordinates are
+  logged only for a first-party destination**: a saved place, whose point is the household's own GPS
+  fix. A calendar, suggestion or contact destination's point is a Mapbox geocode of address text,
+  and a contact's is a third party's address (D9), so those log `to=none` like a search hit. The
+  origin is the phone's own fix and stays.
+- **D3 (ticket 03): text search moves to `forward`**, billed per request (25,000 free a month)
+  instead of per session (2,500). Same token.
+- **D4 (ticket 05): recents and frequents are kept by the arrival GPS fix**, first-party like
+  `tag_place`. Not by the `mapbox_id`. Build ticket 13.
+- **D5 (ticket 10): a second POI source is later.** Ticket 10 is parked (KIV), not closed.
+- **D6 (ticket 11): Google Places is closed** on Google's terms (14.2, 15.3(c)), a new billed key,
+  and ADR 0054.
+- **D7: the engine keeps NAV_AUDIT 90 days.** NAV_AUDIT lines ride in `reason=conversation` batches
+  next to LIVE_AUDIT. A batch holding NAV_AUDIT lines is kept 90 days; at 60 days, the conversation
+  limit, its other lines are dropped and only its NAV_AUDIT lines stay. A batch with none still goes
+  at 60.
+- **D8: the upload at `trip_end` stays**, so a hand-started trip reaches the engine without waiting
+  for a voice session.
+- **D9: a contact's address never reaches a `resolve` reason.** The not-found line logs the
+  contact's label only; the spoken sentence still names the address to the user. Applied to
+  calendar and suggestion address text too, the same kind of data.
+- **Standing (mapbox-nav map): TomTom is retired.** No code read `BuildConfig.TOMTOM_API_KEY`;
+  Mapbox's `driving-traffic` routing answers the same question. The build-config key and the
+  "Traffic flow data (c) TomTom" credit are removed. **Revoking the key itself is Kevin's**, at
+  TomTom's developer portal; nothing in the repo or on the engine held it. The location-intelligence
+  departure advisor (ticket 06) now gets its traffic ETA from Mapbox Directions; that map's
+  TomTom decisions (4, 8, 17, 18, 19) are superseded by this entry.

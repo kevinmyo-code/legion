@@ -13,7 +13,12 @@ sealed interface RouteRequestResult {
      * [token] is opaque to the controller: the production seam keeps the SDK's own route objects
      * in it and takes it back in [NavSdk.setRoutes]. [routes] are the summaries, in the SDK's order.
      */
-    data class Ready(val token: Any, val routes: List<NavRouteInfo>) : RouteRequestResult
+    data class Ready(
+        val token: Any,
+        val routes: List<NavRouteInfo>,
+        /** The SDK's `RouterOrigin` (`ONLINE` / `OFFLINE`), for the NAV_AUDIT line; null when not reported. */
+        val router: String? = null,
+    ) : RouteRequestResult
 
     data class Failed(val kind: RouteFailure, val message: String?) : RouteRequestResult
 
@@ -28,10 +33,17 @@ interface NavSdkListener {
     /** Road name and speed limit from map matching. Null is unknown, and is passed through as unknown. */
     fun onLocation(road: String?, speedLimit: SpeedLimit?)
 
-    /** The navigator's routes changed (a reroute, a refresh, a new alternative), primary first. */
-    fun onRoutesChanged(routes: List<NavRouteInfo>)
+    /**
+     * The navigator's routes changed (a reroute, a refresh, a new alternative), primary first. [reason]
+     * is the SDK's `RoutesUpdatedResult.reason` in lower case without its prefix (`reroute`, `refresh`,
+     * `alternative`, `new`, `clean_up`); null when the seam did not say.
+     */
+    fun onRoutesChanged(routes: List<NavRouteInfo>, reason: String? = null)
 
     fun onReroute(state: RerouteStatus, message: String?)
+
+    /** The SDK's off-route flag (`OffRouteObserver`) flipped. Audit only; the reroute itself is the SDK's. */
+    fun onOffRoute(offRoute: Boolean) = Unit
 
     fun onArrival()
 
@@ -43,7 +55,11 @@ interface NavSdkListener {
     fun onVoiceInstruction(text: String)
 }
 
-enum class RerouteStatus { IDLE, FETCHING, FAILED }
+/**
+ * The SDK's reroute state. [FETCHED] and [INTERRUPTED] read as [IDLE] on the screen; they are kept apart
+ * so the NAV_AUDIT `reroute` line can tell a found route from an abandoned fetch.
+ */
+enum class RerouteStatus { IDLE, FETCHING, FETCHED, INTERRUPTED, FAILED }
 
 /** One route-progress tick, already in plain units. */
 data class NavProgressInfo(

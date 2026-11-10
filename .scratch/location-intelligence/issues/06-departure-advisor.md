@@ -13,6 +13,13 @@ tags: [ticket]
 ---
 # The departure advisor
 
+> **TomTom retired (Kevin, 2026-11-06; `memory/library/decisions.md`, "Navigation quality").** The
+> traffic ETA below now comes from Mapbox Directions (`driving-traffic`) on the household's Mapbox
+> token, and the TomTom key is gone from the build. Read "TomTom" below as "Mapbox Directions"; the
+> bounds (only a located event, only inside the window, nothing else polls) and "no ETA persisted"
+> stand, now under Mapbox Product Terms 2.10.1. The KeyVault and attribution rules about TomTom no
+> longer apply.
+
 ## What to build
 
 "Leave now" - chain: a calendar event that HAS a location, geocode it, ETA with live traffic from

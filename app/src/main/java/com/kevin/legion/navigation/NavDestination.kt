@@ -13,6 +13,18 @@ data class NavDestination(
     val longitude: Double,
     /** What it is, so the preview can show "Gas station · 12 Main St" and the user can tell (device-run defect 11). */
     val detail: String? = null,
+    /**
+     * Which resolver source found it (`saved_place`, `search`, ...), for the NAV_AUDIT `route_request`
+     * line's `to_src=`; null when it did not come through the resolver.
+     */
+    val source: String? = null,
+    /**
+     * A Mapbox search hit's `mapbox_id`, which ToS 2.7.6 lets LEGION store (map decision D1), for the
+     * `route_request` line's `to_id=`. Null for every other source.
+     */
+    val mapboxId: String? = null,
+    /** The user's words that found it, normalised; an arrival keeps them as a recent place (ticket 13). */
+    val asked: String? = null,
 ) {
     val point: GeoPoint get() = GeoPoint(latitude, longitude)
 }

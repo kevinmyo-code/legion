@@ -6,7 +6,8 @@ import com.kevin.legion.navigation.GeoPoint
  * One search the Mapbox Search SDK is asked to run. [category] is a canonical Mapbox category id
  * when the phrase was "nearest X" and X is one we know; [alongRoute] makes the search favour
  * results near that route (a `via`). [near] is the live fix: **always passed, because Search Box's
- * proximity defaults to the device's IP when omitted** (research 01).
+ * proximity defaults to the device's IP when omitted** (research 01). [nearest] asks for a drive-time
+ * ETA per result, so "nearest" means nearest by drive, not by line (nav-quality ticket 03).
  */
 data class SearchQuery(
     val text: String,
@@ -14,6 +15,7 @@ data class SearchQuery(
     val near: GeoPoint? = null,
     val alongRoute: List<GeoPoint>? = null,
     val limit: Int = 5,
+    val nearest: Boolean = false,
 )
 
 sealed interface SearchAnswer {
@@ -137,13 +139,21 @@ object SearchAmbiguity {
  */
 object SearchRanking {
     private val BY_DISTANCE: Comparator<Candidate> = compareBy(nullsLast()) { it.distanceM }
+    private val BY_ETA: Comparator<Candidate> = compareBy(nullsLast()) { it.etaMinutes }
+
+    /**
+     * "Nearest" is nearest by drive (nav-quality ticket 03): hits the search gave a drive-time ETA
+     * first, shortest first, then the rest by distance. Without ETAs this is [BY_DISTANCE].
+     */
+    private val BY_DRIVE: Comparator<Candidate> = BY_ETA.then(BY_DISTANCE)
 
     fun rank(parsed: ParsedSearch, alongRoute: Boolean, hits: List<Candidate>): List<Candidate> = when {
         alongRoute || hits.size < 2 -> hits
-        parsed.category != null -> hits.sortedWith(BY_DISTANCE)
+        parsed.category != null -> hits.sortedWith(if (parsed.nearest) BY_DRIVE else BY_DISTANCE)
         else -> {
+            val order = if (parsed.nearest) BY_DRIVE else BY_DISTANCE
             val (named, rest) = hits.partition { nameCarries(it.name, parsed.term) }
-            named.sortedWith(BY_DISTANCE) + if (parsed.nearest) rest.sortedWith(BY_DISTANCE) else rest
+            named.sortedWith(order) + if (parsed.nearest) rest.sortedWith(order) else rest
         }
     }
 
@@ -169,7 +179,13 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
         // forward text search), so a via tries the phrase as a category id before falling back.
         val category = parsed.category ?: if (along != null) parsed.term.replace(' ', '_') else null
         val answer = search.search(
-            SearchQuery(text = parsed.term, category = category, near = ctx.fix, alongRoute = along),
+            SearchQuery(
+                text = parsed.term,
+                category = category,
+                near = ctx.fix,
+                alongRoute = along,
+                nearest = parsed.nearest,
+            ),
         )
         return when (answer) {
             is SearchAnswer.Failed -> SourceAnswer.Unreadable("search couldn't be reached: ${answer.why}")

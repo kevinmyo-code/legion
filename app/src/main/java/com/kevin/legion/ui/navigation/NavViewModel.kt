@@ -14,6 +14,7 @@ import com.kevin.legion.navigation.NavDestination
 import com.kevin.legion.navigation.NavResult
 import com.kevin.legion.navigation.NavPhase
 import com.kevin.legion.navigation.NavState
+import com.kevin.legion.navigation.audit.SearchOrigin
 import com.kevin.legion.navigation.resolve.Candidate
 import com.kevin.legion.navigation.resolve.LookupContext
 import com.kevin.legion.navigation.resolve.PhonePlacesReader
@@ -30,7 +31,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** What the person is being asked to confirm: several plausible places, top pick first. */
-data class ChoiceUi(val forStop: Boolean, val query: String, val candidates: List<Candidate>, val notes: List<String>)
+data class ChoiceUi(
+    val forStop: Boolean,
+    val query: String,
+    val candidates: List<Candidate>,
+    val notes: List<String>,
+    /** The NAV_AUDIT search these came from, so the tap (or the back-out) names it. */
+    val searchId: String? = null,
+)
 
 /**
  * Whether a phase change closes the open stops / routes panel. A preview re-requesting itself (an added
@@ -91,6 +99,7 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     private val application = app as MidnightApplication
     private val controller = application.navController
     private val resolver = application.navResolver
+    private val audit = application.navAudit
     private val tokens = application.mapboxTokens
     private val places = PhonePlacesReader(app)
 
@@ -139,19 +148,19 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     fun submit() {
         val text = local.value.input
         if (text.isBlank() || local.value.resolving) return
-        viewModelScope.launch { resolveAndPreview(text) }
+        viewModelScope.launch { resolveAndPreview(text, SearchOrigin.TYPED) }
     }
 
     /** A saved place's Navigate action, or a chip: the label goes through the resolver like any phrase. */
     fun navigateTo(label: String) {
         if (controller.state.value.phase == NavPhase.GUIDING) return
         local.update { it.copy(input = label) }
-        viewModelScope.launch { resolveAndPreview(label) }
+        viewModelScope.launch { resolveAndPreview(label, SearchOrigin.TAP) }
     }
 
-    private suspend fun resolveAndPreview(text: String) {
+    private suspend fun resolveAndPreview(text: String, origin: SearchOrigin) {
         local.update { it.copy(resolving = true, problem = null, choice = null) }
-        val resolution = resolver.resolve(text, LookupContext(fix()))
+        val resolution = resolver.resolve(text, LookupContext(fix()), origin)
         when (resolution) {
             is Resolution.NotFound -> local.update { it.copy(resolving = false, problem = resolution.message) }
             is Resolution.Resolved -> {
@@ -159,7 +168,9 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
                     local.update {
                         it.copy(
                             resolving = false,
-                            choice = ChoiceUi(false, text, resolution.candidates, resolution.notes),
+                            choice = ChoiceUi(
+                                false, text, resolution.candidates, resolution.notes, resolution.searchId,
+                            ),
                         )
                     }
                 } else {
@@ -174,12 +185,16 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
     fun pickCandidate(candidate: Candidate) {
         val choice = local.value.choice ?: return
         local.update { it.copy(choice = null) }
+        audit.pick(choice.searchId, choice.candidates.indexOf(candidate) + 1, "tap", candidate.source)
         viewModelScope.launch {
             if (choice.forStop) addStopTo(candidate.toDestination()) else previewTo(candidate.toDestination())
         }
     }
 
-    fun dismissChoice() = local.update { it.copy(choice = null) }
+    fun dismissChoice() {
+        local.value.choice?.let { audit.pick(it.searchId, 0, "dismissed", null) }
+        local.update { it.copy(choice = null) }
+    }
 
     private suspend fun previewTo(destination: NavDestination) {
         val result = controller.preview(destination)
@@ -246,13 +261,17 @@ class NavViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             local.update { it.copy(resolving = true, problem = null) }
             val ctx = LookupContext(fix(), controller.primaryGeometry().takeIf { it.isNotEmpty() })
-            when (val resolution = resolver.resolve(text, ctx)) {
+            when (val resolution = resolver.resolve(text, ctx, SearchOrigin.TYPED)) {
                 is Resolution.NotFound -> local.update { it.copy(resolving = false, problem = resolution.message) }
                 is Resolution.Resolved -> {
                     local.update { it.copy(resolving = false) }
                     if (resolution.ambiguous) {
                         local.update {
-                            it.copy(choice = ChoiceUi(true, text, resolution.candidates, resolution.notes))
+                            it.copy(
+                                choice = ChoiceUi(
+                                    true, text, resolution.candidates, resolution.notes, resolution.searchId,
+                                ),
+                            )
                         }
                     } else {
                         addStopTo(resolution.destination)

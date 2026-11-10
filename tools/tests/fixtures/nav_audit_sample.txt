@@ -1,0 +1,33 @@
+--------- beginning of main
+11-06 08:00:00.000  4321  4321 I NAV_AUDIT: search id=smhx0 origin=voice along=false verdict=resolved source=saved_place results=1 ms=4 tried=saved_place:4:1:hits top=[{"r":1,"src":"saved_place","name":"work","kind":"other","m":12340}] query="take me to work"
+11-06 08:00:00.100  4321  4321 I NAV_AUDIT: resolve tool=navigate slot=destination verdict=go search=smhx0 candidates=1 choice=none source=saved_place reason=""
+11-06 08:00:00.900  4321  4321 I NAV_AUDIT: route_request id=rmhx1 purpose=preview trip=none result=ok fail=none ms=780 routes=3 alternatives=2 distance_m=14000 eta_s=1100 typical_s=1000 profile=mapbox/driving-traffic traffic=true router=online stops=0 avoid=none from=29.700,-95.400 to=29.900,-95.600 to_src=saved_place crow_m=29000 message=""
+11-06 08:00:01.000  4321  4321 I NAV_AUDIT: trip_start trip=tmhx2 route=r#0 route_index=0 eta_s=1100 distance_m=14000 typical_s=1000 stops=0 avoid=none profile=mapbox/driving-traffic traffic=true
+11-06 08:00:01.050  4321  4321 W MapboxNavController: search failed=nothing to see here
+11-06 08:05:00.000  4321  4321 I NAV_AUDIT: route_update trip=tmhx2 reason=refresh routes=2 eta_s=1000 distance_m=11000 elapsed_s=299
+11-06 08:10:00.000  4321  4321 I NAV_AUDIT: off_route trip=tmhx2 state=true elapsed_s=599
+11-06 08:10:00.200  4321  4321 I NAV_AUDIT: reroute trip=tmhx2 state=fetching reason=off_route
+11-06 08:10:01.100  4321  4321 I NAV_AUDIT: reroute trip=tmhx2 state=fetched ms=900 message="ONLINE"
+11-06 08:10:01.200  4321  4321 I NAV_AUDIT: off_route trip=tmhx2 state=false elapsed_s=600
+11-06 08:10:01.300  4321  4321 I NAV_AUDIT: route_update trip=tmhx2 reason=reroute routes=1 eta_s=700 distance_m=8000 elapsed_s=600
+11-06 08:20:00.000  4321  4321 I NAV_AUDIT: reroute trip=tmhx2 state=fetching reason=other
+11-06 08:20:30.000  4321  4321 I NAV_AUDIT: reroute trip=tmhx2 state=failed ms=30000 message="no connection"
+11-06 08:21:00.000  4321  4321 I NAV_AUDIT: arrival trip=tmhx2 elapsed_s=1259 first_eta_s=1100 error_s=159 error_pct=14.5
+11-06 08:21:00.000  4321  4321 I NAV_AUDIT: trip_end trip=tmhx2 reason=arrived elapsed_s=1259 distance_left_m=none reroutes=2 off_routes=1 cues_spoken=20 cues_dropped=3 cue_drops=superseded:2,cancelled:1
+11-06 09:00:00.000  4321  4321 I LIVE_AUDIT: user final=true text="find me a starbucks"
+11-06 09:00:00.500 4321 4321 I NAV_AUDIT: search id=smhy0 origin=voice along=false verdict=ambiguous source=search results=5 ms=1400 tried=saved_place:3:0:no_match,calendar:20:0:no_match,suggestions:0:0:unreadable,contacts:15:0:no_match,search:1360:5:hits top=[{"r":1,"src":"search","kind":"poi","cat":"coffee","m":800},{"r":2,"src":"search","kind":"poi","cat":"coffee","m":2300}] query="the Starbucks near work"
+11-06 09:00:00.600 4321 4321 I NAV_AUDIT: resolve tool=navigate slot=destination verdict=ask search=smhy0 candidates=5 choice=none source=search reason="several_plausible"
+11-06 09:00:06.000 4321 4321 I NAV_AUDIT: resolve tool=navigate slot=destination verdict=choice_ok search=smhy0 candidates=5 choice=3 source=search reason=""
+11-06 09:00:06.000 4321 4321 I NAV_AUDIT: pick search=smhy0 rank=3 how=voice source=search
+11-06 09:00:07.000 4321 4321 I NAV_AUDIT: route_request id=rmhy1 purpose=preview trip=none result=failed fail=offline ms=12000 routes=0 alternatives=0 distance_m=none eta_s=none typical_s=none profile=none traffic=unknown router=none stops=0 avoid=none from=29.700,-95.400 to=29.720,-95.410 to_src=search crow_m=2400 message="no network"
+11-06 09:00:20.000 4321 4321 I NAV_AUDIT: route_request id=rmhy2 purpose=preview trip=none result=ok fail=none ms=620 routes=1 alternatives=0 distance_m=2600 eta_s=420 typical_s=none profile=mapbox/driving traffic=false router=online stops=0 avoid=toll from=29.700,-95.400 to=29.720,-95.410 to_src=search crow_m=2400 message=""
+11-06 09:00:21.000 4321 4321 I NAV_AUDIT: trip_start trip=tmhy3 route=r#0 route_index=0 eta_s=420 distance_m=2600 typical_s=none stops=0 avoid=toll profile=mapbox/driving traffic=false
+11-06 09:03:00.000 4321 4321 I NAV_AUDIT: trip_end trip=tmhy3 reason=cancelled elapsed_s=159 distance_left_m=1200 reroutes=0 off_routes=0 cues_spoken=2 cues_dropped=1 cue_drops=muted:1
+11-06 10:00:00.000 4321 4321 I NAV_AUDIT: search id=smhz0 origin=typed along=false verdict=not_found source=none results=0 ms=510 tried=saved_place:2:0:no_match,calendar:8:0:no_match,suggestions:5:0:no_match,contacts:10:0:no_match,search:480:0:no_match top=[] query="zzyzx road"
+11-06 10:00:10.000 4321 4321 I NAV_AUDIT: search id=smhz1 origin=typed along=false verdict=not_found source=none results=0 ms=490 tried=saved_place:2:0:no_match,search:470:0:no_match top=[] query="zzyzx road"
+11-06 10:01:00.000 4321 4321 I NAV_AUDIT: search id=smhz2 origin=tap along=false verdict=ambiguous source=saved_place results=2 ms=3 tried=saved_place:3:2:hits top=[{"r":1,"src":"saved_place","name":"gym north","kind":"other","m":1000},{"r":2,"src":"saved_place","name":"gym south","kind":"other","m":9000}] query="gym"
+11-06 10:01:04.000 4321 4321 I NAV_AUDIT: pick search=smhz2 rank=0 how=dismissed source=none
+11-06 10:02:00.000 4321 4321 I NAV_AUDIT: search id=smhz3 origin=voice along=true verdict=ambiguous source=search results=3 ms=900 tried=saved_place:2:0:no_match,search:880:3:hits top=[] query="a pharmacy"
+11-06 10:02:00.100 4321 4321 I NAV_AUDIT: search id=smhz4 origin=voice along=false verdict=empty source=none results=0 ms=0 tried=none top=[] query=""
+11-06 10:05:00.000 4321 4321 I NAV_AUDIT: route_request id=rmhz5 purpose=preview trip=none result=ok fail=none ms=700 routes=2 alternatives=1 distance_m=5000 eta_s=600 typical_s=600 profile=mapbox/driving-traffic traffic=true router=online stops=0 avoid=none from=29.700,-95.400 to=29.740,-95.450 to_src=saved_place crow_m=6000 message=""
+11-06 10:05:01.000 4321 4321 I NAV_AUDIT: trip_start trip=tmhz6 route=r#0 route_index=1 eta_s=650 distance_m=5200 typical_s=600 stops=0 avoid=none profile=mapbox/driving-traffic traffic=true

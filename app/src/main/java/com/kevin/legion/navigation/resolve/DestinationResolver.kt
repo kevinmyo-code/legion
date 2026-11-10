@@ -3,6 +3,11 @@ package com.kevin.legion.navigation.resolve
 import com.kevin.legion.navigation.GeoPoint
 import com.kevin.legion.navigation.NavDestination
 import com.kevin.legion.navigation.NavFormat
+import com.kevin.legion.navigation.audit.NavAudit
+import com.kevin.legion.navigation.audit.SearchOrigin
+import com.kevin.legion.navigation.audit.SearchVerdict
+import com.kevin.legion.navigation.audit.SourceOutcome
+import com.kevin.legion.navigation.audit.SourceTry
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -11,6 +16,7 @@ import kotlin.math.sqrt
 /** Where an answer came from, in the order the resolver tries them (ticket 03). */
 enum class SourceKind(val label: String) {
     SAVED_PLACE("saved places"),
+    RECENT("recent places"),
     CALENDAR("calendar"),
     SUGGESTIONS("calendar suggestions"),
     CONTACTS("contacts"),
@@ -35,13 +41,25 @@ data class Candidate(
     /** The result's own category ("gas station"), when the search gave one. Null is unknown. */
     val category: String? = null,
     val kind: PlaceKind = PlaceKind.OTHER,
+    /**
+     * A Mapbox search hit's Feature ID (`SearchResult.mapboxId`). ToS 2.7.6 allows storing it, so the
+     * NAV_AUDIT `search` line carries it where it never carries the name (map decision D1). Null for a
+     * first-party hit, including a calendar or contact address that Mapbox geocoded: that id would
+     * point at the contact's address (decision D9).
+     */
+    val mapboxId: String? = null,
+    /** Drive time from the live fix in minutes, when the search was asked for it ("nearest"); else null. */
+    val etaMinutes: Double? = null,
+    /** The user's words that found it, normalised, set by the resolver; recents key on them (ticket 13). */
+    val asked: String? = null,
 ) {
     /** The line under the name: its category (when known) and its address, so a hit can be told apart. */
     fun subtitle(): String? =
         listOfNotNull(category?.replaceFirstChar { it.uppercase() }, detail?.takeIf { it.isNotBlank() })
             .joinToString(" · ").ifEmpty { null }
 
-    fun toDestination() = NavDestination(name, latitude, longitude, subtitle())
+    fun toDestination() =
+        NavDestination(name, latitude, longitude, subtitle(), NavAudit.sourceToken(source), mapboxId, asked)
 }
 
 /** What a lookup knows about the world: the live fix (for proximity) and, for a via, the route so far. */
@@ -68,7 +86,7 @@ sealed interface SourceAnswer {
      * The source matched something with no address (an event with no location). Terminal: said in
      * words, never guessed.
      */
-    data class NoAddress(val why: String) : SourceAnswer
+    data class NoAddress(val why: String, val auditWhy: String = why) : SourceAnswer
 }
 
 interface DestinationSource {
@@ -77,8 +95,17 @@ interface DestinationSource {
     suspend fun lookup(query: String, ctx: LookupContext): SourceAnswer
 }
 
-/** The line a source left in the story, for the "I couldn't find it" sentence. */
-data class SourceReport(val kind: SourceKind, val line: String, val unreadable: Boolean)
+/**
+ * The line a source left in the story, for the "I couldn't find it" sentence. [auditLine] is the same
+ * line with any address text left out, for NAV_AUDIT (map decision D9); it equals [line] when [line]
+ * quotes none.
+ */
+data class SourceReport(
+    val kind: SourceKind,
+    val line: String,
+    val unreadable: Boolean,
+    val auditLine: String = line,
+)
 
 sealed interface Resolution {
     /**
@@ -93,6 +120,8 @@ sealed interface Resolution {
         val ambiguous: Boolean,
         val source: SourceKind,
         val notes: List<String>,
+        /** The NAV_AUDIT `search` line's id, so a later pick among [candidates] names the search it answers. */
+        val searchId: String? = null,
     ) : Resolution {
         /** The sentence to read back. */
         fun sentence(): String {
@@ -110,13 +139,22 @@ sealed interface Resolution {
         }
     }
 
-    /** Nothing usable. [message] says in words what was and was not found, and what could not be read. */
-    data class NotFound(val message: String, val reports: List<SourceReport>) : Resolution
+    /**
+     * Nothing usable. [message] says in words what was and was not found, and what could not be read.
+     * [auditMessage] is the same sentence without a contact's, event's or suggestion's address text,
+     * the only form NAV_AUDIT may log (map decision D9: the label only).
+     */
+    data class NotFound(
+        val message: String,
+        val reports: List<SourceReport>,
+        val auditMessage: String = message,
+    ) : Resolution
 }
 
 /**
  * Turns words into a destination (mapbox-nav ticket 03). Sources are tried in order: saved places,
- * calendar, contacts (injected, so this class is unit-tested with fakes), then Mapbox search through
+ * recent places (nav-quality ticket 13), calendar, contacts (injected, so this class is unit-tested
+ * with fakes), then Mapbox search through
  * [placeSearch]. **The first source that MATCHES decides**: one clear match goes, several is
  * ambiguous and asks. A source that matched nothing or could not be read falls through, and the
  * unreadable ones are remembered so a miss is never reported as "nothing there".
@@ -126,33 +164,83 @@ sealed interface Resolution {
  * places both called "gym" resolving silently to a stranger's gym from search is the expensive
  * failure the read-back rule exists to stop. If Kevin meant the other reading it is the `return`
  * on the ambiguous branch below.
+ *
+ * **Every run writes one NAV_AUDIT `search` line** through [audit]: the phrase, where it came from
+ * ([SearchOrigin]), each source actually asked (a later source never runs after an earlier match) with
+ * its latency and result count, the merged top five, and the verdict. A calendar or contact match whose
+ * address text is then geocoded counts that Mapbox call in ITS source's latency, not in `search`'s.
+ * [clockMs] is a monotonic millisecond clock, injected so a test can time sources.
  */
 class DestinationResolver(
     private val sources: List<DestinationSource>,
     private val placeSearch: PlaceSearch,
+    private val audit: NavAudit = NavAudit.OFF,
+    private val clockMs: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) {
     private val searchSource = SearchSource(placeSearch)
 
+    /** One run's trail for the audit line. */
+    private class Trail(val started: Long) {
+        val tried = mutableListOf<SourceTry>()
+    }
+
+    suspend fun resolve(
+        text: String,
+        ctx: LookupContext,
+        origin: SearchOrigin = SearchOrigin.UNKNOWN,
+    ): Resolution {
+        val trail = Trail(clockMs())
+        val id = audit.newId("s")
+        val query = text.trim()
+        val result = run(query, ctx, trail)
+        val verdict = when {
+            result is Resolution.Resolved -> if (result.ambiguous) SearchVerdict.AMBIGUOUS else SearchVerdict.RESOLVED
+            query.isEmpty() -> SearchVerdict.EMPTY
+            trail.tried.lastOrNull()?.outcome == SourceOutcome.NO_ADDRESS -> SearchVerdict.NO_ADDRESS
+            else -> SearchVerdict.NOT_FOUND
+        }
+        val resolved = result as? Resolution.Resolved
+        audit.search(
+            id = id,
+            origin = origin,
+            alongRoute = !ctx.alongRoute.isNullOrEmpty(),
+            verdict = verdict,
+            source = resolved?.source,
+            tried = trail.tried,
+            top = resolved?.candidates.orEmpty(),
+            totalMs = clockMs() - trail.started,
+            query = query,
+        )
+        return resolved?.copy(searchId = id) ?: result
+    }
+
     // Each early return is a verdict (resolved, or a terminal "no address"); the loop reads top to bottom.
     @Suppress("ReturnCount")
-    suspend fun resolve(text: String, ctx: LookupContext): Resolution {
-        val query = text.trim()
+    private suspend fun run(query: String, ctx: LookupContext, trail: Trail): Resolution {
         if (query.isEmpty()) return Resolution.NotFound("I didn't catch where to go.", emptyList())
         val reports = mutableListOf<SourceReport>()
         for (source in sources + searchSource) {
+            val began = clockMs()
             val answer = when (val a = source.lookup(query, ctx)) {
                 is SourceAnswer.NeedsSearch -> addressesToHits(a, ctx, reports, source.kind)
                 else -> a
             }
+            trail.tried += SourceTry(source.kind, clockMs() - began, resultsOf(answer), outcomeOf(answer))
             when (answer) {
                 SourceAnswer.NoMatch -> reports += SourceReport(source.kind, "nothing matched", unreadable = false)
                 is SourceAnswer.Unreadable -> reports += SourceReport(source.kind, answer.why, unreadable = true)
                 is SourceAnswer.NoAddress ->
-                    return Resolution.NotFound(answer.why, reports + SourceReport(source.kind, answer.why, false))
+                    return Resolution.NotFound(
+                        answer.why,
+                        reports + SourceReport(source.kind, answer.why, false, answer.auditWhy),
+                        answer.auditWhy,
+                    )
                 is SourceAnswer.Hits -> if (answer.candidates.isNotEmpty()) {
+                    val asked = QueryText.normalize(query)
+                    val candidates = answer.candidates.map { it.copy(asked = asked) }
                     return Resolution.Resolved(
-                        destination = answer.candidates.first().toDestination(),
-                        candidates = answer.candidates,
+                        destination = candidates.first().toDestination(),
+                        candidates = candidates,
                         ambiguous = answer.ambiguous,
                         source = source.kind,
                         notes = reports.filter { it.unreadable }.map { noteFor(it) },
@@ -163,7 +251,11 @@ class DestinationResolver(
                 is SourceAnswer.NeedsSearch -> error("addressesToHits never returns NeedsSearch")
             }
         }
-        return Resolution.NotFound(notFoundSentence(query, reports), reports)
+        return Resolution.NotFound(
+            notFoundSentence(query, reports) { it.line },
+            reports,
+            notFoundSentence(query, reports) { it.auditLine },
+        )
     }
 
     /** Resolves calendar / contact address text through search; failures become an Unreadable, never a guess. */
@@ -174,37 +266,65 @@ class DestinationResolver(
         from: SourceKind,
     ): SourceAnswer {
         val found = mutableListOf<Candidate>()
-        val failures = mutableListOf<String>()
+        // Spoken (names the address, so the user can tell which one failed) and audit (never the address, D9).
+        val failures = mutableListOf<Pair<String, String>>()
         for (item in needs.items) {
             when (val r = placeSearch.search(SearchQuery(text = item.text, near = ctx.fix, limit = 1))) {
+                // No mapbox_id on a first-party hit: it would point at the contact's address (D9).
                 is SearchAnswer.Hits -> r.candidates.firstOrNull()?.let {
-                    found += it.copy(name = item.label, detail = it.detail ?: item.text, source = from)
+                    found += it.copy(name = item.label, detail = it.detail ?: item.text, source = from, mapboxId = null)
                 }
-                SearchAnswer.NoMatch -> failures += "Mapbox found no match for the address \"${item.text}\""
-                is SearchAnswer.Failed -> failures += "the address \"${item.text}\" could not be looked up (${r.why})"
+                SearchAnswer.NoMatch ->
+                    failures += "Mapbox found no match for the address \"${item.text}\"" to
+                        "Mapbox found no match for its address"
+                is SearchAnswer.Failed ->
+                    failures += "the address \"${item.text}\" could not be looked up (${r.why})" to
+                        "its address could not be looked up (${r.why})"
             }
         }
         if (found.isEmpty()) {
             // Terminal on purpose: the source DID match, so falling through to a generic search of
             // the original phrase would be guessing a place for "my next appointment".
-            val label = needs.items.first().label
+            val head = "I found \"${needs.items.first().label}\" in your ${from.label} but could not turn its " +
+                "address into a place: "
+            val first = failures.firstOrNull()
             return SourceAnswer.NoAddress(
-                "I found \"$label\" in your ${from.label} but could not turn its address into a place: " +
-                    "${failures.firstOrNull() ?: "no result"}.",
+                why = head + "${first?.first ?: "no result"}.",
+                auditWhy = head + "${first?.second ?: "no result"}.",
             )
         }
-        if (failures.isNotEmpty()) reports += SourceReport(from, failures.first(), unreadable = true)
+        failures.firstOrNull()?.let { (spoken, audit) ->
+            reports += SourceReport(from, spoken, unreadable = true, auditLine = audit)
+        }
         return SourceAnswer.Hits(found, ambiguous = needs.items.size > 1 || needs.severalMatched)
     }
 
-    private fun noteFor(r: SourceReport) = "Couldn't read ${r.kind.label}: ${r.line}."
+    private fun noteFor(r: SourceReport, line: String = r.line) = "Couldn't read ${r.kind.label}: $line."
 
-    private fun notFoundSentence(query: String, reports: List<SourceReport>): String {
+    private fun resultsOf(a: SourceAnswer): Int = (a as? SourceAnswer.Hits)?.candidates?.size ?: 0
+
+    private fun outcomeOf(a: SourceAnswer): SourceOutcome = when (a) {
+        is SourceAnswer.Hits -> if (a.candidates.isEmpty()) SourceOutcome.NO_MATCH else SourceOutcome.HITS
+        SourceAnswer.NoMatch -> SourceOutcome.NO_MATCH
+        is SourceAnswer.Unreadable -> SourceOutcome.UNREADABLE
+        is SourceAnswer.NoAddress -> SourceOutcome.NO_ADDRESS
+        is SourceAnswer.NeedsSearch -> SourceOutcome.HITS
+    }
+
+    private companion object {
+        const val NANOS_PER_MS = 1_000_000L
+    }
+
+    private fun notFoundSentence(
+        query: String,
+        reports: List<SourceReport>,
+        line: (SourceReport) -> String,
+    ): String {
         val unread = reports.filter { it.unreadable }
         val tried = reports.filter { !it.unreadable }.map { it.kind.label }
         val head = "I couldn't find \"$query\"."
         val read = if (tried.isEmpty()) "" else " Nothing matched in ${tried.joinToString(", ")}."
-        val cant = if (unread.isEmpty()) "" else " " + unread.joinToString(" ") { noteFor(it) }
+        val cant = if (unread.isEmpty()) "" else " " + unread.joinToString(" ") { noteFor(it, line(it)) }
         return head + read + cant
     }
 }

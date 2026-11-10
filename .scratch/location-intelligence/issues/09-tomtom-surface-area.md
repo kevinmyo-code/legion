@@ -3,8 +3,8 @@ map: location-intelligence
 ticket: 09
 title: "The rest of the TomTom surface area"
 type: grilling
-status: kiv
-status-detail: "Parked by Kevin 2026-08-21 - inventory now, decide later"
+status: resolved
+status-detail: "2026-11-06, Kevin: TomTom retired, so the inventory is moot"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -69,3 +69,8 @@ no further signup, no card.
 Nothing here is blocked. It is parked. It becomes takeable when Kevin says so - or sooner, if one of
 these turns out to be the cheapest fix for a problem another map is stuck on. Reverse Geocoding
 against the `Geocoder` gap is the likeliest of those.
+
+## Closed (2026-11-06)
+
+TomTom is retired (Kevin, `memory/library/decisions.md`, "Navigation quality"). Nothing here will
+be built on it. Kept as a record of what the key enabled.

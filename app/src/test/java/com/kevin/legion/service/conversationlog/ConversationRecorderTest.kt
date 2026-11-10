@@ -40,14 +40,14 @@ class ConversationRecorderTest {
         assertEquals(0L, spool.totalBytes())
     }
 
-    @Test fun `only the four conversation tags are spooled`() {
+    @Test fun `only the conversation tags and NAV_AUDIT are spooled`() {
         val spool = ConversationSpool(tmp.newFolder())
         val rec = recorder(spool)
-        val all = listOf("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL")
-        (all + listOf("LIVE_TURN", "LIVE_BARGE", "Breadcrumb"))
+        val all = listOf("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL", "NAV_AUDIT")
+        (all + listOf("LIVE_TURN", "LIVE_BARGE", "Breadcrumb", "MapboxNavController"))
             .forEach { rec.record(it, "m") }
         val tags = spool.seal()!!.file.readLines().map { it.substringAfter(" I ").substringBefore(":") }
-        assertEquals(listOf("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL"), tags)
+        assertEquals(listOf("LIVE_AUDIT", "LIVE_LATENCY", "LIVE_FOLLOWUP", "LIVE_TOOL_CANCEL", "NAV_AUDIT"), tags)
     }
 
     @Test fun `a spooled batch is byte-identical to the lines LiveAudit emitted`() {

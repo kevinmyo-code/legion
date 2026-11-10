@@ -98,6 +98,12 @@ def max_raw_bytes(reason: str) -> int:
     """The decompressed cap for one upload of this reason."""
     return MAX_RAW_BYTES_BY_REASON.get(reason, MAX_UPLOAD_BYTES)
 
+
+# The phone's NAV_AUDIT lines (navigation search, routes, trips) are kept this long (Kevin,
+# 2026-11-06, nav-quality decision D7). They ride in `conversation` batches next to LIVE_AUDIT, so a
+# batch holding any is not deleted at its reason's retention: its other lines are dropped then and
+# only the NAV_AUDIT lines stay, until this many days. A batch with none goes as before.
+NAV_AUDIT_RETENTION_DAYS = 90
 # A recruiter visit's conversation records (`demo_visitor`): deleted by the hourly
 # `manage.py prune_demo_visitors` this long after they arrived, whether or not the visit ended.
 VISIT_RETENTION_DAYS = 30
@@ -141,6 +147,10 @@ class DeviceLog(models.Model):
     # and conversation batches alike, so a conversation record joins to the raw lines around it.
     # Blank for anything that sends none (the head unit, the web, an older phone).
     run_id = models.CharField(max_length=64, blank=True, default="")
+    # How many NAV_AUDIT lines the body holds, counted at upload. Above zero, the row is kept
+    # NAV_AUDIT_RETENTION_DAYS; past its reason's retention its body is cut to these lines (then
+    # line_count == nav_audit_lines, so it is cut once).
+    nav_audit_lines = models.IntegerField(default=0)
 
     class Meta:
         db_table = "device_logs"

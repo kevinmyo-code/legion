@@ -1,6 +1,9 @@
 package com.kevin.legion.navigation
 
 import android.util.Log
+import com.kevin.legion.navigation.audit.NavAudit
+import com.kevin.legion.navigation.audit.RoutePurpose
+import com.kevin.legion.navigation.audit.TripEnd
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -45,6 +48,9 @@ import kotlin.math.abs
  * Main-thread only: every Mapbox callback and every call here is on the main looper. A route
  * response that arrives after [end] or a newer request is refused by the [epoch] check and changes
  * nothing.
+ *
+ * **Every route request, trip start, reroute, off-route, arrival and trip end goes to [audit]** as a
+ * NAV_AUDIT line (Kevin, 2026-11-06). The audit only observes: nothing here branches on it.
  */
 @Suppress("TooManyFunctions") // one controller owns the whole trip; splitting it would split the guard's invariant
 class MapboxNavController(
@@ -52,6 +58,9 @@ class MapboxNavController(
     private val sdkFactory: () -> NavSdk,
     private val fix: () -> GeoPoint?,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
+    private val audit: NavAudit = NavAudit.OFF,
+    /** An arrival, with the destination and the phone's own fix then: recent places keep it (ticket 13). */
+    private val onArrived: (NavDestination?, GeoPoint?) -> Unit = { _, _ -> },
 ) : NavSdkListener {
     private val guard = NavTripGuard()
     private var sdk: NavSdk? = null
@@ -110,6 +119,7 @@ class MapboxNavController(
         if (now == handledToken) return
         handledToken = now
         epoch++
+        if (guard.phase == NavPhase.GUIDING) audit.tripEnded(TripEnd.TOKEN, _state.value.guidance?.distanceLeftM)
         guard.tokenChanged()
         teardown(destroy = true)
         _state.value = initialState(_state.value.muted)
@@ -118,6 +128,7 @@ class MapboxNavController(
     /** An auth failure came from somewhere other than a route request (the map's style load). */
     fun onTokenRefused() {
         epoch++
+        if (guard.phase == NavPhase.GUIDING) audit.tripEnded(TripEnd.TOKEN, _state.value.guidance?.distanceLeftM)
         guard.tokenChanged()
         teardown(destroy = true)
         tokens.markRejected()
@@ -190,7 +201,7 @@ class MapboxNavController(
             return failStart(t)
         }
         val result = try {
-            awaitRoutes(nav, req)
+            awaitRoutes(nav, req, RoutePurpose.PREVIEW)
         } catch (e: CancellationException) {
             // The caller's scope died mid-request (the screen's ViewModel cleared). Nothing is a trip.
             if (mine == epoch) abandonRequest()
@@ -295,12 +306,14 @@ class MapboxNavController(
             guard.startFailed()
             teardown()
             val msg = "Guidance did not start, so nothing is navigating."
+            audit.tripStartFailed(msg)
             _state.value = fresh(NavPhase.FAILED, msg).copy(destination = dest)
             return NavResult(false, msg)
         }
         pendingToken = null
         pickedAlternative = s.selectedRoute != 0
         val primary = active.first()
+        audit.tripStarted(primary.id, primary, s.selectedRoute, s.stops.size, s.avoid)
         val arrival = nowMs() + (primary.durationS * MS_PER_S).toLong()
         val sentence = "Navigating to ${dest.name}. ${NavFormat.duration(primary.durationS)}, " +
             "${NavFormat.distance(primary.distanceM)}, arriving ${NavFormat.arrivalClock(arrival)}."
@@ -428,7 +441,7 @@ class MapboxNavController(
         val mine = ++epoch
         try {
             val result = try {
-                awaitRoutes(nav, RouteRequest(origin, newStops, dest, newAvoid))
+                awaitRoutes(nav, RouteRequest(origin, newStops, dest, newAvoid), RoutePurpose.CHANGE)
             } catch (e: CancellationException) {
                 if (!guiding && mine == epoch) guard.abandonRequestToPreview()
                 throw e
@@ -628,6 +641,7 @@ class MapboxNavController(
                 },
             )
         }
+        audit.tripEnded(TripEnd.CANCELLED, s.guidance?.distanceLeftM)
         val stopped = teardown()
         val toGo = s.guidance?.distanceLeftM?.takeIf { it > 0 }
         val left = toGo?.let { " with ${NavFormat.distance(it)} to go" }.orEmpty()
@@ -725,8 +739,9 @@ class MapboxNavController(
         }
     }
 
-    override fun onRoutesChanged(routes: List<NavRouteInfo>) {
+    override fun onRoutesChanged(routes: List<NavRouteInfo>, reason: String?) {
         if (!guard.sessionShouldRun || routes.isEmpty()) return
+        audit.routesUpdated(reason, routes.first(), routes.size)
         val s = _state.value
         _state.value = s.copy(
             routes = routes,
@@ -737,16 +752,22 @@ class MapboxNavController(
 
     override fun onReroute(state: RerouteStatus, message: String?) {
         if (!guard.sessionShouldRun) return
+        audit.reroute(state, message)
         val s = _state.value
         _state.value = when (state) {
             RerouteStatus.FETCHING -> s.copy(rerouting = true, notice = null)
-            RerouteStatus.IDLE -> s.copy(rerouting = false, notice = null)
+            RerouteStatus.IDLE, RerouteStatus.FETCHED, RerouteStatus.INTERRUPTED ->
+                s.copy(rerouting = false, notice = null)
             RerouteStatus.FAILED -> s.copy(
                 rerouting = false,
                 notice = "Could not find a new route${message?.let { ": $it" }.orEmpty()}. Keeping the last one; " +
                     "this usually means no connection.",
             )
         }
+    }
+
+    override fun onOffRoute(offRoute: Boolean) {
+        if (guard.sessionShouldRun) audit.offRoute(offRoute)
     }
 
     override fun onVoiceInstruction(text: String) {
@@ -767,6 +788,8 @@ class MapboxNavController(
     override fun onArrival() {
         val s = _state.value
         if (!guard.arrived()) return
+        audit.arrived()
+        onArrived(s.destination, fix())
         epoch++
         teardown()
         val sentence = "You have arrived at ${s.destination?.name}. ${NavFormat.NOTHING_NAVIGATING}"
@@ -791,15 +814,18 @@ class MapboxNavController(
         }
     }
 
-    private suspend fun awaitRoutes(nav: NavSdk, req: RouteRequest): RouteRequestResult {
+    private suspend fun awaitRoutes(nav: NavSdk, req: RouteRequest, purpose: RoutePurpose): RouteRequestResult {
         val d = CompletableDeferred<RouteRequestResult>()
         inFlight = d
+        val auditId = audit.newId("r")
+        val began = nowMs()
         val id = nav.requestRoutes(req) { d.complete(it) }
         requestId = id
         try {
-            return d.await()
+            return d.await().also { auditRoute(auditId, purpose, req, it, nowMs() - began) }
         } catch (e: CancellationException) {
             nav.cancelRequest(id)
+            auditRoute(auditId, purpose, req, RouteRequestResult.Canceled, nowMs() - began)
             throw e
         } finally {
             if (inFlight === d) {
@@ -807,6 +833,29 @@ class MapboxNavController(
                 requestId = null
             }
         }
+    }
+
+    private fun auditRoute(id: String, purpose: RoutePurpose, req: RouteRequest, r: RouteRequestResult, ms: Long) {
+        val ready = r as? RouteRequestResult.Ready
+        val failed = r as? RouteRequestResult.Failed
+        audit.routeRequest(
+            id = id,
+            purpose = purpose,
+            result = when (r) {
+                is RouteRequestResult.Ready -> if (r.routes.isEmpty()) "empty" else "ok"
+                is RouteRequestResult.Failed -> "failed"
+                RouteRequestResult.Canceled -> "canceled"
+            },
+            failure = failed?.kind,
+            ms = ms,
+            routes = ready?.routes.orEmpty(),
+            router = ready?.router,
+            origin = req.origin,
+            destination = req.destination,
+            stops = req.stops.size,
+            avoid = req.avoid,
+            message = failed?.message,
+        )
     }
 
     private suspend fun awaitSet(call: ((Boolean) -> Unit) -> Unit): Boolean {

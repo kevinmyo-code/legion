@@ -1,5 +1,7 @@
 package com.kevin.legion.navigation.voice
 
+import com.kevin.legion.navigation.audit.CueOutcome
+
 /**
  * Everything [NavCueArbiter] touches outside itself, so the decision logic is a plain JVM class a
  * test drives with a fake (mapbox-nav ticket 05 and 11). The real one is `NavCueSpeaker`.
@@ -55,8 +57,14 @@ interface CueEnvironment {
  *   sentence spoken over it is lost. A late cue is worse than a repeated sentence.
  *
  * One [hold] and one [release] bracket a run of cues, however many are in it.
+ *
+ * Every cue's fate goes to [outcome] (NAV_AUDIT counts, never the text): spoken, muted, no engine,
+ * refused by the engine, superseded by a newer cue while waiting, or cancelled by a mute or trip end.
  */
-class NavCueArbiter(private val env: CueEnvironment) {
+class NavCueArbiter(
+    private val env: CueEnvironment,
+    private val outcome: (CueOutcome) -> Unit = {},
+) {
     private var holding = false
     private var speaking = false
     private var waiting: String? = null
@@ -68,9 +76,18 @@ class NavCueArbiter(private val env: CueEnvironment) {
         when {
             text.isBlank() -> Unit
             // Said in words so a phone run can see a cue was dropped on purpose; never the text (a street name).
-            env.muted -> env.dropped("muted")
-            !env.canSpeak -> env.unspoken(text, "no speech engine")
-            speaking -> waiting = text
+            env.muted -> {
+                env.dropped("muted")
+                outcome(CueOutcome.MUTED)
+            }
+            !env.canSpeak -> {
+                env.unspoken(text, "no speech engine")
+                outcome(CueOutcome.NO_ENGINE)
+            }
+            speaking -> {
+                if (waiting != null) outcome(CueOutcome.SUPERSEDED)
+                waiting = text
+            }
             else -> begin(text)
         }
     }
@@ -81,13 +98,16 @@ class NavCueArbiter(private val env: CueEnvironment) {
         speaking = false
         val next = waiting
         waiting = null
+        if (next != null && env.muted) outcome(CueOutcome.MUTED)
         if (next != null && !env.muted) begin(next) else finish()
     }
 
     /** Drops everything: a mute, a trip that ended. Ends the hold; the engine's late done is ignored. */
     fun cancel() {
         if (!holding) return
+        if (waiting != null) outcome(CueOutcome.CANCELLED)
         waiting = null
+        // A cue cut off mid-sentence was already counted spoken; only a never-started one is cancelled.
         if (speaking) env.stopSpeaking()
         speaking = false
         finish()
@@ -100,7 +120,9 @@ class NavCueArbiter(private val env: CueEnvironment) {
         }
         if (env.speak(text)) {
             speaking = true
+            outcome(CueOutcome.SPOKEN)
         } else {
+            outcome(CueOutcome.REFUSED)
             env.unspoken(text, "the speech engine refused it")
             finish()
         }

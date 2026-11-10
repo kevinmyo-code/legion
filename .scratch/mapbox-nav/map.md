@@ -106,7 +106,8 @@ Then 05 (who speaks the turns) and 04; 03 and 07 after.
   (`.scratch/place-arrivals/`). Not needed to navigate.
 - **A map outside navigation**: saved places on a map, a trip history map.
 - **Offline maps** for dead zones.
-- **TomTom may be redundant now.** `app/build.gradle.kts` bakes a `TOMTOM_API_KEY` for traffic-aware
+- **TomTom: retired 2026-11-06 (Kevin; `memory/library/decisions.md`, "Navigation quality").** Was:
+  **TomTom may be redundant now.** `app/build.gradle.kts` bakes a `TOMTOM_API_KEY` for traffic-aware
   ETA (hands-and-senses ticket 14, picked as the only no-card routing vendor), and almost no code uses
   it. Mapbox's traffic-aware routing covers the same question. Keep, retire, or keep only for ETA
   with no trip running: a ruling for Kevin once 04 lands.

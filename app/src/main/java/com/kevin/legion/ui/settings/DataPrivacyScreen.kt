@@ -45,6 +45,9 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
 
     // Null until the phone has a copy of the engine's list: "not read yet" is not "nothing remembered".
     var storedMemoryCount by remember { mutableStateOf<Int?>(null) }
+    // Nav-quality ticket 13: places searched for and arrived at, kept on this phone only.
+    val recents = remember { (context.applicationContext as com.kevin.legion.MidnightApplication).recentPlaces }
+    var recentCount by remember { mutableStateOf(recents.all().size) }
     var reloadNonce by remember { mutableStateOf(0) }
 
     // Memory v2 lives on the engine (memory-and-vault ticket 11); this reads the phone's copy of its
@@ -109,6 +112,21 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                     onClick = { com.kevin.legion.ui.vault.VaultActivity.open(context, label = null) },
                 )
 
+                // Nav-quality ticket 13 (decision D4): the hands path to "forget my recent places". One
+                // tap forgets them all; they rebuild from the next arrivals, so a mis-tap costs little.
+                SettingsNavRow(
+                    label = "Recent places",
+                    status = if (recentCount == 0) {
+                        "None kept. Places you search for and arrive at are kept on this phone"
+                    } else {
+                        "$recentCount kept on this phone, by where you arrived. Tap to forget them all"
+                    },
+                    onClick = {
+                        recents.forget()
+                        recentCount = 0
+                    },
+                )
+
                 // Recordings moved off this screen 2026-09-04 (Kevin: "it needs a place on the
                 // home screen... recordings needs its own ui") - three taps into a privacy screen
                 // was the wrong home for something meant to be started in one tap. It now lives on
@@ -129,10 +147,10 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                 )
 
                 // Data-source credits. These are LICENCE TERMS, not courtesy: Open-Meteo ships
-                // under CC BY 4.0, which requires a visible attribution with a link, and TomTom's
-                // developer terms require the traffic credit. Neither appeared anywhere a user
-                // could see until hardening ticket 07; every mention in the codebase was a code
-                // comment. The repo is public, so this was visible.
+                // under CC BY 4.0, which requires a visible attribution with a link. It appeared
+                // nowhere a user could see until hardening ticket 07; every mention in the codebase
+                // was a code comment. The repo is public, so this was visible. (TomTom's traffic
+                // credit went with TomTom, retired 2026-11-06: no TomTom data is shown.)
                 //
                 // Placed here rather than on a route of its own because this screen already
                 // answers "where does what you see come from, and what is kept". Anything added
@@ -147,12 +165,6 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Weather data by Open-Meteo.com, used under CC BY 4.0.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = sem.faint,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Traffic flow data (c) TomTom.",
                     style = MaterialTheme.typography.bodySmall,
                     color = sem.faint,
                 )

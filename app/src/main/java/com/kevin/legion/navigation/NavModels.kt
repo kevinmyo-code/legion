@@ -49,6 +49,8 @@ data class NavRouteInfo(
     val excluded: Set<AvoidKind>,
     /** One sentence about traffic on this route, or null when the SDK reported nothing to say. */
     val trafficSummary: String?,
+    /** The Directions profile the route was planned on, read back from it (`mapbox/driving-traffic`); null unknown. */
+    val profile: String? = null,
 )
 
 /** The next maneuver. [type] and [modifier] are Directions' own words ("turn" / "left"), for the icon. */

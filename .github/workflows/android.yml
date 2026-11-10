@@ -7,7 +7,7 @@
 #
 # Three things here are not obvious:
 #
-#   - **`-Pnokey` is the honest path.** It bakes an EMPTY Gemini/TomTom/AirNow key, which is what a
+#   - **`-Pnokey` is the honest path.** It bakes an EMPTY Gemini/AirNow/Mapbox key, which is what a
 #     stranger's clone gets (`app/build.gradle.kts`). A build that only compiles with a key in
 #     `local.properties` is not green, and CI has no keys.
 #   - **`gradlew` is committed non-executable** (mode 100644 - it was authored on Windows), so the

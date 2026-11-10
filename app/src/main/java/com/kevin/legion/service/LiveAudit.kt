@@ -160,6 +160,9 @@ internal class LiveAudit(
         const val REDACTED = "[redacted: third-party content]"
 
         private val GOOGLE_KEY = Regex("AIza[0-9A-Za-z_\\-]{20,}")
+
+        /** A Mapbox public or secret token (`pk.eyJ...` / `sk.eyJ...`); a router error can echo its URL (NAV_AUDIT). */
+        private val MAPBOX_TOKEN = Regex("\\b[ps]k\\.eyJ[A-Za-z0-9._\\-]+")
         private val BEARER = Regex("(?i)bearer\\s+[A-Za-z0-9._~+/=\\-]+")
         private val JSON_SECRET = Regex(
             "(?i)(\"(?:api_?key|key|token|access_token|refresh_token|id_token|authorization|password|secret)\"" +
@@ -175,6 +178,7 @@ internal class LiveAudit(
         /** Removes anything shaped like a credential. Runs before truncation. */
         fun scrub(text: String): String = text
             .replace(GOOGLE_KEY, "[key]")
+            .replace(MAPBOX_TOKEN, "[key]")
             .replace(BEARER, "Bearer [redacted]")
             .replace(JSON_SECRET, "$1\"[redacted]\"")
             .replace(QUERY_SECRET, "$1[redacted]")

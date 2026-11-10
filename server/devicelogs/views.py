@@ -24,9 +24,11 @@ from __future__ import annotations
 import datetime
 import gzip
 import io
+import re
 import zlib
 
 from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers, status
@@ -38,6 +40,8 @@ from api.schema import DetailSerializer
 from devicelogs import records
 from devicelogs.models import (
     MAX_UPLOAD_BYTES,
+    MAX_UPLOAD_BYTES,
+    NAV_AUDIT_RETENTION_DAYS,
     REASONS,
     RETENTION_DAYS,
     RETENTION_DAYS_BY_REASON,
@@ -178,6 +182,7 @@ class DeviceLogUploadView(APIView):
                     raw_bytes=len(raw),
                     body_gz=blob,
                     run_id=data["run_id"],
+                    nav_audit_lines=len(nav_audit_lines(raw)),
                 )
         except IntegrityError:
             # A concurrent retry of the same batch won the race: same answer.
@@ -203,9 +208,23 @@ def _stored(row: DeviceLog, detail: str) -> dict:
     }
 
 
+# One NAV_AUDIT line in a logcat `threadtime` batch: `MM-dd HH:mm:ss.SSS  pid  tid I NAV_AUDIT: ...`.
+_NAV_AUDIT_LINE = re.compile(rb"^\S+ \S+\s+\d+\s+\d+ [VDIWEF] NAV_AUDIT: ")
+
+
+def nav_audit_lines(raw: bytes) -> list[bytes]:
+    """The batch's NAV_AUDIT lines, each with its own line ending."""
+    return [line for line in raw.splitlines(keepends=True) if _NAV_AUDIT_LINE.match(line)]
+
+
 def prune(household) -> int:
-    """Delete this household's logs past their reason's retention (`models.retention_days`:
-    60 days, `logcat` 30). Returns the count.
+    """Apply this household's log retention. Returns how many rows were deleted.
+
+    - A row with no NAV_AUDIT lines: deleted after its reason's retention (`models.retention_days`:
+      60 days, `logcat` 30).
+    - A row with NAV_AUDIT lines (nav-quality decision D7): after its reason's retention its body is
+      cut to those lines, everything else in it (the conversation's LIVE_AUDIT lines) dropped on the
+      same day as a batch without them; the row itself is deleted after NAV_AUDIT_RETENTION_DAYS.
 
     Run inline on upload rather than from its own cron line: Cloud Scheduler
     bills per job and the crontab already has six, and a household that never
@@ -213,13 +232,29 @@ def prune(household) -> int:
     """
     now = timezone.now()
     rows = DeviceLog.objects.filter(household=household)
-    deleted = 0
     special = set(RETENTION_DAYS_BY_REASON)
-    for reason in special:
-        cutoff = now - datetime.timedelta(days=retention_days(reason))
-        count, _ = rows.filter(reason=reason, received_at__lt=cutoff).delete()
+    # (reason filter, cutoff): each special reason at its own retention, every other at the default.
+    groups = [(rows.filter(reason=reason), now - datetime.timedelta(days=retention_days(reason)))
+              for reason in special]
+    groups.append((rows.exclude(reason__in=special), now - datetime.timedelta(days=RETENTION_DAYS)))
+    deleted = 0
+    for group, cutoff in groups:
+        count, _ = group.filter(received_at__lt=cutoff, nav_audit_lines=0).delete()
         deleted += count
-    # Every other reason at the default.
-    cutoff = now - datetime.timedelta(days=RETENTION_DAYS)
-    count, _ = rows.exclude(reason__in=special).filter(received_at__lt=cutoff).delete()
-    return deleted + count
+    nav_cutoff = now - datetime.timedelta(days=NAV_AUDIT_RETENTION_DAYS)
+    nav_deleted, _ = rows.filter(received_at__lt=nav_cutoff).delete()
+    # Cut once: a cut row's line_count equals its nav_audit_lines, so it never matches again.
+    for group, cutoff in groups:
+        for row in group.filter(received_at__lt=cutoff, nav_audit_lines__gt=0,
+                                line_count__gt=F("nav_audit_lines")):
+            _keep_nav_audit_only(row)
+    return deleted + nav_deleted
+
+
+def _keep_nav_audit_only(row: DeviceLog) -> None:
+    kept = b"".join(nav_audit_lines(inflate_capped(bytes(row.body_gz))))
+    row.body_gz = gzip.compress(kept)
+    row.raw_bytes = len(kept)
+    row.line_count = kept.count(b"\n")
+    row.nav_audit_lines = row.line_count
+    row.save(update_fields=["body_gz", "raw_bytes", "line_count", "nav_audit_lines"])
