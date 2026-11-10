@@ -13,6 +13,15 @@ tags: [ticket]
 ---
 # Build: waypoints (car, trailhead, marked spots) with bearing and distance
 
+> **Covered by `feat/field-nav` (round 5, 2026-11-10), not merged.** The Field screen (its own app
+> drawer entry) marks "car" and named spots, local first (`sync_outbox`, target `field_waypoints`)
+> and synced into places through `PlaceController.savePlaceAt`; bearing (great-circle initial,
+> true and magnetic via `GeomagneticField`), straight-line distance said as straight line, and an
+> arrow relative to the compass heading (`field/FieldState.kt`, `FieldReadoutTest`,
+> `FieldWaypointsTest`). Not built here: "trailhead = first point of a recording" (needs ticket 15)
+> and the elevation difference (needs a DEM or a second fix's altitude). When the hike screen
+> (ticket 14) lands it should reuse `FieldReadout` and `FieldWaypoints`, not a second copy.
+
 **Release:** v1. **Size:** S.
 
 ## What

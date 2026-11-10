@@ -13,6 +13,12 @@ tags: [ticket]
 ---
 # Build: turnaround time against sunset, distance and ETA back
 
+> **Partly covered by `feat/field-nav` (round 5, 2026-11-10), not merged.** Sunrise, sunset, civil
+> and nautical twilight (`SunTimes` with an altitude parameter), moonrise, moonset and phase
+> (`field/Almanac.kt`, checked against PyEphem) and a turnaround time = sunset less a margin the
+> Field screen sets in 15-minute steps. Not built here: the pace-based return time (needs ticket
+> 15's track) and the optional local alert at the margin.
+
 **Release:** v1. **Size:** S.
 
 ## What
