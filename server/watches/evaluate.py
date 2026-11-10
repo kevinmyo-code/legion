@@ -81,8 +81,12 @@ def zone_of(household) -> ZoneInfo:
 
 
 def when_words(moment: dt.datetime, zone) -> str:
+    """`Thu Nov 12, 11:59 PM`, in the household's zone. A household with no zone set gets UTC and
+    says so in words (`household/timezones.py`: each caller states its fallback), never a UTC time
+    passed off as local."""
     local = moment.astimezone(zone)
-    return f"{day_words(local.date())}, {clock_words(local)}"
+    utc = " UTC" if getattr(zone, "key", None) == "UTC" else ""
+    return f"{day_words(local.date())}, {clock_words(local)}{utc}"
 
 
 # =============================================================================

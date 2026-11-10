@@ -590,3 +590,33 @@ def test_a_canvas_line_states_an_absolute_time_never_hours_left(auth_client, kev
     evaluate_household(household_a, timezone.now())
     (firing,) = _firings(kevin)
     assert "hours" not in firing.facts and " is due " in firing.facts
+
+
+def test_a_household_with_no_zone_hears_utc_said_as_utc(auth_client, kevin, household_a):
+    household_a.timezone = None
+    household_a.save(update_fields=["timezone"])
+    made = auth_client.post(
+        "/api/events",
+        {
+            "title": "EXAMPLE 101: Essay 2",
+            "kind": "task",
+            "visibility": "private",
+            "starts_at": (timezone.now() + dt.timedelta(hours=2)).isoformat(),
+        },
+        format="json",
+    )
+    Event.objects.filter(pk=made.data["id"]).update(structured_meta={"canvas_assignment_id": 11})
+    _set(auth_client, "canvas_due", {"hours": 24})
+    evaluate_household(household_a, timezone.now())
+    (firing,) = _firings(kevin)
+    assert firing.facts.endswith(" UTC.")
+
+
+def test_firings_from_before_a_pause_are_not_said_on_resume(auth_client, kevin, household_a):
+    wid = _set(auth_client, "charge_over", {"amount_cents": 1_000})
+    _txn(household_a, -2_000)
+    evaluate_household(household_a, timezone.now())
+    assert len(auth_client.get(FIRINGS, {"pending": 1}).data["results"]) == 1
+    auth_client.patch(f"{URL}{wid}", {"paused": True}, format="json")
+    auth_client.patch(f"{URL}{wid}", {"paused": False}, format="json")
+    assert auth_client.get(FIRINGS, {"pending": 1}).data["results"] == []

@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 
 from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.utils import timezone
 
 from claude_session.tokens import is_claude_token
@@ -234,6 +235,8 @@ def pending(request) -> list[WatchFiring]:
             expires_at__gt=now,
             watch__deleted_at__isnull=True,
             watch__paused=False,
+            # A firing from before a pause is not said on resume ("only what happens from now on").
+            fired_at__gte=F("watch__armed_at"),
         )
         .select_related("watch")
         .order_by("fired_at", "id")[:PENDING_LIMIT]
