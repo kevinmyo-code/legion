@@ -405,21 +405,13 @@ object MidnightEvents {
         Log.w(TAG, "pantry_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
-    /** A foreground [com.kevin.legion.backend.FleetReconcile.maybeAutoRun] pass completed - same
-     * "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. Fleet's only route to the
-     * server at all (it has no configured write path - see that object's own class doc), and its
-     * only backfill mechanism (`ui/settings/BackendMigrationScreen.kt`'s retirement, live-sync
-     * ticket 05). [uploaded] sums all ten sub-reports' own `uploaded` counts - see
-     * [com.kevin.legion.backend.FleetReconcile.runIfSignedIn]'s own doc for why this is a rough
-     * breadcrumb, not the per-table breakdown. [serverCountAfter] is `vehicles`' own count only. */
-    fun fleetAutoReconcileSucceeded(uploaded: Int, serverCountAfter: Int) = safe {
-        Log.d(TAG, "fleet_auto_reconcile uploaded=$uploaded serverCountAfter=$serverCountAfter")
-    }
-
-    /** [com.kevin.legion.backend.FleetReconcile.maybeAutoRun] failed - degraded to this log line,
-     * same posture as [eventsAutoPullFailed]. */
-    fun fleetAutoReconcileFailed(e: Throwable) = safe {
-        Log.w(TAG, "fleet_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    /** [com.kevin.legion.backend.FleetReconcile.maybeAutoRun] stood down on a device whose `fleet`
+     * transport still resolves to Supabase - it used to upload there and fail on every foreground
+     * pass (`household_id` NOT NULL, ADR 0045). [pinned] = an explicit `engine_transport` row says
+     * SUPABASE; [fallingBack] = the Django default fell back because no engine token is held. Both
+     * false cannot happen today. Rate-limited by that object's own floor. */
+    fun fleetAutoReconcileStoodDown(pinned: Boolean, fallingBack: Boolean) = safe {
+        Log.i(TAG, "fleet_auto_reconcile_stood_down transport=SUPABASE pinned=$pinned fallingBack=$fallingBack")
     }
 
     /** A foreground [com.kevin.legion.backend.BodySync.maybeAutoPull] pass completed across all

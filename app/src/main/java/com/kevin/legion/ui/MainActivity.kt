@@ -420,24 +420,13 @@ class MainActivity : ComponentActivity() {
         // PlaceController has no outbox and VoiceNoteController.syncToBackend only ever fires on a
         // fresh transcription or a rename. Both no-op silently off Django.
         lifecycleScope.launch { syncPlacesAndRecordings() }
-        // FleetReconcile and FleetSync BOTH write `vehicles_replica`, so they are sequenced in one
-        // coroutine rather than launched as two independent fire-and-forget calls.
-        //
-        // FleetReconcile wipes that table wholesale and refills it
-        // (`vehicleReplicaDao().deleteAllForReplicaRefresh()`, safe on its own - the replica is a
-        // cache of the server's active set, never a source of truth). FleetSync merges into the
-        // same table with an insert-or-update keyed on serverId. Interleaved, FleetSync can read
-        // "no row for this serverId" immediately after the wipe, decide to insert, and lose the
-        // race to FleetReconcile's own insert - which is
-        //   SQLiteConstraintException: UNIQUE constraint failed: vehicles_replica.serverId
-        // the exact crash observed on the A25 on 2026-09-03 and fixed in FleetSync's new-vehicle
-        // branch. Two independent coroutines would have reintroduced it by a different route.
-        //
-        // Reconcile first (upload + refill), then the pull, so the pull reads a settled table.
-        lifecycleScope.launch {
-            com.kevin.legion.backend.FleetReconcile.maybeAutoRunAwaiting(applicationContext)
-            com.kevin.legion.backend.FleetSync.maybeAutoPull(applicationContext)
-        }
+        // FleetReconcile uploads nothing any more (2026-11-09): on Django it stands down as it has
+        // since 09-08, and its Supabase upload failed on every pass (`household_id` NOT NULL, ADR
+        // 0045), so it now only logs a rate-limited breadcrumb when `fleet` still resolves to
+        // Supabase. It no longer wipes `vehicles_replica`, so the 2026-09-03 A25 race with
+        // FleetSync's insert (UNIQUE constraint failed: vehicles_replica.serverId) that made these
+        // two share one coroutine cannot happen; FleetSync's pull is the bare call just below.
+        com.kevin.legion.backend.FleetReconcile.maybeAutoRun(applicationContext)
         // Fleet's live pull (live-sync ticket "the missing half of fleet sync"): vehicles first
         // (reconstructing a wiped phone's legacy row + sidecar from the last_obd_mac hint where
         // possible), then the nine tables that gap blocked, then the windowed obd_samples pull. No
