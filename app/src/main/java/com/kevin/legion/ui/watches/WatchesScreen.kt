@@ -131,7 +131,10 @@ private fun WatchRow(watch: Watch, busy: Boolean, callbacks: WatchesCallbacks) {
             )
         }
         Switch(checked = !watch.paused, enabled = !busy, onCheckedChange = { on -> callbacks.onPaused(watch, !on) })
-        TextButton(onClick = { callbacks.onRemove(watch) }, enabled = !busy) { Text("Remove") }
+        // A built-in is never removed, only paused (the switch); the engine pauses it on a remove too.
+        if (watch.builtin == null) {
+            TextButton(onClick = { callbacks.onRemove(watch) }, enabled = !busy) { Text("Remove") }
+        }
     }
 }
 

@@ -213,10 +213,21 @@ def change(request, watch_id, fields: dict) -> Watch:
 
 
 def remove(request, watch_id) -> Watch:
-    """ "Stop watching X". The row stays, removed, so a built-in is never seeded back and its
-    firings keep their anchor; it is never evaluated or listed again."""
+    """ "Stop watching X". A watch the member set: the row stays, removed, so its firings keep
+    their anchor; it is never evaluated or listed again.
+
+    **A built-in is paused instead, never removed** (integration 2026-11-10): removal is allowed
+    in a turn that read third-party text (it only makes Alfred quieter), and a removed built-in
+    is never seeded back, so text Alfred had just read aloud could have killed one for good. Paused,
+    it stops firing at once (pending firings of a paused watch are not offered), stays listed, and
+    he resumes it by hand on the Watches screen. Resuming by voice is refused in such a turn."""
     watch = get(request, watch_id)
     now = timezone.now()
+    if watch.builtin:
+        Watch.objects.filter(pk=watch.pk).update(paused=True, updated_at=now)
+        watch.paused = True
+        watch.updated_at = now
+        return watch
     Watch.objects.filter(pk=watch.pk).update(deleted_at=now, updated_at=now)
     watch.deleted_at = now
     return watch

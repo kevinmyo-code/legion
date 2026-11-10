@@ -40,7 +40,8 @@ class WatchesController(private val backend: WatchesBackend) {
     suspend fun pause(id: String, paused: Boolean): WatchOutcome<Watch> =
         backend.update(id.trim(), JsonObject(mapOf("paused" to JsonPrimitive(paused))))
 
-    suspend fun remove(id: String): WatchOutcome<Unit> = backend.delete(id.trim())
+    /** Ok(null): removed. Ok(watch): a built-in, which the engine pauses instead (never removed). */
+    suspend fun remove(id: String): WatchOutcome<Watch?> = backend.delete(id.trim())
 
     suspend fun pending(): WatchOutcome<List<WatchFiring>> = backend.pending()
 

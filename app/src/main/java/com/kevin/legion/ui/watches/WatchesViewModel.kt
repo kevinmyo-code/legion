@@ -102,7 +102,7 @@ class WatchesViewModel(
 
     fun remove(watch: Watch) = act {
         when (val out = controller.remove(watch.id)) {
-            is WatchOutcome.Ok -> WatchWording.removed(watch.label)
+            is WatchOutcome.Ok -> WatchWording.stopped(out.value, watch.label)
             else -> WatchWording.failed(out, "changed")
         }
     }

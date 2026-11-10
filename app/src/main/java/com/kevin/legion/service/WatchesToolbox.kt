@@ -21,7 +21,8 @@ import org.json.JSONObject
  * read-through flag, the one `remember` gates on, passed straight through from
  * [LiveToolbox.dispatch]): a watch is a durable write that later makes Alfred speak unprompted, so
  * third-party content must never become one. Pausing and removing are allowed in any turn: they
- * only make Alfred quieter.
+ * only make Alfred quieter, and "stop watching" a built-in only PAUSES it on the engine, so text
+ * read aloud can never remove one for good.
  */
 @Suppress("TooManyFunctions") // one per action, plus the declaration helpers every toolbox carries
 object WatchesToolbox {
@@ -141,7 +142,7 @@ object WatchesToolbox {
 
     private suspend fun remove(controller: WatchesController, id: String): JSONObject =
         when (val out = controller.remove(id)) {
-            is WatchOutcome.Ok -> result(true, WatchWording.removed(null))
+            is WatchOutcome.Ok -> result(true, WatchWording.stopped(out.value, null))
             else -> result(false, WatchWording.failed(out, "changed"))
         }
 

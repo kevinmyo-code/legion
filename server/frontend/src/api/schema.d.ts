@@ -4841,7 +4841,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** @description "Stop watching X". Never evaluated or listed again; a built-in is not re-seeded. */
+        /** @description "Stop watching X". A watch the member set: 204, never evaluated or listed again. A built-in is PAUSED instead (200 with the watch): it stays listed and can be resumed. */
         delete: operations["api_watches_delete"];
         options?: never;
         head?: never;
@@ -20127,6 +20127,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"];
+                };
+            };
             /** @description Removed. */
             204: {
                 headers: {

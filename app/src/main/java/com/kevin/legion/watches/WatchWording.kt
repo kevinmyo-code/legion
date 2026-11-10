@@ -47,6 +47,15 @@ object WatchWording {
     fun removed(label: String?): String =
         "Stopped watching${label?.let { ": $it" } ?: ""}. It will not fire again."
 
+    /** What "stop watching" did: removed, or, for a built-in, paused (never removed; 2026-11-10). */
+    fun stopped(result: Watch?, label: String?): String =
+        if (result != null) {
+            "Paused: ${result.label}. It is built in, so it stays on the Watches screen, paused; it can be " +
+                "resumed there. Nothing it finds is said until then."
+        } else {
+            removed(label)
+        }
+
     fun listed(watches: List<Watch>): String = when {
         watches.isEmpty() -> "No watches are set."
         else -> "${watches.size} watches. Each id can be passed to pause, resume or remove."

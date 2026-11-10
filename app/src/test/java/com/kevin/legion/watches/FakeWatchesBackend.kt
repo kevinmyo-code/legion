@@ -39,10 +39,17 @@ class FakeWatchesBackend : WatchesBackend {
         return WatchOutcome.Ok(watches[i])
     }
 
-    override suspend fun delete(id: String): WatchOutcome<Unit> {
+    /** As the engine: a built-in is paused (200 with it), a member's watch removed (204). */
+    override suspend fun delete(id: String): WatchOutcome<Watch?> {
         offline?.let { return it }
-        return if (watches.removeAll { it.id == id }) WatchOutcome.Ok(Unit)
-        else WatchOutcome.Refused("No such watch. Nothing was changed.", 404)
+        val i = watches.indexOfFirst { it.id == id }
+        if (i < 0) return WatchOutcome.Refused("No such watch. Nothing was changed.", 404)
+        if (watches[i].builtin != null) {
+            watches[i] = watches[i].copy(paused = true, status = "paused")
+            return WatchOutcome.Ok(watches[i])
+        }
+        watches.removeAt(i)
+        return WatchOutcome.Ok(null)
     }
 
     override suspend fun pending(): WatchOutcome<List<WatchFiring>> =
@@ -58,7 +65,7 @@ class FakeWatchesBackend : WatchesBackend {
     }
 
     companion object {
-        fun watch(id: String, label: String, kind: String = KIND_CHARGE_OVER) = Watch(
+        fun watch(id: String, label: String, kind: String = KIND_CHARGE_OVER, builtin: String? = null) = Watch(
             id = id,
             kind = kind,
             title = "A title",
@@ -67,7 +74,7 @@ class FakeWatchesBackend : WatchesBackend {
             repeat = true,
             paused = false,
             status = "on",
-            builtin = null,
+            builtin = builtin,
             evaluatedOn = if (kind == KIND_MAIL_REPLY) "phone" else "engine",
             lastFiredAtMs = null,
         )

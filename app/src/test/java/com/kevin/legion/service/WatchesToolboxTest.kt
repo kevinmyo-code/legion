@@ -54,6 +54,30 @@ class WatchesToolboxTest {
     }
 
     @Test
+    fun `stop watching a built-in pauses it, even in a read-through turn, and never removes it`() {
+        backend.watches += FakeWatchesBackend.watch("b1", "A charge of \$500.00 or more", builtin = "big_charge")
+        val out = call("""{"action":"remove","text":"b1"}""", readThrough = true)
+        assertTrue(out.toString(), out.getBoolean("success"))
+        assertTrue(out.getString("message").startsWith("Paused: A charge of"))
+        assertTrue(out.getString("message").contains("resumed there"))
+        val still = backend.watches.single()
+        assertTrue(still.paused)
+        assertEquals("big_charge", still.builtin)
+        // Resuming it by voice in that same turn stays refused.
+        assertFalse(call("""{"action":"resume","text":"b1"}""", readThrough = true).getBoolean("success"))
+        assertTrue(backend.watches.single().paused)
+    }
+
+    @Test
+    fun `stop watching a watch he set still removes it`() {
+        backend.watches += FakeWatchesBackend.watch("w9", "A charge of \$25.00 or more")
+        val out = call("""{"action":"remove","text":"w9"}""")
+        assertTrue(out.getBoolean("success"))
+        assertTrue(out.getString("message").startsWith("Stopped watching"))
+        assertTrue(backend.watches.isEmpty())
+    }
+
+    @Test
     fun `the engine's refusal for a kind that fits nothing is passed on in its words`() {
         backend.refuseCreate = "No watch was set: 'stock_price' is not a kind of watch. LEGION can watch: ..."
         val out = call("""{"action":"set","kind":"stock_price"}""")

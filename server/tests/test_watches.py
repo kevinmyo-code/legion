@@ -111,13 +111,37 @@ def test_the_first_read_seeds_the_builtins_once_and_lists_every_kind(auth_client
     assert Watch.objects.filter(owner_user=kevin).count() == len(BUILTINS)
 
 
-def test_a_removed_builtin_is_never_seeded_again(auth_client, kevin):
+def test_stop_watching_a_builtin_pauses_it_and_never_kills_it(auth_client, kevin, household_a):
+    """Integration 2026-11-10: removal is allowed in a turn that read third-party text, so a
+    built-in is paused, not removed: it stops firing, stays listed, is never seeded twice, and can
+    be resumed by hand. Made-up amounts."""
     rows = auth_client.get(URL).data["results"]
-    gone = next(w for w in rows if w["builtin"] == "big_charge")
-    assert auth_client.delete(f"{URL}{gone['id']}").status_code == 204
+    big = next(w for w in rows if w["builtin"] == "big_charge")
+    stopped = auth_client.delete(f"{URL}{big['id']}")
+    assert stopped.status_code == 200, stopped.data
+    assert stopped.data["paused"] is True and stopped.data["builtin"] == "big_charge"
     again = auth_client.get(URL).data["results"]
-    assert "big_charge" not in {w["builtin"] for w in again}
+    still = next(w for w in again if w["builtin"] == "big_charge")
+    assert still["paused"] is True and still["status"] == "paused"
     assert Watch.objects.filter(owner_user=kevin, builtin="big_charge").count() == 1
+    assert Watch.objects.get(pk=big["id"]).deleted_at is None
+    # Paused, a big charge does not fire.
+    _txn(household_a, -90_000)
+    call_command("evaluate_watches", stdout=io.StringIO())
+    assert not WatchFiring.objects.filter(owner_user=kevin, watch_id=big["id"]).exists()
+    # Resumed by hand, it is back and only what happens from now on fires.
+    resumed = auth_client.patch(f"{URL}{big['id']}", {"paused": False}, format="json")
+    assert resumed.status_code == 200 and resumed.data["paused"] is False
+    _txn(household_a, -95_000, description="EXAMPLE OUTFITTERS")
+    call_command("evaluate_watches", stdout=io.StringIO())
+    assert WatchFiring.objects.filter(owner_user=kevin, watch_id=big["id"]).count() == 1
+
+
+def test_stop_watching_a_watch_the_member_set_still_removes_it(auth_client, kevin):
+    wid = _set(auth_client, "charge_over", {"amount_cents": 2_500})
+    assert auth_client.delete(f"{URL}{wid}").status_code == 204
+    assert wid not in {w["id"] for w in auth_client.get(URL).data["results"]}
+    assert Watch.objects.get(pk=wid).deleted_at is not None
 
 
 def test_a_watch_is_typed_and_its_label_is_written_from_its_params(auth_client):

@@ -210,12 +210,14 @@ class WatchDetailView(APIView):
         operation_id="api_watches_delete",
         tags=TAGS,
         responses={
+            200: WatchSerializer,
             204: OpenApiResponse(description="Removed."),
             403: DetailSerializer,
             404: DetailSerializer,
         },
         description=(
-            '"Stop watching X". Never evaluated or listed again; a built-in is not re-seeded.'
+            '"Stop watching X". A watch the member set: 204, never evaluated or listed again. '
+            "A built-in is PAUSED instead (200 with the watch): it stays listed and can be resumed."
         ),
     )
     def delete(self, request, watch_id):
@@ -223,9 +225,11 @@ class WatchDetailView(APIView):
         if refused:
             return refused
         try:
-            service.remove(request, watch_id)
+            watch = service.remove(request, watch_id)
         except WatchRefused as exc:
             return _from(exc)
+        if watch.builtin:
+            return Response(service.watch_dict(watch))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

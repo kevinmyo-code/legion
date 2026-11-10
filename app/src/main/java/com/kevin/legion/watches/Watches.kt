@@ -69,7 +69,8 @@ interface WatchesBackend {
     suspend fun list(): WatchOutcome<WatchList>
     suspend fun create(kind: String, params: JsonObject, label: String?, source: String): WatchOutcome<WatchSet>
     suspend fun update(id: String, fields: JsonObject): WatchOutcome<Watch>
-    suspend fun delete(id: String): WatchOutcome<Unit>
+    /** "Stop watching": Ok(null) when removed; Ok(watch) when it is a built-in, paused instead. */
+    suspend fun delete(id: String): WatchOutcome<Watch?>
     suspend fun pending(): WatchOutcome<List<WatchFiring>>
     suspend fun recent(): WatchOutcome<List<WatchFiring>>
     suspend fun ack(ids: List<String>, outcome: String): WatchOutcome<Int>

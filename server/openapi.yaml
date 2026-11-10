@@ -11470,8 +11470,9 @@ paths:
           description: ''
     delete:
       operationId: api_watches_delete
-      description: '"Stop watching X". Never evaluated or listed again; a built-in
-        is not re-seeded.'
+      description: '"Stop watching X". A watch the member set: 204, never evaluated
+        or listed again. A built-in is PAUSED instead (200 with the watch): it stays
+        listed and can be resumed.'
       parameters:
       - in: path
         name: watch_id
@@ -11485,6 +11486,12 @@ paths:
       - deviceToken: []
       - cookieAuth: []
       responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watch'
+          description: ''
         '204':
           description: Removed.
         '403':

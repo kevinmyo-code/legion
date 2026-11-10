@@ -22,6 +22,7 @@ private const val FIRINGS_PATH = "/api/watches/firings"
 private const val ACK_PATH = "/api/watches/firings/ack"
 private const val HTTP_FORBIDDEN = 403
 private const val HTTP_NO_CONTENT = 204
+private const val HTTP_OK = 200
 
 private val watchJson = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
 
@@ -133,13 +134,14 @@ class DjangoWatchesBackend(private val http: EngineHttp) : WatchesBackend {
             watchJson.decodeFromString(WatchRow.serializer(), it).toWatch()
         }
 
-    override suspend fun delete(id: String): WatchOutcome<Unit> {
+    /** 204: removed (null). 200 with the watch: a built-in, PAUSED instead of removed. */
+    override suspend fun delete(id: String): WatchOutcome<Watch?> {
         val result = http.delete(WATCHES_PATH + id)
-        val status = result.getOrNull()?.status
-        if (result.isSuccess && status != HTTP_NO_CONTENT) {
-            return WatchOutcome.Unconfirmed("The engine answered HTTP $status, not the 204 a removal gives.")
+        return when (val status = result.getOrNull()?.status) {
+            null, HTTP_NO_CONTENT -> watchOutcome(result) { null }
+            HTTP_OK -> watchOutcome(result) { watchJson.decodeFromString(WatchRow.serializer(), it).toWatch() }
+            else -> WatchOutcome.Unconfirmed("The engine answered HTTP $status, not a removal or a pause.")
         }
-        return watchOutcome(result) { }
     }
 
     override suspend fun pending(): WatchOutcome<List<WatchFiring>> =
