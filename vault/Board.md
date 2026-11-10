@@ -65,6 +65,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | Delete what the audit found dead in the day-to-day area |
 | [[.scratch/one-today/map\|one-today]] | [[08-events-are-not-todos\|08]] | build | An event passes. A task gets done. They are not the same row. |
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
+| [[.scratch/open-loops/map\|open-loops]] | [[04-worker-update\|04]] | test | Worker update and a live night |
+| [[.scratch/open-loops/map\|open-loops]] | [[06-picks\|06]] | decision | Kevin's rulings on the built picks |
+| [[.scratch/open-loops/map\|open-loops]] | [[07-consolidation-read-through\|07]] | build | Consolidation and the review ignore read_through marks |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[01-recruiter-role-and-allowlist\|01]] | build | Recruiter role and tool allowlist (default deny) |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[03-demo-household-seed\|03]] | build | Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset |
@@ -213,6 +216,9 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/one-today/map\|one-today]] | [[05-maintenance-has-no-date-axis\|05]] | build | MAINTENANCE 0 DUE is computed against nothing |
 | [[.scratch/one-today/map\|one-today]] | [[07-what-becomes-of-todayscreen\|07]] | build | TodayScreen is half-emptied. Rehome the survivors, then delete it. |
 | [[.scratch/one-today/map\|one-today]] | [[10-everything-is-a-checklist\|10]] | build | Retire the persistent list and the grocery trip: everything is a checklist |
+| [[.scratch/open-loops/map\|open-loops]] | [[01-engine\|01]] | build | Engine: own words, gate, proposals, endpoints |
+| [[.scratch/open-loops/map\|open-loops]] | [[02-worker\|02]] | build | Worker: loops.json in the nightly review |
+| [[.scratch/open-loops/map\|open-loops]] | [[03-phone\|03]] | build | Phone: brief line, voice answers, hands path |
 | [[.scratch/phone-verify/map\|phone-verify]] | [[04-test-tags-as-ids\|04]] | build | Test tags visible to uiautomator |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
@@ -367,6 +373,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/nav-quality/map\|nav-quality]] | [[09-lanes-and-missed-turns\|09]] | build | Build: lanes on the banner, measured by missed turns  waiting on [[01-baseline\|01]] |
 | [[.scratch/nav-quality/map\|nav-quality]] | [[14-recents-voice-and-engine\|14]] | build | Build: forget recent places by voice, and decide their engine copy  waiting on [[13-recents-by-arrival-fix\|13]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
+| [[.scratch/open-loops/map\|open-loops]] | [[05-phone-run\|05]] | test | Run open loops on the phone  waiting on [[04-worker-update\|04]] |
 | [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[13-build-run-traces\|13]] |
 | [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[12-build-runner-and-tool\|12]] |
 | [[.scratch/procedures/map\|procedures]] | [[16-build-phone\|16]] | build | Build: phone declares run_procedure (direct, non-blocking when read-only)  waiting on [[12-build-runner-and-tool\|12]], [[15-build-first-procedures\|15]] |
@@ -487,6 +494,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
+| [[.scratch/open-loops/map\|open-loops]] | 7 | 7 | [[.scratch/open-loops/open-loops.canvas\|open]] |
 | [[.scratch/phone-verify/map\|phone-verify]] | 6 | 1 | [[.scratch/phone-verify/phone-verify.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 14 | 4 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |

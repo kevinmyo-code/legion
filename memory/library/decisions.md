@@ -7779,3 +7779,29 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   Recorded as the hands path rather than building a GitHub screen.
 - **Owed by Kevin:** create the token and the secret, set `LEGION_GITHUB_REPOS`, redeploy
   (`deploy/cloudrun/README.md`, "GitHub status").
+
+## 2026-11-10 - Open loops: what he said he would do is proposed, ask first (Kevin)
+
+- **Kevin's ask (2026-11-10, "5 yes", then on the shape "sure. ask first."):** things he says he
+  will do ("I need to call the dentist", made-up example) vanish unless he says "remind me". The
+  nightly memory review also flags them, and Alfred PROPOSES each one: "Track it?" Yes makes it a
+  task with a date that is chased like any reminder; no drops it for good.
+- **Source is only his own words to Alfred.** Never mail, never other people's words; a turn marked
+  read-through (mail, web, GitHub text, a camera look, a spoken brief or mail line and the turn
+  after it) is skipped whole; the head unit's records are left out (unmarked search grounding).
+- **No guilt lines:** Alfred names the task and its date, never how long ago he said it or that it
+  is not done. No time field reaches the phone.
+- **Orchestrator's picks, not yet Kevin's:** proposals batched into the brief rather than raised one
+  by one; 5 a night; unanswered ones expire quietly after 14 days.
+- **Agent's picks (built, each reversible in one place):** a spoken brief carries one proposal at
+  most twice; a date only when his words print a calendar date (a relative day such as "Friday"
+  leaves it undated); money refused broadly (amounts, currencies and money words like pay, bill,
+  rent, transfer); an undated yes lands on his Todo checklist and a dated one is an `events`
+  reminder, both shared like a spoken one; voice answers ride `manage_item` add and remove (no new
+  tool declaration; payload unchanged); the yes right after a spoken brief is refused once (that
+  turn is read-through) and must be said again or tapped.
+- **Standing decision:** ADR 0085, a narrow exception to proactive-mode decision 11 (the model
+  originates a proposal's content; it is never spoken as a fact and nothing is tracked without his
+  yes). Map: `.scratch/open-loops/`.
+- **Owed:** worker update from a checkout carrying `feat/open-loops`; engine deploy with
+  `open_loops.0001_initial` and `LEGION_OPEN_LOOPS=on`; a phone build and run.
