@@ -1111,9 +1111,18 @@ class GeminiLiveSession(
      *
      * Sets the SAME flag the mail tools set rather than a parallel one, deliberately: two flags
      * meaning "do not remember this" is how one of them ends up checked in only half the places.
+     *
+     * **And it carries one turn** (integration of ADR 0082/0083/0084, 2026-11-10), the round 3 /
+     * `look` carry applied to a read-through raise: the turn right after a brief that carried web
+     * or mail text, or a `mail_reply` watch line, still has that text in context, and a line folded
+     * into a conversation mid-turn can be spoken after that turn's turnComplete has already cleared
+     * the mark. So a watch `set`/`resume`, `memory` remember, a goal constraint and `ask_engine` are
+     * refused for that one following turn too. A speak-only raise's socket drops its resume handle
+     * when it closes (`resumeHandleAfterClose`), so a later conversation starts with none of it.
      */
     fun markTurnReadThrough() {
         markReadThrough(READ_THROUGH_PROACTIVE)
+        readThroughCarry = true
     }
 
     /** Sets the read-through flag and logs why, once per source per turn ([LiveAudit.readThrough]). */
