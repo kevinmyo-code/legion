@@ -39,7 +39,8 @@ enum class ProactiveCategory(
 ) {
     /**
      * Something is wrong right now and waiting would cost you. Coolant overheat, a new trouble
-     * code, conditions turning rough while driving.
+     * code, conditions turning rough while driving, and (round 5) a Severe or Extreme NWS alert or a
+     * hurricane watch or warning where you are or at home (`conditions/SevereAlertPolling.kt`).
      *
      * **The only category outside the daily cap** (ticket 05 call 3): a real warning must never
      * lose its slot to a rest nudge. Uncapped still means inside the master switch and inside
