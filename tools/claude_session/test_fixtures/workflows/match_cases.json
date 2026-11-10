@@ -1,0 +1,42 @@
+{
+ "about": "The one phrase table both matchers run (worker tools/claude_session/workflows.py and engine server/claude_session/workflows.py). Invented workflows only.",
+ "machines": ["Alienware", "work laptop"],
+ "catalog": [
+  {"name": "log-audit", "says": "Audits the phone's recent logs and lists numbered findings.",
+   "aliases": ["audit my logs", "log audit", "check my logs"],
+   "params": [{"name": "window", "says": "which stretch of time", "required": false}],
+   "asks": [], "outputs": ["summary", "report"], "deliver": null, "scope": ["full"], "every": null},
+  {"name": "rates-sheet", "says": "Builds this week's exchange-rate sheet as Excel.",
+   "aliases": ["rates sheet", "make the rates sheet", "exchange rates"],
+   "params": [{"name": "currencies", "says": "which currencies", "required": false}],
+   "asks": [], "outputs": ["summary", "report"], "deliver": null, "scope": ["full"], "every": null},
+  {"name": "tidy-downloads", "says": "Sorts the Downloads folder into dated subfolders.",
+   "aliases": ["tidy my downloads", "clean up downloads"], "params": [],
+   "asks": [{"at": "move", "says": "Move the files into dated folders?"}],
+   "outputs": ["summary", "report"], "deliver": null, "scope": ["full"],
+   "every": {"hours": 168, "idle_minutes": 10, "force_after_hours": 216, "retry_after_hours": 6}},
+  {"name": "ship-round", "says": "Merges the ready branches, runs every gate, and asks before deploying.",
+   "aliases": ["prepare a ship round", "ship round"], "params": [],
+   "asks": [{"at": "deploy", "says": "Merge and deploy?"}],
+   "outputs": ["summary", "report"], "deliver": null, "scope": ["full"], "every": null}
+ ],
+ "cases": [
+  {"phrase": "audit my logs from this morning", "expect": "log-audit", "params": "from this morning"},
+  {"phrase": "Have Claude audit my logs from this morning.", "expect": "log-audit", "params": "from this morning"},
+  {"phrase": "ask Claude to audit my logs", "expect": "log-audit", "params": ""},
+  {"phrase": "have Claude on my Alienware audit my logs for yesterday's drive", "expect": "log-audit", "params": "for yesterdays drive"},
+  {"phrase": "audit my logs on the Alienware", "expect": "log-audit", "params": ""},
+  {"phrase": "log-audit", "expect": "log-audit", "params": ""},
+  {"phrase": "LOG AUDIT", "expect": "log-audit", "params": ""},
+  {"phrase": "make the rates sheet for euro and yen", "expect": "rates-sheet", "params": "for euro and yen"},
+  {"phrase": "rates sheet", "expect": "rates-sheet", "params": ""},
+  {"phrase": "please have claude make the rates sheet", "expect": "rates-sheet", "params": ""},
+  {"phrase": "tidy my downloads", "expect": "tidy-downloads", "params": ""},
+  {"phrase": "prepare a ship round with the audit fixes", "expect": "ship-round", "params": "with the audit fixes"},
+  {"phrase": "ship roundup", "expect": null},
+  {"phrase": "audit my logbook", "expect": null},
+  {"phrase": "run a log autopsy", "expect": null},
+  {"phrase": "have Claude", "expect": null},
+  {"phrase": "", "expect": null}
+ ]
+}
