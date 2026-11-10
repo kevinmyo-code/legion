@@ -29,7 +29,8 @@ import com.kevin.legion.service.ReminderAlarmReceiver
  * - **One idempotent [rescheduleAll]**, called from exactly three places: app start
  *   ([com.kevin.legion.MidnightApplication]), reboot ([com.kevin.legion.service.BootReceiver]), and
  *   the exact-alarm-permission-state-changed broadcast
- *   ([com.kevin.legion.service.ExactAlarmPermissionReceiver]).
+ *   ([com.kevin.legion.service.ExactAlarmPermissionReceiver]). A fourth since ADR 0085: a yes to a
+ *   proposed to-do that the engine made as a dated reminder ([com.kevin.legion.openloops.OpenLoopsSync]).
  *
  * No `setRepeating`/`setInexactRepeating` anywhere in this file - ticket 04's "re-arm on fire,
  * never `setRepeating`" (imprecise since API 19, and `setInexactRepeating` can't express "weekdays"
