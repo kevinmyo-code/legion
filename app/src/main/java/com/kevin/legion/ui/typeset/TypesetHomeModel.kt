@@ -68,7 +68,7 @@ data class TypesetHomeNav(
     val onOpenMoney: () -> Unit,
     val onOpenCar: () -> Unit,
     val onOpenClock: () -> Unit,
-    /** The Field screen (feat/field-nav). A no-op until that branch lands beside this one. */
+    /** The Field screen (round 5): `FieldActivity`, its own window like Clock. */
     val onOpenField: () -> Unit,
     val onOpenApps: () -> Unit,
     val onOpenSettings: () -> Unit,

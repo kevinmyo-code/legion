@@ -931,6 +931,11 @@ private fun LegionShell(
                         onOpenClock = {
                             context.startActivity(com.kevin.legion.ui.clock.ClockActivity.intent(context))
                         },
+                        // Round 5 + Typeset: the front page's Field line opens the one Field screen
+                        // (compass, GPS, grid, sun and moon), the way Clock opens its own window.
+                        onOpenField = {
+                            context.startActivity(com.kevin.legion.ui.field.FieldActivity.intent(context))
+                        },
                         onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
                         onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
                         onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
