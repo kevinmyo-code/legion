@@ -7,6 +7,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from api.views import healthz
 from engine_mcp.views import McpView
 from ingest.freshness import FreshnessView
+from legion.tick import tick
 from web.views import spa_index
 
 urlpatterns = [
@@ -103,6 +104,10 @@ urlpatterns = [
     # not part of the REST contract `openapi.yaml` describes - it is a second
     # face on the same rules, never a second set of them.
     path("mcp", McpView.as_view(), name="mcp"),
+    # Architecture review 2026-11-10, item 12: Cloud Scheduler's OIDC-signed call that runs
+    # `push_dispatch` / `evaluate_watches` on the warm service. A plain Django view, not part
+    # of the REST contract; 404 unless LEGION_SCHEDULER_SA and LEGION_TICK_AUDIENCE are set.
+    path("api/internal/tick/<str:task>", tick, name="tick"),
     # LAST, and it has to be: this pattern matches almost everything, so any
     # route added below it would be unreachable. Django tries patterns in
     # order, so putting the catch-all at the end is what lets every real route
