@@ -11,6 +11,7 @@ import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveRaise
 import com.kevin.legion.service.ProactiveSettings
+import com.kevin.legion.service.ProactiveUrgency
 import com.kevin.legion.ui.LegionRoute
 import com.kevin.legion.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -25,9 +26,10 @@ import kotlinx.coroutines.launch
  *
  * **It asks the engine nothing while the Safety switch is off** ([ProactiveSettings.mayRaise]): a
  * raise that could never be spoken is not worth a request. Delivery goes through the proactive
- * registry ([ProactiveBus.speakIfAllowed], category [ProactiveCategory.SAFETY]: uncapped, allowed in
- * quiet hours, inside the master switch), which speaks it when it may and posts it when it may not;
- * tapping the notification opens the Conditions screen.
+ * registry ([ProactiveBus.speakIfAllowed], category [ProactiveCategory.SAFETY]: allowed in quiet
+ * hours, inside the master switch), which speaks it when it may and posts it when it may not; a
+ * Severe or Extreme alert RINGS instead in quiet hours or on a silenced phone ([raise]). Tapping the
+ * notification opens the Conditions screen.
  */
 object SevereAlertPolling {
     @Volatile private var watcher: SevereAlertWatcher? = null
@@ -56,17 +58,32 @@ object SevereAlertPolling {
         )
     }
 
-    private suspend fun announce(context: Context, alert: SevereAlert, where: String): AlertDelivery {
+    /**
+     * The raise for one alert. **A Severe or Extreme alert is an emergency [ProactiveUrgency.Alarm]**
+     * (ADR 0082, Kevin by name: "if any emergency in the area is noted, alarm me"): Safety only; it
+     * RINGS in quiet hours or on a silenced phone and is spoken otherwise (posted in a meeting);
+     * one ring per alert id, again only when its severity rises (`SafetyAlarms`). Pure but for the
+     * tap target, so it is tested without Android.
+     */
+    internal fun raise(alert: SevereAlert, where: String, contentIntent: PendingIntent?): ProactiveRaise {
         val facts = SevereAlertWatcher.facts(alert, where)
-        val raise = ProactiveRaise(
+        return ProactiveRaise(
             // One rule per alert, so brushing off one never suppresses the next warning.
             ruleId = "severe_alert:${alert.id}",
             category = ProactiveCategory.SAFETY,
             reason = facts,
             facts = facts,
             prompt = SevereAlertWatcher.prompt(facts),
-            contentIntent = openConditions(context),
+            contentIntent = contentIntent,
+            urgency = SevereAlertWatcher.alarmLevel(alert.severity)
+                ?.let { ProactiveUrgency.Alarm(alertId = alert.id, severity = it) }
+                ?: ProactiveUrgency.Ordinary,
         )
+    }
+
+    private suspend fun announce(context: Context, alert: SevereAlert, where: String): AlertDelivery {
+        val raise = raise(alert, where, openConditions(context))
+        // Rang and AlreadyAlarmed are delivered; AlarmNotAllowed cannot happen (Safety only).
         return when (ProactiveBus.speakIfAllowed(context, raise)) {
             ProactiveBus.RaiseOutcome.NotNow -> AlertDelivery.RETRY
             else -> AlertDelivery.DELIVERED

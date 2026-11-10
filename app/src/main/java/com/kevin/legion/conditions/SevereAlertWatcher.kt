@@ -47,6 +47,7 @@ class SevereAlertWatcher(
         val now = clockMs()
         seenStore.forgetOlderThan(now - FORGET_AFTER_MS)
         val seen = seenStore.seen().keys
+        // An alert is raised again only when its ring level ROSE (ADR 0082): Severe then Extreme.
         val found = linkedMapOf<String, Pair<SevereAlert, String>>()
         val points = listOfNotNull<Pair<ConditionsPoint, String>>(
             here()?.let { it to "where you are" },
@@ -54,12 +55,12 @@ class SevereAlertWatcher(
         )
         for ((point, where) in points) {
             val read = check(point) as? ConditionsOutcome.Read ?: continue
-            read.severe.filter { it.id !in seen && it.id !in found }.forEach { found[it.id] = it to where }
+            read.severe.filter { !alreadyRaised(seen, it) && it.id !in found }.forEach { found[it.id] = it to where }
         }
         val raised = mutableListOf<SevereAlert>()
         for ((alert, where) in found.values) {
             if (announce(alert, where) == AlertDelivery.DELIVERED) {
-                seenStore.markSeen(alert.id, now)
+                seenStore.markSeen(seenKey(alert), now)
                 raised += alert
             }
         }
@@ -87,6 +88,32 @@ class SevereAlertWatcher(
 
         /** An alert id is kept two days, longer than any NWS warning runs, then forgotten. */
         const val FORGET_AFTER_MS = 48 * 60 * 60_000L
+
+        /**
+         * The emergency ring level an alert carries (ADR 0082, Kevin: "if any emergency in the area
+         * is noted, alarm me"): Extreme 2, Severe 1. Anything else the engine marks severe (a
+         * hurricane watch at a lower NWS severity) stays an ordinary Safety raise, null here.
+         */
+        fun alarmLevel(severity: String): Int? = when (severity.trim().lowercase()) {
+            "extreme" -> 2
+            "severe" -> 1
+            else -> null
+        }
+
+        /** What [SeenAlerts] holds for a raised alert: its id, plus its ring level when it has one. */
+        fun seenKey(alert: SevereAlert): String = alarmLevel(alert.severity)?.let { "${alert.id}#$it" } ?: alert.id
+
+        /** True when [alert] was raised before at its ring level or higher (a plain id is level 0). */
+        fun alreadyRaised(seen: Set<String>, alert: SevereAlert): Boolean {
+            val level = alarmLevel(alert.severity) ?: 0
+            return seen.any { key ->
+                when {
+                    key == alert.id -> level == 0
+                    key.startsWith("${alert.id}#") -> (key.substringAfterLast('#').toIntOrNull() ?: 0) >= level
+                    else -> false
+                }
+            }
+        }
 
         /** The fact the raise rests on, in the words a person can check against NWS. */
         fun facts(alert: SevereAlert, where: String): String = buildString {

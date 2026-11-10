@@ -41,6 +41,39 @@ class SevereAlertWatcherTest {
     }
 
     @Test
+    fun `the same alert id is raised again only when its severity rises`() = runBlocking {
+        val seen = MemorySeen()
+        var current = alert("rise").copy(severity = "Severe")
+        val said = mutableListOf<String>()
+        val watcher = SevereAlertWatcher(
+            check = { read(current) },
+            here = { null },
+            seenStore = seen,
+            announce = { a, _ -> said += a.severity; AlertDelivery.DELIVERED },
+            clockMs = { 1_000L },
+        )
+        watcher.pollOnce()
+        watcher.pollOnce()
+        assertEquals(listOf("Severe"), said)
+        current = current.copy(severity = "Extreme")
+        watcher.pollOnce()
+        watcher.pollOnce()
+        assertEquals(listOf("Severe", "Extreme"), said)
+        // Back down to Severe: not again.
+        current = current.copy(severity = "Severe")
+        watcher.pollOnce()
+        assertEquals(listOf("Severe", "Extreme"), said)
+    }
+
+    @Test
+    fun `ring levels - Extreme 2, Severe 1, anything else none`() {
+        assertEquals(2, SevereAlertWatcher.alarmLevel("Extreme"))
+        assertEquals(1, SevereAlertWatcher.alarmLevel("severe"))
+        assertEquals(null, SevereAlertWatcher.alarmLevel("Moderate"))
+        assertEquals("x#2", SevereAlertWatcher.seenKey(alert("x")))
+    }
+
+    @Test
     fun `the same alert here and at home is said once`() = runBlocking {
         val asked = mutableListOf<ConditionsPoint>()
         var count = 0
