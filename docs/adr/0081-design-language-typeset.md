@@ -66,6 +66,11 @@ Ruled with *"123 yes to all per ur picks"*
   no preference, [[decisions#2026-11-10 - Typeset shows 24-hour time; the masthead Home ends the conversation (Kevin, and a pick)]]).
 - **Typed questions get the same answer cards as voice.** The cards stay until the Home button,
   a new conversation, or the next voice conversation's end.
+- **Cards fill the screen** (Kevin, 2026-11-10: *"i want them like how midcon dash does it"*,
+  [[decisions#2026-11-10 - Answer cards fill the screen, as on the Mid-Continent phone (Kevin, and picks)]]).
+  A card is drawn whole and takes the height between the masthead's small orb and the caption's last
+  line; several page sideways, newest first. On any other route the cards cover the route between
+  the StatusLine and the talk strip. Answers still stay until cleared: no timer.
 - **A card names its source and age only when the tool result or record carries them** (a live
   read, a stored as-of date, a sync time). Never inferred from the tool's name. No data, no line.
 

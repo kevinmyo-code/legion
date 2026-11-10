@@ -27,6 +27,7 @@ import com.kevin.legion.clock.ClockGraph
 import com.kevin.legion.dumb.FeedOffRule
 import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.Phase
+import com.kevin.legion.ui.assistant.CardDestination
 import com.kevin.legion.ui.assistant.ChatPanelSheet
 import com.kevin.legion.ui.assistant.rememberAssistantVoice
 import com.kevin.legion.ui.common.startPhoneSettings
@@ -102,6 +103,18 @@ fun TypesetHomeHost(
         onTalk = onTalk,
         onType = voice.panel::show,
         onDismissCard = ConversationCards::dismiss,
+        onCloseCard = ConversationCards::close,
+        // Opening the screen behind a card puts the cards away first, so the glance is what is
+        // left when he comes back to the front page.
+        onOpenCard = { where ->
+            ConversationCards.dismiss()
+            when (where) {
+                CardDestination.TODAY -> nav.onOpenToday()
+                CardDestination.MONEY -> nav.onOpenMoney()
+                CardDestination.CAR -> nav.onOpenCar()
+                CardDestination.LISTS -> nav.onOpenLists()
+            }
+        },
         onOpenApp = { tile -> slotOf(tile)?.let(onLaunchSlot) },
         onAllApps = nav.onOpenApps,
         onMore = nav.onOpenMore,
@@ -124,10 +137,11 @@ fun TypesetHomeHost(
             phase = orbPhase(voice.phase, voice.enabled),
             status = status,
             night = edition == TypesetEdition.NIGHT,
-            cards = cards.cards,
+            cards = cards.visible,
             actions = actions,
             dock = dockSlots.map(::slotTile),
             groups = groups,
+            caption = voice.state.subtitle.takeIf { voice.enabled },
         )
         if (controlsOpen) ControlsOverlay(controls, onClose = { controlsOpen = false })
         if (voice.panel.open) ChatPanelSheet(voice.typedChat, onTalk = onTalk, onClose = voice.panel::hide)

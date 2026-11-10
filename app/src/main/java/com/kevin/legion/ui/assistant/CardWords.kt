@@ -16,7 +16,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Every sentence a [ConversationCardView] draws, pure so the words are pinned by tests. Status is
+ * Every sentence a card page ([CardPage]) draws, pure so the words are pinned by tests. Status is
  * always a word here ("unverified", "estimate", "Failed", "not checked"); the view's colours only
  * reinforce it.
  */
@@ -31,19 +31,24 @@ internal object CardWords {
     fun barValue(p: BarPoint, unit: String): String =
         PhoneCards.money(p.value, unit) + (p.flag?.let { " (${it.words})" } ?: "")
 
-    fun timeline(i: TimelineItem): String {
-        val time = when {
-            i.allDay -> "All day"
-            i.start != null && i.end != null -> "${i.start} to ${i.end}"
-            i.start != null -> i.start
-            else -> "No time"
-        }
+    fun timeline(i: TimelineItem): String = "${timelineTime(i)}: ${timelineTitle(i)}"
+
+    /** The time column of a timeline row: "09:30 to 10:45", "All day", "No time". */
+    fun timelineTime(i: TimelineItem): String = when {
+        i.allDay -> "All day"
+        i.start != null && i.end != null -> "${i.start} to ${i.end}"
+        i.start != null -> i.start
+        else -> "No time"
+    }
+
+    /** The words of a timeline row, its kind said in words: "Quiz due (to-do)". */
+    fun timelineTitle(i: TimelineItem): String {
         val kind = when (i.kind) {
             TimelineKind.EVENT -> ""
             TimelineKind.TODO -> " (to-do)"
             TimelineKind.SUGGESTION -> " (suggestion, not a plan)"
         }
-        return "$time: ${i.title}$kind"
+        return i.title + kind
     }
 
     fun mileage(card: ConversationCard.Car): String =
@@ -88,37 +93,6 @@ internal object CardWords {
     fun check(l: ChecklistLine): String = (if (l.done) "Done: " else "To do: ") + l.text
 
     fun seconds(ms: Long): String = if (ms < MS_PER_SECOND) "$ms ms" else "%.1f s".format(ms / MS_PER_SECOND.toDouble())
-}
-
-private fun others(n: Int): String = if (n > 0) ", and $n more" else ""
-
-/** The one line a collapsed card shows: the most telling line of what the tool read. */
-internal fun collapsedLine(card: ConversationCard): String = when (card) {
-    is ConversationCard.Bars -> card.points.firstOrNull()
-        ?.let { "${it.label} ${CardWords.barValue(it, card.unit)}" + others(card.points.size - 1 + card.more) }
-        ?: (card.note ?: "Nothing to show.")
-    is ConversationCard.Timeline -> card.items.firstOrNull()
-        ?.let { CardWords.timeline(it) + others(card.items.size - 1 + card.more) }
-        ?: (card.note ?: "Nothing on.")
-    is ConversationCard.Car -> collapsedCar(card)
-    is ConversationCard.Steps -> collapsedSteps(card)
-    is ConversationCard.Checklist -> card.note ?: "${card.items.size} items"
-}
-
-/** Codes, then recalls, then the service, then whatever was checked and came back empty. */
-private fun collapsedCar(card: ConversationCard.Car): String = when {
-    card.codes.isNotEmpty() -> CardWords.codes(card)
-    card.recalls.isNotEmpty() -> CardWords.recalls(card)
-    card.nextService != null -> CardWords.service(card)
-    card.read(CarPart.RECALLS) -> CardWords.recalls(card)
-    card.read(CarPart.CODES) -> CardWords.codes(card)
-    else -> CardWords.mileage(card)
-}
-
-private fun collapsedSteps(card: ConversationCard.Steps): String {
-    val failed = card.items.count { it.status == StepStatus.FAILED }
-    return "${card.items.count { it.status == StepStatus.OK }} of ${card.items.size} steps done" +
-        if (failed > 0) ", $failed failed" else ""
 }
 
 private val DAY_HEADING = java.time.format.DateTimeFormatter.ofPattern("EEE MMM d", java.util.Locale.US)

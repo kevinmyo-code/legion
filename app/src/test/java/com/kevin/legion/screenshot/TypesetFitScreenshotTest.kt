@@ -91,13 +91,19 @@ class TypesetFitScreenshotTest {
 
     /**
      * The orb moved above the contents line (Kevin, 2026-11-10); every way in is still drawn on the
-     * page at every size: the orb, Type, Controls, All apps, and (when not answering) every contents
-     * word. `TypesetReachabilityTest` checks the words lead everywhere; this checks they are there.
+     * page at every size: the orb, Type, Controls, All apps and every contents word. While answering
+     * the cards take the page (Kevin, 2026-11-10, "like how midcon dash does it"): the orb, Type,
+     * Controls and Home stay on it, and the card's Close; All apps is the StatusLine's Apps button.
+     * `TypesetReachabilityTest` checks the words lead everywhere; this checks they are there.
      */
     private fun assertEveryWayInDrawn(answering: Boolean) {
         drawn(hasContentDescription("Talk to Alfred"), "the orb")
-        val words = listOf("Type", "CONTROLS", "ALL APPS") + if (answering) emptyList() else TypesetHomeDerive.CONTENTS
-        words.forEach { drawn(hasText(it), it) }
+        if (answering) {
+            drawn(hasContentDescription("Close card"), "the card's Close")
+            listOf("Type", "CONTROLS", "Home").forEach { drawn(hasText(it), it) }
+        } else {
+            (listOf("Type", "CONTROLS", "ALL APPS") + TypesetHomeDerive.CONTENTS).forEach { drawn(hasText(it), it) }
+        }
     }
 
     /** FitTiers measures every tier it tries, so a word can be in the tree unplaced: count the placed. */

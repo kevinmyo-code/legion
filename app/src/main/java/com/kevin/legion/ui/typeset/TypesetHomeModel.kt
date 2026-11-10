@@ -1,8 +1,10 @@
 package com.kevin.legion.ui.typeset
 
+import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.finance.BudgetsWire
 import com.kevin.legion.finance.FinanceRead
+import com.kevin.legion.ui.assistant.CardDestination
 import com.kevin.legion.ui.home.AgendaKind
 import com.kevin.legion.ui.home.AgendaRowUi
 import com.kevin.legion.ui.home.TodoRowUi
@@ -55,7 +57,12 @@ data class TypesetHomeActions(
     /** The orb: talk, or interrupt Alfred while he speaks. */
     val onTalk: () -> Unit = {},
     val onType: () -> Unit = {},
+    /** "Close all": puts the cards away until the next one; the conversation goes on. */
     val onDismissCard: () -> Unit = {},
+    /** A card's own Close: that card leaves the stack. */
+    val onCloseCard: (ConversationCard) -> Unit = {},
+    /** A card's Open link: the full screen behind it. */
+    val onOpenCard: (CardDestination) -> Unit = {},
     val onOpenApp: (TypesetDockTile) -> Unit = {},
     val onAllApps: () -> Unit = {},
     /** Today's More sheet, so every area keeps a way in until it has a Typeset page. */

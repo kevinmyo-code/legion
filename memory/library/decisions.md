@@ -7917,3 +7917,19 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   that is enforced in code (`gmail/EmailSendGate.kt`), not only in the prompt. "Sent" only after
   Gmail confirms. A name with no single address is asked about, never guessed. Phone only: the
   Alienware Claude worker gets no mail-writing capability. ADR 0086.
+
+## 2026-11-10 - Answer cards fill the screen, as on the Mid-Continent phone (Kevin, and picks)
+
+- **Kevin's words:** *"i noticed the genui cards does not fill the screen. i want them like how midcon
+  dash does it. right now it pops up a short window"*. Ruled: an answer card takes the screen the way
+  a visual does in the Mid-Continent dashboard's phone voice mode (`static/voice.js`): the orb steps
+  back to a small one (96, 64 on a short page) and stays the tap to talk, the card fills the height
+  left, the caption's last line stays at the foot. Typeset's own look, not Midcon's colours or fonts.
+- **Picks, the agent's (Kevin not asked), open to him:** cards are drawn whole (no collapsed one-liner);
+  several page sideways newest first with "1 of 3" in words; each has its own Close and, where a
+  screen sits behind it, an Open link (Today, Money, Car, Lists), which did not exist before; on the
+  front page the glance, groups and dock step aside while cards are up (All apps stays on the
+  StatusLine); on any other route the cards cover the route between the StatusLine and the talk
+  strip, Back puts them away. Midcon's 60 s auto-clear and tap-anywhere-to-clear are NOT copied:
+  ADR 0081 keeps answers until cleared. The typed chat panel is unchanged (it shows the transcript;
+  the cards wait full screen behind it).

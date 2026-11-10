@@ -168,4 +168,61 @@ class ConversationCardsTest {
         assertEquals(2, ConversationCards.state.value.cards.size)
         assertFalse((ConversationCards.state.value.latest as ConversationCard.Car).read(CarPart.RECALLS))
     }
+
+    @Test
+    fun `closing one card removes only that card, and the next newest is the latest`() {
+        ConversationCards.begin()
+        val first = list("Groceries")
+        val second = list("Packing")
+        ConversationCards.publish(first)
+        ConversationCards.publish(second)
+        ConversationCards.close(second)
+        assertEquals(listOf(first), ConversationCards.state.value.visible)
+        assertEquals(first, ConversationCards.state.value.latest)
+        assertTrue(ConversationCards.state.value.open)
+    }
+
+    @Test
+    fun `close matches by identity, so of two equal cards only the one closed goes`() {
+        ConversationCards.begin()
+        val a = list("Groceries")
+        val b = list("Groceries")
+        ConversationCards.publish(a)
+        ConversationCards.publish(b)
+        ConversationCards.close(a)
+        val left = ConversationCards.state.value.cards
+        assertEquals(1, left.size)
+        assertTrue(left.single() === b)
+    }
+
+    @Test
+    fun `closing a card that is not in the stack changes nothing`() {
+        ConversationCards.begin()
+        ConversationCards.publish(list("Groceries"))
+        val before = ConversationCards.state.value
+        ConversationCards.close(list("Packing"))
+        assertEquals(before, ConversationCards.state.value)
+    }
+
+    @Test
+    fun `dismiss hides the whole stack until the next card, which shows them all again`() {
+        ConversationCards.begin()
+        ConversationCards.publish(list("Groceries"))
+        ConversationCards.publish(list("Packing"))
+        ConversationCards.dismiss()
+        assertTrue(ConversationCards.state.value.visible.isEmpty())
+        ConversationCards.publish(list("Errands"))
+        assertEquals(3, ConversationCards.state.value.visible.size)
+    }
+
+    @Test
+    fun `serial counts every card that landed, and not one that was dropped`() {
+        ConversationCards.publish(list("Dropped, nothing open"))
+        assertEquals(0L, ConversationCards.state.value.serial)
+        ConversationCards.begin()
+        ConversationCards.publish(list("Groceries"))
+        ConversationCards.publish(list("Packing"))
+        assertEquals(2L, ConversationCards.state.value.serial)
+        assertFalse(ConversationCards.state.value.dismissed)
+    }
 }

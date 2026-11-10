@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -18,9 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -46,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevin.legion.R
 import com.kevin.legion.assistant.cards.ConversationCard
-import com.kevin.legion.ui.assistant.ConversationCardView
+import com.kevin.legion.ui.assistant.CardStage
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.TypesetType
@@ -55,11 +54,16 @@ import com.kevin.legion.ui.theme.soft.TypesetType
  * The Typeset front page (ADR 0081, `proto-typeset.html`): a ruled column that fits one screen with
  * no scroll (Kevin, 2026-11-10). The shell's StatusLine sits above it, the same bar as on All apps
  * (sync, alarm, clock, Quiet, Apps, Claude, settings). Top to bottom: masthead; the glance
- * (dateline, the time as the headline, three figures) or, once Alfred has answered, his cards
- * newest first; the orb, the page's hero, centred, with "Type" under it; the contents line (not
- * while answering); the app groups; "All apps" and the pinned dock.
+ * (dateline, the time as the headline, three figures); the orb, the page's hero, centred, with
+ * "Type" under it; the contents line; the app groups; "All apps" and the pinned dock.
  *
- * [FitTiers] picks how much to give up to fit; the time (or the cards) takes the height left over.
+ * Once Alfred has answered, his cards take the page ([Answering]), as the Mid-Continent phone voice
+ * mode does (Kevin, 2026-11-10: "i want them like how midcon dash does it"): the masthead stays,
+ * the orb steps back to a small one above the cards and stays the tap to talk, the cards fill the
+ * height left, and the last line of the caption and "Type" sit at the foot. The glance, the groups
+ * and the dock come back when the cards are put away; All apps stays on the StatusLine above.
+ *
+ * [FitTiers] picks how much the glance gives up to fit; the time takes the height left over.
  * Stateless: [TypesetHomeHost] wires it.
  */
 @Composable
@@ -75,23 +79,23 @@ fun TypesetHomeContent(
     dock: List<TypesetDockTile> = TypesetHomeDerive.DOCK,
     /** The app groups row (Banking, Music, ...), stateful, from HOME; null draws nothing. */
     groups: (@Composable () -> Unit)? = null,
+    /** The last line of what Alfred is saying; shown at the foot while his cards are up. */
+    caption: String? = null,
 ) {
-    val answering = cards.isNotEmpty()
+    if (cards.isNotEmpty()) {
+        Answering(cards, phase, status, caption, night, actions, modifier)
+        return
+    }
     FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, orb, measuring ->
         val outer = if (measuring) Modifier.fillMaxWidth() else Modifier.fillMaxSize()
         Column(outer) {
-            Masthead(answering, night, actions)
+            Masthead(answering = false, night, actions)
             // The orb is the hero (Kevin, 2026-11-10: "make the orb more prominent... the orb stays
             // center and about 2.5x"): it sits where the contents line was, and the contents line
             // moves under it.
-            if (answering) {
-                Cards(cards, actions, measuring)
-                Voice(phase, status, tier, orb, measuring, actions)
-            } else {
-                Glance(glance, tier, measuring, actions)
-                Voice(phase, status, tier, orb, measuring, actions)
-                Contents(tier.contentsPerRow, actions)
-            }
+            Glance(glance, tier, measuring, actions)
+            Voice(phase, status, tier, orb, measuring, actions)
+            Contents(tier.contentsPerRow, actions)
             groups?.let {
                 it()
                 HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
@@ -243,19 +247,67 @@ private fun Contents(perRow: Int, actions: TypesetHomeActions) {
     HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
 }
 
-/** Alfred's cards, newest first, in the height left over; this slot alone may scroll. */
+/**
+ * The page while Alfred's cards are up, laid out as the Mid-Continent phone voice mode lays out a
+ * visual: the masthead; the orb, small ([answerOrb]), centred, still the tap to talk, with the state
+ * in words under it; the cards in all the height left ([CardStage], long content scrolls inside a
+ * card, the page never scrolls); then the caption's last line, two lines held so the cards do not
+ * jump as it comes and goes, and "Type".
+ */
 @Composable
-private fun ColumnScope.Cards(cards: List<ConversationCard>, actions: TypesetHomeActions, measuring: Boolean) {
-    if (measuring) {
-        Spacer(Modifier.height(MinCards))
-        return
-    }
-    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp)) {
-        cards.asReversed().forEach { card ->
-            ConversationCardView(card, onDismiss = actions.onDismissCard, modifier = Modifier.padding(bottom = 8.dp))
+@Suppress("LongParameterList")
+private fun Answering(
+    cards: List<ConversationCard>,
+    phase: OrbPhase,
+    status: String,
+    caption: String?,
+    night: Boolean,
+    actions: TypesetHomeActions,
+    modifier: Modifier,
+) {
+    BoxWithConstraints(modifier.fillMaxSize().padding(horizontal = Gutter)) {
+        val orb = answerOrb(maxHeight)
+        Column(Modifier.fillMaxSize()) {
+            Masthead(answering = true, night, actions)
+            Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(orb).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
+                        .semantics { contentDescription = "Talk to Alfred" },
+                ) {
+                    TypesetOrb(phase, Modifier.size(orb))
+                }
+                Text(
+                    status,
+                    style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
+                    color = SoftColors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            CardStage(
+                cards,
+                onClose = actions.onCloseCard,
+                onOpen = actions.onOpenCard,
+                onCloseAll = actions.onDismissCard,
+                modifier = Modifier.weight(1f).padding(top = 8.dp),
+            )
+            Text(
+                caption.orEmpty(),
+                style = TypesetType.small,
+                color = SoftColors.text,
+                minLines = CAPTION_LINES,
+                maxLines = CAPTION_LINES,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TypeButton(actions) }
         }
     }
 }
+
+/** The orb while cards are up: Mid-Continent's 96 on a tall page, 64 on a short one. */
+internal fun answerOrb(pageHeight: Dp): Dp = if (pageHeight >= TALL_PAGE) ORB_TALL else ORB_SHORT
 
 /** The orb, centred (Kevin, 2026-11-10), the state in words, and "Type" under it. */
 @Composable
@@ -379,4 +431,7 @@ private const val CONTENTS_PER_ROW = 5
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp
-private val MinCards = 120.dp
+private val TALL_PAGE = 600.dp
+private val ORB_TALL = 96.dp
+private val ORB_SHORT = 64.dp
+private const val CAPTION_LINES = 2

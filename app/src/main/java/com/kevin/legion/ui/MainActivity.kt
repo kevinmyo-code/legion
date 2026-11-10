@@ -856,6 +856,7 @@ private fun LegionShell(
                         openFor = { label -> navController.navigate(LegionRoute.navigateTo(label)) },
                     )
                 }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                 NavHost(
                     navController = navController,
                     // HOME is the start destination - **CORRECTED home-launcher ticket 03**: this
@@ -870,7 +871,7 @@ private fun LegionShell(
                     // REVERTED 2026-08-25 - see that doc's postscript. See LegionRoute's doc
                     // comment for the full route map/history.
                     startDestination = LegionRoute.HOME,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     // Command-center ticket 14: one fade-through, defined once here, no per-route
                     // override anywhere below. `LegionMotion.ROUTE_FADE_MS`/`STANDARD_EASING` are
                     // the same tokens every other motion consumer in the app reads, so a route
@@ -1355,6 +1356,21 @@ private fun LegionShell(
             composable(LegionRoute.SETTINGS_SPOTIFY_MEDIA) {
                 MediaScreen(onBack = { navController.popBackStack() })
             }
+                }
+                // Alfred's answer cards take the screen between the StatusLine and the talk strip
+                // on every route but HOME, which draws its own (Kevin, 2026-11-10: "like how midcon
+                // dash does it"). Not while driving, and not on Matrix HOME, which has no cards.
+                if (!isDrivingMode && !isDumbHome && !isTypesetHome) {
+                    com.kevin.legion.ui.assistant.CardStageOverlay(onOpen = { where ->
+                        val route = when (where) {
+                            com.kevin.legion.ui.assistant.CardDestination.TODAY -> LegionRoute.CALENDAR
+                            com.kevin.legion.ui.assistant.CardDestination.MONEY -> LegionRoute.MONEY
+                            com.kevin.legion.ui.assistant.CardDestination.CAR -> LegionRoute.FLEET
+                            com.kevin.legion.ui.assistant.CardDestination.LISTS -> LegionRoute.CHECKLISTS
+                        }
+                        navController.navigate(route) { launchSingleTop = true }
+                    })
+                }
                 }
             }
         }
