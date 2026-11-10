@@ -82,11 +82,19 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # is set (OPTIONAL_SECRET_ENV_VARS). Unset, the tool says GitHub is not set up.
 # ADR 0080: LEGION_CLAUDE_FILES_BUCKET names the private bucket a Claude task's delivered files wait
 # in (`deploy/claude_files/setup_bucket.sh`); without it they wait in Postgres instead.
+# Integrate 2026-11-10: open loops (ADR 0085) LEGION_OPEN_LOOPS=off|on (unset is off: no
+# words offered, nothing proposed), LEGION_OPEN_LOOPS_CAP (unset 5 a night),
+# LEGION_OPEN_LOOPS_EXPIRE_DAYS (unset 14). Worker workflows (ADR 0067 amendment)
+# LEGION_WORKFLOW_SCHEDULES=off (unset is on; a schedule exists only once Kevin installs one),
+# LEGION_WORKFLOW_SCHEDULES_OFF=<names>, LEGION_WORKFLOW_SCHEDULES_LISTED=on (unset off: no
+# unattended run on the work laptop). Not listed here, a line in `.env` never reached Cloud Run.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
     "LEGION_FIRMS", "LEGION_DRIVETEXAS",
     "LEGION_GITHUB_REPOS",
+    "LEGION_OPEN_LOOPS", "LEGION_OPEN_LOOPS_CAP", "LEGION_OPEN_LOOPS_EXPIRE_DAYS",
+    "LEGION_WORKFLOW_SCHEDULES", "LEGION_WORKFLOW_SCHEDULES_OFF", "LEGION_WORKFLOW_SCHEDULES_LISTED",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
