@@ -32,7 +32,7 @@ import kotlinx.coroutines.withContext
  *
  * **Delivery, in order:** an open conversation takes it as a system note ([LiveNotes]); otherwise
  * it goes through the proactive registry ([ProactiveBus.speakIfAllowed], its own "Claude tasks"
- * category: on by default, outside the daily cap), which speaks it when it may and posts it when it
+ * category: on by default), which speaks it when it may and posts it when it
  * may not. A spoken result that asks something listens about 20 s for the yes. A refusal that
  * means "not right now" leaves the task watched for the next poll.
  */

@@ -21,8 +21,10 @@ import kotlinx.coroutines.flow.asStateFlow
  * [com.kevin.legion.service.ProactiveBus] at all, by design, the same way
  * [com.kevin.legion.service.ProactiveBus.speakSolicited] is never gated: ticket 32 (Kevin,
  * "sitreps stay tap only or via voice activation only") retired the scheduled alarm that used to
- * be the one path routed through [com.kevin.legion.service.ProactiveCategory.DIGEST], so every
- * sitrep now happens the same way - asked for, this turn, never queued.
+ * be the one path routed through [com.kevin.legion.service.ProactiveCategory.DIGEST]. **Since
+ * 2026-11-10 (ADR 0082) DIGEST raises again**: the wake-up brief and the home brief
+ * (`spokenbrief/`). Those are gated by the bus; the module switches here still decide what the
+ * wake-up brief's phone sections say, because it reads the same brief controller.
  */
 object SitrepSettings {
 

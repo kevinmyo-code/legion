@@ -9,9 +9,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalTime
-import java.util.Calendar
 
 /**
  * Events from the proactive engine to the service-owned [LiveSessionController].
@@ -35,8 +35,12 @@ import java.util.Calendar
  * | **Category switch** | Settled decision 1 - five categories, two states each |
  * | **States its facts** | Settled decision 7 / ticket 10 - see [ProactiveRaise] |
  * | **Not suppressed by a brush-off** | Ticket 08 call 3 - a declined rule goes quiet for a window, silently |
- * | **Quiet hours** | Ticket 05 call 1 - per category, per window |
- * | **Daily cap** | Ticket 05 call 3 - three spoken lines a day, Safety outside it |
+ * | **Quiet hours** | Ticket 05 call 1 - per category, per window; one per-rule exemption (ADR 0082) |
+ * | **Spoken, posted or rung** | [ProactiveDelivery.route] - not silenced, no live meeting (ADR 0082) |
+ *
+ * **There is no daily cap** (Kevin, 2026-11-10, ADR 0082: *"no cap on proactive spoken lines"*).
+ * Ticket 05 call 3's three-a-day budget and its uncapped-category list are gone; the switches,
+ * quiet hours, the decline window, the speech gate and one delivery per raise are what remain.
  *
  * ### Two sentences that are easy to get wrong, so they are stated here
  *
@@ -45,14 +49,14 @@ import java.util.Calendar
  * everything, with no branch around it. Read every future "X is exempt" against this paragraph.
  *
  * **Gated does not mean lost.** [RaiseOutcome] says exactly why a raise did not get spoken, and
- * ticket 06 call 3 turns most of those into a notification instead. The cap governs whether a line
+ * ticket 06 call 3 turns most of those into a notification instead. The gate governs whether a line
  * is SPOKEN, not whether it exists. A silently dropped safety warning is the worst outcome on this
  * map, and nothing here produces one.
  *
  * **Two refusals deliberately do NOT become a notification**, and both would be wrong if they did:
  * [RaiseOutcome.MutedByUser], because a kill switch that reroutes to the shade is not a kill
  * switch; and [RaiseOutcome.Suppressed], because the user already brushed that exact rule off and
- * posting it would be the same nag through a different door. Quiet hours and the cap DO become
+ * posting it would be the same nag through a different door. Quiet hours and the speech gate DO become
  * notifications - those mean "not out loud right now", not "you have heard enough of this".
  */
 object ProactiveBus {
@@ -108,21 +112,6 @@ object ProactiveBus {
      * lives there. Both still inside the master switch. */
     val QUIET_HOURS_EXEMPT = setOf(ProactiveCategory.SAFETY, ProactiveCategory.WELLBEING)
 
-    /**
-     * Three spoken unprompted lines a day (ticket 05 call 3). Low enough that each has to earn its
-     * slot - **a cap you never hit is not a cap**.
-     *
-     * The only anti-compulsion mechanism on this map that is *countable*. Tone is not testable;
-     * three is.
-     */
-    const val DAILY_SPOKEN_CAP = 3
-
-    /** [ProactiveCategory.SAFETY] does not spend from the cap. A real warning must never lose its
-     * slot to a rest nudge, and a budget that can silence one is worse than no budget.
-     * [ProactiveCategory.CLAUDE_TASKS] does not either (Kevin 2026-11-01): each one answers a task he
-     * sent, so it is not the kind of line the cap rations. Neither counts toward the others' cap. */
-    val UNCAPPED_CATEGORIES = setOf(ProactiveCategory.SAFETY, ProactiveCategory.CLAUDE_TASKS)
-
     /** How long a brushed-off rule stays quiet. When it returns, **the tone is identical** - it
      * never mentions there was a first time (ticket 08 call 3), which is enforceable precisely
      * because the suppression happens here, before the model ever sees the raise. */
@@ -144,8 +133,8 @@ object ProactiveBus {
         data class Raised(val rowId: Long) : RaiseOutcome()
 
         /**
-         * It could not be spoken, so it was posted instead - the phone was asleep, a meeting was
-         * running, quiet hours, or the daily cap.
+         * It could not be spoken, so it was posted instead - the phone was silenced, a meeting was
+         * running, quiet hours, or nothing was running to speak it.
          *
          * **Distinct from [Raised] on purpose.** An earlier cut returned `Raised` for both, which
          * made "did it actually get said out loud?" unanswerable - and `ReminderAlarmReceiver` has
@@ -175,8 +164,16 @@ object ProactiveBus {
         /** Inside quiet hours and not exempt. */
         data object QuietHours : RaiseOutcome()
 
-        /** Today's spoken budget is spent. */
-        data object OverDailyCap : RaiseOutcome()
+        /** An emergency [ProactiveUrgency.Alarm] RANG on the ring screen; the line is said after
+         * Dismiss. [rowId] is its [ProactiveRaiseRow]. */
+        data class Rang(val rowId: Long) : RaiseOutcome()
+
+        /** A [ProactiveUrgency.Alarm] on a category other than Safety. **A bug in the caller**, like
+         * [StatedNoFacts]: only an emergency may ring. */
+        data object AlarmNotAllowed : RaiseOutcome()
+
+        /** This alert id was already delivered at this severity or higher. One alarm per alert. */
+        data object AlreadyAlarmed : RaiseOutcome()
     }
 
     /**
@@ -206,15 +203,34 @@ object ProactiveBus {
         markDeclined(context, ruleId)
     }
 
-    /** The only place that touches the raw flow. */
+    /**
+     * The only place that touches the raw flow. **A reply microphone opens only when it can hear**
+     * ([ProactiveDelivery.mayListen], ADR 0082): with the screen off and no `microphone` foreground
+     * type the capture would hear silence, so the line is spoken without listening. One place, so
+     * no raise site has to know.
+     */
     private fun emit(
         prompt: String,
         listensForReply: Boolean = false,
         carriesReadThroughContent: Boolean = false,
         listenHoldMs: Long = 0L,
     ) {
-        _requestSpeak.tryEmit(SpeakRequest(prompt, listensForReply, carriesReadThroughContent, listenHoldMs))
+        val listens = listensForReply && ProactiveDelivery.mayListen()
+        _requestSpeak.tryEmit(
+            SpeakRequest(prompt, listens, carriesReadThroughContent, if (listens) listenHoldMs else 0L),
+        )
     }
+
+    /**
+     * How many collect [requestSpeak] - in practice 1 while `AriaForegroundService` runs, 0 when it
+     * does not. The flow keeps nothing for a late subscriber, so a line emitted with nobody
+     * listening is lost; [ProactiveDelivery.route] posts it instead. Waited on by
+     * [ProactiveDelivery.awaitListener].
+     */
+    val listeners: StateFlow<Int> = _requestSpeak.subscriptionCount
+
+    /** True when something is collecting [requestSpeak]. */
+    val hasListener: Boolean get() = listeners.value > 0
 
     /**
      * User-initiated speech: voice, or a tap. Never gated by any of the above - they just asked,
@@ -228,10 +244,11 @@ object ProactiveBus {
      * The ONLY unsolicited path. Runs every check in the class table and, when they all pass,
      * records a [ProactiveRaiseRow] and emits.
      *
-     * Suspending because the cap and the suppression window are database reads - the state they
-     * replaced was a set of process-lifetime fields that a `START_STICKY` restart wiped, which made
-     * "never nag twice" impossible rather than merely weak.
+     * Suspending because the suppression window is a database read - the state it replaced was a
+     * set of process-lifetime fields that a `START_STICKY` restart wiped, which made "never nag
+     * twice" impossible rather than merely weak.
      */
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "LongMethod") // one named refusal per check, in order
     suspend fun speakIfAllowed(context: Context, raise: ProactiveRaise): RaiseOutcome {
         // --- the checks that need nothing but this moment ---------------------------------
         // Deliberately ALL of them before the first database read, so a raise that is going to be
@@ -244,22 +261,22 @@ object ProactiveBus {
         // LiveSessionController - because a ringing phone is exactly when Kevin may want to speak.
         if (TelephonyController.isInCall || TelephonyController.isRinging) return RaiseOutcome.NotNow
 
-        // The switches. Master first, for everything, with no branch around it.
+        // The switches. Master first, for everything, with no branch around it - an emergency
+        // alarm included (settled decision 2).
         ProactiveSettings.load(context)
         if (!ProactiveSettings.mayRaise(raise.category)) return RaiseOutcome.MutedByUser
 
-        // Ticket 10's contract, and the only check here that indicates a bug rather than a setting.
+        // Ticket 10's contract, and the only checks here that indicate a bug rather than a setting.
         if (!raise.statesItsFacts) return RaiseOutcome.StatedNoFacts
+        val alarm = raise.urgency as? ProactiveUrgency.Alarm
+        if (alarm != null && raise.category != ProactiveCategory.SAFETY) return RaiseOutcome.AlarmNotAllowed
+        if (alarm != null && !SafetyAlarms.isNew(context, alarm)) return RaiseOutcome.AlreadyAlarmed
 
         // --- the checks that need the raise history ---------------------------------------
         val dao = CarDatabase.getDatabase(context).proactiveRaiseDao()
         val now = System.currentTimeMillis()
-        val last = dao.lastForRule(raise.ruleId)
-        val spokenToday =
-            if (raise.category in UNCAPPED_CATEGORIES) 0
-            else dao.spokenCountSince(startOfToday(now), UNCAPPED_CATEGORIES.map { it.key })
-
-        val refusal = decideOnHistory(raise, now, last, spokenToday, LocalTime.now())
+        val time = LocalTime.now()
+        val refusal = decideOnHistory(raise, now, dao.lastForRule(raise.ruleId), time)
 
         // --- deliver, or say in the return value that it was not delivered ------------------
         // Ticket 06 call 3: a raise that cannot be SPOKEN is POSTED. Nothing is silently dropped -
@@ -270,43 +287,73 @@ object ProactiveBus {
         // whole point of the suppression: the user already brushed this exact rule off. Posting it
         // to the shade instead would be the same nag through a different door.
         if (refusal == RaiseOutcome.Suppressed) return refusal
-        // A raise the user switched off must not reroute to the shade either - a kill switch that
-        // redirects is not a kill switch (settled decision 2). Same for the pre-database refusals,
-        // which returned above before reaching here.
-        if (refusal == RaiseOutcome.MutedByUser) return refusal
 
-        val spokenAloud = refusal == null && ProactiveDelivery.maySpeakAloud(context)
+        var route = ProactiveDelivery.route(context, raise, gateAllowsSpeech = refusal == null, time = time)
+        if (alarm != null) SafetyAlarms.remember(context, alarm)
+        if (route == ProactiveDelivery.Route.RING && !SafetyAlarms.ring(context, raise)) {
+            // The ring could not start (Android refused the background start): post it, never drop it.
+            route = ProactiveDelivery.Route.NOTIFY
+        }
         val rowId = dao.insert(
             ProactiveRaiseRow(
                 ruleId = raise.ruleId,
                 category = raise.category.key,
                 reason = raise.reason,
                 spokenAt = now,
-                delivery = if (spokenAloud) ProactiveRaiseRow.DELIVERY_SPOKEN
-                else ProactiveRaiseRow.DELIVERY_NOTIFIED,
+                delivery = when (route) {
+                    ProactiveDelivery.Route.SPEAK -> ProactiveRaiseRow.DELIVERY_SPOKEN
+                    ProactiveDelivery.Route.RING -> ProactiveRaiseRow.DELIVERY_RUNG
+                    ProactiveDelivery.Route.NOTIFY -> ProactiveRaiseRow.DELIVERY_NOTIFIED
+                },
             )
         )
 
-        if (spokenAloud) {
-            // Exactly one delivery per raise, never both (ticket 06 call 5). The cost is real and
-            // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
-            // Arm decline detection BEFORE the line goes out, so a fast reply cannot beat it.
-            awaitingReplyFor = raise.ruleId
-            emit(raise.prompt, raise.listensForReply, raise.carriesReadThroughContent, raise.listenHoldMs)
-            return RaiseOutcome.Raised(rowId)
+        when (route) {
+            ProactiveDelivery.Route.SPEAK -> {
+                // Exactly one delivery per raise, never both (ticket 06 call 5). The cost is real and
+                // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
+                // Arm decline detection BEFORE the line goes out, so a fast reply cannot beat it.
+                awaitingReplyFor = raise.ruleId
+                emit(raise.prompt, raise.listensForReply, raise.carriesReadThroughContent, raise.listenHoldMs)
+                return RaiseOutcome.Raised(rowId)
+            }
+            ProactiveDelivery.Route.RING -> return RaiseOutcome.Rang(rowId)
+            ProactiveDelivery.Route.NOTIFY -> Unit
         }
 
         // Nothing here reports that the notification was SEEN, only that it was handed to the
         // system - the channel is a kill switch the user can pull without the app knowing
         // (CLAUDE.md §7's outcome-verb rule, applied to delivery).
         if (!raise.callerPostsItsOwnNotification) {
-            ProactiveDelivery.notify(context, raise, raise.reason)
+            ProactiveDelivery.notify(context, raise, raise.notificationText ?: raise.reason)
         }
         return RaiseOutcome.Notified(rowId, postedByCaller = raise.callerPostsItsOwnNotification)
     }
 
     /**
-     * The suppression / quiet-hours / cap decision, as a PURE function of values already fetched.
+     * The line of an emergency alarm, said once he has dismissed its ring (ADR 0082). Not a second
+     * gate around the first: the master and the Safety switch are checked again (he may have
+     * switched them off while it rang), and nothing else is - quiet hours and the silenced phone
+     * are what made it ring, and Dismiss is him attending to it. Posted when nothing is running to
+     * speak it. True when it was handed to the session.
+     */
+    suspend fun speakAfterAlarm(context: Context, raise: ProactiveRaise): Boolean {
+        ProactiveSettings.load(context)
+        val spoken = ProactiveSettings.mayRaise(raise.category) && hasListener
+        when {
+            spoken -> {
+                awaitingReplyFor = raise.ruleId
+                emit(raise.prompt, raise.listensForReply, raise.carriesReadThroughContent, raise.listenHoldMs)
+            }
+            ProactiveSettings.mayRaise(raise.category) ->
+                ProactiveDelivery.notify(context, raise, raise.notificationText ?: raise.facts)
+            else -> Unit
+        }
+        return spoken
+    }
+
+    /**
+     * The suppression / quiet-hours decision, as a PURE function of values already fetched.
      * Returns the refusing outcome, or null when the raise may go ahead.
      *
      * **Split out because the arithmetic is the part worth testing and Room is the part that makes
@@ -314,30 +361,23 @@ object ProactiveBus {
      * resets its SQLite between tests, so a Robolectric test that reaches Room across class
      * boundaries dies with `IllegalStateException: Illegal connection pointer` - the same class of
      * gap CLAUDE.md §10 already records for `LedgerController` and `PantryController`. Rather than
-     * leave the cap and the suppression window covered by nothing, the decision moves somewhere a
-     * plain JUnit test can reach it and the storage stays where it was.
+     * leave the suppression window covered by nothing, the decision moves somewhere a plain JUnit
+     * test can reach it and the storage stays where it was.
      *
      * **What that leaves untested is the WIRING** - that `speakIfAllowed` passes the right values in
-     * - which is three single-statement DAO calls sitting directly above this call, inspectable by
-     * reading them. Said out loud rather than implied by a green suite.
+     * - which is one single-statement DAO call sitting directly above this call, inspectable by
+     * reading it. Said out loud rather than implied by a green suite.
      */
     internal fun decideOnHistory(
         raise: ProactiveRaise,
         now: Long,
         last: ProactiveRaiseRow?,
-        spokenToday: Int,
         time: LocalTime,
-    ): RaiseOutcome? {
-        if (last != null && last.declined && now - last.spokenAt < DECLINE_SUPPRESSION_MS) {
-            return RaiseOutcome.Suppressed
-        }
-        if (isQuietHour(time) && raise.category !in QUIET_HOURS_EXEMPT) {
-            return RaiseOutcome.QuietHours
-        }
-        if (raise.category !in UNCAPPED_CATEGORIES && spokenToday >= DAILY_SPOKEN_CAP) {
-            return RaiseOutcome.OverDailyCap
-        }
-        return null
+    ): RaiseOutcome? = when {
+        last != null && last.declined && now - last.spokenAt < DECLINE_SUPPRESSION_MS -> RaiseOutcome.Suppressed
+        isQuietHour(time) && raise.category !in QUIET_HOURS_EXEMPT && !raise.exemptFromQuietHours ->
+            RaiseOutcome.QuietHours
+        else -> null
     }
 
     /** Fire-and-forget [speakIfAllowed], for a caller with no scope of its own - see [scope]. */
@@ -359,16 +399,6 @@ object ProactiveBus {
             hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR
         }
     }
-
-    /** Local midnight, so the cap is a calendar day rather than a rolling 24 hours. A rolling window
-     * would let last night's three suppress this morning's first. */
-    internal fun startOfToday(now: Long): Long = Calendar.getInstance().apply {
-        timeInMillis = now
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
 
     /**
      * Records that the user brushed off the most recent raise of [ruleId], which suppresses that

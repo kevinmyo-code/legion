@@ -63,8 +63,8 @@ object LoginExpirySettings {
  * absence or engagement, (d) [LoginExpiryStopReceiver] silences it forever in one tap.
  *
  * Not registered with `ProactiveBus`/`ProactiveCategory`: that registry governs SPOKEN raises
- * (master switch, quiet hours, daily cap) and this never speaks, so routing it there would
- * subject a plain notification to a spoken-line cap it has no reason to share.
+ * (master switch, quiet hours, the speech gate) and this never speaks, so routing it there would
+ * subject a plain notification to speech rules it has no reason to share.
  */
 class LoginExpiryNotifier(context: Context) {
     private val app = context.applicationContext

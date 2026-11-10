@@ -18,7 +18,7 @@ import androidx.room.Query
  * restarts things, so **"never nag twice" was not weakly enforced - it was impossible**, and would
  * have stayed impossible under any engine built on that state.
  *
- * One table backs three separate promises, which is what justified the schema change. All three are
+ * One table backed three separate promises, which is what justified the schema change. All three were
  * wired as of 2026-08-21 - `markDeclined` from `ProactiveBus.noteReply` at every turn boundary, and
  * `mostRecent` from `LiveToolbox`'s `why_did_you_say_that`. For a few hours two of them were dead
  * code while this comment said otherwise; the correction is left visible because a doc that outran
@@ -27,6 +27,7 @@ import androidx.room.Query
  *  - **Never nag twice** - a declined raise suppresses its own [ruleId] for a window
  *    (ticket 08 call 3), silently, with the tone identical whenever it returns.
  *  - **The daily cap** - three spoken lines a day (ticket 05 call 3), counted off [spokenAt].
+ *    **Removed 2026-11-10** (Kevin, ADR 0082: no cap); its count query went with it.
  *  - **"Why did you say that?"** - [reason] is stored at raise time, so the answer is a fact rather
  *    than the model reconstructing a plausible one (ticket 02 call 4).
  *
@@ -51,7 +52,7 @@ data class ProactiveRaiseRow(
      * fact is checkable, which is the same split the reconciliation gate makes (CLAUDE.md §4).
      */
     val reason: String,
-    /** When it was raised. The daily cap counts these. */
+    /** When it was raised. The suppression window and the home brief's 6 h limit read it. */
     val spokenAt: Long,
     /** True once the reply is read as a brush-off. **Inferred, and imperfect** - a grunt may or may
      * not be a no (ticket 05 call 5). The cost of a wrong read is bounded on purpose: a false
@@ -59,14 +60,18 @@ data class ProactiveRaiseRow(
     val declined: Boolean = false,
     /**
      * How the line actually reached the user, so a later look at this table cannot mistake a
-     * notification for something that was said aloud. One of [DELIVERY_SPOKEN] or
-     * [DELIVERY_NOTIFIED] - never both, which is ticket 06 call 5's echo fix recorded as data.
+     * notification for something that was said aloud. One of [DELIVERY_SPOKEN],
+     * [DELIVERY_NOTIFIED] or [DELIVERY_RUNG] - never two, which is ticket 06 call 5's echo fix recorded as data.
      */
     val delivery: String = DELIVERY_SPOKEN,
 ) {
     companion object {
         const val DELIVERY_SPOKEN = "spoken"
         const val DELIVERY_NOTIFIED = "notified"
+
+        /** An emergency alarm rang (ADR 0082); its line is said after Dismiss. A plain string in
+         * the existing column, so no schema change. */
+        const val DELIVERY_RUNG = "rung"
     }
 }
 
@@ -74,15 +79,6 @@ data class ProactiveRaiseRow(
 interface ProactiveRaiseDao {
     @Insert
     suspend fun insert(row: ProactiveRaiseRow): Long
-
-    /** Spoken lines since [since]. **Only `spoken` counts against the daily cap** - the cap governs
-     * speech, not existence (ticket 05 call 4), and a raise that fell back to a notification was
-     * never spoken. */
-    @Query(
-        "SELECT COUNT(*) FROM proactive_raises WHERE spokenAt >= :since AND delivery = 'spoken' " +
-            "AND category NOT IN (:uncappedCategories)"
-    )
-    suspend fun spokenCountSince(since: Long, uncappedCategories: List<String>): Int
 
     /** The most recent raise of one rule, whatever its delivery - suppression follows the rule
      * having been surfaced at all, not merely having been spoken. */

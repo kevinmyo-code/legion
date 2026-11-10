@@ -14,8 +14,8 @@ interface ClockTime {
     fun bootCount(): Int
 }
 
-/** What rings. */
-enum class RingKind { ALARM, TIMER }
+/** What rings. [ALERT] is an emergency in the area (ADR 0082, [com.kevin.legion.service.SafetyAlarms]). */
+enum class RingKind { ALARM, TIMER, ALERT }
 
 data class RingRequest(val kind: RingKind, val id: Int, val label: String)
 

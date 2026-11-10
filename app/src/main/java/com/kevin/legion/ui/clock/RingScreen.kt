@@ -42,6 +42,7 @@ fun RingScreen(now: String, ring: RingRequest?, canBrief: Boolean, problem: Stri
         val title = when (ring?.kind) {
             RingKind.TIMER -> "Timer done"
             RingKind.ALARM -> "Alarm"
+            RingKind.ALERT -> "Emergency alert"
             null -> ""
         }
         Text(title, color = SoftColors.primary, fontSize = 20.sp)
@@ -51,7 +52,10 @@ fun RingScreen(now: String, ring: RingRequest?, canBrief: Boolean, problem: Stri
             Text(problem, color = SoftColors.onAlert, fontSize = 17.sp, textAlign = TextAlign.Center)
             return@Column
         }
-        if (ring?.kind == RingKind.TIMER) {
+        if (ring?.kind == RingKind.ALERT) {
+            // ADR 0082: the facts are the label above; one Dismiss, then the line is said.
+            BigButton("Dismiss", actions.onDismiss)
+        } else if (ring?.kind == RingKind.TIMER) {
             BigButton("Stop", actions.onDismiss)
             WideOutline("+${ClockDefaults.TIMER_EXTRA_MIN} min", actions.onAddMinute)
         } else if (ring != null) {

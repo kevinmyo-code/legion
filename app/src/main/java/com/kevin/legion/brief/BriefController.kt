@@ -37,7 +37,10 @@ data class VoiceBrief(val success: Boolean, val text: String)
  * ViewModel and the `get_sitrep` voice tool both call this, so the hands path and the voice path
  * cannot drift into saying different things.
  *
- * **Never pushed** (ruling 2): nothing here schedules, notifies or speaks. It answers when asked.
+ * **Never pushed by itself** (ruling 2): nothing here schedules, notifies or speaks. It answers when
+ * asked. One caller asks unprompted since 2026-11-10: the wake-up brief
+ * (`spokenbrief/WakeBrief.kt`, ADR 0082) reads [forVoice] at an alarm dismiss and hands the text to
+ * the proactive bus, so the spoken brief is this one, never a second.
  *
  * A class with its dependencies in the constructor, built by hand in [forApp] until Hilt lands
  * (CLAUDE.md section 8); `MidnightApplication.brief` is the one instance.

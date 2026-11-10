@@ -108,7 +108,7 @@ object ProactiveSettings {
      * Whether [category] may raise at all, on the switches alone. Reads the in-memory flows, so it
      * is safe from any thread and never blocks - [load] is what makes them true.
      *
-     * **This is the switch check only.** Quiet hours, the daily cap, the suppression window and the
+     * **This is the switch check only.** Quiet hours, the speech gate, the suppression window and the
      * "is anyone there" checks live in [ProactiveBus], because they are about this moment rather
      * than about a setting.
      */

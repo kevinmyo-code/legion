@@ -19,12 +19,10 @@ package com.kevin.legion.service
  * same discipline in reverse. TIMING/FLEET/SAFETY shipped content with the proactive build itself
  * and keep it; WELLBEING got the scheduled checklist digest
  * (`.scratch/goal-plans/issues/05-wellbeing-digest.md`,
- * [com.kevin.legion.wellbeing.WellbeingDigestAlarmReceiver]) and keeps it. **DIGEST is back to
- * `false`**: its only raise was the scheduled sitrep
- * (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`), and ticket 32 (Kevin: "sitreps stay
- * tap only or via voice activation only") deleted the alarm that raised it -
- * `SitrepAlarmReceiver` no longer exists. A switch that governs nothing must say so, the same rule
- * that decided it should say `true` when the sitrep alarm first existed.
+ * [com.kevin.legion.wellbeing.WellbeingDigestAlarmReceiver]) and keeps it. DIGEST went to `false`
+ * when ticket 32 deleted the scheduled sitrep, and **back to `true` on 2026-11-10** (ADR 0082) in
+ * the commit that added its two raises, the wake-up and home briefs
+ * ([com.kevin.legion.spokenbrief.SpokenBrief]).
  */
 enum class ProactiveCategory(
     /** Stable storage key. Written to `proactive_settings.key` and to the raise history, so it
@@ -41,9 +39,10 @@ enum class ProactiveCategory(
      * Something is wrong right now and waiting would cost you. Coolant overheat, a new trouble
      * code, conditions turning rough while driving.
      *
-     * **The only category outside the daily cap** (ticket 05 call 3): a real warning must never
-     * lose its slot to a rest nudge. Uncapped still means inside the master switch and inside
-     * quiet hours' own carve-out - see [ProactiveSettings.mayRaise].
+     * Quiet-hours exempt, inside the master switch - see [ProactiveSettings.mayRaise]. (It was also
+     * the category outside the daily cap; there is no cap since ADR 0082.) **The only category an
+     * emergency [ProactiveUrgency.Alarm] may use** (ADR 0082): it rings at night or on a silenced
+     * phone. The ordinary Safety raises (overheat, a new fault, rough weather) stay ordinary.
      */
     SAFETY("safety", "Safety", "Warnings that should not wait - overheating, a new fault, rough conditions.", true),
 
@@ -71,20 +70,17 @@ enum class ProactiveCategory(
     /** The cars. Open recalls, an odometer milestone, a long drive without a break. */
     FLEET("fleet", "Fleet", "Your cars - recalls, milestones, and a nudge on a long drive.", true),
 
-    /** Round-ups and briefings raised WITHOUT being asked. **Empty again, ticket 32** (Kevin:
-     * "sitreps stay tap only or via voice activation only") - its only raise, the scheduled
-     * sitrep (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`,
-     * [com.kevin.legion.sitrep.SitrepBuilder]'s old `SitrepAlarmReceiver` caller), no longer
-     * exists. A sitrep is still produced by a tap or a spoken `get_sitrep`, but neither of those
-     * is unprompted speech, so neither routes through this category or any other - see
-     * [com.kevin.legion.sitrep.SitrepSettings]'s own class doc. `hasContent` goes back to `false`
-     * per this file's own class doc rule until something else raises through DIGEST. */
-    DIGEST("digest", "Digest", "Round-ups and briefings, at a time you pick.", false),
+    /** Round-ups and briefings raised WITHOUT being asked. Empty after ticket 32 retired the
+     * scheduled sitrep; **two raises since 2026-11-10** (Kevin, ADR 0082): the brief when he
+     * dismisses a morning alarm ([com.kevin.legion.spokenbrief.WakeBrief]) and a short one on
+     * arriving home ([com.kevin.legion.spokenbrief.HomeBrief]), each with its own switch inside this
+     * one. A tap or a spoken `get_sitrep` is still not unprompted speech and does not route here. */
+    DIGEST("digest", "Digest", "Your brief when you dismiss a morning alarm, and a short one when you get home.", true),
 
     /**
      * The result of a task Kevin sent to his Claude session (claude-session ticket 05; Kevin
-     * 2026-11-01). **On by default and outside the daily cap** ([ProactiveBus.UNCAPPED_CATEGORIES],
-     * [DEFAULT_ON]): each line answers something he asked for. Still inside the master switch and
+     * 2026-11-01). **On by default** ([DEFAULT_ON]): each line answers something he asked for. (It
+     * was also outside the daily cap, which ADR 0082 removed.) Still inside the master switch and
      * quiet hours, and still the compulsion test's four: anchored to his task, actionable (a result,
      * a question, a file to take), never about his absence, silenced by this switch, the Claude
      * session screen's switch, or "stop telling me about Claude tasks".

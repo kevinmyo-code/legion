@@ -1824,15 +1824,16 @@ object LiveToolbox {
         // a plausible one after the event. Ticket 08 call 4 is explicit about the wording: name
         // the rule and the fact, never justify the nudge, never guess at his state of mind. A
         // justification is unfalsifiable; a fact is checkable.
+        // ADR 0082: `stop` is the voice half of "stop the morning brief" / "stop the home brief"
+        // (compulsion test (d)); the description was tightened to pay for it.
         fns.put(fn(
             name = "why_did_you_say_that",
-            description = "Look up why you last spoke without being asked. Use when the user asks " +
-                "why you said something, why you brought that up, or what prompted it - about a " +
-                "line YOU started, not an answer to their question. Returns the rule that fired " +
-                "and the fact behind it. State those; do not justify the nudge itself and do not " +
-                "guess at how they were feeling. If it returns nothing, say you have not raised " +
-                "anything on your own recently.",
-            params = obj(),
+            description = "Why you last spoke without being asked: use when the user asks why you " +
+                "said or brought up something YOU started, not an answer to their question. Returns " +
+                "the rule that fired and its fact; state those, never justify it or guess how they " +
+                "felt. Nothing returned: say you raised nothing on your own recently. With stop, " +
+                "turns that spoken line off for good instead.",
+            params = obj("stop" to schema("string", "Line to turn off, e.g. morning brief or home brief")),
             required = emptyList(),
         ))
 
@@ -3101,7 +3102,7 @@ object LiveToolbox {
             "flight_status" -> flightStatus(context)
             "read_calendar" -> readCalendar(context, args)
             "complete_task" -> completeTask(context, args)
-            "why_did_you_say_that" -> whyDidYouSayThatTool(context)
+            "why_did_you_say_that" -> whyDidYouSayThatTool(context, args)
             "get_sitrep" -> getSitrepTool(context, args)
             "answer_call" -> answerCallTool(context, args)
             "decline_call" -> declineCallTool(context)
@@ -5267,15 +5268,26 @@ object LiveToolbox {
      * whole raise contract exists to stop - the same reason `OpenerCalendarBriefing` says "nothing
      * is scheduled" in words instead of handing back an empty list.
      */
-    private suspend fun whyDidYouSayThatTool(context: Context): JSONObject {
-        val row = CarDatabase.getDatabase(context).proactiveRaiseDao().mostRecent()
-            ?: return result(false, "You have not raised anything on your own recently.")
-        val delivery = if (row.delivery == ProactiveRaiseRow.DELIVERY_SPOKEN) "said aloud" else "posted as a notification"
-        return result(
-            true,
-            "Rule \"${row.ruleId}\" (${row.category}) fired and was $delivery. The fact behind " +
-                "it: ${row.reason}. Say the rule and the fact plainly; do not justify it.",
-        )
+    private suspend fun whyDidYouSayThatTool(context: Context, args: JSONObject): JSONObject {
+        // ADR 0082: "stop the morning brief" switches that brief off, the same switch as its row in
+        // Settings, Proactive speech (ADR 0035). Says in words when nothing matched.
+        val stop = args.optString("stop").trim()
+        val row = if (stop.isEmpty()) CarDatabase.getDatabase(context).proactiveRaiseDao().mostRecent() else null
+        val delivery = when (row?.delivery) {
+            ProactiveRaiseRow.DELIVERY_SPOKEN -> "said aloud"
+            ProactiveRaiseRow.DELIVERY_RUNG -> "rung as an emergency alarm"
+            else -> "posted as a notification"
+        }
+        return when {
+            stop.isNotEmpty() ->
+                com.kevin.legion.spokenbrief.SpokenBriefs.stop(context, stop).let { result(it.ok, it.message) }
+            row == null -> result(false, "You have not raised anything on your own recently.")
+            else -> result(
+                true,
+                "Rule \"${row.ruleId}\" (${row.category}) fired and was $delivery. The fact behind " +
+                    "it: ${row.reason}. Say the rule and the fact plainly; do not justify it.",
+            )
+        }
     }
 
     /**
