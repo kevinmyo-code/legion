@@ -68,8 +68,8 @@ from dataclasses import dataclass, field
 from django.utils import timezone
 
 from devicelogs.web_conversation import CAP_TOOL
-from engine_mcp.models import Outcome
 from engine_mcp import cards
+from engine_mcp.models import Outcome
 from engine_mcp.tools import TOOLS_BY_NAME, ToolResult, ok, refused, run_engine_tool
 from household.models import is_recruiter
 from household.permissions import write_refusal

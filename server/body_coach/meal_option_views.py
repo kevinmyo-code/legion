@@ -5,9 +5,10 @@
 | `GET meal-options/` | the clock, what is left today, ranked options from saved meals and recent groceries, `words` |
 | `POST meal-options/log/` | logs one option by its `option_id`; the figures come from the rows, never the body |
 
-Every figure is an estimate (CLAUDE.md section 4 rule 5). Ranking and words: `body_coach/suggest.py`.
+Every figure is an estimate (CLAUDE.md section 4 rule 5). Ranking and words:
+`body_coach/suggest.py`.
 A recruiter is refused (`household.recruiter_routes`, default deny).
-"""
+"""  # noqa: E501 (route table rows)
 
 from __future__ import annotations
 
@@ -57,7 +58,9 @@ class MealOptionLogView(APIView):
         if unknown:
             return Response(
                 {
-                    "detail": f"Nothing was logged. Only option_id is read; got {', '.join(unknown)}."
+                    "detail": (
+                        f"Nothing was logged. Only option_id is read; got {', '.join(unknown)}."
+                    )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )

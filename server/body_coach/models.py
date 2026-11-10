@@ -329,7 +329,9 @@ class WorkoutSession(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     household = models.ForeignKey("household.Household", on_delete=models.PROTECT, related_name="+")
-    programme = models.ForeignKey(TrainingProgramme, on_delete=models.PROTECT, related_name="sessions")
+    programme = models.ForeignKey(
+        TrainingProgramme, on_delete=models.PROTECT, related_name="sessions"
+    )
     day_key = models.TextField()
     # 1-based count of this programme's sessions, cancelled ones excluded; decides the deload.
     session_number = models.IntegerField()
@@ -349,7 +351,8 @@ class WorkoutSession(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(status__in=SESSION_STATUSES), name="workout_sessions_status_valid"
+                condition=models.Q(status__in=SESSION_STATUSES),
+                name="workout_sessions_status_valid",
             ),
             models.CheckConstraint(
                 condition=models.Q(day_key__in=("A", "B", "C", "D")),
@@ -526,7 +529,8 @@ class BodyPlan(models.Model):
     rate_bp = models.SmallIntegerField(default=TARGET_RATE_BP_DEFAULT)
     # Alfred's, or a target the member set himself (kept until "let Alfred set it").
     target_set_by = models.TextField(default=TARGET_BY_ALFRED)
-    # `programme_change.State.as_dict()`: template, sessions (as inert days), swaps, filters, cardio.
+    # `programme_change.State.as_dict()`: template, sessions (as inert days), swaps, filters,
+    # cardio.
     programme = models.JSONField(default=dict)
     meal_approach = models.TextField(default="saved_meals")
     nudges = models.JSONField(default=dict, blank=True)
@@ -545,7 +549,9 @@ class BodyPlan(models.Model):
     class Meta:
         db_table = "body_plans"
         indexes = [
-            models.Index(fields=["household", "owner_user", "created_at"], name="body_plans_made_idx"),
+            models.Index(
+                fields=["household", "owner_user", "created_at"], name="body_plans_made_idx"
+            ),
         ]
         constraints = [
             models.CheckConstraint(

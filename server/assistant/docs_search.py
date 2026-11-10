@@ -108,8 +108,14 @@ TOPIC_PICKS: tuple[tuple[re.Pattern, tuple[tuple[str, str], ...]], ...] = (
         ),
         (
             ("docs/architecture/c3-voice-loop.md", "C3: The voice loop"),
-            ("docs/architecture/c3-voice-loop.md", "C3: The voice loop > Where each named piece actually sits"),
-            ("docs/architecture/c3-voice-loop.md", "C3: The voice loop > Two constraints that bite"),
+            (
+                "docs/architecture/c3-voice-loop.md",
+                "C3: The voice loop > Where each named piece actually sits",
+            ),
+            (
+                "docs/architecture/c3-voice-loop.md",
+                "C3: The voice loop > Two constraints that bite",
+            ),
         ),
     ),
     (
@@ -121,10 +127,17 @@ TOPIC_PICKS: tuple[tuple[re.Pattern, tuple[tuple[str, str], ...]], ...] = (
             ("docs/architecture/c3-ingestion.md", "C3: Ingestion and the gate"),
             (
                 "docs/architecture/c3-ingestion.md",
-                "C3: Ingestion and the gate > The gate, stated exactly (still binding, pantry included)",
+                "C3: Ingestion and the gate > The gate, stated exactly"
+                " (still binding, pantry included)",
             ),
-            ("docs/adr/0006-reconciliation-gate.md", "6. LLM extraction, allowed only behind a deterministic gate > Decision"),
-            ("docs/adr/0031-speech-honesty-clause.md", "31. The assistant may not assert an outcome it did not observe > Decision"),
+            (
+                "docs/adr/0006-reconciliation-gate.md",
+                "6. LLM extraction, allowed only behind a deterministic gate > Decision",
+            ),
+            (
+                "docs/adr/0031-speech-honesty-clause.md",
+                "31. The assistant may not assert an outcome it did not observe > Decision",
+            ),
         ),
     ),
 )

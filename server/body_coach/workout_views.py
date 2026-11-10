@@ -17,7 +17,7 @@
 **Every target comes from `body_coach/programme.py`.** Nothing here accepts a target weight from
 a client: a tick carries only what was done. Authentication is the API default; a recruiter is
 refused (`household.recruiter_routes`). Weights are pounds. The engine tools call these views.
-"""
+"""  # noqa: E501 (route table rows)
 
 from __future__ import annotations
 
@@ -52,7 +52,9 @@ def _uuid(value, name: str, verb: str) -> uuid.UUID | None:
     try:
         return uuid.UUID(str(value))
     except ValueError as exc:
-        raise svc.WorkoutRefused(f"Nothing was {verb}. {name} must be a UUID; got {value!r}.") from exc
+        raise svc.WorkoutRefused(
+            f"Nothing was {verb}. {name} must be a UUID; got {value!r}."
+        ) from exc
 
 
 def _number(value, name: str):
@@ -263,10 +265,14 @@ class WorkoutFinishView(APIView):
     def post(self, request):
         try:
             data = _body(request)
-            session, changed = svc.finish(request, _uuid(data.get("session_id"), "session_id", "finished"))
+            session, changed = svc.finish(
+                request, _uuid(data.get("session_id"), "session_id", "finished")
+            )
         except svc.WorkoutRefused as exc:
             return _refusal(exc)
-        words = svc.finish_words(session, request) if changed else "That workout was already logged."
+        words = (
+            svc.finish_words(session, request) if changed else "That workout was already logged."
+        )
         return Response({"session": svc.session_dict(session), "finished": changed, "words": words})
 
 
@@ -285,7 +291,10 @@ class WorkoutCancelView(APIView):
         except svc.WorkoutRefused as exc:
             return _refusal(exc)
         return Response(
-            {"session": svc.session_dict(session), "words": "Workout cancelled. Nothing was logged."}
+            {
+                "session": svc.session_dict(session),
+                "words": "Workout cancelled. Nothing was logged.",
+            }
         )
 
 
@@ -378,9 +387,9 @@ class WorkoutAlternativesView(APIView):
         operation_id="api_body_coach_workout_alternatives",
         tags=TAGS,
         responses={**_OK, 400: DetailSerializer, 404: DetailSerializer},
-        description="The other choices for the named exercise's slot (`alternatives/bench/`), each with "
-        "its equipment, joints, whether the programme's filters allow it and why not, and "
-        "whether its progress would carry. A read; nothing changes.",
+        description="The other choices for the named exercise's slot (`alternatives/bench/`), "
+        "each with its equipment, joints, whether the programme's filters allow it and why not, "
+        "and whether its progress would carry. A read; nothing changes.",
     )
     def get(self, request, exercise):
         try:

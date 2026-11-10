@@ -74,6 +74,7 @@ from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
 from claude_session import serializers as s
+from claude_session import workflows as wf
 from claude_session.models import (
     CANCEL_REQUESTED,
     CANCELLED,
@@ -106,7 +107,6 @@ from claude_session.models import (
     ClaudeTask,
     ClaudeTaskFile,
 )
-from claude_session import workflows as wf
 from claude_session.state import effective_status, failure_reason, machine_state
 from claude_session.storage import StorageError, get_store, new_key
 from household.models import DeviceToken

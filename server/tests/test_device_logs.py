@@ -118,7 +118,9 @@ def test_a_gzip_bomb_is_refused_on_decompressed_size(token_a, monkeypatch):
 
 def test_a_file_that_is_not_gzip_is_refused_400(token_a):
     body = _payload()
-    body["file"] = SimpleUploadedFile("log.gz", b"plain text, not gzip", content_type="application/gzip")
+    body["file"] = SimpleUploadedFile(
+        "log.gz", b"plain text, not gzip", content_type="application/gzip"
+    )
     response = token_a.post(URL, body, format="multipart")
     assert response.status_code == 400
     assert "not valid gzip" in response.data["detail"]
@@ -143,7 +145,9 @@ def test_a_conversation_upload_is_accepted(token_a):
     assert DeviceLog.objects.get().reason == "conversation"
 
 
-def test_an_upload_prunes_this_households_old_batches_only(token_a, token_b, household_a, household_b):
+def test_an_upload_prunes_this_households_old_batches_only(
+    token_a, token_b, household_a, household_b
+):
     old = timezone.now() - datetime.timedelta(days=RETENTION_DAYS + 1)
     stale_a = DeviceLog.objects.create(
         household=household_a, batch_id=uuid.uuid4(), device_label="x", reason="manual",
@@ -161,7 +165,8 @@ def test_an_upload_prunes_this_households_old_batches_only(token_a, token_b, hou
 
 
 _NAV = (
-    "11-06 08:00:00.000  101  202 I NAV_AUDIT: search id=s1 origin=voice verdict=resolved query=\"a cafe\"\n"
+    "11-06 08:00:00.000  101  202 I NAV_AUDIT: search id=s1 origin=voice verdict=resolved"
+    " query=\"a cafe\"\n"
     "11-06 08:00:01.000  101  202 I LIVE_AUDIT: transcript_in text=\"take me to a cafe\"\n"
     "11-06 08:00:02.000  101  202 I NAV_AUDIT: trip_end trip=t1 reason=arrived\n"
 )
@@ -174,23 +179,33 @@ def _aged(household, text: str, days: int, nav: bool, reason: str = "conversatio
         raw_bytes=len(raw), line_count=raw.count(b"\n"), body_gz=gzip.compress(raw),
         nav_audit_lines=2 if nav else 0,
     )
-    DeviceLog.objects.filter(pk=row.pk).update(received_at=timezone.now() - datetime.timedelta(days=days))
+    DeviceLog.objects.filter(pk=row.pk).update(
+        received_at=timezone.now() - datetime.timedelta(days=days)
+    )
     return row
 
 
 def test_an_upload_counts_its_nav_audit_lines(token_a):
-    assert token_a.post(URL, _payload(_NAV, reason="conversation"), format="multipart").status_code == 201
+    assert (
+        token_a.post(URL, _payload(_NAV, reason="conversation"), format="multipart").status_code
+        == 201
+    )
     row = DeviceLog.objects.get()
     assert (row.line_count, row.nav_audit_lines) == (3, 2)
 
 
-def test_nav_audit_is_kept_ninety_days_and_the_rest_of_its_batch_goes_at_sixty(token_a, household_a):
-    """Nav-quality decision D7 (Kevin, 2026-11-06): NAV_AUDIT 90 days, conversation lines still 60."""
+def test_nav_audit_is_kept_ninety_days_and_the_rest_of_its_batch_goes_at_sixty(
+    token_a, household_a
+):
+    """Nav-quality decision D7 (Kevin, 2026-11-06): NAV_AUDIT 90 days, conversation lines
+    still 60."""
     assert NAV_AUDIT_RETENTION_DAYS == 90
     young_nav = _aged(household_a, _NAV, RETENTION_DAYS - 1, nav=True)
     old_nav = _aged(household_a, _NAV, RETENTION_DAYS + 1, nav=True)
     expired_nav = _aged(household_a, _NAV, NAV_AUDIT_RETENTION_DAYS + 1, nav=True)
-    old_plain = _aged(household_a, "11-06 08:00:00.000  1  2 I LIVE_AUDIT: x\n", RETENTION_DAYS + 1, nav=False)
+    old_plain = _aged(
+        household_a, "11-06 08:00:00.000  1  2 I LIVE_AUDIT: x\n", RETENTION_DAYS + 1, nav=False
+    )
 
     assert token_a.post(URL, _payload(), format="multipart").status_code == 201
 
@@ -199,9 +214,15 @@ def test_nav_audit_is_kept_ninety_days_and_the_rest_of_its_batch_goes_at_sixty(t
     assert gzip.decompress(bytes(young_nav.body_gz)).decode() == _NAV, "under 60 days, untouched"
     old_nav.refresh_from_db()
     body = gzip.decompress(bytes(old_nav.body_gz)).decode()
-    assert "LIVE_AUDIT" not in body and "take me to" not in body, "the conversation lines went at 60"
+    assert "LIVE_AUDIT" not in body and "take me to" not in body, (
+        "the conversation lines went at 60"
+    )
     assert body.count("NAV_AUDIT") == 2
-    assert (old_nav.line_count, old_nav.nav_audit_lines, old_nav.raw_bytes) == (2, 2, len(body.encode()))
+    assert (old_nav.line_count, old_nav.nav_audit_lines, old_nav.raw_bytes) == (
+        2,
+        2,
+        len(body.encode()),
+    )
 
     # A second upload leaves the cut row alone: cut once.
     cut_bytes = bytes(old_nav.body_gz)
@@ -210,14 +231,18 @@ def test_nav_audit_is_kept_ninety_days_and_the_rest_of_its_batch_goes_at_sixty(t
     assert bytes(old_nav.body_gz) == cut_bytes
 
 
-def test_a_logcat_batch_with_nav_audit_is_cut_at_thirty_days_and_gone_at_ninety(token_a, household_a):
+def test_a_logcat_batch_with_nav_audit_is_cut_at_thirty_days_and_gone_at_ninety(
+    token_a, household_a
+):
     """Round 4 merge of nav-audit (D7) with per-reason retention (logcat 30): a raw logcat batch
     holding NAV_AUDIT lines is cut to them at its own 30 days, not deleted; it goes at 90."""
     assert retention_days("logcat") == 30
     young = _aged(household_a, _NAV, 29, nav=True, reason="logcat")
     cut = _aged(household_a, _NAV, 31, nav=True, reason="logcat")
     gone = _aged(household_a, _NAV, NAV_AUDIT_RETENTION_DAYS + 1, nav=True, reason="logcat")
-    plain = _aged(household_a, "11-06 08:00:00.000  1  2 I Tag: x\n", 31, nav=False, reason="logcat")
+    plain = _aged(
+        household_a, "11-06 08:00:00.000  1  2 I Tag: x\n", 31, nav=False, reason="logcat"
+    )
     conv = _aged(household_a, _NAV, 31, nav=True)
 
     assert token_a.post(URL, _payload(), format="multipart").status_code == 201

@@ -9,7 +9,7 @@
 
 The caller's own plan only (`visible()`); a recruiter is refused (`household.recruiter_routes`).
 Every figure is the rules' (`body_coach/plans.py`) and an estimate.
-"""
+"""  # noqa: E501 (route table rows)
 
 from __future__ import annotations
 
