@@ -114,6 +114,11 @@ object OutboxTarget {
     const val CHECKLISTS = "checklists"
     const val CHECKLIST_ITEMS = "checklist_items"
     const val CHECKLIST_TICKS = "checklist_ticks"
+
+    /** Field navigation (round 5, 2026-11-10): a waypoint marked on the Field screen, waiting to
+     * become a saved place (`field/FieldWaypoints.kt`). Payload is the label and point; the drain
+     * calls `PlaceController.savePlaceAt`. Not `places` itself, which stays write-through. */
+    const val FIELD_WAYPOINTS = "field_waypoints"
 }
 
 /** [OutboxEntry.operation] values. **The comment this replaces said only [UPSERT] was produced as
