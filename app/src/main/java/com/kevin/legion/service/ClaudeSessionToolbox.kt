@@ -47,8 +47,8 @@ object ClaudeSessionToolbox {
 
     private const val DESCRIPTION =
         "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; workflow runs " +
-            "one check lists; check only " +
-            "reads results already in; \"ask Claude to...\" is always a new send; answer follows up a " +
+            "a named one (check lists them); check only " +
+            "reads results already in; \"ask Claude to...\" is always a new send or workflow; answer follows up a " +
             "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
             "send_file only on his yes to a found file; open_page opens a task's page on his yes; " +
             "quiet/unquiet stop/restart result announcements. A sent task is not done."

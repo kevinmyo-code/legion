@@ -128,6 +128,17 @@ class ClaudeWorkflowsTest {
     }
 
     @Test
+    fun `a scheduled question is never framed as a task he sent`() {
+        val text = "Scheduled weekly digest on the Alienware (task 70) stopped to ask: Send it?"
+        val note = ClaudeResultPolling.note(text, "", scheduled = true)
+        val prompt = ClaudeResultPolling.prompt(text, "", scheduled = true)
+        assertTrue(note, note.contains("they did not send it"))
+        assertTrue(prompt, prompt.contains("they did not send it"))
+        assertTrue(!note.contains("from a task they sent") && !prompt.contains("A task the user sent"))
+        assertTrue(ClaudeResultPolling.note(text, "").contains("from a task they sent"))
+    }
+
+    @Test
     fun `an answered question is never replayed`() = runBlocking {
         backend.whereOut = ClaudeOutcome.Ok(listOf(question(70)))
         backend.tasksOut = ClaudeOutcome.Ok(listOf(task(71, ClaudeTask.RUNNING, parent = 70)))

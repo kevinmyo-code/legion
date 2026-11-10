@@ -3,6 +3,8 @@ package com.kevin.legion.claude
 import android.content.Context
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** The scheduled questions already raised (or skipped), by task id, so each is raised once. */
 interface ScheduledQuestionSeen {
@@ -68,13 +70,16 @@ class ScheduledQuestionPoller(
 ) {
     @Volatile private var lastPoll: Instant? = null
 
+    /** The foreground loop and the service loop can both tick: one poll at a time, as watches do. */
+    private val lock = Mutex()
+
     /** One poll when [EVERY] has passed since the last; returns how many questions were raised. */
-    suspend fun maybePoll(): Int {
+    suspend fun maybePoll(): Int = lock.withLock {
         val at = now()
         val last = lastPoll
-        if (last != null && Duration.between(last, at) < EVERY) return 0
+        if (last != null && Duration.between(last, at) < EVERY) return@withLock 0
         lastPoll = at
-        return pollNow()
+        pollNow()
     }
 
     @Suppress("ReturnCount") // no engine, unreadable, or nothing new

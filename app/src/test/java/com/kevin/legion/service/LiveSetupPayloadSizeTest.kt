@@ -309,11 +309,12 @@ class LiveSetupPayloadSizeTest {
      *
      * **Worker workflows phone half, NOT raised, 2026-11-10 (`feat/workflows-phone`, ticket 06).**
      * `claude_session` gained the `workflow` action (`,"workflow"`, 11 chars, as ruling R2 priced)
-     * plus "workflow runs one check lists; " (31 chars: with the enum value alone the model has no
-     * reason to pick it over `send`), 1,250 to 1,292 chars: 98,466 chars, ~24,616. Paid for by
-     * `manage_item` losing ", the same way you would for a class on a school schedule" (an
-     * analogy after the rule "say so plainly if asked to mark one done or not done", which stays).
-     * After: 97 declarations, 98,409 chars, ~24,602 tokens. Headroom ~48 tokens.
+     * plus "workflow runs a named one (check lists them); " and " or workflow" after "\"ask Claude
+     * to...\" is always a new send" (58 chars: with the enum value alone the model has no reason to
+     * pick it over `send`), 1,250 to 1,319 chars. Partly paid for by `manage_item` losing ", the same
+     * way you would for a class on a school schedule" (57 chars, an analogy after the rule "say so
+     * plainly if asked to mark one done or not done", which stays). After: 97 declarations,
+     * 98,436 chars, ~24,609 tokens. Headroom ~41 tokens.
      */
     private val ceilingTokens = 24_650
 
