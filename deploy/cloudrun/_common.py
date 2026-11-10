@@ -88,6 +88,9 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # LEGION_WORKFLOW_SCHEDULES=off (unset is on; a schedule exists only once Kevin installs one),
 # LEGION_WORKFLOW_SCHEDULES_OFF=<names>, LEGION_WORKFLOW_SCHEDULES_LISTED=on (unset off: no
 # unattended run on the work laptop). Not listed here, a line in `.env` never reached Cloud Run.
+# Row-level security (architecture review #11): LEGION_RLS=on runs every request as the
+# `legion_app` role under the policies of household/migrations/0009. Off (unset) until the role
+# and its grants exist (deploy/rls/README.md); with the role missing every request fails closed.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -95,6 +98,7 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_GITHUB_REPOS",
     "LEGION_OPEN_LOOPS", "LEGION_OPEN_LOOPS_CAP", "LEGION_OPEN_LOOPS_EXPIRE_DAYS",
     "LEGION_WORKFLOW_SCHEDULES", "LEGION_WORKFLOW_SCHEDULES_OFF", "LEGION_WORKFLOW_SCHEDULES_LISTED",
+    "LEGION_RLS",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
