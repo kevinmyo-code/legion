@@ -2,6 +2,7 @@ package com.kevin.legion.service
 
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AgentTool
+import com.kevin.legion.ai.WebReadMark
 import com.kevin.legion.backend.engine.EngineMcpClient
 import com.kevin.legion.backend.engine.McpCallOutcome
 import com.kevin.legion.backend.engine.McpListResult
@@ -198,6 +199,9 @@ class AskEngine(
                 outcome.failure.sentence
             }
             is McpCallOutcome.Called -> {
+                // Third-party text came back through ask_engine (web, the brief's web news, GitHub
+                // titles anyone can write): this Live turn is read-through, the round 3 web mark.
+                if (tool.name in ENGINE_THIRD_PARTY_TOOLS) WebReadMark.noteWebRead()
                 val result = outcome.result
                 if (tool.writes) {
                     if (result.isError) tally.failed += result.text else tally.committed += tool.name
@@ -247,6 +251,15 @@ class AskEngine(
         } ?: ""
 
     companion object {
+        /**
+         * Engine tools whose answers carry third-party text: the phone twin of the engine's
+         * `assistant.read_through.THIRD_PARTY_TOOLS` (integration 2026-11-10; round 5 added
+         * `github_status` there for the web door only). Reached through `/mcp`, which marks
+         * nothing, so the phone marks its own turn. `AskEngineReadThroughTest` pins the two
+         * lists equal.
+         */
+        internal val ENGINE_THIRD_PARTY_TOOLS = setOf("web_search", "brief_latest", "github_status")
+
         private const val CALL_TIMEOUT_MS = 20_000L
         private const val RESULT_CAP = 8_000
 
