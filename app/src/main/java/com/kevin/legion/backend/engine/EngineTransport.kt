@@ -92,6 +92,11 @@ class EngineTransport(
      * merely to answer which transport an aspect is on. */
     private fun engineUsable(): Boolean = config.isConfigured() && config.isSignedIn()
 
+    /** True when [aspect] has an explicit stored row (debug toggle, or a restored backup of one),
+     * so [defaultFor] no longer applies to it. Read-only; for breadcrumbs that must say why an
+     * aspect resolved the way it did (e.g. FleetReconcile's stand-down line). */
+    fun isPinned(aspect: String): Boolean = prefs.getString(keyFor(aspect), null) != null
+
     private fun keyFor(aspect: String) = "transport_$aspect"
 
     companion object {
