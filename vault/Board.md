@@ -58,6 +58,14 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[04-downloaded-regions-vs-bundled-assets\|04]] | decision | Decision: downloaded map regions against "assets are bundled" |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[05-offline-map-style\|05]] | decision | Decision: the offline map style (Outdoors, or Standard with topo added) |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[07-offline-voice\|07]] | decision | Decision: voice with no signal (on-device commands, or nothing) |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[08-where-a-hike-lives\|08]] | decision | Decision: where a hike lives among the seven aspects |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[09-trip-plan-and-overdue-alert\|09]] | decision | Decision: trip plan before leaving signal, and "if not back by X" |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[10-storage-and-refresh\|10]] | decision | Decision: storage budget, Wi-Fi only, and refresh cadence for offline areas |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[11-how-an-area-is-picked\|11]] | decision | Decision: how an offline area is picked and named |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[22-routing-spike\|22]] | task | Task: spike, offline trail routing on the A25 (Mapbox walking vs BRouter) |
 | [[.scratch/one-home/map\|one-home]] | [[09-sync-the-feed-subscriptions\|09]] | decision | Decide whether feed subscriptions sync, and build the leg if they do |
 | [[.scratch/one-today/map\|one-today]] | [[02-ticking-an-appointment\|02]] | build | You cannot cross off a calendar item, and the field is not what is missing |
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | Delete what the audit found dead in the day-to-day area |
@@ -350,6 +358,20 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[12-phone-id-vault\|12]] | build | Phone: ID vault screen behind fingerprint  waiting on [[05-id-vault-engine\|05]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[13-phone-vehicle-plate\|13]] | build | Phone: plate on the vehicle  waiting on [[06-vehicle-plate\|06]] |
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | [[14-acceptance-run\|14]] | test | Acceptance run  waiting on [[08-worker-memory-tools\|08]], [[09-phone-memory-on-engine\|09]], [[10-phone-upload-and-retire\|10]], [[11-phone-memory-screen\|11]], [[12-phone-id-vault\|12]], [[13-phone-vehicle-plate\|13]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[06-offline-routing-engine\|06]] | decision | Decision: offline trail routing ("pathfinder"), which engine, and when  waiting on [[22-routing-spike\|22]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[12-voice-surface-while-online\|12]] | decision | Decision: Alfred's hiking tools while online  waiting on [[11-how-an-area-is-picked\|11]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[13-offline-areas-screen\|13]] | build | Build: offline areas (download, list, refresh, delete) and the download controller  waiting on [[04-downloaded-regions-vs-bundled-assets\|04]], [[05-offline-map-style\|05]], [[10-storage-and-refresh\|10]], [[11-how-an-area-is-picked\|11]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[14-hike-screen\|14]] | build | Build: the hike screen (offline map, own GPS puck, compass heading)  waiting on [[05-offline-map-style\|05]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[15-track-recorder-and-backtrack\|15]] | build | Build: breadcrumb track recorder, backtrack to start, battery saver  waiting on [[08-where-a-hike-lives\|08]], [[14-hike-screen\|14]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[16-waypoints-bearing-distance\|16]] | build | Build: waypoints (car, trailhead, marked spots) with bearing and distance  waiting on [[14-hike-screen\|14]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[17-sunset-turnaround\|17]] | build | Build: turnaround time against sunset, distance and ETA back  waiting on [[15-track-recorder-and-backtrack\|15]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[18-share-trip-plan\|18]] | build | Build: share a trip plan before leaving signal  waiting on [[09-trip-plan-and-overdue-alert\|09]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[19-a-real-hike\|19]] | test | Test: a real state-park hike on the A25 in airplane mode  waiting on [[13-offline-areas-screen\|13]], [[14-hike-screen\|14]], [[15-track-recorder-and-backtrack\|15]], [[16-waypoints-bearing-distance\|16]], [[17-sunset-turnaround\|17]], [[18-share-trip-plan\|18]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[20-gpx-import-and-off-trail\|20]] | build | Build: GPX / KML import, and an off-trail warning  waiting on [[14-hike-screen\|14]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[21-elevation-profile\|21]] | build | Build: elevation profile for a planned line and a recorded hike  waiting on [[15-track-recorder-and-backtrack\|15]], [[20-gpx-import-and-off-trail\|20]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[23-offline-trail-commands\|23]] | build | Build: offline trail commands by voice (Vosk grammar, Android TTS)  waiting on [[07-offline-voice\|07]], [[15-track-recorder-and-backtrack\|15]], [[16-waypoints-bearing-distance\|16]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[24-online-tool-and-hike-sync\|24]] | build | Build: hike sync to the engine, and Alfred's `hiking` tool  waiting on [[08-where-a-hike-lives\|08]], [[12-voice-surface-while-online\|12]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | [[25-offline-trail-routing\|25]] | build | Build: offline trail routing to a waypoint, trailhead or along a loop  waiting on [[06-offline-routing-engine\|06]] |
 | [[.scratch/one-home/map\|one-home]] | [[03b-delete-meters\|03]] | build | Delete MetersScreen once its orphans have somewhere to live  waiting on [[02-rehome-the-orphans\|02]] |
 | [[.scratch/procedures/map\|procedures]] | [[14-build-branch-report-and-inspector\|14]] | build | Build: branch report and run inspector on the web desk  waiting on [[13-build-run-traces\|13]] |
 | [[.scratch/procedures/map\|procedures]] | [[15-build-first-procedures\|15]] | build | Build: car_check, money_check, morning_briefing as built-ins  waiting on [[12-build-runner-and-tool\|12]] |
@@ -468,6 +490,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/memory-and-vault/map\|memory-and-vault]] | 15 | 15 | [[.scratch/memory-and-vault/memory-and-vault.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
+| [[.scratch/offline-hiking/map\|offline-hiking]] | 25 | 22 | [[.scratch/offline-hiking/offline-hiking.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/phone-verify/map\|phone-verify]] | 6 | 1 | [[.scratch/phone-verify/phone-verify.canvas\|open]] |

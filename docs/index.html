@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>380 tickets open</h1>
+<h1>402 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 56 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 83 are waiting on another ticket first. <b>224 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 57 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 97 are waiting on another ticket first. <b>224 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">380</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">59</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n">402</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">67</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">224</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">83</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n amber">97</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">11</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">131</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">153</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">14</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -106,6 +106,38 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <button class="f" data-f="built" aria-pressed="false">built</button>
 <button class="f" data-f="kiv" aria-pressed="false">KIV</button>
 </div>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>offline-hiking</h2>
+<span class="counts"><span class="k">22</span> open<span class="sep">&middot;</span><span class="k mint">8</span> ready<span class="sep">&middot;</span><span class="k amber">14</span> blocked<span class="sep">&middot;</span><span class="dim">of 25 tickets</span></span>
+<span class="bar"><i style="flex:8"></i><b style="flex:14"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">04</span><span class="body"><span class="tt">Decision: downloaded map regions against \&quot;assets are bundled\</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">05</span><span class="body"><span class="tt">Decision: the offline map style (Outdoors, or Standard with topo added)</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">07</span><span class="body"><span class="tt">Decision: voice with no signal (on-device commands, or nothing)</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Decision: where a hike lives among the seven aspects</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">09</span><span class="body"><span class="tt">Decision: trip plan before leaving signal, and \&quot;if not back by X\</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">10</span><span class="body"><span class="tt">Decision: storage budget, Wi-Fi only, and refresh cadence for offline areas</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">11</span><span class="body"><span class="tt">Decision: how an offline area is picked and named</span></span><span class="chip c-decision">decision</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">22</span><span class="body"><span class="tt">Task: spike, offline trail routing on the A25 (Mapbox walking vs BRouter)</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Decision: offline trail routing (\&quot;pathfinder\&quot;), which engine, and when</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #02, #22</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">Decision: Alfred&#x27;s hiking tools while online</span></span><span class="chip c-decision">decision</span><span class="state">waiting on #11</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">13</span><span class="body"><span class="tt">Build: offline areas (download, list, refresh, delete) and the download controller</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05, #10, #11</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Build: the hike screen (offline map, own GPS puck, compass heading)</span></span><span class="chip c-build">build</span><span class="state">waiting on #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">15</span><span class="body"><span class="tt">Build: breadcrumb track recorder, backtrack to start, battery saver</span></span><span class="chip c-build">build</span><span class="state">waiting on #08, #14</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">16</span><span class="body"><span class="tt">Build: waypoints (car, trailhead, marked spots) with bearing and distance</span></span><span class="chip c-build">build</span><span class="state">waiting on #14</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">17</span><span class="body"><span class="tt">Build: turnaround time against sunset, distance and ETA back</span></span><span class="chip c-build">build</span><span class="state">waiting on #15</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">18</span><span class="body"><span class="tt">Build: share a trip plan before leaving signal</span></span><span class="chip c-build">build</span><span class="state">waiting on #09</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">19</span><span class="body"><span class="tt">Test: a real state-park hike on the A25 in airplane mode</span></span><span class="chip c-test">test</span><span class="state">waiting on #13, #14, #15, #16, #17, #18</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">20</span><span class="body"><span class="tt">Build: GPX / KML import, and an off-trail warning</span></span><span class="chip c-build">build</span><span class="state">waiting on #14, #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">21</span><span class="body"><span class="tt">Build: elevation profile for a planned line and a recorded hike</span></span><span class="chip c-build">build</span><span class="state">waiting on #15, #20</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">23</span><span class="body"><span class="tt">Build: offline trail commands by voice (Vosk grammar, Android TTS)</span></span><span class="chip c-build">build</span><span class="state">waiting on #07, #15, #16</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">24</span><span class="body"><span class="tt">Build: hike sync to the engine, and Alfred&#x27;s `hiking` tool</span></span><span class="chip c-build">build</span><span class="state">waiting on #08, #12</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">25</span><span class="body"><span class="tt">Build: offline trail routing to a waypoint, trailhead or along a loop</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
+</ul>
+</section>
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>

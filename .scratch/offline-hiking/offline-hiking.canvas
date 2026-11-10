@@ -1,0 +1,494 @@
+{
+  "nodes": [
+    {
+      "id": "509285d36e131777",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/01-mapbox-offline-facts.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e705055b78e92b58",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/02-offline-routing-facts.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3d4c88a417aee546",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/03-trail-data-and-safety-facts.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "a7cc026ebb0ef462",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/07-offline-voice.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0f6afd52d994a748",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/08-where-a-hike-lives.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8abf2e1558ff73ae",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/22-routing-spike.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "15aca851683d57eb",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/04-downloaded-regions-vs-bundled-assets.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c775060cda6f1c9e",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/05-offline-map-style.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e8dae735ac531aa9",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/06-offline-routing-engine.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ee35ce9156efc884",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/09-trip-plan-and-overdue-alert.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3e884c1aec47d11f",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/10-storage-and-refresh.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3c82a99ffff7f5ae",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/11-how-an-area-is-picked.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6b02fee7c3b17321",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/12-voice-surface-while-online.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "bacd7697ba9e9796",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/13-offline-areas-screen.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c5ce3aaa38a13b16",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/14-hike-screen.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "bf48f46ce2facdff",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/18-share-trip-plan.md",
+      "x": 1040,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5c1a682cceda1fde",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/25-offline-trail-routing.md",
+      "x": 1040,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "198595739aaf5c9c",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/15-track-recorder-and-backtrack.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0ff813a91fa48513",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/16-waypoints-bearing-distance.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ccf73e0b7e5ab920",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/20-gpx-import-and-off-trail.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b027e507ce514b2f",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/24-online-tool-and-hike-sync.md",
+      "x": 1560,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f58a713b96bfc1f3",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/17-sunset-turnaround.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f976568a345c4f3d",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/21-elevation-profile.md",
+      "x": 2080,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "bf9646f98d20f608",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/23-offline-trail-commands.md",
+      "x": 2080,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "39adab11f6e48a96",
+      "type": "file",
+      "file": ".scratch/offline-hiking/issues/19-a-real-hike.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e281a8b2264a9ee1",
+      "fromNode": "509285d36e131777",
+      "fromSide": "right",
+      "toNode": "15aca851683d57eb",
+      "toSide": "left"
+    },
+    {
+      "id": "ecf4ae05e3954a42",
+      "fromNode": "509285d36e131777",
+      "fromSide": "right",
+      "toNode": "c775060cda6f1c9e",
+      "toSide": "left"
+    },
+    {
+      "id": "7aef27f9c339c8f4",
+      "fromNode": "e705055b78e92b58",
+      "fromSide": "right",
+      "toNode": "e8dae735ac531aa9",
+      "toSide": "left"
+    },
+    {
+      "id": "e50ab369ab269382",
+      "fromNode": "8abf2e1558ff73ae",
+      "fromSide": "right",
+      "toNode": "e8dae735ac531aa9",
+      "toSide": "left"
+    },
+    {
+      "id": "c965c046d70bfed7",
+      "fromNode": "3d4c88a417aee546",
+      "fromSide": "right",
+      "toNode": "ee35ce9156efc884",
+      "toSide": "left"
+    },
+    {
+      "id": "f87a0f965a6c698d",
+      "fromNode": "509285d36e131777",
+      "fromSide": "right",
+      "toNode": "3e884c1aec47d11f",
+      "toSide": "left"
+    },
+    {
+      "id": "6df042b3aab383e9",
+      "fromNode": "509285d36e131777",
+      "fromSide": "right",
+      "toNode": "3c82a99ffff7f5ae",
+      "toSide": "left"
+    },
+    {
+      "id": "1eea58a299e4cc9a",
+      "fromNode": "3c82a99ffff7f5ae",
+      "fromSide": "right",
+      "toNode": "6b02fee7c3b17321",
+      "toSide": "left"
+    },
+    {
+      "id": "470b5f071aa3a8f3",
+      "fromNode": "15aca851683d57eb",
+      "fromSide": "right",
+      "toNode": "bacd7697ba9e9796",
+      "toSide": "left"
+    },
+    {
+      "id": "a8cc781634227624",
+      "fromNode": "c775060cda6f1c9e",
+      "fromSide": "right",
+      "toNode": "bacd7697ba9e9796",
+      "toSide": "left"
+    },
+    {
+      "id": "d1d70a8065f619d5",
+      "fromNode": "3e884c1aec47d11f",
+      "fromSide": "right",
+      "toNode": "bacd7697ba9e9796",
+      "toSide": "left"
+    },
+    {
+      "id": "486a253de554c019",
+      "fromNode": "3c82a99ffff7f5ae",
+      "fromSide": "right",
+      "toNode": "bacd7697ba9e9796",
+      "toSide": "left"
+    },
+    {
+      "id": "71afa8cd375807c6",
+      "fromNode": "c775060cda6f1c9e",
+      "fromSide": "right",
+      "toNode": "c5ce3aaa38a13b16",
+      "toSide": "left"
+    },
+    {
+      "id": "21e2428855bf0340",
+      "fromNode": "0f6afd52d994a748",
+      "fromSide": "right",
+      "toNode": "198595739aaf5c9c",
+      "toSide": "left"
+    },
+    {
+      "id": "6e541a383dee6781",
+      "fromNode": "c5ce3aaa38a13b16",
+      "fromSide": "right",
+      "toNode": "198595739aaf5c9c",
+      "toSide": "left"
+    },
+    {
+      "id": "f56b2b50ee7416ca",
+      "fromNode": "c5ce3aaa38a13b16",
+      "fromSide": "right",
+      "toNode": "0ff813a91fa48513",
+      "toSide": "left"
+    },
+    {
+      "id": "33687ea73eb879f0",
+      "fromNode": "198595739aaf5c9c",
+      "fromSide": "right",
+      "toNode": "f58a713b96bfc1f3",
+      "toSide": "left"
+    },
+    {
+      "id": "98e4952e9f41dbbf",
+      "fromNode": "ee35ce9156efc884",
+      "fromSide": "right",
+      "toNode": "bf48f46ce2facdff",
+      "toSide": "left"
+    },
+    {
+      "id": "82c2dc49ab86af4c",
+      "fromNode": "bacd7697ba9e9796",
+      "fromSide": "right",
+      "toNode": "39adab11f6e48a96",
+      "toSide": "left"
+    },
+    {
+      "id": "46d43bba143f2197",
+      "fromNode": "c5ce3aaa38a13b16",
+      "fromSide": "right",
+      "toNode": "39adab11f6e48a96",
+      "toSide": "left"
+    },
+    {
+      "id": "f211a1d40c3f2978",
+      "fromNode": "198595739aaf5c9c",
+      "fromSide": "right",
+      "toNode": "39adab11f6e48a96",
+      "toSide": "left"
+    },
+    {
+      "id": "469d9ea56f0ee845",
+      "fromNode": "0ff813a91fa48513",
+      "fromSide": "right",
+      "toNode": "39adab11f6e48a96",
+      "toSide": "left"
+    },
+    {
+      "id": "d77c93e19d4bb9ce",
+      "fromNode": "f58a713b96bfc1f3",
+      "fromSide": "right",
+      "toNode": "39adab11f6e48a96",
+      "toSide": "left"
+    },
+    {
+      "id": "58e05d904b1ea605",
+      "fromNode": "bf48f46ce2facdff",
+      "fromSide": "right",
+      "toNode": "39adab11f6e48a96",
+      "toSide": "left"
+    },
+    {
+      "id": "b0dd884537f55624",
+      "fromNode": "c5ce3aaa38a13b16",
+      "fromSide": "right",
+      "toNode": "ccf73e0b7e5ab920",
+      "toSide": "left"
+    },
+    {
+      "id": "1adead3bb33a89bf",
+      "fromNode": "3d4c88a417aee546",
+      "fromSide": "right",
+      "toNode": "ccf73e0b7e5ab920",
+      "toSide": "left"
+    },
+    {
+      "id": "c50151f965666864",
+      "fromNode": "198595739aaf5c9c",
+      "fromSide": "right",
+      "toNode": "f976568a345c4f3d",
+      "toSide": "left"
+    },
+    {
+      "id": "d9064dee7c78ec15",
+      "fromNode": "ccf73e0b7e5ab920",
+      "fromSide": "right",
+      "toNode": "f976568a345c4f3d",
+      "toSide": "left"
+    },
+    {
+      "id": "5f9e8a3ad728ad59",
+      "fromNode": "a7cc026ebb0ef462",
+      "fromSide": "right",
+      "toNode": "bf9646f98d20f608",
+      "toSide": "left"
+    },
+    {
+      "id": "9e577c65066c2bda",
+      "fromNode": "198595739aaf5c9c",
+      "fromSide": "right",
+      "toNode": "bf9646f98d20f608",
+      "toSide": "left"
+    },
+    {
+      "id": "b99ab8854a8678ad",
+      "fromNode": "0ff813a91fa48513",
+      "fromSide": "right",
+      "toNode": "bf9646f98d20f608",
+      "toSide": "left"
+    },
+    {
+      "id": "63b85dd092e0c8ce",
+      "fromNode": "0f6afd52d994a748",
+      "fromSide": "right",
+      "toNode": "b027e507ce514b2f",
+      "toSide": "left"
+    },
+    {
+      "id": "c08ce0f68d4cba8d",
+      "fromNode": "6b02fee7c3b17321",
+      "fromSide": "right",
+      "toNode": "b027e507ce514b2f",
+      "toSide": "left"
+    },
+    {
+      "id": "1ddae1962f7cc62b",
+      "fromNode": "e8dae735ac531aa9",
+      "fromSide": "right",
+      "toNode": "5c1a682cceda1fde",
+      "toSide": "left"
+    }
+  ]
+}
