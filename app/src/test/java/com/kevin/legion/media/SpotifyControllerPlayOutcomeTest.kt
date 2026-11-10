@@ -5,6 +5,7 @@ import com.spotify.android.appremote.api.error.CouldNotFindSpotifyApp
 import com.spotify.android.appremote.api.error.NotLoggedInException
 import com.spotify.android.appremote.api.error.OfflineModeException
 import com.spotify.android.appremote.api.error.UserNotAuthorizedException
+import com.spotify.protocol.types.Repeat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -127,6 +128,27 @@ class SpotifyControllerPlayOutcomeTest {
     fun `Started with a premium warning appends it after the confirmation`() {
         val message = SpotifyController.message(PlayOutcome.Started(premiumWarning = "Heads up - no Premium."), "Bad Bunny")
         assertEquals("Playing \"Bad Bunny\" on Spotify. Heads up - no Premium.", message)
+    }
+
+    // ------------------------------------------------------- repeat (phone audit 2026-11-10)
+
+    @Test
+    fun `a single track with repeat on gets repeat turned off so the song is followed by more`() {
+        assertTrue(SpotifyController.shouldClearRepeat("spotify:track:abc123", Repeat.ONE))
+        assertTrue(SpotifyController.shouldClearRepeat("spotify:track:abc123", Repeat.ALL))
+        assertFalse(SpotifyController.shouldClearRepeat("spotify:track:abc123", Repeat.OFF))
+    }
+
+    @Test
+    fun `an album or playlist keeps the repeat the user set`() {
+        assertFalse(SpotifyController.shouldClearRepeat("spotify:album:abc123", Repeat.ALL))
+        assertFalse(SpotifyController.shouldClearRepeat("spotify:playlist:abc123", Repeat.ONE))
+    }
+
+    @Test
+    fun `turning repeat off is said in words`() {
+        val message = SpotifyController.message(PlayOutcome.Started(pickedLabel = "Night Drive, The Placeholders", repeatCleared = true), "x")
+        assertTrue(message, message.startsWith("Playing \"Night Drive, The Placeholders\" on Spotify. Repeat was on, so I turned it off"))
     }
 
     // ------------------------------------------------------- pickedLabel (ticket 07)
