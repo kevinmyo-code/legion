@@ -65,7 +65,11 @@ class DriveLogUploaderTest {
         status = sink,
     )
 
-    private fun newStore() = DriveLogStore(File(tmp.root, "log"))
+    // A ticking clock, one millisecond per read: two batches sealed back to back on a fast
+    // machine got the same real millisecond, and `pending()`'s oldest-first order then fell to
+    // `listFiles` order (the CI flake in "a failure stops the run ...").
+    private var clockMs = 1_700_000_000_000L
+    private fun newStore() = DriveLogStore(File(tmp.root, "log"), now = { clockMs++ })
 
     @Test
     fun `a 2xx deletes the batch and sends gzip with the secrets already redacted`() = runTest {
