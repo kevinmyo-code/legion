@@ -376,7 +376,10 @@ class LiveSessionController(context: Context) {
             "LiveSessionController",
             "onTap: session=${s != null} inConversation=${s?.inConversation} isWarm=${s?.isWarm()}"
         )
-        // Always allow stopping an active conversation.
+        // A tap while Alfred speaks interrupts him so Kevin can talk (Kevin, 2026-11-10, ADR 0081),
+        // through ADR 0064's own interrupt. The Home button is what ends the conversation now.
+        if (s != null && s.inConversation && s.interruptByTap()) return
+        // Otherwise a tap still ends an active conversation.
         if (s != null && s.inConversation) {
             s.stop()
             // Says which of the two things a tap can do actually happened. [Phase.IDLE] alone does
