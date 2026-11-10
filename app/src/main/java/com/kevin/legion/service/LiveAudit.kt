@@ -82,7 +82,9 @@ internal class LiveAudit(
     fun toolCall(id: String, name: String, async: Boolean, argsJson: String) {
         toolNames[id] = name
         if (isReadThroughTool(name)) readThroughToolThisTurn = true
-        emit("tool_call id=${token(id)} name=${token(name)} async=$async args=${json(argsJson)}")
+        // ADR 0086: an email's body never reaches this log; EmailToolbox.redactArgs keeps its length.
+        val logged = EmailToolbox.redactArgs(name, argsJson)
+        emit("tool_call id=${token(id)} name=${token(name)} async=$async args=${json(logged)}")
     }
 
     /**

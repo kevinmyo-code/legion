@@ -195,6 +195,7 @@ COPY = {
     "ask_mail": ("What did the insurance email say?", "Digs through your mail to answer a question.", "Voice only - flagged as a decision conflict with ADR 0035, not yet resolved (command-center map, ruling 1)."),
     "track_package": ("Where's my package?", "Reads your most recent shipping email for the carrier, tracking number and delivery status. Always says which email and when it was sent, and that it's an estimate from the email text, not a live carrier lookup.", "Home screen, package tile."),
     "flight_status": ("When's my flight?", "Checks your calendar first, since airlines usually put flights there automatically and that's exact. Falls back to your travel-confirmation email for anything the calendar doesn't have, and says plainly that's an estimate from the email, not a confirmed schedule.", "Home screen, flight tile."),
+    "email": ("Email Jane Roe that I'm running ten minutes late", "Writes the email as a draft in your Gmail and reads back who it's to, the subject and the gist. Say check it and Gmail opens on your phone; say send and it sends that draft, and says sent only once Gmail confirms. Anything else leaves the draft in Drafts. It never guesses an address: a name it can't pin to one address, it asks.", "The Gmail app: Drafts, then edit or send it there yourself."),
 
     # --- Phone calls ---
     "answer_call": ("Answer it", "Picks up a ringing call. Add “and put it on speaker” and it does both. Cannot answer WhatsApp, Signal or Teams calls - Android does not allow it.", "Ringing-call notification, Answer action."),
@@ -244,7 +245,7 @@ GROUPS = {
     "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "get_todays_workout", "get_workout_programme", "get_exercise_alternatives", "suggest_meal", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "get_energy_estimate", "get_weight_trend", "list_saved_meals", "ask_body"],
     "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
-    "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status"],
+    "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status", "email"],
     "The web": ["browser"],
     "Books": ["books"],
     "Claude session": ["claude_session"],

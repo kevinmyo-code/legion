@@ -47,6 +47,8 @@ internal val DECLARATION_ORDER: List<String> = listOf(
     "place_call", "read_calendar", "complete_task", "set_goal",
     "list_goals", "close_goal", "generate_goal_plan", "accept_goal_plan",
     "ask_advisor", "accept_proposal",
+    // ADR 0086: draft, open and send email (EmailToolbox).
+    "email",
 )
 
 /** Tool name to the domain directory its declaration lives in. */
@@ -87,6 +89,7 @@ internal val TOOL_DOMAIN: Map<String, String> = mapOf(
     "read_calendar" to "day", "complete_task" to "day", "set_goal" to "goals",
     "list_goals" to "goals", "close_goal" to "goals", "generate_goal_plan" to "goals",
     "accept_goal_plan" to "goals", "ask_advisor" to "goals", "accept_proposal" to "goals",
+    "email" to "mail",
 )
 
 /** Every domain file's declarations, keyed by tool name. */

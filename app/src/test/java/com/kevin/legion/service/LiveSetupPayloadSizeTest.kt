@@ -328,6 +328,12 @@ class LiveSetupPayloadSizeTest {
      * tools JSON + 10,756 chars of system instruction = 93,029 chars, ~23,257 tokens, ~1,352 fewer.
      * Ceiling 23,600: headroom ~343 tokens. Real count: `tools/count_live_tokens.py` on the
      * `build/live-setup/setup.json` this test writes.
+     *
+     * **NOT raised on 2026-11-10 (ADR 0086, `email`, `feat/alfred-email`).** One action-dispatched
+     * declaration (draft, open, send; params without descriptions), 492 chars, ~123 tokens. The send
+     * gate, the read-back and every failure wording ride in `EmailToolbox`'s results, billed per call.
+     * Measured on dev `29791a0b` plus the branch: 93 declarations, 82,766 chars of tools JSON +
+     * 10,756 chars of system instruction = 93,522 chars, ~23,380 tokens (+123). Headroom ~220.
      */
     private val ceilingTokens = 23_600
 

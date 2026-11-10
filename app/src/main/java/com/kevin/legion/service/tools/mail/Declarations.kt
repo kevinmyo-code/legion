@@ -91,5 +91,24 @@ internal object Declarations {
             params = obj(),
             required = emptyList(),
         ))
+
+        // ADR 0086 (Kevin, 2026-11-10): Alfred drafts, Kevin checks in Gmail or says send. A write,
+        // so declared directly (the 2026-08-18 ruling), never behind ask_mail. The send gate and the
+        // read-back protocol ride in EmailToolbox's results, billed per call, not here.
+        add(fn(
+            name = "email",
+            description = "Writes email from the user's Gmail. action=draft saves a draft (to: an " +
+                "address or a name to look up) and sends nothing; open shows it in the Gmail app; " +
+                "send sends a draft_id from this conversation, only after the user says send.",
+            params = obj(
+                "action" to JSONObject().put("type", "string")
+                    .put("enum", org.json.JSONArray(listOf("draft", "open", "send"))),
+                "to" to JSONObject().put("type", "string"),
+                "subject" to JSONObject().put("type", "string"),
+                "body" to JSONObject().put("type", "string"),
+                "draft_id" to JSONObject().put("type", "string"),
+            ),
+            required = listOf("action"),
+        ))
     }
 }

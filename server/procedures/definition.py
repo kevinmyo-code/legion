@@ -41,6 +41,7 @@ READ_THROUGH_TOOLS: frozenset[str] = frozenset(
         "track_package",
         "flight_status",
         "browser",
+        "email",
     }
 )
 # Engine-only tools whose results are third-party content, so a procedure may not call them

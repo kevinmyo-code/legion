@@ -1387,6 +1387,8 @@ class LiveSessionController(context: Context) {
     private fun toolTimeoutFor(name: String): Long = when (name) {
         in SUB_AGENT_TOOLS -> SUB_AGENT_TOOL_TIMEOUT_MS
         BrowserToolbox.TOOL_NAME -> BROWSER_TOOL_TIMEOUT_MS
+        // ADR 0086: a send waits up to 8s for Gmail, then up to 8s more to check Drafts.
+        EmailToolbox.TOOL_NAME -> EMAIL_TOOL_TIMEOUT_MS
         else -> TOOL_TIMEOUT_MS
     }
 
@@ -1540,7 +1542,7 @@ class LiveSessionController(context: Context) {
                     kind = ConversationAudit.Kind.TOOL_RESULT,
                     content = auditContent(response.toString(), toolRedacted),
                     toolName = name,
-                    args = args.toString(),
+                    args = EmailToolbox.redactArgs(name, args.toString()),
                     redacted = toolRedacted,
                     vehicleId = vehicleId,
                     // Retention must not delete a row the server has not confirmed - see
@@ -1745,6 +1747,7 @@ class LiveSessionController(context: Context) {
         // plus up to 6 s for the screen to come up), and phone pages often take longer than 10 s.
         // Above both, so the tool's own "has not finished loading" speaks rather than a timeout.
         internal const val BROWSER_TOOL_TIMEOUT_MS = 30_000L
+        internal const val EMAIL_TOOL_TIMEOUT_MS = 25_000L
         private val SUB_AGENT_TOOLS = setOf(
             "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start",
             "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail", "ask_money", "ask_area",
