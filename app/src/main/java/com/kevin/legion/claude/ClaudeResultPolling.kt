@@ -6,12 +6,14 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.kevin.legion.service.LiveNotes
 import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveRaise
+import com.kevin.legion.ui.claudesession.ClaudeFileActivity
 import com.kevin.legion.ui.claudesession.ClaudePageActivity
 import java.io.File
 import java.io.IOException
@@ -55,7 +57,28 @@ object ClaudeResultPolling {
             val live = ClaudeLiveWatch.get(app)
             if (overview != null) live.seen(overview) else live.unreadable()
         },
+        // ADR 0080: files Kevin named land in app-private storage, open at once if LEGION is in
+        // front, and otherwise wait behind a notification that opens them.
+        shelf = ClaudeFileStore(app),
+        openFiles = { id -> openOrNotify(app, id) },
+        filesReady = { id, text -> announce(app, id, text, "", ClaudeFileActivity.pendingIntent(app, id)) },
     )
+
+    /**
+     * Opens task [taskId]'s delivered files over LEGION, only while one of LEGION's screens is in
+     * front ("if Alfred's screen is up"): Android does not let a background app start an activity,
+     * and a viewer jumping over another app would be the wrong thing anyway. Otherwise posts the
+     * notification that opens them on a tap ([ClaudeFilesNotifier]) and returns false.
+     */
+    private suspend fun openOrNotify(context: Context, taskId: Int): Boolean = withContext(Dispatchers.Main) {
+        val inFront = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        if (inFront) {
+            context.startActivity(ClaudeFileActivity.intent(context, taskId))
+        } else {
+            ClaudeFilesNotifier.post(context, taskId, ClaudeFileStore(context).list(taskId).size)
+        }
+        inFront
+    }
 
     /** Polls while the app is in front; call once from `Application.onCreate` (main thread). */
     fun bindForeground(context: Context, scope: CoroutineScope) {
@@ -89,7 +112,13 @@ object ClaudeResultPolling {
     /** How long a result that asks something listens for the yes (Kevin 2026-11-01: about 20 s). */
     const val LISTEN_HOLD_MS = 20_000L
 
-    private suspend fun announce(context: Context, taskId: Int, text: String, hint: String): ClaudeDelivery {
+    private suspend fun announce(
+        context: Context,
+        taskId: Int,
+        text: String,
+        hint: String,
+        tapOpens: android.app.PendingIntent? = null,
+    ): ClaudeDelivery {
         // Keyed by task, so a `claude_session` check that reads the same result out first can
         // withdraw this note before it is spoken a second time (ClaudeSessionToolbox.check).
         if (LiveNotes.offer(LiveNotes.claudeTaskKey(taskId), note(text, hint))) return ClaudeDelivery.DELIVERED
@@ -105,7 +134,8 @@ object ClaudeResultPolling {
             listensForReply = asks,
             listenHoldMs = if (asks) LISTEN_HOLD_MS else 0L,
             // Ticket 09: a ready page's notification opens it when tapped (the hands path).
-            contentIntent = if (hint.contains(ClaudeResultWatcher.OPEN_PAGE_ACTION)) {
+            // ADR 0080: a files result's notification opens the files.
+            contentIntent = tapOpens ?: if (hint.contains(ClaudeResultWatcher.OPEN_PAGE_ACTION)) {
                 ClaudePageActivity.pendingIntent(context, taskId)
             } else {
                 null

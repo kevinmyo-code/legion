@@ -22,8 +22,11 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="companion_profile.xml" />
+        <!-- ADR 0080: files a Claude task brought to the phone (a scan may be an ID). -->
+        <exclude domain="file" path="claude_files/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="companion_profile.xml" />
+        <exclude domain="file" path="claude_files/" />
     </device-transfer>
 </data-extraction-rules>

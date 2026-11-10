@@ -45,6 +45,8 @@ data class ClaudeOverview(val status: ClaudeStatus, val tasks: List<ClaudeTask>)
  * - `deliver: email_self` only when Kevin named his own email ([send]'s `emailMe`, ruling 17).
  * - `deliver: phone` only when he asked for the result as a page ([send]'s `page`, ticket 09), and
  *   never to a summaries-only machine (the engine refuses it too).
+ * - `deliver: files` only when he asked for files on his phone ([send]'s `files`, ADR 0080); the
+ *   same refusal for a summaries-only machine.
  * - `confirms: true` only on Kevin's yes to a task that is `needs_confirmation` ([answer]).
  * - no file from a `listed` machine ever reaches the phone ([sendFile], ruling 5).
  *
@@ -83,6 +85,7 @@ class ClaudeSessionController(
         origin: String,
         emailMe: Boolean,
         page: Boolean = false,
+        files: Boolean = false,
     ): ClaudeSendResult {
         val text = request.trim()
         if (text.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.EMPTY_REQUEST)
@@ -106,8 +109,12 @@ class ClaudeSessionController(
                 }
             }
         }
-        if (page && machines.firstOrNull { it.name == target }?.summariesOnly == true) {
+        val summariesOnly = machines.firstOrNull { it.name == target }?.summariesOnly == true
+        if (page && summariesOnly) {
             return ClaudeSendResult.NotSent(wording.pageNeedsFullMachine(target.orEmpty()))
+        }
+        if (files && summariesOnly) {
+            return ClaudeSendResult.NotSent(wording.filesNeedFullMachine(target.orEmpty()))
         }
         val draft = ClaudeTaskDraft(
             request = text,
@@ -117,6 +124,7 @@ class ClaudeSessionController(
             deliver = when {
                 emailMe -> ClaudeTaskDraft.DELIVER_EMAIL_SELF
                 page -> ClaudeTaskDraft.DELIVER_PHONE
+                files -> ClaudeTaskDraft.DELIVER_FILES
                 else -> null
             },
             confirms = false,
@@ -180,6 +188,9 @@ class ClaudeSessionController(
     }
 
     suspend fun download(taskId: Int, fileId: Int): ClaudeOutcome<ByteArray> = backend.download(taskId, fileId)
+
+    /** This phone has delivered file [fileId] of task [taskId]; the engine deletes its copy (ADR 0080). */
+    suspend fun received(taskId: Int, fileId: Int): ClaudeOutcome<Unit> = backend.received(taskId, fileId)
 
     private suspend fun overviewFor(taskId: Int): ClaudeOutcome<Pair<ClaudeTask, ClaudeMachine?>> {
         val task = backend.task(taskId)

@@ -21,7 +21,9 @@ import org.json.JSONObject
  * are actions here (`send`, `check`, `answer`, `send_file`), plus `assign` (the answer to "which
  * machine?", Kevin 2026-11-01), `quiet` (the one-instruction silence of the result
  * announcements) and `open_page` (ticket 09: a `page: true` task's web page, opened in LEGION's
- * browser through [ClaudePageOpener], on his yes). `tools/voice_guide.py` and `VoiceGuideDataTest` scan this file.
+ * browser through [ClaudePageOpener], on his yes). `files: true` on `send` (ADR 0080) asks for the
+ * files he named on his phone; they open there when they land, no second yes.
+ * `tools/voice_guide.py` and `VoiceGuideDataTest` scan this file.
  *
  * **Every action calls [ClaudeSessionController]**, the controller the Claude session screen calls
  * (ADR 0035). A send is reported as sent or queued only from a 2xx, and never as done: its outcome
@@ -44,8 +46,8 @@ object ClaudeSessionToolbox {
     private const val DESCRIPTION =
         "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check only " +
             "reads results already in; \"ask Claude to...\" is always a new send; answer follows up a " +
-            "task (yes=true only for his yes to its question); assign picks the machine it asked for; send_file only after he says yes to having " +
-            "a file on his phone; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
+            "task (yes=true only for his yes to its question); assign picks the machine it asked for; send_file only on his " +
+            "yes to a found file; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
             "result announcements. A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
@@ -66,6 +68,7 @@ object ClaudeSessionToolbox {
                 .put("offered", prop("boolean", "True if this is his yes to your offer."))
                 .put("email_me", prop("boolean", "True only if he asked to email it to himself."))
                 .put("page", prop("boolean", "True for a researched write-up he reads on his phone (Alienware)."))
+                .put("files", prop("boolean", "True if he asked for files on his phone."))
                 .put("task_id", prop("integer"))
                 .put("file_id", prop("integer"))
                 .put("yes", prop("boolean")),
@@ -108,6 +111,7 @@ object ClaudeSessionToolbox {
                     },
                     emailMe = args.optBoolean("email_me", false),
                     page = args.optBoolean("page", false),
+                    files = args.optBoolean("files", false),
                 ),
             )
             "check" -> check(c, args.optString("machine").ifBlank { null }, watchFactory(context))
@@ -179,8 +183,9 @@ object ClaudeSessionToolbox {
         val tasks = o.tasks.filter { wanted(it.machine) }.take(CHECK_TASKS)
         if (tasks.isEmpty()) lines += "No tasks yet."
         tasks.forEach { t ->
-            // A delivered page is opened (open_page), never offered as a file (ticket 09).
-            val offered = t.files.filterNot { t.wantsPage && it.isPage }
+            // A delivered page is opened (open_page), never offered as a file (ticket 09); files asked
+            // for by name are already sent (ADR 0080), and the result line says so.
+            val offered = t.files.filterNot { (t.wantsPage && it.isPage) || it in t.deliveredFiles }
             val files = if (o.summariesOnly(t)) "" else offered.joinToString("") { f ->
                 " [file_id ${f.id}: ${f.name}, ${ClaudeWording.size(f.size)}" +
                     (if (f.uploaded) ", already on the engine" else "") + "]"

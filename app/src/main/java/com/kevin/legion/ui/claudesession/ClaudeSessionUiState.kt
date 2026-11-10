@@ -33,6 +33,8 @@ data class TaskRowUi(
     val pageTitle: String? = null,
     /** Asked for as a page, and the page has not arrived (yet). */
     val pageWaiting: Boolean = false,
+    /** Files asked for by name (ADR 0080) and done: an Open files button for what is on this phone. */
+    val filesToPhone: Boolean = false,
     /** The task's kept steps, newest first, shown under its detail (finished tasks keep theirs). */
     val steps: List<StepRowUi> = emptyList(),
 )
@@ -61,6 +63,8 @@ data class ClaudeSessionUiState(
     val emailMe: Boolean = false,
     /** Send the result as a page on the phone (ticket 09); the Alienware only. */
     val pageMe: Boolean = false,
+    /** Send the files named in the request to the phone (ADR 0080); the Alienware only. */
+    val filesMe: Boolean = false,
     val sending: Boolean = false,
     /** The last action's sentence (sent, queued, which machine, not sent). */
     val message: String? = null,
@@ -95,6 +99,7 @@ object ClaudeSessionRows {
             needsMachine = t.status == ClaudeTask.NEEDS_MACHINE,
             pageTitle = t.pages.firstOrNull()?.title,
             pageWaiting = t.wantsPage && t.pages.isEmpty() && t.status == ClaudeTask.DONE,
+            filesToPhone = t.deliveredFiles.isNotEmpty() && t.status == ClaudeTask.DONE,
             steps = steps(t.steps, wording),
         )
     }

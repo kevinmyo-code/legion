@@ -625,6 +625,16 @@
         <!-- Claude session page opener (claude-session ticket 09): a result notification's tap and the
              screen's Open page button. No UI; reads the task's fresh signed link, hands it to the
              browser below, finishes. Not exported: only LEGION's own PendingIntent reaches it. -->
+        <!-- Files to phone (ADR 0080): the files a Claude task brought to this phone, from the
+             result, the notification tap or the Claude session screen. Images shown, documents
+             handed to their reader, Share on each. Not exported: only LEGION's intents reach it. -->
+        <activity
+            android:name=".ui.claudesession.ClaudeFileActivity"
+            android:exported="false"
+            android:label="Claude files"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Legion" />
         <activity
             android:name=".ui.claudesession.ClaudePageActivity"
             android:exported="false"

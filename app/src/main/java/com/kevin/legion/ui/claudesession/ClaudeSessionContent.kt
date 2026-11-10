@@ -156,6 +156,10 @@ private fun SendBox(state: ClaudeSessionUiState, callbacks: ClaudeSessionCallbac
             Checkbox(checked = state.pageMe, onCheckedChange = callbacks.onPageMe)
             Text("As a page on my phone (Alienware)", color = SoftColors.text)
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = state.filesMe, onCheckedChange = callbacks.onFilesMe)
+            Text("Files to my phone (Alienware)", color = SoftColors.text)
+        }
         Button(
             onClick = callbacks.onSend,
             enabled = state.draft.isNotBlank() && !state.sending,
@@ -208,6 +212,11 @@ private fun TaskDetail(task: TaskRowUi, state: ClaudeSessionUiState, callbacks: 
         }
     }
     if (task.pageTitle == null && task.pageWaiting) Line("The page has not arrived.", SoftColors.caution)
+    if (task.filesToPhone) {
+        Button(onClick = { callbacks.onOpenFiles(task.id) }, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Open files")
+        }
+    }
     if (task.needsMachine) {
         Line("Which machine?")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

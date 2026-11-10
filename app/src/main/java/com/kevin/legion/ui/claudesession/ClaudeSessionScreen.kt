@@ -28,6 +28,7 @@ fun ClaudeSessionScreen(onBack: () -> Unit) {
                 onPickMachine = viewModel::pickMachine,
                 onEmailMe = viewModel::setEmailMe,
                 onPageMe = viewModel::setPageMe,
+                onFilesMe = viewModel::setFilesMe,
                 onSend = viewModel::send,
                 onToggleTask = viewModel::toggleTask,
                 onAnswerText = viewModel::setAnswer,
@@ -36,6 +37,8 @@ fun ClaudeSessionScreen(onBack: () -> Unit) {
                 onSendFile = viewModel::sendFile,
                 // The tap path the result notification takes (ticket 09): fresh link, LEGION's browser.
                 onOpenPage = { id -> context.startActivity(ClaudePageActivity.intent(context, id)) },
+                // ADR 0080: the files a task brought to this phone, the notification's tap path.
+                onOpenFiles = { id -> context.startActivity(ClaudeFileActivity.intent(context, id)) },
                 onAnnouncements = viewModel::setAnnouncements,
             ),
         )
@@ -50,6 +53,7 @@ data class ClaudeSessionCallbacks(
     val onPickMachine: (String?) -> Unit = {},
     val onEmailMe: (Boolean) -> Unit = {},
     val onPageMe: (Boolean) -> Unit = {},
+    val onFilesMe: (Boolean) -> Unit = {},
     val onSend: () -> Unit = {},
     val onToggleTask: (Int) -> Unit = {},
     val onAnswerText: (String) -> Unit = {},
@@ -59,5 +63,7 @@ data class ClaudeSessionCallbacks(
     val onSendFile: (Int, Int) -> Unit = { _, _ -> },
     /** (task id): open its delivered page in the browser. */
     val onOpenPage: (Int) -> Unit = {},
+    /** (task id): open the files it brought to this phone (ADR 0080). */
+    val onOpenFiles: (Int) -> Unit = {},
     val onAnnouncements: (Boolean) -> Unit = {},
 )

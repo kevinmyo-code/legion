@@ -43,13 +43,22 @@ data class ClaudeCodeSession(
 
 data class ClaudeStatus(val machines: List<ClaudeMachine>, val sessions: List<ClaudeCodeSession>)
 
-/** A file a task found on the laptop. Listed, not uploaded, until Kevin says yes (ruling 8). */
+/**
+ * A file a task found on the laptop. Listed, not uploaded, until Kevin says yes (ruling 8), or
+ * requested at once on a `deliver: files` task (ADR 0080: naming the files was the yes).
+ */
 data class ClaudeTaskFile(
     val id: Int,
     val name: String,
     val size: Long?,
     val uploaded: Boolean,
     val requested: Boolean,
+    /** The type it was uploaded as; blank until it is uploaded. */
+    val contentType: String = "",
+    /** The asking member's phone said it has it (ADR 0080). */
+    val received: Boolean = false,
+    /** Its bytes are deleted from the engine: received, or 24 h after upload (ADR 0080). */
+    val gone: Boolean = false,
 ) {
     /** An HTML file: on a `deliver: phone` task, the page itself (claude-session ticket 09). */
     val isPage: Boolean get() = name.lowercase().let { it.endsWith(".html") || it.endsWith(".htm") }
@@ -102,6 +111,16 @@ data class ClaudeTask(
     /** The page was made and asked for, and has not reached the engine yet. */
     val pagePending: Boolean get() = wantsPage && pages.isEmpty() && files.any { it.isPage && !it.uploaded }
 
+    /** Kevin asked for files on his phone (ADR 0080): they come and open without another yes. */
+    val wantsFiles: Boolean get() = deliver == ClaudeTaskDraft.DELIVER_FILES
+
+    /** The files coming to the phone: requested at the finish, because naming them was the yes. */
+    val deliveredFiles: List<ClaudeTaskFile> get() = if (wantsFiles) files.filter { it.requested } else emptyList()
+
+    /** A done files task with a requested file still on its way up from the laptop. */
+    val filesPending: Boolean get() =
+        status == DONE && deliveredFiles.any { !it.uploaded && !it.gone }
+
     companion object {
         const val QUEUED = "queued"
         const val NEEDS_MACHINE = "needs_machine"
@@ -138,6 +157,9 @@ data class ClaudeTaskDraft(
 
         /** The result as one web page, opened in LEGION's browser (ticket 09). Never the work laptop. */
         const val DELIVER_PHONE = "phone"
+
+        /** The files Kevin named, to his phone, opened there (ADR 0080). Never the work laptop. */
+        const val DELIVER_FILES = "files"
     }
 }
 
@@ -183,4 +205,10 @@ interface ClaudeSessionBackend {
 
     /** `GET tasks/{id}/files/{file_id}/`: the bytes of a file the laptop uploaded. */
     suspend fun download(taskId: Int, fileId: Int): ClaudeOutcome<ByteArray>
+
+    /**
+     * `POST tasks/{id}/files/{file_id}/received/`: this phone has a delivered file, so the engine
+     * deletes its copy now rather than at 24 h (ADR 0080).
+     */
+    suspend fun received(taskId: Int, fileId: Int): ClaudeOutcome<Unit>
 }

@@ -233,6 +233,13 @@ class LiveSetupPayloadSizeTest {
      * memory-quickwins plus phone-log-upload on dev `8e983a60`: 95 declarations, 87,979 chars of
      * tools JSON plus 10,336 chars of system instruction = 98,315 chars, ~24,578 tokens. Headroom is
      * ~72 tokens.
+     * **NOT raised on 2026-11-09 (files to phone, ADR 0080, `feat/claude-files-to-phone`).** No new
+     * declaration: `claude_session` gains one `files` boolean ("True if he asked for files on his
+     * phone."), paid partly by "send_file only on his yes to a found file" (was "only after he says
+     * yes to having a file on his phone"); `CLAUDE_SESSION_CLAUSE`'s found-file sentence now carves
+     * out `files true`. Measured on dev `2779ef88` plus the branch: 95 declarations, 88,042 chars of
+     * tools JSON plus 10,356 chars of system instruction = 98,398 chars, ~24,599 tokens (+21).
+     * Headroom is ~51 tokens.
      */
     private val ceilingTokens = 24_650
 

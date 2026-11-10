@@ -11,11 +11,13 @@ class FakeClaudeBackend : ClaudeSessionBackend {
         ClaudeOutcome.Ok(ClaudeCreated(41, ClaudeTask.QUEUED, d.machine?.let { ClaudeMachineRef(it, "idle", NOW) }))
     }
     var downloadOut: ClaudeOutcome<ByteArray> = ClaudeOutcome.Ok(byteArrayOf(1, 2, 3))
+    var receivedOut: ClaudeOutcome<Unit> = ClaudeOutcome.Ok(Unit)
 
     val created = mutableListOf<ClaudeTaskDraft>()
     val assigned = mutableListOf<Pair<Int, String>>()
     val fileRequests = mutableListOf<Pair<Int, Int>>()
     val downloads = mutableListOf<Pair<Int, Int>>()
+    val receipts = mutableListOf<Pair<Int, Int>>()
 
     override suspend fun status() = statusOut
     override suspend fun tasks(limit: Int) = tasksOut
@@ -40,6 +42,11 @@ class FakeClaudeBackend : ClaudeSessionBackend {
     override suspend fun download(taskId: Int, fileId: Int): ClaudeOutcome<ByteArray> {
         downloads += taskId to fileId
         return downloadOut
+    }
+
+    override suspend fun received(taskId: Int, fileId: Int): ClaudeOutcome<Unit> {
+        receipts += taskId to fileId
+        return receivedOut
     }
 
     fun machines(vararg m: ClaudeMachine) {
@@ -67,10 +74,12 @@ class FakeClaudeBackend : ClaudeSessionBackend {
             files: List<ClaudeTaskFile> = emptyList(),
             progress: String? = null,
             request: String = "find the AW4 wiring PDF in my downloads",
+            deliver: String? = null,
+            finishedAt: Instant? = null,
         ) = ClaudeTask(
             id = id, request = request, machine = machine, status = status, summary = summary,
-            question = question, createdAt = NOW, finishedAt = null, files = files, parent = null,
-            origin = "named", deliver = null, confirms = false, progress = progress, progressAt = null,
+            question = question, createdAt = NOW, finishedAt = finishedAt, files = files, parent = null,
+            origin = "named", deliver = deliver, confirms = false, progress = progress, progressAt = null,
         )
     }
 }
