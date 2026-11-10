@@ -247,7 +247,7 @@ class LiveSetupPayloadSizeTest {
      * clause naming it. Measured on dev `ea6e968b` plus the branch: 95 declarations, 88,110 chars of
      * tools JSON plus 10,356 chars of system instruction = 98,466 chars, ~24,616 tokens (+17).
      * Headroom is ~34 tokens.
-
+     *
      * **NOT raised on 2026-11-10 (round 5, `feat/conditions`).** No new declaration: rivers, alerts,
      * storms, roads and fire are the engine's `check_conditions`, reached through `ask_engine`, whose
      * description gained "rivers, floods, storms, road closures"; the phone's GPS fix rides the
