@@ -123,6 +123,9 @@ _WATCHES = "standing watches make Alfred speak to a member later; not part of th
 _OPEN_LOOPS = "proposed to-dos come from a member's own words to Alfred; not part of the demo"
 
 RECRUITER_DENIED: dict[str, str] = {
+    # architecture review 2026-11-10, item 15: model ids are for the household's own clients;
+    # the demo page gets its model from the mint, never from this.
+    "llm.views.ModelConfigView": "model ids are for the household's own phone, car and web",
     # household settings, members, invites, tokens, passwords
     "household.views.PasswordChangeView": "a visitor has no password to change",
     "household.views.DeviceListView": "device tokens are household settings",

@@ -173,8 +173,8 @@ def search(query: str, *, transport: Transport | None = None, key: str | None = 
             "Nothing was found. The web search's answer could not be read, so nothing is known "
             "from it."
         ) from None
-    found = parse(query, payload)
+    from dataclasses import replace
+
     from llm.client import usage_of
 
-    found.usage = usage_of(payload)
-    return found
+    return replace(parse(query, payload), usage=usage_of(payload))

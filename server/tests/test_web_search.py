@@ -307,3 +307,15 @@ def test_a_members_search_is_never_counted(household_user, google):
     assert response.status_code == 200 and response.data["is_error"] is False
     assert DemoBudgetDay.objects.count() == 0
 
+
+
+def test_a_members_search_is_recorded_in_llm_usage(household_user, google):
+    """Architecture review 2026-11-10, item 15: a member's search is one `llm_usage` row,
+    charged to that member; a recruiter's never is (the demo budget counts it)."""
+    from llm.models import LlmUsage
+
+    web = APIClient()
+    web.force_login(household_user)
+    assert _tool(web, {"query": "news today"}).data["is_error"] is False
+    [row] = LlmUsage.objects.all()
+    assert (row.feature, row.user_id) == ("web_search", household_user.pk)

@@ -2262,13 +2262,16 @@ def _web_search(request, args) -> ToolResult:
         if reservation is not None and exc.refused:
             budget.release(reservation)
         return failed(exc.message)
-    llm_client.record(
-        household=_household_or_none(request),
-        feature="web_search",
-        model=found.model,
-        usage=found.usage,
-        user=user,
-    )
+    if member_cap.applies_to(user):
+        # Members only: a recruiter's search is counted by the demo budget, and a visit's
+        # household gets no row it did not ask for (`tests/test_recruiter_isolation.py`).
+        llm_client.record(
+            household=_household_or_none(request),
+            feature="web_search",
+            model=found.model,
+            usage=found.usage,
+            user=user,
+        )
     structured = {
         "query": query,
         "answer": found.answer,
