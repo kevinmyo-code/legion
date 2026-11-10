@@ -161,6 +161,17 @@ class TypesetThemeTest {
         assertEquals(SourceSerifDisplay, TypesetType.time.fontFamily)
     }
 
+    @Test
+    fun `Typeset is square, Matrix keeps its rounded shapes`() {
+        for (e in TypesetEdition.entries) {
+            val sh = softLook(matrix = false, edition = e).shapes
+            for (shape in listOf(sh.extraSmall, sh.small, sh.medium, sh.large, sh.extraLarge)) {
+                assertEquals(SquareCorners, shape)
+            }
+            assertTrue(softLook(matrix = true, edition = e).shapes.medium != SquareCorners)
+        }
+    }
+
     private fun lum(c: Color): Double {
         fun ch(v: Float): Double = if (v <= 0.03928f) v / 12.92 else ((v + 0.055) / 1.055).pow(2.4)
         return 0.2126 * ch(c.red) + 0.7152 * ch(c.green) + 0.0722 * ch(c.blue)

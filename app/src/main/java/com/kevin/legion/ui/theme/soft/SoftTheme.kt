@@ -21,13 +21,31 @@ import com.kevin.legion.ui.theme.pickSemantics
 /**
  * Corner radii ticket 02 names: small 10dp, medium 16dp, large 20dp, extraLarge 24dp. `extraSmall`
  * is left at Material 3's own default (4dp) - nothing named by the ticket reaches for it, and this
- * ticket restyles the shell chrome, not the whole shape scale.
+ * ticket restyles the shell chrome, not the whole shape scale. Kept for soft screens under Matrix
+ * mode (ADR 0081).
  */
-private val SoftShapes = Shapes(
+private val SoftRoundedShapes = Shapes(
     small = RoundedCornerShape(10.dp),
     medium = RoundedCornerShape(16.dp),
     large = RoundedCornerShape(20.dp),
     extraLarge = RoundedCornerShape(24.dp),
+)
+
+/** A zero-radius corner: Typeset's one shape. */
+internal val SquareCorners = RoundedCornerShape(0.dp)
+
+/**
+ * Typeset is square (ADR 0081): every Material shape role has 0dp corners ([Shapes] takes a
+ * corner-based shape, so a zero rounded corner rather than `RectangleShape`). Round things stay
+ * round where they are drawn (`CircleShape` for the orb and status dots); a screen that hard-codes
+ * its own `RoundedCornerShape` keeps it until that screen is restyled.
+ */
+private val TypesetShapes = Shapes(
+    extraSmall = SquareCorners,
+    small = SquareCorners,
+    medium = SquareCorners,
+    large = SquareCorners,
+    extraLarge = SquareCorners,
 )
 
 /**
@@ -208,7 +226,7 @@ internal val SoftSemantics = softSemantics(SoftDarkPalette)
  * [ProvideTypesetEdition]) or, where nothing provides one, the phone's own dark theme. It provides
  * [LocalSoftPalette] too, so every `SoftColors.x` read under it follows the edition. Under Matrix
  * mode soft screens keep exactly their old look: [SoftDarkPalette] behind `SoftColors`, Matrix's
- * scheme and semantics on top, Figtree type.
+ * scheme and semantics on top, Figtree type, rounded shapes.
  *
  * Also provides [LocalLegionSemantics] (the look's semantics) and [LocalSoftActive] = true, which is what
  * turns the shared `ui/common` primitives (`DeckPane`, `DeckScreenHeader`, `DeckRow`, ...) and
@@ -228,8 +246,8 @@ internal val SoftSemantics = softSemantics(SoftDarkPalette)
  * 5. Use `MsIcon` with `res/drawable/ms_*` for glyphs, not "<" text arrows.
  * 6. Trust wording stays in words: estimate, UNRECONCILED/unverified and quarantine render as text
  *    beside the number, never colour alone, never collapsed behind a `HelpRow`.
- * 7. Hand-built cards and chips use `MaterialTheme.shapes` (16/20dp) and `SoftColors.card/cardHigh`,
- *    not 1dp borders or bezels.
+ * 7. Hand-built cards and chips use `MaterialTheme.shapes` (square under Typeset, 16/20dp under
+ *    Matrix) and `SoftColors.card/cardHigh`, not 1dp borders or bezels.
  */
 @Composable
 fun SoftTheme(content: @Composable () -> Unit) {
@@ -243,7 +261,7 @@ fun SoftTheme(content: @Composable () -> Unit) {
         MaterialTheme(
             colorScheme = look.scheme,
             typography = look.typography,
-            shapes = SoftShapes,
+            shapes = look.shapes,
             content = content,
         )
     }
@@ -260,18 +278,19 @@ internal data class SoftLook(
     val scheme: ColorScheme,
     val semantics: LegionSemantics,
     val typography: Typography,
+    val shapes: Shapes,
 )
 
 /**
  * Pure choice of look (ADR 0081). Matrix mode keeps exactly the look soft screens had before
  * Typeset: the soft-dark palette behind `SoftColors`, with Matrix's scheme and semantics on top.
- * Otherwise the Typeset edition: paper by day, cream on warm black by night, set in Source Serif 4.
+ * Otherwise the Typeset edition: paper by day, cream on warm black by night, set in Source Serif 4, square.
  */
 internal fun softLook(matrix: Boolean, edition: TypesetEdition): SoftLook = when {
     matrix -> SoftLook(
         SoftDarkPalette, pickColorScheme(true, SoftColorScheme), pickSemantics(true, SoftSemantics),
-        SoftFigtreeTypography,
+        SoftFigtreeTypography, SoftRoundedShapes,
     )
-    edition == TypesetEdition.DAY -> SoftLook(TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics, SoftTypography)
-    else -> SoftLook(TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics, SoftTypography)
+    edition == TypesetEdition.DAY -> SoftLook(TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics, SoftTypography, TypesetShapes)
+    else -> SoftLook(TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics, SoftTypography, TypesetShapes)
 }
