@@ -237,7 +237,12 @@ class ClaudeSessionController(
             deliver = if (emailMe) ClaudeTaskDraft.DELIVER_EMAIL_SELF else null,
             confirms = yes && parent.value.needsConfirmation,
         )
-        return created(backend.create(draft), choices = emptyList(), followUp = true)
+        return created(
+            backend.create(draft),
+            choices = emptyList(),
+            followUp = true,
+            confirmsTask = taskId.takeIf { draft.confirms },
+        )
     }
 
     /** Kevin said yes to "want it on your phone?". Refused for a summaries-only machine. */
@@ -280,6 +285,7 @@ class ClaudeSessionController(
         out: ClaudeOutcome<ClaudeCreated>,
         choices: List<String>,
         followUp: Boolean,
+        confirmsTask: Int? = null,
     ): ClaudeSendResult =
         when (out) {
             is ClaudeOutcome.Ok -> {
@@ -287,7 +293,7 @@ class ClaudeSessionController(
                 if (out.value.status == ClaudeTask.NEEDS_MACHINE) {
                     ClaudeSendResult.NeedsMachine(out.value.id, choices, wording.whichMachine(choices, created = true))
                 } else {
-                    ClaudeSendResult.Sent(out.value, wording.sent(out.value, followUp))
+                    ClaudeSendResult.Sent(out.value, wording.sent(out.value, followUp, confirmsTask))
                 }
             }
             else -> ClaudeSendResult.NotSent(

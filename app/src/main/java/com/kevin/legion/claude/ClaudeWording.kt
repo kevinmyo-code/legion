@@ -66,8 +66,9 @@ class ClaudeWording(
 
     // --------------------------------------------------------------------------- sending
 
-    fun sent(created: ClaudeCreated, followUp: Boolean = false): String {
-        val what = if (followUp) "The follow-up" else "Task ${created.id}"
+    fun sent(created: ClaudeCreated, followUp: Boolean = false, confirmsTask: Int? = null): String {
+        if (followUp) return followUpQueued(created, confirmsTask)
+        val what = "Task ${created.id}"
         val m = created.machine ?: return "$what is queued for whichever machine comes on first. It is not done; " +
             "I'll say when there is a result."
         return if (m.state != ClaudeMachine.STATE_OFFLINE) {
@@ -75,6 +76,28 @@ class ClaudeWording(
         } else {
             "The ${m.name} is ${machineState(m.state, m.lastSeenAt)}, so $what is queued and runs when it is " +
                 "back on. Nothing has run yet."
+        }
+    }
+
+    /**
+     * A follow-up, or the user's yes to a task that stopped to ask (phone audit 2026-11-10). The
+     * old line, "The follow-up was sent to the Alienware", followed a yes to "send the email?", and
+     * the model told the user the email was on its way; it never went (no mail account on the
+     * laptop). So this line carries no outcome verb at all, not even about itself: it says where
+     * the answer is, that nothing the task asked about has happened, and that the result will say.
+     */
+    private fun followUpQueued(created: ClaudeCreated, confirmsTask: Int?): String {
+        val what = confirmsTask?.let { "Your yes for task $it" } ?: "The follow-up"
+        val notYet = if (confirmsTask != null) {
+            "The task has not finished: what it asked about has not happened yet, and only its result will say whether it did."
+        } else {
+            "It has not run yet; only its result will say what happened."
+        }
+        val m = created.machine ?: return "$what is queued for whichever machine comes on first. $notYet"
+        return if (m.state != ClaudeMachine.STATE_OFFLINE) {
+            "$what is with the ${m.name}, which is on. $notYet I'll say when there is a result."
+        } else {
+            "The ${m.name} is ${machineState(m.state, m.lastSeenAt)}, so $what waits until it is back on. $notYet"
         }
     }
 
