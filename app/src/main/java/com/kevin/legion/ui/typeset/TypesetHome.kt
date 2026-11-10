@@ -56,8 +56,8 @@ import com.kevin.legion.ui.theme.soft.TypesetType
  * no scroll (Kevin, 2026-11-10). The shell's StatusLine sits above it, the same bar as on All apps
  * (sync, alarm, clock, Quiet, Apps, Claude, settings). Top to bottom: masthead; the glance
  * (dateline, the time as the headline, three figures) or, once Alfred has answered, his cards
- * newest first; the contents line; the orb, centred, with "Type" under it; the app groups; "All
- * apps" and the pinned dock.
+ * newest first; the orb, the page's hero, centred, with "Type" under it; the contents line (not
+ * while answering); the app groups; "All apps" and the pinned dock.
  *
  * [FitTiers] picks how much to give up to fit; the time (or the cards) takes the height left over.
  * Stateless: [TypesetHomeHost] wires it.
@@ -77,17 +77,21 @@ fun TypesetHomeContent(
     groups: (@Composable () -> Unit)? = null,
 ) {
     val answering = cards.isNotEmpty()
-    FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, measuring ->
+    FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, orb, measuring ->
         val outer = if (measuring) Modifier.fillMaxWidth() else Modifier.fillMaxSize()
         Column(outer) {
             Masthead(answering, night, actions)
+            // The orb is the hero (Kevin, 2026-11-10: "make the orb more prominent... the orb stays
+            // center and about 2.5x"): it sits where the contents line was, and the contents line
+            // moves under it.
             if (answering) {
                 Cards(cards, actions, measuring)
+                Voice(phase, status, tier, orb, measuring, actions)
             } else {
                 Glance(glance, tier, measuring, actions)
+                Voice(phase, status, tier, orb, measuring, actions)
                 Contents(tier.contentsPerRow, actions)
             }
-            Voice(phase, status, tier, measuring, actions)
             groups?.let {
                 it()
                 HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
@@ -220,7 +224,9 @@ private fun Contents(perRow: Int, actions: TypesetHomeActions) {
     TypesetHomeDerive.CONTENTS.chunked(perRow).forEach { row ->
         Row(Modifier.fillMaxWidth()) {
             row.forEach { name ->
-                Box(Modifier.weight(1f).tap(name, go[name] ?: {}), contentAlignment = Alignment.CenterStart) {
+                // Packed rows weigh each cell by its word, so "Breathe" is not clipped beside "Car".
+                val w = if (perRow > CONTENTS_PER_ROW) name.length.toFloat() else 1f
+                Box(Modifier.weight(w).tap(name, go[name] ?: {}), contentAlignment = Alignment.CenterStart) {
                     FitLine(
                         name,
                         TypesetType.small.copy(textDecoration = TextDecoration.Underline),
@@ -230,7 +236,8 @@ private fun Contents(perRow: Int, actions: TypesetHomeActions) {
                     )
                 }
             }
-            repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+            val gap = if (perRow > CONTENTS_PER_ROW) row.sumOf { it.length }.toFloat() / row.size else 1f
+            repeat(perRow - row.size) { Spacer(Modifier.weight(gap)) }
         }
     }
     HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
@@ -252,9 +259,17 @@ private fun ColumnScope.Cards(cards: List<ConversationCard>, actions: TypesetHom
 
 /** The orb, centred (Kevin, 2026-11-10), the state in words, and "Type" under it. */
 @Composable
-private fun Voice(phase: OrbPhase, status: String, tier: FitTier, measuring: Boolean, actions: TypesetHomeActions) {
+@Suppress("LongParameterList")
+private fun Voice(
+    phase: OrbPhase,
+    status: String,
+    tier: FitTier,
+    orb: Dp,
+    measuring: Boolean,
+    actions: TypesetHomeActions,
+) {
     Column(Modifier.fillMaxWidth().padding(top = tier.gap), horizontalAlignment = Alignment.CenterHorizontally) {
-        val size: Dp = tier.orb
+        val size: Dp = orb
         Box(
             Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
                 .semantics { contentDescription = "Talk to Alfred" },
@@ -360,6 +375,7 @@ private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeAct
     }
 }
 
+private const val CONTENTS_PER_ROW = 5
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp

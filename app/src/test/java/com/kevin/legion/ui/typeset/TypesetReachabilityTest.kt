@@ -14,8 +14,9 @@ import org.junit.Test
  * The destination list is not typed in here: it is every `LegionRoute` constant (by reflection) and
  * every `<activity>` / `<activity-alias>` in the manifest. A new route or activity with no entry in
  * [taps] or [internalOnly] fails this test. Each tap path ends on the front page, and the front-page
- * words it names must be on the page ([TypesetHomeDerive.CONTENTS], the shell's StatusLine above it,
- * the masthead).
+ * words it names must be on the page ([TypesetHomeDerive.CONTENTS], now under the hero orb; the
+ * shell's StatusLine above it; the masthead). `TypesetFitScreenshotTest` checks each word is drawn
+ * at every size after the orb moved up (Kevin, 2026-11-10).
  */
 class TypesetReachabilityTest {
 

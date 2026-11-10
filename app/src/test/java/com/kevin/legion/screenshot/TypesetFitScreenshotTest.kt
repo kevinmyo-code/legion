@@ -23,6 +23,9 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
@@ -43,6 +46,7 @@ import com.kevin.legion.ui.typeset.TypesetGlance
 import com.kevin.legion.ui.typeset.TypesetGroupCell
 import com.kevin.legion.ui.typeset.TypesetHomeActions
 import com.kevin.legion.ui.typeset.TypesetHomeContent
+import com.kevin.legion.ui.typeset.TypesetHomeDerive
 import com.kevin.legion.ui.typeset.TypesetPage
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -82,6 +86,25 @@ class TypesetFitScreenshotTest {
         rule.mainClock.advanceTimeBy(FRAME_MS)
         rule.onRoot().captureRoboImage(file)
         assertFits(file)
+        assertEveryWayInDrawn(answering)
+    }
+
+    /**
+     * The orb moved above the contents line (Kevin, 2026-11-10); every way in is still drawn on the
+     * page at every size: the orb, Type, Controls, All apps, and (when not answering) every contents
+     * word. `TypesetReachabilityTest` checks the words lead everywhere; this checks they are there.
+     */
+    private fun assertEveryWayInDrawn(answering: Boolean) {
+        drawn(hasContentDescription("Talk to Alfred"), "the orb")
+        val words = listOf("Type", "CONTROLS", "ALL APPS") + if (answering) emptyList() else TypesetHomeDerive.CONTENTS
+        words.forEach { drawn(hasText(it), it) }
+    }
+
+    /** FitTiers measures every tier it tries, so a word can be in the tree unplaced: count the placed. */
+    private fun drawn(matcher: SemanticsMatcher, what: String) {
+        val nodes = rule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
+        val placed = nodes.count { it.layoutInfo.isPlaced }
+        assertTrue("$what is not drawn on the page", placed >= 1)
     }
 
     private fun assertFits(file: String) {
@@ -104,6 +127,14 @@ class TypesetFitScreenshotTest {
         }
         walk(rule.onRoot(useUnmergedTree = true).fetchSemanticsNode())
         assertTrue("$file:\n" + problems.joinToString("\n"), problems.isEmpty())
+    }
+
+    /** The orb is the hero (Kevin, 2026-11-10: "about 2.5x"): its tap target is at least [dp] tall. */
+    private fun assertOrbAtLeast(dp: Float) {
+        val orb = rule.onAllNodes(hasContentDescription("Talk to Alfred")).fetchSemanticsNodes()
+            .first { it.layoutInfo.isPlaced }
+        val px = with(orb.layoutInfo.density) { dp * density }
+        assertTrue("orb is ${orb.boundsInRoot.height}px tall, want at least $px", orb.boundsInRoot.height >= px)
     }
 
     private fun SemanticsNode.describe(): String {
@@ -133,7 +164,14 @@ class TypesetFitScreenshotTest {
 
     // 412 x 915, A25-like
     @Test @Config(qualifiers = A25)
-    fun `a25, day`() = page("typeset-fit-412x915-day.png")
+    fun `a25, day`() {
+        page("typeset-fit-412x915-day.png")
+        assertOrbAtLeast(HERO_MIN_DP)
+    }
+
+    @Test @Config(qualifiers = A25)
+    fun `a25, answering, day`() =
+        page("typeset-fit-412x915-answer-day.png", phase = OrbPhase.SPEAKING, answering = true)
 
     @Test @Config(qualifiers = "$A25-night")
     fun `a25, night`() = page("typeset-fit-412x915-night.png")
@@ -154,6 +192,25 @@ class TypesetFitScreenshotTest {
 
     @Test @Config(qualifiers = SMALL)
     fun `small font 1_3, day`() = page("typeset-fit-360x640-font13-day.png", fontScale = 1.3f)
+
+    @Test @Config(qualifiers = "$SMALL-night")
+    fun `small font 1_3, night`() = page("typeset-fit-360x640-font13-night.png", fontScale = 1.3f)
+
+    @Test @Config(qualifiers = SMALL)
+    fun `small font 1_3, answering, day`() = page(
+        "typeset-fit-360x640-font13-answer-day.png",
+        fontScale = 1.3f,
+        phase = OrbPhase.SPEAKING,
+        answering = true,
+    )
+
+    @Test @Config(qualifiers = "$SMALL-night")
+    fun `small font 1_3, answering, night`() = page(
+        "typeset-fit-360x640-font13-answer-night.png",
+        fontScale = 1.3f,
+        phase = OrbPhase.SPEAKING,
+        answering = true,
+    )
 
     // 412 x 820: roughly what the A25 leaves the page once its status and nav bars are drawn.
     @Test @Config(qualifiers = A25_VIEW)
@@ -229,6 +286,8 @@ class TypesetFitScreenshotTest {
     private companion object {
         const val FRAME_MS = 800L
         const val MIN_TARGET_DP = 44f
+        /** 2.5x the old 96dp orb is 240dp; the A25-size page must keep it near that. */
+        const val HERO_MIN_DP = 220f
         const val SLACK_PX = 1f
         const val DESCRIBE_CHARS = 160
         const val SMALL = "w360dp-h640dp"

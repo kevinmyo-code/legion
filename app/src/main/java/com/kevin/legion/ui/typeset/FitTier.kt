@@ -26,9 +26,9 @@ import androidx.compose.ui.unit.sp
  * How much the front page gives up to fit one screen with no scroll (Kevin, 2026-11-10: "scale to
  * fit and no scrolling"). Tiers run roomiest first; [FitTiers] takes the first whose fixed parts
  * fit, and the time headline takes whatever height is left, shrinking to fit it. The order of what
- * goes is the brief's: spacing, then secondary lines, then the big figures (inline, smaller), then
- * the orb and the dock's names, then the pinned tiles themselves (they stay in All apps), and last
- * the contents line packs seven to a row (two rows, not three). The shell's StatusLine sits above
+ * goes: spacing, secondary lines, the big figures (inline) and the dock's names, all before the hero
+ * orb gives up size; then the orb shrinks step by step, then the pinned tiles go (they stay in All
+ * apps), and last the contents line packs seven to a row (two rows, not three). The shell's StatusLine sits above
  * the page since 2026-11-10 and can wrap to two lines on a narrow phone at a large font; [PACKED]
  * is what keeps the time readable there.
  */
@@ -43,72 +43,28 @@ internal enum class FitTier(
     val dockNames: Boolean,
     val contentsPerRow: Int = 5,
 ) {
-    ROOMY(
-        gap = 12.dp,
-        figureLines = 2,
-        stacked = true,
-        dateline = true,
-        orb = 96.dp,
-        statusOwnLine = true,
-        dockTiles = true,
-        dockNames = true,
-    ),
-    SNUG(
-        gap = 8.dp,
-        figureLines = 1,
-        stacked = true,
-        dateline = true,
-        orb = 88.dp,
-        statusOwnLine = true,
-        dockTiles = true,
-        dockNames = true,
-    ),
-    TRIM(
-        gap = 6.dp,
-        figureLines = 0,
-        stacked = true,
-        dateline = true,
-        orb = 80.dp,
-        statusOwnLine = true,
-        dockTiles = true,
-        dockNames = true,
-    ),
-    INLINE(
-        gap = 4.dp,
-        figureLines = 0,
-        stacked = false,
-        dateline = true,
-        orb = 72.dp,
-        statusOwnLine = true,
-        dockTiles = true,
-        dockNames = false,
-    ),
-    TIGHT(
-        gap = 2.dp,
-        figureLines = 0,
-        stacked = false,
-        dateline = false,
-        orb = 56.dp,
-        statusOwnLine = false,
-        dockTiles = true,
-        dockNames = false,
-    ),
-    FLOOR(
-        gap = 0.dp,
-        figureLines = 0,
-        stacked = false,
-        dateline = false,
-        orb = 56.dp,
-        statusOwnLine = false,
-        dockTiles = false,
-        dockNames = false,
-    ),
+    // The orb is the hero (Kevin, 2026-11-10: "about 2.5x the size of what it is now", 96dp then):
+    // the first tiers give up spacing and secondary lines before the orb gives up any size.
+    // Columns: gap, figureLines, stacked, dateline, orb, statusOwnLine, dockTiles, dockNames.
+    ROOMY(12.dp, 2, true, true, HERO, true, true, true),
+    SNUG(8.dp, 1, true, true, HERO, true, true, true),
+    TRIM(6.dp, 0, true, true, HERO, true, true, true),
+    INLINE(4.dp, 0, false, true, HERO, true, true, false),
+    // Still the full hero: the dateline goes and the state words share a line with "Type".
+    HERO_FIT(2.dp, 0, false, false, HERO, false, true, false),
+    // Still the full hero: the contents line packs seven to a row.
+    HERO_PACK(2.dp, 0, false, false, HERO, false, true, false, contentsPerRow = 7),
+    LARGE(4.dp, 0, false, true, 200.dp, true, true, false),
+    MEDIUM(2.dp, 0, false, false, 160.dp, true, true, false),
+    SMALL(2.dp, 0, false, false, 128.dp, false, true, false),
+    TIGHT(2.dp, 0, false, false, 96.dp, false, true, false),
+    FLOOR(0.dp, 0, false, false, 80.dp, false, false, false),
     PACKED(
-        gap = 0.dp,
-        figureLines = 0,
+        0.dp,
+        0,
         stacked = false,
         dateline = false,
-        orb = 56.dp,
+        orb = 64.dp,
         statusOwnLine = false,
         dockTiles = false,
         dockNames = false,
@@ -116,27 +72,40 @@ internal enum class FitTier(
     ),
 }
 
+/** The hero orb: 2.5x the 96dp it was (Kevin, 2026-11-10). */
+internal val HERO = 240.dp
+
 /**
  * Lays [content] out at the roomiest [FitTier] that fits the height it is given. Each tier is first
  * composed with `measuring = true` (the flexible slot drawn as its minimum, no orb animation) and
  * measured at unbounded height; the chosen tier is then composed for real at the exact height, where
- * the flexible slot takes `weight(1f)`. Unbounded height (a scrolling parent) draws the roomiest
- * tier in its measuring shape, so nothing asks a weight of infinity.
+ * the flexible slot takes `weight(1f)`. Height the chosen tier leaves over goes to the orb first, up
+ * to [HERO] (Kevin, 2026-11-10: the orb is the hero), then to the flexible slot; [content] gets the
+ * orb size to draw. Unbounded height (a scrolling parent) draws the roomiest tier in its measuring
+ * shape, so nothing asks a weight of infinity.
  */
 @Composable
-internal fun FitTiers(modifier: Modifier = Modifier, content: @Composable (tier: FitTier, measuring: Boolean) -> Unit) {
+internal fun FitTiers(
+    modifier: Modifier = Modifier,
+    content: @Composable (tier: FitTier, orb: Dp, measuring: Boolean) -> Unit,
+) {
     SubcomposeLayout(modifier) { c ->
         if (!c.hasBoundedHeight) {
-            val ps = subcompose("open") { content(FitTier.ROOMY, true) }.map { it.measure(c) }
+            val first = FitTier.entries.first()
+            val ps = subcompose("open") { content(first, first.orb, true) }.map { it.measure(c) }
             val h = ps.maxOfOrNull { it.height } ?: 0
             return@SubcomposeLayout layout(c.maxWidth, h) { ps.forEach { it.place(0, 0) } }
         }
         val loose = Constraints(minWidth = c.minWidth, maxWidth = c.maxWidth)
+        var used = 0
         val chosen = FitTier.entries.firstOrNull { tier ->
-            subcompose(tier) { content(tier, true) }.sumOf { it.measure(loose).height } <= c.maxHeight
+            used = subcompose(tier) { content(tier, tier.orb, true) }.sumOf { it.measure(loose).height }
+            used <= c.maxHeight
         } ?: FitTier.entries.last()
+        val spare = (c.maxHeight - used).coerceAtLeast(0).toDp()
+        val orb = (chosen.orb + spare).coerceAtMost(maxOf(HERO, chosen.orb))
         val exact = c.copy(minHeight = c.maxHeight)
-        val ps = subcompose("final") { content(chosen, false) }.map { it.measure(exact) }
+        val ps = subcompose("final") { content(chosen, orb, false) }.map { it.measure(exact) }
         layout(c.maxWidth, c.maxHeight) { ps.forEach { it.place(0, 0) } }
     }
 }
