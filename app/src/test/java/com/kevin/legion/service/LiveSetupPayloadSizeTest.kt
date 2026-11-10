@@ -240,6 +240,16 @@ class LiveSetupPayloadSizeTest {
      * out `files true`. Measured on dev `2779ef88` plus the branch: 95 declarations, 88,042 chars of
      * tools JSON plus 10,356 chars of system instruction = 98,398 chars, ~24,599 tokens (+21).
      * Headroom is ~51 tokens.
+     *
+     * **NOT raised on 2026-11-10 (standing watches, ADR 0083, `feat/watches`).** `watch` is ONE
+     * action-dispatched declaration (list, set, pause, resume, remove; params action, kind, dollars,
+     * text; the id rides in `text`), 475 chars. Paid for by trimming `get_current_time` (530 to 299
+     * chars: the routing "whenever the answer depends on the time or date" and the never-guess rule
+     * kept, the examples and "Instant, offline, free" cut) and `why_did_you_say_that` (527 to 449:
+     * its empty-result sentence was already the result's own words). Measured on dev `ea6e968b` plus
+     * the branch: 96 declarations, 88,209 chars of tools JSON plus 10,356 chars of system
+     * instruction = 98,565 chars, ~24,641 tokens (+42 over dev's 98,398 / ~24,599). Headroom ~9
+     * tokens: the next tool needs a trim of its own.
      */
     private val ceilingTokens = 24_650
 

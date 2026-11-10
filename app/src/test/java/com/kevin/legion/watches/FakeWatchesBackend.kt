@@ -3,6 +3,7 @@ package com.kevin.legion.watches
 import kotlinx.serialization.json.JsonObject
 
 /** An in-memory engine for the watches tests. Made-up labels and facts only. */
+@Suppress("ReturnCount") // a fake's guard clauses: offline, refused, then the answer
 class FakeWatchesBackend : WatchesBackend {
     var offline: WatchOutcome<Nothing>? = null
     val watches = mutableListOf<Watch>()

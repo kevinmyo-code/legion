@@ -104,6 +104,8 @@ private fun Listed(view: WatchesView.Listed, state: WatchesUiState, callbacks: W
         item { Section("What it watches") }
         if (view.watches.isEmpty()) item { Line("No watches are set.") }
         items(view.watches, key = { it.id }) { watch -> WatchRow(watch, state.busy, callbacks) }
+        // Unreadable is not empty: a reply watch this phone cannot check says so, in words.
+        state.mailNote?.let { note -> item { Line(note) } }
         item { Section("Add a watch") }
         item { AddForm(view, state, callbacks) }
         item { Section("What it found") }

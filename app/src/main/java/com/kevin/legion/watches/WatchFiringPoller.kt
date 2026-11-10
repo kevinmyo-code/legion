@@ -55,7 +55,7 @@ class WatchFiringPoller(
         val last = lastPollMs
         if (last != null && now - last < intervalMs) return@withLock 0
         lastPollMs = now
-        for (check in phoneChecks) check()
+        for (check in phoneChecks) runCheck(check)
         poll(now)
     }
 
@@ -77,6 +77,22 @@ class WatchFiringPoller(
         ack(c, ids, outcome)
         return if (delivery == WatchDelivery.SILENCED) 0 else head.size
     }
+
+    /** A phone check that throws never stops the engine's firings from being said. */
+    @Suppress("TooGenericExceptionCaught") // any failure is "not checked this time"; cancellation rethrown
+    private suspend fun runCheck(check: suspend () -> Unit) {
+        try {
+            check()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            lastCheckFailure = e
+        }
+    }
+
+    /** The last phone check's failure, for a debugger; never spoken, never stored. */
+    @Volatile var lastCheckFailure: Exception? = null
+        private set
 
     private suspend fun ack(c: WatchesController, ids: List<String>, outcome: String) {
         if (c.ack(ids, outcome) is WatchOutcome.Ok) said.forget(ids)

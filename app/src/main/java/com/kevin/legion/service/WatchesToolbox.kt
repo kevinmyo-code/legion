@@ -1,6 +1,7 @@
 package com.kevin.legion.service
 
 import android.content.Context
+import com.kevin.legion.watches.KIND_MAIL_REPLY
 import com.kevin.legion.watches.SOURCE_VOICE
 import com.kevin.legion.watches.Watch
 import com.kevin.legion.watches.WatchOutcome
@@ -22,6 +23,7 @@ import org.json.JSONObject
  * third-party content must never become one. Pausing and removing are allowed in any turn: they
  * only make Alfred quieter.
  */
+@Suppress("TooManyFunctions") // one per action, plus the declaration helpers every toolbox carries
 object WatchesToolbox {
 
     const val TOOL_NAME = "watch"
@@ -32,7 +34,7 @@ object WatchesToolbox {
     internal var controllerFactory: (Context) -> WatchesController = WatchesController::forContext
 
     private const val DESCRIPTION =
-        "Tell the user when something happens. set: kind charge_over, deposit_over, balance_under, " +
+        "Alerts the user later. set: kind charge_over, deposit_over, balance_under, " +
             "canvas_due, grade_posted, service_due or mail_reply; text is the merchant, payer, account, " +
             "course or companies. pause, resume, remove: text is the id from list."
 
@@ -71,7 +73,9 @@ object WatchesToolbox {
         touchedReadThroughToolThisTurn: Boolean,
     ): JSONObject? {
         if (name != TOOL_NAME) return null
-        return run(controllerFactory(context), args, touchedReadThroughToolThisTurn)
+        return run(controllerFactory(context), args, touchedReadThroughToolThisTurn) {
+            com.kevin.legion.watches.MailReplyAndroid.access(context)
+        }
     }
 
     /** One action, over the controller, so it is tested without Android. */
@@ -79,6 +83,8 @@ object WatchesToolbox {
         controller: WatchesController,
         args: JSONObject,
         readThroughThisTurn: Boolean,
+        /** For mail_reply: null when this phone can read mail, else the "cannot see mail" sentence. */
+        mailAccess: suspend () -> String? = { null },
     ): JSONObject {
         val action = args.optString("action")
         if (action in GUARDED && LiveToolbox.rememberBlockedByReadThroughTool(readThroughThisTurn)) {
@@ -88,7 +94,7 @@ object WatchesToolbox {
         val id = args.optString("id").ifBlank { args.optString("text") }.trim()
         return when (action) {
             "list" -> list(controller)
-            "set" -> set(controller, args)
+            "set" -> set(controller, args, mailAccess)
             "pause", "resume" -> if (id.isEmpty()) needId() else pause(controller, id, action == "pause")
             "remove" -> if (id.isEmpty()) needId() else remove(controller, id)
             else -> result(false, "Say list, set, pause, resume or remove. Nothing was changed.")
@@ -107,13 +113,22 @@ object WatchesToolbox {
             else -> result(false, WatchWording.failed(out, "read"))
         }
 
-    private suspend fun set(controller: WatchesController, args: JSONObject): JSONObject {
+    private suspend fun set(
+        controller: WatchesController,
+        args: JSONObject,
+        mailAccess: suspend () -> String?,
+    ): JSONObject {
         val kind = args.optString("kind")
         if (kind.isBlank()) return result(false, "No watch was set: name a kind.")
         val amount = if (args.has("dollars") && !args.isNull("dollars")) args.optString("dollars") else null
         val text = args.optString("text").takeIf { it.isNotBlank() }
         return when (val out = controller.set(kind, amount, text, label = null, source = SOURCE_VOICE)) {
-            is WatchOutcome.Ok -> result(true, WatchWording.set(out.value)).put("id", out.value.watch.id)
+            is WatchOutcome.Ok -> {
+                // Unreadable is not empty: a reply watch this phone cannot check says so now.
+                val blind = if (out.value.watch.kind == KIND_MAIL_REPLY) mailAccess() else null
+                result(true, WatchWording.set(out.value) + blind?.let { " $it" }.orEmpty())
+                    .put("id", out.value.watch.id)
+            }
             else -> result(false, WatchWording.failed(out, "set"))
         }
     }

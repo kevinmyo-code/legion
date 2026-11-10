@@ -35,11 +35,16 @@ object WatchPolling {
         }
     }
 
-    private fun build(app: Context): WatchFiringPoller = WatchFiringPoller(
-        controller = { WatchesController.forContext(app) },
-        announce = { firings, more -> announce(app, firings, more) },
-        said = PrefsSaidFirings(app),
-    )
+    private fun build(app: Context): WatchFiringPoller {
+        // ONE mail check for the process, so its own 15-minute cadence holds across ticks.
+        val mail = MailReplyAndroid.check(app)
+        return WatchFiringPoller(
+            controller = { WatchesController.forContext(app) },
+            announce = { firings, more -> announce(app, firings, more) },
+            said = PrefsSaidFirings(app),
+            phoneChecks = listOf<suspend () -> Unit>({ mail.maybeRun() }),
+        )
+    }
 
     internal fun raise(firings: List<WatchFiring>, more: Int): ProactiveRaise {
         val facts = WatchWording.facts(firings)
@@ -63,6 +68,7 @@ object WatchPolling {
      * on) a "spoken" raise would reach no one and be acked as said. So without the service it is
      * posted instead, still behind the master and Watches switches.
      */
+    @Suppress("ReturnCount") // switched off, posted, or the bus's own answer
     internal suspend fun deliver(context: Context, raise: ProactiveRaise): WatchDelivery {
         if (!AriaForegroundService.isRunning) {
             ProactiveSettings.load(context)

@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kevin.legion.watches.KIND_CHARGE_OVER
+import com.kevin.legion.watches.KIND_MAIL_REPLY
+import com.kevin.legion.watches.MailReplyAndroid
 import com.kevin.legion.watches.SOURCE_SCREEN
 import com.kevin.legion.watches.Watch
 import com.kevin.legion.watches.WatchFiring
@@ -31,6 +33,8 @@ data class WatchesUiState(
     val addKind: String = KIND_CHARGE_OVER,
     val addAmount: String = "",
     val addText: String = "",
+    /** For a mail_reply watch: the "cannot see mail" sentence, or null when mail is readable. */
+    val mailNote: String? = null,
 )
 
 /**
@@ -41,9 +45,14 @@ data class WatchesUiState(
 class WatchesViewModel(
     application: Application,
     private val controller: WatchesController,
+    private val mailAccess: suspend () -> String?,
 ) : AndroidViewModel(application) {
 
-    constructor(application: Application) : this(application, WatchesController.forContext(application))
+    constructor(application: Application) : this(
+        application,
+        WatchesController.forContext(application),
+        { MailReplyAndroid.access(application) },
+    )
 
     private val _state = MutableStateFlow(WatchesUiState())
     val state: StateFlow<WatchesUiState> = _state.asStateFlow()
@@ -58,6 +67,8 @@ class WatchesViewModel(
             val view = when (val out = controller.list()) {
                 is WatchOutcome.Ok -> {
                     val found = (controller.recent() as? WatchOutcome.Ok)?.value.orEmpty()
+                    val mail = if (out.value.watches.any { it.kind == KIND_MAIL_REPLY }) mailAccess() else null
+                    _state.update { it.copy(mailNote = mail) }
                     WatchesView.Listed(out.value.watches, out.value.kinds, found)
                 }
                 else -> WatchesView.Unavailable(WatchWording.failed(out, "read"))
@@ -75,7 +86,8 @@ class WatchesViewModel(
         when (val out = controller.set(s.addKind, s.addAmount, s.addText, label = null, source = SOURCE_SCREEN)) {
             is WatchOutcome.Ok -> {
                 _state.update { it.copy(addAmount = "", addText = "") }
-                WatchWording.set(out.value)
+                val blind = if (out.value.watch.kind == KIND_MAIL_REPLY) mailAccess() else null
+                WatchWording.set(out.value) + blind?.let { " $it" }.orEmpty()
             }
             else -> WatchWording.failed(out, "set")
         }

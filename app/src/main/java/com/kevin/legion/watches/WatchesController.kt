@@ -92,6 +92,7 @@ class WatchesController(private val backend: WatchesBackend) {
          * "250", "250.5", "$1,200" to integer cents, through `BigDecimal` and never a float; null when
          * it is not a positive amount.
          */
+        @Suppress("ReturnCount") // blank, not a number, not positive: each is "no amount"
         internal fun cents(amount: String?): Long? {
             val raw = amount?.replace("$", "")?.replace(",", "")?.trim().orEmpty()
             if (raw.isEmpty()) return null
