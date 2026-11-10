@@ -3324,15 +3324,15 @@ object LiveToolbox {
      * system error.
      */
     // ADR 0071: a web page read in the same turn trips the same gate, so the words name both.
-    internal const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail or web pages - that's on " +
+    internal const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail, web pages or the camera - that's on " +
         "purpose, not a slip. Tell me the fact yourself, in your own words, and I'll remember that."
 
     /**
      * `generate_goal_plan`'s `constraintNotSaved` when the same gate fires for its `new_constraint`
      * (2026-11-09): a constraint is a member memory, so mail or web text in the turn refuses it.
      */
-    internal const val GOAL_CONSTRAINT_READ_THROUGH_REFUSAL = "Constraint not saved: this turn read mail or " +
-        "a web page. Ask the user to confirm it in their own words next turn."
+    internal const val GOAL_CONSTRAINT_READ_THROUGH_REFUSAL = "Constraint not saved: this turn read mail, " +
+        "the camera or a web page. Ask the user to confirm it in their own words next turn."
 
     /**
      * Category A guard (ticket 01 §0): these tools read whichever car the OBD

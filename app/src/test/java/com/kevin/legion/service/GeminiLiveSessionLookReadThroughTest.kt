@@ -10,9 +10,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * ADR 0084: text the camera sees is third-party content. Once a frame went out on a socket, that
- * turn and every later turn on it are read-through (so `memory` remember, a goal constraint and
- * `ask_engine` refuse, and nothing reaches episodic memory), logged as `read_through source=look`.
+ * ADR 0084: text the camera sees is third-party content. A turn a frame went out in is read-through
+ * (so `memory` remember, a goal constraint and `ask_engine` refuse, and nothing reaches episodic
+ * memory), logged as `read_through source=look`, and so is the turn after it: a frame sent while
+ * the reply plays belongs to the next turn. The round 3 carry, applied to frames.
  */
 @RunWith(RobolectricTestRunner::class)
 class GeminiLiveSessionLookReadThroughTest {
@@ -35,22 +36,29 @@ class GeminiLiveSessionLookReadThroughTest {
     }
 
     @Test
-    fun `a socket that saw a frame stays read-through for every later turn`() {
+    fun `a frame marks its turn and carries into the next, then the turn after starts clean`() {
         session.markLookSeen()
         assertTrue(session.readThroughToolTouchedThisTurn())
-        repeat(3) {
-            session.audit.turnComplete()
-            session.startNextTurnReadThrough()
-            assertTrue(session.readThroughToolTouchedThisTurn())
-        }
-        assertEquals("read_through source=look", lines.first())
-        assertEquals(4, lines.count { it == "read_through source=look" })
-    }
-
-    @Test
-    fun `a socket that never looked starts every turn clean`() {
+        session.audit.turnComplete()
+        session.startNextTurnReadThrough()
+        assertTrue(session.readThroughToolTouchedThisTurn())
         session.audit.turnComplete()
         session.startNextTurnReadThrough()
         assertFalse(session.readThroughToolTouchedThisTurn())
+        assertEquals(
+            listOf("read_through source=look", "turn_complete", "read_through source=carry", "turn_complete"),
+            lines,
+        )
+    }
+
+    @Test
+    fun `frames in every turn keep every turn of an open look read-through`() {
+        repeat(3) {
+            session.markLookSeen()
+            assertTrue(session.readThroughToolTouchedThisTurn())
+            session.audit.turnComplete()
+            session.startNextTurnReadThrough()
+        }
+        assertTrue(session.readThroughToolTouchedThisTurn())
     }
 }

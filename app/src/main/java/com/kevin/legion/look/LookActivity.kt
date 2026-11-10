@@ -85,6 +85,13 @@ class LookActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // A voice `look` while the screen is already up: the screen is showing for this look too.
+        LookController.ensureOpen(sourceOf(intent))
+    }
+
     override fun onStart() {
         super.onStart()
         // GPS speed while the look is open, for the moving check ([LookRules.motion]).

@@ -253,12 +253,6 @@ class LiveSessionController(context: Context) {
             }
         }
         self = s
-        // ADR 0084: a resumed thread that saw camera frames keeps every turn read-through.
-        if (sessionResumeHandle == null) {
-            lookSeenInThread = false
-        } else if (lookSeenInThread) {
-            s.markLookSeen()
-        }
         scope.launch {
             s.isSilenced.collect { silenced ->
                 CarProbeLog.log("CarProbeMicSilenced", "GeminiLiveSession.isSilenced=$silenced")
@@ -665,19 +659,11 @@ class LiveSessionController(context: Context) {
     // follow the CURRENT session. Written only by [session]'s setter.
     @Volatile private var lookSession: GeminiLiveSession? = null
 
-    // A frame went out in this conversation's thread: a socket that RESUMES it (same handle) still
-    // holds the pictures, so it starts read-through too ([newSession]). Dropped with the handle.
-    @Volatile private var lookSeenInThread = false
-
     /** [LookController]'s sink: frames into the current conversation, and the button's way in. */
     private val lookSink: LookController.Sink = object : LookController.Sink {
         override fun inConversation(): Boolean = lookSession?.inConversation == true
 
-        override fun sendFrame(jpeg: ByteArray): Boolean {
-            val sent = lookSession?.sendVideoFrame(jpeg) == true
-            if (sent) lookSeenInThread = true
-            return sent
-        }
+        override fun sendFrame(jpeg: ByteArray): Boolean = lookSession?.sendVideoFrame(jpeg) == true
 
         override fun beginByHand(): String? = onLookByHand()
     }.also { LookController.register(it) }

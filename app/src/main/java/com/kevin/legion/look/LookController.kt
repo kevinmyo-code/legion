@@ -50,6 +50,8 @@ object LookController {
         val source: Source? = null,
         val framesSent: Int = 0,
         val notice: String? = null,
+        /** [LookActivity] actually came up for this look (a start from the background can be held back). */
+        val screenShown: Boolean = false,
     )
 
     @Volatile private var sink: Sink? = null
@@ -110,7 +112,21 @@ object LookController {
         }
         val seen = withTimeoutOrNull(firstFrameWaitMs) { waitFor.await() } != null
         if (!seen) lateNoteOwed = true
-        return LookRules.toolResult(framesSent = seen)
+        return LookRules.toolResult(framesSent = seen, screenShown = _state.value.screenShown)
+    }
+
+    /**
+     * The server cancelled the `look` call (the user spoke over it), so its result, and the trust
+     * rules in it, never reached the model. They go in as a note: now if frames already went out,
+     * else with the first frame.
+     */
+    fun resultDropped() {
+        if (!_state.value.open) return
+        if (_state.value.framesSent > 0) {
+            LiveNotes.offer(LIVE_KEY, LookRules.LIVE_LATE_NOTE)
+        } else {
+            lateNoteOwed = true
+        }
     }
 
     /**
@@ -138,9 +154,13 @@ object LookController {
         if (refusal != null) _state.value = _state.value.copy(notice = refusal)
     }
 
-    /** A look the screen opened itself (a relaunch after process death): treat it as opened by hand. */
+    /**
+     * The screen is up ([LookActivity] onCreate / onNewIntent). Records that it really showed; a look
+     * the screen opened itself (a relaunch after process death) is treated as opened by [source].
+     */
     fun ensureOpen(source: Source) {
         if (!_state.value.open) begin(source)
+        _state.value = _state.value.copy(screenShown = true)
     }
 
     private fun begin(source: Source): CompletableDeferred<Unit> {

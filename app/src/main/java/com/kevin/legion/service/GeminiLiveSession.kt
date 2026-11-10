@@ -33,6 +33,8 @@ import com.kevin.legion.data.local.MemoryAudit
 import com.kevin.legion.data.local.UNTRANSCRIBED_USER_TURN
 import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.data.local.record
+import com.kevin.legion.look.LookController
+import com.kevin.legion.look.LookRules
 import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.service.turn.AudioRoute
@@ -1016,6 +1018,8 @@ class GeminiLiveSession(
             )
             val ms = latency.toolResponse(id, System.currentTimeMillis())?.second ?: -1L
             auditToolResult(id, name, response, ms, async = false, sent = false)
+            // ADR 0084: a cancelled `look` result carried the trust rules; they must still arrive.
+            if (name == LookRules.TOOL_NAME) LookController.resultDropped()
             deliverCancelNotesIfQuiet()
             return true
         }
@@ -1140,32 +1144,30 @@ class GeminiLiveSession(
         mailToolCalledThisTurn = readThroughCarry
         if (readThroughCarry) audit.readThrough(READ_THROUGH_CARRY)
         readThroughCarry = false
-        // ADR 0084: the pictures stay in this socket's context, so every later turn stays marked.
-        if (lookSeen) markReadThrough(READ_THROUGH_LOOK)
     }
-
-    // ADR 0084: a camera frame went out on this socket (or the thread it resumes did). Never reset:
-    // the frames are in the model's context for the rest of the socket.
-    @Volatile private var lookSeen = false
 
     /**
      * Sends one camera frame ("look at this", ADR 0084) as `realtimeInput.video`, only into an open
      * conversation. True only when the socket took it. Text in a picture is third-party content, so a
-     * frame that went out marks this turn and every later one read-through ([markLookSeen]). The
-     * frame is not kept: it is encoded, sent and dropped.
+     * frame that went out marks the turn read-through ([markLookSeen]). The frame is not kept: it is
+     * encoded, sent and dropped.
      */
     fun sendVideoFrame(jpeg: ByteArray): Boolean {
         if (!inConversation) return false
         val b64 = Base64.encodeToString(jpeg, Base64.NO_WRAP)
-        val sent = webSocket?.send(com.kevin.legion.look.LookRules.frameMessage(b64).toString()) ?: false
+        val sent = webSocket?.send(LookRules.frameMessage(b64).toString()) ?: false
         if (sent) markLookSeen()
         return sent
     }
 
-    /** This socket's context holds camera frames: read-through now and for every later turn. */
+    /**
+     * A camera frame went out: this turn is read-through, and so is the next, because a frame sent
+     * while the reply is still being spoken belongs to the turn after it (turn coverage includes all
+     * video since the last turn). The round 3 carry, applied to frames.
+     */
     fun markLookSeen() {
-        lookSeen = true
         markReadThrough(READ_THROUGH_LOOK)
+        readThroughCarry = true
     }
 
     val isActive: Boolean get() = running.get() && !closed.get()

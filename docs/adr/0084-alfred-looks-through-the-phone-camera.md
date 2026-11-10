@@ -52,11 +52,14 @@ a prompt is the only lever (section 7: nothing inspects the spoken audio).
   this" only after a frame went out. When the look closes the model is told it can no longer see.
   Section 7's outcome-verb rule, applied to sight.
 - **What the camera sees is third-party content.** Text in a picture (a label, a sign, a screen) can
-  carry instructions. Every turn of a socket that sent a frame is read-through: the same flag mail,
-  web grounding and fleet web lookups set (`GeminiLiveSession.markReadThrough`, round 3). On dev
-  that flag refuses `memory` remember, a goal constraint and every `ask_engine` call (so engine
-  writes, and watches if they arrive through it), keeps the turn out of episodic memory and redacts
-  the reply in the conversation record. A resumed socket in the same thread keeps the mark.
+  carry instructions. A turn a frame went out in is read-through, and so is the turn after it (a
+  frame sent while the reply plays belongs to the next turn): the same flag and carry mail, web
+  grounding and fleet web lookups use (`GeminiLiveSession.markReadThrough`, round 3). On dev that
+  flag refuses `memory` remember, a goal constraint and every `ask_engine` call (so engine writes,
+  and watches if they arrive through it), keeps the turn out of episodic memory and redacts the
+  reply in the conversation record. While a look is open every turn is marked. Like mail, the
+  pictures stay in the model's context after that; a later turn is not marked, the same accepted
+  gap the mail guard has.
 - **No receipts.** Receipt scanning and OCR ingestion stay dead (Kevin's ruling); nothing here
   reads a picture into a record.
 
@@ -69,7 +72,12 @@ a prompt is the only lever (section 7: nothing inspects the spoken audio).
 - Audio-and-video sessions are documented at 2 minutes without context compression; the phone
   already compresses (32k trigger) and resumes. Whether compression lifts the cap with video is not
   documented and not yet tested.
-- A turn that looked cannot save a memory or send anything to the engine, by design. "Remember this
-  part number" after a look is refused in words; Kevin says it again without the camera.
+- While a look is open, and for one turn after, nothing can be saved as a memory or sent to the
+  engine (`ask_engine` refuses the whole turn), by design. The refusals now name the camera beside
+  mail and web pages. "Remember this part number" is said again after the look closes.
+- The trust rules live in one turn of the conversation, so on a long look the 32k sliding window
+  can compress them away while frames keep coming. Not handled in the spike.
+- The 8 s follow-up window still ends a conversation nobody speaks in, and the look screen then
+  closes.
 - One new dependency: CameraX (`camera-camera2`, `camera-lifecycle`, `camera-view`). One new
   permission: `CAMERA`, asked on the look screen the first time.

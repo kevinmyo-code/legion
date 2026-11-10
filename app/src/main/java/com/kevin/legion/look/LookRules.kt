@@ -52,8 +52,13 @@ object LookRules {
 
     /** The tool result when no frame went out in time: says plainly that nothing was seen. */
     const val NOT_YET =
-        "The camera screen is opening but no picture has reached you yet, so you have seen nothing. " +
+        "The camera screen is open but no picture has reached you yet, so you have seen nothing. " +
             "Ask the user to allow the camera and point it; say nothing about what is there until you see it."
+
+    /** The tool result when the screen never came up in time: nothing was seen, and why, in words. */
+    const val NOT_SHOWN =
+        "The camera screen did not come up on the phone, so you have seen nothing. Ask the user to open " +
+            "LEGION and use the Show button on the Fleet screen."
 
     /** Refusals, in words, shared by both doors. */
     const val REFUSED_MOVING =
@@ -133,13 +138,19 @@ object LookRules {
         return JSONObject().put("realtimeInput", body)
     }
 
-    /** The `look` tool's result. Success only when a frame went out ([SEEING]); otherwise in words. */
-    fun toolResult(framesSent: Boolean): JSONObject =
-        if (framesSent) {
-            JSONObject().put("success", true).put("message", SEEING).put("instruction", RULES)
-        } else {
-            JSONObject().put("success", false).put("message", NOT_YET).put("instruction", RULES)
+    /**
+     * The `look` tool's result. Success only when a frame went out ([SEEING]). Otherwise it says which
+     * of two things is true: the screen came up but nothing was sent yet ([NOT_YET]), or the screen
+     * never came up ([NOT_SHOWN]; Android can hold back a start from the background).
+     */
+    fun toolResult(framesSent: Boolean, screenShown: Boolean = true): JSONObject {
+        val message = when {
+            framesSent -> SEEING
+            screenShown -> NOT_YET
+            else -> NOT_SHOWN
         }
+        return JSONObject().put("success", framesSent).put("message", message).put("instruction", RULES)
+    }
 
     fun refusal(message: String): JSONObject = JSONObject().put("success", false).put("message", message)
 }

@@ -31,7 +31,7 @@ fun ShowToAssistantButton(modifier: Modifier = Modifier) {
     Column(modifier) {
         TextButton(onClick = { scope.launch { refusal = LookController.openByHand(context) } }) {
             Text(
-                "Show $name something (camera)",
+                "Show $name $LABEL_TAIL",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -46,3 +46,6 @@ fun ShowToAssistantButton(modifier: Modifier = Modifier) {
         }
     }
 }
+
+// A literal of its own: tools/screen_map.py finds this control by text, and a template hides it.
+private const val LABEL_TAIL = "something (camera)"

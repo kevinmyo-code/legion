@@ -166,6 +166,11 @@ class LookControllerTest {
 
     @Test
     fun `voice look with no frame in time says nothing was seen, then tells the model at the first`() = runBlocking {
+        LookController.launcher = { _, source ->
+            launches++
+            LookController.ensureOpen(source) // the screen came up
+            true
+        }
         val result = LookController.openForVoice(context)
         assertFalse(result.getBoolean("success"))
         assertEquals(LookRules.NOT_YET, result.getString("message"))
@@ -173,6 +178,26 @@ class LookControllerTest {
         assertTrue(LookController.offerFrame(jpeg))
         now += 1_000
         assertTrue(LookController.offerFrame(jpeg))
+        assertEquals(listOf(LookController.LIVE_KEY to LookRules.LIVE_LATE_NOTE), notes.offered)
+    }
+
+    @Test
+    fun `voice look whose screen never came up says so, not that it is open`() = runBlocking {
+        val result = LookController.openForVoice(context)
+        assertFalse(result.getBoolean("success"))
+        assertEquals(LookRules.NOT_SHOWN, result.getString("message"))
+    }
+
+    @Test
+    fun `a cancelled look result still gets the rules to the model, now or at the first frame`() {
+        LookController.ensureOpen(LookController.Source.VOICE)
+        LookController.resultDropped()
+        assertTrue(notes.offered.isEmpty())
+        assertTrue(LookController.offerFrame(jpeg))
+        assertEquals(listOf(LookController.LIVE_KEY to LookRules.LIVE_LATE_NOTE), notes.offered)
+
+        notes.offered.clear()
+        LookController.resultDropped()
         assertEquals(listOf(LookController.LIVE_KEY to LookRules.LIVE_LATE_NOTE), notes.offered)
     }
 

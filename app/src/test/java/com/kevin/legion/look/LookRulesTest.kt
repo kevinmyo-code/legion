@@ -65,6 +65,10 @@ class LookRulesTest {
         assertTrue(unseen.getString("message").contains("seen nothing"))
         // Both carry the trust rules, so a late first frame is still read under them.
         assertEquals(LookRules.RULES, unseen.getString("instruction"))
+        val noScreen = LookRules.toolResult(framesSent = false, screenShown = false)
+        assertFalse(noScreen.getBoolean("success"))
+        assertEquals(LookRules.NOT_SHOWN, noScreen.getString("message"))
+        assertTrue(LookRules.NOT_SHOWN.contains("seen nothing"))
     }
 
     @Test
