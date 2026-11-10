@@ -274,6 +274,57 @@ class TestTasks(WorkerCase):
         msg = [m for m in self.msgs() if m.startswith("[task 57]")][0]
         self.assertNotIn("page on his phone", msg)
 
+    def test_files_delivery_lists_and_uploads_every_named_file_at_finish(self):
+        scan = Path(self.tmp.name) / "form-scan.pdf"
+        scan.write_bytes(b"%PDF scan")
+        photo = Path(self.tmp.name) / "photo-1.jpg"
+        photo.write_bytes(b"jpeg bytes")
+        self.engine.queue(id=58, deliver="files", request=(
+            f"send me the form scan and the photo {fake(found=[str(scan), str(photo)], summary='Found both.')}"))
+        self.start()
+        self.wait(lambda: len(self.engine.uploads) >= 2, what="file uploads")
+        msg = [m for m in self.msgs() if m.startswith("[task 58]")][0]
+        self.assertIn("files on his phone", msg)
+        self.assertIn("Do not open or read a document's contents", msg)
+        self.assertIn("needs_confirmation", msg)
+        self.assertEqual(sorted(u[2] for u in self.engine.uploads), [b"%PDF scan", b"jpeg bytes"])
+        [finish] = self.engine.finished(58)
+        self.assertEqual(finish["status"], "done")
+
+    def test_files_delivery_over_twenty_files_asks_first_and_uploads_nothing(self):
+        found = []
+        for i in range(21):
+            f = Path(self.tmp.name) / f"photo-{i}.jpg"
+            f.write_bytes(b"x" * 10)
+            found.append(str(f))
+        self.engine.queue(id=59, deliver="files",
+                          request=f"all the photos {fake(found=found, summary='Found them.')}")
+        self.start()
+        self.wait(lambda: self.engine.finished(59), what="task 59")
+        time.sleep(0.6)
+        [finish] = self.engine.finished(59)
+        self.assertEqual(finish["status"], "needs_confirmation")
+        self.assertEqual(finish["question"], "I found 21 files, 1 KB in all. Send them all to your phone?")
+        self.assertEqual(len(finish["found"]), 21)  # still listed, for the follow-up
+        self.assertEqual(self.engine.uploads, [])
+
+    def test_files_caps_and_question_wording(self):
+        self.assertFalse(W.over_files_caps([{"size": 10}] * 20))
+        self.assertTrue(W.over_files_caps([{"size": 10}] * 21))
+        self.assertTrue(W.over_files_caps([{"size": 100 * 1024 * 1024 + 1}]))
+        self.assertEqual(W.files_question(1, 3 * 1024 * 1024),
+                         "I found 1 file, 3 MB in all. Send them all to your phone?")
+        self.assertIn("already said yes", W.files_instructions(True))
+        self.assertNotIn("needs_confirmation", W.files_instructions(True))
+
+    def test_files_delivery_on_the_work_laptop_says_it_cannot(self):
+        w = W.Worker(self.paths, {**self.cfg, "scope": "listed", "repos_root": "C:/repos"},
+                     engine=EngineClient(self.engine.url, TOKEN), power=NoPower(), base_env=self.env)
+        msg = w.task_message({"id": 70, "request": "send me a file", "deliver": "files"},
+                             self.paths.task_work(70))
+        self.assertIn("returns summaries only", msg)
+        self.assertNotIn("--found", msg)
+
     def test_cancel_stops_only_that_helper(self):
         self.engine.queue(id=60, request=f"long {fake(sleep=8)}")
         self.engine.queue(id=61, request=f"short {fake(sleep=1.0, summary='short done')}")

@@ -21,6 +21,11 @@ DELIVER_EMAIL_SELF = "email_self"  # ruling 17
 DELIVER_PHONE = "phone"  # ticket 09: the result as one HTML page, opened on the phone
 PAGE_CAP_BYTES = 5 * 1024 * 1024  # the engine refuses a bigger page
 UPLOAD_CAP_BYTES = 25 * 1024 * 1024  # uploads to the engine, per file
+# Files to phone (ADR 0080): the files Kevin named, sent to his phone and opened there. Naming them
+# is the yes, within these caps; past either the worker asks first (the engine checks again).
+DELIVER_FILES = "files"
+FILES_MAX_COUNT = 20
+FILES_MAX_TOTAL_BYTES = 100 * 1024 * 1024
 
 
 def home() -> Path:
