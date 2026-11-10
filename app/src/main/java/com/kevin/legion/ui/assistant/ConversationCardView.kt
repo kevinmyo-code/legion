@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import com.kevin.legion.R
 import com.kevin.legion.assistant.cards.BarPoint
 import com.kevin.legion.assistant.cards.CardFlag
 import com.kevin.legion.assistant.cards.ConversationCard
+import com.kevin.legion.ui.theme.LocalMatrixMode
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
@@ -62,18 +64,26 @@ private val BarLabelWidth = 96.dp
 internal fun ConversationCardView(card: ConversationCard, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     // Keyed on the card, so a new card always arrives collapsed.
     var expanded by rememberSaveable(card) { mutableStateOf(false) }
+    // Typeset (ADR 0081): a card is typeset matter, a rule above and below, no box and no radius.
+    // Matrix mode keeps the soft filled card it had.
+    val ruled = !LocalMatrixMode.current
+    val frame = if (ruled) {
+        Modifier
+    } else {
+        Modifier.clip(CardShape).background(SoftColors.card)
+    }
     Column(
         modifier
             .fillMaxWidth()
             .testTag(CONVERSATION_CARD_TAG)
-            .clip(CardShape)
-            .background(SoftColors.card)
+            .then(frame)
             .clickable(role = Role.Button, onClickLabel = if (expanded) "Show less" else "Show all") {
                 expanded = !expanded
             }
             .animateContentSize()
-            .padding(start = 14.dp, top = 4.dp, bottom = 10.dp),
+            .padding(start = if (ruled) 0.dp else 14.dp, top = 4.dp, bottom = 10.dp),
     ) {
+        if (ruled) HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
         CardHeader(card, onDismiss)
         Column(Modifier.padding(end = 14.dp)) {
             if (expanded) {
@@ -100,6 +110,7 @@ internal fun ConversationCardView(card: ConversationCard, onDismiss: () -> Unit,
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
+        if (ruled) HorizontalDivider(Modifier.padding(top = 10.dp), thickness = 1.dp, color = SoftColors.barRule)
     }
 }
 

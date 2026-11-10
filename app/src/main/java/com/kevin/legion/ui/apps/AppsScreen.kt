@@ -69,6 +69,26 @@ fun AppsScreen() {
         loaded = AppDrawerCache.refresh(context)
     }
 
+    // Typeset (ADR 0081): outside Matrix mode the drawer is an index by first letter, names in
+    // full, with "blocked" beside a feed app from the same block list (ADR 0066). Matrix keeps
+    // the folder grid in the else branch, unchanged. The pin sheet at the end serves both.
+    val typesetIndex = !com.kevin.legion.ui.theme.LocalMatrixMode.current && loaded?.apps?.isNotEmpty() == true
+    if (typesetIndex) {
+        val state = loaded!!
+        val graph = remember(context) { (context.applicationContext as com.kevin.legion.MidnightApplication).dumb }
+        SoftTheme {
+            com.kevin.legion.ui.typeset.TypesetAppsIndex(
+                folders = remember(state.apps, query) { letterFolders(filterDrawer(state.apps, query)) },
+                query = query,
+                onQueryChange = { query = it },
+                blocked = { app -> graph.blockPolicy.verdict(app.packageName).blocked },
+                onOpen = { app -> message = launchDrawerApp(context, app, state) },
+                onLongPress = { app -> pinMenuApp = app },
+                modifier = Modifier.fillMaxSize(),
+                message = message,
+            )
+        }
+    } else
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text("APPS", style = LegionType.stamp, color = MaterialTheme.colorScheme.onBackground)
         OutlinedTextField(
