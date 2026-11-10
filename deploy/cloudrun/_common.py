@@ -88,6 +88,9 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # LEGION_WORKFLOW_SCHEDULES=off (unset is on; a schedule exists only once Kevin installs one),
 # LEGION_WORKFLOW_SCHEDULES_OFF=<names>, LEGION_WORKFLOW_SCHEDULES_LISTED=on (unset off: no
 # unattended run on the work laptop). Not listed here, a line in `.env` never reached Cloud Run.
+# Ship as code (2026-11-10): LEGION_SKIP_MIGRATE=1 makes `server/entrypoint.sh` skip `migrate` on
+# boot. Safe only once migrations run as their own job step before the service deploy, which
+# `deploy/ship.py` does; set it in `flags.yaml`, never by hand on one revision.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -95,6 +98,7 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_GITHUB_REPOS",
     "LEGION_OPEN_LOOPS", "LEGION_OPEN_LOOPS_CAP", "LEGION_OPEN_LOOPS_EXPIRE_DAYS",
     "LEGION_WORKFLOW_SCHEDULES", "LEGION_WORKFLOW_SCHEDULES_OFF", "LEGION_WORKFLOW_SCHEDULES_LISTED",
+    "LEGION_SKIP_MIGRATE",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because

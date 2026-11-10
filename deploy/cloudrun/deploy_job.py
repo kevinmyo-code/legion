@@ -49,6 +49,37 @@ DEFAULT_JOB = "legion-worker"
 TASK_TIMEOUT = "600s"
 
 
+def job_deploy_command(
+    gcloud: str, job: str, image: str, region: str, secrets_value: str, env_file: str,
+    labels: dict[str, str] | None = None,
+) -> list[str]:
+    """The one `gcloud run jobs deploy` line. `deploy/ship.py` builds its job deploy from this.
+
+    Command and args are left at "python manage.py" with no task named: install_schedule.py's
+    Cloud Scheduler entries override `args` per execution via the Cloud Run Jobs API `overrides`
+    body, one per line of deploy/crontab, so this one Job serves every scheduled task (and
+    ship.py's one-off `migrate`). `--command python` replaces the image's entrypoint, so a job
+    execution never runs `server/entrypoint.sh` and never migrates unless asked to."""
+    command = [
+        gcloud, "run", "jobs", "deploy", job,
+        "--image", image,
+        "--region", region,
+        "--command", "python",
+        "--args", "manage.py",
+        "--memory", "512Mi",
+        "--cpu", "1",
+        "--task-timeout", TASK_TIMEOUT,
+        "--max-retries", "1",
+        "--quiet",
+        "--set-secrets", secrets_value,
+        "--env-vars-file", env_file,
+    ]
+    if labels:
+        # `gcloud run jobs deploy` has --labels (replace) and no --update-labels.
+        command += ["--labels", ",".join(f"{k}={v}" for k, v in labels.items())]
+    return command
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", default=None)
@@ -138,20 +169,11 @@ def main() -> int:
         # exits 0) - harmless, and a clearer failure than silently running
         # the wrong task.
         code = run(
-            [
-                gcloud, "run", "jobs", "deploy", args.job,
-                "--image", image,
-                "--region", region,
-                "--command", "python",
-                "--args", "manage.py",
-                "--memory", "512Mi",
-                "--cpu", "1",
-                "--task-timeout", TASK_TIMEOUT,
-                "--max-retries", "1",
-                "--quiet",
-                "--set-secrets", secrets_flag_value(secret_names_for(cloud_env)),
-                "--env-vars-file", str(env_file) if env_file else "<temp .yaml, values printed above>",
-            ],
+            job_deploy_command(
+                gcloud, args.job, image, region,
+                secrets_flag_value(secret_names_for(cloud_env)),
+                str(env_file) if env_file else "<temp .yaml, values printed above>",
+            ),
             args.dry_run,
         )
     finally:
