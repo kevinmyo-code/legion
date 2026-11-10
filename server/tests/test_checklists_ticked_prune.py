@@ -57,7 +57,9 @@ def test_groceries_lines_ticked_over_a_day_ago_leave_and_keep_their_ticks(househ
 
 
 def test_routines_and_hand_made_lists_are_left_alone(household_a):
-    routine = Checklist.objects.create(household=household_a, name="Evenings", schedule_kind="DAILY")
+    routine = Checklist.objects.create(
+        household=household_a, name="Evenings", schedule_kind="DAILY"
+    )
     plain = Checklist.objects.create(household=household_a, name="Garage sale")
     _line(routine, "stretch", ticked_hours_ago=50)
     _line(plain, "price stickers", ticked_hours_ago=50)

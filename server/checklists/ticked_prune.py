@@ -43,4 +43,6 @@ def prune_ticked(now: datetime.datetime | None = None) -> int:
     ids = list(stale.values_list("pk", flat=True))
     if not ids:
         return 0
-    return ChecklistItem.objects.filter(pk__in=ids, deleted_at__isnull=True).update(deleted_at=Now())
+    return ChecklistItem.objects.filter(pk__in=ids, deleted_at__isnull=True).update(
+        deleted_at=Now()
+    )
