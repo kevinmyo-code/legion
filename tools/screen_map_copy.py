@@ -243,6 +243,11 @@ ACTIVITIES = {
                                                       "session screen.",
                                                  parent="claude-session", reach=[], voice=["claude_session"],
                                                  needs="a delivered page; no fixed selector reaches one"),
+    ".look.LookActivity": dict(id="look", name="Look", what="The phone camera shown to the assistant "
+                               "(ADR 0084): about one frame a second into the open voice conversation, "
+                               "parked only. Frames are never saved.",
+                               parent="fleet", reach=[("text", "something (camera)")], voice=["look"],
+                               needs="the camera permission and a voice conversation; it opens one"),
 }
 
 # Manifest activities that are not screens an agent navigates to, and why.

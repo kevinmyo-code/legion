@@ -238,8 +238,8 @@ class AskEngine(
         private const val RESULT_CAP = 8_000
 
         const val MAIL_REFUSAL = "I will not take anything from this conversation to the engine while it " +
-            "involves your mail - mail is read and dropped, never stored. Nothing was read or " +
-            "written. Ask again on its own, in your own words."
+            "involves your mail, a web page or the camera - those are read and dropped, never stored. " +
+            "Nothing was read or written. Ask again on its own, in your own words."
 
         /** Synced tables with no screen and no voice tool of their own (ADR 0035). Looked up
          * 2026-10-02: `chassis_quirks` and `drive_reassignments` appear in no `ui/` file. */

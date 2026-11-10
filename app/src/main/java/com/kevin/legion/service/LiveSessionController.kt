@@ -20,6 +20,8 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ConversationAudit
 import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.auditContent
+import com.kevin.legion.look.LookController
+import com.kevin.legion.look.LookRules
 import com.kevin.legion.ui.LegionRoute
 import com.kevin.legion.ui.MainActivity
 import com.kevin.legion.vehicle.ActiveVehicle
@@ -87,6 +89,7 @@ class LiveSessionController(context: Context) {
     private var session: GeminiLiveSession? = null
         set(value) {
             field = value
+            lookSession = value
             // A session that is gone cannot still be silenced, and there are ten
             // assignment sites that drop one. Clearing HERE rather than at each of
             // them is what stops a stale `true` outliving the socket that raised it
@@ -652,9 +655,54 @@ class LiveSessionController(context: Context) {
         }
     }.also { LiveNotes.register(it) }
 
+    // ADR 0084, "look at this": [session] as seen from the camera's analysis thread, so frames always
+    // follow the CURRENT session. Written only by [session]'s setter.
+    @Volatile private var lookSession: GeminiLiveSession? = null
+
+    /** [LookController]'s sink: frames into the current conversation, and the button's way in. */
+    private val lookSink: LookController.Sink = object : LookController.Sink {
+        override fun inConversation(): Boolean = lookSession?.inConversation == true
+
+        override fun sendFrame(jpeg: ByteArray): Boolean = lookSession?.sendVideoFrame(jpeg) == true
+
+        override fun beginByHand(): String? = onLookByHand()
+    }.also { LookController.register(it) }
+
+    /**
+     * The look button's conversation (ADR 0084, ADR 0035): the same guards and the same door as
+     * [onBrief], with [LookRules.HAND_OPENER] as the first turn, so the model gets the trust rules
+     * the voice `look` result carries. Joins an open conversation instead of starting one. Returns
+     * null when the line went out or a conversation is starting, else the refusal in words.
+     */
+    @Suppress("ReturnCount") // one worded exit per guard, as in onBrief
+    private fun onLookByHand(): String? {
+        val s = session
+        if (s != null && s.inConversation) {
+            return if (s.sendText(LookRules.HAND_OPENER)) null else refusalNotice(VoiceRefusal.SOCKET_GONE)
+        }
+        dismissAfterTurn = false
+        oneShotGate.start(false)
+        retriedColdConnectThisTap = false
+        val refusal = when {
+            TelephonyController.isInCall -> VoiceRefusal.ON_A_CALL
+            !GeminiKeyProvider.hasKey() -> VoiceRefusal.NO_KEY
+            !hasMicPermission() -> VoiceRefusal.NO_MIC_PERMISSION
+            !isOnline() -> VoiceRefusal.OFFLINE
+            else -> null
+        }
+        if (refusal != null) {
+            refuse(refusal)
+            return refusalNotice(refusal)
+        }
+        startConversation(opener = LookRules.HAND_OPENER)
+        return null
+    }
+
     /** Tears down the active session and the controller's scope. */
     fun destroy() {
         LiveNotes.unregister(noteSink)
+        LookController.unregister(lookSink)
+        LookController.close()
         destroyed = true
         session?.destroy()
         session = null
@@ -1381,6 +1429,9 @@ class LiveSessionController(context: Context) {
                 openPantryImport()
                 JSONObject().put("success", true)
             }
+            // ADR 0084: the same controller as the Fleet screen's Show button (ADR 0035). Success
+            // only once a frame actually went out; typed chat never reaches here (VOICE_SESSION_TOOLS).
+            LookRules.TOOL_NAME -> LookController.openForVoice(appContext)
             // Voice-called modals (ADR 0040) - VoiceModalController.show() updates
             // the StateFlow VoiceModalHost is already collecting immediately, and
             // openVoiceModal's startActivity brings the app forward if it was

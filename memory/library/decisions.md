@@ -7502,6 +7502,20 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Screen (ruling A):** the checklist shows the locked plan's today; a pending draft or proposal
   is one line with Accept and Dismiss, Accept on a draft being the lock.
 
+## 2026-11-10 - Alfred looks through the phone camera (Kevin)
+
+- **Asked:** the roadmap's "car camera diagnosis": "look at this", the phone camera feeding the
+  existing Gemini Live voice session so Alfred can describe a dash light, an engine bay, a label.
+- **Ruled (Kevin):** yes, as a spike. Native-audio Gemini Live only (the voice model is not
+  switched). Trust rules from the spec bind: an estimate worded as one, stored OBD data outranks
+  pixels, never an unsafe repair, phone only and parked, frames never stored or remembered,
+  nothing claims sight before frames went out, and camera text is read-through. Receipt scanning
+  stays dead. ADR 0084, branch `feat/alfred-look`.
+- **Decided in the build, open to Kevin:** the button lives on the Fleet screen; motion is GPS
+  speed (held while the look is open) or fresh OBD speed, and an unknown motion is allowed;
+  `mediaResolution` LOW on each frame, not in setup; a look closes when its screen leaves the
+  foreground; CameraX 1.4.2 added.
+
 ## 2026-11-09 - Alfred's clock inside LEGION (Kevin)
 
 - **Asked:** a clock that is Alfred's: alarms, timers, stopwatch and bedtime, inside LEGION.

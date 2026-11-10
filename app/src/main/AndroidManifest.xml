@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- "Look at this" (ADR 0084): the camera screen sends ~1 fps frames into the voice session.
+         Asked on that screen the first time; not required, so a phone with no camera installs. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <!-- Bluetooth (OBD dongle) -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
@@ -316,6 +321,15 @@
             android:name=".ui.vault.VaultActivity"
             android:exported="false"
             android:label="ID vault"
+            android:theme="@style/Theme.Legion" />
+
+        <!-- "Look at this" (ADR 0084): the camera screen. Not exported: the `look` voice tool and
+             the Fleet screen's Show button open it in-process. -->
+        <activity
+            android:name=".look.LookActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="false"
+            android:label="Look"
             android:theme="@style/Theme.Legion" />
 
         <!-- Books reader (ADR 0061). A FragmentActivity because Readium's EPUB navigator is a
