@@ -7907,3 +7907,13 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   conversation" (ADR 0081, 2026-11-10) means the masthead's Home link on the Typeset front page. The
   Android Home key or gesture only returns to the front page and keeps the answers reachable until
   they are cleared.
+
+## 2026-11-10 - Alfred drafts email; Kevin checks it in Gmail or says send (Kevin)
+
+- **Kevin's words:** *"i want alfred to draft it, offer for me to check in gmail app on phone, while
+  also sending it if i say send without checking."*
+- Alfred saves a real Gmail draft, reads back recipient, subject and gist, and offers "check it in
+  Gmail" or "say send". Send needs a draft made in this conversation and Kevin's own word send, and
+  that is enforced in code (`gmail/EmailSendGate.kt`), not only in the prompt. "Sent" only after
+  Gmail confirms. A name with no single address is asked about, never guessed. Phone only: the
+  Alienware Claude worker gets no mail-writing capability. ADR 0086.
