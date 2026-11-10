@@ -197,6 +197,10 @@ LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
 # would do. `off` (the default): no words are offered and no proposal is written. `on`: offered
 # and written (still nothing without the review itself on); each is a question until his yes.
 LEGION_OPEN_LOOPS = os.environ.get("LEGION_OPEN_LOOPS", "").strip().lower() or "off"
+# Proposals a night (default 5) and days an unanswered one waits (default 14); read in
+# `open_loops.service`, which falls back to the defaults on a bad value.
+LEGION_OPEN_LOOPS_CAP = os.environ.get("LEGION_OPEN_LOOPS_CAP", "").strip() or 5
+LEGION_OPEN_LOOPS_EXPIRE_DAYS = os.environ.get("LEGION_OPEN_LOOPS_EXPIRE_DAYS", "").strip() or 14
 
 # memory-review (Kevin, 2026-11-09): the daily memory review on the Claude worker. `off` (the
 # default): no review task is minted and the review endpoints refuse in words. `shadow`: tasks are
