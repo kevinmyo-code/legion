@@ -74,18 +74,28 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # memory-review (2026-11-09): LEGION_MEMORY_REVIEW=off|shadow|on; unset is off, so the daily review
 # is never minted and its endpoints refuse until Kevin sets it. LEGION_MEMORY_REVIEW_CAP: the most
 # changes one night applies (unset is 25).
+# Round 5 (2026-11-10, conditions): LEGION_FIRMS=on and LEGION_DRIVETEXAS=on mount the
+# LEGION_FIRMS_MAP_KEY and LEGION_DRIVETEXAS_KEY secrets (OPTIONAL_SECRET_ENV_VARS); unset, the
+# `check_conditions` tool says that source is not set up.
 # ADR 0080: LEGION_CLAUDE_FILES_BUCKET names the private bucket a Claude task's delivered files wait
 # in (`deploy/claude_files/setup_bucket.sh`); without it they wait in Postgres instead.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
+    "LEGION_FIRMS", "LEGION_DRIVETEXAS",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
 # `--set-secrets` fails the whole deploy on a secret that does not exist, and push is optional.
 # VAPID_PRIVATE_KEY rides with VAPID_PUBLIC_KEY: set the public key in `.env` only after
 # `gcloud secrets create VAPID_PRIVATE_KEY` (README.md, "Push notifications").
-OPTIONAL_SECRET_ENV_VARS = {"VAPID_PRIVATE_KEY": "VAPID_PUBLIC_KEY"}
+# LEGION_FIRMS_MAP_KEY and LEGION_DRIVETEXAS_KEY ride with LEGION_FIRMS and LEGION_DRIVETEXAS
+# (README.md, "Conditions keys").
+OPTIONAL_SECRET_ENV_VARS = {
+    "VAPID_PRIVATE_KEY": "VAPID_PUBLIC_KEY",
+    "LEGION_FIRMS_MAP_KEY": "LEGION_FIRMS",
+    "LEGION_DRIVETEXAS_KEY": "LEGION_DRIVETEXAS",
+}
 
 
 # Plain vars with a default: passed always, the `.env` value winning when set. PLAID_ENV
