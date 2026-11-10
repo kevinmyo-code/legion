@@ -66,5 +66,6 @@ class FakeOpenLoopsBackend(
         val DENTIST = Proposal("p1", "Call the dentist", null)
         val REGISTRATION = Proposal("p2", "Renew the registration by November 20", LocalDate.of(2026, 11, 20))
         val DENTIST_BILLING = Proposal("p3", "Call the dentist billing desk", null)
+        val REGISTRATION_DEC = Proposal("p4", "Renew the registration by December 1", LocalDate.of(2026, 12, 1))
     }
 }

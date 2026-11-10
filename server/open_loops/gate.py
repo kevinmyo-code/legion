@@ -4,7 +4,7 @@ code, none depends on the prompt.
 
 A proposal from the helper is `{"text", "evidence": [W labels], "reason"}`. It passes when:
 
-1. `text` is short, plain and **made only of words he said** in the cited records (his own words
+1. `text` is short, plain and **made only of words he said in one line** of the cited records (his own words
    from clean turns, recomputed here from the stored records, never trusted from the laptop). This
    is the anchor (compulsion test clause a): the proposal is his words, not the model's reading of
    them. It is also what makes the dedupe key hold across nights (rule 4).
@@ -119,9 +119,14 @@ def check_text(text: str | None, heard: str) -> str:
         return "text is about money; money is never proposed."
     if not heard:
         return "it cites none of his own words from this context."
-    missing = set(tokens(text)) - set(tokens(heard))
-    if missing:
-        return f"text adds {len(missing)} word(s) he did not say in the cited conversation."
+    wanted = set(tokens(text))
+    # Inside ONE of his lines, not a bag of every word in the record: "call the landlord" does not
+    # pass on "call the dentist" plus "email the landlord".
+    if not any(wanted <= set(tokens(line)) for line in heard.splitlines()):
+        missing = wanted - set(tokens(heard))
+        if missing:
+            return f"text adds {len(missing)} word(s) he did not say in the cited conversation."
+        return "text joins words from different things he said; it must come from one line."
     return ""
 
 

@@ -12,10 +12,13 @@ stricter than memory consolidation's filter (`member_memory.consolidate.transcri
   Consolidation drops only turns that called a listed read-through tool; it does not read the
   `read_through` events at all, so a carry turn or a look reaches it. That gap is consolidation's
   and is named in the open-loops report; it is not widened here.
-- **The head unit's records are left out whole.** Its Live socket declares Google Search
-  grounding and its audit has no `read_through` event (`headunit/.../diag/ConvoAudit.kt`), so a
-  turn that heard web text cannot be told from one that did not. It is recognised by its version
-  name (`1.0+<sha>`, `headunit/app/build.gradle.kts`): a convention, said here as one.
+- **Only sources that can mark a turn, by allowlist.** A web record (`device_label` "web": the
+  engine writes every tool line itself, `devicelogs/web_conversation.py`) or a phone record that
+  carries a `run_id` (sent by phone builds from 2026-11-09 on, the same day the phone began logging
+  `read_through` events). Anything else is left out whole: the head unit (its Live socket declares
+  Google Search grounding and its audit has no `read_through` event,
+  `headunit/.../diag/ConvoAudit.kt`; also refused by its `1.0+<sha>` version name), an older phone,
+  or a record that names nothing. A blank or unknown source fails closed.
 
 The turn is decided when it closes (`turn_complete`, `session_end`, or the end of the record),
 because a `read_through` mark can be logged after his line in the same turn.
@@ -33,6 +36,17 @@ HEAD_UNIT_VERSION_PREFIX = "1.0+"
 
 def is_head_unit(log) -> bool:
     return str(getattr(log, "app_version_name", "") or "").startswith(HEAD_UNIT_VERSION_PREFIX)
+
+
+def can_mark_turns(log) -> bool:
+    """True only for a source whose records mark read-through turns (see the module doc)."""
+    if is_head_unit(log):
+        return False
+    from devicelogs.models import DEVICE_LABEL_WEB
+
+    if getattr(log, "device_label", "") == DEVICE_LABEL_WEB:
+        return True
+    return bool(str(getattr(log, "run_id", "") or "").strip())
 
 
 def own_lines(raw: str) -> list[str]:
@@ -77,7 +91,7 @@ def own_text(log) -> str:
     """One record's own words as one text, or "" (unreadable, the head unit, or nothing clean)."""
     from devicelogs.render import batch_text
 
-    if is_head_unit(log):
+    if not can_mark_turns(log):
         return ""
     try:
         return "\n".join(own_lines(batch_text(log)))

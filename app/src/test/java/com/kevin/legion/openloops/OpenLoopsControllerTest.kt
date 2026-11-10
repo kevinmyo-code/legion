@@ -96,17 +96,21 @@ class OpenLoopsControllerTest {
     fun `a spoken task matches only a proposal whose words it says, read from the engine now`() = runBlocking {
         engine.proposals += listOf(DENTIST, REGISTRATION)
         assertEquals(OpenLoopsController.Match.One(DENTIST), controller.match("call the dentist"))
-        assertEquals(OpenLoopsController.Match.One(DENTIST), controller.match("Call dentist today"))
+        assertEquals(OpenLoopsController.Match.One(DENTIST), controller.match("Call dentist"))
+        // The date may ride in the date argument instead of the words.
+        assertEquals(OpenLoopsController.Match.One(REGISTRATION), controller.match("renew the registration"))
+        // Equality, not containment: more words is a different task.
+        assertEquals(OpenLoopsController.Match.None, controller.match("call the dentist office"))
         assertEquals(OpenLoopsController.Match.None, controller.match("dentist"))
         assertEquals(OpenLoopsController.Match.None, controller.match("buy milk"))
-        assertEquals(4, engine.calls.count { it == "list" })
+        assertEquals(6, engine.calls.count { it == "list" })
     }
 
     @Test
     fun `two proposals a phrase names are ambiguous`() = runBlocking {
-        engine.proposals += listOf(DENTIST, DENTIST_BILLING)
-        val m = controller.match("call the dentist billing desk")
-        assertTrue(m is OpenLoopsController.Match.Many)
+        engine.proposals += listOf(DENTIST, DENTIST_BILLING, REGISTRATION, FakeOpenLoopsBackend.REGISTRATION_DEC)
+        assertEquals(OpenLoopsController.Match.One(DENTIST_BILLING), controller.match("call the dentist billing desk"))
+        assertTrue(controller.match("renew the registration") is OpenLoopsController.Match.Many)
     }
 
     @Test

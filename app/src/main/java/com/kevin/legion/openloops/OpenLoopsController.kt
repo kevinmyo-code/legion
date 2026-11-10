@@ -114,9 +114,11 @@ class OpenLoopsController(
         val engine = backend() ?: return Match.None
         val listing = (engine.list() as? MemoryOutcome.Ok)?.value ?: return Match.None
         remember(listing)
-        val said = OpenLoopsWords.content(spoken)
+        val said = OpenLoopsWords.task(spoken)
         if (said.isEmpty()) return Match.None
-        val hits = listing.proposals.filter { said.containsAll(OpenLoopsWords.content(it.title)) }
+        // Equality, not containment: "remove call the dentist office" (a real list line) or "add
+        // call the dentist about the crown" are not answers to "Call the dentist".
+        val hits = listing.proposals.filter { OpenLoopsWords.task(it.title) == said }
         return when (hits.size) {
             0 -> Match.None
             1 -> Match.One(hits.single())
@@ -177,4 +179,17 @@ object OpenLoopsWords {
 
     fun content(text: String): Set<String> =
         Regex("[a-z0-9]+").findAll(text.lowercase()).map { it.value }.filterNot { it in STOP }.toSet()
+
+    private val DATE_WORDS = setOf(
+        "january", "jan", "february", "feb", "march", "mar", "april", "apr", "may", "june", "jun",
+        "july", "jul", "august", "aug", "september", "sep", "sept", "october", "oct", "november",
+        "nov", "december", "dec", "st", "nd", "rd", "th",
+    )
+
+    /** The task's words without its date, so "renew the registration" (date passed separately)
+     * names "Renew the registration by November 20". */
+    fun task(text: String): Set<String> =
+        content(text).filterNot { it in DATE_WORDS || ORDINAL.matches(it) }.toSet()
+
+    private val ORDINAL = Regex("[0-9]+(st|nd|rd|th)?")
 }

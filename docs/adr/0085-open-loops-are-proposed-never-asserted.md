@@ -29,7 +29,7 @@ it acceptable:
 2. **Nothing is tracked without his yes**, given by him on his phone (a tap, or his voice in a clean
    turn). A Claude worker's token may write proposals and may never answer one.
 3. **The engine, not the model, decides what may be proposed.** Every proposal passes code checks:
-   made only of words he said in the cited records; no money and no identity or bank number; a date
+   made only of words he said in one line of the cited records; no money and no identity or bank number; a date
    only when his words print one; never one he already answered (a per-member key on its content
    words); never one already on his list; at most 5 a night.
 
@@ -48,7 +48,9 @@ the proposals into the brief rather than raising each was the orchestrator's pic
 - **Source: only what he himself said or typed to Alfred.** The review's context carries his
   `user final` lines from turns that ran no tool, carry no `read_through` mark (mail, web grounding,
   `fleet_web`, a camera look, a spoken brief or watch line, and the turn after one) and no redaction;
-  never an assistant line; never a head unit record (its search grounding is unmarked). Each record
+  never an assistant line; only from sources that mark such turns, by allowlist (a web record, or a
+  phone record carrying a `run_id`, sent since the phone began logging `read_through`): never a head
+  unit record (its search grounding is unmarked), an older phone or an unknown source. Each record
   is offered once (`open_loop_runs`), so a later night cannot reword an answered one back in from
   the same conversation.
 - **Evidence is a paraphrase plus record ids** (memory-review R4): the helper's reason is kept only
@@ -66,7 +68,8 @@ the proposals into the brief rather than raising each was the orchestrator's pic
 - **Voice, with no new declaration:** the brief line tells the model that yes is `manage_item` add
   with the task's words and no is `manage_item` remove; a `manage_item` add or remove naming a
   pending proposal (read from the engine at call time) answers it, and anything else is
-  `manage_item` as before. Refused in a read-through turn, so the yes right after a spoken brief
+  `manage_item` as before. A match is the task's words exactly (its date aside); an add with a time,
+  an appointment or a repeat stays an ordinary add. Refused in a read-through turn, so the yes right after a spoken brief
   (whose news is web text) is refused once and must be said again or tapped.
 - **Silence:** "stop proposing tasks" (through `why_did_you_say_that`'s `stop`) flips one switch on
   the engine, which stops extraction as well as the line; the same switch is a row under Digest on
@@ -82,7 +85,8 @@ the proposals into the brief rather than raising each was the orchestrator's pic
   what a proposal may contain, not that the helper found every commitment or judged each one well.
 - **The key holds only for his words.** A commitment he says again in different words ("ring the
   dentist") after declining "call the dentist" is a new key and may be proposed again.
-- **The head unit is recognised by its version name** (`1.0+<sha>`), a convention.
+- **The source allowlist is a convention**: "web" is the engine's own label, a phone is recognised
+  by the `run_id` it sends, and the head unit is also refused by its `1.0+<sha>` version name.
 - **Found and not fixed here:** memory consolidation's filter (`member_memory.consolidate.transcript`)
   and the review's own `conversations` ignore `read_through` events, so a carry turn, a look or a
   grounded turn reaches them. Ticketed (`.scratch/open-loops/issues/07-*.md`).

@@ -31,7 +31,7 @@ from open_loops.models import (
     OpenLoopRun,
 )
 from tests.conftest import _client_for, _member
-from tests.test_member_memory_consolidate import _log
+from tests.test_member_memory_consolidate import _log as _plain_log
 
 pytestmark = pytest.mark.django_db
 
@@ -40,6 +40,12 @@ CONTEXT = f"{REVIEW}context"
 CHANGES = f"{REVIEW}changes"
 URL = "/api/open-loops/"
 SENTINEL = "Quokkaville"
+
+
+def _log(household, user, text, **fields):
+    """A phone conversation record from a build that marks read-through turns (it sends a run id)."""
+    fields.setdefault("run_id", "run-made-up-1")
+    return _plain_log(household, user, text, **fields)
 
 
 @pytest.fixture
@@ -160,12 +166,37 @@ def test_a_mark_logged_after_his_line_still_drops_the_turn():
     assert words.own_lines(raw) == []
 
 
-def test_the_head_units_records_are_left_out(household_a, household_user):
-    phone = _log(household_a, household_user, _says("I need to call the dentist."))
-    unit = _log(household_a, household_user, _says("I need to call the dentist."),
-                app_version_name="1.0+abc1234")
+def test_only_sources_that_mark_turns_are_read(household_a, household_user):
+    said = _says("I need to call the dentist.")
+    phone = _log(household_a, household_user, said)
+    unit = _log(household_a, household_user, said, app_version_name="1.0+abc1234")
+    unit_no_version = _plain_log(household_a, household_user, said, app_version_name="1.0+nogit")
+    old_phone = _plain_log(household_a, household_user, said)  # no run id: before read_through marks
     assert words.own_text(phone) == "I need to call the dentist."
     assert words.own_text(unit) == ""
+    assert words.own_text(unit_no_version) == ""
+    assert words.own_text(old_phone) == ""
+
+
+def test_a_web_record_written_by_its_own_writer_drops_the_tool_turn(household_a, household_user):
+    from devicelogs import web_conversation as web
+
+    t0 = timezone.now()
+    at = [t0 + datetime.timedelta(seconds=s) for s in range(8)]
+    stamped = [
+        (at[0], web.event_line({"kind": "user", "text": "Search the web for a plumber."}, at[0])),
+        *web.tool_lines(call_id="c1", name="web_search", args={"q": "plumber"}, started=at[1],
+                        ended=at[2], success=True, outcome="ok", text=f"{SENTINEL} Plumbing"),
+        (at[3], web.event_line({"kind": "assistant", "text": f"{SENTINEL} Plumbing is near."}, at[3])),
+        (at[4], web.event_line({"kind": "turn_complete"}, at[4])),
+        (at[5], web.event_line({"kind": "user", "text": "I should book the plumber.", "typed": True}, at[5])),
+        (at[6], web.event_line({"kind": "turn_complete"}, at[6])),
+    ]
+    raw = "\n".join(line for _at, line in sorted(stamped, key=lambda p: p[0])) + "\n"
+    log = _plain_log(household_a, household_user, raw)
+    type(log).objects.filter(pk=log.pk).update(device_label="web")
+    log.refresh_from_db()
+    assert words.own_text(log) == "I should book the plumber."
 
 
 # =============================================================================
@@ -275,6 +306,17 @@ def test_a_proposal_must_be_his_own_words(loops_on, auth_client, household_a, ho
     gates = [v["gate"] for v in answer["open_loops"]["verdicts"]]
     assert answer["open_loops"]["refused"] == 3
     assert "did not say" in gates[0] and "none of his own words" in gates[1]
+
+
+def test_a_proposal_must_come_from_one_line_not_a_bag_of_words(loops_on, auth_client, household_a,
+                                                               household_user):
+    _log(household_a, household_user, _says("I need to call the dentist.", "I should email the landlord."))
+    context = _context(auth_client)
+    answer = _submit(auth_client, context, [
+        {"text": "call the landlord", "evidence": [_label(context, "dentist")]},
+    ])
+    assert "one line" in answer["open_loops"]["verdicts"][0]["gate"]
+    assert not OpenLoop.objects.exists()
     assert not OpenLoop.objects.exists()
 
 

@@ -46,6 +46,10 @@ object OpenLoopsToolbox {
         if (action != "add" && action != "remove") return null
         val item = args.optString("item").trim()
         if (item.isEmpty()) return null
+        // An add that asks for more than the proposal (a time, an appointment, a repeat) is an
+        // ordinary manage_item add; the engine then closes the proposal as already tracked.
+        if (action == "add" && SHAPED_ADD.any { args.optString(it).isNotBlank() }) return null
+        if (action == "add" && args.optString("kind").trim().equals("appointment", ignoreCase = true)) return null
         return answer(controllerFactory(context), action, item, args.optString("date").trim(),
             touchedReadThroughToolThisTurn)
     }
@@ -79,6 +83,11 @@ object OpenLoopsToolbox {
         }
         return controller.track(proposal.id, date).let { result(it.ok, it.words) }
     }
+
+    private val SHAPED_ADD = listOf(
+        "time", "repeat_kind", "repeat_every", "repeat_days", "repeat_month", "repeat_day",
+        "repeat_end_kind", "repeat_end_date", "repeat_end_count",
+    )
 
     private fun result(success: Boolean, message: String): JSONObject =
         JSONObject().put("success", success).put("message", message)

@@ -3,7 +3,6 @@ package com.kevin.legion.service
 import androidx.test.core.app.ApplicationProvider
 import com.kevin.legion.openloops.FakeOpenLoopsBackend
 import com.kevin.legion.openloops.FakeOpenLoopsBackend.Companion.DENTIST
-import com.kevin.legion.openloops.FakeOpenLoopsBackend.Companion.DENTIST_BILLING
 import com.kevin.legion.openloops.FakeOpenLoopsBackend.Companion.REGISTRATION
 import com.kevin.legion.openloops.OpenLoopsController
 import kotlinx.coroutines.runBlocking
@@ -92,9 +91,22 @@ class OpenLoopsToolboxTest {
     }
 
     @Test
+    fun `a real list line or a fuller add is never taken for a proposal`() {
+        // "remove call the dentist office": a different task; manage_item handles the list line.
+        assertNull(answer("""{"action":"remove","item":"call the dentist office"}""", readThrough = false))
+        assertNull(answer("""{"action":"add","item":"call the dentist about the crown"}""", readThrough = false))
+        // An add with a time, an appointment or a repeat is manage_item's, words and all.
+        assertNull(answer("""{"action":"add","item":"call the dentist","date":"2026-11-13","time":"15:00"}""", false))
+        val appointment = """{"action":"add","item":"call the dentist","date":"2026-11-13","kind":"appointment"}"""
+        assertNull(answer(appointment, false))
+        assertNull(answer("""{"action":"add","item":"call the dentist","repeat_kind":"weekly"}""", false))
+        assertTrue(engine.tracked.isEmpty() && engine.dismissed.isEmpty())
+    }
+
+    @Test
     fun `two proposals named at once ask which and change nothing`() {
-        engine.proposals += DENTIST_BILLING
-        val r = answer("""{"action":"add","item":"call the dentist billing desk"}""", readThrough = false)!!
+        engine.proposals += FakeOpenLoopsBackend.REGISTRATION_DEC
+        val r = answer("""{"action":"add","item":"renew the registration"}""", readThrough = false)!!
         assertFalse(r.getBoolean("success"))
         assertTrue(r.getString("message").startsWith("Nothing was changed. Which one?"))
         assertTrue(engine.tracked.isEmpty())

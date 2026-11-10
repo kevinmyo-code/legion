@@ -26,16 +26,16 @@ per-night cap.
 ## Contract
 
 **Source.** Only his own words to Alfred: `user final` lines (spoken or typed) from turns that ran no
-tool, carry no `read_through` event and no redaction, from phone and web conversation records; never
-an assistant line, never mail or other people's words, never a head unit record
-(`server/open_loops/words.py`). Each record is offered for extraction once (`open_loop_runs`).
+tool, carry no `read_through` event and no redaction; only web records and phone records that carry
+a `run_id` (sources that mark such turns), never a head unit, older phone or unknown record; never an
+assistant line, never mail or other people's words (`server/open_loops/words.py`). Each record is offered for extraction once (`open_loop_runs`).
 
 **Extraction.** Inside the nightly memory review on the Claude worker (Kevin's Alienware). The context
 gains `open_loops: {on, cap, own_words: [{label W1.., text}], already_proposed}`; the helper may write
 `loops.json` (`[{text, evidence: [W labels], reason}]`); `review_memories.py submit` sends it with the
 change list; `POST review/changes` gates it in the same transaction (`server/open_loops/gate.py`).
 
-**The gate (code, not prompt).** Words he said in the cited records only; no money, no identity or
+**The gate (code, not prompt).** Words he said in one line of the cited records only; no money, no identity or
 bank number; a date only when his words print one calendar date not yet past; a per-member key on
 content words, so an answered one never returns; not already an open reminder or unticked to-do; at
 most `LEGION_OPEN_LOOPS_CAP` (5) a night across submits, the rest read again tomorrow; a reason that
