@@ -13,6 +13,8 @@ data class ClaudeMachine(
     val running: List<Int>,
     /** The helper's live step for each running task, keyed by task id (status extras). */
     val progress: Map<Int, String>,
+    /** The workflows this machine published (worker-workflows ticket 03), names and one-liners. */
+    val workflows: List<ClaudeWorkflowName> = emptyList(),
 ) {
     val isOnline: Boolean get() = state != STATE_OFFLINE
     val summariesOnly: Boolean get() = scope == SCOPE_LISTED
@@ -98,7 +100,16 @@ data class ClaudeTask(
     val pages: List<ClaudePage> = emptyList(),
     /** The last steps, kept after the task finishes (the engine serves them newest first). */
     val steps: List<ClaudeStep> = emptyList(),
+    /** `ask`, `memory_review` or `workflow` (worker-workflows ticket 03). */
+    val kind: String = KIND_ASK,
+    /** The workflow's name (`log-audit`) on a workflow task, else null. */
+    val workflow: String? = null,
+    /** The words Kevin said after the workflow's name, or null. */
+    val params: String? = null,
 ) {
+    /** The engine started it on a workflow's schedule (catch-up, ticket 04), not Kevin. */
+    val isScheduled: Boolean get() = origin == ClaudeTaskDraft.ORIGIN_SCHEDULE
+
     val isFinished: Boolean get() = status in FINISHED
 
     /** The newest step the history holds, or null. Never the whole list: that is the screen's. */
@@ -137,14 +148,25 @@ data class ClaudeTask(
         const val FAILED = "failed"
         const val NEEDS_CONFIRMATION = "needs_confirmation"
         const val CANCELLED = "cancelled"
+        const val KIND_ASK = "ask"
+        const val KIND_WORKFLOW = "workflow"
 
         /** States after which nothing more happens to the task. A yes to a question is a NEW task. */
         val FINISHED = setOf(DONE, FAILED, NEEDS_CONFIRMATION, CANCELLED)
     }
 }
 
-/** What `POST tasks/` and `POST tasks/{id}/assign/` answer. [machine] null means unaddressed. */
-data class ClaudeCreated(val id: Int, val status: String, val machine: ClaudeMachineRef?)
+/**
+ * What `POST tasks/` and `POST tasks/{id}/assign/` answer. [machine] null means unaddressed. A
+ * workflow run also names its [workflow] and the [asks] it stops at for Kevin's yes.
+ */
+data class ClaudeCreated(
+    val id: Int,
+    val status: String,
+    val machine: ClaudeMachineRef?,
+    val workflow: String? = null,
+    val asks: List<String> = emptyList(),
+)
 
 data class ClaudeMachineRef(val name: String, val state: String, val lastSeenAt: Instant?)
 
@@ -156,10 +178,15 @@ data class ClaudeTaskDraft(
     val origin: String,
     val deliver: String?,
     val confirms: Boolean,
+    /** Kevin's phrase naming a workflow (`action: "workflow"`); the engine resolves it. Else null. */
+    val workflow: String? = null,
 ) {
     companion object {
         const val ORIGIN_NAMED = "named"
         const val ORIGIN_OFFERED = "offered"
+
+        /** The engine's own: a workflow's scheduled run (or the memory review). Never sent by a client. */
+        const val ORIGIN_SCHEDULE = "schedule"
         const val DELIVER_EMAIL_SELF = "email_self"
 
         /** The result as one web page, opened in LEGION's browser (ticket 09). Never the work laptop. */
@@ -218,4 +245,13 @@ interface ClaudeSessionBackend {
      * deletes its copy now rather than at 24 h (ADR 0080).
      */
     suspend fun received(taskId: Int, fileId: Int): ClaudeOutcome<Unit>
+
+    /** `GET tasks/?origin=&status=`: the household's tasks filtered, newest first (ticket 06's poll). */
+    suspend fun tasksWhere(origin: String, status: String, limit: Int): ClaudeOutcome<List<ClaudeTask>>
+
+    /** `GET workflows/`: every machine's workflows with their last run (ticket 03). */
+    suspend fun workflows(): ClaudeOutcome<List<ClaudeWorkflow>>
+
+    /** `POST workflows/run/`: one run of the workflow named exactly [name] (the screen's Run). */
+    suspend fun runWorkflow(machine: String?, name: String, params: String?): ClaudeOutcome<ClaudeCreated>
 }

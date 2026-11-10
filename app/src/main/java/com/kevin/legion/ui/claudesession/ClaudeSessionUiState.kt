@@ -6,6 +6,7 @@ import com.kevin.legion.claude.ClaudeOverview
 import com.kevin.legion.claude.ClaudeStep
 import com.kevin.legion.claude.ClaudeSteps
 import com.kevin.legion.claude.ClaudeTask
+import com.kevin.legion.claude.ClaudeWorkflowWording
 import com.kevin.legion.claude.ClaudeWording
 
 data class MachineRowUi(val name: String, val stateText: String, val online: Boolean, val summariesOnly: Boolean)
@@ -37,6 +38,10 @@ data class TaskRowUi(
     val filesToPhone: Boolean = false,
     /** The task's kept steps, newest first, shown under its detail (finished tasks keep theirs). */
     val steps: List<StepRowUi> = emptyList(),
+    /** Started by a workflow's schedule, not by Kevin (worker-workflows ticket 06): "Scheduled". */
+    val scheduled: Boolean = false,
+    /** "Log audit" on a workflow task, else null. */
+    val workflow: String? = null,
 )
 
 data class SessionRowUi(
@@ -71,6 +76,12 @@ data class ClaudeSessionUiState(
     val expandedTask: Int? = null,
     val answer: String = "",
     val announcementsOn: Boolean = true,
+    /** Every machine's workflows (worker-workflows ticket 06). */
+    val workflows: List<WorkflowRowUi> = emptyList(),
+    /** The workflows could not be read, in words; never drawn as "no workflows". */
+    val workflowsNote: String? = null,
+    /** Typed params per workflow, keyed by [WorkflowRowUi.key]. */
+    val workflowParams: Map<String, String> = emptyMap(),
 )
 
 /** Pure: the engine's rows to the screen's rows, every sentence from [ClaudeWording]. */
@@ -101,6 +112,8 @@ object ClaudeSessionRows {
             pageWaiting = t.wantsPage && t.pages.isEmpty() && t.status == ClaudeTask.DONE,
             filesToPhone = t.deliveredFiles.isNotEmpty() && t.status == ClaudeTask.DONE,
             steps = steps(t.steps, wording),
+            scheduled = t.isScheduled,
+            workflow = t.workflow?.let { ClaudeWorkflowWording.spoken(it).replaceFirstChar(Char::uppercase) },
         )
     }
 

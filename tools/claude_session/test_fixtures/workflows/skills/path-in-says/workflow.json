@@ -1,0 +1,1 @@
+{"format": 1, "name": "path-in-says", "says": "Reads C:\\Users\\example\\notes.txt aloud.", "aliases": [], "params": [], "asks": [], "outputs": ["summary"], "deliver": null, "scope": ["full"], "every": null}

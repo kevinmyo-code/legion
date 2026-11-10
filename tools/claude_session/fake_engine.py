@@ -34,6 +34,11 @@ class FakeEngine:
                                                "stale": 0}, "verdicts": []}
         self.review_status = 200
         self.review_runs = 0
+        # Worker workflows (ticket 05): catalogs received, the hash held and echoed, and whether to
+        # echo it at all (an engine deployed before workflows does not).
+        self.catalogs: list[list] = []
+        self.workflows_hash = ""
+        self.echo_hash = True
         engine = self
 
         class H(BaseHTTPRequestHandler):
@@ -75,9 +80,17 @@ class FakeEngine:
                         return self._reply(401, {"detail": "Invalid token."})
                     p = self.path
                     if p == "/api/claude/machines/heartbeat/":
-                        engine.heartbeats.append(json.loads(raw))
+                        body = json.loads(raw)
+                        engine.heartbeats.append(body)
+                        if (engine.echo_hash and isinstance(body.get("workflows"), list)
+                                and body.get("workflows_hash") != engine.workflows_hash):
+                            engine.catalogs.append(body["workflows"])
+                            engine.workflows_hash = body["workflows_hash"]
                         out = {"cancel_requested": list(engine.cancel_requested),
                                "files_requested": list(engine.files_requested)}
+                        if engine.echo_hash:
+                            out["workflows_hash"] = engine.workflows_hash
+                            out["workflows_dropped"] = 0
                         engine.cancel_requested.clear()
                         return self._reply(200, out)
                     if p == "/api/claude/tasks/claim/":

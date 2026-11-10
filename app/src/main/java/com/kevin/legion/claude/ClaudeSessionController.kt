@@ -52,7 +52,9 @@ data class ClaudeOverview(val status: ClaudeStatus, val tasks: List<ClaudeTask>)
  *
  * [onSent] is told each task id the engine accepted, so the result watcher can announce it.
  */
-@Suppress("ReturnCount") // each rule is a guard clause that returns the sentence saying what did not happen
+// ReturnCount: each rule is a guard clause that returns the sentence saying what did not happen.
+// TooManyFunctions: one function per thing either door can do (ADR 0035).
+@Suppress("ReturnCount", "TooManyFunctions")
 class ClaudeSessionController(
     private val backend: ClaudeSessionBackend,
     val wording: ClaudeWording = ClaudeWording(),
@@ -132,6 +134,75 @@ class ClaudeSessionController(
         val online = machines.filter { it.isOnline }.map { it.name }
         return created(backend.create(draft), choices = online, followUp = false)
     }
+
+    /**
+     * Starts a workflow (worker-workflows ticket 06). Both doors call this (ADR 0035):
+     * - voice (`action: "workflow"`): [phrase] is Kevin's words; the engine resolves them against the
+     *   machines' catalogs (`POST tasks/ {workflow}`) and the words after the name become its params.
+     * - the screen's Run ([byName]): [phrase] is the exact name, [params] the typed text
+     *   (`POST workflows/run/`).
+     *
+     * [machine] is sent ONLY when Kevin named one: the engine reads any machine as named, so picking
+     * the one that is on (as [send] does) would refuse a workflow that lives on a machine that is off
+     * instead of queueing it there. A miss (400) reads the engine's sentence, which names the
+     * workflows there are; a run already going (409) says so. Never "done": the result says that.
+     */
+    @Suppress("CyclomaticComplexMethod") // each outcome is one sentence
+    suspend fun runWorkflow(
+        phrase: String,
+        machine: String?,
+        params: String? = null,
+        byName: Boolean = false,
+    ): ClaudeSendResult {
+        val text = phrase.trim()
+        if (text.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.EMPTY_REQUEST)
+        val status = backend.status()
+        if (status !is ClaudeOutcome.Ok) return ClaudeSendResult.NotSent(ClaudeWording.failed(status, "start it"))
+        val machines = status.value.machines
+        if (machines.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.NO_MACHINE_EVER)
+        val target = if (machine.isNullOrBlank()) {
+            null
+        } else {
+            ClaudeMachines.resolve(machine, machines.map { it.name })
+                ?: return ClaudeSendResult.NotSent(wording.unknownMachine(machine.trim(), machines.map { it.name }))
+        }
+        val out = if (byName) {
+            backend.runWorkflow(target, text, params?.trim()?.ifEmpty { null })
+        } else {
+            backend.create(
+                ClaudeTaskDraft(
+                    request = text,
+                    machine = target,
+                    parent = null,
+                    origin = ClaudeTaskDraft.ORIGIN_NAMED,
+                    deliver = null, // the engine takes the workflow's own (its standing mail, or its page)
+                    confirms = false,
+                    workflow = text,
+                ),
+            )
+        }
+        return when (out) {
+            is ClaudeOutcome.Ok -> {
+                onSent(out.value.id)
+                if (out.value.status == ClaudeTask.NEEDS_MACHINE) {
+                    val online = machines.filter { it.isOnline }.map { it.name }
+                    ClaudeSendResult.NeedsMachine(out.value.id, online, wording.whichMachine(online, created = true))
+                } else {
+                    ClaudeSendResult.Sent(out.value, ClaudeWorkflowWording.sent(out.value, wording))
+                }
+            }
+            // The engine's 400 and 409 are already whole sentences ("Nothing was sent. ...").
+            is ClaudeOutcome.Refused -> ClaudeSendResult.NotSent(out.sentence)
+            else -> ClaudeSendResult.NotSent(ClaudeWording.failed(out, "start it"))
+        }
+    }
+
+    /** Every machine's workflows with their last run, for the screen (`GET workflows/`). */
+    suspend fun workflows(): ClaudeOutcome<List<ClaudeWorkflow>> = backend.workflows()
+
+    /** Scheduled runs that stopped for Kevin's yes (ruling R3), newest first. */
+    suspend fun scheduledQuestions(limit: Int = SCHEDULED_QUESTIONS): ClaudeOutcome<List<ClaudeTask>> =
+        backend.tasksWhere(ClaudeTaskDraft.ORIGIN_SCHEDULE, ClaudeTask.NEEDS_CONFIRMATION, limit)
 
     /** Kevin answered "which machine?" for a `needs_machine` task. */
     suspend fun assign(taskId: Int, machine: String): ClaudeSendResult {
@@ -222,6 +293,7 @@ class ClaudeSessionController(
 
     companion object {
         const val RECENT = 20
+        const val SCHEDULED_QUESTIONS = 20
 
         /** The production wiring: the engine over the saved address and token, results watched. */
         fun forContext(context: Context): ClaudeSessionController {

@@ -221,6 +221,9 @@ RECRUITER_DENIED: dict[str, str] = {
     "claude_session.views.FileDownloadView": _CLAUDE,
     "claude_session.views.FileReceivedView": _CLAUDE,
     "claude_session.views.SessionReportView": _CLAUDE,
+    # worker-workflows (ADR 0067 amended 2026-11-10): a member's laptop workflows
+    "claude_session.views.WorkflowListView": _CLAUDE,
+    "claude_session.views.WorkflowRunView": _CLAUDE,
     # devices, notifications, laptops
     "push.views.VapidKeyView": "notifications are sent to a member's own devices",
     "push.views.SubscriptionListCreateView": "notifications are sent to a member's own devices",

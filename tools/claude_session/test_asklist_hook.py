@@ -68,6 +68,22 @@ class TestAskList(Base):
         self.assertPassed("Write", {"file_path": str(own)})
         self.assertPassed("Edit", {"file_path": str(own)})
 
+    def test_workflow_reports_are_kevins_files_new_passes_overwrite_asks(self):
+        """Worker workflows ticket 05: a workflow's report lands in Kevin's own reports folder
+        (`%USERPROFILE%/.legion/reports/<workflow>/`), outside the work folder. A new dated
+        report passes; rewriting an older one is an overwrite of Kevin's file, so it asks, token or
+        not, a scheduled run included (no token)."""
+        folder = self.root / "profile" / ".legion" / "reports" / "rates-sheet"
+        folder.mkdir(parents=True)
+        self.assertPassed("Write", {"file_path": str(folder / "2026-11-10-task-41.md")})
+        older = folder / "2026-11-03-task-30.md"
+        older.write_text("last week's report")
+        out = self.assertDenied("Write", {"file_path": str(older)})
+        self.assertIn("overwrite", out["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertDenied("Edit", {"file_path": str(older)})
+        o = str(older).replace("\\", "/")
+        self.assertDenied("Bash", {"command": f"rm {o}"})
+
     def test_deletes_outside_work_ask_inside_work_pass(self):
         k = str(self.kevin_file).replace("\\", "/")
         w = str(self.work / "tmp.txt").replace("\\", "/")

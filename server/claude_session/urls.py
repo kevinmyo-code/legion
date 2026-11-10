@@ -27,6 +27,8 @@ urlpatterns = [
     ),
     path("pages/<int:file_id>/", views.PageView.as_view(), name="claude-page"),
     path("status/", views.StatusView.as_view(), name="claude-status"),
+    path("workflows/", views.WorkflowListView.as_view(), name="claude-workflows"),
+    path("workflows/run/", views.WorkflowRunView.as_view(), name="claude-workflows-run"),
     path("machines/heartbeat/", views.HeartbeatView.as_view(), name="claude-heartbeat"),
     path("sessions/", views.SessionReportView.as_view(), name="claude-sessions"),
 ]

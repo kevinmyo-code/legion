@@ -1368,9 +1368,12 @@ object LiveToolbox {
                 "'put milk on the shopping list' and anything else naming groceries or shopping " +
                 "goes to manage_checklist (list=Groceries) - never here. A " +
                 "dated appointment (see 'kind') goes on the user's calendar instead of a reminder, " +
+                // Trimmed 2026-11-10 (worker-workflows ticket 06 paid for claude_session's
+                // workflow action): ", the same way you would for a class on a school schedule"
+                // was an analogy after the rule, not a rule.
                 "and it just passes at its time - it is NEVER tickable or untickable (say so " +
-                "plainly if asked to mark one done or not done, the same way you would for a " +
-                "class on a school schedule), and it is not removable, schedulable or skippable " +
+                "plainly if asked to mark one done or not done), and it is not removable, " +
+                "schedulable or skippable " +
                 "that way either (edit it on the calendar day view instead). " +
                 "Pass any date/time the user gives on the SAME 'add' call via date/time - never add " +
                 "first and schedule in a second call, which stores an appointment with no date at " +
@@ -2785,7 +2788,7 @@ object LiveToolbox {
         PurchaseToolbox.dispatch(context, name, args)?.let { return it }
         BooksToolbox.dispatch(context, name, args)?.let { return it }
         BrowserToolbox.dispatch(context, name, args)?.let { return it }
-        ClaudeSessionToolbox.dispatch(context, name, args)?.let { return it }
+        ClaudeSessionToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         AppUpdateToolbox.dispatch(context, name, args)?.let { return it }
         MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         VaultToolbox.dispatch(context, name, args)?.let { return it }

@@ -61,6 +61,7 @@ fun ClaudeSessionContent(state: ClaudeSessionUiState, callbacks: ClaudeSessionCa
             }
             item { SendBox(state, callbacks) }
             state.message?.let { item { Line(it, SoftColors.good) } }
+            if (state.unavailable == null && !state.loading) workflowsSection(state, callbacks)
             if (state.tasks.isNotEmpty()) item { Header("Tasks") }
             items(state.tasks, key = { "t-" + it.id }) { task ->
                 TaskCard(task, expanded = state.expandedTask == task.id, state, callbacks)
@@ -193,6 +194,9 @@ private fun TaskCard(
                 maxLines = if (expanded) EXPANDED_LINES else 2,
             )
             val where = task.machine?.let { " on the $it" } ?: ""
+            // Worker-workflows ticket 06: a run the schedule started says so, with its workflow.
+            val label = listOfNotNull("Scheduled".takeIf { task.scheduled }, task.workflow).joinToString(", ")
+            if (label.isNotEmpty()) Text(label, color = SoftColors.caution, modifier = Modifier.testTag(SCHEDULED_TAG))
             Text("Task ${task.id}$where: ${task.statusText}", color = SoftColors.text.copy(alpha = 0.75f))
             task.progress?.let { Text("Now: $it", color = SoftColors.caution) }
         }
@@ -299,6 +303,9 @@ private val STEP_TIME_WIDTH = 112.dp
 
 /** Each step row's test tag, so a test can read them in order. */
 const val STEP_TAG = "claude-session-step"
+
+/** A task card's "Scheduled" / workflow label. */
+const val SCHEDULED_TAG = "claude-session-scheduled"
 
 /** The list's test tag, so a test can scroll to a row below the fold. */
 const val LIST_TAG = "claude-session-list"

@@ -62,9 +62,30 @@ object ClaudeResultPolling {
         shelf = ClaudeFileStore(app),
         openFiles = { id -> openOrNotify(app, id) },
         filesReady = { id, text -> announce(app, id, text, "", ClaudeFileActivity.pendingIntent(app, id)) },
-        // ADR 0083: standing watches ride this loop (no loop of their own).
-        alsoEachTick = { com.kevin.legion.watches.WatchPolling.poller(app).maybePoll() },
+        // ADR 0083: standing watches ride this loop (no loop of their own). Worker-workflows
+        // ticket 06: so do scheduled runs waiting on his yes. One failing never skips the other.
+        alsoEachTick = {
+            val scheduled = scheduledQuestions(app)
+            try {
+                com.kevin.legion.watches.WatchPolling.poller(app).maybePoll()
+            } finally {
+                scheduled.maybePoll()
+            }
+        },
     )
+
+    @Volatile private var scheduled: ScheduledQuestionPoller? = null
+
+    /** The ONE [ScheduledQuestionPoller] for the process (its cadence lives in the instance). */
+    private fun scheduledQuestions(app: Context): ScheduledQuestionPoller =
+        scheduled ?: synchronized(this) {
+            scheduled ?: ScheduledQuestionPoller(
+                controller = { ClaudeSessionController.forContext(app) },
+                seen = ScheduledQuestionSeenStore(app),
+                watch = ClaudeWatchStore(app),
+                announce = { id, text, hint -> announce(app, id, text, hint, scheduled = true) },
+            ).also { scheduled = it }
+        }
 
     /**
      * Opens task [taskId]'s delivered files over LEGION, only while one of LEGION's screens is in
@@ -100,16 +121,31 @@ object ClaudeResultPolling {
         )
     }
 
-    /** The system note for an open conversation: the facts, and what to do with them. */
-    internal fun note(text: String, hint: String): String =
-        "[Claude session result, for the user, from a task they sent] $text Tell the user this now, in " +
+    /**
+     * The system note for an open conversation: the facts, and what to do with them. [scheduled]
+     * is a run a workflow's schedule started (ruling R3), which the user did NOT send: the frame
+     * says so, so the model is never handed "a task they sent" as a fact.
+     */
+    internal fun note(text: String, hint: String, scheduled: Boolean = false): String =
+        "[Claude session ${if (scheduled) SCHEDULED_SOURCE else "result, for the user, from a task they sent"}] " +
+            "$text Tell the user this now, in " +
             "one or two short sentences in your own words. If it ends with a question, ask it, and act " +
             "only on their yes. $hint Say nothing else about it."
 
-    internal fun prompt(text: String, hint: String): String =
-        "A task the user sent to their Claude session has a result. The facts, and the only things you " +
+    internal fun prompt(text: String, hint: String, scheduled: Boolean = false): String {
+        val head = if (scheduled) {
+            "A workflow the user installed on their Claude session ran on its own schedule (they did not " +
+                "send it) and stopped for their yes."
+        } else {
+            "A task the user sent to their Claude session has a result."
+        }
+        return "$head The facts, and the only things you " +
             "may say about it: $text Tell the user in one or two short sentences, in your own words. " +
             "If it ends with a question, ask it and act only on their yes. $hint Mention no other subject."
+    }
+
+    private const val SCHEDULED_SOURCE =
+        "question, for the user, from a workflow that ran on its own schedule (they did not send it)"
 
     /** How long a result that asks something listens for the yes (Kevin 2026-11-01: about 20 s). */
     const val LISTEN_HOLD_MS = 20_000L
@@ -120,10 +156,13 @@ object ClaudeResultPolling {
         text: String,
         hint: String,
         tapOpens: android.app.PendingIntent? = null,
+        scheduled: Boolean = false,
     ): ClaudeDelivery {
         // Keyed by task, so a `claude_session` check that reads the same result out first can
         // withdraw this note before it is spoken a second time (ClaudeSessionToolbox.check).
-        if (LiveNotes.offer(LiveNotes.claudeTaskKey(taskId), note(text, hint))) return ClaudeDelivery.DELIVERED
+        if (LiveNotes.offer(LiveNotes.claudeTaskKey(taskId), note(text, hint, scheduled))) {
+            return ClaudeDelivery.DELIVERED
+        }
         val asks = hint.isNotBlank()
         val raise = ProactiveRaise(
             // One rule per task, so brushing off one result never suppresses the next task's.
@@ -131,7 +170,7 @@ object ClaudeResultPolling {
             category = ProactiveCategory.CLAUDE_TASKS,
             reason = text,
             facts = text,
-            prompt = prompt(text, hint),
+            prompt = prompt(text, hint, scheduled),
             // A question opens the mic for the yes; the follow-up window closes it (no ring to end).
             listensForReply = asks,
             listenHoldMs = if (asks) LISTEN_HOLD_MS else 0L,

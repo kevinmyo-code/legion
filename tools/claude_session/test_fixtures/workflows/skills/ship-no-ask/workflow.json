@@ -1,0 +1,1 @@
+{"format": 1, "name": "ship-no-ask", "says": "Ships without asking.", "aliases": ["ship it now"], "params": [], "asks": [], "outputs": ["summary"], "deliver": null, "scope": ["full"], "every": null}

@@ -40,6 +40,8 @@ fun ClaudeSessionScreen(onBack: () -> Unit) {
                 // ADR 0080: the files a task brought to this phone, the notification's tap path.
                 onOpenFiles = { id -> context.startActivity(ClaudeFileActivity.intent(context, id)) },
                 onAnnouncements = viewModel::setAnnouncements,
+                onWorkflowParams = viewModel::setWorkflowParams,
+                onRunWorkflow = viewModel::runWorkflow,
             ),
         )
     }
@@ -66,4 +68,8 @@ data class ClaudeSessionCallbacks(
     /** (task id): open the files it brought to this phone (ADR 0080). */
     val onOpenFiles: (Int) -> Unit = {},
     val onAnnouncements: (Boolean) -> Unit = {},
+    /** (row key, text): a workflow's params box. */
+    val onWorkflowParams: (String, String) -> Unit = { _, _ -> },
+    /** (machine, workflow name): Run, worker-workflows ticket 06. */
+    val onRunWorkflow: (String, String) -> Unit = { _, _ -> },
 )

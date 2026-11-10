@@ -1,0 +1,1 @@
+{"format": 1, "name": "untidy-downloads", "says": "Claims another workflow's phrase.", "aliases": ["tidy my downloads"], "params": [], "asks": [], "outputs": ["summary"], "deliver": null, "scope": ["full"], "every": null}
