@@ -577,6 +577,25 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Field navigation (round 5): compass, GPS, grid, sun and moon, offline. Its own app drawer
+             entry, the way Clock has one. Portrait: the compass maths assumes the top edge is up. -->
+        <activity
+            android:name=".ui.field.FieldActivity"
+            android:exported="false"
+            android:label="Field"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Legion" />
+        <activity-alias
+            android:name=".ui.field.FieldLauncher"
+            android:exported="true"
+            android:label="Field"
+            android:targetActivity=".ui.field.FieldActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- FileProvider for CameraCapture's camera-app handoff URI (pantry
              receipt photos). Authority = packageName + ".provider". Not
              exported; the OS broker grants read-URI permission to the

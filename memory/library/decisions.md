@@ -7625,3 +7625,34 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   TomTom's developer portal; nothing in the repo or on the engine held it. The location-intelligence
   departure advisor (ticket 06) now gets its traffic ETA from Mapbox Directions; that map's
   TomTom decisions (4, 8, 17, 18, 19) are superseded by this entry.
+
+## 2026-11-10 - Field navigation: offline compass, grid, waypoints, sun and moon (round 5)
+
+- **Kevin's ask (2026-11-10):** *"can i have a working offline compass on the phone? ... basically
+  field navigation"*. Everything with no signal: phone sensors and on-device maths only.
+- **A Field screen with its own app drawer entry** (`ui/field/FieldActivity`, alias "Field"), the
+  Clock's shape, so it is one tap from Matrix home or the drawer with no conversation and no
+  signal. Portrait-locked. One `FieldViewModel` and a data-only `FieldUiState`
+  (`field/FieldState.kt`), so the Typeset restyle swaps the composables and keeps the state.
+- **Compass:** rotation-vector sensor, else accelerometer plus magnetometer; smoothed as a unit
+  vector; magnetometer accuracy drives the figure-8 prompt; held upright, the heading is where the
+  back points. True north from `android.hardware.GeomagneticField` (World Magnetic Model, offline)
+  at the last fix. Back azimuth shown.
+- **Position is GPS only** (`LocationManager.GPS_PROVIDER`, never the fused or network provider),
+  with MGRS and UTM from a hand-written converter (`field/Grid.kt`, USGS and NGA formulas, checked
+  against the `mgrs`/`utm` Python packages; no new dependency), altitude and accuracy in words.
+- **Waypoints are places** (no eighth aspect). **A deliberate, narrow exception to
+  `PlaceController`'s write-through rule:** a Field mark is written to `sync_outbox`
+  (`OutboxTarget.FIELD_WAYPOINTS`, TEXT target, no migration) first and drains into
+  `PlaceController.savePlaceAt` when the engine answers; everywhere else places stay write-through.
+  On the Field screen, marking an existing name moves it (re-parking moves "car"); PlaceController's
+  own sentence says what was replaced. A failed drain never drops a mark (bounded retries).
+- **Sun:** `SunTimes` gained an altitude parameter (-0.833, -6, -12). **Moon:** a truncated Meeus
+  lunar theory with a scanned rise and set, within about a minute of PyEphem. Turnaround = sunset
+  less a margin (default 60 min, 15-minute steps on the screen).
+- **Voice: no new declaration.** `get_current_location`'s RESULT now carries the field readout
+  (heading, where true north is, grid, sun, moon, turnaround, the five nearest saved places with
+  bearing and distance), and its description gained one clause. Measured in
+  `LiveSetupPayloadSizeTest` (NOT raised).
+- **Offline-hiking overlap:** tickets 16 and 17 on `docs/offline-hiking` note what this covers; no
+  offline maps were built.

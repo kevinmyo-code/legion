@@ -48,7 +48,9 @@ object SunTimes {
     private const val MS_PER_DAY = 86_400_000.0
     private const val DEG = PI / 180.0
     private const val OBLIQUITY_DEG = 23.4397
-    private const val SUN_ALTITUDE_DEG = -0.833
+    const val SUN_ALTITUDE_DEG = -0.833
+    const val CIVIL_TWILIGHT_DEG = -6.0
+    const val NAUTICAL_TWILIGHT_DEG = -12.0
     private const val DEG_PER_CIRCLE = 360.0
     private const val HALF_CIRCLE_DEG = 180.0
     private const val ANOMALY_BASE_DEG = 357.5291
@@ -68,8 +70,17 @@ object SunTimes {
      * The solar day (noon to noon, centred on the local solar noon nearest [nowMs]) that contains
      * [nowMs]. Centring on noon means sunrise and sunset of one solar day never straddle a date
      * boundary, which is what makes "across midnight" a non-event.
+     *
+     * [altitudeDeg] is the sun's centre altitude that counts as rise and set: -0.833 (refraction and
+     * the sun's radius) for sunrise and sunset, -6 for civil and -12 for nautical twilight (field
+     * navigation, round 5). With twilight, "AlwaysDown" means the sun never climbs to that altitude.
      */
-    fun solarDay(nowMs: Long, latitudeDeg: Double, longitudeDeg: Double): SolarDay {
+    fun solarDay(
+        nowMs: Long,
+        latitudeDeg: Double,
+        longitudeDeg: Double,
+        altitudeDeg: Double = SUN_ALTITUDE_DEG,
+    ): SolarDay {
         val julianNow = nowMs / MS_PER_DAY + UNIX_EPOCH_JD
         val dayNumber = (julianNow - J2000 + longitudeDeg / DEG_PER_CIRCLE).roundToLong().toDouble()
         val approxNoon = dayNumber - longitudeDeg / DEG_PER_CIRCLE
@@ -82,7 +93,7 @@ object SunTimes {
         val sinDec = sin(eclipticLongitude) * sin(OBLIQUITY_DEG * DEG)
         val cosDec = cos(asin(sinDec))
         val lat = latitudeDeg * DEG
-        val cosHour = (sin(SUN_ALTITUDE_DEG * DEG) - sin(lat) * sinDec) / (cos(lat) * cosDec)
+        val cosHour = (sin(altitudeDeg * DEG) - sin(lat) * sinDec) / (cos(lat) * cosDec)
         return when {
             cosHour > 1.0 -> SolarDay.AlwaysDown
             cosHour < -1.0 -> SolarDay.AlwaysUp

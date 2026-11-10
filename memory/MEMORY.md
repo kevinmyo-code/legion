@@ -22,6 +22,13 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Field navigation - 2026-11-10
+
+- `feat/field-nav` (pushed, not merged): offline Field screen (app drawer "Field"): compass, true north,
+  GPS-only position with MGRS/UTM, waypoints as places (local first via `sync_outbox`), sun, moon,
+  turnaround; voice rides `get_current_location`'s result. Owed by Kevin: install `fast`, the compass run
+  on the phone (steps in the round 5 report).
+
 ## Workouts - 2026-11-06
 
 - `feat/workouts` (pushed, not merged): deterministic 3-day A/B programme on the engine
