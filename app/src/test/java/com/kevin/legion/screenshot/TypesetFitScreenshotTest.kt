@@ -20,7 +20,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -40,8 +46,8 @@ import com.kevin.legion.ui.typeset.TypesetGlance
 import com.kevin.legion.ui.typeset.TypesetGroupCell
 import com.kevin.legion.ui.typeset.TypesetHomeActions
 import com.kevin.legion.ui.typeset.TypesetHomeContent
+import com.kevin.legion.ui.typeset.TypesetHomeDerive
 import com.kevin.legion.ui.typeset.TypesetPage
-import com.kevin.legion.ui.typeset.TypesetQuick
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -54,6 +60,8 @@ import org.robolectric.annotation.GraphicsMode
  * The front page fits one screen with no scroll (Kevin, 2026-11-10), at 360x640, 412x915 (A25-like)
  * and 412x915 at font 1.3, day and night, idle, listening and answering. Each test renders a
  * baseline AND asserts: nothing placed below the viewport, and every tap target at least 44dp tall.
+ * The page sits under the shell's StatusLine ([ShellHome]), as on the phone: the bar is in the shot
+ * and its height comes out of the page's.
  *
  * The page is drawn through [TypesetPage] under [LegionTheme], the way `MainActivity` draws HOME, with
  * NO SoftTheme of the test's own: the light-mode render is what caught "the home screen is still
@@ -72,24 +80,47 @@ class TypesetFitScreenshotTest {
         rule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale)) {
-                LegionTheme { TypesetPage { Front(phase, answering) } }
+                LegionTheme { ShellHome { TypesetPage { Front(phase, answering) } } }
             }
         }
         rule.mainClock.advanceTimeBy(FRAME_MS)
-        assertFits(file)
         rule.onRoot().captureRoboImage(file)
+        assertFits(file)
+        assertEveryWayInDrawn(answering)
+    }
+
+    /**
+     * The orb moved above the contents line (Kevin, 2026-11-10); every way in is still drawn on the
+     * page at every size: the orb, Type, Controls, All apps, and (when not answering) every contents
+     * word. `TypesetReachabilityTest` checks the words lead everywhere; this checks they are there.
+     */
+    private fun assertEveryWayInDrawn(answering: Boolean) {
+        drawn(hasContentDescription("Talk to Alfred"), "the orb")
+        val words = listOf("Type", "CONTROLS", "ALL APPS") + if (answering) emptyList() else TypesetHomeDerive.CONTENTS
+        words.forEach { drawn(hasText(it), it) }
+    }
+
+    /** FitTiers measures every tier it tries, so a word can be in the tree unplaced: count the placed. */
+    private fun drawn(matcher: SemanticsMatcher, what: String) {
+        val nodes = rule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
+        val placed = nodes.count { it.layoutInfo.isPlaced }
+        assertTrue("$what is not drawn on the page", placed >= 1)
     }
 
     private fun assertFits(file: String) {
         val root = rule.onRoot().fetchSemanticsNode()
         val height = root.boundsInRoot.bottom
         val minTarget = with(root.layoutInfo.density) { MIN_TARGET_DP * density }
+        // The 44dp check covers the page. The StatusLine above it is the shell's, drawn exactly as on
+        // All apps (its own tests own it); its pills and 40dp icon buttons are reported, not changed.
+        val pageTop = rule.onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.top
         val problems = mutableListOf<String>()
         fun walk(n: SemanticsNode) {
             if (!n.layoutInfo.isPlaced) return
             val b = n.boundsInRoot
             if (b.bottom > height + SLACK_PX) problems += "${n.describe()} ends at ${b.bottom}, viewport $height"
-            if (n.config.contains(SemanticsActions.OnClick) && b.height + SLACK_PX < minTarget) {
+            val onPage = b.top + SLACK_PX >= pageTop
+            if (onPage && n.config.contains(SemanticsActions.OnClick) && b.height + SLACK_PX < minTarget) {
                 problems += "${n.describe()} is ${b.height}px tall, under 44dp ($minTarget px)"
             }
             n.children.forEach(::walk)
@@ -98,7 +129,25 @@ class TypesetFitScreenshotTest {
         assertTrue("$file:\n" + problems.joinToString("\n"), problems.isEmpty())
     }
 
-    private fun SemanticsNode.describe(): String = config.toString().take(DESCRIBE_CHARS)
+    /** The orb is the hero (Kevin, 2026-11-10: "about 2.5x"): its tap target is at least [dp] tall. */
+    private fun assertOrbAtLeast(dp: Float) {
+        val orb = rule.onAllNodes(hasContentDescription("Talk to Alfred")).fetchSemanticsNodes()
+            .first { it.layoutInfo.isPlaced }
+        val px = with(orb.layoutInfo.density) { dp * density }
+        assertTrue("orb is ${orb.boundsInRoot.height}px tall, want at least $px", orb.boundsInRoot.height >= px)
+    }
+
+    private fun SemanticsNode.describe(): String {
+        val words = config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString()
+            ?: config.getOrNull(SemanticsProperties.Text)?.joinToString()
+            ?: generateSequence(this) { it.parent }.drop(1)
+                .firstNotNullOfOrNull { p ->
+                    p.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString()
+                }
+                ?.let { "inside '$it'" }
+            ?: config.toString().take(DESCRIBE_CHARS)
+        return "'$words' at $boundsInRoot"
+    }
 
     // 360 x 640, a small phone
     @Test @Config(qualifiers = SMALL)
@@ -115,7 +164,14 @@ class TypesetFitScreenshotTest {
 
     // 412 x 915, A25-like
     @Test @Config(qualifiers = A25)
-    fun `a25, day`() = page("typeset-fit-412x915-day.png")
+    fun `a25, day`() {
+        page("typeset-fit-412x915-day.png")
+        assertOrbAtLeast(HERO_MIN_DP)
+    }
+
+    @Test @Config(qualifiers = A25)
+    fun `a25, answering, day`() =
+        page("typeset-fit-412x915-answer-day.png", phase = OrbPhase.SPEAKING, answering = true)
 
     @Test @Config(qualifiers = "$A25-night")
     fun `a25, night`() = page("typeset-fit-412x915-night.png")
@@ -136,6 +192,25 @@ class TypesetFitScreenshotTest {
 
     @Test @Config(qualifiers = SMALL)
     fun `small font 1_3, day`() = page("typeset-fit-360x640-font13-day.png", fontScale = 1.3f)
+
+    @Test @Config(qualifiers = "$SMALL-night")
+    fun `small font 1_3, night`() = page("typeset-fit-360x640-font13-night.png", fontScale = 1.3f)
+
+    @Test @Config(qualifiers = SMALL)
+    fun `small font 1_3, answering, day`() = page(
+        "typeset-fit-360x640-font13-answer-day.png",
+        fontScale = 1.3f,
+        phase = OrbPhase.SPEAKING,
+        answering = true,
+    )
+
+    @Test @Config(qualifiers = "$SMALL-night")
+    fun `small font 1_3, answering, night`() = page(
+        "typeset-fit-360x640-font13-answer-night.png",
+        fontScale = 1.3f,
+        phase = OrbPhase.SPEAKING,
+        answering = true,
+    )
 
     // 412 x 820: roughly what the A25 leaves the page once its status and nav bars are drawn.
     @Test @Config(qualifiers = A25_VIEW)
@@ -196,12 +271,10 @@ class TypesetFitScreenshotTest {
                 OrbPhase.SPEAKING -> "Alfred is talking"
                 else -> "Tap to talk"
             },
-            statusWords = null,
             night = isSystemInDarkTheme(),
             cards = if (answering) listOf(CARD) else emptyList(),
             actions = TypesetHomeActions(),
             dock = DOCK,
-            quick = TypesetQuick(quietOn = true, feedOn = true, alarm = "06:30", claudeRunning = 2),
             groups = {
                 Row(Modifier.fillMaxWidth()) {
                     GROUPS.forEach { TypesetGroupCell(it, onClick = {}, onLongClick = {}) }
@@ -213,6 +286,8 @@ class TypesetFitScreenshotTest {
     private companion object {
         const val FRAME_MS = 800L
         const val MIN_TARGET_DP = 44f
+        /** 2.5x the old 96dp orb is 240dp; the A25-size page must keep it near that. */
+        const val HERO_MIN_DP = 220f
         const val SLACK_PX = 1f
         const val DESCRIBE_CHARS = 160
         const val SMALL = "w360dp-h640dp"

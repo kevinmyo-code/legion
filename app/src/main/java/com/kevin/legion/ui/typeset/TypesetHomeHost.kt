@@ -22,7 +22,6 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.MidnightApplication
 import com.kevin.legion.assistant.cards.ConversationCards
-import com.kevin.legion.claude.ClaudeLiveWatch
 import com.kevin.legion.clock.AlarmMath
 import com.kevin.legion.clock.ClockGraph
 import com.kevin.legion.dumb.FeedOffRule
@@ -30,7 +29,6 @@ import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.Phase
 import com.kevin.legion.ui.assistant.ChatPanelSheet
 import com.kevin.legion.ui.assistant.rememberAssistantVoice
-import com.kevin.legion.ui.claudesession.ClaudeSessionsSheetHost
 import com.kevin.legion.ui.common.startPhoneSettings
 import com.kevin.legion.ui.dumb.FeedOffGatePanel
 import com.kevin.legion.ui.home.DockSlotUi
@@ -63,8 +61,6 @@ fun TypesetHomeHost(
     money: HomeMoneyUiState,
     /** The shell's clock, "HH:mm". */
     clock: String,
-    /** Off-normal shell words (not synced, OBD, quiet, alarms), or null when nothing needs saying. */
-    statusWords: String?,
     dockSlots: List<DockSlotUi>,
     onLaunchSlot: (DockSlotUi) -> Unit,
     nav: TypesetHomeNav,
@@ -80,7 +76,6 @@ fun TypesetHomeHost(
     val edition = LocalTypesetEdition.current
     val toggleEdition = LocalTypesetEditionToggle.current
     var controlsOpen by remember { mutableStateOf(false) }
-    var claudeSheetOpen by remember { mutableStateOf(false) }
     val controls = rememberControls(nav, onClose = { controlsOpen = false })
 
     val now = remember(clock) { runCatching { LocalTime.parse(clock) }.getOrDefault(LocalTime.now()) }
@@ -117,19 +112,6 @@ fun TypesetHomeHost(
         onOpenTodos = nav.onOpenTodos,
         onBrief = nav.onBrief,
         onOpenMedia = nav.onOpenMedia,
-        onToggleQuiet = controls.actions.onToggleQuiet,
-        // Feed on is one tap; off is the ADR 0066 gate, which lives under the panel's feed row.
-        onFeed = {
-            if (controls.ui.feedBlockOn) {
-                controls.actions.onFeedBlockOff()
-                controlsOpen = true
-            } else {
-                controls.actions.onFeedBlockOn()
-            }
-        },
-        onOpenClaude = { claudeSheetOpen = true },
-        onOpenLegionSettings = nav.onOpenSettings,
-        onOpenPhoneSettings = controls.actions.onOpenPhoneSettings,
         onUnpin = { tile -> slotOf(tile)?.let(onUnpinSlot) },
         onMoveLeft = { tile -> slotOf(tile)?.let { onMoveSlot(it, -1) } },
         onMoveRight = { tile -> slotOf(tile)?.let { onMoveSlot(it, 1) } },
@@ -141,27 +123,14 @@ fun TypesetHomeHost(
             glance = glance,
             phase = orbPhase(voice.phase, voice.enabled),
             status = status,
-            statusWords = statusWords,
             night = edition == TypesetEdition.NIGHT,
             cards = cards.cards,
             actions = actions,
             dock = dockSlots.map(::slotTile),
-            quick = TypesetQuick(
-                quietOn = controls.ui.quietOn,
-                feedOn = controls.ui.feedBlockOn,
-                alarm = controls.nextAlarm,
-                claudeRunning = controls.claudeRunning,
-            ),
             groups = groups,
         )
         if (controlsOpen) ControlsOverlay(controls, onClose = { controlsOpen = false })
         if (voice.panel.open) ChatPanelSheet(voice.typedChat, onTalk = onTalk, onClose = voice.panel::hide)
-        if (claudeSheetOpen) {
-            ClaudeSessionsSheetHost(
-                onDismiss = { claudeSheetOpen = false },
-                onOpenAll = { claudeSheetOpen = false; nav.onOpenClaude() },
-            )
-        }
     }
 }
 
@@ -194,12 +163,10 @@ internal fun slotTile(slot: DockSlotUi): TypesetDockTile {
     return TypesetDockTile(monogram, slot.label)
 }
 
-/** The Controls panel's state and taps, shared by the quick line and the panel (one source). */
+/** The Controls panel's state, taps and feed gate. */
 private class ControlsWiring(
     val ui: ControlsUi,
     val actions: ControlsActions,
-    val nextAlarm: String?,
-    val claudeRunning: Int,
     val gate: @Composable () -> Unit,
 )
 
@@ -226,7 +193,6 @@ private fun rememberControls(nav: TypesetHomeNav, onClose: () -> Unit): Controls
     val clockState by remember(context) { ClockGraph.controller(context.applicationContext) }.state
         .collectAsStateWithLifecycle()
     val claude = rememberClaudeWatchLine()
-    val claudeSummary by remember(context) { ClaudeLiveWatch.get(context) }.summary.collectAsStateWithLifecycle()
     val triggers = clockState.alarms.mapNotNull {
         AlarmMath.nextTrigger(it, System.currentTimeMillis(), ZoneId.systemDefault())
     }
@@ -276,7 +242,7 @@ private fun rememberControls(nav: TypesetHomeNav, onClose: () -> Unit): Controls
             onDropped = { askingOff = false },
         )
     }
-    return ControlsWiring(ui, actions, nextAlarmHhmm(triggers), claudeSummary?.running ?: 0, gatePanel)
+    return ControlsWiring(ui, actions, gatePanel)
 }
 
 /** The Controls panel over the page: a scrim that closes it, the panel at the top. */
@@ -301,13 +267,6 @@ internal fun nextAlarmWords(triggersMs: List<Long>, zone: ZoneId = ZoneId.system
     val at = triggersMs.minOrNull() ?: return "No alarm set"
     val t = Instant.ofEpochMilli(at).atZone(zone).toLocalTime()
     return "Next alarm " + AlarmMath.hhmm(t.hour, t.minute)
-}
-
-/** "06:30", the next alarm for the quick line, or null for none. */
-internal fun nextAlarmHhmm(triggersMs: List<Long>, zone: ZoneId = ZoneId.systemDefault()): String? {
-    val at = triggersMs.minOrNull() ?: return null
-    val t = Instant.ofEpochMilli(at).atZone(zone).toLocalTime()
-    return AlarmMath.hhmm(t.hour, t.minute)
 }
 
 private const val SCRIM = 0.4f

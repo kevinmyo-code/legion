@@ -674,8 +674,9 @@ private fun LegionShell(
     // The held-notification digest takes HOME over the moment the mode ends, until it is dealt with.
     val digestShowing = !dumbState.on && digestState.pending && digestState.entries.isNotEmpty()
     val isDumbHome = (dumbState.on || digestShowing) && shellBackStackEntry?.destination?.route == LegionRoute.HOME
-    // Typeset (ADR 0081): the front page draws its own masthead and orb, so the shell's status line
-    // and talk strip are not drawn on it. Its off-normal words travel into the masthead instead.
+    // Typeset (ADR 0081): the front page draws its own orb, so the shell's talk strip is not drawn on
+    // it. The status line IS drawn, the same bar as on All apps (Kevin, 2026-11-10: "the same
+    // horizontal bar as when i press all apps").
     val isTypesetHome = !isDumbHome && shellBackStackEntry?.destination?.route == LegionRoute.HOME
 
     // Fixed on-device 2026-09-01: a generated view built for a question asked on METERS was
@@ -787,7 +788,7 @@ private fun LegionShell(
                 // doc for the closed loop it breaks. Absent on DRIVING along with the rest of
                 // the status line, which is correct: nothing about driving mode should invite
                 // you into a settings tree.
-                if (!isDrivingMode && !isDumbHome && !isTypesetHome) {
+                if (shellShowsStatusLine(isDrivingMode = isDrivingMode, isDumbHome = isDumbHome)) {
                     // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051).
                     SoftTheme {
                         StatusLine(
@@ -925,7 +926,6 @@ private fun LegionShell(
                   } else {
                     com.kevin.legion.ui.home.HomeScreen(
                         clock = clock,
-                        statusWords = typesetStatusWords(shellStatus.parts, quietOn, shellStatus.alarmCount),
                         onOpenApps = { navController.navigate(LegionRoute.APPS) { launchSingleTop = true } },
                         onOpenSettings = { navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true } },
                         onOpenClock = {
@@ -1501,14 +1501,9 @@ private fun calendarHighlightId(pick: HomeDayPick?, openItemId: Long?): Long? = 
 private fun calendarHighlightNonce(pick: HomeDayPick?, openItemNonce: Int): Int = pick?.nonce ?: openItemNonce
 
 /**
- * The shell's off-normal words for the Typeset masthead (ADR 0081): only what needs saying, so a
- * normal day shows nothing beside Controls. Null when everything is as expected.
+ * Whether the shell draws its StatusLine above the route. Every route but DRIVING (ticket 20) and the
+ * dumb-phone HOME (ADR 0062). The Typeset HOME gets it too, the same bar as on All apps (Kevin,
+ * 2026-11-10); it once skipped it for a masthead and a quick line he did not recognise.
  */
-internal fun typesetStatusWords(parts: ShellStatusLineParts, quietOn: Boolean, alarmCount: Int): String? =
-    listOfNotNull(
-        "Not synced".takeIf { !parts.synced },
-        "OBD".takeIf { parts.obdConnected },
-        "Quiet".takeIf { quietOn },
-        parts.keyLabel,
-        alarmCount.takeIf { it > 0 }?.let { if (it == 1) "1 alarm" else "$it alarms" },
-    ).joinToString(", ").ifBlank { null }
+internal fun shellShowsStatusLine(isDrivingMode: Boolean, isDumbHome: Boolean): Boolean =
+    !isDrivingMode && !isDumbHome

@@ -223,11 +223,11 @@ class TypesetShotsTest {
     @Composable
     private fun Home(cards: List<ConversationCard>, night: Boolean, phase: OrbPhase = OrbPhase.IDLE) {
         Column(Modifier.background(SoftColors.ground)) {
+            ShellStatusBar()
             TypesetHomeContent(
                 glance = glance,
                 phase = phase,
                 status = if (phase == OrbPhase.SPEAKING) "Alfred is talking" else "Tap to talk",
-                statusWords = null,
                 night = night,
                 cards = cards,
                 actions = TypesetHomeActions(),
