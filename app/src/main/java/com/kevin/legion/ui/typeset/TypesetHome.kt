@@ -124,15 +124,22 @@ private fun Glance(g: TypesetGlance, actions: TypesetHomeActions) {
         Figure(g.next, actions.onOpenToday)
         Figure(g.due, actions.onOpenToday)
         Figure(g.left, actions.onOpenMoney)
-        Row(Modifier.fillMaxWidth()) {
-            listOf("Today" to actions.onOpenToday, "Money" to actions.onOpenMoney, "Car" to actions.onOpenCar,
-                "Clock" to actions.onOpenClock).forEach { (name, go) ->
-                Box(Modifier.weight(1f).tap(name, go), contentAlignment = Alignment.CenterStart) {
-                    Text(
-                        name,
-                        style = TypesetType.small.copy(textDecoration = TextDecoration.Underline),
-                        color = SoftColors.text,
-                    )
+        // The contents line: the screens behind, plus Field and Breathe, one tap each (Kevin,
+        // 2026-11-10). Two rows of three, the prototype's ruled grid, nothing new on the page.
+        val contents = listOf(
+            "Today" to actions.onOpenToday, "Money" to actions.onOpenMoney, "Car" to actions.onOpenCar,
+            "Clock" to actions.onOpenClock, "Field" to actions.onOpenField, "Breathe" to actions.onBreathe,
+        )
+        contents.chunked(CONTENTS_PER_ROW).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                row.forEach { (name, go) ->
+                    Box(Modifier.weight(1f).tap(name, go), contentAlignment = Alignment.CenterStart) {
+                        Text(
+                            name,
+                            style = TypesetType.small.copy(textDecoration = TextDecoration.Underline),
+                            color = SoftColors.text,
+                        )
+                    }
                 }
             }
         }
@@ -215,6 +222,7 @@ private fun Modifier.tap(label: String, onClick: () -> Unit): Modifier =
         .wrapContentHeight()
         .padding(horizontal = 2.dp)
 
+private const val CONTENTS_PER_ROW = 3
 private val Gutter = 16.dp
 private val MinTarget = 48.dp
 private val FigureColumn = 100.dp

@@ -48,6 +48,10 @@ data class TypesetHomeActions(
     val onOpenToday: () -> Unit = {},
     val onOpenMoney: () -> Unit = {},
     val onOpenCar: () -> Unit = {},
+    /** The Field screen: compass, position, waypoints, sun and moon (feat/field-nav). */
+    val onOpenField: () -> Unit = {},
+    /** Box breathing, full screen. */
+    val onBreathe: () -> Unit = {},
     /** The orb: talk, or interrupt Alfred while he speaks. */
     val onTalk: () -> Unit = {},
     val onType: () -> Unit = {},

@@ -33,6 +33,8 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.soft.TypesetEdition
 import com.kevin.legion.ui.theme.soft.TypesetType
+import com.kevin.legion.ui.typeset.BoxBreath
+import com.kevin.legion.ui.typeset.BoxBreathingContent
 import com.kevin.legion.ui.typeset.ControlsActions
 import com.kevin.legion.ui.typeset.ControlsPanel
 import com.kevin.legion.ui.typeset.ControlsUi
@@ -41,6 +43,7 @@ import com.kevin.legion.ui.typeset.TypesetFigure
 import com.kevin.legion.ui.typeset.TypesetGlance
 import com.kevin.legion.ui.typeset.TypesetHomeActions
 import com.kevin.legion.ui.typeset.TypesetHomeContent
+import com.kevin.legion.ui.typeset.TypesetCompass
 import com.kevin.legion.ui.typeset.TypesetOrb
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -180,6 +183,41 @@ class TypesetShotsTest {
                 ),
                 ControlsActions(),
             )
+        }
+    }
+
+    @Test
+    fun `box breathing, day`() = shot("after-breathe-day.png") {
+        edition(TypesetEdition.DAY) { BoxBreathingContent(BoxBreath.at(2_300), reducedMotion = false, onEnd = {}) }
+    }
+
+    @Test
+    fun `box breathing, night`() = shot("after-breathe-night.png") {
+        edition(TypesetEdition.NIGHT) { BoxBreathingContent(BoxBreath.at(9_100), reducedMotion = false, onEnd = {}) }
+    }
+
+    @Test
+    fun `box breathing, reduced motion`() = shot("after-breathe-reduced.png") {
+        edition(TypesetEdition.DAY) { BoxBreathingContent(BoxBreath.at(2_300), reducedMotion = true, onEnd = {}) }
+    }
+
+    @Test
+    fun `field compass, day`() = shot("after-compass-day.png") {
+        edition(TypesetEdition.DAY) { CompassPage() }
+    }
+
+    @Test
+    fun `field compass, night`() = shot("after-compass-night.png") {
+        edition(TypesetEdition.NIGHT) { CompassPage() }
+    }
+
+    @Composable
+    private fun CompassPage() {
+        Column(Modifier.background(SoftColors.ground).padding(16.dp)) {
+            Text("FIELD", style = TypesetType.caps, color = SoftColors.text2)
+            TypesetCompass(heading = 32f, bearing = 74f, modifier = Modifier.size(320.dp))
+            Text("032° heading, true north", style = TypesetType.lead, color = SoftColors.text)
+            Text("Camp: 074°, 1.3 km", style = TypesetType.body, color = SoftColors.text)
         }
     }
 
