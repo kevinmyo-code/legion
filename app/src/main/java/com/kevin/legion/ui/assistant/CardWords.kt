@@ -9,6 +9,11 @@ import com.kevin.legion.assistant.cards.StepItem
 import com.kevin.legion.assistant.cards.StepStatus
 import com.kevin.legion.assistant.cards.TimelineItem
 import com.kevin.legion.assistant.cards.TimelineKind
+import com.kevin.legion.brief.BriefWords
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Every sentence a [ConversationCardView] draws, pure so the words are pinned by tests. Status is
@@ -21,6 +26,7 @@ internal object CardWords {
 
     fun subtitle(card: ConversationCard): String? =
         listOfNotNull(card.period, card.scope).joinToString(", ").ifBlank { null }
+
 
     fun barValue(p: BarPoint, unit: String): String =
         PhoneCards.money(p.value, unit) + (p.flag?.let { " (${it.words})" } ?: "")
@@ -120,3 +126,22 @@ private val DAY_HEADING = java.time.format.DateTimeFormatter.ofPattern("EEE MMM 
 /** "Wed Nov 4" from a timeline item's `yyyy-MM-dd`; the raw text if it does not parse. */
 internal fun dayHeading(date: String): String =
     runCatching { java.time.LocalDate.parse(date).format(DAY_HEADING) }.getOrDefault(date)
+
+/** A card's source and age in words (ADR 0081, 2026-11-10), apart so [CardWords] stays small. */
+internal object CardProvenanceWords {
+    /**
+     * "OBD port, just now", "Through 8 Nov": the card's source and age in words, only from what
+     * [ConversationCard.provenance] carries. Null (no line) when it carries nothing.
+     */
+    fun provenance(card: ConversationCard, nowMs: Long, zone: ZoneId): String? {
+        val p = card.provenance ?: return null
+        val parts = listOfNotNull(
+            p.source,
+            p.readAtMs?.let { BriefWords.ago(it, nowMs) },
+            p.throughMs?.let { "through " + Instant.ofEpochMilli(it).atZone(zone).toLocalDate().format(DAY_MONTH) },
+        )
+        return parts.joinToString(", ").ifBlank { null }?.replaceFirstChar { it.uppercase() }
+    }
+
+    private val DAY_MONTH = DateTimeFormatter.ofPattern("d MMM", Locale.UK)
+}

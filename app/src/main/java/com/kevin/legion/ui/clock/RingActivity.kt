@@ -30,6 +30,7 @@ import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.SafetyAlarms
 import com.kevin.legion.spokenbrief.WakeBrief
 import com.kevin.legion.ui.MainActivity
+import com.kevin.legion.ui.theme.soft.ProvideTypesetEdition
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -63,7 +64,7 @@ class RingActivity : ComponentActivity() {
             finish()
         }
         setContent {
-            SoftTheme {
+            ProvideTypesetEdition { SoftTheme {
                 val ringing by RingService.ringing.collectAsStateWithLifecycle()
                 val top = ringing.lastOrNull()
                 RingScreen(
@@ -79,7 +80,7 @@ class RingActivity : ComponentActivity() {
                         onClose = ::finish,
                     ),
                 )
-            }
+            } }
         }
     }
 

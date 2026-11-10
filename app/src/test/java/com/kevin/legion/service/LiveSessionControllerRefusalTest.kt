@@ -131,7 +131,20 @@ class LiveSessionControllerRefusalTest {
         // when nothing parsed is not a check. If BARE_RETURN stops matching - a reformat, a Kotlin
         // idiom this regex does not know - every assertion in the loop above is skipped and the
         // test goes green having examined nothing at all.
-        assertEquals("the return scanner matched nothing, so it proved nothing", 6, examined)
+        assertEquals("the return scanner matched nothing, so it proved nothing", 7, examined)
+    }
+
+    @Test
+    fun `a tap while Alfred speaks interrupts him before anything can end the conversation`() {
+        // Kevin, 2026-11-10 (ADR 0081): a tap while Alfred speaks is a barge-in, not an end. The
+        // interrupt must be tried BEFORE the branch that stops an active conversation, or a tap
+        // mid-reply would still hang up, which is the behaviour the ruling replaced.
+        val body = bodyOf("onTap")
+        val interruptAt = body.indexOf("interruptByTap()")
+        val stopAt = body.indexOf("s.stop()")
+        assertTrue("onTap no longer tries interruptByTap()", interruptAt >= 0)
+        assertTrue("onTap no longer ends a conversation that is not speaking", stopAt >= 0)
+        assertTrue("interruptByTap() must come before s.stop()", interruptAt < stopAt)
     }
 
     @Test
@@ -322,8 +335,9 @@ class LiveSessionControllerRefusalTest {
 
         /**
          * What makes a `return` acceptable: it reported the refusal, or it handed off to a path
-         * that goes on to speak (resuming a warm socket, or cold-connecting one).
+         * that goes on to speak (resuming a warm socket, or cold-connecting one), or it interrupted
+         * Alfred, which emits Interrupted and shows "Listening" (ADR 0081, 2026-11-10).
          */
-        val REPORTS_OR_HANDS_OFF = listOf("refuse(", "resumeWarm(", "startConversation(")
+        val REPORTS_OR_HANDS_OFF = listOf("refuse(", "resumeWarm(", "startConversation(", "interruptByTap(")
     }
 }

@@ -72,7 +72,19 @@ object PhoneCards {
             scope = budget.entity.displayName,
             period = month.format(MONTH_WORDS),
             note = note,
+            provenance = coveredThrough(budget)?.let { CardProvenance(throughMs = it) },
         )
+    }
+
+    /**
+     * The date every account's records reach, from the report's own coverage: the earliest
+     * account's [com.kevin.legion.ledger.AccountCoverage.coveredThroughMs]. Null when any account
+     * has none, so a card never claims a date one account does not reach.
+     */
+    internal fun coveredThrough(budget: BudgetVsActual): Long? {
+        val dates = budget.coverage.map { it.coveredThroughMs }
+        if (dates.isEmpty() || dates.any { it == null }) return null
+        return dates.filterNotNull().min()
     }
 
     // --- timeline: read_calendar ---------------------------------------------------------------

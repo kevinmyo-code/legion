@@ -78,44 +78,44 @@ class SoftThemeTest {
 
     @Test
     fun `onPrimaryContainer against primaryContainer clears 4_5`() {
-        assertContrastAtLeast(SoftColors.onPrimaryContainer, SoftColors.primaryContainer)
+        assertContrastAtLeast(SoftDarkPalette.onPrimaryContainer, SoftDarkPalette.primaryContainer)
     }
 
     @Test
     fun `onAlert against alertContainer clears 4_5 (this is also onErrorContainer against errorContainer)`() {
-        assertContrastAtLeast(SoftColors.onAlert, SoftColors.alertContainer)
+        assertContrastAtLeast(SoftDarkPalette.onAlert, SoftDarkPalette.alertContainer)
     }
 
     @Test
     fun `text against card clears 4_5`() {
-        assertContrastAtLeast(SoftColors.text, SoftColors.card)
+        assertContrastAtLeast(SoftDarkPalette.text, SoftDarkPalette.card)
     }
 
     @Test
     fun `text2 against card clears 4_5`() {
-        assertContrastAtLeast(SoftColors.text2, SoftColors.card)
+        assertContrastAtLeast(SoftDarkPalette.text2, SoftDarkPalette.card)
     }
 
     @Test
     fun `text3 against card clears 4_5`() {
-        assertContrastAtLeast(SoftColors.text3, SoftColors.card)
+        assertContrastAtLeast(SoftDarkPalette.text3, SoftDarkPalette.card)
     }
 
     @Test
     fun `caution against card clears 4_5`() {
-        assertContrastAtLeast(SoftColors.caution, SoftColors.card)
+        assertContrastAtLeast(SoftDarkPalette.caution, SoftDarkPalette.card)
     }
 
     @Test
     fun `onAlert against card clears 4_5`() {
-        assertContrastAtLeast(SoftColors.onAlert, SoftColors.card)
+        assertContrastAtLeast(SoftDarkPalette.onAlert, SoftDarkPalette.card)
     }
 
     // ---- SoftSemantics: the soft LegionSemantics the shared drill-down primitives read ----
 
     @Test
     fun `soft semantics keeps its deliberate same-value pair and no other`() {
-        // `data` and `debit` share SoftColors.text on purpose: a value is ordinary text and a debit is
+        // `data` and `debit` share SoftDarkPalette.text on purpose: a value is ordinary text and a debit is
         // never accented (the mission-control `credit`/`debit` precedent, intended not accidental).
         // Every OTHER field must differ from every other, or a state that is meant to read differently
         // (estimate vs quarantine vs credit vs marker, faint vs ghost) collapses into one hue.
@@ -138,7 +138,7 @@ class SoftThemeTest {
         val seen = mutableMapOf<Color, String>()
         for ((name, color) in fields) {
             val clash = seen[color]
-            // `chrome` and `marker` are both SoftColors.primary: chrome is structure/accent, marker is a
+            // `chrome` and `marker` are both SoftDarkPalette.primary: chrome is structure/accent, marker is a
             // chart point; neither is ever compared against the other for meaning. Allowed.
             val allowed = (name == "marker" && clash == "chrome")
             assertTrue("semantics '$name' ($color) collides with '$clash'", clash == null || allowed)
@@ -161,15 +161,15 @@ class SoftThemeTest {
             "quarantined" to sem.quarantined, "faint" to sem.faint, "ghost" to sem.ghost,
             "chromeText" to sem.chromeText, "chrome" to sem.chrome, "marker" to sem.marker,
         )) {
-            assertContrastAtLeast(color, SoftColors.card, label = name)
+            assertContrastAtLeast(color, SoftDarkPalette.card, label = name)
         }
     }
 
     @Test
     fun `estimate and quarantine text also clear 4_5 against the ground and the alert container`() {
-        assertContrastAtLeast(SoftSemantics.estimated, SoftColors.ground, label = "estimated on ground")
+        assertContrastAtLeast(SoftSemantics.estimated, SoftDarkPalette.ground, label = "estimated on ground")
         assertContrastAtLeast(
-            SoftSemantics.quarantined, SoftColors.alertContainer, label = "quarantined on alertContainer",
+            SoftSemantics.quarantined, SoftDarkPalette.alertContainer, label = "quarantined on alertContainer",
         )
     }
 

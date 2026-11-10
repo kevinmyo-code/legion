@@ -26,6 +26,9 @@ car Bluetooth, when Silero cannot load, or with the switch off.
   self-interrupts it turns off for that conversation, and the user is told so.
 - **Off on car Bluetooth in v1.** Those sessions keep half-duplex and server VAD.
 - **A write tool cancelled by an interruption is reported, never undone.**
+- **A tap interrupts too (Kevin, 2026-11-10, [[0081-design-language-typeset]]):** a tap on the
+  voice control while Alfred speaks runs this same interrupt (flush, "interrupted"), on every
+  route including car Bluetooth, and hands the mic back.
 
 ## Context
 

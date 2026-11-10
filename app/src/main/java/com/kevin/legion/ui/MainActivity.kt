@@ -161,6 +161,9 @@ class MainActivity : ComponentActivity() {
             androidx.compose.runtime.CompositionLocalProvider(
                 com.kevin.legion.ui.theme.LocalMatrixMode provides matrixOn,
             ) {
+            // Typeset edition (ADR 0081): day or night paper, bedtime, the one-tap switch; also the
+            // system bar colour, which follows the page.
+            com.kevin.legion.ui.theme.soft.ProvideTypesetEdition {
             LegionTheme {
                 androidx.compose.runtime.CompositionLocalProvider(
                     com.kevin.legion.ui.navigation.LocalTripResumeNonce provides tripResumeNonce,
@@ -178,6 +181,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
             }
         }
@@ -670,6 +674,9 @@ private fun LegionShell(
     // The held-notification digest takes HOME over the moment the mode ends, until it is dealt with.
     val digestShowing = !dumbState.on && digestState.pending && digestState.entries.isNotEmpty()
     val isDumbHome = (dumbState.on || digestShowing) && shellBackStackEntry?.destination?.route == LegionRoute.HOME
+    // Typeset (ADR 0081): the front page draws its own masthead and orb, so the shell's status line
+    // and talk strip are not drawn on it. Its off-normal words travel into the masthead instead.
+    val isTypesetHome = !isDumbHome && shellBackStackEntry?.destination?.route == LegionRoute.HOME
 
     // Fixed on-device 2026-09-01: a generated view built for a question asked on METERS was
     // surviving navigation to CALENDAR, painting over the month grid and eating the tap meant to
@@ -749,7 +756,7 @@ private fun LegionShell(
                     com.kevin.legion.ui.dumb.MatrixTalkBar(onOpenSettings = {
                         navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
                     })
-                } else if (!isDrivingMode && !isDumbHome) {
+                } else if (!isDrivingMode && !isDumbHome && !isTypesetHome) {
                     // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051) - the
                     // talk bar is shell chrome, converted along with StatusLine below; the NavHost
                     // content beside it stays on [LegionTheme] until its own ticket.
@@ -780,7 +787,7 @@ private fun LegionShell(
                 // doc for the closed loop it breaks. Absent on DRIVING along with the rest of
                 // the status line, which is correct: nothing about driving mode should invite
                 // you into a settings tree.
-                if (!isDrivingMode && !isDumbHome) {
+                if (!isDrivingMode && !isDumbHome && !isTypesetHome) {
                     // SoftTheme wraps only this call (home-launcher ticket 02, ADR 0051).
                     SoftTheme {
                         StatusLine(
@@ -917,6 +924,18 @@ private fun LegionShell(
                     com.kevin.legion.ui.dumb.DumbDigest()
                   } else {
                     com.kevin.legion.ui.home.HomeScreen(
+                        clock = clock,
+                        statusWords = typesetStatusWords(shellStatus.parts, quietOn, shellStatus.alarmCount),
+                        onOpenApps = { navController.navigate(LegionRoute.APPS) { launchSingleTop = true } },
+                        onOpenSettings = { navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true } },
+                        onOpenClock = {
+                            context.startActivity(com.kevin.legion.ui.clock.ClockActivity.intent(context))
+                        },
+                        // Round 5 + Typeset: the front page's Field line opens the one Field screen
+                        // (compass, GPS, grid, sun and moon), the way Clock opens its own window.
+                        onOpenField = {
+                            context.startActivity(com.kevin.legion.ui.field.FieldActivity.intent(context))
+                        },
                         onOpenCalendar = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
                         onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
                         onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
@@ -1480,3 +1499,16 @@ private fun nextHomeDayPick(previous: HomeDayPick?, day: java.time.LocalDate, re
 private fun calendarHighlightId(pick: HomeDayPick?, openItemId: Long?): Long? = pick?.reminderId ?: openItemId
 
 private fun calendarHighlightNonce(pick: HomeDayPick?, openItemNonce: Int): Int = pick?.nonce ?: openItemNonce
+
+/**
+ * The shell's off-normal words for the Typeset masthead (ADR 0081): only what needs saying, so a
+ * normal day shows nothing beside Controls. Null when everything is as expected.
+ */
+internal fun typesetStatusWords(parts: ShellStatusLineParts, quietOn: Boolean, alarmCount: Int): String? =
+    listOfNotNull(
+        "Not synced".takeIf { !parts.synced },
+        "OBD".takeIf { parts.obdConnected },
+        "Quiet".takeIf { quietOn },
+        parts.keyLabel,
+        alarmCount.takeIf { it > 0 }?.let { if (it == 1) "1 alarm" else "$it alarms" },
+    ).joinToString(", ").ifBlank { null }

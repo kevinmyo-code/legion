@@ -532,6 +532,11 @@ class GeminiLiveSession(
     // raced the mic and dropped a turn's audio, so we gate instead of reopen.
     @Volatile private var capturing = false
 
+    // A tap cut this reply short ([interruptByTap]): the server may still be generating it, so its
+    // remaining audio is dropped until the server ends that turn (turnComplete) or says it was
+    // interrupted. Voice barge-in needs no latch: the user's own speech interrupts the server.
+    @Volatile private var tapCutReply = false
+
     // Set on the first mic-open of a conversation: the mic loop resets the
     // AudioRecord on its own thread before forwarding, discarding any pre-roll
     // buffer (e.g. audio a backgrounded device replayed). See openMicForUser.
@@ -906,6 +911,34 @@ class GeminiLiveSession(
 
     /** Driver-initiated close (tap to stop). */
     fun stop() = closeSession("stopped")
+
+    /**
+     * ADR 0064's interrupt, the one path every interruption takes (server, voice barge-in, tap): drop
+     * the queued speech, mark the reply over, and tell the controller ([LiveEvent.Interrupted] ->
+     * LISTENING).
+     */
+    private fun interruptReply(cause: String) {
+        audit.interrupted(cause)
+        stillChecking.onUserActivity()
+        flushAudio()
+        speakingThisTurn = false
+        emit(LiveEvent.Interrupted)
+    }
+
+    /**
+     * A tap while Alfred speaks (Kevin, 2026-11-10, ADR 0081): interrupt him so Kevin can talk,
+     * instead of ending the conversation. Runs [interruptReply], then drops the rest of the reply
+     * the server may still be sending ([tapCutReply]) and, half-duplex, hands the mic back now
+     * rather than at the reply's turnComplete. Returns false when he is not speaking: the tap then
+     * keeps its old meaning.
+     */
+    fun interruptByTap(): Boolean {
+        if (!inConversation || !speakingThisTurn) return false
+        tapCutReply = true
+        interruptReply("tap")
+        if (vadMode && !capturing) openMicForUser()
+        return true
+    }
 
     /**
      * Injects a text turn so Gemini speaks it - used by the proactive engine for
@@ -1733,7 +1766,8 @@ class GeminiLiveSession(
                     // shown, not spoken, so its audio is dropped HERE - before it can flip
                     // speakingThisTurn, mute the mic half-duplex, duck music or reach the track. It
                     // shares this branch only to keep the loop to one `continue`.
-                    if (ReplyAudioGate.drops(myTurnGeneration != turnGeneration.get(), typedTurnInFlight)) {
+                    val superseded = myTurnGeneration != turnGeneration.get() || tapCutReply
+                    if (ReplyAudioGate.drops(superseded, typedTurnInFlight)) {
                         // Superseded: a barge-in/interrupt/crisis flush landed between this
                         // message being sent by the server and being processed here. Drop
                         // the chunk outright - do not flip speakingThisTurn or capturing
@@ -1790,13 +1824,11 @@ class GeminiLiveSession(
         }
 
         if (content.optBoolean("interrupted")) {
-            audit.interrupted("server")
-            stillChecking.onUserActivity()
-            flushAudio()
-            speakingThisTurn = false
-            emit(LiveEvent.Interrupted)
+            tapCutReply = false
+            interruptReply("server")
         }
         if (content.optBoolean("turnComplete")) {
+            tapCutReply = false
             speakingThisTurn = false
             awaitingReply = false
             latency.turnComplete()
@@ -2382,11 +2414,7 @@ class GeminiLiveSession(
         }
 
         override fun onBargeIn(fire: com.kevin.legion.service.turn.BargeInGate.Event.Fire) {
-            audit.interrupted("barge_in")
-            stillChecking.onUserActivity()
-            flushAudio()
-            speakingThisTurn = false
-            emit(LiveEvent.Interrupted)
+            interruptReply("barge_in")
         }
 
         override fun onBargeInDisabled(selfInterrupts: Int) {

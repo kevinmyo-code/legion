@@ -332,6 +332,13 @@
             android:label="Look"
             android:theme="@style/Theme.Legion" />
 
+        <!-- Box breathing, full screen (Kevin, 2026-11-10). Opened only by a tap. -->
+        <activity
+            android:name=".ui.typeset.BreathActivity"
+            android:exported="false"
+            android:label="Breathe"
+            android:theme="@style/Theme.Legion" />
+
         <!-- Books reader (ADR 0061). A FragmentActivity because Readium's EPUB navigator is a
              Fragment; configChanges so a rotation never destroys the page being read. -->
         <activity

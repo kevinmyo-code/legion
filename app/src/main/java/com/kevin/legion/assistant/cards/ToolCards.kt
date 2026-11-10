@@ -13,7 +13,7 @@ import com.kevin.legion.service.EngineToolAnswer
  * The one-line calls `LiveToolbox`'s tools make to publish a card from their own result data. Kept
  * here, not in that file, so each tool grows by one line and the lookups a card needs beyond the
  * tool's data (which car a code was read from) live beside the builders. Every call is a no-op
- * when no voice conversation is open ([ConversationCards.publish]).
+ * when no conversation, voice or typed, is open ([ConversationCards.publish]).
  */
 object ToolCards {
 

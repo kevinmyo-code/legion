@@ -94,6 +94,8 @@ fun moreLine(all: List<BudgetBarModel>, shown: Int): String? {
     return if (notOk == 0) "+ ${hidden.size} more on track" else "+ ${hidden.size} more, $notOk near or over cap"
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 fun BarTone.fillColor(): Color = when (this) {
     BarTone.NORMAL -> BAR_FILL
     BarTone.NEAR -> SoftColors.caution

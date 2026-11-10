@@ -142,6 +142,8 @@ internal fun BookCover(item: BookItem, books: BooksHome, modifier: Modifier, sma
 }
 
 /** The no-cover colour: one of the cards' tones by format, so the shelf is not a row of identical slabs. */
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun flatColor(item: BookItem): Color = when (item.book.format) {
     BookFormat.EPUB -> BooksTone.container
     BookFormat.PDF -> SoftColors.cardHighest

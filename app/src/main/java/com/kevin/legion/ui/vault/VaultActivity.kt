@@ -11,6 +11,7 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kevin.legion.ui.theme.soft.ProvideTypesetEdition
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.vault.VaultClipboard
 import com.kevin.legion.vault.VaultItem
@@ -44,7 +45,7 @@ class VaultActivity : ComponentActivity() {
                     askFingerprint(item)
                 }
             }
-            SoftTheme {
+            ProvideTypesetEdition { SoftTheme {
                 VaultContent(
                     state = state,
                     callbacks = VaultCallbacks(
@@ -63,7 +64,7 @@ class VaultActivity : ComponentActivity() {
                         onCancelDelete = viewModel::cancelDelete,
                     ),
                 )
-            }
+            } }
         }
     }
 

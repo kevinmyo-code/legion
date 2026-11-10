@@ -33,6 +33,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftDarkPalette
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -220,7 +221,13 @@ fun MonthCellView(cell: MonthCell, isToday: Boolean, isSelected: Boolean, onClic
                 Text(
                     cell.dayOfMonth.toString(),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (isToday) accent.container else SoftColors.text,
+                    // A selected day sits on the accent's fixed dark container: light text there, the
+                    // edition's ink everywhere else (ink on that container is unreadable by day, ADR 0081).
+                    color = when {
+                        isToday -> accent.container
+                        isSelected -> SoftDarkPalette.text
+                        else -> SoftColors.text
+                    },
                 )
                 CellMarks(cell, isToday)
             }

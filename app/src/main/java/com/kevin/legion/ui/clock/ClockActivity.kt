@@ -18,6 +18,7 @@ import com.kevin.legion.clock.ClockController
 import com.kevin.legion.clock.ClockGraph
 import com.kevin.legion.clock.ClockHealth
 import com.kevin.legion.clock.ClockResult
+import com.kevin.legion.ui.theme.soft.ProvideTypesetEdition
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -40,7 +41,7 @@ class ClockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tab = intent.getIntExtra(EXTRA_TAB, savedInstanceState?.getInt(EXTRA_TAB) ?: TAB_ALARMS)
-        setContent { SoftTheme { Route() } }
+        setContent { ProvideTypesetEdition { SoftTheme { Route() } } }
     }
 
     override fun onNewIntent(intent: Intent) {

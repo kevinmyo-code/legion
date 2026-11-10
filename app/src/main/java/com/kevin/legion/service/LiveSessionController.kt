@@ -380,7 +380,10 @@ class LiveSessionController(context: Context) {
             "LiveSessionController",
             "onTap: session=${s != null} inConversation=${s?.inConversation} isWarm=${s?.isWarm()}"
         )
-        // Always allow stopping an active conversation.
+        // A tap while Alfred speaks interrupts him so Kevin can talk (Kevin, 2026-11-10, ADR 0081),
+        // through ADR 0064's own interrupt. The Home button is what ends the conversation now.
+        if (s != null && s.inConversation && s.interruptByTap()) return
+        // Otherwise a tap still ends an active conversation.
         if (s != null && s.inConversation) {
             s.stop()
             // Says which of the two things a tap can do actually happened. [Phase.IDLE] alone does
@@ -444,6 +447,8 @@ class LiveSessionController(context: Context) {
      * in the panel, in words.
      */
     fun onTyped(text: String) {
+        // Typed questions get the same cards as voice (Kevin, 2026-11-10, ADR 0081).
+        ConversationCards.beginTyped()
         typedAudit.user(text)
         typedChat.onTyped(text)
     }
@@ -492,12 +497,13 @@ class LiveSessionController(context: Context) {
         // A fresh conversation gets a fresh socket on the next tap; none is opened here
         // (2026-11-05). supersede() skips Closed, so the controller state a Closed would reset is
         // reset here.
+        // The Home button and "new conversation" both clear the cards, typed or voice (ADR 0081).
+        ConversationCards.end()
         if (session != null && !destroyed) {
             supersede("new conversation")
             pendingAction = Pending.NONE
             pendingPrompt = null
             conversationMode = false
-            ConversationCards.end()
             connectedThisSession = false
             set(Phase.IDLE, IDLE_STATUS)
         }
@@ -1123,7 +1129,7 @@ class LiveSessionController(context: Context) {
                 // of the TurnComplete pause above - pause() is a no-op if the
                 // segment is already closed).
                 conversationMode = false
-                ConversationCards.end()
+                ConversationCards.endVoice()
                 set(Phase.IDLE, IDLE_STATUS)
                 // The thirty-minute forgotten-conversation cap is the ONE way a chat
                 // ends that the driver did not ask for, so it is the one that has to
@@ -1173,7 +1179,7 @@ class LiveSessionController(context: Context) {
                     return
                 }
                 closeOutTypedChat()
-                ConversationCards.end()
+                ConversationCards.endVoice()
                 val userInitiated = conversationMode
                 val everConnected = connectedThisSession
                 // Ticket 02: a real conversation just ended for a reason the driver did not

@@ -56,7 +56,6 @@ Format and the test for whether something deserves an ADR:
 | 0046 | [[0046-fixed-wake-and-sleep-phrases\|A fixed wake and sleep phrase pair, implemented in two different places]] | accepted | 2026-09-10 | - |
 | 0049 | [[0049-a-tick-is-a-tap-not-a-purchase\|A tick is a tap, not a purchase]] | accepted | 2026-09-16 | - |
 | 0050 | [[0050-legion-may-be-the-home-app\|LEGION may be the phone's home app]] | accepted | 2026-09-27 | - |
-| 0051 | [[0051-design-language-soft-material\|Design language: soft Material]] | accepted | 2026-09-27 | - |
 | 0052 | [[0052-a-row-may-be-private-to-one-member\|A row may be private to one member]] | accepted | 2026-10-03 | - |
 | 0053 | [[0053-web-design-language-and-two-surfaces\|The web's design language, and two surfaces rendered by viewport]] | accepted | 2026-10-03 | - |
 | 0054 | [[0054-mapbox-native-navigation\|Navigation is native Mapbox, and Mapbox only]] | accepted | 2026-10-03 | - |
@@ -86,6 +85,7 @@ Format and the test for whether something deserves an ADR:
 | 0078 | [[0078-workouts-come-from-rules\|Workouts come from rules, not from the model]] | accepted | 2026-11-06 | - |
 | 0079 | [[0079-alfreds-clock\|Alfred's clock lives inside LEGION, rings on its own, and briefs only on a tap]] | amended | 2026-11-09 | 2026-11-10 |
 | 0080 | [[0080-claude-files-to-phone\|Files Kevin names come from his PC to his phone, open there, and leave the engine at once]] | accepted | 2026-11-09 | - |
+| 0081 | [[0081-design-language-typeset\|Design language: Typeset]] | accepted | 2026-11-09 | - |
 | 0082 | [[0082-proactive-speech-uncapped-and-briefs\|Proactive speech has no daily cap, speaks with the screen off, briefs on waking and at home, and rings for an emergency]] | accepted | 2026-11-10 | - |
 | 0083 | [[0083-standing-watches\|Standing watches: typed rules on the engine, said once on the phone]] | accepted | 2026-11-10 | - |
 | 0084 | [[0084-alfred-looks-through-the-phone-camera\|Alfred looks through the phone camera, parked, and what he sees is an estimate he never keeps]] | accepted | 2026-11-10 | - |
@@ -107,3 +107,4 @@ Kept with their original text. What was believed before, and why it changed.
 | 0038 | [[0038-byo-supabase-is-the-system-of-record\|A BYO Supabase project is the system of record]] | [[0044-django-is-the-engine\|0044-django-is-the-engine]] |
 | 0043 | [[0043-django-is-the-second-client\|Django is the second client, and what it may be hosted for]] | [[0044-django-is-the-engine\|0044-django-is-the-engine]] |
 | 0047 | [[0047-switching-companion-is-a-handover\|Switching companion is a socket rebuild and a spoken handover]] | [[0063-alfred-is-the-only-phone-persona\|0063-alfred-is-the-only-phone-persona]] |
+| 0051 | [[0051-design-language-soft-material\|Design language: soft Material]] | [[0081-design-language-typeset\|0081-design-language-typeset]] |

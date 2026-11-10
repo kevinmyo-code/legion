@@ -44,8 +44,15 @@ internal object AppDrawerCache {
     private const val TAG = "AppDrawerCache"
     private const val ICON_PX = 96
 
-    /** The manifest's launcher alias for LEGION's browser (ADR 0071). */
-    private const val BROWSER_ENTRY = "com.kevin.legion.ui.browser.BrowserLauncher"
+    /**
+     * LEGION's own launcher aliases the drawer lists like any app: the browser (ADR 0071) and Field
+     * (round 5), so each is one tap from the tray when LEGION is the home app. Every other own entry
+     * (the LEGION icon itself) is left out.
+     */
+    private val OWN_ENTRIES = setOf(
+        "com.kevin.legion.ui.browser.BrowserLauncher",
+        "com.kevin.legion.ui.field.FieldLauncher",
+    )
 
     @Volatile private var cached: Loaded? = null
     private val icons = ConcurrentHashMap<String, ImageBitmap>()
@@ -116,8 +123,8 @@ internal object AppDrawerCache {
             val activities = runCatching { launcherApps.getActivityList(null, profile) }.getOrDefault(emptyList())
             for (info in activities) {
                 val component = info.componentName
-                // LEGION itself is already here; its "Browser" entry (ADR 0071) is listed like any app.
-                val ownEntry = component.packageName == context.packageName && component.className != BROWSER_ENTRY
+                // LEGION itself is already here; its Browser and Field entries are listed like any app.
+                val ownEntry = component.packageName == context.packageName && component.className !in OWN_ENTRIES
                 if (!isWork && ownEntry) continue
                 apps += DrawerApp(info.label.toString(), component.packageName, component.className, isWork, key)
                 val k = iconKey(key, component.packageName, component.className)

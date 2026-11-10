@@ -153,11 +153,11 @@ data class ReaderPalette(
             Color(0xFFD4C4A4), Color(0xFFE0D1B3), Color(0xFFD9C9F5),
         )
         private val NIGHT = ReaderPalette(
-            com.kevin.legion.ui.theme.soft.SoftColors.ground,
+            com.kevin.legion.ui.theme.soft.SoftDarkPalette.ground,
             Color(0xFFD8D6CF),
-            com.kevin.legion.ui.theme.soft.SoftColors.text2,
+            com.kevin.legion.ui.theme.soft.SoftDarkPalette.text2,
             Color(0xFF2C2E35),
-            com.kevin.legion.ui.theme.soft.SoftColors.cardHigh,
+            com.kevin.legion.ui.theme.soft.SoftDarkPalette.cardHigh,
             Color(0xFF3A3157),
         )
 

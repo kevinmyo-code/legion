@@ -4,6 +4,7 @@ package com.kevin.legion.ui.field
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,12 +41,14 @@ import com.kevin.legion.field.WaypointUi
 import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.typeset.TypesetCompass
 import java.time.ZoneId
 
 /**
- * The Field screen (round 5): compass, position, waypoints, sun and moon. Plain on purpose and
- * built from existing components; `feat/typeset-ui` restyles it by replacing these composables and
- * keeping [FieldUiState] and [FieldViewModel].
+ * The Field screen (round 5): compass, position, waypoints, sun and moon. The compass is the Typeset
+ * rose ([TypesetCompass], ADR 0081) on the real sensors; the rest is plain and built from existing
+ * components, and the Typeset restyle replaces these composables while keeping [FieldUiState] and
+ * [FieldViewModel].
  */
 @Composable
 fun FieldContent(state: FieldUiState, actions: FieldActions, zone: ZoneId = ZoneId.systemDefault()) {
@@ -75,24 +77,34 @@ fun FieldContent(state: FieldUiState, actions: FieldActions, zone: ZoneId = Zone
 private fun CompassPane(state: FieldUiState) {
     DeckPane(header = "Compass") {
         val h = state.heading
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CompassDial(headingDeg = h?.trueDeg ?: h?.magneticDeg, modifier = Modifier.size(140.dp))
-            Spacer(Modifier.size(12.dp))
-            Column {
-                if (h == null) {
-                    val waiting = if (state.compassSource == CompassSource.NONE) {
-                        "This phone has no compass sensor."
-                    } else {
-                        "Waiting for the compass..."
-                    }
-                    Text(waiting)
-                } else {
-                    HeadingLines(h)
-                }
-                state.declinationText?.let { Text("Declination $it") }
-                Text("Accuracy: ${state.compassAccuracy.words}")
-            }
+        // The Typeset rose (ADR 0081) on the real sensors: the heading shown is true when a fix gives
+        // a declination, else magnetic, and the nearest waypoint's bearing is given in the same frame
+        // (as FieldReadout's arrow is), so the arrow is drawn at bearing less heading.
+        val nearest = state.waypoints.firstOrNull()
+        val bearing = nearest?.let { w ->
+            if (h?.trueDeg != null) w.bearingTrueDeg else w.bearingMagDeg ?: w.bearingTrueDeg
         }
+        TypesetCompass(
+            heading = (h?.trueDeg ?: h?.magneticDeg)?.toFloat(),
+            bearing = bearing?.toFloat(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .padding(8.dp),
+        )
+        nearest?.let { Text("Arrow: ${it.label}, ${it.distanceText}", style = MaterialTheme.typography.bodySmall) }
+        if (h == null) {
+            val waiting = if (state.compassSource == CompassSource.NONE) {
+                "This phone has no compass sensor."
+            } else {
+                "Waiting for the compass..."
+            }
+            Text(waiting)
+        } else {
+            HeadingLines(h)
+        }
+        state.declinationText?.let { Text("Declination $it") }
+        Text("Accuracy: ${state.compassAccuracy.words}")
         if (state.needsCalibration) {
             Text(
                 "Calibrate: move the phone slowly in a figure 8, turning it over a few times, away from " +
@@ -122,22 +134,6 @@ private fun HeadingLines(h: HeadingUi) {
     )
     h.northArrowDeg?.let { Text("True north: ${FieldVoice.northWords(it)}") }
     Text(if (h.upright) "Held upright: sighting along the back" else "Held flat: the top edge points")
-}
-
-/** A plain dial: the needle points to north relative to the phone. */
-@Composable
-private fun CompassDial(headingDeg: Double?, modifier: Modifier) {
-    val color = MaterialTheme.colorScheme.onSurface
-    val accent = MaterialTheme.colorScheme.primary
-    Canvas(modifier = modifier.semantics { contentDescription = "compass dial" }) {
-        val r = size.minDimension / 2
-        drawCircle(color, radius = r * 0.95f, style = Stroke(width = 3f))
-        if (headingDeg == null) return@Canvas
-        rotate(degrees = (-headingDeg).toFloat()) {
-            drawLine(accent, center, Offset(center.x, center.y - r * 0.85f), strokeWidth = 8f)
-            drawLine(color, center, Offset(center.x, center.y + r * 0.6f), strokeWidth = 4f)
-        }
-    }
 }
 
 @Composable
