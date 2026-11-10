@@ -389,7 +389,9 @@ class DestinationResolverTest {
         }
         val r = resolve("blue door cafe") as Resolution.Resolved
         assertFalse(search.queries.single().nearest)
-        assertEquals(5_000.0, r.candidates.first().distanceM!!, 0.0)
+        // Round 4 merge: a plain name search is not ordered by drive time; dev's 2026-11-09 ranking
+        // puts the nearer branch of the named place first, by distance.
+        assertEquals(900.0, r.candidates.first().distanceM!!, 0.0)
     }
 
     @Test fun nearestWithNoFixSaysSoInsteadOfGuessingAPlace() {
