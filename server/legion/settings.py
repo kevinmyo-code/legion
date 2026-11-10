@@ -200,6 +200,13 @@ try:
 except ValueError:
     LEGION_MEMORY_REVIEW_CAP = 25
 
+# Worker workflows (ADR 0067 amended 2026-11-10): scheduled runs of a laptop's workflows, minted
+# at claim when due (catch-up, not a clock). `off` stops every schedule; a run Kevin asks for still
+# runs. LEGION_WORKFLOW_SCHEDULES_OFF is a comma list of workflow names whose schedule is off.
+# On by default: a schedule exists only once Kevin installed a workflow.json that declares one.
+LEGION_WORKFLOW_SCHEDULES = os.environ.get("LEGION_WORKFLOW_SCHEDULES", "").strip().lower() or "on"
+LEGION_WORKFLOW_SCHEDULES_OFF = os.environ.get("LEGION_WORKFLOW_SCHEDULES_OFF", "").strip()
+
 # Files to phone (ADR 0080): the private bucket a Claude task's delivered files wait in until the
 # phone has them (`deploy/claude_files/setup_bucket.sh`, `claude_session.storage`). Optional:
 # unset, the bytes wait in the task file row's own column instead, deleted on the same triggers.

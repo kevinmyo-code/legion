@@ -3917,6 +3917,11 @@ paths:
       operationId: api_claude_tasks_list
       parameters:
       - in: query
+        name: kind
+        schema:
+          type: string
+        description: ask, memory_review or workflow.
+      - in: query
         name: limit
         schema:
           type: integer
@@ -3926,6 +3931,12 @@ paths:
         schema:
           type: string
         description: A machine's spoken name.
+      - in: query
+        name: origin
+        schema:
+          type: string
+        description: 'named, offered or schedule: `schedule` finds the runs the engine
+          started itself (a scheduled workflow waiting on Kevin''s yes, for the phone).'
       - in: query
         name: status
         schema:
@@ -3970,8 +3981,15 @@ paths:
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/ClaudeWorkflowMiss'
+          description: Refused, nothing stored. A workflow nobody has also lists the
+            workflows there are under `workflows`.
+        '409':
+          content:
+            application/json:
+              schema:
                 $ref: '#/components/schemas/Detail'
-          description: Refused, nothing stored.
+          description: That workflow already has a run going.
   /api/claude/tasks/{task_id}/:
     get:
       operationId: api_claude_tasks_retrieve
@@ -4382,6 +4400,70 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No heartbeat yet.
+  /api/claude/workflows/:
+    get:
+      operationId: api_claude_workflows_list
+      description: |-
+        `GET workflows/?machine=`: every machine's published workflows with their last run, for the
+        Claude session screen and the web desk (worker-workflows tickets 03, 06, 07). Offline machines
+        are listed too and say so: a run queued there waits for it, like any task.
+      parameters:
+      - in: query
+        name: machine
+        schema:
+          type: string
+        description: One machine's spoken name.
+      tags:
+      - claude
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClaudeWorkflowRow'
+          description: ''
+  /api/claude/workflows/run/:
+    post:
+      operationId: api_claude_workflows_run
+      description: |-
+        `POST workflows/run/ {machine, name, params}`: queue one run now, by the workflow's exact
+        name (the screen's and the web desk's Run button; ticket 04). One at a time, like a scheduled
+        run: a run already queued, running or waiting on Kevin's yes is a 409.
+      tags:
+      - claude
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeWorkflowRun'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeWorkflowQueued'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeWorkflowMiss'
+          description: Refused.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A run is going.
   /api/demo/asset/{kind}:
     get:
       operationId: api_demo_asset_retrieve
@@ -13415,6 +13497,15 @@ components:
         on_mains:
           type: boolean
           nullable: true
+        workflows_hash:
+          type: string
+          nullable: true
+          description: 'The worker''s hash of its catalog. Absent: an older worker,
+            catalog untouched.'
+          maxLength: 64
+        workflows:
+          description: The catalog (at most 50 entries, each at most 2 KB), only when
+            the hash moved.
       required:
       - name
       - scope
@@ -13430,9 +13521,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClaudeFileRequested'
+        workflows_hash:
+          type: string
+          description: The catalog hash the engine holds for this machine; blank for
+            none.
+        workflows_dropped:
+          type: integer
+          description: Entries of the catalog just sent that failed the engine's checks;
+            0 otherwise.
       required:
       - cancel_requested
       - files_requested
+      - workflows_dropped
+      - workflows_hash
     ClaudeMachineRef:
       type: object
       properties:
@@ -13591,6 +13692,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClaudeRunningProgress'
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeWorkflowName'
+          description: The workflows this machine published, by name (for check).
       required:
       - last_seen_at
       - name
@@ -13598,6 +13704,7 @@ components:
       - running
       - scope
       - state
+      - workflows
     ClaudeStatusSession:
       type: object
       properties:
@@ -13649,6 +13756,12 @@ components:
           type: boolean
           default: false
           description: Kevin's yes to the parent's question. Needs a parent in needs_confirmation.
+        workflow:
+          type: string
+          nullable: true
+          description: 'Run a named workflow: Kevin''s phrase or the exact name. Omitted
+            for a plain task.'
+          maxLength: 500
       required:
       - origin
       - request
@@ -13671,10 +13784,22 @@ components:
           allOf:
           - $ref: '#/components/schemas/ClaudeMachineRef'
           nullable: true
+        workflow:
+          type: string
+          nullable: true
+          description: The workflow it runs (its name), or null for a plain task.
+        asks:
+          type: array
+          items:
+            type: string
+          description: Where that workflow stops for Kevin's yes, in words; empty
+            for a plain task.
       required:
+      - asks
       - id
       - machine
       - status
+      - workflow
     ClaudeTaskDeliverEnum:
       enum:
       - email_self
@@ -13772,10 +13897,19 @@ components:
           allOf:
           - $ref: '#/components/schemas/ClaudeTaskRowKindEnum'
           description: |-
-            `ask` for Kevin's own tasks; `memory_review` for the daily memory review.
+            `ask` for Kevin's own tasks; `memory_review` for the daily memory review; `workflow` for a named workflow (its follow-ups too).
 
             * `ask` - ask
             * `memory_review` - memory_review
+            * `workflow` - workflow
+        workflow:
+          type: string
+          nullable: true
+          description: The workflow's name when kind is workflow, else null.
+        params:
+          type: string
+          nullable: true
+          description: Kevin's words after the workflow's alias, or null.
         deliver:
           nullable: true
           oneOf:
@@ -13808,6 +13942,7 @@ components:
       - kind
       - machine
       - origin
+      - params
       - parent
       - progress
       - progress_at
@@ -13816,14 +13951,17 @@ components:
       - status
       - steps
       - summary
+      - workflow
     ClaudeTaskRowKindEnum:
       enum:
       - ask
       - memory_review
+      - workflow
       type: string
       description: |-
         * `ask` - ask
         * `memory_review` - memory_review
+        * `workflow` - workflow
     ClaudeTaskStatusEnum:
       enum:
       - queued
@@ -13869,6 +14007,185 @@ components:
       - detail
       - file_id
       - size
+    ClaudeWorkflowEvery:
+      type: object
+      properties:
+        hours:
+          type: integer
+        idle_minutes:
+          type: integer
+        force_after_hours:
+          type: integer
+        retry_after_hours:
+          type: integer
+      required:
+      - force_after_hours
+      - hours
+      - idle_minutes
+      - retry_after_hours
+    ClaudeWorkflowLastRun:
+      type: object
+      properties:
+        task:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ClaudeTaskStatusEnum'
+        origin:
+          $ref: '#/components/schemas/ClaudeTaskOriginEnum'
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - finished_at
+      - origin
+      - status
+      - task
+    ClaudeWorkflowMiss:
+      type: object
+      properties:
+        detail:
+          type: string
+        workflows:
+          type: array
+          items:
+            type: string
+          description: The workflows there are, as Alfred says them.
+      required:
+      - detail
+      - workflows
+    ClaudeWorkflowName:
+      type: object
+      properties:
+        name:
+          type: string
+        says:
+          type: string
+      required:
+      - name
+      - says
+    ClaudeWorkflowParam:
+      type: object
+      properties:
+        name:
+          type: string
+        says:
+          type: string
+        required:
+          type: boolean
+      required:
+      - name
+      - required
+      - says
+    ClaudeWorkflowQueued:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ClaudeTaskStatusEnum'
+        machine:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeMachineRef'
+          nullable: true
+        workflow:
+          type: string
+        detail:
+          type: string
+          description: What was queued, in words.
+      required:
+      - detail
+      - id
+      - machine
+      - status
+      - workflow
+    ClaudeWorkflowRow:
+      type: object
+      properties:
+        machine:
+          type: string
+        machine_state:
+          $ref: '#/components/schemas/ClaudeMachineStateEnum'
+        name:
+          type: string
+        spoken:
+          type: string
+          description: The name as Alfred says it.
+        says:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeWorkflowParam'
+        asks:
+          type: array
+          items:
+            type: string
+          description: Where it stops for Kevin's yes, in words.
+        outputs:
+          type: array
+          items:
+            type: string
+        deliver:
+          type: string
+          nullable: true
+        every:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeWorkflowEvery'
+          nullable: true
+        last_run:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeWorkflowLastRun'
+          nullable: true
+        waiting:
+          type: boolean
+          description: A run is queued, running, or waiting on Kevin's yes.
+        due:
+          type: boolean
+          description: Its schedule says a run is due now.
+      required:
+      - aliases
+      - asks
+      - deliver
+      - due
+      - every
+      - last_run
+      - machine
+      - machine_state
+      - name
+      - outputs
+      - params
+      - says
+      - spoken
+      - waiting
+    ClaudeWorkflowRun:
+      type: object
+      properties:
+        machine:
+          type: string
+          nullable: true
+          description: The machine's spoken name; null for the only machine that has
+            the workflow.
+          maxLength: 100
+        name:
+          type: string
+          description: The workflow's exact name.
+          maxLength: 100
+        params:
+          type: string
+          nullable: true
+          description: Optional words for the workflow, as typed.
+          maxLength: 500
+      required:
+      - name
     CodeClearEvent:
       type: object
       description: |-

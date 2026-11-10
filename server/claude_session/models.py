@@ -68,9 +68,12 @@ ORIGINS: tuple[str, ...] = (ORIGIN_NAMED, ORIGIN_OFFERED, ORIGIN_SCHEDULE)
 
 # What a task is. `ask` is everything Kevin sends; `memory_review` is the one built-in kind the
 # engine mints on the Alienware at most once a day (memory-review ticket 15, ADR 0067 amended).
+# `workflow` is a named job from the machine's published catalog (worker-workflows ticket 03, ADR
+# 0067 amended 2026-11-10): `workflow` names it, `params` holds Kevin's words after its alias.
 KIND_ASK = "ask"
 KIND_MEMORY_REVIEW = "memory_review"
-TASK_KINDS: tuple[str, ...] = (KIND_ASK, KIND_MEMORY_REVIEW)
+KIND_WORKFLOW = "workflow"
+TASK_KINDS: tuple[str, ...] = (KIND_ASK, KIND_MEMORY_REVIEW, KIND_WORKFLOW)
 
 # Ruling 17 (Kevin 2026-11-01): naming his own email in the request is the yes
 # for that one task. The phone sets this; the worker's `send_mail.py` mails the
@@ -129,6 +132,8 @@ FILES_KEEP_HOURS = 24
 OFFLINE_AFTER_SECONDS = 90
 TASK_CAP_MINUTES = 30
 SILENT_FAIL_MINUTES = 10
+# Worker workflows (ticket 03): Kevin's words after the matched alias.
+PARAMS_MAX_CHARS = 500
 
 
 class ClaudeMachine(models.Model):
@@ -157,6 +162,13 @@ class ClaudeMachine(models.Model):
         "household.DeviceToken", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="claude_machines",
     )
+    # Worker workflows (ticket 03): the catalog this machine's worker last published, in
+    # `claude_session.workflows.clean_entry` shape plus `seen_at`. Derived, never authored here:
+    # the laptop holds the skills (ruling R1). `workflows_hash` is the worker's own hash of what it
+    # sent, echoed so it resends only on a change; blank until a worker that knows workflows beats.
+    workflows = models.JSONField(default=list, blank=True)
+    workflows_hash = models.TextField(blank=True, default="")
+    workflows_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "claude_machines"
@@ -193,6 +205,10 @@ class ClaudeTask(models.Model):
     )
     origin = models.TextField()
     kind = models.TextField(default=KIND_ASK)
+    # Worker workflows (ticket 03): the workflow's name when kind is `workflow`, else null; and the
+    # words Kevin said after its alias ("from this morning"), at most PARAMS_MAX_CHARS.
+    workflow = models.TextField(null=True, blank=True)
+    params = models.TextField(null=True, blank=True)
     deliver = models.TextField(null=True, blank=True)
     # True only on a follow-up that is Kevin's yes to a `needs_confirmation`
     # parent. The worker unlocks the asked ask-list step only when it is set.
@@ -241,6 +257,11 @@ class ClaudeTask(models.Model):
             ),
             models.CheckConstraint(
                 condition=models.Q(kind__in=TASK_KINDS), name="claude_tasks_kind_valid"
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(kind=KIND_WORKFLOW)
+                | (models.Q(workflow__isnull=False) & ~models.Q(workflow="")),
+                name="claude_tasks_workflow_named",
             ),
         ]
 

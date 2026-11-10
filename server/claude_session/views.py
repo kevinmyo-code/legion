@@ -37,6 +37,13 @@ Rulings this file enforces, by number in the map:
   appended to the task's `steps` when it changes, last 20 kept, and served
   newest first on every task row. It outlives the finish (the current line
   does not). A `listed` machine keeps none (ruling 5).
+- Worker workflows (ADR 0067 amended 2026-11-10, map worker-workflows tickets 03
+  and 04): the heartbeat carries each machine's workflow catalog (names, one
+  liners, aliases, asks, schedule; never a path or a skill's text), `POST
+  tasks/ {workflow}` resolves Kevin's phrase against it, `GET workflows/` lists
+  them with their last run, `POST workflows/run/` queues one by name, and a
+  claim mints at most one scheduled run that is due on an idle machine. A run
+  is one at a time; a follow-up to a workflow task stays that workflow's.
 - Files to phone (ADR 0080, Kevin 2026-11-09): `deliver: files` brings the
   files Kevin named to his phone. Refused for a `listed` machine like a page.
   At a `done` finish every found file is requested at once (naming them was
@@ -78,12 +85,15 @@ from claude_session.models import (
     FILES_MAX_COUNT,
     FILES_MAX_TOTAL_BYTES,
     IN_FLIGHT,
+    KIND_WORKFLOW,
     NEEDS_CONFIRMATION,
     NEEDS_MACHINE,
     OFFLINE_AFTER_SECONDS,
+    ORIGIN_NAMED,
     PAGE_LINK_SECONDS,
     PAGE_MAX_BYTES,
     PAGE_SUFFIXES,
+    PARAMS_MAX_CHARS,
     QUEUED,
     RUNNING,
     SCOPE_LISTED,
@@ -96,6 +106,7 @@ from claude_session.models import (
     ClaudeTask,
     ClaudeTaskFile,
 )
+from claude_session import workflows as wf
 from claude_session.state import effective_status, failure_reason, machine_state
 from claude_session.storage import StorageError, get_store, new_key
 from household.models import DeviceToken
@@ -273,6 +284,8 @@ def task_row(task: ClaudeTask, now) -> dict:
         "parent": task.parent_id,
         "origin": task.origin,
         "kind": task.kind,
+        "workflow": task.workflow,
+        "params": task.params,
         "deliver": task.deliver,
         "confirms": task.confirms,
         "progress": task.progress,
@@ -291,6 +304,97 @@ def _machine_ref(machine: ClaudeMachine | None, now) -> dict | None:
     }
 
 
+def _created(task: ClaudeTask, machine: ClaudeMachine | None, now) -> dict:
+    entry = wf.entry_named(machine, task.workflow) if machine and task.workflow else None
+    return {
+        "id": task.id,
+        "status": task.status,
+        "machine": _machine_ref(machine, now),
+        "workflow": task.workflow,
+        "asks": [a["says"] for a in (entry or {}).get("asks") or []],
+    }
+
+
+def _names(machines) -> list[str]:
+    out: list[str] = []
+    for m in machines:
+        for e in m.workflows or []:
+            if isinstance(e, dict) and wf.spoken(e["name"]) not in out:
+                out.append(wf.spoken(e["name"]))
+    return sorted(out)
+
+
+def _workflow_miss(machines, named: ClaudeMachine | None) -> Response:
+    names = _names(machines)
+    who = f"The {named.name} has" if named is not None else "No machine has"
+    if names:
+        text = f"Nothing was sent. {who} no workflow called that. There are: {', '.join(names)}."
+    else:
+        text = f"Nothing was sent. {who} no workflows yet."
+    return Response({"detail": text, "workflows": names}, status=http.HTTP_400_BAD_REQUEST)
+
+
+def _workflow_refusal(machine: ClaudeMachine, entry: dict | None, name: str) -> Response | None:
+    if entry is None:
+        return _workflow_miss([machine], machine)
+    if machine.scope not in entry.get("scope", ()):
+        return _detail(
+            f"Nothing was sent. {wf.spoken(name).capitalize()} does not run on the "
+            f"{machine.name}.",
+            http.HTTP_400_BAD_REQUEST,
+        )
+    return None
+
+
+def _one_at_a_time(machine: ClaudeMachine, entry: dict, now) -> Response | None:
+    if wf.waiting_on_kevin(machine, entry["name"], now):
+        return _detail(
+            f"Nothing was sent. A {wf.spoken(entry['name'])} run is already queued, running or "
+            "waiting on your yes.",
+            http.HTTP_409_CONFLICT,
+        )
+    return None
+
+
+def _workflow_deliver(entry: dict, machine: ClaudeMachine | None) -> str | None:
+    """A run Kevin asked for takes the workflow's declared delivery: its standing mail to him, or
+    its page (asking for the workflow was the yes for that page, ticket 09's rule)."""
+    if entry.get("deliver"):
+        return entry["deliver"]
+    if "page" in entry.get("outputs", ()) and (machine is None or machine.scope != SCOPE_LISTED):
+        return DELIVER_PHONE
+    return None
+
+
+def _resolve_workflow(request, phrase: str, named: ClaudeMachine | None, now):
+    """Which machine runs Kevin's phrase, which workflow it is and the words after its alias.
+
+    A named machine is the only candidate. Otherwise the machines online, and if none of those
+    has it, every machine (it then waits for that one to come on, like any task). One machine has
+    it: queued there. Several: `needs_machine`, Alfred asks which. None: 400 naming the
+    workflows there are. Returns (machine, entry, params, status) or a Response."""
+    every = list(scoped(ClaudeMachine, request).order_by("name"))
+    spoken_names = [m.name for m in every]
+    passes = [[named]] if named is not None else [_online_machines(request, now), every]
+    for candidates in passes:
+        hits = []
+        for m in candidates:
+            found = wf.match(phrase, m.workflows or [], spoken_names)
+            if found is not None:
+                hits.append((m, found[0], found[1]))
+        if not hits:
+            continue
+        machine, entry, params = hits[0]
+        params = params[:PARAMS_MAX_CHARS] or None
+        if len(hits) > 1:
+            return None, entry, params, NEEDS_MACHINE
+        refused = _workflow_refusal(machine, entry, entry["name"])
+        if refused is not None:
+            return refused
+        return machine, entry, params, QUEUED
+    return _workflow_miss([named] if named is not None else every, named)
+
+
 class TaskListCreateView(APIView):
     parser_classes = [JSONParser]
 
@@ -303,6 +407,12 @@ class TaskListCreateView(APIView):
             ),
             OpenApiParameter("status", str, description="One status, as computed at read time."),
             OpenApiParameter("machine", str, description="A machine's spoken name."),
+            OpenApiParameter(
+                "origin", str,
+                description="named, offered or schedule: `schedule` finds the runs the engine "
+                "started itself (a scheduled workflow waiting on Kevin's yes, for the phone).",
+            ),
+            OpenApiParameter("kind", str, description="ask, memory_review or workflow."),
         ],
         responses={200: s.ClaudeTaskRowSerializer(many=True)},
     )
@@ -323,6 +433,10 @@ class TaskListCreateView(APIView):
         machine_name = request.query_params.get("machine")
         if machine_name:
             rows = rows.filter(machine__name__iexact=machine_name.strip())
+        for field in ("origin", "kind"):
+            wanted = request.query_params.get(field)
+            if wanted:
+                rows = rows.filter(**{field: wanted.strip()})
         out = []
         # The status filter is applied after the read-time computation, so a
         # task the clock has failed answers `?status=failed`, not `running`.
@@ -344,7 +458,14 @@ class TaskListCreateView(APIView):
                 response=s.ClaudeTaskCreatedSerializer,
                 description="queued, or needs_machine when unnamed and more than one is online.",
             ),
-            400: OpenApiResponse(response=DetailSerializer, description="Refused, nothing stored."),
+            400: OpenApiResponse(
+                response=s.ClaudeWorkflowMissSerializer,
+                description="Refused, nothing stored. A workflow nobody has also lists the "
+                "workflows there are under `workflows`.",
+            ),
+            409: OpenApiResponse(
+                response=DetailSerializer, description="That workflow already has a run going."
+            ),
         },
     )
     def post(self, request):
@@ -392,7 +513,28 @@ class TaskListCreateView(APIView):
             elif len(online) > 1:
                 status = NEEDS_MACHINE
 
+        # Worker workflows (ticket 03). A follow-up stays its parent's workflow, so the run's
+        # chain counts as one run for the schedule; a new one resolves Kevin's phrase.
+        kind, workflow, params, entry = "ask", None, None, None
+        if parent is not None and parent.kind == KIND_WORKFLOW:
+            kind, workflow = KIND_WORKFLOW, parent.workflow
+        elif data["workflow"] is not None:
+            if parent is not None:
+                return _detail(
+                    "Nothing was sent. A follow-up continues its own task; it does not start a "
+                    "workflow.",
+                    http.HTTP_400_BAD_REQUEST,
+                )
+            named = machine if data["machine"] else None
+            resolved = _resolve_workflow(request, data["workflow"], named, now)
+            if isinstance(resolved, Response):
+                return resolved
+            machine, entry, params, status = resolved
+            kind, workflow = KIND_WORKFLOW, entry["name"]
+
         deliver = data["deliver"]
+        if entry is not None and deliver is None:
+            deliver = _workflow_deliver(entry, machine)
         # ADR 0080: Kevin's yes to a files task's question ("that's 31 files, send them all?")
         # is a follow-up that carries no deliver of its own; it still means "to my phone".
         if deliver is None and data["confirms"] and parent.deliver == DELIVER_FILES:
@@ -405,21 +547,26 @@ class TaskListCreateView(APIView):
                 _LISTED_REFUSALS[deliver].format(name=machine.name), http.HTTP_400_BAD_REQUEST
             )
 
+        if entry is not None and machine is not None:
+            refused = _one_at_a_time(machine, entry, now)
+            if refused is not None:
+                return refused
+
         task = ClaudeTask.objects.create(
             household=household,
             user=request.user,
             machine=machine,
             parent=parent,
             origin=data["origin"],
+            kind=kind,
+            workflow=workflow,
+            params=params,
             deliver=deliver,
             confirms=data["confirms"],
             request=data["request"],
             status=status,
         )
-        return Response(
-            {"id": task.id, "status": task.status, "machine": _machine_ref(machine, now)},
-            status=http.HTTP_201_CREATED,
-        )
+        return Response(_created(task, machine, now), status=http.HTTP_201_CREATED)
 
 
 class TaskDetailView(APIView):
@@ -517,12 +664,17 @@ class TaskAssignView(APIView):
                     _LISTED_REFUSALS[task.deliver].format(name=machine.name),
                     http.HTTP_400_BAD_REQUEST,
                 )
+            if task.kind == KIND_WORKFLOW and task.parent_id is None:
+                entry = wf.entry_named(machine, task.workflow)
+                refused = _workflow_refusal(machine, entry, task.workflow)
+                if refused is None:
+                    refused = _one_at_a_time(machine, entry, now)
+                if refused is not None:
+                    return refused
             task.machine = machine
             task.status = QUEUED
             task.save(update_fields=["machine", "status"])
-        return Response(
-            {"id": task.id, "status": task.status, "machine": _machine_ref(machine, now)}
-        )
+        return Response(_created(task, machine, now))
 
 
 class TaskSendFileView(APIView):
@@ -612,6 +764,10 @@ class StatusView(APIView):
                             {"task": t.id, "progress": t.progress, "progress_at": t.progress_at}
                             for t in running.get(m.id, [])
                         ],
+                        "workflows": [
+                            {"name": e["name"], "says": e["says"]}
+                            for e in m.workflows or [] if isinstance(e, dict)
+                        ],
                     }
                     for m in machines
                 ],
@@ -690,6 +846,22 @@ def _steps(task: ClaudeTask) -> list[dict]:
     ]
 
 
+def _store_catalog(machine: ClaudeMachine, data: dict, now) -> int:
+    """Ticket 03: keep the catalog the worker sent when its hash moved. A worker that sends no
+    hash (one that predates workflows) leaves the catalog as it is. Returns how many entries
+    failed the engine's checks and were dropped."""
+    sent_hash = data.get("workflows_hash")
+    raw = data.get("workflows")
+    if sent_hash is None or not isinstance(raw, list) or sent_hash == machine.workflows_hash:
+        return 0
+    kept, dropped = wf.clean_catalog(raw, machine.workflows, now)
+    machine.workflows = kept
+    machine.workflows_hash = sent_hash
+    machine.workflows_at = now
+    machine.save(update_fields=["workflows", "workflows_hash", "workflows_at"])
+    return dropped
+
+
 class HeartbeatView(APIView):
     parser_classes = [JSONParser]
 
@@ -705,6 +877,7 @@ class HeartbeatView(APIView):
             return _refused(serializer)
         now = timezone.now()
         machine = _touch_machine(request, serializer.validated_data, now)
+        dropped = _store_catalog(machine, serializer.validated_data, now)
         tasks = scoped(ClaudeTask, request).filter(machine=machine)
         _store_progress(
             tasks, serializer.validated_data["progress"], now,
@@ -721,7 +894,14 @@ class HeartbeatView(APIView):
                 .filter(task__machine=machine, requested_at__isnull=False, uploaded_at__isnull=True)
                 .order_by("id")
             ]
-        return Response({"cancel_requested": cancel, "files_requested": files})
+        return Response(
+            {
+                "cancel_requested": cancel,
+                "files_requested": files,
+                "workflows_hash": machine.workflows_hash,
+                "workflows_dropped": dropped,
+            }
+        )
 
 
 class ClaimView(APIView):
@@ -754,15 +934,20 @@ class ClaimView(APIView):
         machine.save(update_fields=["last_seen_at"])
         only_one_online = [m.id for m in _online_machines(request, now)] == [machine.id]
         with transaction.atomic():
+            # One claim at a time per machine, so two claims never both mint (ticket 04).
+            machine = ClaudeMachine.objects.select_for_update().get(pk=machine.pk)
             # memory-review ticket 15: the daily review is minted here, for this machine, when
             # its member is due and it is idle. Off by default (LEGION_MEMORY_REVIEW).
             from member_memory.review import maybe_mint
 
-            maybe_mint(request, machine, now)
+            # Worker workflows ticket 04: at most one minted task per claim, the review first.
+            if maybe_mint(request, machine, now) is None:
+                wf.maybe_mint_workflow(request, machine, now)
             queued = scoped(ClaudeTask, request).filter(status=QUEUED)
             mine = queued.filter(machine=machine)
             if only_one_online:
-                unaddressed = queued.filter(machine__isnull=True)
+                # A workflow is only ever queued on a machine whose catalog has it.
+                unaddressed = queued.filter(machine__isnull=True).exclude(kind=KIND_WORKFLOW)
                 if machine.scope == SCOPE_LISTED:
                     # Ticket 09, ADR 0080: a page or files wait for a machine that can send them.
                     unaddressed = unaddressed.exclude(deliver__in=list(_LISTED_REFUSALS))
@@ -776,6 +961,137 @@ class ClaimView(APIView):
         if not claimed:
             return Response(status=http.HTTP_204_NO_CONTENT)
         return Response([task_row(task, now) for task in claimed])
+
+
+class WorkflowListView(APIView):
+    """`GET workflows/?machine=`: every machine's published workflows with their last run, for the
+    Claude session screen and the web desk (worker-workflows tickets 03, 06, 07). Offline machines
+    are listed too and say so: a run queued there waits for it, like any task."""
+
+    @extend_schema(
+        operation_id="api_claude_workflows_list",
+        tags=TAGS,
+        parameters=[OpenApiParameter("machine", str, description="One machine's spoken name.")],
+        responses={200: s.ClaudeWorkflowRowSerializer(many=True)},
+    )
+    def get(self, request):
+        now = timezone.now()
+        machines = scoped(ClaudeMachine, request).order_by("name")
+        wanted = request.query_params.get("machine")
+        if wanted:
+            machines = machines.filter(name__iexact=wanted.strip())
+        out = []
+        for m in machines:
+            state = machine_state(m, now)
+            for entry in m.workflows or []:
+                if not isinstance(entry, dict):
+                    continue
+                last = wf.last_run(m, entry["name"])
+                out.append({
+                    "machine": m.name,
+                    "machine_state": state,
+                    "name": entry["name"],
+                    "spoken": wf.spoken(entry["name"]),
+                    "says": entry["says"],
+                    "aliases": list(entry.get("aliases") or []),
+                    "params": [
+                        {"name": p["name"], "says": p["says"], "required": p["required"]}
+                        for p in entry.get("params") or []
+                    ],
+                    "asks": [a["says"] for a in entry.get("asks") or []],
+                    "outputs": list(entry.get("outputs") or []),
+                    "deliver": entry.get("deliver"),
+                    "every": entry.get("every"),
+                    "last_run": None if last is None else {
+                        "task": last.id,
+                        "status": effective_status(last, now),
+                        "origin": last.origin,
+                        "created_at": last.created_at,
+                        "finished_at": last.finished_at,
+                    },
+                    "waiting": wf.waiting_on_kevin(m, entry["name"], now),
+                    "due": wf.due(m, entry, now).due,
+                })
+        return Response(out)
+
+
+class WorkflowRunView(APIView):
+    """`POST workflows/run/ {machine, name, params}`: queue one run now, by the workflow's exact
+    name (the screen's and the web desk's Run button; ticket 04). One at a time, like a scheduled
+    run: a run already queued, running or waiting on Kevin's yes is a 409."""
+
+    parser_classes = [JSONParser]
+
+    @extend_schema(
+        operation_id="api_claude_workflows_run",
+        tags=TAGS,
+        request=s.ClaudeWorkflowRunSerializer,
+        responses={
+            201: s.ClaudeWorkflowQueuedSerializer,
+            400: OpenApiResponse(response=s.ClaudeWorkflowMissSerializer, description="Refused."),
+            409: OpenApiResponse(response=DetailSerializer, description="A run is going."),
+        },
+    )
+    def post(self, request):
+        serializer = s.ClaudeWorkflowRunSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _refused(serializer)
+        data = serializer.validated_data
+        now = timezone.now()
+        name = data["name"].strip()
+        every = list(scoped(ClaudeMachine, request).order_by("name"))
+        if data["machine"]:
+            machine = _machine_named(request, data["machine"])
+            if machine is None:
+                listing = ", ".join(m.name for m in every) or "none yet"
+                return _detail(
+                    f"Nothing was sent. No machine has that name here. Known machines: {listing}.",
+                    http.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            having = [m for m in every if wf.entry_named(m, name) is not None]
+            if not having:
+                return _workflow_miss(every, None)
+            if len(having) > 1:
+                return _detail(
+                    "Nothing was sent. More than one machine has that workflow; name one: "
+                    + ", ".join(m.name for m in having) + ".",
+                    http.HTTP_400_BAD_REQUEST,
+                )
+            machine = having[0]
+        entry = wf.entry_named(machine, name)
+        refused = _workflow_refusal(machine, entry, name)
+        if refused is not None:
+            return refused
+        params = (data["params"] or "").strip()[:PARAMS_MAX_CHARS] or None
+        with transaction.atomic():
+            ClaudeMachine.objects.select_for_update().filter(pk=machine.pk).first()
+            refused = _one_at_a_time(machine, entry, now)
+            if refused is not None:
+                return refused
+            words = f"Run {wf.spoken(name)}." + (f" {params}" if params else "")
+            task = ClaudeTask.objects.create(
+                household=household_of(request),
+                user=request.user,
+                machine=machine,
+                origin=ORIGIN_NAMED,
+                kind=KIND_WORKFLOW,
+                workflow=name,
+                params=params,
+                deliver=_workflow_deliver(entry, machine),
+                request=words,
+                status=QUEUED,
+            )
+        return Response(
+            {
+                "id": task.id,
+                "status": task.status,
+                "machine": _machine_ref(machine, now),
+                "workflow": name,
+                "detail": f"Queued {wf.spoken(name)} on the {machine.name}.",
+            },
+            status=http.HTTP_201_CREATED,
+        )
 
 
 def _over_caps(found: list[dict]) -> bool:
