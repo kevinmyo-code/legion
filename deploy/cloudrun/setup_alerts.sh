@@ -8,11 +8,17 @@
 # What it creates:
 #   1. An email notification channel (ALERT_EMAIL).
 #   2. Two log-based metrics:
-#        legion_job_failures  - any ERROR-or-worse line from a Cloud Run job execution
-#                               (the `legion-worker` job: Scheduler's 15 tasks)
-#        legion_http_5xx      - any request the `legion` service answered with 5xx
-#   3. Two alert policies on those metrics (job failure: any in 5 minutes; 5xx: more than
-#      5 in 5 minutes), both to the email channel.
+#        legion_error_events  - Error Reporting events the engine logged (service or job):
+#                               JSON lines with the ReportedErrorEvent @type (`server/legion/log.py`).
+#                               NOT `severity>=ERROR`: Cloud Run marks every plain stderr line
+#                               ERROR, so that would page on a job that finished fine.
+#        legion_http_5xx      - any request the `legion` service answered with 5xx (request log)
+#   3. Three alert policies, all to the email channel:
+#        job-failure  - a `legion-worker` execution that FAILED (Cloud Run's own
+#                       run.googleapis.com/job/completed_execution_count, result="failed"),
+#                       which also catches a crash that never reached the logger
+#        error-events - any engine error event in 5 minutes
+#        http-5xx     - more than 5 in 5 minutes
 #   4. A $20/month budget on the project's billing account, alerting at 50%, 90%, 100%
 #      (and 100% forecast). A budget alerts; it never caps or stops anything.
 #
@@ -55,16 +61,14 @@ else
 fi
 
 echo "# 2. log-based metrics"
-run gcloud logging metrics create legion_job_failures --project "$PROJECT" \
-	--description="LEGION: ERROR-or-worse lines from a Cloud Run job execution" \
-	--log-filter="resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"$JOB\" AND severity>=ERROR"
+run gcloud logging metrics create legion_error_events --project "$PROJECT" 	--description="LEGION: Error Reporting events logged by the engine" 	--log-filter="(resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\" OR resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"$JOB\") AND jsonPayload.\"@type\"=\"type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent\""
 run gcloud logging metrics create legion_http_5xx --project "$PROJECT" \
 	--description="LEGION: requests the service answered with 5xx" \
 	--log-filter="resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\" AND httpRequest.status>=500"
 
 echo "# 3. alert policies"
 TMP=$(mktemp -d)
-policy() { # name metric threshold
+policy() { # name metric-filter threshold
 	cat >"$TMP/$1.json" <<JSON
 {
   "displayName": "LEGION: $1",
@@ -72,7 +76,7 @@ policy() { # name metric threshold
   "conditions": [{
     "displayName": "$1",
     "conditionThreshold": {
-      "filter": "metric.type=\"logging.googleapis.com/user/$2\" AND resource.type=\"$4\"",
+      "filter": "$2",
       "comparison": "COMPARISON_GT",
       "thresholdValue": $3,
       "duration": "0s",
@@ -86,8 +90,10 @@ policy() { # name metric threshold
 JSON
 	run gcloud alpha monitoring policies create --project "$PROJECT" --policy-from-file="$TMP/$1.json"
 }
-policy job-failure legion_job_failures 0 cloud_run_job
-policy http-5xx legion_http_5xx 5 cloud_run_revision
+q='\"'
+policy job-failure "metric.type=${q}run.googleapis.com/job/completed_execution_count${q} AND resource.type=${q}cloud_run_job${q} AND resource.label.job_name=${q}$JOB${q} AND metric.label.result=${q}failed${q}" 0
+policy error-events "metric.type=${q}logging.googleapis.com/user/legion_error_events${q}" 0
+policy http-5xx "metric.type=${q}logging.googleapis.com/user/legion_http_5xx${q} AND resource.type=${q}cloud_run_revision${q}" 5
 
 echo "# 4. budget"
 if [ -z "${BILLING_ACCOUNT:-}" ]; then

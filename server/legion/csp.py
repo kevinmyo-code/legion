@@ -56,7 +56,8 @@ def inline_script_hashes(html: bytes) -> list[str]:
 
 
 def policy(script_hashes: list[str] | None = None) -> str:
-    script = ["'self'", "'wasm-unsafe-eval'", PLAID_CDN, "blob:", *(script_hashes or [])]
+    # No `blob:` for scripts: if Readium or pdf.js needs it, the report-only pass will say so.
+    script = ["'self'", "'wasm-unsafe-eval'", PLAID_CDN, *(script_hashes or [])]
     directives = {
         "default-src": ["'self'"],
         "script-src": script,

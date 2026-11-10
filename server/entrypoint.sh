@@ -108,7 +108,9 @@ fi
 # `--timeout 300` matches Cloud Run's `--timeout 300`. Under gthread it bounds a
 # worker whose main loop stops answering, not one slow request; the request ceiling
 # itself is Cloud Run's. `--graceful-timeout 8` fits inside the 10 s Cloud Run
-# allows between SIGTERM and SIGKILL.
+# allows between SIGTERM and SIGKILL. `--error-logfile /dev/stdout` puts gunicorn's own
+# lines ("Booting worker") on stdout (`-` would mean stderr for this flag): on stderr
+# Cloud Run marks every plain line ERROR, and the alert script would page on a cold start.
 exec gunicorn legion.wsgi:application \
 	--bind "0.0.0.0:${PORT:-8000}" \
 	--worker-class gthread \
@@ -116,4 +118,5 @@ exec gunicorn legion.wsgi:application \
 	--threads "${LEGION_GUNICORN_THREADS:-2}" \
 	--timeout 300 \
 	--graceful-timeout 8 \
-	--access-logfile -
+	--access-logfile - \
+	--error-logfile /dev/stdout
