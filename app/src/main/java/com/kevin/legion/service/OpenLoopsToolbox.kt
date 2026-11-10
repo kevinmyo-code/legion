@@ -34,6 +34,7 @@ object OpenLoopsToolbox {
             "can tap Track or Dismiss in Settings, Proactive speech."
 
     /** Null when [name]/[args] is not an answer to a proposal, so [LiveToolbox.dispatch] carries on. */
+    @Suppress("ReturnCount") // each early null is "not an answer to a proposal; manage_item as before"
     suspend fun dispatch(
         context: Context,
         name: String,
@@ -49,6 +50,7 @@ object OpenLoopsToolbox {
             touchedReadThroughToolThisTurn)
     }
 
+    @Suppress("ReturnCount") // no match, ambiguous, read-through, no, a bad date: each answers in words
     internal suspend fun answer(
         controller: OpenLoopsController,
         action: String,

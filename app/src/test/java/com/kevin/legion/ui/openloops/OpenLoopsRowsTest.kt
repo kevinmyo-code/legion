@@ -36,6 +36,8 @@ class OpenLoopsRowsTest {
 
     private val engine = FakeOpenLoopsBackend()
 
+    private fun controller() = OpenLoopsController(backend = { engine })
+
     @After
     fun tearDown() {
         OpenLoopsToolbox.controllerFactory = OpenLoopsController::forContext
@@ -45,7 +47,7 @@ class OpenLoopsRowsTest {
     @Test
     fun `each proposal has Track and Dismiss, and a tap reaches the engine through the controller`() {
         engine.proposals += listOf(DENTIST, REGISTRATION)
-        compose.setContent { SoftTheme { OpenLoopsRows(controllerFor = { OpenLoopsController(backend = { engine }) }) } }
+        compose.setContent { SoftTheme { OpenLoopsRows(controllerFor = { controller() }) } }
         compose.waitForIdle()
         compose.onNodeWithText("Call the dentist, no date").assertIsDisplayed()
         compose.onNodeWithText("Renew the registration by November 20 (Fri 20 Nov)").assertIsDisplayed()
@@ -66,7 +68,7 @@ class OpenLoopsRowsTest {
         val stopped = SpokenBriefs.stop(context, "proposing tasks")
         assertTrue(stopped.ok)
         assertFalse(engine.proposing)
-        compose.setContent { SoftTheme { OpenLoopsRows(controllerFor = { OpenLoopsController(backend = { engine }) }) } }
+        compose.setContent { SoftTheme { OpenLoopsRows(controllerFor = { controller() }) } }
         compose.waitForIdle()
         compose.onNodeWithText("Propose to-dos").assertIsDisplayed()
         assertTrue(compose.onAllNodesWithText("Track").fetchSemanticsNodes().isEmpty())

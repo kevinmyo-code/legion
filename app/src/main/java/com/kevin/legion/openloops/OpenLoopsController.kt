@@ -49,7 +49,10 @@ class OpenLoopsController(
     suspend fun voiceLine(): String? {
         val engine = backend() ?: return null
         return when (val got = engine.offer()) {
-            is MemoryOutcome.Ok -> got.value.let { remember(it); if (it.on) OpenLoopsBrief.forVoice(it.proposals) else null }
+            is MemoryOutcome.Ok -> {
+                remember(got.value)
+                if (got.value.on) OpenLoopsBrief.forVoice(got.value.proposals) else null
+            }
             is MemoryOutcome.Refused -> null // a recruiter, the work laptop: no such subject here
             else -> OpenLoopsBrief.UNREADABLE_FOR_VOICE
         }
@@ -105,6 +108,7 @@ class OpenLoopsController(
      * this process already knows there is nothing pending ([Hint]). Unreadable is [Match.None]:
      * the caller then does what `manage_item` always did.
      */
+    @Suppress("ReturnCount") // nothing pending, no engine, unreadable, nothing said: each is no match
     suspend fun match(spoken: String): Match {
         if (Hint.pending == false) return Match.None
         val engine = backend() ?: return Match.None

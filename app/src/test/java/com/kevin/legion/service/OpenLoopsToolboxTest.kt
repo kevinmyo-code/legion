@@ -134,7 +134,9 @@ class OpenLoopsToolboxTest {
     @Test
     fun `through LiveToolbox dispatch, the same answer reaches the engine`() {
         val r = runBlocking {
-            LiveToolbox.dispatch(context, "manage_item", JSONObject("""{"action":"add","item":"call the dentist"}"""), false)
+            LiveToolbox.dispatch(
+                context, "manage_item", JSONObject("""{"action":"add","item":"call the dentist"}"""), false,
+            )
         }!!
         assertTrue(r.getBoolean("success"))
         assertEquals(listOf("p1" to null), engine.tracked)

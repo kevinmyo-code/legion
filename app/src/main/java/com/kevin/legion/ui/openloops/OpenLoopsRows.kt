@@ -34,15 +34,6 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import kotlinx.coroutines.launch
 
-/** What the rows draw. [note] is the last tap's words, or why the list could not be read. */
-data class OpenLoopsUi(
-    val loaded: Boolean = false,
-    val proposing: Boolean = true,
-    val on: Boolean = true,
-    val proposals: List<Proposal> = emptyList(),
-    val note: String? = null,
-)
-
 /**
  * The hands path for proposed to-dos (ADR 0035, ADR 0085): the "stop proposing tasks" switch and
  * the pending list with Track and Dismiss, beside the spoken brief rows under Digest on Settings,
@@ -108,7 +99,8 @@ fun OpenLoopsRowsContent(
                     )
                     Text(
                         "When you say you'll do something and don't set it, the brief asks whether to " +
-                            "track it. Nothing is tracked without your yes. \"${OpenLoopsBrief.SILENCE_INSTRUCTION}\" " +
+                            "track it. Nothing is tracked without your yes. " +
+                            "\"${OpenLoopsBrief.SILENCE_INSTRUCTION}\" " +
                             "turns this off." + if (ui.on) "" else " Off on the engine for now.",
                         style = LegionType.stamp,
                         color = sem.faint,

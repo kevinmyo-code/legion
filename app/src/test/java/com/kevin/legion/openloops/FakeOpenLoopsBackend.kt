@@ -4,6 +4,7 @@ import com.kevin.legion.memory.MemoryOutcome
 import java.time.LocalDate
 
 /** An in-memory engine for proposed to-dos. Made-up tasks only. Records every call. */
+@Suppress("ReturnCount") // a fake: offline, unknown id, then the answer
 class FakeOpenLoopsBackend(
     val proposals: MutableList<Proposal> = mutableListOf(),
     var on: Boolean = true,
@@ -30,12 +31,18 @@ class FakeOpenLoopsBackend(
         calls += "track $id"
         if (down) return MemoryOutcome.Unreachable("offline")
         val p = proposals.firstOrNull { it.id == id }
-            ?: return MemoryOutcome.Refused("Nothing was changed. There is no proposed to-do with that id that you can see.", 404)
+            ?: return MemoryOutcome.Refused(
+                "Nothing was changed. There is no proposed to-do with that id that you can see.",
+                404,
+            )
         proposals.remove(p)
         tracked += id to dueDate
         val day = dueDate ?: p.dueDate
         return MemoryOutcome.Ok(
-            Tracked(if (day != null) "reminder" else "todo", "Tracked: ${p.title}" + if (day != null) " for $day." else " on your Todo list, no date."),
+            Tracked(
+                if (day != null) "reminder" else "todo",
+                "Tracked: ${p.title}" + if (day != null) " for $day." else " on your Todo list, no date.",
+            ),
         )
     }
 

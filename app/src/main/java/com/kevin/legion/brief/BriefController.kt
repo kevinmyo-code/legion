@@ -92,7 +92,8 @@ class BriefController(
 
     /** Calendar and weather from the phone, live. */
     suspend fun phoneSections(): List<PhoneSection> =
-        phone.sections(null) + listOfNotNull(openLoops?.screenLine()?.let { PhoneSection(OpenLoopsBrief.SCREEN_TITLE, it) })
+        phone.sections(null) +
+            listOfNotNull(openLoops?.screenLine()?.let { PhoneSection(OpenLoopsBrief.SCREEN_TITLE, it) })
 
     suspend fun newslettersEnabled(): Boolean = phone.newslettersEnabled()
 
