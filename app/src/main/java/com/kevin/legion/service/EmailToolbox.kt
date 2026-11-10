@@ -138,7 +138,12 @@ object EmailToolbox {
     }
 
     internal fun open(context: Context, draftId: String?): JSONObject {
-        val draft = gate.find(draftId) ?: return result(false, EmailCompose.NO_DRAFT_TO_OPEN)
+        // No draft from this conversation (a restart, or past the window): Gmail's Drafts anyway.
+        val draft = gate.find(draftId) ?: return if (opener(context, "")) {
+            result(true, EmailCompose.OPENED_NO_DRAFT).put("sent", false)
+        } else {
+            result(false, EmailCompose.OPEN_FAILED).put("sent", false)
+        }
         return if (opener(context, draft.messageId)) {
             result(true, EmailCompose.opened(draft.subject)).put("sent", false)
         } else {
@@ -268,7 +273,8 @@ object EmailToolbox {
      */
     private fun openInGmail(context: Context, messageId: String): Boolean {
         val pm = context.packageManager
-        val link = Uri.parse("https://mail.google.com/mail/u/0/#drafts/$messageId")
+        val drafts = "https://mail.google.com/mail/u/0/#drafts"
+        val link = Uri.parse(if (messageId.isBlank()) drafts else "$drafts/$messageId")
         val attempts = listOfNotNull(
             Intent(Intent.ACTION_VIEW, link).setPackage(GMAIL_PACKAGE),
             pm.getLaunchIntentForPackage(GMAIL_PACKAGE),

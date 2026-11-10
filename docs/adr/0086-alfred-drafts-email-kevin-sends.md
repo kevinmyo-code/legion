@@ -57,5 +57,10 @@ this is the most consequential write Alfred has.
   It is a restricted scope, so in Testing status the grant lapses every seven days, like read-only.
 - No public Gmail intent opens one draft. `open` tries `https://mail.google.com/mail/u/0/#drafts/<message id>`
   aimed at the Gmail app and falls back; the result only ever claims Gmail is open.
+  With no draft from this conversation (an app restart, or past the 15 minutes) it opens Gmail at
+  Drafts anyway and says it has no draft of its own to point at.
+- The compose grant is asked for only by the tool today. Settings' Google access screen still asks
+  for read-only alone; a compose row there is a follow-up, so a consent screen that will not open
+  from a live session has a hands path.
 - The draft cannot be edited by voice; a change is a new draft (the old one stays in Drafts).
 - The setup payload grows by one declaration; its protocol rides in the results, billed per call.

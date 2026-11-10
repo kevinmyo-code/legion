@@ -148,6 +148,6 @@ object EmailCompose {
     const val OPEN_FAILED =
         "Gmail could not be opened on the phone. The draft is still in Drafts, not sent."
 
-    const val NO_DRAFT_TO_OPEN =
-        "There is no draft from this conversation to open. Nothing was sent."
+    const val OPENED_NO_DRAFT =
+        "Gmail is open on the phone at Drafts. There is no draft from this conversation; nothing was sent."
 }

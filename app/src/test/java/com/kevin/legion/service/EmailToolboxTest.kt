@@ -243,10 +243,12 @@ class EmailToolboxTest {
     }
 
     @Test
-    fun `open with no draft opens nothing`() {
+    fun `open with no draft from this conversation opens Gmail's Drafts`() {
         val r = call(JSONObject().put("action", "open"), "check it")
-        assertFalse(r.getBoolean("success"))
-        assertTrue(opened.isEmpty())
+        assertTrue(r.getBoolean("success"))
+        assertFalse(r.getBoolean("sent"))
+        assertEquals(EmailCompose.OPENED_NO_DRAFT, r.getString("message"))
+        assertEquals(listOf(""), opened)
     }
 
     @Test
