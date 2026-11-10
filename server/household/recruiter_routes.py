@@ -120,6 +120,7 @@ _DEVICE = "it reaches a device or an account outside the household's own rows"
 _CLAUDE = "the Claude session runs on a household member's own laptop"
 _VAULT = "the ID vault holds a member's own identity numbers and opens only on their phone"
 _WATCHES = "standing watches make Alfred speak to a member later; not part of the demo"
+_OPEN_LOOPS = "proposed to-dos come from a member's own words to Alfred; not part of the demo"
 
 RECRUITER_DENIED: dict[str, str] = {
     # household settings, members, invites, tokens, passwords
@@ -193,6 +194,12 @@ RECRUITER_DENIED: dict[str, str] = {
     "watches.views.WatchDetailView": _WATCHES,
     "watches.views.FiringListView": _WATCHES,
     "watches.views.FiringAckView": _WATCHES,
+    # open-loops map (ADR 0085). `open_loops.service.door` refuses a recruiter a second time.
+    "open_loops.views.OpenLoopListView": _OPEN_LOOPS,
+    "open_loops.views.OpenLoopOfferView": _OPEN_LOOPS,
+    "open_loops.views.OpenLoopTrackView": _OPEN_LOOPS,
+    "open_loops.views.OpenLoopDismissView": _OPEN_LOOPS,
+    "open_loops.views.OpenLoopSettingsView": _OPEN_LOOPS,
     # ingestion: uploads, feed logins, the bank link, the files ledger
     "api.ingest_files.IngestedFileViewSet": (
         "the document-ingestion ledger is not part of the demo"

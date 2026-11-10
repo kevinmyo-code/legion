@@ -91,6 +91,8 @@ urlpatterns = [
     path("api/vault/", include("id_vault.urls")),
     # watches map (ADR 0083): standing watches and what they found.
     path("api/watches/", include("watches.urls")),
+    # open-loops map (ADR 0085): proposed to-dos, answered by the member only.
+    path("api/open-loops/", include("open_loops.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

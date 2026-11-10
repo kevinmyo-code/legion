@@ -1,0 +1,83 @@
+{
+  "nodes": [
+    {
+      "id": "67e22dbce0a22a82",
+      "type": "file",
+      "file": ".scratch/open-loops/issues/01-engine.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "af05d74dc36b8f54",
+      "type": "file",
+      "file": ".scratch/open-loops/issues/02-worker.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "eef31f6700349b8c",
+      "type": "file",
+      "file": ".scratch/open-loops/issues/03-phone.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "db9e2e4a3b30092a",
+      "type": "file",
+      "file": ".scratch/open-loops/issues/04-worker-update.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "cda182a85579e8c7",
+      "type": "file",
+      "file": ".scratch/open-loops/issues/06-picks.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0da32a363c12db41",
+      "type": "file",
+      "file": ".scratch/open-loops/issues/07-consolidation-read-through.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2c0a97d75c6336a4",
+      "type": "file",
+      "file": ".scratch/open-loops/issues/05-phone-run.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "da81cad4be8338ca",
+      "fromNode": "db9e2e4a3b30092a",
+      "fromSide": "right",
+      "toNode": "2c0a97d75c6336a4",
+      "toSide": "left"
+    }
+  ]
+}

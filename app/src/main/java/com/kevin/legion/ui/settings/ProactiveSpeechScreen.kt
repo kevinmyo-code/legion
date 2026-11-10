@@ -195,6 +195,8 @@ fun ProactiveSpeechScreen(onBack: () -> Unit, onOpenWatches: () -> Unit = {}) {
                     // ADR 0082: the two spoken briefs live inside Digest, so their switches sit under it.
                     if (category == ProactiveCategory.DIGEST) {
                         SpokenBriefRows(digestOn = proactiveOn && proactiveCategories[category] == true)
+                        // ADR 0085: the brief's proposed to-dos line, its switch and its Track/Dismiss list.
+                        com.kevin.legion.ui.openloops.OpenLoopsRows()
                     }
                 }
                 // ADR 0083: what each watch is, one by one (the Watches switch above silences all).

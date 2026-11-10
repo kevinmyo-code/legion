@@ -92,7 +92,13 @@ object SpokenBriefs {
      * "stop the morning brief": switches that brief off for good. The same switch as the row on
      * Settings, Proactive speech (ADR 0035's hands path), which is where it comes back on.
      */
+    @Suppress("ReturnCount") // a proposals stop (ADR 0085), no such line, or a brief
     suspend fun stop(context: Context, spoken: String): StopResult {
+        // ADR 0085: "stop proposing tasks" rides the same stop; the switch lives on the engine.
+        if (match(spoken) == null && com.kevin.legion.openloops.OpenLoopsBrief.namesThis(spoken)) {
+            return com.kevin.legion.service.OpenLoopsToolbox.controllerFactory(context).setProposing(false)
+                .let { StopResult(it.ok, it.words) }
+        }
         val brief = match(spoken) ?: return StopResult(
             false,
             "No spoken line called \"$spoken\". The ones that stop this way are the morning brief and the home " +

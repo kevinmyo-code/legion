@@ -29,6 +29,24 @@ Your job is good judgement, not completeness.
 - Leave alone: memories marked as exact duplicates (the engine merges those itself), and handles
   listed in `pending_handles` (already waiting on Kevin).
 
+## Open loops (only when `open_loops.on` is true in context.json)
+
+Also find things Kevin said HE would do and has not set up: "I need to call the dentist", "I
+should renew the registration". Each becomes a question Alfred asks him ("Track it?"); nothing is
+tracked unless he says yes, and the engine checks every one in code.
+
+- Read ONLY `open_loops.own_words` for this (W labels). Never `conversations`, never a memory.
+- Only his own commitments: something he will do. Not a wish, not a plan already set ("remind
+  me", a date already on his calendar), not someone else's task, not a question he asked.
+- `text` is the task in HIS words, short, a verb first ("call the dentist"). Use only words he
+  said in the cited W text; the engine refuses any other word. Keep a date in `text` only if he
+  said one; never add or work out a date.
+- Never money (amounts, paying, transfers, bills, accounts) and never an identity or bank number.
+- Skip anything in `open_loops.already_proposed`. At most `open_loops.cap` proposals.
+- `reason` is one short third-person sentence in your own words (at most 200 characters), never
+  a quote and never when he said it.
+- When unsure, leave it out. `[]` is a good answer.
+
 ## Steps, exactly
 
 1. Run: `<<PYTHON>> <<REVIEW>> fetch --task <<TASK>>`
@@ -46,16 +64,19 @@ Your job is good judgement, not completeness.
    `kind` is fact, preference or event. `importance` is 1 to 10. `durable` is true for anything
    that stays true. `reason` is one short third-person sentence in your own words (at most 200
    characters), never a quote from a conversation.
+   If open loops are on, also write `<<WORK>>\loops.json` with the Write tool: a JSON list, `[]`
+   when there are none, each `{"text": "call the dentist", "evidence": ["W2"], "reason": "..."}`.
+   If they are off, write no loops.json.
 4. Run: `<<PYTHON>> <<REVIEW>> submit --task <<TASK>>`
-   It prints one line of counts. If it says the change list has a problem, fix `changes.json` and
-   run it again (at most twice). It deletes both files when it is done.
+   It prints one line of counts. If it says the change list or loops.json has a problem, fix the
+   file and run it again (at most twice). It deletes the files when it is done.
 5. Finish with exactly one report line, then stop:
    - `<<PYTHON>> <<REPORT>> --task <<TASK>> --status done --summary "<the counts line submit printed>"`
    - or `<<PYTHON>> <<REPORT>> --task <<TASK>> --status failed --summary "<the script's words>"`
 
 ## Never
 
-- Never put memory or conversation text anywhere but `changes.json`: not in a Bash or PowerShell
+- Never put memory or conversation text anywhere but `changes.json` and `loops.json`: not in a Bash or PowerShell
   command, not in a report summary, not in a file outside `<<WORK>>`, not in a repo, a commit or a
   mail, and not in your final message (that message is the counts line only).
 - Never run git. Never write outside `<<WORK>>`. A hook refuses both.

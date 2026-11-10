@@ -747,3 +747,35 @@ def test_the_database_refuses_a_body_profile_owned_by_a_non_member(household_a, 
 
     with pytest.raises(IntegrityError), transaction.atomic():
         BodyProfile.objects.create(household=household_a, owner_user=user_b)
+
+
+
+# =============================================================================
+# open-loops map (ADR 0085): a proposed to-do is private to the member whose words it came from
+# =============================================================================
+
+
+def test_a_proposed_to_do_is_private_to_its_member(household_a, kevin, kevin_client, mia_client,
+                                                   settings):
+    """`open_loops.owner_user` is never null (`OWNER_PATHS`): `visible()` hands a member only his
+    own proposals, so the other member lists none and answers none (a 404, the shape of another
+    household's row). A made-up task."""
+    import datetime
+
+    from django.utils import timezone
+
+    from open_loops.models import OpenLoop
+
+    settings.LEGION_MEMORY_REVIEW = "shadow"
+    settings.LEGION_OPEN_LOOPS = "on"
+    row = OpenLoop.objects.create(
+        household=household_a, owner_user=kevin, title="Call the plumber", dedupe_key="k",
+        expires_at=timezone.now() + datetime.timedelta(days=14),
+    )
+    mine = kevin_client.get("/api/open-loops/").data["proposals"]
+    assert [p["id"] for p in mine] == [str(row.id)]
+    assert mia_client.get("/api/open-loops/").data["proposals"] == []
+    assert mia_client.post(f"/api/open-loops/{row.id}/track", {}, format="json").status_code == 404
+    assert mia_client.post(f"/api/open-loops/{row.id}/dismiss").status_code == 404
+    row.refresh_from_db()
+    assert row.status == "pending"

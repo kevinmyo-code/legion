@@ -2,6 +2,8 @@ package com.kevin.legion.brief
 
 import android.content.Context
 import com.kevin.legion.MidnightApplication
+import com.kevin.legion.openloops.OpenLoopsBrief
+import com.kevin.legion.openloops.OpenLoopsController
 import com.kevin.legion.sitrep.SitrepModule
 import java.time.ZoneId
 
@@ -52,7 +54,16 @@ class BriefController(
     private val phone: BriefPhone,
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
+    /** ADR 0085: the proposed to-dos line, or null for none. Null source: no line at all. */
+    private val openLoops: OpenLoopsLines? = null,
 ) {
+
+    /** The two renderings of the proposed to-dos line ([com.kevin.legion.openloops.OpenLoopsController]). */
+    interface OpenLoopsLines {
+        suspend fun voiceLine(): String?
+
+        suspend fun screenLine(): String?
+    }
 
     /**
      * The latest brief. A fresh read is cached and shown. A 404 is the engine's own sentence, shown
@@ -80,7 +91,9 @@ class BriefController(
     }
 
     /** Calendar and weather from the phone, live. */
-    suspend fun phoneSections(): List<PhoneSection> = phone.sections(null)
+    suspend fun phoneSections(): List<PhoneSection> =
+        phone.sections(null) +
+            listOfNotNull(openLoops?.screenLine()?.let { PhoneSection(OpenLoopsBrief.SCREEN_TITLE, it) })
 
     suspend fun newslettersEnabled(): Boolean = phone.newslettersEnabled()
 
@@ -113,6 +126,8 @@ class BriefController(
                 .append("Ask without naming sections for the whole brief.")
         }
         phone.sections(modules).forEach { out.append("\n").append(it.title.uppercase()).append(' ').append(it.text) }
+        // ADR 0085: one line asking about proposed to-dos, only in the whole brief, never a filtered one.
+        if (modules == null) openLoops?.voiceLine()?.let { out.append("\n").append(it) }
         val newsAsked = readMail && (modules == null || SitrepModule.NEWS in modules)
         if (newsAsked && phone.newslettersEnabled()) {
             out.append("\nNEWSLETTERS, read from your mail on this phone just now and not stored:\n")
@@ -145,6 +160,13 @@ class BriefController(
                 backend = { djangoBriefBackendOrNull(app) },
                 cache = PrefsBriefCache(app),
                 phone = SitrepBriefPhone(app),
+                openLoops = OpenLoopsController.forContext(app).let { c ->
+                    object : OpenLoopsLines {
+                        override suspend fun voiceLine() = c.voiceLine()
+
+                        override suspend fun screenLine() = c.screenLine()
+                    }
+                },
             )
         }
 

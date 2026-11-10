@@ -2794,6 +2794,8 @@ object LiveToolbox {
         VaultToolbox.dispatch(context, name, args)?.let { return it }
         ClockToolbox.dispatch(context, name, args)?.let { return it }
         WatchesToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
+        // ADR 0085: a manage_item add/remove naming a proposed to-do answers it; null otherwise.
+        OpenLoopsToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))

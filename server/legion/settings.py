@@ -183,12 +183,24 @@ INSTALLED_APPS = [
     # watches map (ADR 0083): standing watches and the engine signals, private to the member who
     # set each (`public.watches`, `public.watch_firings`).
     "watches",
+    # open-loops map (ADR 0085): proposed to-dos from the member's own words, private to him
+    # (`public.open_loops`, `open_loop_runs`, `open_loop_settings`).
+    "open_loops",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
 # Optional: unset, `GET /api/releases/<id>/download` refuses in words and nothing loads Cloud
 # Storage. A bucket name, not a secret; the bucket is private and each link is signed.
 LEGION_APK_BUCKET = os.environ.get("LEGION_APK_BUCKET", "").strip()
+
+# open-loops (ADR 0085): the nightly review also proposes to-dos from what the member said he
+# would do. `off` (the default): no words are offered and no proposal is written. `on`: offered
+# and written (still nothing without the review itself on); each is a question until his yes.
+LEGION_OPEN_LOOPS = os.environ.get("LEGION_OPEN_LOOPS", "").strip().lower() or "off"
+# Proposals a night (default 5) and days an unanswered one waits (default 14); read in
+# `open_loops.service`, which falls back to the defaults on a bad value.
+LEGION_OPEN_LOOPS_CAP = os.environ.get("LEGION_OPEN_LOOPS_CAP", "").strip() or 5
+LEGION_OPEN_LOOPS_EXPIRE_DAYS = os.environ.get("LEGION_OPEN_LOOPS_EXPIRE_DAYS", "").strip() or 14
 
 # memory-review (Kevin, 2026-11-09): the daily memory review on the Claude worker. `off` (the
 # default): no review task is minted and the review endpoints refuse in words. `shadow`: tasks are

@@ -424,6 +424,10 @@ def build_context(request, *, task_id=None, machine: str = "") -> dict:
         "conversations": conversations,
         "actions": ACTION_SCHEMA,
     }
+    # ADR 0085: his own words for open loops (stricter than `conversations`), when switched on.
+    from open_loops.service import context_block
+
+    answer["open_loops"] = context_block(request, context_id=review.context_id, now=now)
     review.chars_in = len(json.dumps(answer))
     review.save(update_fields=["chars_in"])
     return answer
@@ -941,6 +945,15 @@ def submit(request, body) -> dict:
                 decided_at=now if v.status == CHANGE_APPLIED else None,
             )
 
+        # ADR 0085: proposed to-dos ride the same submit and the same transaction.
+        from open_loops.service import submit_block, words_for
+
+        loops = submit_block(
+            request, body.get("open_loops"), context_id=review.context_id, dry_run=dry_run, now=now
+        )
+        said = words(counts, by_action, code_merged)
+        if words_for(loops):
+            said += " " + words_for(loops)
         answer = {
             "context_id": str(review.context_id),
             "dry_run": dry_run,
@@ -948,8 +961,9 @@ def submit(request, body) -> dict:
             "code_merged": code_merged,
             "counts": counts,
             "by_action": by_action,
-            "words": words(counts, by_action, code_merged),
+            "words": said,
             "verdicts": [v.public() for v in verdicts],
+            "open_loops": {k: v for k, v in loops.items() if k != "chars_in"},
         }
         if dry_run:
             transaction.set_rollback(True)

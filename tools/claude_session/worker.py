@@ -112,7 +112,7 @@ SAY_KILLED = "The helper was stopped before it finished."
 KIND_MEMORY_REVIEW = "memory_review"
 REVIEW_PROGRESS = "Reviewing memories"
 SAY_REVIEW_NO_RESULT = "The memory review ended without sending its changes."
-REVIEW_TEXT_FILES = ("context.json", "changes.json")
+REVIEW_TEXT_FILES = ("context.json", "changes.json", "loops.json")
 
 
 def files_question(count: int, total: int) -> str:

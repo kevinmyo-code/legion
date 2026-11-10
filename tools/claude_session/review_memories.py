@@ -10,6 +10,12 @@ judgement:
     python review_memories.py submit --task N --dry-run # the verdicts by handle, nothing written
     python review_memories.py run-now                   # Kevin, by hand: queue one review now
 
+**Open loops (ADR 0085).** When the engine has them on, context.json also carries
+`open_loops.own_words`: Kevin's own words under W labels. The helper may write `loops.json` (a
+list of `{"text", "evidence": [W labels], "reason"}`), things he said he would do and never set.
+`submit` sends it with the changes; the engine gates each one in code and only ever PROPOSES it
+(nothing is tracked without his yes). loops.json is deleted with the other two files.
+
 **Memory text never leaves the two work files.** This script prints counts, handles, actions and
 verdicts, never a row or a transcript line; files, not command lines, carry the text, because a
 command line is what the heartbeat's progress line can echo. `submit` deletes context.json and
@@ -36,6 +42,8 @@ API = "/api/member-memories/review/"
 ACTIONS = ("merge", "correct", "expire", "relabel", "retire")
 REASON_MAX = 200
 CHANGES_MAX = 200
+LOOPS_MAX = 20
+LOOP_TEXT_MAX = 120
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -72,6 +80,10 @@ def _files(paths: Paths, task: int) -> tuple[Path, Path, Path, Path]:
     return work / "context.json", work / "changes.json", work / "usage.json", work / "result.json"
 
 
+def _loops_file(paths: Paths, task: int) -> Path:
+    return paths.task_work(task) / "loops.json"
+
+
 def _result(paths: Paths, task: int, **fields) -> None:
     write_json_atomic(_files(paths, task)[3], fields)
 
@@ -82,12 +94,19 @@ def fetch(cfg: dict, paths: Paths, task: int) -> str:
     if not isinstance(context, dict) or "context_id" not in context:
         raise Refused("The engine's answer had no context_id.")
     write_json_atomic(context_file, context)
+    loops = context.get("open_loops") if isinstance(context.get("open_loops"), dict) else {}
+    if loops.get("on"):
+        loops_line = (f" Open loops on: {len(loops.get('own_words') or [])} of his own "
+                      f"conversations, at most {loops.get('cap', 0)} proposals tonight; write "
+                      f"{_loops_file(paths, task)} ([] when none).")
+    else:
+        loops_line = " Open loops off: write no loops.json."
     return (
         f"Context ready ({context.get('mode', '?')} mode): {len(context.get('memories', []))} "
         f"memories, {len(context.get('conversations', []))} conversations, "
         f"{len(context.get('exact_duplicates', []))} exact duplicates the engine merges itself, "
         f"{len(context.get('pending_handles', []))} already waiting on Kevin. "
-        f"Read {context_file} and write {_files(paths, task)[1]}."
+        f"Read {context_file} and write {_files(paths, task)[1]}." + loops_line
     )
 
 
@@ -135,6 +154,32 @@ def validate(changes, handles: set[str], labels: set[str]) -> list[str]:
     return problems
 
 
+def validate_loops(loops, labels: set[str]) -> list[str]:
+    """Problems with loops.json, in words, by index. Never quotes a proposal's text."""
+    if not isinstance(loops, list):
+        return ["loops.json must be a JSON list of proposals."]
+    if len(loops) > LOOPS_MAX:
+        return [f"At most {LOOPS_MAX} proposals in loops.json; there are {len(loops)}."]
+    problems = []
+    for i, item in enumerate(loops):
+        where = f"loop {i}"
+        if not isinstance(item, dict):
+            problems.append(f"{where} is not an object.")
+            continue
+        text = item.get("text")
+        if not isinstance(text, str) or not text.strip():
+            problems.append(f"{where}: needs text, the task in his own words.")
+        elif len(text) > LOOP_TEXT_MAX:
+            problems.append(f"{where}: text is over {LOOP_TEXT_MAX} characters.")
+        ev = item.get("evidence")
+        if not isinstance(ev, list) or not ev or any(e not in labels for e in ev):
+            problems.append(f"{where}: evidence must list W labels from context.json.")
+        reason = item.get("reason")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > REASON_MAX):
+            problems.append(f"{where}: reason must be text of at most {REASON_MAX} characters.")
+    return problems
+
+
 def submit(cfg: dict, paths: Paths, task: int, dry_run: bool = False) -> str:
     context_file, changes_file, usage_file, _ = _files(paths, task)
     context = read_json(context_file, None)
@@ -147,9 +192,22 @@ def submit(cfg: dict, paths: Paths, task: int, dry_run: bool = False) -> str:
     handles = {m.get("handle") for m in context.get("memories", []) if isinstance(m, dict)}
     labels = {c.get("label") for c in context.get("conversations", []) if isinstance(c, dict)}
     problems = validate(changes, handles, labels)
+    loops_on = isinstance(context.get("open_loops"), dict) and context["open_loops"].get("on")
+    loops_file = _loops_file(paths, task)
+    loops = read_json(loops_file, None) if loops_file.exists() else []
+    if loops is None:
+        problems.append("loops.json is not readable JSON; write [] when there is nothing.")
+    elif loops and not loops_on:
+        problems.append("Open loops are off tonight; delete loops.json.")
+    elif loops:
+        words = {w.get("label") for w in context["open_loops"].get("own_words") or []
+                 if isinstance(w, dict)}
+        problems += validate_loops(loops, words)
     if problems:
         raise Refused("Nothing was sent. " + " ".join(problems[:10]))
     body = {"context_id": context["context_id"], "changes": changes, "dry_run": dry_run}
+    if loops_on:
+        body["open_loops"] = loops
     usage = read_json(usage_file, None)
     if isinstance(usage, dict):
         body["usage"] = {k: v for k, v in usage.items()
@@ -162,8 +220,10 @@ def submit(cfg: dict, paths: Paths, task: int, dry_run: bool = False) -> str:
         for v in answer.get("verdicts") or []:
             rows.append(f"  {v.get('index')}: {v.get('action')} {','.join(v.get('handles') or [])}"
                         f" [{','.join(v.get('ids') or [])}] -> {v.get('status')} ({v.get('gate')})")
+        for v in (answer.get("open_loops") or {}).get("verdicts") or []:
+            rows.append(f"  loop {v.get('index')}: -> {v.get('status')} ({v.get('gate')})")
         return "\n".join(rows)
-    for f in (context_file, changes_file):
+    for f in (context_file, changes_file, loops_file):
         f.unlink(missing_ok=True)
     _result(paths, task, words=line, counts=counts, mode=answer.get("mode"))
     return line
