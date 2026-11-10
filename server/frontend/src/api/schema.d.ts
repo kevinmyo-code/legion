@@ -4188,6 +4188,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/open-loops/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's pending proposed to-dos, oldest first. Counts nothing. */
+        get: operations["api_open_loops_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/open-loops/{loop_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The member's no. That commitment is never proposed again. */
+        post: operations["api_open_loops_dismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/open-loops/{loop_id}/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The member's yes. With a date (his own words, or `due_date` from his answer) it becomes a reminder in `events`; without one, a line on his Todo checklist. A second call answers with the task the first one made. */
+        post: operations["api_open_loops_track"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/open-loops/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The spoken brief's batch: pending proposals carried by fewer than two spoken briefs, each now counted as carried once more. */
+        post: operations["api_open_loops_offer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/open-loops/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description "Stop proposing tasks" (false) and back (true). Stops extraction too. */
+        put: operations["api_open_loops_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pantry/grocery_staples/": {
         parameters: {
             query?: never;
@@ -7598,6 +7683,55 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        OpenLoopDismissed: {
+            proposal: components["schemas"]["OpenLoopProposal"];
+            words: string;
+        };
+        OpenLoopListing: {
+            /** @description False when LEGION_OPEN_LOOPS is off on this engine. */
+            on: boolean;
+            /** @description False after "stop proposing tasks". */
+            proposing: boolean;
+            proposals: components["schemas"]["OpenLoopProposal"][];
+            words: string;
+        };
+        OpenLoopProposal: {
+            /** Format: uuid */
+            id: string;
+            /** @description The task, in the member's own words. */
+            title: string;
+            /**
+             * Format: date
+             * @description Only a date his own words printed; null when he named none.
+             */
+            due_date: string | null;
+            status: components["schemas"]["OpenLoopProposalStatusEnum"];
+        };
+        /**
+         * @description * `pending` - pending
+         *     * `tracked` - tracked
+         *     * `dismissed` - dismissed
+         * @enum {string}
+         */
+        OpenLoopProposalStatusEnum: "pending" | "tracked" | "dismissed";
+        OpenLoopSettings: {
+            proposing: boolean;
+        };
+        OpenLoopSettingsAnswer: {
+            proposing: boolean;
+            words: string;
+        };
+        OpenLoopTrack: {
+            /** @description A date the member named in his answer (YYYY-MM-DD). Omit otherwise. */
+            due_date?: string | null;
+        };
+        OpenLoopTracked: {
+            proposal: components["schemas"]["OpenLoopProposal"];
+            task_kind: components["schemas"]["TaskKindEnum"];
+            /** Format: uuid */
+            task_id: string | null;
+            words: string;
+        };
         Opponent: {
             /** Format: uuid */
             user_id: string;
@@ -9522,6 +9656,13 @@ export interface components {
             sentence: string;
             report: components["schemas"]["SyncReport"] | null;
         };
+        /**
+         * @description * `reminder` - reminder
+         *     * `todo` - todo
+         *     * `existing` - existing
+         * @enum {string}
+         */
+        TaskKindEnum: "reminder" | "todo" | "existing";
         /**
          * @description `POST /api/checklists/<id>/items/<item>/tick` body - `{day, value?,
          *     source?}`. Deliberately a plain `Serializer`, not a `ModelSerializer`
@@ -18669,6 +18810,213 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    api_open_loops_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenLoopListing"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_open_loops_dismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenLoopDismissed"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_open_loops_track: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loop_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OpenLoopTrack"];
+                "application/x-www-form-urlencoded": components["schemas"]["OpenLoopTrack"];
+                "multipart/form-data": components["schemas"]["OpenLoopTrack"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenLoopTracked"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_open_loops_offer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenLoopListing"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_open_loops_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenLoopSettings"];
+                "application/x-www-form-urlencoded": components["schemas"]["OpenLoopSettings"];
+                "multipart/form-data": components["schemas"]["OpenLoopSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenLoopSettingsAnswer"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
         };

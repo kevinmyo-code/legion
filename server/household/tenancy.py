@@ -200,6 +200,11 @@ TENANT_TABLES: tuple[str, ...] = (
     # who set them (`OWNER_PATHS`; `watches/models.py`).
     "watches",
     "watch_firings",
+    # open-loops map (ADR 0085): proposed to-dos, the ledger of records read for them, and the
+    # member's switch, always private to the member (`OWNER_PATHS`; `open_loops/models.py`).
+    "open_loops",
+    "open_loop_runs",
+    "open_loop_settings",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -280,6 +285,9 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "body_plans",
         "watches",
         "watch_firings",
+        "open_loops",
+        "open_loop_runs",
+        "open_loop_settings",
     }
 )
 
@@ -464,6 +472,10 @@ OWNER_PATHS: dict[str, str] = {
     # ADR 0083: never null, so a member reads and changes their own watches and firings only.
     "watches": "owner_user",
     "watch_firings": "owner_user",
+    # ADR 0085: never null, so a member sees and answers only the to-dos proposed from his words.
+    "open_loops": "owner_user",
+    "open_loop_runs": "owner_user",
+    "open_loop_settings": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

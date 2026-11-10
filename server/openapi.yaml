@@ -9767,6 +9767,199 @@ paths:
             a database refusal or a hand-written check, and `{"<field>": ["..."]}`
             for a field-level validation error. Both carry text meant to be shown
             to a person.'
+  /api/open-loops/:
+    get:
+      operationId: api_open_loops_list
+      description: The caller's pending proposed to-dos, oldest first. Counts nothing.
+      tags:
+      - open-loops
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenLoopListing'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/open-loops/{loop_id}/dismiss:
+    post:
+      operationId: api_open_loops_dismiss
+      description: The member's no. That commitment is never proposed again.
+      parameters:
+      - in: path
+        name: loop_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - open-loops
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenLoopDismissed'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/open-loops/{loop_id}/track:
+    post:
+      operationId: api_open_loops_track
+      description: The member's yes. With a date (his own words, or `due_date` from
+        his answer) it becomes a reminder in `events`; without one, a line on his
+        Todo checklist. A second call answers with the task the first one made.
+      parameters:
+      - in: path
+        name: loop_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - open-loops
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenLoopTrack'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OpenLoopTrack'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OpenLoopTrack'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenLoopTracked'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/open-loops/offer:
+    post:
+      operationId: api_open_loops_offer
+      description: 'The spoken brief''s batch: pending proposals carried by fewer
+        than two spoken briefs, each now counted as carried once more.'
+      tags:
+      - open-loops
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenLoopListing'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/open-loops/settings:
+    put:
+      operationId: api_open_loops_settings
+      description: '"Stop proposing tasks" (false) and back (true). Stops extraction
+        too.'
+      tags:
+      - open-loops
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenLoopSettings'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OpenLoopSettings'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OpenLoopSettings'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenLoopSettingsAnswer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/pantry/grocery_staples/:
     get:
       operationId: api_pantry_grocery_staples_list
@@ -17240,6 +17433,109 @@ components:
       - sync_id
       - updated_at
       - vehicle_id
+    OpenLoopDismissed:
+      type: object
+      properties:
+        proposal:
+          $ref: '#/components/schemas/OpenLoopProposal'
+        words:
+          type: string
+      required:
+      - proposal
+      - words
+    OpenLoopListing:
+      type: object
+      properties:
+        'on':
+          type: boolean
+          description: False when LEGION_OPEN_LOOPS is off on this engine.
+        proposing:
+          type: boolean
+          description: False after "stop proposing tasks".
+        proposals:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpenLoopProposal'
+        words:
+          type: string
+      required:
+      - 'on'
+      - proposals
+      - proposing
+      - words
+    OpenLoopProposal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: The task, in the member's own words.
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          description: Only a date his own words printed; null when he named none.
+        status:
+          $ref: '#/components/schemas/OpenLoopProposalStatusEnum'
+      required:
+      - due_date
+      - id
+      - status
+      - title
+    OpenLoopProposalStatusEnum:
+      enum:
+      - pending
+      - tracked
+      - dismissed
+      type: string
+      description: |-
+        * `pending` - pending
+        * `tracked` - tracked
+        * `dismissed` - dismissed
+    OpenLoopSettings:
+      type: object
+      properties:
+        proposing:
+          type: boolean
+      required:
+      - proposing
+    OpenLoopSettingsAnswer:
+      type: object
+      properties:
+        proposing:
+          type: boolean
+        words:
+          type: string
+      required:
+      - proposing
+      - words
+    OpenLoopTrack:
+      type: object
+      properties:
+        due_date:
+          type: string
+          nullable: true
+          description: A date the member named in his answer (YYYY-MM-DD). Omit otherwise.
+    OpenLoopTracked:
+      type: object
+      properties:
+        proposal:
+          $ref: '#/components/schemas/OpenLoopProposal'
+        task_kind:
+          $ref: '#/components/schemas/TaskKindEnum'
+        task_id:
+          type: string
+          format: uuid
+          nullable: true
+        words:
+          type: string
+      required:
+      - proposal
+      - task_id
+      - task_kind
+      - words
     Opponent:
       type: object
       properties:
@@ -21410,6 +21706,16 @@ components:
       - outcome
       - report
       - sentence
+    TaskKindEnum:
+      enum:
+      - reminder
+      - todo
+      - existing
+      type: string
+      description: |-
+        * `reminder` - reminder
+        * `todo` - todo
+        * `existing` - existing
     TickRequest:
       type: object
       description: |-

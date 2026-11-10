@@ -183,6 +183,9 @@ INSTALLED_APPS = [
     # watches map (ADR 0083): standing watches and the engine signals, private to the member who
     # set each (`public.watches`, `public.watch_firings`).
     "watches",
+    # open-loops map (ADR 0085): proposed to-dos from the member's own words, private to him
+    # (`public.open_loops`, `open_loop_runs`, `open_loop_settings`).
+    "open_loops",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
@@ -202,6 +205,10 @@ try:
     LEGION_MEMORY_REVIEW_CAP = max(0, int(os.environ.get("LEGION_MEMORY_REVIEW_CAP", "") or 25))
 except ValueError:
     LEGION_MEMORY_REVIEW_CAP = 25
+# open-loops (ADR 0085): the nightly review also proposes to-dos from what the member said he
+# would do. `off` (the default): no words are offered and no proposal is written. `on`: offered
+# and written (still nothing without the review itself on); each is a question until his yes.
+LEGION_OPEN_LOOPS = os.environ.get("LEGION_OPEN_LOOPS", "").strip().lower() or "off"
 
 # Files to phone (ADR 0080): the private bucket a Claude task's delivered files wait in until the
 # phone has them (`deploy/claude_files/setup_bucket.sh`, `claude_session.storage`). Optional:
