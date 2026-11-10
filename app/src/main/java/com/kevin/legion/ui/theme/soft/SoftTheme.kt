@@ -10,6 +10,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.LegionSemantics
@@ -253,10 +254,18 @@ internal val SoftSemantics = softSemantics(SoftDarkPalette)
 fun SoftTheme(content: @Composable () -> Unit) {
     val matrix = LocalMatrixMode.current
     val look = softLook(matrix, LocalTypesetEdition.current ?: systemEdition())
+    // A content colour inherited from another theme's surface (the shell's Scaffold under LegionTheme
+    // gives its light-on-dark onBackground) would draw every uncoloured Text in that colour on this
+    // edition's ground: cream on paper by day. Replace it with this palette's ink. Compose's own
+    // default (Black, no surface anywhere: an activity root, a test root) is left alone, so roots
+    // that paint their own ground keep today's look and no committed baseline moves.
+    val inherited = LocalContentColor.current
+    val ink = if (inherited == Color.Black) inherited else look.palette.text
     CompositionLocalProvider(
         LocalSoftPalette provides look.palette,
         LocalLegionSemantics provides look.semantics,
         LocalSoftActive provides true,
+        LocalContentColor provides ink,
     ) {
         MaterialTheme(
             colorScheme = look.scheme,

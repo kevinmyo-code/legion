@@ -2,6 +2,11 @@
 
 package com.kevin.legion.ui.field
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import com.kevin.legion.ui.theme.soft.SoftColors
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -52,8 +57,19 @@ import java.time.ZoneId
  */
 @Composable
 fun FieldContent(state: FieldUiState, actions: FieldActions, zone: ZoneId = ZoneId.systemDefault()) {
+    // The page's own ground and ink: with neither, a bare Text drew Compose's default black on the
+    // night edition's dark window (Kevin, 2026-11-10: "the field font is black so I can't see").
+    CompositionLocalProvider(LocalContentColor provides SoftColors.text) {
+        FieldColumn(state, actions, zone)
+    }
+}
+
+@Composable
+private fun FieldColumn(state: FieldUiState, actions: FieldActions, zone: ZoneId) {
     Column(
         modifier = Modifier
+            .fillMaxSize()
+            .background(SoftColors.ground)
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
     ) {
@@ -220,7 +236,7 @@ private fun WaypointRow(w: WaypointUi) {
 /** An arrow toward the waypoint, relative to where the phone points; none without a compass. */
 @Composable
 private fun Arrow(deg: Double?, modifier: Modifier) {
-    val color = MaterialTheme.colorScheme.primary
+    val color = SoftColors.text
     Canvas(modifier = modifier) {
         if (deg == null) return@Canvas
         rotate(degrees = deg.toFloat()) {

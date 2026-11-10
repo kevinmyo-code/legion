@@ -60,6 +60,37 @@ data class TypesetHomeActions(
     val onAllApps: () -> Unit = {},
     /** Today's More sheet, so every area keeps a way in until it has a Typeset page. */
     val onMore: () -> Unit = {},
+    /** The Games and Books sheets the old home's chips opened (Kevin, 2026-11-10: "need the buttons"). */
+    val onOpenGames: () -> Unit = {},
+    val onOpenBooks: () -> Unit = {},
+    /** The old home's Lists, Ideas and To-dos sheets, and its Brief button. */
+    val onOpenLists: () -> Unit = {},
+    val onOpenIdeas: () -> Unit = {},
+    val onOpenTodos: () -> Unit = {},
+    val onBrief: () -> Unit = {},
+    /** Media (Spotify): the old home's now-playing row. */
+    val onOpenMedia: () -> Unit = {},
+    /** The quick line under the masthead: the old header's Quiet, Claude, alarm and settings. */
+    val onToggleQuiet: () -> Unit = {},
+    /** Feed blocker: on is one tap; off opens the ADR 0066 gate in the Controls panel. */
+    val onFeed: () -> Unit = {},
+    /** The Claude sessions watcher (the old header's Claude sheet). */
+    val onOpenClaude: () -> Unit = {},
+    val onOpenLegionSettings: () -> Unit = {},
+    val onOpenPhoneSettings: () -> Unit = {},
+    /** A dock tile's long press: the old dock's unpin and move. */
+    val onUnpin: (TypesetDockTile) -> Unit = {},
+    val onMoveLeft: (TypesetDockTile) -> Unit = {},
+    val onMoveRight: (TypesetDockTile) -> Unit = {},
+)
+
+/** The quick line's state: the old header's toggles and watchers, every one in words. */
+data class TypesetQuick(
+    val quietOn: Boolean = false,
+    val feedOn: Boolean = false,
+    /** "06:30", the next alarm, 24-hour; null when none is set. */
+    val alarm: String? = null,
+    val claudeRunning: Int = 0,
 )
 
 /** Where the front page can go. One bag, filled by `HomeScreen` from the shell's navigation. */
@@ -75,6 +106,15 @@ data class TypesetHomeNav(
     val onOpenClaude: () -> Unit,
     /** Today's More sheet: Body, News, Reports, Media, Recordings and the rest keep a way in. */
     val onOpenMore: () -> Unit,
+    /** Media (Spotify): the old home's now-playing row. */
+    val onOpenMedia: () -> Unit = {},
+    /** The sheets the old home's chips opened, drawn by `HomeScreen`, which owns their state. */
+    val onOpenGames: () -> Unit = {},
+    val onOpenBooks: () -> Unit = {},
+    val onOpenLists: () -> Unit = {},
+    val onOpenIdeas: () -> Unit = {},
+    val onOpenTodos: () -> Unit = {},
+    val onBrief: () -> Unit = {},
 )
 
 /** The three figures, pure, from the view models HOME already has. Pinned by `TypesetHomeDeriveTest`. */
@@ -165,6 +205,26 @@ object TypesetHomeDerive {
             runCatching { LocalTime.parse(text, format) }.getOrNull()
         }
     }
+
+    /**
+     * The contents line, in order: the screens behind the page, then everything the old home's chips
+     * and rows opened (Games, Books, Lists, Ideas, Brief, Media), then More. Pinned by
+     * `TypesetReachabilityTest`: a destination dropped from here fails it.
+     */
+    val CONTENTS = listOf(
+        "Today", "Money", "Car", "Clock", "Field",
+        "Breathe", "Games", "Books", "Lists", "Ideas",
+        "Brief", "Media", "More",
+    )
+
+    /** The quick line's labels, short, every state in words. */
+    fun quickLabels(q: TypesetQuick): List<String> = listOf(
+        if (q.quietOn) "Quiet on" else "Quiet off",
+        if (q.feedOn) "Feed on" else "Feed off",
+        q.alarm?.let { "Alarm $it" } ?: "No alarm",
+        if (q.claudeRunning > 0) "Claude ${q.claudeRunning}" else "Claude",
+        "Settings",
+    )
 
     /** The prototype's six: monograms, never logos. */
     val DOCK = listOf(

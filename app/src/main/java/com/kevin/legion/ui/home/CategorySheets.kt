@@ -59,7 +59,7 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 private const val CATEGORY_DIMMED_ALPHA = 0.5f
 
 /** The status word a pick that cannot open carries, or null when it can. */
-internal fun slotStatusWord(slot: DockSlotUi): String? = when {
+fun slotStatusWord(slot: DockSlotUi): String? = when {
     slot.loading -> "Loading"
     slot.app == null -> "Not installed"
     slot.paused -> "Paused"
@@ -74,15 +74,29 @@ internal fun OpenWithSheet(
     onLaunch: (DockSlotUi) -> Unit,
     onChoose: () -> Unit,
     onOpenNavigation: (() -> Unit)? = null,
+    content: GroupSheetContent? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = SoftColors.card,
     ) {
-        OpenWithSheetContent(ui = ui, onLaunch = onLaunch, onChoose = onChoose, onOpenNavigation = onOpenNavigation)
+        if (content != null) {
+            content(ui, onLaunch, onChoose, onOpenNavigation)
+        } else {
+            OpenWithSheetContent(ui = ui, onLaunch = onLaunch, onChoose = onChoose, onOpenNavigation = onOpenNavigation)
+        }
     }
 }
+
+/** A different body for the "Open with" sheet (the Typeset front page's); the taps are the same. */
+typealias GroupSheetContent =
+    @Composable (
+        ui: CategoryUi,
+        onLaunch: (DockSlotUi) -> Unit,
+        onChoose: () -> Unit,
+        onOpenNavigation: (() -> Unit)?,
+    ) -> Unit
 
 /** The sheet body, split from its window so a screenshot can draw it directly. */
 @Composable

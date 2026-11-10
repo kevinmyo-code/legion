@@ -4,12 +4,11 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +22,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.MidnightApplication
 import com.kevin.legion.assistant.cards.ConversationCards
+import com.kevin.legion.claude.ClaudeLiveWatch
 import com.kevin.legion.clock.AlarmMath
 import com.kevin.legion.clock.ClockGraph
 import com.kevin.legion.dumb.FeedOffRule
@@ -30,6 +30,7 @@ import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.Phase
 import com.kevin.legion.ui.assistant.ChatPanelSheet
 import com.kevin.legion.ui.assistant.rememberAssistantVoice
+import com.kevin.legion.ui.claudesession.ClaudeSessionsSheetHost
 import com.kevin.legion.ui.common.startPhoneSettings
 import com.kevin.legion.ui.dumb.FeedOffGatePanel
 import com.kevin.legion.ui.home.DockSlotUi
@@ -39,6 +40,7 @@ import com.kevin.legion.ui.home.rememberClaudeWatchLine
 import com.kevin.legion.ui.theme.soft.LocalTypesetEdition
 import com.kevin.legion.ui.theme.soft.LocalTypesetEditionToggle
 import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.soft.TypesetEdition
 import java.time.Instant
 import java.time.LocalTime
@@ -55,7 +57,7 @@ import java.util.Locale
  * here, not a route, so the gate's text field stays above the keyboard.
  */
 @Composable
-@Suppress("LongParameterList") // one host: HOME's state and the shell's hand-offs, nothing invented here
+@Suppress("LongParameterList", "LongMethod") // one host: HOME's state and the shell's hand-offs, nothing invented here
 fun TypesetHomeHost(
     calendar: HomeCalendarUiState,
     money: HomeMoneyUiState,
@@ -66,6 +68,11 @@ fun TypesetHomeHost(
     dockSlots: List<DockSlotUi>,
     onLaunchSlot: (DockSlotUi) -> Unit,
     nav: TypesetHomeNav,
+    /** The old dock's long-press: unpin, and move by -1 or +1. */
+    onUnpinSlot: (DockSlotUi) -> Unit = {},
+    onMoveSlot: (DockSlotUi, Int) -> Unit = { _, _ -> },
+    /** The app groups row (Banking, Music, ...), stateful, from HOME. */
+    groups: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val voice = rememberAssistantVoice(nav.onOpenSettings)
@@ -73,6 +80,8 @@ fun TypesetHomeHost(
     val edition = LocalTypesetEdition.current
     val toggleEdition = LocalTypesetEditionToggle.current
     var controlsOpen by remember { mutableStateOf(false) }
+    var claudeSheetOpen by remember { mutableStateOf(false) }
+    val controls = rememberControls(nav, onClose = { controlsOpen = false })
 
     val now = remember(clock) { runCatching { LocalTime.parse(clock) }.getOrDefault(LocalTime.now()) }
     val glance = TypesetGlance(
@@ -84,6 +93,7 @@ fun TypesetHomeHost(
     )
     val status = if (voice.enabled) voice.state.label else "Assistant off, tap to set it up"
     val onTalk = if (voice.enabled) voice.talk else nav.onOpenSettings
+    val slotOf: (TypesetDockTile) -> DockSlotUi? = { tile -> dockSlots.firstOrNull { slotTile(it) == tile } }
     val actions = TypesetHomeActions(
         onHome = voice.typedChat.onNewConversation,
         onControls = { controlsOpen = true },
@@ -97,26 +107,75 @@ fun TypesetHomeHost(
         onTalk = onTalk,
         onType = voice.panel::show,
         onDismissCard = ConversationCards::dismiss,
-        onOpenApp = { tile -> dockSlots.firstOrNull { slotTile(it) == tile }?.let(onLaunchSlot) },
+        onOpenApp = { tile -> slotOf(tile)?.let(onLaunchSlot) },
         onAllApps = nav.onOpenApps,
         onMore = nav.onOpenMore,
+        onOpenGames = nav.onOpenGames,
+        onOpenBooks = nav.onOpenBooks,
+        onOpenLists = nav.onOpenLists,
+        onOpenIdeas = nav.onOpenIdeas,
+        onOpenTodos = nav.onOpenTodos,
+        onBrief = nav.onBrief,
+        onOpenMedia = nav.onOpenMedia,
+        onToggleQuiet = controls.actions.onToggleQuiet,
+        // Feed on is one tap; off is the ADR 0066 gate, which lives under the panel's feed row.
+        onFeed = {
+            if (controls.ui.feedBlockOn) {
+                controls.actions.onFeedBlockOff()
+                controlsOpen = true
+            } else {
+                controls.actions.onFeedBlockOn()
+            }
+        },
+        onOpenClaude = { claudeSheetOpen = true },
+        onOpenLegionSettings = nav.onOpenSettings,
+        onOpenPhoneSettings = controls.actions.onOpenPhoneSettings,
+        onUnpin = { tile -> slotOf(tile)?.let(onUnpinSlot) },
+        onMoveLeft = { tile -> slotOf(tile)?.let { onMoveSlot(it, -1) } },
+        onMoveRight = { tile -> slotOf(tile)?.let { onMoveSlot(it, 1) } },
     )
-    Box(Modifier.fillMaxSize().background(SoftColors.ground)) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            TypesetHomeContent(
-                glance = glance,
-                phase = orbPhase(voice.phase, voice.enabled),
-                status = status,
-                statusWords = statusWords,
-                night = edition == TypesetEdition.NIGHT,
-                cards = cards.cards,
-                actions = actions,
-                dock = dockSlots.map(::slotTile),
+    // SoftTheme here, not only in the tests: without it SoftColors fell back to the soft-dark palette
+    // and the page drew black in light mode (Kevin, 2026-11-10).
+    TypesetPage {
+        TypesetHomeContent(
+            glance = glance,
+            phase = orbPhase(voice.phase, voice.enabled),
+            status = status,
+            statusWords = statusWords,
+            night = edition == TypesetEdition.NIGHT,
+            cards = cards.cards,
+            actions = actions,
+            dock = dockSlots.map(::slotTile),
+            quick = TypesetQuick(
+                quietOn = controls.ui.quietOn,
+                feedOn = controls.ui.feedBlockOn,
+                alarm = controls.nextAlarm,
+                claudeRunning = controls.claudeRunning,
+            ),
+            groups = groups,
+        )
+        if (controlsOpen) ControlsOverlay(controls, onClose = { controlsOpen = false })
+        if (voice.panel.open) ChatPanelSheet(voice.typedChat, onTalk = onTalk, onClose = voice.panel::hide)
+        if (claudeSheetOpen) {
+            ClaudeSessionsSheetHost(
+                onDismiss = { claudeSheetOpen = false },
+                onOpenAll = { claudeSheetOpen = false; nav.onOpenClaude() },
             )
         }
-        if (controlsOpen) ControlsOverlay(onClose = { controlsOpen = false }, nav = nav)
     }
-    if (voice.panel.open) ChatPanelSheet(voice.typedChat, onTalk = onTalk, onClose = voice.panel::hide)
+}
+
+/**
+ * The Typeset page frame: the edition's palette ([SoftTheme]), its ground, and ink as the content
+ * colour, so a bare `Text` reads ink on paper by day and cream on warm black by night.
+ */
+@Composable
+fun TypesetPage(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    SoftTheme {
+        CompositionLocalProvider(LocalContentColor provides SoftColors.text) {
+            Box(modifier.fillMaxSize().background(SoftColors.ground)) { content() }
+        }
+    }
 }
 
 /** The orb's phase from the controller's. CONNECTING reads as thinking: nothing to hear yet. */
@@ -135,14 +194,22 @@ internal fun slotTile(slot: DockSlotUi): TypesetDockTile {
     return TypesetDockTile(monogram, slot.label)
 }
 
+/** The Controls panel's state and taps, shared by the quick line and the panel (one source). */
+private class ControlsWiring(
+    val ui: ControlsUi,
+    val actions: ControlsActions,
+    val nextAlarm: String?,
+    val claudeRunning: Int,
+    val gate: @Composable () -> Unit,
+)
+
 /**
- * The Controls panel over the page: a scrim that closes it, the panel at the top. Quiet and the feed
- * blocker are wired exactly as their settings rows are (`FeedBlockRow`); turning the blocker off is
- * the ADR 0066 gate, unchanged, under its row.
+ * Quiet and the feed blocker are wired exactly as their settings rows are (`FeedBlockRow`); turning
+ * the blocker off is the ADR 0066 gate, unchanged, under the panel's row.
  */
 @Composable
-@Suppress("LongMethod") // one overlay: the panel's state and its six taps, read top to bottom
-private fun ControlsOverlay(onClose: () -> Unit, nav: TypesetHomeNav) {
+@Suppress("LongMethod") // one state holder: the panel's six rows, read top to bottom
+private fun rememberControls(nav: TypesetHomeNav, onClose: () -> Unit): ControlsWiring {
     val context = LocalContext.current
     val graph = remember(context) { (context.applicationContext as MidnightApplication).dumb }
     val store = graph.feedBlock
@@ -159,14 +226,16 @@ private fun ControlsOverlay(onClose: () -> Unit, nav: TypesetHomeNav) {
     val clockState by remember(context) { ClockGraph.controller(context.applicationContext) }.state
         .collectAsStateWithLifecycle()
     val claude = rememberClaudeWatchLine()
+    val claudeSummary by remember(context) { ClaudeLiveWatch.get(context) }.summary.collectAsStateWithLifecycle()
+    val triggers = clockState.alarms.mapNotNull {
+        AlarmMath.nextTrigger(it, System.currentTimeMillis(), ZoneId.systemDefault())
+    }
     val ui = ControlsUi(
         quietOn = quietOn,
         feedBlockOn = feedOn,
         feedNote = if (feedOn) "Feed apps blocked. Off needs the 60 s wait and the sentence." else "Off",
         feedGateOpen = feedOn && askingOff,
-        clockNote = nextAlarmWords(clockState.alarms.mapNotNull {
-            AlarmMath.nextTrigger(it, System.currentTimeMillis(), ZoneId.systemDefault())
-        }),
+        clockNote = nextAlarmWords(triggers),
         claudeNote = claude ?: "None running",
     )
     val actions = ControlsActions(
@@ -195,27 +264,34 @@ private fun ControlsOverlay(onClose: () -> Unit, nav: TypesetHomeNav) {
             startPhoneSettings(context)?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
         },
     )
+    val gatePanel: @Composable () -> Unit = {
+        FeedOffGatePanel(
+            gate, FeedOffRule.SWITCH, FeedOffRule.SWITCH_SENTENCE, "Turn off",
+            onConfirmed = {
+                store.set(false)
+                feedOn = false
+                askingOff = false
+                graph.feedBlockWatch.check()
+            },
+            onDropped = { askingOff = false },
+        )
+    }
+    return ControlsWiring(ui, actions, nextAlarmHhmm(triggers), claudeSummary?.running ?: 0, gatePanel)
+}
+
+/** The Controls panel over the page: a scrim that closes it, the panel at the top. */
+@Composable
+private fun ControlsOverlay(controls: ControlsWiring, onClose: () -> Unit) {
     Box(
         Modifier.fillMaxSize().background(SoftColors.text.copy(alpha = SCRIM))
             .clickable(role = Role.Button, onClickLabel = "Close controls", onClick = onClose),
         contentAlignment = Alignment.TopCenter,
     ) {
         ControlsPanel(
-            ui,
-            actions,
+            controls.ui,
+            controls.actions,
             modifier = Modifier.fillMaxWidth().clickable(enabled = false) {},
-            gate = {
-                FeedOffGatePanel(
-                    gate, FeedOffRule.SWITCH, FeedOffRule.SWITCH_SENTENCE, "Turn off",
-                    onConfirmed = {
-                        store.set(false)
-                        feedOn = false
-                        askingOff = false
-                        graph.feedBlockWatch.check()
-                    },
-                    onDropped = { askingOff = false },
-                )
-            },
+            gate = controls.gate,
         )
     }
 }
@@ -225,6 +301,13 @@ internal fun nextAlarmWords(triggersMs: List<Long>, zone: ZoneId = ZoneId.system
     val at = triggersMs.minOrNull() ?: return "No alarm set"
     val t = Instant.ofEpochMilli(at).atZone(zone).toLocalTime()
     return "Next alarm " + AlarmMath.hhmm(t.hour, t.minute)
+}
+
+/** "06:30", the next alarm for the quick line, or null for none. */
+internal fun nextAlarmHhmm(triggersMs: List<Long>, zone: ZoneId = ZoneId.systemDefault()): String? {
+    val at = triggersMs.minOrNull() ?: return null
+    val t = Instant.ofEpochMilli(at).atZone(zone).toLocalTime()
+    return AlarmMath.hhmm(t.hour, t.minute)
 }
 
 private const val SCRIM = 0.4f

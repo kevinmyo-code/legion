@@ -57,6 +57,8 @@ import com.kevin.legion.ui.theme.soft.AreaChip
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
+import com.kevin.legion.ui.typeset.TypesetGroupCell
+import com.kevin.legion.ui.typeset.TypesetGroupSheet
 import com.kevin.legion.voice.VoiceNoteController
 import com.kevin.legion.voice.VoiceNoteRecordingState
 import com.kevin.legion.voice.VoiceNoteStartResult
@@ -110,10 +112,9 @@ data class HomeCallbacks(
  * The six area tiles live in the More sheet (Kevin, 2026-10-09: "4th button: More").
  */
 @Composable
-@Suppress("LongMethod", "LongParameterList", "UnusedParameter")
-// one screen composable; one callback per screen HOME can open. onOpenDay, onOpenList, onPlayTetris and
-// onOpenMoneyCategory are unused since the Typeset front page replaced HomeContent (ADR 0081): kept so
-// the shell's wiring stands for the Calendar, Lists, Games and Money entries the page is still owed.
+@Suppress("LongMethod", "LongParameterList", "UnusedParameter", "CyclomaticComplexMethod")
+// one screen composable; one callback per screen HOME can open. onOpenMoneyCategory is unused since the
+// Typeset front page replaced HomeContent (ADR 0081): the Money screen is one tap from the page.
 fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenLists: () -> Unit,
@@ -205,8 +206,6 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { NowPlayingController.init(context) }
     val nowPlaying by NowPlayingController.state.collectAsStateWithLifecycle()
-    // "Claude: 2 running, 1 needs you" (ClaudeWatchLine.kt), polled only while HOME is started.
-    val claudeLine = rememberClaudeWatchLine()
 
     // One launch path for the dock and the category buttons: the drawer's own `launchDrawerApp` and
     // its failure sentence, with a missing app or an unreadable snapshot said in words.
@@ -243,8 +242,9 @@ fun HomeScreen(
     }
 
     // Typeset (ADR 0081): the front page replaces the calendar-first home. `HomeContent` stays
-    // compiled for its screenshot tests and the More sheet it owns, until it is retired. Games and
-    // Books lose their home chips here: follow-up, they need a Typeset entry.
+    // compiled for its screenshot tests. Everything its chips, rows and dock opened is wired here
+    // again (Kevin, 2026-11-10: "need the buttons"): Games, Books, To-dos, Lists, Ideas, Brief,
+    // Media, the app groups and the dock's long press, through the same view models and stores.
     val tileCallbacks = HomeCallbacks(
             onOpenCalendar = onOpenCalendar,
             onOpenLists = onOpenLists,
@@ -269,7 +269,62 @@ fun HomeScreen(
                 scope.launch { VoiceNoteController.stop(context) }
             },
         )
+    val calendarCallbacks = HomeCalendarCallbacks(
+        onOpenRow = { day, row -> onOpenDay(day, row.reminderId) },
+        onOpenDay = { day -> onOpenDay(day, null) },
+        onOpenSheet = calendarViewModel::openSheet,
+        onCloseSheet = calendarViewModel::closeSheet,
+        onToggleTodo = calendarViewModel::setTodoDone,
+        onOpenList = { list ->
+            calendarViewModel.closeSheet()
+            onOpenList(list.id)
+        },
+        onAddIdea = calendarViewModel::addIdeaToPlans,
+        onDropIdea = calendarViewModel::dropIdea,
+    )
+    val games = GamesHome(
+        state = gamesState,
+        callbacks = GamesCallbacks(
+            onPlay = gamesViewModel::play,
+            onPlayResume = gamesViewModel::playResume,
+            onPlayApp = gamesViewModel::playApp,
+            onPickFolder = pickRomFolder,
+            onSheetOpened = gamesViewModel::loadOpponents,
+            onPlayTetris = onPlayTetris,
+        ),
+        cover = gamesViewModel::cover,
+        appIcon = gamesViewModel::appIcon,
+    )
+    val books = BooksHome(
+        state = booksState,
+        callbacks = BooksCallbacks(
+            onRead = booksViewModel::read,
+            onListen = booksViewModel::listen,
+            onContinue = booksViewModel::continueReading,
+            onPickFolder = pickBooksFolder,
+            onDismissNotice = booksViewModel::dismissNotice,
+        ),
+        cover = booksViewModel::cover,
+    )
     var moreOpen by remember { mutableStateOf(false) }
+    var gamesOpen by remember { mutableStateOf(false) }
+    var booksOpen by remember { mutableStateOf(false) }
+    // A launched game or an opened book closes its sheet, as on the old home.
+    val booksOpened = booksState.notice?.takeIf { !it.failed }
+    LaunchedEffect(booksOpened) { if (booksOpened != null) booksOpen = false }
+    val launched = gamesState.notice?.takeIf { !it.failed }
+    LaunchedEffect(launched) { if (launched != null) gamesOpen = false }
+    val categories = HomeCategory.entries.map {
+        CategoryUi(it, buildDockSlots(categoryPicks[it].orEmpty(), drawerSnapshot))
+    }
+    val categoryCallbacks = CategoryCallbacks(
+        onLaunch = launchSlot,
+        onSave = { category, picks ->
+            CategoryPicksStore.write(context, category, picks)
+            categoryPicks = categoryPicks + (category to picks)
+        },
+    )
+    val chooserRows = buildChooserRows(drawerSnapshot)
     com.kevin.legion.ui.typeset.TypesetHomeHost(
         calendar = calendar,
         money = money,
@@ -277,6 +332,21 @@ fun HomeScreen(
         statusWords = statusWords,
         dockSlots = buildDockSlots(pins, drawerSnapshot),
         onLaunchSlot = launchSlot,
+        onUnpinSlot = { slot ->
+            pins = DockPins.unpin(pins, slot.pin)
+            DockPinsStore.write(context, pins)
+        },
+        onMoveSlot = { slot, delta ->
+            pins = DockPins.move(pins, slot.pin, delta = delta)
+            DockPinsStore.write(context, pins)
+        },
+        groups = {
+            CategoryRow(
+                categories, chooserRows, categoryCallbacks,
+                button = { ui, onClick, onLongClick -> TypesetGroupCell(ui, onClick, onLongClick) },
+                openWith = { ui, onLaunch, onChoose, onNav -> TypesetGroupSheet(ui, onLaunch, onChoose, onNav) },
+            )
+        },
         nav = com.kevin.legion.ui.typeset.TypesetHomeNav(
             onOpenToday = onOpenCalendar,
             onOpenMoney = onOpenMoney,
@@ -287,19 +357,47 @@ fun HomeScreen(
             onOpenSettings = onOpenSettings,
             onOpenClaude = onOpenClaudeSession,
             onOpenMore = { moreOpen = true },
+            onOpenMedia = onOpenMedia,
+            onOpenGames = {
+                gamesOpen = true
+                gamesViewModel.loadOpponents()
+            },
+            onOpenBooks = { booksOpen = true },
+            onOpenLists = { calendarViewModel.openSheet(PanelSheet.LISTS) },
+            onOpenIdeas = { calendarViewModel.openSheet(PanelSheet.IDEAS) },
+            onOpenTodos = { calendarViewModel.openSheet(PanelSheet.TODOS) },
+            onBrief = { briefOpen = true },
         ),
     )
-    if (moreOpen) {
-        MoreSheet(
-            state = tiles,
-            money = money,
-            recording = recording,
-            recordRefusal = recordRefusal,
-            callbacks = tileCallbacks,
-            onDismiss = { moreOpen = false },
-        )
+    // The sheets are drawn in the page's edition, as the page is.
+    SoftTheme {
+        HomePanelSheet(calendar, calendarCallbacks)
+        if (gamesOpen) GamesSheet(games, onDismiss = { gamesOpen = false })
+        if (booksOpen) BooksSheet(books, onDismiss = { booksOpen = false })
+        Box(Modifier.fillMaxSize().padding(bottom = 28.dp), contentAlignment = Alignment.BottomCenter) {
+            GamesToast(launched)
+        }
+        if (moreOpen) {
+            fun closing(go: () -> Unit): () -> Unit = { moreOpen = false; go() }
+            MoreSheet(
+                state = tiles,
+                money = money,
+                recording = recording,
+                recordRefusal = recordRefusal,
+                callbacks = tileCallbacks.copy(
+                    onOpenMoney = closing(tileCallbacks.onOpenMoney),
+                    onOpenBody = closing(tileCallbacks.onOpenBody),
+                    onOpenFleet = closing(tileCallbacks.onOpenFleet),
+                    onOpenRecordings = closing(tileCallbacks.onOpenRecordings),
+                    onOpenNews = closing(tileCallbacks.onOpenNews),
+                    onOpenReports = closing(tileCallbacks.onOpenReports),
+                    onOpenClaudeSession = closing(tileCallbacks.onOpenClaudeSession),
+                ),
+                onDismiss = { moreOpen = false },
+            )
+        }
+        com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false })
     }
-    SoftTheme { com.kevin.legion.ui.brief.BriefSheetHost(open = briefOpen, onDismiss = { briefOpen = false }) }
 }
 
 /**

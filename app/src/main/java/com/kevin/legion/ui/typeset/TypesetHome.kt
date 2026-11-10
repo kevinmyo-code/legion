@@ -1,33 +1,49 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.kevin.legion.ui.typeset
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.kevin.legion.R
 import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.ui.assistant.ConversationCardView
@@ -36,13 +52,14 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.TypesetType
 
 /**
- * The Typeset front page (ADR 0081, `proto-typeset.html`): a ruled column. Masthead, then either the
- * glance (dateline, the time as the headline, three figures, the contents line) or, once Alfred has
- * answered, his cards newest first under the orb. The orb sits at the foot with the state in words,
- * then the dock of six monogram tiles and "All apps".
+ * The Typeset front page (ADR 0081, `proto-typeset.html`): a ruled column that fits one screen with
+ * no scroll (Kevin, 2026-11-10). Top to bottom: masthead; the quick line (Quiet, Feed, Alarm,
+ * Claude, Settings, the old header's controls); the glance (dateline, the time as the headline,
+ * three figures) or, once Alfred has answered, his cards newest first; the contents line; the orb,
+ * centred, with "Type" under it; the app groups; "All apps" and the pinned dock.
  *
- * Stateless and not yet wired into the shell: `HomeScreen` and the shell's bottom bar
- * (`AssistantStrip`) still draw today's home. Wiring is the next step of Phase B.
+ * [FitTiers] picks how much to give up to fit; the time (or the cards) takes the height left over.
+ * Stateless: [TypesetHomeHost] wires it.
  */
 @Composable
 @Suppress("LongParameterList")
@@ -57,24 +74,35 @@ fun TypesetHomeContent(
     actions: TypesetHomeActions,
     modifier: Modifier = Modifier,
     dock: List<TypesetDockTile> = TypesetHomeDerive.DOCK,
+    quick: TypesetQuick = TypesetQuick(),
+    /** The app groups row (Banking, Music, ...), stateful, from HOME; null draws nothing. */
+    groups: (@Composable () -> Unit)? = null,
 ) {
     val answering = cards.isNotEmpty()
-    Column(modifier.fillMaxWidth().padding(horizontal = Gutter)) {
-        Masthead(answering, night, statusWords, actions)
-        if (!answering) Glance(glance, actions)
-        Stage(phase, status, large = phase != OrbPhase.IDLE && !answering, actions)
-        // Newest answer directly under the orb.
-        cards.asReversed().forEach { card ->
-            ConversationCardView(card, onDismiss = actions.onDismissCard, modifier = Modifier.padding(bottom = 8.dp))
+    FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, measuring ->
+        val outer = if (measuring) Modifier.fillMaxWidth() else Modifier.fillMaxSize()
+        Column(outer) {
+            Masthead(answering, night, statusWords, actions)
+            QuickLine(quick, actions)
+            if (answering) {
+                Cards(cards, actions, measuring)
+            } else {
+                Glance(glance, tier, measuring, actions)
+                Contents(actions)
+            }
+            Voice(phase, status, tier, measuring, actions)
+            groups?.let {
+                it()
+                HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
+            }
+            Dock(dock, tier, actions)
         }
-        Spacer(Modifier.heightIn(min = 8.dp))
-        Dock(dock, actions)
     }
 }
 
 @Composable
 private fun Masthead(answering: Boolean, night: Boolean, statusWords: String?, actions: TypesetHomeActions) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = TapTarget), verticalAlignment = Alignment.CenterVertically) {
         if (answering) {
             Text(
                 "Home",
@@ -86,19 +114,27 @@ private fun Masthead(answering: Boolean, night: Boolean, statusWords: String?, a
             Text("LEGION", style = TypesetType.caps, color = SoftColors.text)
         }
         Spacer(Modifier.weight(1f))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(2f, fill = false), verticalAlignment = Alignment.CenterVertically) {
             statusWords?.let {
-                Text(it, style = TypesetType.small, color = SoftColors.text2, modifier = Modifier.padding(end = 8.dp))
+                Text(
+                    it,
+                    style = TypesetType.small,
+                    color = SoftColors.text2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp),
+                )
             }
             Text(
                 "CONTROLS",
                 style = TypesetType.caps.copy(textDecoration = TextDecoration.Underline),
                 color = SoftColors.text,
+                maxLines = 1,
                 modifier = Modifier.tap("Controls", actions.onControls),
             )
         }
         Box(
-            Modifier.size(MinTarget).clickable(role = Role.Button, onClick = actions.onToggleEdition)
+            Modifier.size(TapTarget).clickable(role = Role.Button, onClick = actions.onToggleEdition)
                 .semantics { contentDescription = "Switch between day and night paper" },
             contentAlignment = Alignment.Center,
         ) {
@@ -109,85 +145,221 @@ private fun Masthead(answering: Boolean, night: Boolean, statusWords: String?, a
     HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
 }
 
+/**
+ * The old header's controls, one tap each, states in words (Kevin, 2026-11-10: "I need that back").
+ * Quiet toggles; Feed on is one tap and off opens the ADR 0066 gate; Alarm opens Clock; Claude
+ * opens the watcher; Settings asks LEGION or the phone's, as the old gear did.
+ */
 @Composable
-private fun Glance(g: TypesetGlance, actions: TypesetHomeActions) {
-    Column(Modifier.padding(top = 16.dp)) {
-        Text(g.dateline, style = TypesetType.smallItalic, color = SoftColors.text2)
-        Row(
-            Modifier.tap("Open the clock", actions.onOpenClock).padding(bottom = 12.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            Text(g.time, style = TypesetType.time, color = SoftColors.text)
-        }
-        HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
-        Figure(g.next, actions.onOpenToday)
-        Figure(g.due, actions.onOpenToday)
-        Figure(g.left, actions.onOpenMoney)
-        // The contents line: the screens behind, Field and Breathe (Kevin, 2026-11-10), and More
-        // (today's sheet: Body, News, Reports, Media, Recordings, Lists, Games, Books keep a way in).
-        // Two rows of four, the prototype's grid.
-        val contents = listOf(
-            "Today" to actions.onOpenToday, "Money" to actions.onOpenMoney, "Car" to actions.onOpenCar,
-            "Clock" to actions.onOpenClock, "Field" to actions.onOpenField, "Breathe" to actions.onBreathe,
-            "More" to actions.onMore,
-        )
-        contents.chunked(CONTENTS_PER_ROW).forEach { row ->
-            Row(Modifier.fillMaxWidth()) {
-                row.forEach { (name, go) ->
-                    Box(Modifier.weight(1f).tap(name, go), contentAlignment = Alignment.CenterStart) {
-                        Text(
-                            name,
-                            style = TypesetType.small.copy(textDecoration = TextDecoration.Underline),
-                            color = SoftColors.text,
-                        )
-                    }
+private fun QuickLine(q: TypesetQuick, actions: TypesetHomeActions) {
+    val labels = TypesetHomeDerive.quickLabels(q)
+    val goes = listOf(actions.onToggleQuiet, actions.onFeed, actions.onOpenClock, actions.onOpenClaude)
+    var settingsOpen by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth()) {
+        labels.forEachIndexed { i, label ->
+            val isSettings = i >= goes.size
+            val go = if (isSettings) ({ settingsOpen = true }) else goes[i]
+            // Width by length: "Alarm 06:30" needs more than "Feed on" (it clipped at 360dp, font 1.3).
+            Box(Modifier.weight(label.length.toFloat()).tap(label, go), contentAlignment = Alignment.Center) {
+                FitLine(
+                    label,
+                    TypesetType.small.copy(textDecoration = TextDecoration.Underline),
+                    SoftColors.text,
+                    min = 10.sp,
+                    align = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (!isSettings) return@Box
+                DropdownMenu(expanded = settingsOpen, onDismissRequest = { settingsOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("LEGION settings", style = TypesetType.small, color = SoftColors.text) },
+                        onClick = { settingsOpen = false; actions.onOpenLegionSettings() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Phone settings", style = TypesetType.small, color = SoftColors.text) },
+                        onClick = { settingsOpen = false; actions.onOpenPhoneSettings() },
+                    )
                 }
             }
         }
     }
+    HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
 }
 
 @Composable
-private fun Figure(f: TypesetFigure, onOpen: () -> Unit) {
+private fun ColumnScope.Glance(g: TypesetGlance, tier: FitTier, measuring: Boolean, actions: TypesetHomeActions) {
+    if (tier.dateline) {
+        Text(
+            g.dateline,
+            style = TypesetType.smallItalic,
+            color = SoftColors.text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = tier.gap),
+        )
+    }
+    // The headline takes the height left over and shrinks to it; one line, never wrapped.
+    val slot = if (measuring) Modifier.height(MinTime) else Modifier.weight(1f)
+    Box(
+        slot.fillMaxWidth()
+            .clickable(role = Role.Button, onClickLabel = "Open the clock", onClick = actions.onOpenClock),
+        contentAlignment = Alignment.BottomStart,
+    ) {
+        if (!measuring) {
+            FitLine(g.time, TypesetType.time, SoftColors.text, min = 28.sp, modifier = Modifier.fillMaxWidth())
+        }
+    }
+    Spacer(Modifier.height(tier.gap))
+    HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
+    Figure(g.next, tier, actions.onOpenToday)
+    Figure(g.due, tier, actions.onOpenTodos)
+    Figure(g.left, tier, actions.onOpenMoney)
+}
+
+@Composable
+private fun Figure(f: TypesetFigure, tier: FitTier, onOpen: () -> Unit) {
     Column(Modifier.fillMaxWidth().tap(f.label, onOpen)) {
-        Row(Modifier.padding(vertical = 12.dp)) {
-            Column(Modifier.width(FigureColumn), horizontalAlignment = Alignment.End) {
-                Text(f.number, style = TypesetType.fig, color = SoftColors.text, textAlign = TextAlign.End)
-                f.unit?.let { Text(it, style = TypesetType.caps, color = SoftColors.text2) }
+        if (tier.stacked) {
+            Row(Modifier.padding(vertical = tier.gap)) {
+                Column(Modifier.width(FigureColumn), horizontalAlignment = Alignment.End) {
+                    FitLine(
+                        f.number,
+                        TypesetType.fig,
+                        SoftColors.text,
+                        min = 17.sp,
+                        align = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    f.unit?.let { Text(it, style = TypesetType.caps, color = SoftColors.text2) }
+                }
+                Column(Modifier.padding(start = 16.dp, top = 3.dp).weight(1f)) {
+                    OneLine(f.label, TypesetType.bodyStrong, SoftColors.text)
+                    f.lines.take(tier.figureLines).forEach { OneLine(it, TypesetType.small, SoftColors.text2) }
+                }
             }
-            Column(Modifier.padding(start = 16.dp, top = 3.dp).weight(1f)) {
-                Text(f.label, style = TypesetType.bodyStrong, color = SoftColors.text)
-                f.lines.forEach { Text(it, style = TypesetType.small, color = SoftColors.text2) }
+        } else {
+            Row(Modifier.heightIn(min = TapTarget), verticalAlignment = Alignment.CenterVertically) {
+                FitLine(
+                    f.number + (f.unit?.let { " $it" } ?: ""),
+                    TypesetType.lead,
+                    SoftColors.text,
+                    min = 14.sp,
+                    align = TextAlign.End,
+                    modifier = Modifier.width(FigureColumn),
+                )
+                Text(
+                    f.label,
+                    style = TypesetType.bodyStrong,
+                    color = SoftColors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 16.dp).weight(1f),
+                )
             }
         }
         HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
     }
 }
 
+/** The contents line: every place the page leads, in words, five to a row. */
 @Composable
-private fun Stage(phase: OrbPhase, status: String, large: Boolean, actions: TypesetHomeActions) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        val size: Dp = if (large) 200.dp else 88.dp
-        Box(
-            Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
-                .semantics { contentDescription = "Talk to Alfred" },
-        ) {
-            TypesetOrb(phase, Modifier.size(size))
+private fun Contents(actions: TypesetHomeActions) {
+    val go: Map<String, () -> Unit> = mapOf(
+        "Today" to actions.onOpenToday, "Money" to actions.onOpenMoney, "Car" to actions.onOpenCar,
+        "Clock" to actions.onOpenClock, "Field" to actions.onOpenField, "Breathe" to actions.onBreathe,
+        "Games" to actions.onOpenGames, "Books" to actions.onOpenBooks, "Lists" to actions.onOpenLists,
+        "Ideas" to actions.onOpenIdeas, "Brief" to actions.onBrief, "Media" to actions.onOpenMedia,
+        "More" to actions.onMore,
+    )
+    TypesetHomeDerive.CONTENTS.chunked(CONTENTS_PER_ROW).forEach { row ->
+        Row(Modifier.fillMaxWidth()) {
+            row.forEach { name ->
+                Box(Modifier.weight(1f).tap(name, go[name] ?: {}), contentAlignment = Alignment.CenterStart) {
+                    FitLine(
+                        name,
+                        TypesetType.small.copy(textDecoration = TextDecoration.Underline),
+                        SoftColors.text,
+                        min = 10.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            repeat(CONTENTS_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
         }
-        Column(Modifier.padding(start = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(status, style = TypesetType.lead, color = SoftColors.text)
-            Text(
-                "or type",
-                style = TypesetType.small.copy(textDecoration = TextDecoration.Underline, fontStyle = FontStyle.Italic),
-                color = SoftColors.text2,
-                modifier = Modifier.tap("Type a question", actions.onType),
-            )
+    }
+    HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
+}
+
+/** Alfred's cards, newest first, in the height left over; this slot alone may scroll. */
+@Composable
+private fun ColumnScope.Cards(cards: List<ConversationCard>, actions: TypesetHomeActions, measuring: Boolean) {
+    if (measuring) {
+        Spacer(Modifier.height(MinCards))
+        return
+    }
+    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp)) {
+        cards.asReversed().forEach { card ->
+            ConversationCardView(card, onDismiss = actions.onDismissCard, modifier = Modifier.padding(bottom = 8.dp))
         }
     }
 }
 
+/** The orb, centred (Kevin, 2026-11-10), the state in words, and "Type" under it. */
 @Composable
-private fun Dock(tiles: List<TypesetDockTile>, actions: TypesetHomeActions) {
+private fun Voice(phase: OrbPhase, status: String, tier: FitTier, measuring: Boolean, actions: TypesetHomeActions) {
+    Column(Modifier.fillMaxWidth().padding(top = tier.gap), horizontalAlignment = Alignment.CenterHorizontally) {
+        val size: Dp = tier.orb
+        Box(
+            Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
+                .semantics { contentDescription = "Talk to Alfred" },
+        ) {
+            if (!measuring) TypesetOrb(phase, Modifier.size(size))
+        }
+        if (tier.statusOwnLine) {
+            Text(
+                status,
+                style = TypesetType.bodyStrong,
+                color = SoftColors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            TypeButton(actions)
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    status,
+                    style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
+                    color = SoftColors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp),
+                )
+                TypeButton(actions)
+            }
+        }
+    }
+}
+
+/** "Type": secondary to the orb, smaller, words not a glyph, a 48dp target. */
+@Composable
+private fun TypeButton(actions: TypesetHomeActions) {
+    Box(
+        Modifier.heightIn(min = TapTarget)
+            .clickable(role = Role.Button, onClickLabel = "Type a question", onClick = actions.onType)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "Type",
+            style = TypesetType.small.copy(textDecoration = TextDecoration.Underline, fontStyle = FontStyle.Italic),
+            color = SoftColors.text2,
+        )
+    }
+}
+
+@Composable
+private fun Dock(tiles: List<TypesetDockTile>, tier: FitTier, actions: TypesetHomeActions) {
     Column(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
@@ -198,32 +370,52 @@ private fun Dock(tiles: List<TypesetDockTile>, actions: TypesetHomeActions) {
                 modifier = Modifier.tap("All apps", actions.onAllApps),
             )
         }
-        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            tiles.forEach { t ->
-                Column(
-                    Modifier.tap(t.name) { actions.onOpenApp(t) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        Modifier.size(44.dp).border(1.dp, SoftColors.outline),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(t.monogram, style = TypesetType.bodyStrong, color = SoftColors.text)
-                    }
-                    Text(t.name, style = TypesetType.small, color = SoftColors.text2)
-                }
+        if (!tier.dockTiles || tiles.isEmpty()) return@Column
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            tiles.forEach { t -> DockTile(t, tier.dockNames, actions) }
+        }
+    }
+}
+
+/** A pinned app: tap opens it, long press offers the old dock's unpin and move, in words. */
+@Composable
+private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeActions) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Column(
+            Modifier.heightIn(min = TapTarget)
+                .combinedClickable(onClick = { actions.onOpenApp(t) }, onLongClick = { menu = true })
+                .semantics(mergeDescendants = true) {
+                    role = Role.Button
+                    contentDescription = t.name
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(Modifier.size(44.dp).border(1.dp, SoftColors.outline), contentAlignment = Alignment.Center) {
+                Text(t.monogram, style = TypesetType.bodyStrong, color = SoftColors.text)
+            }
+            if (named) OneLine(t.name, TypesetType.small, SoftColors.text2)
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            listOf(
+                "Unpin ${t.name}" to actions.onUnpin,
+                "Move left" to actions.onMoveLeft,
+                "Move right" to actions.onMoveRight,
+            ).forEach { (words, go) ->
+                DropdownMenuItem(
+                    text = { Text(words, style = TypesetType.small) },
+                    onClick = {
+                        menu = false
+                        go(t)
+                    },
+                )
             }
         }
     }
 }
 
-/** A text control: a 48dp target with a button role and its words as the label. */
-private fun Modifier.tap(label: String, onClick: () -> Unit): Modifier =
-    this.heightIn(min = MinTarget).clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
-        .wrapContentHeight()
-        .padding(horizontal = 2.dp)
-
-private const val CONTENTS_PER_ROW = 4
+private const val CONTENTS_PER_ROW = 5
 private val Gutter = 16.dp
-private val MinTarget = 48.dp
-private val FigureColumn = 100.dp
+private val FigureColumn = 128.dp
+private val MinTime = 48.dp
+private val MinCards = 120.dp
