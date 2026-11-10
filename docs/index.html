@@ -85,17 +85,17 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>406 tickets open</h1>
+<h1>404 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 58 maps. <b>12 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 103 are waiting on another ticket first. <b>226 are already built</b> and owe nothing but a run on the phone. 15 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 58 maps. <b>11 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 98 are waiting on another ticket first. <b>230 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">406</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">404</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">62</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">226</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">103</span><span class="stamp l">blocked</span></div>
-<div class="stat"><span class="n amber">12</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">153</span><span class="stamp l">still to build</span></div>
-<div class="stat"><span class="n ghost">15</span><span class="stamp l">KIV</span></div>
+<div class="stat"><span class="n mint">230</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">98</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n amber">11</span><span class="stamp l">your call</span></div>
+<div class="stat"><span class="n mint">149</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n ghost">14</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
 <button class="f" data-f="all" aria-pressed="true">everything</button>
@@ -196,32 +196,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
-<h2>worker-workflows</h2>
-<span class="counts"><span class="k">16</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k amber">14</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 16 tickets</span></span>
-<span class="bar"><i style="flex:1"></i><b style="flex:15"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">Rulings: where workflows live, trigger, unattended runs, miner sources</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">Definition format: workflow.json beside SKILL.md, parser and lint</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">Engine: workflow kind, catalog cache, name lookup, list</span></span><span class="chip c-build">build</span><span class="state">waiting on #01, #02</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">Engine: catch-up runs, minted at claim (generalizes the memory review&#x27;s due rule)</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Worker: publish the catalog, workflow task message, reports folder, task log</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Phone: action workflow, workflows in check, Workflows on the Claude session screen</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Web desk: workflows with last run and Run</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">Workflow: log-audit</span></span><span class="chip c-build">build</span><span class="state">waiting on #05, #08</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Workflow: fix-finding</span></span><span class="chip c-build">build</span><span class="state">waiting on #09</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Workflow: ship-round</span></span><span class="chip c-build">build</span><span class="state">waiting on #05</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">Workflow: memory-review (the wrapper; the review is the memory-review map)</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">13</span><span class="body"><span class="tt">Workflow: claude-memory-review</span></span><span class="chip c-build">build</span><span class="state">waiting on #05</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Workflow miner: the repeated-task loop</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">15</span><span class="body"><span class="tt">ADR 0067 amendment and decisions entry</span></span><span class="chip c-task">build</span><span class="state">waiting on #01</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">16</span><span class="body"><span class="tt">Live run on the Alienware</span></span><span class="chip c-task">build</span><span class="state">waiting on #06, #09, #11, #12, #14</span></li>
-<li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">08</span><span class="body"><span class="tt">Engine: device logs readable by the worker (logcat and crash over the API)</span><span class="det">parked until feat/phone-log-upload merges (it adds the logcat and crash reasons); planning only until Kevin says build</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
 <h2>memory-and-vault</h2>
 <span class="counts"><span class="k">15</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">11</span> built<span class="sep">&middot;</span><span class="k amber">3</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
 <span class="bar"><i style="flex:11"></i><b style="flex:4"></b></span>
@@ -290,6 +264,30 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Isolation tests: recruiter cannot reach Kevin&#x27;s household or excluded tools, incl. prompt injection</span><span class="det">gate before the code goes out</span></span><span class="chip c-build">build</span><span class="state">waiting on #01, #02, #03</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Try page and the &#x27;What this key can&#x27;t see&#x27; governance page</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #05</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Music demo: &#x27;play X&#x27; by voice, plays in the page via a Spotify embed</span></span><span class="chip c-build">build</span><span class="state">waiting on #01</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>worker-workflows</h2>
+<span class="counts"><span class="k">14</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">9</span> blocked<span class="sep">&middot;</span><span class="dim">of 16 tickets</span></span>
+<span class="bar"><i style="flex:5"></i><b style="flex:9"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Engine: device logs readable by the worker (logcat and crash over the API)</span><span class="det">Deferred 2026-11-10: blocked by feat/phone-log-upload, and it serves prod device logs to the worker; the engine-and-worker build did not touch prod or personal data.</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Definition format: workflow.json beside SKILL.md, parser and lint</span><span class="det">Built 2026-11-10 on feat/worker-workflows: tools/claude_session/workflows.py, lint CLI, invented fixtures, shared phrase table; 13 tests green. Owed: Kevin lints the real private skills folder on the Alienware (agents may not read it).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">Engine: workflow kind, catalog cache, name lookup, list</span><span class="det">Built 2026-11-10 on feat/worker-workflows: claude_session 0007 (additive; memory_review kept as its own kind), heartbeat catalog, POST tasks/ workflow, GET workflows/, status names, ?origin= and ?kind=. Owed: engine deploy with the migration (Kevin&#x27;s yes), then ticket 16.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Engine: catch-up runs, minted at claim (generalizes the memory review&#x27;s due rule)</span><span class="det">Built 2026-11-10 on feat/worker-workflows: due rule computed at read, minted at claim, one per claim, memory review first, kill switches LEGION_WORKFLOW_SCHEDULES and _OFF, POST workflows/run/. Owed: engine deploy, then one catch-up run after a cold boot (ticket 16). Concurrent-claim lock is reasoned (row lock), not tested with two threads.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">Worker: publish the catalog, workflow task message, reports folder, task log</span><span class="det">Built 2026-11-10 on feat/worker-workflows: catalog publish on hash change, workflow task message, report folder, scheduled runs tokenless, email_self only from the local sidecar, task log with 180 day prune. Owed: Kevin&#x27;s order to update the live worker (legion-claude-on) after the engine deploy.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Phone: action workflow, workflows in check, Workflows on the Claude session screen</span><span class="det">Deferred 2026-11-10 by Kevin&#x27;s brief: three unmerged branches edit ClaudeResultWatcher, ClaudeResultPolling and LiveToolbox, and the voice payload has no room to spare. Build off the merged tree against the contract in the map (Phone contract).</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Web desk: workflows with last run and Run</span><span class="det">Deferred 2026-11-10: not nearly free (the web needs node, vitest and a schema.d.ts regeneration). Endpoints it needs are built (GET workflows/, POST workflows/run/).</span></span><span class="chip c-build">build</span><span class="state">waiting on #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">Workflow: log-audit</span><span class="det">Deferred 2026-11-10: a private-folder workflow that reads prod device logs and conversation records (personal data); waits for 08 and Kevin. The format, engine and worker it needs are built.</span></span><span class="chip c-build">build</span><span class="state">waiting on #05, #08</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Workflow: fix-finding</span><span class="det">Deferred 2026-11-10: a private-folder workflow over the log audit&#x27;s findings (personal data); waits for 09.</span></span><span class="chip c-build">build</span><span class="state">waiting on #09</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Workflow: ship-round</span><span class="det">Deferred 2026-11-10: a private-folder workflow (its skill lives on the Alienware, not in the repo) plus a possible ship.py --round change; outside the engine-and-worker build.</span></span><span class="chip c-build">build</span><span class="state">waiting on #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">Workflow: memory-review (the wrapper; the review is the memory-review map)</span><span class="det">Deferred 2026-11-10: needs Kevin&#x27;s ruling. The memory review shipped first as kind memory_review, and the live worker and ask-list hook guard it by that kind; renaming it to kind workflow ships only with a worker update. Until then it keeps its own kind and minting, and a workflow mint never stacks on it (one per claim).</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">13</span><span class="body"><span class="tt">Workflow: claude-memory-review</span><span class="det">Deferred 2026-11-10: a private-folder workflow that reads Claude&#x27;s own memory files (personal data).</span></span><span class="chip c-build">build</span><span class="state">waiting on #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Workflow miner: the repeated-task loop</span><span class="det">Deferred 2026-11-10: the miner is a private-folder workflow; its input, the local task log, is built on feat/worker-workflows (ticket 05).</span></span><span class="chip c-build">build</span><span class="state">waiting on #04, #05</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">16</span><span class="body"><span class="tt">Live run on the Alienware</span><span class="det">Owed: after the engine deploy and the live worker update (both Kevin&#x27;s order) and the phone half (06).</span></span><span class="chip c-task">build</span><span class="state">waiting on #06, #09, #11, #12, #14</span></li>
 </ul>
 </section>
 <section class="map">

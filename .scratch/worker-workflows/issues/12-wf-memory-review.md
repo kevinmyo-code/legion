@@ -4,7 +4,7 @@ ticket: "12"
 title: "Workflow: memory-review (the wrapper; the review is the memory-review map)"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10: needs Kevin's ruling. The memory review shipped first as kind memory_review, and the live worker and ask-list hook guard it by that kind; renaming it to kind workflow ships only with a worker update. Until then it keeps its own kind and minting, and a workflow mint never stacks on it (one per claim)."
 size: S
 blockers: ["04", "05"]
 blocked-by: ["[[04-catch-up-runs]]", "[[05-worker]]"]

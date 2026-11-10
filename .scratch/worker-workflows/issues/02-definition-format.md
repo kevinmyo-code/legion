@@ -3,12 +3,12 @@ map: worker-workflows
 ticket: "02"
 title: "Definition format: workflow.json beside SKILL.md, parser and lint"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-11-10 on feat/worker-workflows: tools/claude_session/workflows.py, lint CLI, invented fixtures, shared phrase table; 13 tests green. Owed: Kevin lints the real private skills folder on the Alienware (agents may not read it)."
 size: S
 blockers: ["01"]
 blocked-by: ["[[01-rulings]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -90,3 +90,15 @@ backslashes, `@` and digits-with-currency in `says`, `aliases` and param text.
 - [ ] `python -m pytest tools/claude_session/test_workflows.py`.
 - [ ] Lint against the real private folder on the Alienware: today's skills have no sidecar, so
       they are skills, not workflows, and nothing breaks.
+
+## Build record (2026-11-10, feat/worker-workflows)
+
+| Verification step | State |
+|---|---|
+| `test_workflows.py` (parse, lint, hash stability, matcher table) | done: 13 tests green (`python -m unittest`, the suite's runner) |
+| Lint against the real private folder on the Alienware | deferred to Kevin: agents may not read his skills folder. `python tools/claude_session/workflows.py --lint "%APPDATA%\legion-claude\work\.claude\skills"`; today's skills have no sidecar, so it should print 0 workflows, 0 problems |
+
+Choices made in the build: `every` takes defaults for `idle_minutes` (10), `force_after_hours`
+(1.5 times `hours`) and `retry_after_hours` (6); `scope` defaults to `["full"]`; a `listed` scope
+with a `page` output fails lint; a SKILL.md naming `send_mail.py` passes without an ask only when
+`deliver` is `email_self`; a param's `default` stays on the laptop (the engine copy drops it).

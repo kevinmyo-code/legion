@@ -3,12 +3,12 @@ map: worker-workflows
 ticket: "15"
 title: "ADR 0067 amendment and decisions entry"
 type: task
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-11-10 on feat/worker-workflows: ADR 0067 amended (R1 to R4, cross-link to ADR 0070), decisions.md entry."
 size: S
 blockers: ["01"]
 blocked-by: ["[[01-rulings]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

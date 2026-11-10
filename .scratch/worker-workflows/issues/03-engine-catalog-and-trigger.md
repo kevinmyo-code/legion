@@ -3,12 +3,12 @@ map: worker-workflows
 ticket: "03"
 title: "Engine: workflow kind, catalog cache, name lookup, list"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-11-10 on feat/worker-workflows: claude_session 0007 (additive; memory_review kept as its own kind), heartbeat catalog, POST tasks/ workflow, GET workflows/, status names, ?origin= and ?kind=. Owed: engine deploy with the migration (Kevin's yes), then ticket 16."
 size: M
 blockers: ["01", "02"]
 blocked-by: ["[[01-rulings]]", "[[02-definition-format]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
@@ -57,3 +57,26 @@ shape. Either way one column, one meaning.
       refusal; `needs_machine` when two machines are online and the phrase is on both; follow-up
       and cancel unchanged for workflow tasks; tenancy leak test still green.
 - [ ] Matcher parity: the engine runs ticket 02's shared phrase table.
+
+## Build record (2026-11-10, feat/worker-workflows)
+
+| Verification step | State |
+|---|---|
+| Heartbeat stores a catalog only on a hash change | done (`test_claude_workflows.py`) |
+| A bad entry is dropped | done: path, address, amount, bad name, extra key, taken phrase, long schedule |
+| Known phrase sets kind, workflow, params | done |
+| Unknown phrase 400 lists names | done |
+| Scope refusal | done |
+| `needs_machine` when two machines online have it | done, plus assign re-checks the catalog |
+| Follow-up and cancel unchanged | done; a follow-up inherits kind and workflow |
+| Tenancy leak test | done: `test_tenancy.py` green; household B sees no workflows and cannot run A's |
+| Matcher parity | done: both matchers run `tools/claude_session/test_fixtures/workflows/match_cases.json` |
+
+Departures from the ticket, each forced by what landed first:
+- `kind` already existed (memory-review 0005). 0007 is additive: `workflow` joins the check,
+  `memory_review` stays. The rename the ticket describes is ticket 12's, and waits on Kevin.
+- `relay` is not added to the check yet (Layer 2 is not built); widening it is one migration.
+- `ClaudeMachine.workflows` entries carry `seen_at` (first published), the clock a never-run
+  schedule counts its force-after from.
+- `POST tasks/` replies `workflow` and `asks` (both always present) so the phone can say "it stops
+  for your yes before ..." without a second read.

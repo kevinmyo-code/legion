@@ -4,7 +4,7 @@ ticket: "11"
 title: "Workflow: ship-round"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10: a private-folder workflow (its skill lives on the Alienware, not in the repo) plus a possible ship.py --round change; outside the engine-and-worker build."
 size: L
 blockers: ["05"]
 blocked-by: ["[[05-worker]]"]

@@ -3,8 +3,8 @@ map: worker-workflows
 ticket: "05"
 title: "Worker: publish the catalog, workflow task message, reports folder, task log"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-11-10 on feat/worker-workflows: catalog publish on hash change, workflow task message, report folder, scheduled runs tokenless, email_self only from the local sidecar, task log with 180 day prune. Owed: Kevin's order to update the live worker (legion-claude-on) after the engine deploy."
 size: M
 blockers: ["02", "03"]
 blocked-by: ["[[02-definition-format]]", "[[03-engine-catalog-and-trigger]]"]
@@ -67,3 +67,18 @@ Work folder: ...
       task message carries skill, words, report path, asks; scheduled task gets no token;
       `email_self` workflow gets the Kevin-only token; task log line written at finish and pruned.
 - [ ] `test_asklist_hook.py`: a new report file passes; overwriting an older one asks.
+
+## Build record (2026-11-10, feat/worker-workflows)
+
+| Verification step | State |
+|---|---|
+| Catalog published on change only | done (`test_worker_workflows.py`), plus an engine that echoes no hash gets the list at most every 5 minutes |
+| Workflow message carries skill, words, report path, asks | done |
+| Scheduled task gets no token | done |
+| `email_self` workflow gets the Kevin-only token | done, and only when the laptop's own sidecar declares it (an engine row alone does not) |
+| Task log line written at finish and pruned | done; reports pruned only by the worker's own name pattern under a workflow the laptop has |
+| `test_asklist_hook.py`: new report passes, overwriting an older one asks | done; no new hook rule was needed (the folder is outside the work folder, so it is Kevin's), the docstring says so |
+
+Also: a workflow the laptop no longer has fails in words and never runs as free text; a
+follow-up names the workflow's skill again; tests point `USERPROFILE` and every new path at a temp
+folder, so a test run never writes Kevin's real `.legion` folder.

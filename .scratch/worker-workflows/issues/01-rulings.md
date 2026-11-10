@@ -3,13 +3,13 @@ map: worker-workflows
 ticket: "01"
 title: "Rulings: where workflows live, trigger, unattended runs, miner sources"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-11-09: Kevin took every recommendation (\"All ur picks\"); build ordered 2026-11-10 (\"yeah as per ur recs\"). Build tickets 02 to 05 and 15 carry it."
 size: S
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Rulings for Kevin
@@ -72,4 +72,5 @@ first month of proposals is thin.
 
 ## Answer
 
-(open)
+Kevin, 2026-11-09: *"All ur picks"*. R1 A, R2 A, R3 and R4 as recommended. Build
+ordered 2026-11-10: *"yeah as per ur recs"*. Amended into ADR 0067 (ticket 15).

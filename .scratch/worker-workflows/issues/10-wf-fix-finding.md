@@ -4,7 +4,7 @@ ticket: "10"
 title: "Workflow: fix-finding"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10: a private-folder workflow over the log audit's findings (personal data); waits for 09."
 size: S
 blockers: ["09"]
 blocked-by: ["[[09-wf-log-audit]]"]

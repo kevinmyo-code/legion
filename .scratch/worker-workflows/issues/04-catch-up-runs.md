@@ -3,8 +3,8 @@ map: worker-workflows
 ticket: "04"
 title: "Engine: catch-up runs, minted at claim (generalizes the memory review's due rule)"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-11-10 on feat/worker-workflows: due rule computed at read, minted at claim, one per claim, memory review first, kill switches LEGION_WORKFLOW_SCHEDULES and _OFF, POST workflows/run/. Owed: engine deploy, then one catch-up run after a cold boot (ticket 16). Concurrent-claim lock is reasoned (row lock), not tested with two threads."
 size: M
 blockers: ["03"]
 blocked-by: ["[[03-engine-catalog-and-trigger]]"]
@@ -64,3 +64,22 @@ also what the phone's `action: "workflow"` amounts to). Same one-at-a-time rule.
       due; a week of silence then one claim mints exactly one; a `listed` machine never minted a
       `full`-only workflow; concurrent claims mint one.
 - [ ] The memory review's tests from its own map pass against this shape.
+
+## Build record (2026-11-10, feat/worker-workflows)
+
+| Verification step | State |
+|---|---|
+| Due after `every.hours` | done |
+| Not due while queued, running or waiting on Kevin | done; an answered question (one with a follow-up) does not block, and a done follow-up counts as the run |
+| Retry wait after a failure | done; a `running` row the 30 minute cap failed at read time counts as failed, never blocks |
+| Kill switches | done (`LEGION_WORKFLOW_SCHEDULES=off`, `LEGION_WORKFLOW_SCHEDULES_OFF`) |
+| Idle gate and force-after | done; a worker with no idle reading is never minted one |
+| One mint per claim with two due | done, longest overdue first; the memory review's mint takes the claim's one |
+| A week of silence then one claim mints exactly one | done |
+| A `listed` machine never minted a `full`-only workflow | done |
+| Concurrent claims mint one | reasoned, not tested: the claim takes `select_for_update` on the machine row before minting; the suite runs inside one transaction per test, so two real threads were not raced |
+| The memory review's tests pass against this shape | done in the sense available: the review kept its own shape (ticket 12 deferred) and `test_memory_review.py` is green with the new claim path |
+
+Choices made in the build: a Kevin task already queued on the machine runs first (no mint that
+claim); only the claiming token bound to the machine mints; the minted task's `user` is that
+token's member; a scheduled run carries `email_self` when declared and never `phone` or `files`.

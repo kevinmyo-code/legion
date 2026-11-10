@@ -13,8 +13,9 @@ tags: [map]
 # Worker workflows
 
 **Kevin, 2026-11-09:** *"legion can call u or the worker session. So certain repeated things can
-turn into workflows etc."* Planning only: no build until Kevin says build. Plan docs stay local
-(not pushed). Two parts:
+turn into workflows etc."* Planned 2026-11-09 and kept local until Kevin said build; he did on
+2026-11-10 (*"yeah as per ur recs"*), and the engine and worker half is built on
+`feat/worker-workflows` (see Build status). Two parts:
 
 - **A. Workflow library.** Named, repeatable jobs Alfred starts by voice on the Claude worker
   (ADR 0067): "audit my logs", "prepare a ship round", "fix finding three", the daily memory
@@ -81,8 +82,8 @@ Four, all in [Rulings](issues/01-rulings.md) with the reasoning. Recommendations
   three rulings open) plans `kind = "relay"`. Values: `ask` (default), `relay`, `workflow`.
 - **Standing agent rules** live in `%USERPROFILE%\.legion\AGENT-RULES.md` (being written in
   parallel). Every workflow message tells the helper to read it first; skills do not copy it.
-- **Live worker** is `fix/claude-worker-wait` (53e6b028, unmerged: helper wait, warm worktree,
-  asklist redirect fix). Worker tickets build on it, after it merges.
+- **Live worker** was `fix/claude-worker-wait` (53e6b028: helper wait, warm worktree, asklist
+  redirect fix); merged into dev by 2026-11-10, and the worker build sits on it.
 - Privacy: workflow bodies, reports, the task log and proposals stay on the Alienware. The engine
   sees names, one-liners, param names, ask lines, schedules, and the usual task summaries. Logs
   never carry requests, summaries or paths (ADR 0067). Nothing derived from real tasks is committed.
@@ -142,7 +143,60 @@ Sizes: S under half a day of agent work, M about a day, L two or more.
 
 ## Decisions so far
 
-None. Planning approved 2026-11-09; rulings pending.
+- **2026-11-09, Kevin: R1 to R4 as recommended** (*"All ur picks"*). Ticket 01 resolved.
+- **2026-11-10, Kevin: build** (*"yeah as per ur recs"*), engine and worker half only; the phone
+  half later off the merged tree. ADR 0067 amended (ticket 15).
+- **Open for Kevin:** fold the memory review into a workflow (ticket 12). It shipped first as its
+  own `kind = memory_review`, and the live worker and ask-list hook guard it by that kind, so the
+  rename ships only with a worker update. Until then both coexist and one claim mints at most one.
+
+## Build status (2026-11-10, `feat/worker-workflows`)
+
+| Ticket | State |
+|---|---|
+| 01, 15 | resolved |
+| 02 format, 03 engine, 04 catch-up, 05 worker | built, tests green; owed: engine deploy, live worker update, ticket 16 |
+| 06 phone | deferred: unmerged branches edit the same files and the voice payload is full; build to the contract below |
+| 07 web desk | deferred: not nearly free (node, vitest, `schema.d.ts`) |
+| 08, 09, 10, 13 | deferred: they read prod or personal data |
+| 11, 14 | deferred: private-folder workflows (14's input, the task log, is built) |
+| 12 | deferred: Kevin's ruling above |
+| 16 | owed after deploy, worker update and 06 |
+
+## Phone contract (for ticket 06, built against these endpoints)
+
+All under `/api/claude/`, device token as today. New fields are additive; the phone's JSON
+already ignores unknown keys.
+
+- **Voice `action: "workflow"`:** `POST tasks/ {request: <Kevin's words>, workflow: <Kevin's
+  words>, machine: <name or null>, origin: "named", parent: null}`.
+  - 201: `{id, status: queued | needs_machine, machine: {name, state, last_seen_at} | null,
+    workflow: <name>, asks: [<"Move the files into dated folders?">, ...]}`. Say "Sent to the
+    <machine>: <workflow with hyphens as spaces>." and, when `asks` is not empty, "It stops for
+    your yes before ..." from `asks`. `needs_machine`: ask which and `POST tasks/{id}/assign/`
+    as today (assign re-checks the catalog and may 400).
+  - 400: `{detail, workflows: [<spoken names>]}`. Read `detail` back; it already names them.
+  - 409: `{detail}`: a run of that workflow is already queued, running or waiting on his yes.
+  - Follow-ups (`parent`, `confirms`) are unchanged; a follow-up to a workflow task stays that
+    workflow's on the engine without the phone sending anything new.
+- **`check`:** `GET status/` machines each carry `workflows: [{name, says}]`. One line per online
+  machine: "Workflows on the <machine>: log audit, ...". Names with hyphens as spaces.
+- **Screen (hands path, ADR 0035):** `GET workflows/?machine=` returns per workflow `{machine,
+  machine_state, name, spoken, says, aliases, params: [{name, says, required}], asks: [says],
+  outputs, deliver, every: {hours, idle_minutes, force_after_hours, retry_after_hours} | null,
+  last_run: {task, status, origin, created_at, finished_at} | null, waiting, due}`. Run button:
+  `POST workflows/run/ {machine, name, params}` -> 201 `{id, status, machine, workflow, detail}`
+  ("Queued log audit on the Alienware."), 400 `{detail, workflows}`, 409 `{detail}`. Both paths
+  are one controller call each (`runWorkflow`), as the ticket says.
+- **Task rows** everywhere add `kind` (`ask`, `memory_review`, `workflow`), `workflow` (name or
+  null) and `params` (or null). Label `origin: "schedule"` rows "Scheduled".
+- **Scheduled questions (R3):** the result watcher only watches tasks the phone sent. Poll
+  `GET tasks/?origin=schedule&status=needs_confirmation` (filters added for this) and notify once
+  per task id in the Claude tasks category; the answer is the ordinary `confirms` follow-up. A
+  scheduled `done` is not announced. Silenceable with the existing `quiet`.
+- **Payload:** the enum value only (~3 estimated tokens); measure with `LiveSetupPayloadSizeTest`
+  first, fall back to R2 option B if it does not fit (that fallback would need an engine change:
+  match on `send` too).
 
 ## Not yet specified
 

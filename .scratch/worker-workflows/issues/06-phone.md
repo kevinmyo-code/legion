@@ -4,7 +4,7 @@ ticket: "06"
 title: "Phone: action workflow, workflows in check, Workflows on the Claude session screen"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10 by Kevin's brief: three unmerged branches edit ClaudeResultWatcher, ClaudeResultPolling and LiveToolbox, and the voice payload has no room to spare. Build off the merged tree against the contract in the map (Phone contract)."
 size: M
 blockers: ["03"]
 blocked-by: ["[[03-engine-catalog-and-trigger]]"]

@@ -4,7 +4,7 @@ ticket: "14"
 title: "Workflow miner: the repeated-task loop"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10: the miner is a private-folder workflow; its input, the local task log, is built on feat/worker-workflows (ticket 05)."
 size: M
 blockers: ["04", "05"]
 blocked-by: ["[[04-catch-up-runs]]", "[[05-worker]]"]

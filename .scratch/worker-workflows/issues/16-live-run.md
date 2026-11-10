@@ -4,7 +4,7 @@ ticket: "16"
 title: "Live run on the Alienware"
 type: task
 status: open
-status-detail: ""
+status-detail: "Owed: after the engine deploy and the live worker update (both Kevin's order) and the phone half (06)."
 size: S
 blockers: ["06", "09", "11", "12", "14"]
 blocked-by: ["[[06-phone]]", "[[09-wf-log-audit]]", "[[11-wf-ship-round]]", "[[12-wf-memory-review]]", "[[14-workflow-miner]]"]

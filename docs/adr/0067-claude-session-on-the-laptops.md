@@ -2,7 +2,7 @@
 status: accepted
 decided: 2026-10-29
 decided-by: Kevin
-amended: 2026-11-09
+amended: 2026-11-10
 source: "[[decisions#2026-10-29 - Claude session: Alfred hands tasks to Claude Code on Kevin's laptops (Kevin)]]"
 tags: [adr]
 ---
@@ -89,6 +89,43 @@ can take several messages, start a background helper per task, stay free, and re
   a yes, a notification tap or the screen's button opens it in LEGION's browser. The web desk lists
   it under its task. The work laptop never takes one. Retention is the task's 30 days.
 
+- **Workflows: named jobs, and recurring runs (amended 2026-11-10, Kevin, map worker-workflows).**
+  Rulings R1 to R4 (2026-11-09, *"All ur picks"*), built on Kevin's *"yeah as per ur recs"*.
+  - **R1, where they live.** A workflow is one of Kevin's private worker skills plus a
+    `workflow.json` contract beside its `SKILL.md`, in the worker's skills folder on the laptop: the
+    name, spoken aliases, one line, params, where it stops for his yes (`asks`), outputs, delivery,
+    machine scope and an optional schedule. The skill text and anything personal never leave the
+    laptop or enter the public repo, which holds the format, its lint, the matcher and invented
+    examples (`tools/claude_session/workflows.py`). The engine keeps a derived copy per machine,
+    sent by the worker when its hash changes, and drops any entry holding a path, an address or an
+    amount. The engine never authors a workflow.
+  - **R2, the trigger.** Alfred starts one with `action: "workflow"` on the `claude_session` tool,
+    only when Kevin names Claude, exactly as for `send` (the named-or-asked rule above is
+    unchanged). The engine resolves his words with the worker's matcher; a name it does not know
+    comes back with the names it does. A run is one at a time per workflow and machine.
+  - **R3, unattended runs, which resolves the line below that recurring tasks "come later".** A
+    workflow that declares `every` is caught up, not clocked: inside a claim from its own idle,
+    token-bound laptop, with nothing queued or running, the engine mints at most one due run (the
+    longest overdue; the memory review first), never two, and a laptop that was off runs it once
+    when it is next on. A scheduled run does its read-only and own-work-folder steps and **stops at
+    every ask-list step and every ship or deploy step** with `needs_confirmation`, exactly like a
+    task Kevin sent; it carries no token of any kind, and a question it asks blocks the next run
+    until he answers. **The one standing yes is `deliver: email_self`**, mail to Kevin only,
+    because installing the workflow (itself on the ask list) was the yes, and the worker honours it
+    only when the laptop's own `workflow.json` declares it. A page or files to the phone, mail to
+    anyone else, and any deploy never stand. `LEGION_WORKFLOW_SCHEDULES=off` stops every schedule;
+    `LEGION_WORKFLOW_SCHEDULES_OFF` names single ones. A schedule may not exceed the 30 day
+    retention, and the 30 minute cap holds.
+  - **R4, the repeated-task miner** reads Claude worker tasks only (the engine's task rows and a
+    local task log on the laptop, `%USERPROFILE%\.legion\task-log.jsonl`, request text, 180 days,
+    never leaving the laptop), proposes at 3 or more similar requests over 2 or more days, and
+    never installs anything itself; Kevin's interactive Claude Code sessions stay out.
+  - **Workflows are not procedures** (ADR 0070): a procedure is a deterministic DAG the engine runs
+    in milliseconds; a workflow is Claude work on a laptop that takes minutes. A worker or the
+    engine never creates or edits a standing watch through a workflow.
+  - **The memory review stays its own kind** (`memory_review`) for now: folding it into a workflow
+    renames rows the live worker guards by kind, so it waits for Kevin's call.
+
 ## Consequences
 
 - Every laptop worker and hook holds an ordinary household device token. The engine cannot tell a
@@ -98,7 +135,8 @@ can take several messages, start a background helper per task, stay free, and re
 - 25 MB rows in Postgres cost database storage for 30 days; a storage backend would replace them
   when the engine gets one.
 - Subscription use is not metered or warned about (*"just run it"*).
-- Recurring tasks are not in this decision; they come later, set by voice.
+- Recurring tasks are not in this decision; they come later, set by voice. (Resolved for
+  workflows by the 2026-11-10 amendment above; setting a schedule by voice is still later.)
 - **Amended 2026-11-09 (Kevin, memory-review map): one built-in recurring kind.** Recurring
   tasks set by voice are still later. The daily memory review (`kind = memory_review`, origin
   `schedule`) is minted by the engine inside a claim from Kevin's own idle Alienware, at most once
@@ -127,4 +165,5 @@ can take several messages, start a background helper per task, stay free, and re
     again.
   - **Guard:** if Kevin undoes more than 30% of the last 14 runs' applied changes (at least 10), `on`
     behaves as `shadow` until that falls. To check holds only what the code checks reject.
-- Source: `.scratch/claude-session/map.md` rulings 1 to 17, tickets 01 to 03.
+- Source: `.scratch/claude-session/map.md` rulings 1 to 17, tickets 01 to 03;
+  `.scratch/worker-workflows/map.md` rulings R1 to R4 (2026-11-10 amendment).

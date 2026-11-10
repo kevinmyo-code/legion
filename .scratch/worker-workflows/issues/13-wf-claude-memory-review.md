@@ -4,7 +4,7 @@ ticket: "13"
 title: "Workflow: claude-memory-review"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10: a private-folder workflow that reads Claude's own memory files (personal data)."
 size: S
 blockers: ["05"]
 blocked-by: ["[[05-worker]]"]

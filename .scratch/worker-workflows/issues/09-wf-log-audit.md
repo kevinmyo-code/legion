@@ -4,7 +4,7 @@ ticket: "09"
 title: "Workflow: log-audit"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10: a private-folder workflow that reads prod device logs and conversation records (personal data); waits for 08 and Kevin. The format, engine and worker it needs are built."
 size: M
 blockers: ["05", "08"]
 blocked-by: ["[[05-worker]]", "[[08-device-logs-read]]"]

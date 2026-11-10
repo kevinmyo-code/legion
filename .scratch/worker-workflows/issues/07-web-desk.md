@@ -4,7 +4,7 @@ ticket: "07"
 title: "Web desk: workflows with last run and Run"
 type: build
 status: open
-status-detail: ""
+status-detail: "Deferred 2026-11-10: not nearly free (the web needs node, vitest and a schema.d.ts regeneration). Endpoints it needs are built (GET workflows/, POST workflows/run/)."
 size: S
 blockers: ["03"]
 blocked-by: ["[[03-engine-catalog-and-trigger]]"]

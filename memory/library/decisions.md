@@ -7589,6 +7589,28 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Ruled (Kevin, 2026-11-09, later that day):** delivered files stay app-private, not in
   Downloads, as built. Kevin saves or sends one with Share. Shipped in release round 4.
 
+## 2026-11-10 - Worker workflows: named jobs and recurring runs on the Claude worker (Kevin)
+
+- **Kevin's words:** *"legion can call u or the worker session. So certain repeated things can
+  turn into workflows etc."* (2026-11-09, planning); *"All ur picks"* (2026-11-09, the four
+  rulings); *"yeah as per ur recs"* (2026-11-10, build).
+- **Ruled, all as recommended (`.scratch/worker-workflows/issues/01-rulings.md`):** R1 a workflow
+  is a private worker skill plus `workflow.json` on the laptop, the engine a derived cache; R2
+  Alfred's `action: "workflow"`, only when Kevin names Claude; R3 scheduled runs are catch-up,
+  minted at claim, and stop at every ask-list and ship step, the one standing yes `email_self` to
+  Kevin; R4 the miner reads worker tasks only, 3+ over 2+ days, never installs. ADR 0067 amended.
+- **Built on `feat/worker-workflows` (engine and worker only):** the format and lint, claude_session
+  0007 (additive), catalog intake, phrase resolution, `GET workflows/`, `POST workflows/run/`, the
+  due rule, and the worker's catalog, workflow message, report folder and task log. Not built: the
+  phone and web halves, and the workflows themselves (private-folder work, several read prod or
+  personal data).
+- **Choices made in the build, not ruled:** the memory review keeps its own `memory_review` kind
+  (renaming it to a workflow touches rows the live worker guards by kind; Kevin's call); a
+  follow-up to a workflow task stays that workflow's, so an answered question's chain counts as
+  the run; a scheduled run never takes a page or files, only the standing mail; a Kevin task
+  already queued on the laptop goes before any scheduled run; schedules are on by default (a
+  schedule exists only once Kevin installs a sidecar that declares one).
+
 ## 2026-11-06 - Navigation quality: what NAV_AUDIT keeps, and TomTom retired (Kevin)
 
 - **Kevin's words:** *"ok for navigation. all of it"*, accepting every recommendation in

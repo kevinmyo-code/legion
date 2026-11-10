@@ -3,13 +3,13 @@ map: worker-workflows
 ticket: "08"
 title: "Engine: device logs readable by the worker (logcat and crash over the API)"
 type: build
-status: kiv
-status-detail: "parked until feat/phone-log-upload merges (it adds the logcat and crash reasons); planning only until Kevin says build"
+status: open
+status-detail: "Deferred 2026-11-10: blocked by feat/phone-log-upload, and it serves prod device logs to the worker; the engine-and-worker build did not touch prod or personal data."
 size: S
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: false
+ready: true
 tags: [ticket]
 ---
 # Device logs readable by the worker
