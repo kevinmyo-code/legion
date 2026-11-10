@@ -690,6 +690,12 @@ private fun LegionShell(
     // view someone just opened.
     LaunchedEffect(shellBackStackEntry?.destination?.route) {
         GeneratedViewController.dismiss()
+        // Answer cards cover every route but HOME. Going somewhere else (Apps, the gear, an alarm,
+        // the trip bar) puts them away, or that screen would open under them: a dead tap. Coming
+        // back to HOME keeps them, as the Home key must (ADR 0081).
+        if (shellBackStackEntry?.destination?.route != LegionRoute.HOME) {
+            com.kevin.legion.assistant.cards.ConversationCards.dismiss()
+        }
     }
 
     // fleetSweepActive REMOVED (home-launcher ticket 02, ADR 0051). Mission-control ticket 07's

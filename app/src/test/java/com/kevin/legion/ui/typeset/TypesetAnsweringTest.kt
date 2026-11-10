@@ -38,6 +38,8 @@ class TypesetAnsweringTest {
     )
 
     private fun show(cards: List<ConversationCard>, actions: TypesetHomeActions, caption: String? = null) {
+        // The orb draws every frame and never goes idle: drive the clock by hand.
+        rule.mainClock.autoAdvance = false
         rule.setContent {
             TypesetPage {
                 TypesetHomeContent(
@@ -52,6 +54,7 @@ class TypesetAnsweringTest {
                 )
             }
         }
+        rule.mainClock.advanceTimeBy(FRAME_MS)
     }
 
     @Test
@@ -104,6 +107,7 @@ class TypesetAnsweringTest {
     }
 
     private companion object {
+        const val FRAME_MS = 800L
         val GLANCE = TypesetGlance(
             dateline = "Monday, 9 November",
             time = "14:20",

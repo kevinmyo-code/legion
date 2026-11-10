@@ -16,7 +16,7 @@ import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.assistant.cards.ConversationCards
 import com.kevin.legion.service.VoiceModalController
 import com.kevin.legion.service.VoiceModalTarget
-import com.kevin.legion.ui.assistant.CardStage
+import com.kevin.legion.ui.assistant.CardPage
 import com.kevin.legion.ui.theme.soft.SoftTheme
 
 /**
@@ -54,19 +54,19 @@ fun VoiceModalHost(
         onDismissRequest = { VoiceModalController.dismiss() },
         sheetState = sheetState,
     ) {
-        // The conversation's cards ride at the top of the sheet (2026-11-04 phone test: a sheet
-        // opened by "what's on today" covered the strip, so every car card after it was drawn
-        // underneath). Not when the sheet already draws the same thing. Drawn whole and paged, as
-        // on every other surface (Kevin, 2026-11-10), in at most [CARD_SHARE] of the screen so the
-        // sheet's own content stays in view; a long card scrolls inside it.
+        // The conversation's newest card rides at the top of the sheet (2026-11-04 phone test: a
+        // sheet opened by "what's on today" covered the strip, so every car card after it was drawn
+        // underneath). Not when the sheet already draws the same thing. Drawn whole, as on every
+        // other surface (Kevin, 2026-11-10), in at most [CARD_SHARE] of the screen so the sheet's
+        // own content stays in view; a short card takes only its own height, a long one scrolls.
         val cards by ConversationCards.state.collectAsStateWithLifecycle()
-        val shown = cards.visible.filter { cardOverModal(current.target, it) }
-        if (shown.isNotEmpty()) {
+        cards.visible.lastOrNull()?.takeIf { cardOverModal(current.target, it) }?.let { card ->
             val cap = (LocalConfiguration.current.screenHeightDp * CARD_SHARE).dp
             SoftTheme {
-                CardStage(
-                    shown,
-                    onClose = ConversationCards::close,
+                CardPage(
+                    card,
+                    onClose = { ConversationCards.close(card) },
+                    onOpen = null,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).heightIn(max = cap),
                 )
             }
