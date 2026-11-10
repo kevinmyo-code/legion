@@ -249,7 +249,12 @@ object ProactiveBus {
      * twice" impossible rather than merely weak.
      */
     @Suppress("ReturnCount", "CyclomaticComplexMethod", "LongMethod") // one named refusal per check, in order
-    suspend fun speakIfAllowed(context: Context, raise: ProactiveRaise): RaiseOutcome {
+    suspend fun speakIfAllowed(
+        context: Context,
+        raise: ProactiveRaise,
+        // Test seam only (a fixed hour, so a test of the spoken route cannot fail at night).
+        time: LocalTime = LocalTime.now(),
+    ): RaiseOutcome {
         // --- the checks that need nothing but this moment ---------------------------------
         // Deliberately ALL of them before the first database read, so a raise that is going to be
         // refused anyway never opens the database. That ordering is also what lets the gate's own
@@ -275,7 +280,6 @@ object ProactiveBus {
         // --- the checks that need the raise history ---------------------------------------
         val dao = CarDatabase.getDatabase(context).proactiveRaiseDao()
         val now = System.currentTimeMillis()
-        val time = LocalTime.now()
         val refusal = decideOnHistory(raise, now, dao.lastForRule(raise.ruleId), time)
 
         // --- deliver, or say in the return value that it was not delivered ------------------

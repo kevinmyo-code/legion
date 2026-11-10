@@ -1,12 +1,10 @@
 package com.kevin.legion.watches
 
 import android.content.Context
-import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveDelivery
 import com.kevin.legion.service.ProactiveRaise
-import com.kevin.legion.service.ProactiveSettings
 
 /**
  * The ONE [WatchFiringPoller] for the process, and how a firing becomes a raise (ADR 0083). It
@@ -14,10 +12,12 @@ import com.kevin.legion.service.ProactiveSettings
  * WorkManager, no second loop. See [WatchFiringPoller] for exactly when that means nothing polls.
  *
  * **The raise** goes through [ProactiveBus.speakIfAllowed] in [ProactiveCategory.WATCHES]: inside
- * the master switch, quiet hours and (on this branch) the daily cap, which turn a line that may not
- * be spoken into the proactive notification instead. Several firings are one line. Its facts are
- * the engine's own sentences from the rows (ticket 10), and its reason names each watch and its
- * fact, which is what "why did you say that?" reads.
+ * the master switch and quiet hours (there is no daily cap since ADR 0082), and the bus's one
+ * routing decision ([ProactiveDelivery.route]) says it aloud or posts it. Several firings are one
+ * line. Its facts are the engine's own sentences from the rows (ticket 10), and its reason names
+ * each watch and its fact, which is what "why did you say that?" reads. It never carries an
+ * emergency [com.kevin.legion.service.ProactiveUrgency.Alarm]: only Safety may ring, and the bus
+ * refuses one on any other category.
  *
  * **Compulsion test (CLAUDE.md section 7):** (a) each line is a fact from a record he can look up
  * (a bank row, a Canvas item, a service schedule), named in the firing's `sources`; (b) actionable,
@@ -63,30 +63,27 @@ object WatchPolling {
         deliver(context, raise(firings, more))
 
     /**
-     * One raise through the bus, as a [WatchDelivery]. **Traced 2026-11-10:** the bus's spoken line
-     * is collected only by `AriaForegroundService`, so with the assistant off (LEGION open, screen
-     * on) a "spoken" raise would reach no one and be acked as said. So without the service it is
-     * posted instead, still behind the master and Watches switches.
+     * One raise through the bus, as a [WatchDelivery]. **Exactly one delivery in every state**
+     * (integration 2026-11-10): the bus itself routes to [ProactiveDelivery.route], which posts the
+     * line when nothing collects the spoken flow (assistant service off) and when the phone is
+     * silenced, in a meeting or in quiet hours, so this branch has no fallback of its own. The
+     * branch's earlier own notification for the service-off case (posted before ADR 0082's bus fix
+     * existed) is gone: it skipped the raise row ("why did you say that?" could not see it) and the
+     * decline window. `WatchDeliveryTest` pins one delivery per firing in all three states.
+     * [speak] is a test seam (a fixed clock); production is [ProactiveBus.speakIfAllowed].
      */
-    @Suppress("ReturnCount") // switched off, posted, or the bus's own answer
-    internal suspend fun deliver(context: Context, raise: ProactiveRaise): WatchDelivery {
-        if (!AriaForegroundService.isRunning) {
-            ProactiveSettings.load(context)
-            if (!ProactiveSettings.mayRaise(raise.category)) return WatchDelivery.SILENCED
-            return if (ProactiveDelivery.notify(context, raise, raise.reason)) {
-                WatchDelivery.NOTIFIED
-            } else {
-                WatchDelivery.RETRY
-            }
-        }
-        return when (ProactiveBus.speakIfAllowed(context, raise)) {
-            is ProactiveBus.RaiseOutcome.Raised -> WatchDelivery.SPOKEN
-            is ProactiveBus.RaiseOutcome.Notified -> WatchDelivery.NOTIFIED
-            ProactiveBus.RaiseOutcome.NotNow -> WatchDelivery.RETRY
-            // Switched off, brushed off, or a raise the bus refused: consumed unsaid, so turning the
-            // switch back on never releases a backlog in one burst.
-            else -> WatchDelivery.SILENCED
-        }
+    internal suspend fun deliver(
+        context: Context,
+        raise: ProactiveRaise,
+        speak: suspend (Context, ProactiveRaise) -> ProactiveBus.RaiseOutcome =
+            { c, r -> ProactiveBus.speakIfAllowed(c, r) },
+    ): WatchDelivery = when (speak(context, raise)) {
+        is ProactiveBus.RaiseOutcome.Raised -> WatchDelivery.SPOKEN
+        is ProactiveBus.RaiseOutcome.Notified -> WatchDelivery.NOTIFIED
+        ProactiveBus.RaiseOutcome.NotNow -> WatchDelivery.RETRY
+        // Switched off, brushed off, or a raise the bus refused: consumed unsaid, so turning the
+        // switch back on never releases a backlog in one burst.
+        else -> WatchDelivery.SILENCED
     }
 
     private const val RULE_ID_CHARS = 8
