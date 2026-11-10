@@ -46,6 +46,7 @@ GROUP_BLURBS = {
     "Books": "EPUB, PDF and CBZ files from the folder you picked on HOME. Reading and listening stay on the phone.",
     "Claude session": "Claude Code on your own laptops, for what the phone can't do. Nothing goes unless you name it or say yes.",
     "LEGION itself": "Updates to the app, published by you and installed only on your yes.",
+    "Seeing": "The phone camera, shown to the assistant while you are parked. Nothing it sees is kept.",
     "Clock": "Alarms, timers, the stopwatch and bedtime. All on the phone, works offline.",
     "Phone calls": "Needs phone permissions granted in Setup.",
     "Recordings": "Voice notes and meetings. Audio, a transcript and a summary are all kept until "
@@ -225,6 +226,7 @@ COPY = {
     "create_aspect": ("Start tracking my reading - book, pages, date finished", "Drafts a brand-new tracker from what you describe and reads the shape back to you. Creates nothing until you say yes.", "Voice only for now, same as list_aspects."),
     "app_update": ("Is there an update for LEGION?", "Checks whether a newer LEGION has been published, and says what it changes. The update downloads on Wi-Fi only (unless you allow mobile data) and is checked first: a file whose checksum or signing key does not match the app on your phone is thrown away, and it says so. It always asks before installing, and only your yes installs it. Asked during a conversation, it installs as soon as the conversation ends; in Matrix mode or with the car connected it won't install at all, and says why. LEGION closes for about a minute and comes back on its own. When an update is ready you get a notification with Install and Later, and Alfred mentions it once at a quiet moment.", "Settings, Updates: this phone's version, the newest one and its notes, Check now, Install, Allow mobile data, the one-time Allow installs grant, and which wording Alfred is running; or Install on the update's notification."),
     "clock": ("Wake me up at 6:30 on weekdays", "Sets, lists and cancels alarms; starts, pauses and cancels named timers and says how long is left; runs the stopwatch with laps; and turns bedtime on or off. An alarm is a plain ring over the lock screen with Dismiss, Snooze and Brief me, which starts your daily brief in one tap. Bedtime turns Quiet and the feed block on; Quiet goes off again when you dismiss the next alarm, unless you had it on already, and the feed block stays on until you turn it off. Works offline.", "Tap the big clock on Matrix home, or open Clock from the app drawer: Alarms, Timers, Stopwatch and Bedtime tabs; Pause, Cancel, Snooze and Dismiss on the notifications."),
+    "look": ("Look at this", "Opens the phone camera so the assistant can see what you point it at, about one picture a second, until you close it. Parked only: it refuses while the car is moving, if the phone can tell. What it says about the picture is a guess, your car's stored codes come first, and it never talks you through an unsafe repair. Nothing it sees is saved or remembered.", "Fleet screen, the Show button under the car panel: the same camera screen; Stop showing ends it."),
     "update_aspect": ("Add a genre field to my reading tracker", "Drafts one change to a tracker you already have - a new field, a new category of entry, or a rename - and reads it back. Changes nothing until you say yes.", "Voice only for now, same as list_aspects."),
 }
 
@@ -243,6 +245,7 @@ GROUPS = {
     "Books": ["books"],
     "Claude session": ["claude_session"],
     "LEGION itself": ["app_update"],
+    "Seeing": ["look"],
     "Clock": ["clock"],
     "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Recordings": ["start_voice_note", "stop_voice_note", "read_voice_note", "list_voice_notes"],

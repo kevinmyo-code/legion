@@ -240,6 +240,12 @@ class LiveSetupPayloadSizeTest {
      * out `files true`. Measured on dev `2779ef88` plus the branch: 95 declarations, 88,042 chars of
      * tools JSON plus 10,356 chars of system instruction = 98,398 chars, ~24,599 tokens (+21).
      * Headroom is ~51 tokens.
+     *
+     * **NOT raised on 2026-11-10 (`look`, "look at this", ADR 0084, `feat/alfred-look`).** Measured
+     * on dev `ea6e968b` before: 95 declarations, 88,042 + 10,356 = 98,398 chars, ~24,599 tokens.
+     * After: 96 declarations, 88,175 + 10,356 = 98,531 chars, ~24,632 (+133 chars, +33 tokens).
+     * `look` takes no parameters and a 39-char description; its trust rules ride on the tool RESULT
+     * and the button's opener (`LookRules.RULES`), billed per look, not per setup. Headroom ~18.
      */
     private val ceilingTokens = 24_650
 

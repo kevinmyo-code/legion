@@ -235,6 +235,13 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "Seeing",
+            blurb = "The phone camera, shown to the assistant while you are parked. Nothing it sees is kept.",
+            entries = listOf(
+                Entry(name = "look", say = "Look at this", does = "Opens the phone camera so the assistant can see what you point it at, about one picture a second, until you close it. Parked only: it refuses while the car is moving, if the phone can tell. What it says about the picture is a guess, your car's stored codes come first, and it never talks you through an unsafe repair. Nothing it sees is saved or remembered.", hands = "Fleet screen, the Show button under the car panel: the same camera screen; Stop showing ends it."),
+            ),
+        ),
+        Group(
             title = "Clock",
             blurb = "Alarms, timers, the stopwatch and bedtime. All on the phone, works offline.",
             entries = listOf(
@@ -295,6 +302,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 137 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 137
+    /** Total entries across every group above - 138 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 138
 }

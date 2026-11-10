@@ -877,6 +877,8 @@ private fun FleetListing(
         item(key = "uplink-pane") {
             UplinkPane(state, onOpenDrivingMode, onClearCodes, onOpenFaults, onSweepActiveChanged, modifier = Modifier.clickable(onClick = onOpenUplink))
         }
+        // ADR 0084: the hands path for "look at this", the `look` voice tool's twin (ADR 0035).
+        item(key = "look") { com.kevin.legion.look.ShowToAssistantButton() }
 
         // ------------------------------------------------------ MAINTENANCE / DRIVES (HALF tiles)
         // Mission-control ticket 16's FLEET build: both panels drop from FULL to HALF per ticket

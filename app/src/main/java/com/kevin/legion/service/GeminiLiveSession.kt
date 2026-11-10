@@ -1140,6 +1140,32 @@ class GeminiLiveSession(
         mailToolCalledThisTurn = readThroughCarry
         if (readThroughCarry) audit.readThrough(READ_THROUGH_CARRY)
         readThroughCarry = false
+        // ADR 0084: the pictures stay in this socket's context, so every later turn stays marked.
+        if (lookSeen) markReadThrough(READ_THROUGH_LOOK)
+    }
+
+    // ADR 0084: a camera frame went out on this socket (or the thread it resumes did). Never reset:
+    // the frames are in the model's context for the rest of the socket.
+    @Volatile private var lookSeen = false
+
+    /**
+     * Sends one camera frame ("look at this", ADR 0084) as `realtimeInput.video`, only into an open
+     * conversation. True only when the socket took it. Text in a picture is third-party content, so a
+     * frame that went out marks this turn and every later one read-through ([markLookSeen]). The
+     * frame is not kept: it is encoded, sent and dropped.
+     */
+    fun sendVideoFrame(jpeg: ByteArray): Boolean {
+        if (!inConversation) return false
+        val b64 = Base64.encodeToString(jpeg, Base64.NO_WRAP)
+        val sent = webSocket?.send(com.kevin.legion.look.LookRules.frameMessage(b64).toString()) ?: false
+        if (sent) markLookSeen()
+        return sent
+    }
+
+    /** This socket's context holds camera frames: read-through now and for every later turn. */
+    fun markLookSeen() {
+        lookSeen = true
+        markReadThrough(READ_THROUGH_LOOK)
     }
 
     val isActive: Boolean get() = running.get() && !closed.get()
@@ -3564,6 +3590,7 @@ class GeminiLiveSession(
         internal const val READ_THROUGH_FLEET_WEB = "fleet_web"
         internal const val READ_THROUGH_PROACTIVE = "proactive"
         internal const val READ_THROUGH_CARRY = "carry"
+        internal const val READ_THROUGH_LOOK = "look"
 
         /**
          * Longest server message kept inside a [KeyHealth] detail from this class.

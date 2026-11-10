@@ -2444,6 +2444,14 @@ object LiveToolbox {
         // alfred-clock ticket 06 (ADR 0079): alarms, timers, stopwatch and bedtime, one action-dispatched declaration.
         val clockDecls = ClockToolbox.declarations()
         for (i in 0 until clockDecls.length()) fns.put(clockDecls.getJSONObject(i))
+        // ADR 0084: "look at this", the phone camera into this session. The trust rules ride on
+        // the result (LookRules.RULES), not here: this is re-billed on every reconnect.
+        fns.put(fn(
+            name = "look",
+            description = com.kevin.legion.look.LookRules.TOOL_DESCRIPTION,
+            params = obj(),
+            required = listOf(),
+        ))
 
         return fns
     }
@@ -2453,7 +2461,7 @@ object LiveToolbox {
      * model: `end_conversation` arms a hang-up after the spoken reply. It has no session to act on
      * in typed chat.
      */
-    val VOICE_SESSION_TOOLS = setOf("end_conversation")
+    val VOICE_SESSION_TOOLS = setOf("end_conversation", "look")
 
     /**
      * What typed chat's text model is offered (2026-10-27): exactly the voice set

@@ -377,6 +377,10 @@ dependencies {
     // ProcessLifecycleOwner (aspect-engine ticket 20 MUST-FIX 2): real app-foreground/background
     // triggers for MirrorSync, wired from MirrorLifecycleBinder / MidnightApplication.
     implementation(libs.lifecycle.process)
+    // ADR 0084 ("look at this"): the camera screen's preview and its ~1 fps frames into Live.
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
     // WorkManager, for books ticket 05 only (the unmetered-network PDF conversion worker).
     implementation(libs.work.runtime.ktx)
     // Single-activity shell (ticket 07): bottom-nav tabs + absorbed sub-routes.
