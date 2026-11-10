@@ -183,6 +183,38 @@ object VehicleResolver {
         return hits.filter { it.second == best }.singleOrNull()?.first
     }
 
+    /**
+     * The make [question] names when no car on file is that make and no car on file is named
+     * (phone audit 2026-11-10): asked about a car the household does not own, the fleet lookup
+     * read the household's own car instead and named it. Such a question has no answer in the
+     * records, so the caller says so rather than routing it. Null when the question names a car
+     * on file, names no known make, the roster is empty, or a car on file has no make recorded
+     * (it might be that make).
+     * Pure so a JVM test pins it; the make list is deliberately short and common.
+     */
+    @Suppress("ReturnCount") // guard clauses: a named car, no make, an unknown make on file
+    internal fun makeNotOnFile(question: String, roster: List<Vehicle>): String? {
+        if (roster.isEmpty() || mentionedIn(question, roster) != null) return null
+        val asked = words(question)
+        val make = asked.firstNotNullOfOrNull { MAKES[it] } ?: return null
+        // A car whose make is unknown might be that make: no refusal then.
+        if (roster.any { it.make.isBlank() }) return null
+        val owned = roster.map { it.make.lowercase() }
+        return make.takeIf { m -> owned.none { it.contains(m) || m.contains(it) } }
+    }
+
+    /** Spoken make word to its canonical make. */
+    private val MAKES: Map<String, String> = mapOf(
+        "ford" to "ford", "chevy" to "chevrolet", "chevrolet" to "chevrolet", "gmc" to "gmc",
+        "dodge" to "dodge", "ram" to "ram", "jeep" to "jeep", "chrysler" to "chrysler",
+        "toyota" to "toyota", "lexus" to "lexus", "honda" to "honda", "acura" to "acura",
+        "nissan" to "nissan", "infiniti" to "infiniti", "subaru" to "subaru", "mazda" to "mazda",
+        "mitsubishi" to "mitsubishi", "hyundai" to "hyundai", "kia" to "kia", "vw" to "volkswagen",
+        "volkswagen" to "volkswagen", "audi" to "audi", "bmw" to "bmw", "mercedes" to "mercedes",
+        "porsche" to "porsche", "volvo" to "volvo", "tesla" to "tesla", "buick" to "buick",
+        "cadillac" to "cadillac", "lincoln" to "lincoln", "fiat" to "fiat",
+    )
+
     private fun words(s: String): List<String> =
         s.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 2 }
 

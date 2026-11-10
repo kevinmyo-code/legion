@@ -337,8 +337,8 @@ object LiveToolbox {
             description = "READING anything about the cars: live sensor readings, trouble codes, " +
                 "mileage, specs, recalls, service history, maintenance schedules, or the build " +
                 "log. Read-only - it records NOTHING. Recording work that was done is " +
-                "log_service, log_past_service or log_build_entry, never here. Ask a " +
-                "plain-English question; raw results come back to relay. How the car is doing " +
+                "log_service, log_past_service or log_build_entry, never here. Ask in the " +
+                "user's words, naming only a car they named; raw results come back to relay. How the car is doing " +
                 "or whether it is connected is answered only from this, never from memory.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
@@ -873,7 +873,7 @@ object LiveToolbox {
             // made from the question prose - see agentResult's requireMutation doc comment for
             // why this file refused to guess it. Absent or unrecognised reads as a plain read,
             // which is exactly the pre-2026-08-18 behaviour.
-            "ask_fleet" -> agentResult(
+            "ask_fleet" -> fleetNotOnFile(context, args) ?: agentResult(
                 "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
                 lookupName = "fleet lookup",
@@ -4912,6 +4912,24 @@ object LiveToolbox {
      * Every other [agentResult] caller in this file still defaults to `false`; none of them is
      * domain-shaped for a write.
      */
+    /**
+     * Phone audit 2026-11-10: asked about a car the household does not own (another make), the
+     * fleet lookup read the household's own car instead, and the answer named that car and read its
+     * codes. A question that names only a make no car on file has no answer in these records: say
+     * so, name the cars there are, and point the answer at general knowledge or a search.
+     */
+    private suspend fun fleetNotOnFile(context: Context, args: JSONObject): JSONObject? {
+        val roster = com.kevin.legion.vehicle.FleetEngineStore.getAll(context)
+        val make = VehicleResolver.makeNotOnFile(args.optString("question"), roster) ?: return null
+        val cars = roster.joinToString { com.kevin.legion.vehicle.VehicleController.label(it) }
+        return result(
+            false,
+            "No ${make.replaceFirstChar { it.uppercase() }} is on file (the cars on file: $cars), so the car " +
+                "records have nothing on it and nothing was read. Answer from general knowledge or a search, " +
+                "say that is where it came from, and never answer it with another car's records.",
+        )
+    }
+
     private suspend fun agentResult(
         failMessage: String,
         requireMutation: Boolean = false,

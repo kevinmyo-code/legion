@@ -99,4 +99,23 @@ class VehicleDefaultPickTest {
         // The question does not fill the gap: refuse as before.
         assertNull(LiveToolbox.statedIdentity(blank, 1998, "Jeep", ""))
     }
+
+    // Phone audit 2026-11-10: asked about a car the household does not own, the fleet lookup read
+    // another car's codes and named it. A question that names only a make no car on file has
+    // answers nowhere in the records.
+    @Test
+    fun `a question about a make no car on file has is not about any car on file`() {
+        val both = listOf(jeep, outlander)
+        assertEquals("subaru", VehicleResolver.makeNotOnFile("why does my Subaru drop its radio presets?", both))
+        assertEquals("volkswagen", VehicleResolver.makeNotOnFile("Is a 2015 VW Jetta reliable?", both))
+        assertNull(VehicleResolver.makeNotOnFile("When's the Jeep due for service?", both))
+        assertNull(VehicleResolver.makeNotOnFile("what does P0420 mean", both))
+        assertNull(VehicleResolver.makeNotOnFile("compare my outlander with a subaru forester", both))
+    }
+
+    @Test
+    fun `a make on file is never refused, and an empty roster refuses nothing`() {
+        assertNull(VehicleResolver.makeNotOnFile("recalls on the jeep?", listOf(jeep)))
+        assertNull(VehicleResolver.makeNotOnFile("recalls on my Subaru?", emptyList()))
+    }
 }
