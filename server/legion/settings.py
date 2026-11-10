@@ -264,6 +264,9 @@ LEGION_DEMO_MAX_SESSION_MINUTES = (
 )
 
 MIDDLEWARE = [
+    # Engine logging upgrade (architecture review 2026-11-10, item 4): first, so every log
+    # line of the request, including a 5xx from any middleware below, carries its id and trace.
+    "legion.log.RequestIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
     # Immediately after SecurityMiddleware, which is where WhiteNoise's own
     # documentation puts it and the position matters in both directions: after,
@@ -700,3 +703,12 @@ SPECTACULAR_SETTINGS = {
         "VaultItemKindEnum": "id_vault.models.KINDS",
     },
 }
+
+
+# Engine logging upgrade (architecture review 2026-11-10, item 4): JSON lines Cloud Logging
+# parses (`severity`, `message`, `logging.googleapis.com/trace`), errors on stderr in the
+# shape Cloud Error Reporting reads. `legion/log.py` says what is and is never logged.
+# LEGION_LOG_LEVEL (unset INFO) is for a local debugging session, not a deploy setting.
+from legion.log import logging_config  # noqa: E402
+
+LOGGING = logging_config(os.environ.get("LEGION_LOG_LEVEL", "").strip().upper() or "INFO")
