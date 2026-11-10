@@ -5,6 +5,7 @@ import com.kevin.legion.service.ConversationState
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveGate
 import com.kevin.legion.service.ProactiveRaise
+import com.kevin.legion.spokenbrief.HomeBrief
 import kotlinx.coroutines.delay
 
 /**
@@ -81,6 +82,9 @@ object ArrivalController {
         if (!claimAnnouncement(place, System.currentTimeMillis())) return
 
         val reminders = ReminderController.activeFor(context, place)
+        // ADR 0082: arriving home may speak the home brief, which carries home's reminders inside it.
+        // One raise per arrival: when the brief went out, the reminders below are not raised again.
+        if (place == HomeBrief.HOME_LABEL && HomeBrief.onArrivedHome(context, reminders.map { it.text })) return
         if (reminders.isEmpty()) return
 
         // If the driver is mid-conversation, wait up to 30s for it to finish so the reminder

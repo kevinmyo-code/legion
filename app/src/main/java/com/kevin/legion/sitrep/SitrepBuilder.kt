@@ -27,6 +27,8 @@ import kotlinx.coroutines.withContext
  * `SitrepAlarmReceiver` pair that used to call this on a timer; the only callers left are
  * [com.kevin.legion.ui.world.NewsDigestCard]'s tap and, through [sections], the daily brief
  * (`com.kevin.legion.brief.SitrepBriefPhone`: the Brief modal and `get_sitrep`, ai-upgrade ticket 02).
+ * Still never on a timer; since 2026-11-10 (ADR 0082) the daily brief is also read once at a
+ * morning alarm's dismiss (`spokenbrief/WakeBrief.kt`), which reaches these sections through it.
  *
  * **Three of four sections are deterministic; only [SitrepModule.NEWS] ever reaches an LLM**
  * (ticket 08's resolution §3, restated at [SitrepModule]'s own doc): CALENDAR/WEATHER/FLEET are

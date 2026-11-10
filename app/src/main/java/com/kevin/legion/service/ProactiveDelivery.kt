@@ -5,13 +5,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Build
-import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
+import java.time.LocalTime
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Whether an unprompted line is SPOKEN or merely POSTED, and the channel it is posted on -
@@ -31,14 +34,34 @@ import com.kevin.legion.data.local.CarDatabase
  *
  * It cannot know it is in a meeting, so two cheap checks stand in ([maySpeakAloud]):
  *
- *  1. **The screen is on** - he is demonstrably with the phone. No permission, no guessing.
+ *  1. **The phone is not silenced** (ADR 0082, Kevin 2026-11-10: *"can speak at screen off. unless
+ *     i silent the phone ofc"*). Silenced is ringer silent or vibrate, or Do Not Disturb on
+ *     ([isSilenced]); LEGION's own Quiet mode is both, so it reads as silenced. **The screen-on
+ *     check this replaced (proactive-mode decision 17) is gone**: a line may be spoken with the
+ *     screen off and the phone locked.
  *  2. **No appointment is running right now** - a direct read of the local `events` table
  *     (`kind = 'appointment'`), repointed off the retired `calendar/CalendarProvider.kt`'s live
- *     `CalendarContract` read by one-today ticket 01, "cut Google entirely".
+ *     `CalendarContract` read by one-today ticket 01, "cut Google entirely". Kevin kept this half.
  *
  * **Both limits are accepted rather than hidden.** An unbooked conversation, a call that is not on
- * the calendar, a meeting that ran long - none of those are visible, and the 3-a-day cap plus quiet
- * hours carry what the checks miss.
+ * the calendar, a meeting that ran long - none of those are visible, and quiet hours plus the
+ * ringer switch carry what the checks miss. (A daily cap used to carry some of it too; Kevin
+ * removed it, ADR 0082.)
+ *
+ * ### Speaking with the screen off, and why the microphone may not open with it
+ *
+ * Playing the line needs only the running `AriaForegroundService` and its network, both of which
+ * a foreground service keeps with the screen off. **Opening the microphone for a reply needs the
+ * service to hold the `microphone` foreground type**, which Android grants only when the service
+ * started while LEGION was on screen; a boot-started service never has it, and a capture without it
+ * hears silence. So [mayListen] reads that type, and a raise that asks for a reply is spoken
+ * WITHOUT listening when it is missing. Traced, not run on the phone.
+ *
+ * ### Where a "wait for the screen" option would go
+ *
+ * [route] is the one decision between spoken, posted and rung. A future "hold the line and speak it
+ * at the next screen-on" is one more [Route] value decided here and handled beside [notify]; no
+ * raise site needs to change, because raise sites only build a [ProactiveRaise].
  *
  * **No calendar permission must never read as "no meetings".** Same trap `OpenerCalendarBriefing`
  * splits three ways: unreadable is not empty. Here the safe reading is *unknown, so post it* rather
@@ -48,7 +71,7 @@ import com.kevin.legion.data.local.CarDatabase
  *
  * A raise that cannot be spoken is **notified** (ticket 06 call 3). Today's behaviour drops
  * everything when the phone is idle-but-locked, and a silently dropped safety warning is the worst
- * outcome on this map. **The cap governs whether a line is SPOKEN, not whether it exists.**
+ * outcome on this map. **The gate governs whether a line is SPOKEN, not whether it exists.**
  *
  * And exactly one of the two happens, never both (ticket 06 call 5) - `ReminderAlarmReceiver` used
  * to speak a fired reminder AND post a notification for the same item in the same method. The cost
@@ -85,20 +108,93 @@ object ProactiveDelivery {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
+    /** How one raise reaches him. */
+    enum class Route {
+        /** Said aloud now. */
+        SPEAK,
+
+        /** Posted on [CHANNEL_ID]. Never dropped. */
+        NOTIFY,
+
+        /** Rung like an alarm, facts on screen, said after Dismiss. Only a Safety [ProactiveUrgency.Alarm]. */
+        RING,
+    }
+
     /**
-     * True when a line may be spoken ALOUD right now. False means post it instead - never means
-     * drop it.
+     * The one decision between [Route.SPEAK], [Route.NOTIFY] and [Route.RING], pure so it is tested
+     * without a phone. [gateAllowsSpeech] is false when quiet hours refused a non-exempt raise.
+     * [listenerUp] is false when nothing is collecting the bus (the assistant service is not
+     * running): a line emitted then is lost, so it is posted instead.
      *
-     * Both halves fail SAFE, toward the notification: an unreadable calendar, a missing permission
+     * An alarm rings inside quiet hours or on a silenced phone, because ordinary speech at media
+     * volume would not wake him and would not sound through silent at all. Otherwise it is an
+     * ordinary Safety raise: spoken, or posted during a meeting.
+     */
+    @Suppress("LongParameterList") // every input is one named fact the route depends on
+    internal fun routeFor(
+        gateAllowsSpeech: Boolean,
+        alarm: Boolean,
+        quietHour: Boolean,
+        silenced: Boolean,
+        inMeeting: Boolean,
+        listenerUp: Boolean,
+    ): Route = when {
+        alarm && (quietHour || silenced) -> Route.RING
+        !gateAllowsSpeech || silenced || inMeeting || !listenerUp -> Route.NOTIFY
+        else -> Route.SPEAK
+    }
+
+    /** [routeFor] with this phone's live readings. */
+    suspend fun route(context: Context, raise: ProactiveRaise, gateAllowsSpeech: Boolean, time: LocalTime): Route =
+        routeFor(
+            gateAllowsSpeech = gateAllowsSpeech,
+            alarm = raise.urgency is ProactiveUrgency.Alarm,
+            quietHour = ProactiveBus.isQuietHour(time),
+            silenced = phoneSilenced(context),
+            inMeeting = inAMeeting(context),
+            listenerUp = ProactiveBus.hasListener,
+        )
+
+    /**
+     * Waits up to [timeoutMs] for something to collect the bus, for a raise site that may have
+     * woken a process whose assistant service is still starting (an alarm dismiss, a geofence
+     * arrival). False on time-out; the raise is then posted rather than emitted into nothing.
+     */
+    suspend fun awaitListener(timeoutMs: Long): Boolean =
+        withTimeoutOrNull(timeoutMs) { ProactiveBus.listeners.first { it > 0 } } != null
+
+    /**
+     * True when a line may be spoken ALOUD right now: the phone is not silenced and no meeting is
+     * running. False means post it instead - never means drop it.
+     *
+     * Both halves fail SAFE, toward the notification: an unreadable calendar, an unreadable ringer
      * or a thrown query all resolve to "not now, post it", because the failure that matters is
      * speaking into a room, not posting one notification too many.
      */
-    suspend fun maySpeakAloud(context: Context): Boolean = screenIsOn(context) && !inAMeeting(context)
+    suspend fun maySpeakAloud(context: Context): Boolean = !phoneSilenced(context) && !inAMeeting(context)
 
-    private fun screenIsOn(context: Context): Boolean =
-        runCatching {
-            context.getSystemService(PowerManager::class.java)?.isInteractive == true
-        }.getOrDefault(false)
+    /**
+     * Whether a spoken raise may also open the microphone for a reply: only while the assistant
+     * service holds the `microphone` foreground type (see the class doc). Read in one place, by
+     * [ProactiveBus], so no raise site has to know.
+     */
+    fun mayListen(): Boolean = AriaForegroundService.holdsMicrophoneType
+
+    /**
+     * Ringer silent or vibrate, or any Do Not Disturb filter other than "all", is silenced (Kevin's
+     * "unless i silent the phone"). Pure, for the test.
+     */
+    internal fun isSilenced(ringerMode: Int, interruptionFilter: Int): Boolean =
+        ringerMode != AudioManager.RINGER_MODE_NORMAL ||
+            (interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL &&
+                interruptionFilter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN)
+
+    /** Unreadable reads as silenced: posting is the safe side. */
+    fun phoneSilenced(context: Context): Boolean = runCatching {
+        val audio = context.getSystemService(AudioManager::class.java)
+        val nm = context.getSystemService(NotificationManager::class.java)
+        isSilenced(audio.ringerMode, nm.currentInterruptionFilter)
+    }.getOrDefault(true)
 
     /**
      * True when an appointment is running right now - or when the read fails outright, which is

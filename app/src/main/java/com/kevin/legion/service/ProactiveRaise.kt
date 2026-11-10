@@ -34,8 +34,8 @@ package com.kevin.legion.service
  *
  *  - **the contract** - [facts] is what the gate refuses on;
  *  - **the raise history** - [ruleId], [category] and [reason] are the
- *    [com.kevin.legion.data.local.ProactiveRaiseRow] this becomes, which backs the daily cap, the
- *    suppression window, and "why did you say that?";
+ *    [com.kevin.legion.data.local.ProactiveRaiseRow] this becomes, which backs the suppression
+ *    window and "why did you say that?" (it backed a daily cap too, removed by ADR 0082);
  *  - **delivery** - ticket 06 call 5's "spoke, so do not ALSO notify" needs a real answer about
  *    whether the line got out, not an assumption.
  */
@@ -141,6 +141,22 @@ data class ProactiveRaise(
      * page set it (claude-session ticket 09): the tap opens the page, the same as saying yes.
      */
     val contentIntent: android.app.PendingIntent? = null,
+    /**
+     * True for the ONE raise that may speak inside quiet hours even though its category may not
+     * (ADR 0082, Kevin 2026-11-10). A per-rule exemption, never a category one: only the wake-up
+     * brief sets it ([com.kevin.legion.spokenbrief.WakeBrief]), because dismissing an alarm he set
+     * proves he is awake. Still inside the master, the category switch and every other check.
+     * `ProactiveGateRulesTest` pins which rule ids may set it.
+     */
+    val exemptFromQuietHours: Boolean = false,
+    /**
+     * What the notification says when this raise is posted rather than spoken. Null posts [reason],
+     * as before. Set when the reason alone would be useless in the shade (the home brief: "arrived
+     * home" says nothing; its facts are what he would have heard).
+     */
+    val notificationText: String? = null,
+    /** How hard this raise may push. See [ProactiveUrgency]. */
+    val urgency: ProactiveUrgency = ProactiveUrgency.Ordinary,
 ) {
     init {
         require(ruleId.isNotBlank()) { "a raise must name the rule that fired it" }
@@ -149,4 +165,29 @@ data class ProactiveRaise(
 
     /** True when this raise states facts for the model to work from. What the gate refuses on. */
     val statesItsFacts: Boolean get() = facts.isNotBlank()
+}
+
+/**
+ * How hard a raise may push through a silenced phone and the night (ADR 0082, Kevin 2026-11-10:
+ * *"also quiet hours, if any emergency in the area is noted, alarm me"*).
+ */
+sealed interface ProactiveUrgency {
+    /** Every raise but an emergency: spoken when it may be, posted when it may not. */
+    data object Ordinary : ProactiveUrgency
+
+    /**
+     * An emergency in the area. **Legal only for [ProactiveCategory.SAFETY]**; the bus refuses it
+     * for any other category ([ProactiveBus.RaiseOutcome.AlarmNotAllowed]). Inside quiet hours or
+     * on a silenced phone it RINGS like an alarm (the clock's ring path, audio on the alarm
+     * stream) with [ProactiveRaise.facts] on screen, and the line is spoken after Dismiss.
+     * Otherwise it is spoken like any Safety raise. Still inside the master and the Safety switch.
+     *
+     * [alertId] is the feed's own id for the alert: **one alarm per id**, and a second only when
+     * [severity] rises (a higher number is more severe; the feed picks the scale and keeps it).
+     */
+    data class Alarm(val alertId: String, val severity: Int) : ProactiveUrgency {
+        init {
+            require(alertId.isNotBlank()) { "an alarm must carry the feed's alert id - it is the dedup key" }
+        }
+    }
 }

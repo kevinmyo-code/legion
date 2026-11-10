@@ -11,11 +11,11 @@ import org.junit.Test
 import java.time.LocalTime
 
 /**
- * The pure, `Context`-free half of the proactive gate: the quiet-hours window, the day boundary the
- * cap counts from, the raise contract's own invariants, and the compulsion test applied to the
- * shipped rule set.
+ * The pure, `Context`-free half of the proactive gate: the quiet-hours window, the raise contract's
+ * own invariants, the delivery route, and the compulsion test applied to the shipped rule set.
+ * (The daily cap and its day boundary were removed, Kevin 2026-11-10, ADR 0082.)
  *
- * **The suppression window, quiet hours and the cap ARE covered here**, through
+ * **The suppression window and quiet hours ARE covered here**, through
  * [ProactiveBus.decideOnHistory] - the pure decision split out of `speakIfAllowed` on 2026-08-21
  * precisely so they could be. They were briefly untestable: once the gate began reading Room, the
  * Robolectric `ProactiveBusTest` died on `Illegal connection pointer`, because `CarDatabase` is a
@@ -24,7 +24,7 @@ import java.time.LocalTime
  *
  * **What is still NOT covered, said plainly rather than implied by a green suite:** the WIRING -
  * that `speakIfAllowed` fetches the right rows and passes them to [ProactiveBus.decideOnHistory]
- * with the right arguments. That is three single-statement DAO calls sitting directly above the
+ * with the right arguments. That is one single-statement DAO call sitting directly above the
  * call, inspectable by reading them, and nothing here would catch it if one were swapped.
  */
 class ProactiveGateRulesTest {
@@ -58,25 +58,13 @@ class ProactiveGateRulesTest {
         assertFalse(ProactiveCategory.TIMING in ProactiveBus.QUIET_HOURS_EXEMPT)
     }
 
-    // ------------------------------------------------------------------- the cap
+    // ------------------------------------------------------------------- no cap (ADR 0082)
 
     @Test
-    fun `the cap counts a calendar day, not a rolling window`() {
-        // A rolling 24h would let last night's three suppress this morning's first.
-        val nineAm = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.HOUR_OF_DAY, 9)
-            set(java.util.Calendar.MINUTE, 0)
-        }.timeInMillis
-        val start = ProactiveBus.startOfToday(nineAm)
-        assertTrue(start <= nineAm)
-        assertTrue(nineAm - start < 24L * 60 * 60 * 1000)
-    }
-
-    @Test
-    fun `safety and claude tasks are the uncapped categories, and only they are`() {
-        // Claude tasks joined 2026-11-01 (Kevin): each result answers a task he sent.
-        assertEquals(setOf(ProactiveCategory.SAFETY, ProactiveCategory.CLAUDE_TASKS), ProactiveBus.UNCAPPED_CATEGORIES)
-        assertEquals(3, ProactiveBus.DAILY_SPOKEN_CAP)
+    fun `there is no daily cap - a tenth timing line the same day is not refused`() {
+        // Kevin 2026-11-10: "no cap on proactive spoken lines". decideOnHistory no longer takes a
+        // count at all; this pins that an ordinary daytime raise with clean history goes ahead.
+        assertNull(ProactiveBus.decideOnHistory(raise(ProactiveCategory.TIMING), 1_000L, null, noon))
     }
 
     // ------------------------------------------------------------------- the raise contract
@@ -182,7 +170,7 @@ class ProactiveGateRulesTest {
         val justDeclined = row("test_rule", now - 1_000, declined = true)
         assertEquals(
             ProactiveBus.RaiseOutcome.Suppressed,
-            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), now, justDeclined, 0, noon),
+            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), now, justDeclined, noon),
         )
     }
 
@@ -191,7 +179,7 @@ class ProactiveGateRulesTest {
         val now = 1_000_000_000L
         val old = row("test_rule", now - ProactiveBus.DECLINE_SUPPRESSION_MS - 1, declined = true)
         assertNull(
-            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), now, old, 0, noon),
+            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), now, old, noon),
         )
     }
 
@@ -201,50 +189,15 @@ class ProactiveGateRulesTest {
         val now = 1_000_000_000L
         val spokenNotDeclined = row("test_rule", now - 1_000, declined = false)
         assertNull(
-            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), now, spokenNotDeclined, 0, noon),
+            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), now, spokenNotDeclined, noon),
         )
     }
 
     @Test
-    fun `a capped category is refused once the day's budget is spent`() {
-        assertEquals(
-            ProactiveBus.RaiseOutcome.OverDailyCap,
-            ProactiveBus.decideOnHistory(
-                raise(ProactiveCategory.TIMING), 1_000L, null, ProactiveBus.DAILY_SPOKEN_CAP, noon,
-            ),
-        )
-    }
-
-    @Test
-    fun `one under the cap still speaks`() {
-        assertNull(
-            ProactiveBus.decideOnHistory(
-                raise(ProactiveCategory.TIMING), 1_000L, null, ProactiveBus.DAILY_SPOKEN_CAP - 1, noon,
-            ),
-        )
-    }
-
-    @Test
-    fun `safety speaks past the cap - a warning must never lose its slot to a nudge`() {
-        assertNull(
-            ProactiveBus.decideOnHistory(
-                raise(ProactiveCategory.SAFETY), 1_000L, null, ProactiveBus.DAILY_SPOKEN_CAP * 10, noon,
-            ),
-        )
-    }
-
-    @Test
-    fun `a claude task result speaks past the cap, but not at night`() {
-        assertNull(
-            ProactiveBus.decideOnHistory(
-                raise(ProactiveCategory.CLAUDE_TASKS), 1_000L, null, ProactiveBus.DAILY_SPOKEN_CAP * 10, noon,
-            ),
-        )
+    fun `a claude task result is refused at night like any non-exempt category`() {
         assertEquals(
             ProactiveBus.RaiseOutcome.QuietHours,
-            ProactiveBus.decideOnHistory(
-                raise(ProactiveCategory.CLAUDE_TASKS), 1_000L, null, 0, LocalTime.of(3, 0),
-            ),
+            ProactiveBus.decideOnHistory(raise(ProactiveCategory.CLAUDE_TASKS), 1_000L, null, LocalTime.of(3, 0)),
         )
     }
 
@@ -257,7 +210,7 @@ class ProactiveGateRulesTest {
     fun `safety speaks at 3am`() {
         assertNull(
             ProactiveBus.decideOnHistory(
-                raise(ProactiveCategory.SAFETY), 1_000L, null, 0, LocalTime.of(3, 0),
+                raise(ProactiveCategory.SAFETY), 1_000L, null, LocalTime.of(3, 0),
             ),
         )
     }
@@ -265,7 +218,7 @@ class ProactiveGateRulesTest {
     @Test
     fun `wellbeing speaks at night, because that is where the rest nudge lives`() {
         assertNull(
-            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), 1_000L, null, 0, night),
+            ProactiveBus.decideOnHistory(raise(ProactiveCategory.WELLBEING), 1_000L, null, night),
         )
     }
 
@@ -273,12 +226,12 @@ class ProactiveGateRulesTest {
     fun `fleet is refused at night`() {
         assertEquals(
             ProactiveBus.RaiseOutcome.QuietHours,
-            ProactiveBus.decideOnHistory(raise(ProactiveCategory.FLEET), 1_000L, null, 0, night),
+            ProactiveBus.decideOnHistory(raise(ProactiveCategory.FLEET), 1_000L, null, night),
         )
     }
 
     @Test
-    fun `suppression is checked before quiet hours and the cap`() {
+    fun `suppression is checked before quiet hours`() {
         // Ordering matters for what the DELIVERY layer does next: a suppressed raise was answered
         // already, while a quiet-houred one still deserves a notification. If these swapped, a
         // brushed-off nudge would come back as a notification every night.
@@ -287,7 +240,7 @@ class ProactiveGateRulesTest {
         assertEquals(
             ProactiveBus.RaiseOutcome.Suppressed,
             ProactiveBus.decideOnHistory(
-                raise(ProactiveCategory.FLEET), now, justDeclined, ProactiveBus.DAILY_SPOKEN_CAP, night,
+                raise(ProactiveCategory.FLEET), now, justDeclined, night,
             ),
         )
     }
@@ -380,15 +333,11 @@ class ProactiveGateRulesTest {
 
     @Test
     fun `hasContent tracks exactly which categories a raise actually reaches`() {
-        // goal-plans ticket 05: WELLBEING got its first content (the scheduled wellbeing digest,
-        // com.kevin.legion.wellbeing.WellbeingDigestAlarmReceiver) and its own hasContent flipped
-        // to true in that same commit - the discipline is flag flips WITH the first raise, never
-        // before. Ticket 22 briefly gave DIGEST content the same way (the scheduled sitrep), and
-        // ticket 32 (Kevin: "sitreps stay tap only or via voice activation only") took it back out
-        // - SitrepAlarmReceiver no longer exists, so DIGEST is empty again. This is that same
-        // discipline run in reverse: the flag follows the raise, not the other way around.
+        // The flag follows the raise. DIGEST went empty when ticket 32 retired the scheduled sitrep
+        // and got content back on 2026-11-10 (ADR 0082) in the commit that added the wake-up and
+        // home briefs, so today every category has a raise.
         val empty = ProactiveCategory.entries.filter { !it.hasContent }.toSet()
-        assertEquals(setOf(ProactiveCategory.DIGEST), empty)
+        assertEquals(emptySet<ProactiveCategory>(), empty)
     }
 
     @Test

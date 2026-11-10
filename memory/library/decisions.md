@@ -7625,3 +7625,42 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   TomTom's developer portal; nothing in the repo or on the engine held it. The location-intelligence
   departure advisor (ticket 06) now gets its traffic ETA from Mapbox Directions; that map's
   TomTom decisions (4, 8, 17, 18, 19) are superseded by this entry.
+
+## 2026-11-10 - Proactive speech: no cap, speaks with the screen off, spoken briefs, emergency alarm (Kevin)
+
+- **Kevin's words:** *"no cap on proactive spoken lines"*, *"remove cap"*; yes to "spoken brief at
+  wake-up or arriving home"; *"can speak at screen off. unless i silent the phone ofc"*; *"also
+  quiet hours, if any emergency in the area is noted, alarm me"*.
+- **The daily cap is removed.** Supersedes proactive-mode decision 15 (ticket 05 call 3: three
+  spoken lines a day, Safety outside it; Claude tasks joined the uncapped set 2026-11-01).
+  `DAILY_SPOKEN_CAP`, `UNCAPPED_CATEGORIES`, `OverDailyCap` and the count query are deleted. Master,
+  category switches, quiet hours 22-07 and its exempt set, the 24 h decline window, notify when it
+  cannot speak, one delivery per raise and the typed raise contract are unchanged.
+- **The speech gate drops screen-on.** Supersedes the screen-on half of decision 17 (ticket 06 call
+  1). Speak unless the phone is silenced or a calendar event is live; Kevin kept the meeting check.
+  Silenced (orchestrator's pick, vetoable): ringer silent or vibrate, or any Do Not Disturb filter,
+  which makes LEGION's own Quiet mode count. Traced: the line plays from the running foreground
+  service with the screen off; a reply microphone opens only while that service holds the
+  `microphone` type (a boot-started service never does), otherwise the line is spoken without
+  listening. A raise with nothing collecting the bus is posted, not emitted into nothing.
+- **The brief is spoken unprompted at wake-up and on arriving home.** Reverses ticket 32 ("sitreps
+  stay tap only or via voice activation only") and ADR 0079's "plain ring, no auto-speak" for these
+  two moments; nothing arms a sitrep on a clock. Both raise as Digest (`hasContent` true again),
+  each with its own switch and a one-instruction stop ("stop the morning brief", "stop the home
+  brief", through `why_did_you_say_that`'s new `stop` argument; hands path under Digest on Settings,
+  Proactive speech). Picks Kevin did not rule on, vetoable: wake-up on a tap Dismiss of an alarm,
+  04:00 to 11:00, once a day, reading the same `BriefController.forVoice` text Brief me's
+  `get_sitrep` reads but with NO mail (`WakeBrief.READS_MAIL` off until Kevin says yes; mail is read
+  only to answer something he asked, ticket 32's reason), exempt from quiet hours for
+  that rule alone because dismissing an alarm proves he is awake, still honouring a silenced phone;
+  home on arrival at the `home` label after a recorded departure, at most once per 6 h, facts =
+  still due today, tomorrow's first event, reminders left for home and undated to-dos, home's
+  reminders folded in so one arrival is one raise, not quiet-hours exempt.
+- **An emergency rings.** A Safety raise may carry `ProactiveUrgency.Alarm(alertId, severity)`; the
+  bus refuses it on any other category. Picks (orchestrator's, vetoable): it rings on the clock's
+  ring path (alarm stream, facts on the ring screen, one Dismiss, then Alfred says the line) when
+  quiet hours or a silenced phone would have kept speech from waking him; otherwise it is spoken,
+  and posted during a daytime meeting with the ringer on. One alarm per alert id; again only when
+  severity rises. The feed (NWS, NHC, fire detections) is `feat/conditions`'s; the existing Safety
+  raises stay ordinary.
+- **Done:** `feat/proactive-voice`, ADR 0082 (amends ADR 0079). Nothing ran on the phone.

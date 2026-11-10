@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
+import com.kevin.legion.spokenbrief.HomeBrief
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,13 +36,15 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             return
         }
 
-        // Only ENTER drives the arrival-reminder path today. EXIT is registered by
-        // [GeofenceManager] (free to add, per the ticket) but nothing downstream reacts to it yet -
-        // [ReminderController]'s model is arrival-triggered only, so an EXIT transition is a no-op
-        // here rather than a half-built feature.
-        if (event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_ENTER) return
-
+        // ENTER drives the arrival path. EXIT does one thing only: it records leaving home, for the
+        // home brief (ADR 0082). [ReminderController]'s model is still arrival-triggered only.
         val labels = event.triggeringGeofences?.mapNotNull { it.requestId }.orEmpty()
+        // EXIT has one reader (ADR 0082): leaving home is what lets the next home arrival brief.
+        if (event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
+            if (HomeBrief.HOME_LABEL in labels) HomeBrief.noteLeftHome(context)
+            return
+        }
+        if (event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_ENTER) return
         if (labels.isEmpty()) return
 
         // onReceive must return quickly, but ArrivalController.onArrived does Room reads and,

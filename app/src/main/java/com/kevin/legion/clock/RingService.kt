@@ -70,6 +70,7 @@ class RingService : Service() {
             when (request.kind) {
                 RingKind.ALARM -> clock.alarms.dismiss(request.id, silenced = true)
                 RingKind.TIMER -> clock.timers.remove(request.id)
+                RingKind.ALERT -> com.kevin.legion.service.SafetyAlarms.rangOut(this, request.id)
             }
         }.onFailure { Log.e(TAG, "auto-silence failed", it) }
         remove(request.kind, request.id)
@@ -123,7 +124,11 @@ class RingService : Service() {
     private fun notification(r: RingRequest): Notification {
         ClockNotifier.ensureChannels(this)
         val full = RingActivity.pendingIntent(this)
-        val title = if (r.kind == RingKind.ALARM) "Alarm" else "Timer done"
+        val title = when (r.kind) {
+            RingKind.ALARM -> "Alarm"
+            RingKind.TIMER -> "Timer done"
+            RingKind.ALERT -> "Emergency alert"
+        }
         val b = NotificationCompat.Builder(this, ClockNotifier.CHANNEL_RING)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle(title)
@@ -138,7 +143,7 @@ class RingService : Service() {
         if (r.kind == RingKind.ALARM) {
             b.addAction(0, "Snooze", ClockNotifier.action(this, ClockActionReceiver.ACTION_SNOOZE, r.id))
             b.addAction(0, "Dismiss", ClockNotifier.action(this, ClockActionReceiver.ACTION_DISMISS, r.id))
-        } else {
+        } else if (r.kind == RingKind.TIMER) {
             b.addAction(0, "+1 min", ClockNotifier.action(this, ClockActionReceiver.ACTION_TIMER_ADD, r.id))
             b.addAction(0, "Stop", ClockNotifier.action(this, ClockActionReceiver.ACTION_TIMER_STOP, r.id))
         }

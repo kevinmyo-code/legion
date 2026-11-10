@@ -240,6 +240,11 @@ class LiveSetupPayloadSizeTest {
      * out `files true`. Measured on dev `2779ef88` plus the branch: 95 declarations, 88,042 chars of
      * tools JSON plus 10,356 chars of system instruction = 98,398 chars, ~24,599 tokens (+21).
      * Headroom is ~51 tokens.
+     * **NOT raised on 2026-11-10 (ADR 0082, `feat/proactive-voice`).** No new declaration:
+     * `why_did_you_say_that` gains one `stop` string ("stop the morning brief") and its description
+     * was tightened to pay for most of it (+33 chars of JSON). Measured on dev `ea6e968b` plus the
+     * branch: 95 declarations, 88,075 chars of tools JSON plus 10,356 chars of system instruction =
+     * 98,431 chars, ~24,607 tokens. Headroom is ~43 tokens.
      */
     private val ceilingTokens = 24_650
 

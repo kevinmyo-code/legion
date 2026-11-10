@@ -215,6 +215,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[13-silent-after-focus-loss\|13]] | bug | It speaks and you hear nothing, once Spotify takes audio focus |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[14-no-cap-screen-off-briefs-alarm\|14]] | build | No cap, speech with the screen off, the two spoken briefs, and the emergency alarm |
 | [[.scratch/procedures/map\|procedures]] | [[10-baseline-round-trips\|10]] | task | Baseline: measure round trips, latency and tool errors from recorded conversations |
 | [[.scratch/procedures/map\|procedures]] | [[12-build-runner-and-tool\|12]] | build | Build: engine runner and the run_procedure MCP tool |
 | [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention |
@@ -483,7 +484,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/phone-verify/map\|phone-verify]] | 6 | 1 | [[.scratch/phone-verify/phone-verify.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
-| [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | 14 | 4 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/procedures/map\|procedures]] | 21 | 11 | [[.scratch/procedures/procedures.canvas\|open]] |
 | [[.scratch/purchase-log/map\|purchase-log]] | 9 | 4 | [[.scratch/purchase-log/purchase-log.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |

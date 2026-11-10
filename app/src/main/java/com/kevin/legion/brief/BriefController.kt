@@ -37,7 +37,10 @@ data class VoiceBrief(val success: Boolean, val text: String)
  * ViewModel and the `get_sitrep` voice tool both call this, so the hands path and the voice path
  * cannot drift into saying different things.
  *
- * **Never pushed** (ruling 2): nothing here schedules, notifies or speaks. It answers when asked.
+ * **Never pushed by itself** (ruling 2): nothing here schedules, notifies or speaks. It answers when
+ * asked. One caller asks unprompted since 2026-11-10: the wake-up brief
+ * (`spokenbrief/WakeBrief.kt`, ADR 0082) reads [forVoice] at an alarm dismiss, with no mail, and
+ * hands the text to the proactive bus, so the spoken brief is this one, never a second.
  *
  * A class with its dependencies in the constructor, built by hand in [forApp] until Hilt lands
  * (CLAUDE.md section 8); `MidnightApplication.brief` is the one instance.
@@ -89,8 +92,13 @@ class BriefController(
      * weather, then the newsletters when that module is on. [modules] is the tool's optional filter:
      * `fleet` keeps the engine's Car section, `news` its News section and the newsletters, `calendar`
      * and `weather` the phone's; with a filter, Canvas and Money are left out.
+     *
+     * [readMail] false skips the newsletter module entirely: no Gmail call and no line about mail,
+     * not even "none" (ADR 0082: the unprompted wake-up brief reads no mail until Kevin says yes;
+     * mail is read only to answer something he asked). `get_sitrep` and the Brief modal keep the
+     * default. The engine's own sections carry no mail (`server/brief/models.py`).
      */
-    suspend fun forVoice(modules: Set<SitrepModule>?): VoiceBrief {
+    suspend fun forVoice(modules: Set<SitrepModule>?, readMail: Boolean = true): VoiceBrief {
         val view = load()
         val out = StringBuilder()
         val read = view is BriefView.Showing
@@ -105,7 +113,8 @@ class BriefController(
                 .append("Ask without naming sections for the whole brief.")
         }
         phone.sections(modules).forEach { out.append("\n").append(it.title.uppercase()).append(' ').append(it.text) }
-        if ((modules == null || SitrepModule.NEWS in modules) && phone.newslettersEnabled()) {
+        val newsAsked = readMail && (modules == null || SitrepModule.NEWS in modules)
+        if (newsAsked && phone.newslettersEnabled()) {
             out.append("\nNEWSLETTERS, read from your mail on this phone just now and not stored:\n")
                 .append(phone.newsletters())
         }

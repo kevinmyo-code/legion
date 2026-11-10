@@ -22,6 +22,7 @@ import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.location.ArrivalController
+import com.kevin.legion.spokenbrief.HomeBrief
 import com.kevin.legion.location.GeofenceManager
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
@@ -805,6 +806,12 @@ class AriaForegroundService : Service() {
                 } else if (place != null && place != lastPlace) {
                     ArrivalController.onArrived(this@AriaForegroundService, place)
                 }
+                // ADR 0082: the home brief needs proof he was away; leaving home is that proof.
+                // A lost fix reads as "no place" too; only a real fix away from home counts.
+                val leftHome = lastPlace == HomeBrief.HOME_LABEL && place != HomeBrief.HOME_LABEL
+                if (initialized && leftHome && LocationController.state.value != null) {
+                    HomeBrief.noteLeftHome(this@AriaForegroundService)
+                }
                 lastPlace = place
 
                 runCatching { GeofenceManager.registerNearest(this@AriaForegroundService) }
@@ -973,6 +980,7 @@ class AriaForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        holdsMicrophoneType = false
         Log.d(TAG, "Service Destroyed")
         debugTextReceiver?.let { runCatching { unregisterReceiver(it) } }
         WakeWordEngine.stop()
@@ -1091,6 +1099,7 @@ class AriaForegroundService : Service() {
             if (micOk) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             startForeground(NOTIFICATION_ID, notification, types)
             currentForegroundTypes = types
+            holdsMicrophoneType = (types and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) != 0
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -1189,6 +1198,14 @@ class AriaForegroundService : Service() {
          * died with it, and a fresh process starts this at false.
          */
         @Volatile var isRunning: Boolean = false
+            private set
+
+        /**
+         * True while the running service holds the `microphone` foreground type, so a capture with
+         * the screen off can hear (ADR 0082). A boot-started service never acquires it; see
+         * [startForegroundCompat]. Read by `ProactiveDelivery.mayListen`.
+         */
+        @Volatile var holdsMicrophoneType: Boolean = false
             private set
 
         private const val OPENER_DELAY_MS = 1500L

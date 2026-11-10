@@ -90,7 +90,7 @@ Copy for each tool in `tools/voice_guide_copy.py`; `python tools/voice_guide.py`
   per task. A requested file is downloaded to Downloads once uploaded (Kevin 2026-11-01: keep).
 - **Kevin's answers, 2026-11-01:** results have their own proactive category, `CLAUDE_TASKS`
   ("Claude tasks"), on by default (`ProactiveCategory.DEFAULT_ON`, also for an install that predates
-  it) and outside the 3-a-day spoken cap (`ProactiveBus.UNCAPPED_CATEGORIES`); still inside the
+  it) and outside the 3-a-day spoken cap (`ProactiveBus.UNCAPPED_CATEGORIES`; the cap itself was removed 2026-11-10, ADR 0082); still inside the
   master switch and quiet hours. The screen switch and `quiet`/`unquiet` flip that category. A spoken
   result that asks something (a file offer or a question) opens the mic: `ProactiveRaise.listenHoldMs`
   (20 s) keeps the follow-up window re-arming (`FollowUpWindow` `listen_hold`), so it closes at the

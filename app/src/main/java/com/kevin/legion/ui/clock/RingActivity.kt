@@ -27,6 +27,8 @@ import com.kevin.legion.clock.RingKind
 import com.kevin.legion.clock.RingRequest
 import com.kevin.legion.clock.RingService
 import com.kevin.legion.service.AriaForegroundService
+import com.kevin.legion.service.SafetyAlarms
+import com.kevin.legion.spokenbrief.WakeBrief
 import com.kevin.legion.ui.MainActivity
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import kotlinx.coroutines.delay
@@ -40,8 +42,11 @@ import java.time.ZoneId
  * Closes itself when nothing is ringing. Direct-boot aware; before the first unlock Brief me is
  * hidden, because the assistant cannot start until then.
  *
- * Brief me never speaks on its own: it is the tap (ticket 32). It dismisses the alarm, asks the
- * assistant service for the sitrep, and opens LEGION so the conversation is on screen.
+ * Brief me is the tap: it dismisses the alarm, asks the assistant service for the sitrep, and opens
+ * LEGION so the conversation is on screen. **A plain Dismiss of a morning alarm now also speaks the
+ * brief, unprompted, once a day** (ADR 0082, [WakeBrief]); Brief me stays as the replay. An
+ * emergency [RingKind.ALERT] shows its facts and one Dismiss, after which the line is said
+ * ([SafetyAlarms]).
  */
 class RingActivity : ComponentActivity() {
     private var problem by mutableStateOf<String?>(null)
@@ -67,7 +72,7 @@ class RingActivity : ComponentActivity() {
                     canBrief = unlocked,
                     problem = problem,
                     actions = RingActions(
-                        onDismiss = { top?.let(::dismiss) },
+                        onDismiss = { top?.let { dismiss(it); WakeBrief.afterDismiss(this, it.kind, unlocked) } },
                         onSnooze = { top?.let { ClockGraph.controller(this).alarms.snooze(it.id) } },
                         onBrief = { top?.let(::brief) },
                         onAddMinute = { top?.let { ClockGraph.controller(this).timers.addMinute(it.id) } },
@@ -80,11 +85,16 @@ class RingActivity : ComponentActivity() {
 
     private fun dismiss(r: RingRequest) {
         val clock = ClockGraph.controller(this)
-        if (r.kind == RingKind.ALARM) clock.alarms.dismiss(r.id) else clock.timers.remove(r.id)
+        when (r.kind) {
+            RingKind.ALARM -> clock.alarms.dismiss(r.id)
+            RingKind.TIMER -> clock.timers.remove(r.id)
+            RingKind.ALERT -> SafetyAlarms.dismissed(this, r.id)
+        }
     }
 
     private fun brief(r: RingRequest) {
         holdOpen = true
+        WakeBrief.briefedByTap(this) // the tap is today's brief; no second, unprompted one
         val refusal = briefRefusal()
         dismiss(r)
         if (refusal != null) {

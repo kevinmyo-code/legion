@@ -22,6 +22,13 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Proactive voice - 2026-11-10
+
+- `feat/proactive-voice` (pushed, not merged): ADR 0082. No daily cap; speaks with the screen off
+  unless silenced; wake-up and home briefs (Digest); Safety ALARM urgency rings. proactive-mode 14.
+- Owed by Kevin: check Digest (state unknown; if on, both briefs start at install, no mail read);
+  yes/no on the wake brief reading newsletters (`WakeBrief.READS_MAIL`, off); ticket 14 phone steps.
+
 ## Workouts - 2026-11-06
 
 - `feat/workouts` (pushed, not merged): deterministic 3-day A/B programme on the engine

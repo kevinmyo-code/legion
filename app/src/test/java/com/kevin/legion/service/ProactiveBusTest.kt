@@ -31,7 +31,8 @@ import org.robolectric.RuntimeEnvironment
  * coding report for this ticket rather than silently omitting the case.
  *
  * **Scope narrowed 2026-08-21, and the reason matters.** When the five category switches landed,
- * `speakIfAllowed` began reading Room - for the switches, the suppression window and the daily cap -
+ * `speakIfAllowed` began reading Room - for the switches, the suppression window and (until ADR 0082
+ * removed it) the daily cap -
  * and this class started failing with `IllegalStateException: Illegal connection pointer`.
  * `CarDatabase` hands out a process-wide singleton while Robolectric resets its SQLite between
  * tests, so any Robolectric test reaching Room across class boundaries dies that way. It is the
@@ -141,6 +142,23 @@ class ProactiveBusTest {
             ProactiveBus.RaiseOutcome.StatedNoFacts,
             ProactiveBus.speakIfAllowed(context, factless),
         )
+    }
+
+    @Test
+    fun `an emergency alarm on any category but Safety is refused before Room`() = runBlocking {
+        // ADR 0082: only an emergency may ring. A Timing raise claiming ALARM is a caller bug.
+        val wrong = testRaise("prompt").copy(urgency = ProactiveUrgency.Alarm(alertId = "test-alert", severity = 1))
+        assertEquals(ProactiveBus.RaiseOutcome.AlarmNotAllowed, ProactiveBus.speakIfAllowed(context, wrong))
+    }
+
+    @Test
+    fun `an emergency alarm is still silenced by the Safety switch - no exemptions`() = runBlocking {
+        val alarm = testRaise("prompt").copy(
+            category = ProactiveCategory.SAFETY,
+            urgency = ProactiveUrgency.Alarm(alertId = "test-alert", severity = 1),
+        )
+        // TIMING on, SAFETY off (setUp).
+        assertEquals(ProactiveBus.RaiseOutcome.MutedByUser, ProactiveBus.speakIfAllowed(context, alarm))
     }
 
     @Test

@@ -18,6 +18,9 @@ Kevin, 2026-08-22: *"sitreps stay tap only or via voice activation only."*
 Ruled after being told that the newsletter fix put `NEWS` in `SitrepModule.DEFAULT_ON`, which meant
 a SCHEDULED sitrep would perform a live Gmail fetch and a real LLM summary without being asked.
 
+**Amended 2026-11-10 (Kevin, ADR 0082):** Alfred now speaks the brief unprompted at two moments,
+a morning alarm's Dismiss and arriving home (`spokenbrief/`). Still nothing arms a sitrep on a clock.
+
 ## The rule
 
 A sitrep is produced when Kevin asks for it - the Home card's tap, or `get_sitrep` by voice. **There

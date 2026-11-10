@@ -49,15 +49,14 @@ import kotlinx.coroutines.launch
  * toggle, the master kill switch, all five [ProactiveCategory] levers, the sitrep's module
  * registry and curated newsletter senders, and the wellbeing digest's schedule. The ticket's own
  * charter for this screen ("ALL the category levers... quiet hours, the daily cap, sitrep schedule
- * + modules, wellbeing digest time") - quiet hours and the daily cap are noted here for future
- * reference but are NOT moved, because they were never a settings row to begin with:
- * [com.kevin.legion.service.ProactiveBus] enforces both as fixed constants with no writer anywhere
- * in the app, so there is nothing to relocate without inventing a control the old screen never had
- * (out of this ticket's scope - a reorganisation, not a rebuild). **The sitrep's own schedule row
- * is GONE** (ticket 32, Kevin: "sitreps stay tap only or via voice activation only") - a sitrep is
- * produced only from the Home card's tap or a spoken `get_sitrep`, never queued, so there is
- * nothing left to arm here. What remains for the sitrep is the module switches (what it says when
- * asked) and [SitrepNewsSendersRow] (which mail it treats as newsletters).
+ * + modules, wellbeing digest time") - quiet hours are noted here but are NOT a row, because
+ * [com.kevin.legion.service.ProactiveBus] enforces them as fixed constants with no writer anywhere
+ * in the app. **The daily cap no longer exists** (Kevin 2026-11-10, ADR 0082). **The sitrep's own
+ * schedule row is GONE** (ticket 32) and stays gone: nothing arms a sitrep on a clock. What the
+ * Digest category raises since ADR 0082 is the wake-up and home briefs, each with its own switch
+ * under the Digest row ([SpokenBriefRows], the hands path for "stop the morning brief"). What
+ * remains for the sitrep is the module switches (what it says when asked, and what the morning
+ * brief's phone sections say) and [SitrepNewsSendersRow] (which mail it treats as newsletters).
  *
  * Every row is the same composable the old monolith called, unmoved in substance.
  */
@@ -75,7 +74,12 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
     var companionName by remember { mutableStateOf<String?>(null) }
     var sitrepModules by remember { mutableStateOf<Map<SitrepModule, Boolean>>(emptyMap()) }
     var sitrepSendersText by remember { mutableStateOf("") }
-    var sitrepSendersStatus by remember { mutableStateOf("The sitrep is askable any time - a tap on the Home card, or \"sitrep\" by voice. It never fires on its own.") }
+    var sitrepSendersStatus by remember {
+        mutableStateOf(
+            "The sitrep is askable any time - a tap on the Home card, or \"sitrep\" by voice. On its own it " +
+                "is said only as the morning brief above.",
+        )
+    }
     var wellbeingHourText by remember { mutableStateOf("") }
     var wellbeingMinuteText by remember { mutableStateOf("") }
     var wellbeingScheduleStatus by remember { mutableStateOf("No schedule set - the wellbeing digest never fires on its own.") }
@@ -188,6 +192,10 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
                             scope.launch { ProactiveSettings.setCategory(context, category, on) }
                         },
                     )
+                    // ADR 0082: the two spoken briefs live inside Digest, so their switches sit under it.
+                    if (category == ProactiveCategory.DIGEST) {
+                        SpokenBriefRows(digestOn = proactiveOn && proactiveCategories[category] == true)
+                    }
                 }
 
                 // Ticket 22, narrowed by ticket 32: the sitrep module registry, plus its curated
