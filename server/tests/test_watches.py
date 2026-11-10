@@ -549,3 +549,44 @@ def test_the_crontab_runs_evaluate_watches_every_fifteen_minutes():
     assert (
         "7,22,37,52 * * * * python manage.py evaluate_watches" in crontab.read_text().splitlines()
     )
+
+
+def test_sixty_days_on_a_grade_already_said_is_not_said_again(auth_client, kevin, household_a):
+    made = auth_client.post(
+        "/api/events",
+        {
+            "title": "EXAMPLE 101: Quiz 3",
+            "kind": "task",
+            "visibility": "private",
+            "starts_at": "2026-11-01T05:00:00Z",
+        },
+        format="json",
+    )
+    _set(auth_client, "grade_posted", {})
+    evaluate_household(household_a, _later())
+    Event.objects.filter(pk=made.data["id"]).update(
+        structured_meta={"canvas_assignment_id": 3, "score": 7, "points_possible": 10}
+    )
+    evaluate_household(household_a, _later(2))
+    assert len(_firings(kevin, baseline=False)) == 1
+    report = evaluate_household(household_a, timezone.now() + dt.timedelta(days=61))
+    assert report.fired == 0
+    assert len(_firings(kevin, baseline=False)) == 1
+
+
+def test_a_canvas_line_states_an_absolute_time_never_hours_left(auth_client, kevin, household_a):
+    made = auth_client.post(
+        "/api/events",
+        {
+            "title": "EXAMPLE 101: Lab",
+            "kind": "task",
+            "visibility": "private",
+            "starts_at": (timezone.now() + dt.timedelta(hours=3)).isoformat(),
+        },
+        format="json",
+    )
+    Event.objects.filter(pk=made.data["id"]).update(structured_meta={"canvas_assignment_id": 9})
+    _set(auth_client, "canvas_due", {"hours": 24})
+    evaluate_household(household_a, timezone.now())
+    (firing,) = _firings(kevin)
+    assert "hours" not in firing.facts and " is due " in firing.facts

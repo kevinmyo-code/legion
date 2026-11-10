@@ -45,10 +45,14 @@ from watches.models import (
 from watches.registry import DEFAULT_FIRING_LIFE
 
 RECENT_DAYS = 3
+LOOKBACK = dt.timedelta(days=7)
 PENDING_POST_DAYS = 10
 # A service item overdue by more than this is old data, not news (vetoable pick).
 SERVICE_OVERDUE_DAYS = 30
 FIRING_KEEP = dt.timedelta(days=60)
+# Kinds whose facts are bounded in time by the evaluator itself (money rows within LOOKBACK, a due
+# time in the future, a balance as-of time), so a pruned firing can never fire again.
+PRUNABLE_KINDS = (KIND_CHARGE_OVER, KIND_DEPOSIT_OVER, KIND_BALANCE_UNDER, KIND_CANVAS_DUE)
 CREDIT_TYPES = frozenset({"credit", "loan"})
 DEPOSIT_TYPES = frozenset({"depository"})
 
@@ -115,8 +119,10 @@ def _txn_rows(viewer, watch: Watch, now: dt.datetime, outgoing: bool):
         scoped(LedgerTransaction, viewer)
         .filter(
             currency=p.get("currency", "USD"),
-            created_at__gte=watch.armed_at,
-            txn_date__gte=floor,
+            # Rows stored before arming never fire; rows stored over a week ago were already seen.
+            created_at__gte=max(watch.armed_at, now - LOOKBACK),
+            # Dated near arming AND near now: a re-link re-inserting old rows never reads them out.
+            txn_date__gte=max(floor, (now - LOOKBACK).date()),
             txn_date__lte=(now + dt.timedelta(days=1)).date(),
         )
         .exclude(provenance="UNRECONCILED")
@@ -158,6 +164,11 @@ def _posted_twin(viewer, watch: Watch, row, now: dt.datetime) -> bool:
 
 def _money_fact(viewer, watch: Watch, now: dt.datetime, outgoing: bool) -> list[Fact]:
     types = _account_types(viewer) if not outgoing else {}
+    seen = set(
+        WatchFiring.objects.filter(
+            household=watch.household, owner_user=watch.owner_user, fact_key__startswith="txn:"
+        ).values_list("fact_key", flat=True)
+    )
     out = []
     for row in _txn_rows(viewer, watch, now, outgoing):
         if not outgoing and types.get(row.account_last4, "") in CREDIT_TYPES:
@@ -165,6 +176,8 @@ def _money_fact(viewer, watch: Watch, now: dt.datetime, outgoing: bool) -> list[
             continue
         key_id = row.bank_transaction_id or str(row.id)
         key = f"txn:{key_id}"
+        if key in seen:
+            continue
         twin = _posted_twin(viewer, watch, row, now)
         what = "charge" if outgoing else "deposit"
         prep = "at" if outgoing else "from"
@@ -277,14 +290,12 @@ def canvas_due(viewer, watch, now) -> list[Fact]:
         meta = row.structured_meta or {}
         if meta.get("canvas_submitted") is True:
             continue
-        left = row.starts_at - now
-        hrs = int(left.total_seconds() // 3600)
-        within = f"in about {hrs} hours" if hrs >= 1 else "in under an hour"
         said = " Canvas says not submitted." if meta.get("canvas_submitted") is False else ""
         out.append(
             Fact(
                 key=f"due:{row.id}:{row.starts_at.isoformat()}",
-                facts=f"{row.title} is due {when_words(row.starts_at, zone)}, {within}.{said}",
+                # Absolute time only: "in N hours" would be wrong by the time a late poll says it.
+                facts=f"{row.title} is due {when_words(row.starts_at, zone)}.{said}",
                 sources=[{"table": "events", "id": str(row.id)}],
                 detail={"due_at": row.starts_at.isoformat()},
                 expires_at=row.starts_at,
@@ -501,7 +512,9 @@ def evaluate_household(household, now: dt.datetime) -> Report:
             evaluate_watch(watch, now, report)
         except Exception as exc:  # noqa: BLE001 - one bad watch never stops the others
             report.errors.append(f"{watch.id}: {type(exc).__name__}")
+    # Only facts that cannot come back are pruned. A grade or a service item stays recorded
+    # (baseline rows included), or it would be read out again once its row was gone.
     report.pruned, _ = WatchFiring.objects.filter(
-        household=household, fired_at__lt=now - FIRING_KEEP
+        household=household, kind__in=PRUNABLE_KINDS, fired_at__lt=now - FIRING_KEEP
     ).delete()
     return report
