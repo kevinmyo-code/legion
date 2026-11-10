@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "name": "tidy-downloads",
+  "says": "Sorts the Downloads folder into dated subfolders.",
+  "aliases": ["tidy my downloads", "clean up downloads"],
+  "params": [],
+  "asks": [{"at": "move", "says": "Move the files into dated folders?"}],
+  "outputs": ["summary", "report"],
+  "deliver": null,
+  "scope": ["full"],
+  "every": {"hours": 168, "idle_minutes": 10, "force_after_hours": 216, "retry_after_hours": 6}
+}

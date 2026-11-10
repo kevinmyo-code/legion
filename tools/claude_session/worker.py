@@ -11,7 +11,14 @@ Runs in Kevin's logon session (Task Scheduler "LEGION Claude session", at logon,
 - uploads a file only when the engine says Kevin asked for it and the file is one that task listed;
   a `deliver: files` task's files go up straight after its finish (ADR 0080: naming them was the
   yes), unless there are more than 20 or 100 MB of them, when the task asks first;
-- issues the confirmation tokens send_mail.py and the ask-list hook check.
+- issues the confirmation tokens send_mail.py and the ask-list hook check;
+- worker workflows (map worker-workflows, ticket 05): reads Kevin's private skills for
+  `workflow.json` sidecars every 5 minutes, sends the engine the catalog's hash on every heartbeat
+  and the catalog itself only when the engine holds a different hash; a `kind: workflow` task gets
+  its skill, Kevin's words, a dated report file under `%USERPROFILE%/.legion/reports/<workflow>/`
+  and its declared stops; a scheduled run gets no token of any kind but the workflow's own
+  standing `email_self`. Every finished task adds one line to `%USERPROFILE%/.legion/
+  task-log.jsonl` (request text, kept 180 days, never leaves the laptop) for the workflow miner.
 
 Logs carry ids, statuses, counts and exit codes. Never a request, a summary, a question or a path.
 
@@ -24,6 +31,7 @@ import argparse
 import collections
 import ctypes
 import datetime
+import json
 import logging
 import logging.handlers
 import os
@@ -45,6 +53,7 @@ from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
 import warm_worktree  # noqa: E402
+import workflows as wfl  # noqa: E402
 
 log = logging.getLogger("legion.claude")
 
@@ -65,7 +74,23 @@ DEFAULTS = {
     "keep_task_s": 48 * 3600.0,
     "keep_work_days": 30,
     "keep_awake": True,
+    # Worker workflows (ticket 05): how often the private skills folder is re-read, and how long
+    # reports and the task log are kept.
+    "catalog_s": 300.0,
+    "keep_reports_days": 180,
+    "keep_task_log_days": 180,
 }
+
+KIND_WORKFLOW = "workflow"
+ORIGIN_SCHEDULE = "schedule"
+SAY_NO_WORKFLOW = ("The {name} workflow is not on this laptop any more, so nothing ran. Its "
+                   "skill folder or workflow.json is gone or fails the lint.")
+REPORT_NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-task-\d+\.md$")
+
+
+def legion_home() -> Path:
+    """Kevin's `%USERPROFILE%/.legion` folder: agent rules, durable reports, the task log."""
+    return Path(os.environ.get("USERPROFILE") or Path.home()) / ".legion"
 
 PROGRESS_CAP = 120  # heartbeat `progress` text per task (ticket 04 addition, status extras)
 
@@ -281,6 +306,18 @@ class Worker:
         # (a helper agent for its own builds and waits), None for one the main window owns.
         # `background_tasks_changed` replaces it whole; task_started and task ends keep it current.
         self.live: dict[str, str | None] = {}
+        # Worker workflows (ticket 05). The catalog is read from Kevin's private skills folder; the
+        # engine's echoed hash says whether it already holds this one.
+        legion = legion_home()
+        self.skills_dir = Path(self.cfg.get("skills_dir") or (self.paths.skills / "skills"))
+        self.reports_root = Path(self.cfg.get("workflow_reports") or (legion / "reports"))
+        self.task_log = Path(self.cfg.get("task_log") or (legion / "task-log.jsonl"))
+        self.agent_rules = Path(self.cfg.get("agent_rules") or (legion / "AGENT-RULES.md"))
+        self.catalog: list[dict] = []
+        self.catalog_hash: str | None = None
+        self.catalog_at: float | None = None
+        self.engine_wf_hash: str | None = None
+        self.wf_resend_at = 0.0
 
     # ------------------------------------------------------------ state
 
@@ -303,6 +340,7 @@ class Worker:
     def startup(self) -> None:
         """Once per worker process: settings file, stale child, tasks orphaned by a restart."""
         self.write_settings()
+        self.refresh_catalog(self.clock(), force=True)
         pidinfo = read_json(self.paths.pid, None)
         if pidinfo and pidinfo.get("pid") and pidinfo.get("session"):
             # Pids are recycled: kill only a process whose command line carries our session uuid,
@@ -657,6 +695,7 @@ class Worker:
             question = files_question(len(found), sum(f["size"] for f in found))
             log.info("task %s over the files caps (%s files); asking first", t["id"], len(found))
         t.update(status=status, summary=summary, question=question, found=found, finished_at=now)
+        self.log_task(t, status)
         payload = {"status": status, "summary": summary, "question": question,
                    "turns": int(t.get("turns", 0)),
                    "duration_ms": int(max(0.0, now - t.get("started_at", now)) * 1000),
@@ -731,21 +770,130 @@ class Worker:
 
     # ------------------------------------------------------------ engine contact
 
+    # ------------------------------------------------------------ workflows (ticket 05)
+
+    def refresh_catalog(self, now: float, force: bool = False) -> None:
+        """Re-read the sidecars at most every `catalog_s`. A sidecar that fails the lint is left
+        out and logged by folder name only, never its text."""
+        if not force and self.catalog_at is not None and now - self.catalog_at < self.cfg["catalog_s"]:
+            return
+        self.catalog_at = now
+        try:
+            entries, problems = wfl.load_catalog(self.skills_dir)
+        except OSError:
+            log.warning("workflow catalog unreadable; keeping the last one")
+            return
+        new_hash = wfl.catalog_hash(entries)
+        if new_hash != self.catalog_hash:
+            log.info("workflow catalog: %s workflow(s), %s left out%s", len(entries), len(problems),
+                     "".join(f"; {folder} fails the lint" for folder, _ in problems))
+        self.catalog, self.catalog_hash = entries, new_hash
+
+    def workflow(self, name) -> dict | None:
+        return next((e for e in self.catalog if e["name"] == name), None)
+
+    def catalog_fields(self, now: float) -> dict:
+        """The hash always; the catalog only when the engine holds another. An engine that does
+        not echo a hash (one deployed before workflows) gets the list at most every `catalog_s`."""
+        if self.catalog_hash is None:
+            return {}
+        out = {"workflows_hash": self.catalog_hash}
+        if self.engine_wf_hash != self.catalog_hash and now >= self.wf_resend_at:
+            out["workflows"] = wfl.catalog_for_engine(self.catalog)
+        return out
+
+    def note_engine_hash(self, reply: dict, sent: dict, now: float) -> None:
+        if "workflows_hash" in reply:
+            self.engine_wf_hash = reply.get("workflows_hash")
+            if reply.get("workflows_dropped"):
+                log.warning("engine dropped %s workflow(s) from the catalog",
+                            int(reply["workflows_dropped"]))
+            refused = len(reply.get("workflows_refused") or [])
+            if refused != getattr(self, "_refused_schedules", 0):
+                # A schedule this machine kind does not run on its own (a listed machine): count
+                # only; the words are on the engine's workflow list.
+                log.info("engine runs %s workflow schedule(s) here only when Kevin asks", refused)
+                self._refused_schedules = refused
+        elif "workflows" in sent:
+            self.wf_resend_at = now + self.cfg["catalog_s"]
+
+    def report_path(self, t: dict) -> Path:
+        day = datetime.date.fromtimestamp(t.get("started_at") or self.clock()).isoformat()
+        return self.reports_root / t["workflow"] / f"{day}-task-{int(t['id'])}.md"
+
+    def log_task(self, t: dict, status: str) -> None:
+        """One line per finished task for the workflow miner (R4): request text included, so it
+        stays on this laptop and is pruned at `keep_task_log_days`. The Alienware only: the miner
+        reads its own worker's tasks, and the work laptop keeps no such log."""
+        if self.scope != "full":
+            return
+        line = {"date": datetime.datetime.fromtimestamp(self.clock()).isoformat(timespec="seconds"),
+                "task": int(t["id"]), "kind": t.get("kind") or "ask", "workflow": t.get("workflow"),
+                "origin": t.get("origin"), "status": status, "request": t.get("request", "")}
+        try:
+            self.task_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.task_log, "a", encoding="utf-8") as f:
+                f.write(json.dumps(line) + "\n")
+        except OSError:
+            log.warning("task %s not written to the task log", t["id"])
+
+    def prune_workflow_files(self, now: float) -> None:
+        """Reports the worker named (`<workflow>/<date>-task-<N>.md` under a workflow this laptop
+        has) and task-log lines past their days. Nothing else in Kevin's reports folder."""
+        cutoff = datetime.date.fromtimestamp(now) - datetime.timedelta(
+            days=self.cfg["keep_reports_days"])
+        for entry in self.catalog:
+            folder = self.reports_root / entry["name"]
+            if not folder.is_dir():
+                continue
+            for f in folder.iterdir():
+                m = REPORT_NAME_RE.match(f.name)
+                try:
+                    if m and f.is_file() and datetime.date.fromisoformat(m.group(1)) < cutoff:
+                        f.unlink()
+                except (OSError, ValueError):
+                    pass
+        if not self.task_log.is_file():
+            return
+        keep_after = datetime.datetime.fromtimestamp(now) - datetime.timedelta(
+            days=self.cfg["keep_task_log_days"])
+        try:
+            lines = self.task_log.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return
+        kept = []
+        for line in lines:
+            try:
+                if datetime.datetime.fromisoformat(json.loads(line)["date"]) >= keep_after:
+                    kept.append(line)
+            except (ValueError, KeyError, TypeError):
+                continue
+        if len(kept) != len(lines):
+            tmp = self.task_log.with_suffix(".tmp")
+            try:
+                tmp.write_text("".join(x + "\n" for x in kept), encoding="utf-8")
+                os.replace(tmp, self.task_log)
+            except OSError:
+                pass
+
     def contact_engine(self, now: float) -> None:
         if now < self.next_contact:
             return
         try:
             self.flush_outbox()
             self.power.update()
+            self.refresh_catalog(now)
             running = sorted(t["id"] for t in self.running())
             self.progress = {k: v for k, v in self.progress.items() if k in running}
+            wf_fields = self.catalog_fields(now)
             reply = self.engine.heartbeat({
                 "name": self.name, "hostname": socket.gethostname(), "scope": self.scope,
                 "state": "busy" if running else "idle", "running": running,
                 "progress": {str(k): v for k, v in self.progress.items()},
                 "claude_version": self.claude_version,
                 # memory-review ticket 15: the engine mints the daily review only when idle.
-                "input_idle_s": self.idle(), "on_mains": self.on_mains()})
+                "input_idle_s": self.idle(), "on_mains": self.on_mains(), **wf_fields})
+            self.note_engine_hash(reply, wf_fields, now)
             for tid in reply.get("cancel_requested") or []:
                 t = self._task(tid)
                 if t and t["status"] == "running":
@@ -819,6 +967,8 @@ class Worker:
         reason = None
         if self.scope != "full":
             reason = "work laptop never uploads"
+        elif t and t.get("deliver_refused"):
+            reason = "a scheduled run never sends files"
         elif not t or norm(path) not in allowed:
             reason = "not a file that task listed"
         elif not Path(path).is_file():
@@ -853,11 +1003,65 @@ class Worker:
         t = {"id": tid, "parent": parent, "request": task.get("request", ""), "status": "running",
              "kind": task.get("kind") or "ask",
              "started_at": now, "turns": 0, "deliver": task.get("deliver"),
-             "confirms": bool(parent) and task.get("confirms") is True}
+             "confirms": bool(parent) and task.get("confirms") is True,
+             "origin": task.get("origin"), "workflow": task.get("workflow"),
+             "params": task.get("params")}
         self.state["tasks"][str(tid)] = t
         self.dirty = True
+        if (t.get("origin") == ORIGIN_SCHEDULE and not parent
+                and t["deliver"] in (DELIVER_PHONE, DELIVER_FILES)):
+            # R3: an unattended run never sends a page or files on its own; only the standing
+            # email_self may ride it. The engine never mints one; this holds if it ever did.
+            t["deliver_refused"], t["deliver"] = t["deliver"], None
+        if t["kind"] == KIND_WORKFLOW:
+            self.refresh_catalog(now, force=True)
+            if not t["workflow"] or self.workflow(t["workflow"]) is None:
+                # Never run as free text: the engine's catalog is older than this laptop's.
+                log.info("task %s claimed; its workflow is not on this laptop", tid)
+                self.finish(t, "failed", SAY_NO_WORKFLOW.format(
+                    name=str(t["workflow"] or "").replace("-", " ")))
+                return
         self.pending.append((tid, self.task_message(t, work)))
         log.info("task %s claimed%s", tid, f" (follow-up to {parent})" if parent else "")
+
+    def workflow_lines(self, t: dict, work: Path) -> list[str]:
+        """Ticket 05: what a workflow task's message adds. The skill is always the workflow's own;
+        Kevin's words and the params text stay on this laptop, in the main session."""
+        entry = self.workflow(t["workflow"])
+        name = entry["name"]
+        lines = []
+        if t.get("origin") == ORIGIN_SCHEDULE and not t.get("parent"):
+            lines.append("Scheduled run; nobody is waiting on this. No one said yes to anything: "
+                         "no confirmation token of any kind is given. Anything on the ask list "
+                         "(deleting or overwriting Kevin's files, sending, booking or paying, "
+                         "installing, system settings) and any ship or deploy step: stop with "
+                         "needs_confirmation. Do not ask more than one question.")
+        elif not t.get("parent"):
+            lines.append("Kevin's words: \"" + t["request"] + "\"")
+        if t.get("params"):
+            lines.append(f'Params text: "{t["params"]}"')
+        for p in [p for p in entry.get("params") or []]:
+            default = (entry.get("defaults") or {}).get(p["name"])
+            need = "required" if p.get("required") else (f'default "{default}"' if default else
+                                                       "optional")
+            lines.append(f"Param {p['name']}: {p['says']} ({need}).")
+        if any(p.get("required") for p in entry.get("params") or []):
+            lines.append("A required param Kevin's words do not give: stop with "
+                         "needs_confirmation asking for it, one short question.")
+        if self.agent_rules.is_file():
+            lines.append(f"Read {self.agent_rules} first.")
+        if self.scope == "full" and "report" in entry.get("outputs", ()):
+            report = self.report_path(t)
+            try:
+                report.parent.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            lines.append(f"Report file: {report} (a new file: write it with the Write tool and "
+                         "list it with --found; never overwrite an older report).")
+        if entry.get("asks"):
+            lines.append("This workflow stops for Kevin's yes at: "
+                         + "; ".join(a["says"] for a in entry["asks"]))
+        return lines
 
     def review_message(self, t: dict, work: Path) -> str:
         """Ticket 16: the memory review's helper prompt is a file rendered into its work folder,
@@ -897,6 +1101,9 @@ class Worker:
                 if p.get("found"):
                     head += " Files it listed: " + "; ".join(f["path"] for f in p["found"]) + "."
             lines.append(head)
+            if t.get("kind") == KIND_WORKFLOW:
+                lines.append(f"Task {parent} was workflow {t['workflow']}: use the "
+                             f"{t['workflow']} skill again.")
             lines.append(f"Kevin now says: {t['request']}")
             if t.get("confirms"):  # the phone marked this as Kevin's answer to task P's question
                 tok = self.issue_token(tid, parent, "yes")
@@ -905,9 +1112,19 @@ class Worker:
                              f"about may now run, for task {tid} only. Confirmation token: {tok} "
                              f"(send_mail.py takes it as --task {tid} --token {tok}). Not a clear "
                              "yes: do not run it, report what Kevin said.")
+        elif t.get("kind") == KIND_WORKFLOW:
+            lines.append(f"[task {tid}] Workflow {t['workflow']}. Use the {t['workflow']} skill.")
         else:
             lines.append(f"[task {tid}] {t['request']}")
-        if t.get("deliver") == DELIVER_EMAIL_SELF:
+        if t.get("kind") == KIND_WORKFLOW:
+            lines.extend(self.workflow_lines(t, work))
+        standing = self.workflow(t.get("workflow")) if t.get("kind") == KIND_WORKFLOW else None
+        if (t.get("deliver") == DELIVER_EMAIL_SELF and t.get("origin") == ORIGIN_SCHEDULE
+                and not t.get("parent") and (standing or {}).get("deliver") != DELIVER_EMAIL_SELF):
+            # R3: an unattended run's one standing yes is the one its own workflow.json declares,
+            # never one the engine row claims.
+            lines.append("This scheduled run has no yes to send mail. Do not send any.")
+        elif t.get("deliver") == DELIVER_EMAIL_SELF:
             mail = self.cfg.get("mail") or {}
             if mail.get("address") and mail.get("kevin") and self.scope == "full":
                 tok = self.issue_token(tid, parent, "email_self")
@@ -954,6 +1171,7 @@ class Worker:
     # ------------------------------------------------------------ housekeeping
 
     def prune(self, now: float) -> None:
+        self.prune_workflow_files(now)
         keep = self.cfg["keep_task_s"]
         for key, t in list(self.state["tasks"].items()):
             if t["status"] != "running" and now - t.get("finished_at", now) > keep:

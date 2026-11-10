@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "name": "rates-sheet",
+  "says": "Builds this week's exchange-rate sheet as Excel.",
+  "aliases": ["rates sheet", "make the rates sheet", "exchange rates"],
+  "params": [
+    {"name": "currencies", "says": "which currencies, like 'euro and yen'", "default": "the usual three"}
+  ],
+  "asks": [],
+  "outputs": ["summary", "report"],
+  "deliver": null,
+  "scope": ["full"],
+  "every": null
+}

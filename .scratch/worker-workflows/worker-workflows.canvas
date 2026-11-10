@@ -1,0 +1,327 @@
+{
+  "nodes": [
+    {
+      "id": "a8ae136470365591",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/01-rulings.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f57669ba0d54e228",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/08-device-logs-read.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "998e7ddc3a3387b2",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/02-definition-format.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4bfd4e5e13b4ab13",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/15-adr-amendment.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3e46afb86d884e12",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/03-engine-catalog-and-trigger.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "baf6c0db6b62f719",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/04-catch-up-runs.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c4f021d8f5d2b28a",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/05-worker.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f673c81a0d002264",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/06-phone.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a87588486dba1a8c",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/07-web-desk.md",
+      "x": 1560,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "74f5dbe58acc777d",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/09-wf-log-audit.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8597c34c9919b53e",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/11-wf-ship-round.md",
+      "x": 2080,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c6cfbe0b78943c81",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/12-wf-memory-review.md",
+      "x": 2080,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ff9702b81749dc37",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/13-wf-claude-memory-review.md",
+      "x": 2080,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0a482f39fcd19345",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/14-workflow-miner.md",
+      "x": 2080,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0d66535fe148200a",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/10-wf-fix-finding.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d39369f3b7a94758",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/16-live-run.md",
+      "x": 2600,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "b6ae805d03676360",
+      "fromNode": "a8ae136470365591",
+      "fromSide": "right",
+      "toNode": "998e7ddc3a3387b2",
+      "toSide": "left"
+    },
+    {
+      "id": "8da92401aebe89b3",
+      "fromNode": "a8ae136470365591",
+      "fromSide": "right",
+      "toNode": "3e46afb86d884e12",
+      "toSide": "left"
+    },
+    {
+      "id": "2f53de8cbdafa293",
+      "fromNode": "998e7ddc3a3387b2",
+      "fromSide": "right",
+      "toNode": "3e46afb86d884e12",
+      "toSide": "left"
+    },
+    {
+      "id": "6b242a2c6e7e3c23",
+      "fromNode": "3e46afb86d884e12",
+      "fromSide": "right",
+      "toNode": "baf6c0db6b62f719",
+      "toSide": "left"
+    },
+    {
+      "id": "2e595217155feedc",
+      "fromNode": "998e7ddc3a3387b2",
+      "fromSide": "right",
+      "toNode": "c4f021d8f5d2b28a",
+      "toSide": "left"
+    },
+    {
+      "id": "e92d800718ded506",
+      "fromNode": "3e46afb86d884e12",
+      "fromSide": "right",
+      "toNode": "c4f021d8f5d2b28a",
+      "toSide": "left"
+    },
+    {
+      "id": "2bee9035d9ebd197",
+      "fromNode": "3e46afb86d884e12",
+      "fromSide": "right",
+      "toNode": "f673c81a0d002264",
+      "toSide": "left"
+    },
+    {
+      "id": "033908bd84ee1217",
+      "fromNode": "3e46afb86d884e12",
+      "fromSide": "right",
+      "toNode": "a87588486dba1a8c",
+      "toSide": "left"
+    },
+    {
+      "id": "a6298448db3ccb9f",
+      "fromNode": "c4f021d8f5d2b28a",
+      "fromSide": "right",
+      "toNode": "74f5dbe58acc777d",
+      "toSide": "left"
+    },
+    {
+      "id": "9a13b10fa17db696",
+      "fromNode": "f57669ba0d54e228",
+      "fromSide": "right",
+      "toNode": "74f5dbe58acc777d",
+      "toSide": "left"
+    },
+    {
+      "id": "6b7f7321890b425e",
+      "fromNode": "74f5dbe58acc777d",
+      "fromSide": "right",
+      "toNode": "0d66535fe148200a",
+      "toSide": "left"
+    },
+    {
+      "id": "4ab22219ecab5d04",
+      "fromNode": "c4f021d8f5d2b28a",
+      "fromSide": "right",
+      "toNode": "8597c34c9919b53e",
+      "toSide": "left"
+    },
+    {
+      "id": "6a2e13de8a041d21",
+      "fromNode": "baf6c0db6b62f719",
+      "fromSide": "right",
+      "toNode": "c6cfbe0b78943c81",
+      "toSide": "left"
+    },
+    {
+      "id": "624553cbbd86fe6c",
+      "fromNode": "c4f021d8f5d2b28a",
+      "fromSide": "right",
+      "toNode": "c6cfbe0b78943c81",
+      "toSide": "left"
+    },
+    {
+      "id": "b0bd49303b771269",
+      "fromNode": "c4f021d8f5d2b28a",
+      "fromSide": "right",
+      "toNode": "ff9702b81749dc37",
+      "toSide": "left"
+    },
+    {
+      "id": "3f94372698158730",
+      "fromNode": "baf6c0db6b62f719",
+      "fromSide": "right",
+      "toNode": "0a482f39fcd19345",
+      "toSide": "left"
+    },
+    {
+      "id": "80fa06b06fcddc85",
+      "fromNode": "c4f021d8f5d2b28a",
+      "fromSide": "right",
+      "toNode": "0a482f39fcd19345",
+      "toSide": "left"
+    },
+    {
+      "id": "96818d7f99d00faf",
+      "fromNode": "a8ae136470365591",
+      "fromSide": "right",
+      "toNode": "4bfd4e5e13b4ab13",
+      "toSide": "left"
+    },
+    {
+      "id": "931cbdd26c7d8aaf",
+      "fromNode": "f673c81a0d002264",
+      "fromSide": "right",
+      "toNode": "d39369f3b7a94758",
+      "toSide": "left"
+    },
+    {
+      "id": "7ddf1ac4955c9509",
+      "fromNode": "74f5dbe58acc777d",
+      "fromSide": "right",
+      "toNode": "d39369f3b7a94758",
+      "toSide": "left"
+    },
+    {
+      "id": "634392a763d16edf",
+      "fromNode": "8597c34c9919b53e",
+      "fromSide": "right",
+      "toNode": "d39369f3b7a94758",
+      "toSide": "left"
+    },
+    {
+      "id": "b1c236d16c6a4171",
+      "fromNode": "c6cfbe0b78943c81",
+      "fromSide": "right",
+      "toNode": "d39369f3b7a94758",
+      "toSide": "left"
+    },
+    {
+      "id": "ac20687421199fea",
+      "fromNode": "0a482f39fcd19345",
+      "fromSide": "right",
+      "toNode": "d39369f3b7a94758",
+      "toSide": "left"
+    }
+  ]
+}

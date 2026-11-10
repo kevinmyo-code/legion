@@ -91,6 +91,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/web-surface/map\|web-surface]] | [[04-the-desktop-shell\|04]] | build | The desktop shell |
 | [[.scratch/web-surface/map\|web-surface]] | [[05-look-back\|05]] | build | Look-back |
 | [[.scratch/web-surface/map\|web-surface]] | [[06-stale-is-a-third-sentence\|06]] | build | Stale is a third sentence |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[08-device-logs-read\|08]] | build | Engine: device logs readable by the worker (logcat and crash over the API) |
 
 ## Built, owing a run on hardware
 
@@ -245,6 +246,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-revamp/map\|web-revamp]] | [[08-repeat-exceptions-on-the-engine\|08]] | build | Repeat exceptions on the engine |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[11-spend-on-the-engine\|11]] | build | Spend on the engine: one figure, computed once |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[14-reminder-lead-time-on-events\|14]] | build | Reminder lead time on events |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[02-definition-format\|02]] | build | Definition format: workflow.json beside SKILL.md, parser and lint |
 
 ## Blocked
 
@@ -407,6 +409,18 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/web-revamp/map\|web-revamp]] | [[16-pantry-and-body-workbench\|16]] | build | Pantry and body workbench  waiting on [[03-the-shell-split-by-viewport\|03]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[17-fleet-places-and-notes-workbench\|17]] | build | Fleet, places and notes workbench  waiting on [[03-the-shell-split-by-viewport\|03]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | [[18-phone-follow-ups-for-the-android-agent\|18]] | task | Phone follow-ups for the Android agent  waiting on [[06-private-rows-on-the-engine\|06]], [[11-spend-on-the-engine\|11]], [[14-reminder-lead-time-on-events\|14]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[03-engine-catalog-and-trigger\|03]] | build | Engine: workflow kind, catalog cache, name lookup, list  waiting on [[02-definition-format\|02]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[04-catch-up-runs\|04]] | build | Engine: catch-up runs, minted at claim (generalizes the memory review's due rule)  waiting on [[03-engine-catalog-and-trigger\|03]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[05-worker\|05]] | build | Worker: publish the catalog, workflow task message, reports folder, task log  waiting on [[02-definition-format\|02]], [[03-engine-catalog-and-trigger\|03]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[06-phone\|06]] | build | Phone: action workflow, workflows in check, Workflows on the Claude session screen  waiting on [[03-engine-catalog-and-trigger\|03]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[07-web-desk\|07]] | build | Web desk: workflows with last run and Run  waiting on [[03-engine-catalog-and-trigger\|03]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[09-wf-log-audit\|09]] | build | Workflow: log-audit  waiting on [[05-worker\|05]], [[08-device-logs-read\|08]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[10-wf-fix-finding\|10]] | build | Workflow: fix-finding  waiting on [[09-wf-log-audit\|09]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[11-wf-ship-round\|11]] | build | Workflow: ship-round  waiting on [[05-worker\|05]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[12-wf-memory-review\|12]] | build | Workflow: memory-review (the wrapper; the review is the memory-review map)  waiting on [[04-catch-up-runs\|04]], [[05-worker\|05]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[13-wf-claude-memory-review\|13]] | build | Workflow: claude-memory-review  waiting on [[05-worker\|05]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[14-workflow-miner\|14]] | build | Workflow miner: the repeated-task loop  waiting on [[04-catch-up-runs\|04]], [[05-worker\|05]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[16-live-run\|16]] | task | Live run on the Alienware  waiting on [[06-phone\|06]], [[09-wf-log-audit\|09]], [[11-wf-ship-round\|11]], [[12-wf-memory-review\|12]], [[14-workflow-miner\|14]] |
 
 ## KIV
 
@@ -506,3 +520,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | 18 | 17 | [[.scratch/web-revamp/web-revamp.canvas\|open]] |
 | [[.scratch/web-surface/map\|web-surface]] | 7 | 6 | [[.scratch/web-surface/web-surface.canvas\|open]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | 16 | 14 | [[.scratch/worker-workflows/worker-workflows.canvas\|open]] |
