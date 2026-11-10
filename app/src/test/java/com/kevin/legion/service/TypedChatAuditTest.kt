@@ -60,4 +60,14 @@ class TypedChatAuditTest {
         typed.turn(TypedTurnRecord(1, "hi", "Hello.", readThrough = false))
         assertTrue(lines.isEmpty())
     }
+
+    @Test fun `a typed read-through mark logs its source and tool, and no content`() {
+        typed.user("look it up")
+        val id = typed.toolCall("ask_fleet", JSONObject().put("question", "example question"))
+        typed.readThrough("fleet_web", "ask_fleet")
+        typed.toolResult(id, "ask_fleet", JSONObject().put("success", true).put("answer", "example answer"))
+        typed.turn(TypedTurnRecord(1, "look it up", "Example reply.", readThrough = true))
+        val marks = lines.filter { it.startsWith("read_through") }
+        assertEquals(listOf("read_through source=fleet_web tool=ask_fleet"), marks)
+    }
 }

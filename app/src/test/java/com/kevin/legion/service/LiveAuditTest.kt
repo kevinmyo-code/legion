@@ -223,4 +223,47 @@ class LiveAuditTest {
             lines,
         )
     }
+
+    @Test
+    fun `read_through names the source, and a tool only when given`() {
+        audit.readThrough("grounding")
+        audit.readThrough("ask_mail")
+        audit.readThrough("fleet_web", tool = "ask_fleet")
+        assertEquals(
+            listOf(
+                "read_through source=grounding",
+                "read_through source=ask_mail",
+                "read_through source=fleet_web tool=ask_fleet",
+            ),
+            lines,
+        )
+    }
+
+    @Test
+    fun `read_through is logged once per source per turn, and again in the next turn`() {
+        audit.readThrough("grounding")
+        audit.readThrough("grounding")
+        audit.readThrough("fleet_web", tool = "ask_fleet")
+        audit.readThrough("fleet_web", tool = "ask_fleet")
+        audit.readThrough("fleet_web", tool = "ask_body")
+        audit.turnComplete()
+        audit.readThrough("grounding")
+        assertEquals(
+            listOf(
+                "read_through source=grounding",
+                "read_through source=fleet_web tool=ask_fleet",
+                "read_through source=fleet_web tool=ask_body",
+                "turn_complete",
+                "read_through source=grounding",
+            ),
+            lines,
+        )
+    }
+
+    @Test
+    fun `read_through with the audit off writes nothing`() {
+        val quiet = mutableListOf<String>()
+        LiveAudit(sink = { quiet += it }).readThrough("grounding")
+        assertTrue(quiet.isEmpty())
+    }
 }

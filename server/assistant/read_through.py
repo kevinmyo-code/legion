@@ -105,10 +105,16 @@ def read_third_party(request) -> bool:
 def before_tool(request, name: str) -> str | None:
     """Called for every tool `run_engine_tool` runs, a procedure's steps included, before its
     handler. For a third-party tool: flags the request and marks its turn. Returns the refusal
-    the tool answers with instead of running when the mark could not be written."""
+    the tool answers with instead of running when the mark could not be written.
+
+    Logs `read_through source=<tool>` each time, the phone's LIVE_AUDIT line's twin: the tool's
+    name only, never its arguments, the conversation or anything it read. `warning`, not `info`,
+    for `brief/news.py`'s reason: the project configures no LOGGING, so Python's last-resort
+    handler is what reaches Cloud Run's log, and it prints WARNING and above."""
     if name not in THIRD_PARTY_TOOLS or request is None:
         return None
     setattr(request, _READ, True)
+    log.warning("read_through source=%s", name)
     return None if _mark(request) else MARK_FAILED
 
 

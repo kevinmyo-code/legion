@@ -140,6 +140,7 @@ class LiveSessionController(context: Context) {
             // runToolBounded already applies the voice path's own per-tool ceiling; the engine's is
             // a backstop a little above it so the two never race to report the same timeout.
             toolTimeoutMs = { name -> toolTimeoutFor(name) + 2_000L },
+            onReadThrough = typedAudit::readThrough,
         ),
         hasKey = GeminiKeyProvider::hasKey,
         isOnline = ::isOnline,

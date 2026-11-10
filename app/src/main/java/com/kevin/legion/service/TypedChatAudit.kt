@@ -50,6 +50,9 @@ internal class TypedChatAudit(
         )
     }
 
+    /** The typed turn was marked read-through: `read_through source=<tool|fleet_web> [tool=<name>]`. */
+    fun readThrough(source: String, tool: String?) = audit.readThrough(source, tool)
+
     fun turn(record: TypedTurnRecord) {
         if (record.replyText.isNotBlank()) audit.assistant(record.replyText, readThrough = record.readThrough)
         audit.turnComplete()

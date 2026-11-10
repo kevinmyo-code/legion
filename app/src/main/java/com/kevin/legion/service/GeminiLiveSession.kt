@@ -364,8 +364,11 @@ class GeminiLiveSession(
     private val latency = LiveLatency()
 
     // Conversation audit log (async-lookups ticket 05): LIVE_AUDIT lines, logcat only. On/off read
-    // in [start] from "Conversation audit log (logcat)". See [LiveAudit].
-    private val audit = LiveAudit()
+    // in [start] from "Conversation audit log (logcat)". See [LiveAudit]. [auditSink] is a seam for
+    // tests that read the lines this session writes.
+    @VisibleForTesting internal val audit = LiveAudit(sink = { auditSink(it) })
+
+    @VisibleForTesting internal var auditSink: (String) -> Unit = { LiveLatency.audit(LiveAudit.TAG, it) }
 
     // Monotonic generation counter, bumped by [flushAudio] every time queued model
     // audio is discarded (barge-in tap in [beginConversation], the server's own
@@ -1106,7 +1109,13 @@ class GeminiLiveSession(
      * meaning "do not remember this" is how one of them ends up checked in only half the places.
      */
     fun markTurnReadThrough() {
+        markReadThrough(READ_THROUGH_PROACTIVE)
+    }
+
+    /** Sets the read-through flag and logs why, once per source per turn ([LiveAudit.readThrough]). */
+    private fun markReadThrough(source: String, tool: String? = null) {
         mailToolCalledThisTurn = true
+        audit.readThrough(source, tool)
     }
 
     /**
@@ -1117,8 +1126,20 @@ class GeminiLiveSession(
      * turnComplete ([carriesReadThroughPastTurn]). Call before the result is sent.
      */
     fun markToolResultReadThrough(name: String) {
-        mailToolCalledThisTurn = true
+        markReadThrough(READ_THROUGH_FLEET_WEB, tool = name)
         if (carriesReadThroughPastTurn(isNonBlockingTool(name), toolCalledThisTurn)) readThroughCarry = true
+    }
+
+    /**
+     * On turnComplete, after [LiveAudit.turnComplete]: the next turn starts read-through only when a
+     * NON_BLOCKING web result carried its mark across ([markToolResultReadThrough]), logged as
+     * `carry` in the new turn.
+     */
+    @VisibleForTesting
+    internal fun startNextTurnReadThrough() {
+        mailToolCalledThisTurn = readThroughCarry
+        if (readThroughCarry) audit.readThrough(READ_THROUGH_CARRY)
+        readThroughCarry = false
     }
 
     val isActive: Boolean get() = running.get() && !closed.get()
@@ -1619,7 +1640,7 @@ class GeminiLiveSession(
         // Round 3: the socket declares googleSearch, and a grounded answer reaches the model with no
         // functionCall, so no read-through tool name can catch it. First, so the transcript below
         // and any tool call after it in this turn already see the flag.
-        if (carriesWebResults(content)) mailToolCalledThisTurn = true
+        if (carriesWebResults(content)) markReadThrough(READ_THROUGH_GROUNDING)
         content.optJSONObject("inputTranscription")?.optString("text")?.let {
             if (it.isNotEmpty()) {
                 // Speech means a voice turn now: stop muting (see [typedTurnInFlight]).
@@ -1817,8 +1838,7 @@ class GeminiLiveSession(
             val refusedTool = refusalWatch.onTurnComplete(companionTurnText.toString())
             modelTurnStartedAtMs = 0L
             audit.turnComplete()
-            mailToolCalledThisTurn = readThroughCarry
-            readThroughCarry = false
+            startNextTurnReadThrough()
             toolCalledThisTurn = false
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
@@ -1929,7 +1949,7 @@ class GeminiLiveSession(
             // once dispatch returns - captureEpisodicTurn (below) checks this on turnComplete,
             // which can land before the owner's own dispatch/response round trip finishes in
             // some orderings, and the exclusion must hold regardless of that race.
-            if (isEpisodicExcludedTool(name)) mailToolCalledThisTurn = true
+            if (isEpisodicExcludedTool(name)) markReadThrough(name)
             // 2026-09-07: flagged for the same reason and at the same moment - what matters is
             // that the model ASKED for a tool, which is already proof this turn did something,
             // whatever the dispatch later returns.
@@ -3537,6 +3557,13 @@ class GeminiLiveSession(
 
     companion object {
         private const val TAG = "GeminiLiveSession"
+
+        // `read_through source=` values ([LiveAudit.readThrough]) for the marks that are not a tool's
+        // own name. TypedChat's engine logs [READ_THROUGH_FLEET_WEB] too.
+        internal const val READ_THROUGH_GROUNDING = "grounding"
+        internal const val READ_THROUGH_FLEET_WEB = "fleet_web"
+        internal const val READ_THROUGH_PROACTIVE = "proactive"
+        internal const val READ_THROUGH_CARRY = "carry"
 
         /**
          * Longest server message kept inside a [KeyHealth] detail from this class.

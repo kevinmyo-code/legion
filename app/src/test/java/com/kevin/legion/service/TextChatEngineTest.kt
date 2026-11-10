@@ -24,6 +24,7 @@ import org.robolectric.RobolectricTestRunner
 class TextChatEngineTest {
 
     private val sent = mutableListOf<JSONObject>()
+    private val marks = mutableListOf<Pair<String, String?>>()
 
     private fun text(t: String) = RestOutcome.Ok(
         JSONObject().put(
@@ -71,6 +72,7 @@ class TextChatEngineTest {
             isReadThrough = { it == "ask_mail" },
             toolTimeoutMs = { toolTimeoutMs },
             maxRounds = maxRounds,
+            onReadThrough = { source, tool -> marks += source to tool },
         )
     }
 
@@ -158,6 +160,7 @@ class TextChatEngineTest {
         )
         assertTrue(r.readThroughTouched)
         assertEquals(listOf("ask_mail" to true, "remember" to true), calls.map { it.first to it.third })
+        assertEquals(listOf("ask_mail" to null), marks)
     }
 
     /**
@@ -181,6 +184,7 @@ class TextChatEngineTest {
         )
         assertTrue(r.readThroughTouched)
         assertEquals(listOf("ask_fleet" to false, "remember" to true), calls.map { it.first to it.third })
+        assertEquals(listOf(GeminiLiveSession.READ_THROUGH_FLEET_WEB to "ask_fleet"), marks)
     }
 
     @Test
@@ -190,6 +194,7 @@ class TextChatEngineTest {
         )
         assertFalse(r.readThroughTouched)
         assertEquals(listOf("ask_fleet" to false, "remember" to false), calls.map { it.first to it.third })
+        assertTrue(marks.isEmpty())
     }
 
     @Test
