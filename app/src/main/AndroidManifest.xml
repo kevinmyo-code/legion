@@ -176,6 +176,8 @@
         <package android:name="com.spotify.music" />
         <!-- Matrix mode (ADR 0062, 2026-10-23): WhatsApp is a kept app when installed. -->
         <package android:name="com.whatsapp" />
+        <!-- ADR 0086: the email tool opens a draft in the Gmail app; without this, API 30+ hides it. -->
+        <package android:name="com.google.android.gm" />
         <!-- Retro-games ticket 03: the three emulators LEGION hands a game to; without these the
              "is it installed" check reads every one as missing on API 30+. -->
         <package android:name="com.retroarch.aarch64" />

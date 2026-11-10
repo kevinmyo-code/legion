@@ -206,6 +206,7 @@ object VoiceGuideData {
                 Entry(name = "ask_mail", say = "What did the insurance email say?", does = "Digs through your mail to answer a question.", hands = "Voice only - flagged as a decision conflict with ADR 0035, not yet resolved (command-center map, ruling 1)."),
                 Entry(name = "track_package", say = "Where's my package?", does = "Reads your most recent shipping email for the carrier, tracking number and delivery status. Always says which email and when it was sent, and that it's an estimate from the email text, not a live carrier lookup.", hands = "Home screen, package tile."),
                 Entry(name = "flight_status", say = "When's my flight?", does = "Checks your calendar first, since airlines usually put flights there automatically and that's exact. Falls back to your travel-confirmation email for anything the calendar doesn't have, and says plainly that's an estimate from the email, not a confirmed schedule.", hands = "Home screen, flight tile."),
+                Entry(name = "email", say = "Email Jane Roe that I'm running ten minutes late", does = "Writes the email as a draft in your Gmail and reads back who it's to, the subject and the gist. Say check it and Gmail opens on your phone; say send and it sends that draft, and says sent only once Gmail confirms. Anything else leaves the draft in Drafts. It never guesses an address: a name it can't pin to one address, it asks.", hands = "The Gmail app: Drafts, then edit or send it there yourself."),
             ),
         ),
         Group(
@@ -311,6 +312,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 141 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 141
+    /** Total entries across every group above - 142 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 142
 }

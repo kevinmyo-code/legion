@@ -43,7 +43,7 @@ object LogcatRedactor {
 
     /** `LiveToolbox.EPISODIC_EXCLUDED_TOOLS`, copied so this file stays pure; a test pins them equal. */
     val READ_THROUGH_TOOLS: Set<String> = setOf(
-        "search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status", "browser",
+        "search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status", "browser", "email",
     )
 
     /** Tags of classes that hold mail in memory. */

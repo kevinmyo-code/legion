@@ -110,6 +110,7 @@ READ_THROUGH_TOOLS = frozenset(
         "track_package",
         "flight_status",
         "browser",
+        "email",
     }
     | THIRD_PARTY_TOOLS
 )

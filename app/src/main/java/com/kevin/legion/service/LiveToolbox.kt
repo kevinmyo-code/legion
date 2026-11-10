@@ -824,6 +824,8 @@ object LiveToolbox {
         VaultToolbox.dispatch(context, name, args)?.let { return it }
         ClockToolbox.dispatch(context, name, args)?.let { return it }
         WatchesToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
+        // ADR 0086: draft, open and send email; send is gated on the user's own words (userText).
+        EmailToolbox.dispatch(context, name, args, userText)?.let { return it }
         // ADR 0085: a manage_item add/remove naming a proposed to-do answers it; null otherwise.
         OpenLoopsToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
@@ -1276,6 +1278,8 @@ object LiveToolbox {
         "claude_session",
         // alfred-ota ticket 06: action=install hands the APK to PackageInstaller.
         "app_update",
+        // ADR 0086: draft writes a Gmail draft, send sends it.
+        "email",
     )
 
     /**
@@ -1350,6 +1354,8 @@ object LiveToolbox {
     // this line, not a habit in `mailExtraction` itself, is what has to be right.
     val EPISODIC_EXCLUDED_TOOLS = setOf(
         "search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status", "browser",
+        // ADR 0086: a recipient lookup reads recent mail, and the read-back carries the draft.
+        "email",
     )
 
     /**

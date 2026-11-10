@@ -89,10 +89,13 @@ class GeminiLiveSessionEpisodicExclusionTest {
         //
         // SEVEN since 2026-11-03 (ADR 0071): `browser`. A web page is other people's words, read to
         // answer and dropped; the browser's own tool result carries page text, so the tool joins.
+        //
+        // EIGHT since 2026-11-10 (ADR 0086): `email`. A recipient lookup reads recent mail senders,
+        // and the read-back carries the draft Alfred wrote, so the tool's result stays out too.
         assertEquals(
             setOf(
                 "search_mail", "read_mail", "ask_mail", "get_sitrep",
-                "track_package", "flight_status", "browser",
+                "track_package", "flight_status", "browser", "email",
             ),
             LiveToolbox.EPISODIC_EXCLUDED_TOOLS,
         )
