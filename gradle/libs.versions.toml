@@ -13,11 +13,15 @@ material = "1.12.0"
 room = "2.8.4"
 composeBom = "2025.09.00"
 okhttp = "4.12.0"
-coroutines = "1.8.1"
+# 1.11.0 (2026-11-10, architecture review item 14): the catalog said 1.8.1 while Gradle already
+# resolved 1.11.0 through Readium/media3, so this states what is on the classpath. No runtime change.
+coroutines = "1.11.0"
 # WorkManager (books ticket 05, 2026-10-23): the PDF-to-EPUB conversion worker. Entered the build for that
 # ticket only; ScheduledBackup and the engine poll stay off it by their own rulings.
 work = "2.10.5"
-lifecycle = "2.8.0"
+# 2.10.0 (2026-11-10, architecture review item 14): same as coroutines above, the catalog said 2.8.0
+# while lifecycle-runtime already resolved 2.10.0 transitively. Now the pin is what ships.
+lifecycle = "2.10.0"
 # ADR 0084, "look at this": CameraX for the look screen's preview and ~1 fps frames. 1.4.2, the
 # last 1.4 stable on Google Maven (read 2026-11-10); 1.5+ was not tried against Kotlin 2.1.0.
 camerax = "1.4.2"
