@@ -7586,6 +7586,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   none is set; the viewer opens at once only when a LEGION screen is in front, otherwise a
   notification naming a count; phone copies kept 30 days. ADR 0080, branch
   `feat/claude-files-to-phone`.
+- **Ruled (Kevin, 2026-11-09, later that day):** delivered files stay app-private, not in
+  Downloads, as built. Kevin saves or sends one with Share. Shipped in release round 4.
 
 ## 2026-11-06 - Navigation quality: what NAV_AUDIT keeps, and TomTom retired (Kevin)
 
