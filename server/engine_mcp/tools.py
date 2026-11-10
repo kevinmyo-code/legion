@@ -2226,6 +2226,16 @@ def _show_diagram(request, args) -> ToolResult:
 # =============================================================================
 
 
+def _household_or_none(request):
+    """The caller's household for accounting, or None (accounting is then skipped)."""
+    from household.tenancy import household_of
+
+    try:
+        return household_of(request)
+    except Exception:  # noqa: BLE001 - a missing household must not fail the search
+        return None
+
+
 def _web_search(request, args) -> ToolResult:
     from demo import budget
     from engine_mcp import web_search
@@ -2234,6 +2244,12 @@ def _web_search(request, args) -> ToolResult:
     if not query:
         return refused("Nothing was searched. The search had no words in it.")
     user = getattr(request, "user", None)
+    # Q9: a member over their own daily cap (off unless LEGION_MEMBER_DAILY_CAP) searches nothing.
+    from llm import cap as member_cap
+    from llm import client as llm_client
+
+    if member_cap.over_cap(user):
+        return refused(member_cap.SEARCH_USED_UP)
     reservation = None
     if budget.counts(user):
         # Reserved before Google is asked (`demo/budget.py`).
@@ -2246,6 +2262,16 @@ def _web_search(request, args) -> ToolResult:
         if reservation is not None and exc.refused:
             budget.release(reservation)
         return failed(exc.message)
+    if member_cap.applies_to(user):
+        # Members only: a recruiter's search is counted by the demo budget, and a visit's
+        # household gets no row it did not ask for (`tests/test_recruiter_isolation.py`).
+        llm_client.record(
+            household=_household_or_none(request),
+            feature="web_search",
+            model=found.model,
+            usage=found.usage,
+            user=user,
+        )
     structured = {
         "query": query,
         "answer": found.answer,

@@ -3,6 +3,7 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import { AppErrorBoundary, RouteErrorScreen } from './components/error-screen'
 import './index.css'
 import { installReloadOnUpdate } from './lib/sw-reload'
 import { applyTheme, watchSystemTheme } from './lib/theme'
@@ -18,7 +19,9 @@ watchSystemTheme()
 // bundle, never over unsaved input (`lib/sw-reload.ts`).
 installReloadOnUpdate()
 
-const router = createRouter({ routeTree })
+// A route that throws shows a sentence and a retry, never a blank page or a stack
+// (architecture review 2026-11-10, item 5; `components/error-screen.tsx`).
+const router = createRouter({ routeTree, defaultErrorComponent: RouteErrorScreen })
 
 // Makes `<Link to="...">` and `useParams()` typed against the generated route
 // tree. Without it every route path is a bare string again, which is most of
@@ -45,8 +48,10 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 )

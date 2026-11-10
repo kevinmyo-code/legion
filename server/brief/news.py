@@ -45,6 +45,7 @@ from urllib.parse import urlparse
 from brief.compose import line, section
 from ingest import statements
 from ingest.drive import Response, Transport
+from llm.client import retrying
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,12 @@ TOPICS = (
 )
 MIN_ITEMS = 5
 MAX_ITEMS = 8
-TIMEOUT_SECONDS = 60
+# Engine runtime upgrade (architecture review 2026-11-10, item 3): this call runs
+# INSIDE `POST /api/brief/refresh`. At 60 s it tied the request's whole budget
+# (Cloud Run and gunicorn were both 60 s), so a slow model became a killed worker
+# and an HTML 502. 30 s, against a 300 s request ceiling, leaves the rest of the
+# brief and one retry room to finish and answer in words.
+TIMEOUT_SECONDS = 30
 
 # Gemini API pricing page (ai.google.dev/gemini-api/docs/pricing, last updated
 # 2026-10-22) for Gemini 3.5 Flash-Lite, standard paid tier: $0.30 per 1M
@@ -394,7 +400,9 @@ def build_news(
     key = key if key is not None else statements.gemini_key()
     if not key:
         return failed(NO_KEY)
-    send = transport or _transport
+    # Item 15: one retry on 429/5xx (never on a timeout) for the real transport; a test's
+    # injected transport is used as given.
+    send = transport or retrying(_transport, attempts=2)
     call_id = uuid.uuid4()
     model = statements.GEMINI_MODEL
     try:

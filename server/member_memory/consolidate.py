@@ -78,6 +78,7 @@ from devicelogs.models import REASON_CONVERSATION, DeviceLog
 from devicelogs.render import batch_text
 from ingest import statements
 from ingest.drive import _OPENER, Response, Transport
+from llm.client import retrying
 from member_memory.models import (
     DECAY_DURABLE,
     DECAY_EPISODIC,
@@ -481,7 +482,8 @@ def run(
     if not key:
         report.no_key = True
         return report
-    send = transport or _transport
+    # Item 15: a nightly job: up to three attempts per call on 429/5xx.
+    send = transport or retrying(_transport, attempts=3)
     for log in pending(household=household)[:limit]:
         outcome, written = consolidate_one(log, key=key, transport=send)
         report.read += 1

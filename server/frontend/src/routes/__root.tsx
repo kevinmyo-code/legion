@@ -1,5 +1,7 @@
 import { Outlet, createRootRoute } from '@tanstack/react-router'
 
+import { RouteErrorScreen } from '@/components/error-screen'
+
 /**
  * The shell every route renders inside, deliberately thin: `/login` needs
  * no chrome of its own, and `/_authed` (ticket 05's real navigation -
@@ -10,6 +12,9 @@ import { Outlet, createRootRoute } from '@tanstack/react-router'
 export const Route = createRootRoute({
   component: RootLayout,
   notFoundComponent: NotFound,
+  // Also set as the router's default in `main.tsx`; here so a router built from this tree
+  // anywhere (tests included) still never shows a raw error screen.
+  errorComponent: RouteErrorScreen,
 })
 
 function RootLayout() {

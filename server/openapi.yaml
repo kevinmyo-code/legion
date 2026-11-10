@@ -168,7 +168,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: 'Too many starts; nothing started. For a recruiter''s demo
-            visit, also: "Today''s demo budget is used up. Try again tomorrow."'
+            visit, also: "Today''s demo budget is used up. Try again tomorrow." For
+            a member with `LEGION_MEMBER_DAILY_CAP` set: today''s own spend limit
+            is used up.'
         '502':
           content:
             application/json:
@@ -4464,6 +4466,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: A run is going.
+  /api/config/models:
+    get:
+      operationId: api_config_models_retrieve
+      summary: The Gemini model ids clients should use
+      tags:
+      - config
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfig'
+          description: Every key always present. A client that cannot reach this,
+            or meets a key it does not know, uses its own bundled constant.
   /api/demo/asset/{kind}:
     get:
       operationId: api_demo_asset_retrieve
@@ -11872,8 +11891,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthError'
-          description: The database did not answer. The body carries psycopg's own
-            message.
+          description: The database did not answer. The body names the error's class
+            only; the full message is in the server log.
   /healthz:
     get:
       operationId: healthz_retrieve
@@ -11897,8 +11916,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthError'
-          description: The database did not answer. The body carries psycopg's own
-            message.
+          description: The database did not answer. The body names the error's class
+            only; the full message is in the server log.
 components:
   schemas:
     Accept:
@@ -15745,8 +15764,9 @@ components:
     HealthError:
       type: object
       description: |-
-        The 503 body. `detail` is psycopg's own message, verbatim - the
-        check says what it actually found rather than a generic failure.
+        The 503 body. `detail` names the failure's class only: psycopg's own
+        message can carry the database host and user, and this route is public, so
+        the message itself goes to the server log, never to the caller.
       properties:
         db:
           type: string
@@ -17340,6 +17360,26 @@ components:
       description: |-
         * `create` - create
         * `update` - update
+    ModelConfig:
+      type: object
+      properties:
+        live:
+          type: string
+          description: 'Gemini Live: the voice conversation (phone, head unit, web).'
+        text:
+          type: string
+          description: 'Cheap one-shot calls: sub-agents, the engine''s jobs.'
+        chat:
+          type: string
+          description: Typed chat, voice-note summaries, the sub-agent fallback.
+        schema_generator:
+          type: string
+          description: Rare, heavy structured generation.
+      required:
+      - chat
+      - live
+      - schema_generator
+      - text
     NetWorth:
       type: object
       properties:
