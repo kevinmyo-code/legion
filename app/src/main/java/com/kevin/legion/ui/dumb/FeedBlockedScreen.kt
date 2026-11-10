@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevin.legion.dumb.DumbFormat
@@ -101,6 +102,8 @@ internal fun FeedBlockedScreen(
     packageName: String,
     onBack: () -> Unit,
     onOpen: () -> Boolean,
+    /** "Breathe instead": box breathing in place of the app (Kevin, 2026-11-10). Null hides it. */
+    onBreathe: (() -> Unit)? = null,
 ) {
     // Remembered, not saved: a pending request is re-read from the wall clock when the screen is rebuilt.
     val ui = remember(packageName) { PassScreenState(pass, packageName, appLabel, onOpen) }
@@ -135,6 +138,7 @@ internal fun FeedBlockedScreen(
             onBack = onBack,
             onGrant = ui::grant,
             onAsk = ui::ask,
+            onBreathe = onBreathe,
         )
     }
 }
@@ -173,8 +177,23 @@ private fun PassButtons(
     onBack: () -> Unit,
     onGrant: () -> Unit,
     onAsk: () -> Unit,
+    onBreathe: (() -> Unit)?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (onBreathe != null) {
+            Text(
+                "Breathe instead",
+                color = DumbColors.text,
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 44.dp)
+                    .clickable(role = Role.Button, onClick = onBreathe)
+                    .padding(12.dp),
+            )
+        }
         if (canOpen) {
             PillButton("Open $appLabel for 15 minutes", onGrant, primary = false, modifier = Modifier.fillMaxWidth())
         }

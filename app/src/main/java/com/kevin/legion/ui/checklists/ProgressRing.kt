@@ -26,6 +26,7 @@ fun ProgressRing(
     strokeWidth: Dp = 4.dp,
     content: @Composable () -> Unit,
 ) {
+    val track = SoftColors.cardHighest
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
         if (fraction != null) {
             Canvas(Modifier.size(size)) {
@@ -33,7 +34,7 @@ fun ProgressRing(
                 val inset = stroke.width / 2f
                 val arcSize = Size(this.size.width - stroke.width, this.size.height - stroke.width)
                 drawArc(
-                    color = SoftColors.cardHighest,
+                    color = track,
                     startAngle = 0f,
                     sweepAngle = 360f,
                     useCenter = false,

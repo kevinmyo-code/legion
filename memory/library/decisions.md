@@ -7713,3 +7713,54 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   Recorded as the hands path rather than building a GitHub screen.
 - **Owed by Kevin:** create the token and the secret, set `LEGION_GITHUB_REPOS`, redeploy
   (`deploy/cloudrun/README.md`, "GitHub status").
+## 2026-11-09 - The phone's design language is Typeset (Kevin)
+
+- **Kevin's words:** *"i want typeset"*, picked from three clickable prototypes of one home and
+  conversation surface (Typeset, Matrix mono, City pop); then *"i need a way to open the app tray"*
+  (an "All apps" handle and a tray were added to the prototype); then *"build it"*.
+- **Ruled:** Typeset replaces soft Material (ADR 0051) as the phone's design language. ADR 0081
+  records it; 0051 is superseded. City pop stays dead and Matrix mono was not chosen; Matrix mode
+  itself is unchanged and stays reachable.
+- **Kept exactly as they are:** the ADR 0066 feed-blocker gate, the drawer's "blocked" mark, the
+  hands paths (ADR 0035), the home-app rules (ADR 0050, ADR 0062), Alfred's clock (ADR 0079), Quiet.
+- **Choices made in the build, not ruled:** the night edition is the default while bedtime is on;
+  the day/night switch lasts until the automatic answer next changes; the palette roles keep their
+  soft names behind `LocalSoftPalette`; accent is never a button fill.
+
+## 2026-11-10 - Typeset voice and cards: tap interrupts, typed asks get cards, provenance only when real (Kevin)
+
+- **Kevin's words:** *"123 yes to all per ur picks"*, answering the three open Phase B calls of the
+  Typeset build (ADR 0081).
+- **Ruled:**
+  1. **A tap while Alfred speaks interrupts him** (barge-in) so Kevin can talk, instead of ending
+     the conversation. It reuses ADR 0064's barge-in path (the same flush and "interrupted" event),
+     not a second one. **The Home button ends the conversation** (and clears its cards).
+  2. **Typed questions get the same answer cards as voice.**
+  3. **A card shows its source and age** ("Bank feed, 2 h ago") **only when the tool result or
+     record actually carries that provenance or timestamp.** Never inferred. With no data, no line.
+- **Recorded in:** ADR 0081 (section "Voice and cards"), cross-linked from ADR 0064.
+
+## 2026-11-10 - Box breathing and Field on the Typeset home (Kevin)
+
+- **Kevin's words:** *"box breathing. when i feel like scrolling or etc. i want to have a button to
+  press that opens up a box breathing gif in full screen."* and *"same for compass. add to ui
+  somewhere coherent."*
+- **Ruled:** both ship with Typeset (ADR 0081). Box breathing is a native full-screen Compose
+  animation in the Typeset style, not a GIF (assets are bundled, CLAUDE.md section 7): an ink dot
+  traces a square, in, hold, out, hold, 4 s each, the phase word and a count in Source Serif, the
+  screen stays on, a tap or Back ends it, reduced motion gets a fading square. It opens only when
+  Kevin taps: no streak, counter or nudge (the section 7 compulsion test). Hands only, no voice tool.
+- **Entry points, build choice:** home's contents line becomes two rows of three (Today, Money, Car /
+  Clock, Field, Breathe), and the blocked-feed screen offers "Breathe instead". Field is the screen
+  being built on `feat/field-nav` (compass, MGRS, waypoints, sun and moon); Typeset supplies its entry
+  point, the ink compass rose and a night-first spec (`C:\Users\kevin\.legion\reports\typeset-build.md`).
+
+## 2026-11-10 - Typeset shows 24-hour time; the masthead Home ends the conversation (Kevin, and a pick)
+
+- **Kevin's words:** *"i want 24 hr clock"*. Ruled: everywhere Typeset shows a time it is 24-hour
+  ("21:41", no AM/PM), whatever the phone's own setting. The app shipped both before; Typeset ends
+  that on its surfaces.
+- **A pick, not his words** (the coordinator's, Kevin had no preference): "the Home button ends the
+  conversation" (ADR 0081, 2026-11-10) means the masthead's Home link on the Typeset front page. The
+  Android Home key or gesture only returns to the front page and keeps the answers reachable until
+  they are cleared.

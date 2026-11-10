@@ -21,6 +21,7 @@ import com.kevin.legion.navigation.NavState
 import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftDarkPalette
 
 // The top of the guiding screen: the turn banner, the "Then:" strip and the muted tag.
 
@@ -53,7 +54,9 @@ internal fun TurnBanner(nav: NavState) {
                 turn != null -> turn.text
                 else -> "Waiting for the first instruction"
             }
-            Text(big, style = MaterialTheme.typography.headlineLarge, color = SoftColors.text)
+            // On the area accent's own fixed dark container, so the light text it was designed with,
+            // not the edition's ink (ink on dark teal is unreadable on the day edition, ADR 0081).
+            Text(big, style = MaterialTheme.typography.headlineLarge, color = SoftDarkPalette.text)
             Text(
                 small,
                 style = MaterialTheme.typography.titleMedium,

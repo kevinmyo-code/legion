@@ -20,6 +20,14 @@ sealed class ConversationCard {
     abstract val period: String?
     abstract val note: String?
 
+    /**
+     * Where the card's data came from and how old it is, ONLY when the tool's result or record
+     * carries it (Kevin, 2026-11-10, ADR 0081): a live read stamps its own read time, a ledger
+     * report its coverage date. Never inferred from a tool's name; null draws no line. Display
+     * only: not part of the shared wire format ([CardJson]).
+     */
+    abstract val provenance: CardProvenance?
+
     /** `unit` is "usd" (values are Long cents) or "" (counts). At most [MAX_POINTS] points. */
     data class Bars(
         override val title: String,
@@ -29,6 +37,7 @@ sealed class ConversationCard {
         override val scope: String? = null,
         override val period: String? = null,
         override val note: String? = null,
+        override val provenance: CardProvenance? = null,
     ) : ConversationCard() {
         override val kind: String get() = "bars"
     }
@@ -43,6 +52,7 @@ sealed class ConversationCard {
         override val scope: String? = null,
         override val period: String? = null,
         override val note: String? = null,
+        override val provenance: CardProvenance? = null,
     ) : ConversationCard() {
         override val kind: String get() = "timeline"
     }
@@ -61,6 +71,7 @@ sealed class ConversationCard {
         override val period: String? = null,
         /** Words about the card as a whole that belong to no part (the mileage caveat). */
         val extraNote: String? = null,
+        override val provenance: CardProvenance? = null,
     ) : ConversationCard() {
         override val kind: String get() = "car"
 
@@ -81,6 +92,7 @@ sealed class ConversationCard {
         override val scope: String? = null,
         override val period: String? = null,
         override val note: String? = null,
+        override val provenance: CardProvenance? = null,
     ) : ConversationCard() {
         override val kind: String get() = "steps"
     }
@@ -93,6 +105,7 @@ sealed class ConversationCard {
         override val scope: String? = null,
         override val period: String? = null,
         override val note: String? = null,
+        override val provenance: CardProvenance? = null,
     ) : ConversationCard() {
         override val kind: String get() = "checklist"
     }
@@ -105,6 +118,12 @@ sealed class ConversationCard {
         const val MAX_TIMELINE = 12
     }
 }
+
+/**
+ * A card's provenance, each part only when the data carries it: [source] names where it was read
+ * ("OBD port"), [readAtMs] is when a live read ran, [throughMs] the date the data covers up to.
+ */
+data class CardProvenance(val source: String? = null, val readAtMs: Long? = null, val throughMs: Long? = null)
 
 /** Why a figure is not plain fact. Always rendered in words, never colour alone. */
 enum class CardFlag(val wire: String, val words: String) {

@@ -65,6 +65,11 @@ class DumbBounceActivity : ComponentActivity() {
                         graph.feedPass.cancelRequest(packageName)
                         finish()
                     },
+                    onBreathe = {
+                        graph.feedPass.cancelRequest(packageName)
+                        com.kevin.legion.ui.typeset.BreathActivity.start(this)
+                        finish()
+                    },
                     onOpen = {
                         val launch = packageManager.getLaunchIntentForPackage(packageName)
                             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

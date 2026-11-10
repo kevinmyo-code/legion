@@ -1,8 +1,9 @@
 ---
-status: accepted
+status: superseded
 decided: 2026-09-27
 decided-by: Kevin
 supersedes: [0023-design-language-mission-control]
+superseded-by: [0081-design-language-typeset]
 source: "[[decisions#2026-09-27 - HOME becomes a launcher, and the phone's look goes soft]]"
 tags: [adr]
 ---
@@ -10,6 +11,9 @@ tags: [adr]
 # 51. Design language: soft Material
 
 ## Standing
+
+**SUPERSEDED 2026-11-09 by [[0081-design-language-typeset]]** (Kevin picked Typeset). The text
+below is kept as it was decided.
 
 ACCEPTED, BUILT for the first surfaces and converting the rest as each is touched (`.scratch/home-launcher/`: shell chrome `c429820d`, Lists `51a1dd97`, HOME `09e9236f`, Money page `093a2f17`, all on `dev`). The phone's design language is a soft,
 dark Material look. It supersedes [[0023-design-language-mission-control]] **surface by surface**:

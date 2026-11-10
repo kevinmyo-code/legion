@@ -1,8 +1,11 @@
 package com.kevin.legion.ui.theme.soft
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,13 +21,31 @@ import com.kevin.legion.ui.theme.pickSemantics
 /**
  * Corner radii ticket 02 names: small 10dp, medium 16dp, large 20dp, extraLarge 24dp. `extraSmall`
  * is left at Material 3's own default (4dp) - nothing named by the ticket reaches for it, and this
- * ticket restyles the shell chrome, not the whole shape scale.
+ * ticket restyles the shell chrome, not the whole shape scale. Kept for soft screens under Matrix
+ * mode (ADR 0081).
  */
-private val SoftShapes = Shapes(
+private val SoftRoundedShapes = Shapes(
     small = RoundedCornerShape(10.dp),
     medium = RoundedCornerShape(16.dp),
     large = RoundedCornerShape(20.dp),
     extraLarge = RoundedCornerShape(24.dp),
+)
+
+/** A zero-radius corner: Typeset's one shape. */
+internal val SquareCorners = RoundedCornerShape(0.dp)
+
+/**
+ * Typeset is square (ADR 0081): every Material shape role has 0dp corners ([Shapes] takes a
+ * corner-based shape, so a zero rounded corner rather than `RectangleShape`). Round things stay
+ * round where they are drawn (`CircleShape` for the orb and status dots); a screen that hard-codes
+ * its own `RoundedCornerShape` keeps it until that screen is restyled.
+ */
+private val TypesetShapes = Shapes(
+    extraSmall = SquareCorners,
+    small = SquareCorners,
+    medium = SquareCorners,
+    large = SquareCorners,
+    extraLarge = SquareCorners,
 )
 
 /**
@@ -66,64 +87,64 @@ private val SoftShapes = Shapes(
  * already uses ("nudged +1 in blue"), just applied to more slots because this scheme carries a
  * larger, newer surface-container ladder than VACUUM/SENTRY's did.
  */
-internal val SoftColorScheme = darkColorScheme(
-    primary = SoftColors.primary,
-    onPrimary = SoftColors.ground,
-    primaryContainer = SoftColors.primaryContainer,
-    onPrimaryContainer = SoftColors.onPrimaryContainer,
+internal fun softDarkColorScheme(p: SoftPalette) = darkColorScheme(
+    primary = p.primary,
+    onPrimary = p.ground,
+    primaryContainer = p.primaryContainer,
+    onPrimaryContainer = p.onPrimaryContainer,
     // Placeholder - nothing in this ticket reaches for an inverse accent. Nudged off `outline`
     // (+1 in blue: 0x3A3E47 -> 0x3A3E48) purely to stay distinct from every role below.
     inversePrimary = Color(0xFF3A3E48),
 
     // Secondary is deliberately NOT a second accent (mirrors `Theme.kt`'s own `secondary = DeckFaint`
     // posture) - a muted neutral, since nothing named by ticket 02 spends a second hue.
-    secondary = SoftColors.text2,
-    onSecondary = SoftColors.ground,
+    secondary = p.text2,
+    onSecondary = p.ground,
     // Placeholder, manufactured (no real token behind it) - only required to exist and differ from
     // every other role here.
     secondaryContainer = Color(0xFF242730),
-    onSecondaryContainer = SoftColors.text2,
+    onSecondaryContainer = p.text2,
 
     // Tertiary borrows `caution` as its placeholder value - a real token, reused here only because
     // M3 requires SOME third accent and nothing in this ticket spends one on purpose.
-    tertiary = SoftColors.caution,
-    onTertiary = SoftColors.ground,
+    tertiary = p.caution,
+    onTertiary = p.ground,
     // Placeholder, manufactured, same posture as `secondaryContainer` above.
     tertiaryContainer = Color(0xFF2A2D37),
-    onTertiaryContainer = SoftColors.caution,
+    onTertiaryContainer = p.caution,
 
-    background = SoftColors.ground,
-    onBackground = SoftColors.text,
+    background = p.ground,
+    onBackground = p.text,
 
-    surface = SoftColors.card,
-    onSurface = SoftColors.text,
+    surface = p.card,
+    onSurface = p.text,
 
-    surfaceVariant = SoftColors.cardHigh,
-    onSurfaceVariant = SoftColors.text2,
+    surfaceVariant = p.cardHigh,
+    onSurfaceVariant = p.text2,
 
     // M3 convention, not a hazard: `surfaceTint` is never itself queried as a `contentColorFor`
     // input, so mirroring `primary` here (the standard M3 baseline behaviour) is intentional reuse,
     // not a collision.
-    surfaceTint = SoftColors.primary,
+    surfaceTint = p.primary,
 
     // Inverted surface: light fill, dark content - already distinct from every dark role above by
     // raw value.
-    inverseSurface = SoftColors.text,
-    inverseOnSurface = SoftColors.ground,
+    inverseSurface = p.text,
+    inverseOnSurface = p.ground,
 
     // `error` and `onErrorContainer` deliberately share ONE token (`onAlert`) - see this token's own
     // doc comment on `SoftColors`: "text on [alertContainer]; also alert-coloured text sitting
     // directly on card". Both jobs are the same physical colour by design, matching `Theme.kt`'s
     // own `credit`/`debit` precedent for an intentional, documented reuse.
-    error = SoftColors.onAlert,
-    onError = SoftColors.ground,
-    errorContainer = SoftColors.alertContainer,
-    onErrorContainer = SoftColors.onAlert,
+    error = p.onAlert,
+    onError = p.ground,
+    errorContainer = p.alertContainer,
+    onErrorContainer = p.onAlert,
 
-    outline = SoftColors.outline,
+    outline = p.outline,
     // Reused, not a placeholder: `barRule` is already a hairline colour by design (the rule above
     // the talk bar), and `outlineVariant` is never itself a `contentColorFor` input.
-    outlineVariant = SoftColors.barRule,
+    outlineVariant = p.barRule,
 
     // Placeholder - scrim is rarely rendered by anything this ticket builds. Nudged off
     // `cardHighest` (+1 in blue) to stay distinct.
@@ -131,8 +152,8 @@ internal val SoftColorScheme = darkColorScheme(
 
     // The lightest/dimmest ends of the card ladder map onto M3's bright/dim roles directly - both
     // are real tokens, not manufactured.
-    surfaceBright = SoftColors.cardHighest,
-    surfaceDim = SoftColors.barLow,
+    surfaceBright = p.cardHighest,
+    surfaceDim = p.barLow,
 
     // The five-tier surfaceContainer ladder: nothing this ticket builds reaches for these roles by
     // name (StatusLine/AssistantStrip read `SoftColors` tokens directly), so each is a nudge (+1 in
@@ -144,6 +165,9 @@ internal val SoftColorScheme = darkColorScheme(
     surfaceContainerHigh = Color(0xFF23262E),
     surfaceContainerHighest = Color(0xFF24272F),
 )
+
+/** The soft scheme over [SoftDarkPalette], the values `SoftThemeTest` audits. */
+internal val SoftColorScheme = softDarkColorScheme(SoftDarkPalette)
 
 
 /**
@@ -171,21 +195,24 @@ val LocalSoftActive = staticCompositionLocalOf { false }
  *   estimate stay different hues, as the mission-control pair did.
  * `internal` so `SoftThemeTest` can read it.
  */
-internal val SoftSemantics = LegionSemantics(
-    credit = SoftColors.good,
-    debit = SoftColors.text,
-    estimated = SoftColors.caution,
-    quarantined = SoftColors.onAlert,
-    rule = SoftColors.barRule,
-    ruleFaint = SoftColors.cardHigh,
-    faint = SoftColors.text2,
-    ghost = SoftColors.text3,
-    chrome = SoftColors.primary,
-    chromeText = SoftColors.onPrimaryContainer,
-    chromeDim = SoftColors.primaryContainer,
-    marker = SoftColors.primary,
-    data = SoftColors.text,
+internal fun softSemantics(p: SoftPalette) = LegionSemantics(
+    credit = p.good,
+    debit = p.text,
+    estimated = p.caution,
+    quarantined = p.onAlert,
+    rule = p.barRule,
+    ruleFaint = p.cardHigh,
+    faint = p.text2,
+    ghost = p.text3,
+    chrome = p.primary,
+    chromeText = p.onPrimaryContainer,
+    chromeDim = p.primaryContainer,
+    marker = p.primary,
+    data = p.text,
 )
+
+/** [softSemantics] over [SoftDarkPalette]. */
+internal val SoftSemantics = softSemantics(SoftDarkPalette)
 
 /**
  * Wraps the chrome ticket 02 converted (`StatusLine`, `AssistantStrip`), HOME, Lists, Apps, and every
@@ -194,7 +221,14 @@ internal val SoftSemantics = LegionSemantics(
  * theme at each converted call site, not a replacement for it at the root - `MaterialTheme` and the
  * locals below are CompositionLocal providers, so a nested one overrides for its own subtree only.
  *
- * Also provides [LocalLegionSemantics] = [SoftSemantics] and [LocalSoftActive] = true, which is what
+ * **Typeset (ADR 0081).** Outside Matrix mode the look is the Typeset edition ([softLook]): paper
+ * and ink by day, cream on warm black by night, chosen by [LocalTypesetEdition] (the activity's
+ * [ProvideTypesetEdition]) or, where nothing provides one, the phone's own dark theme. It provides
+ * [LocalSoftPalette] too, so every `SoftColors.x` read under it follows the edition. Under Matrix
+ * mode soft screens keep exactly their old look: [SoftDarkPalette] behind `SoftColors`, Matrix's
+ * scheme and semantics on top, Figtree type, rounded shapes.
+ *
+ * Also provides [LocalLegionSemantics] (the look's semantics) and [LocalSoftActive] = true, which is what
  * turns the shared `ui/common` primitives (`DeckPane`, `DeckScreenHeader`, `DeckRow`, ...) and
  * `LegionType.amount/reading/stamp` soft.
  *
@@ -212,21 +246,55 @@ internal val SoftSemantics = LegionSemantics(
  * 5. Use `MsIcon` with `res/drawable/ms_*` for glyphs, not "<" text arrows.
  * 6. Trust wording stays in words: estimate, UNRECONCILED/unverified and quarantine render as text
  *    beside the number, never colour alone, never collapsed behind a `HelpRow`.
- * 7. Hand-built cards and chips use `MaterialTheme.shapes` (16/20dp) and `SoftColors.card/cardHigh`,
- *    not 1dp borders or bezels.
+ * 7. Hand-built cards and chips use `MaterialTheme.shapes` (square under Typeset, 16/20dp under
+ *    Matrix) and `SoftColors.card/cardHigh`, not 1dp borders or bezels.
  */
 @Composable
 fun SoftTheme(content: @Composable () -> Unit) {
     val matrix = LocalMatrixMode.current
+    val look = softLook(matrix, LocalTypesetEdition.current ?: systemEdition())
     CompositionLocalProvider(
-        LocalLegionSemantics provides pickSemantics(matrix, SoftSemantics),
+        LocalSoftPalette provides look.palette,
+        LocalLegionSemantics provides look.semantics,
         LocalSoftActive provides true,
     ) {
         MaterialTheme(
-            colorScheme = pickColorScheme(matrix, SoftColorScheme),
-            typography = SoftTypography,
-            shapes = SoftShapes,
+            colorScheme = look.scheme,
+            typography = look.typography,
+            shapes = look.shapes,
             content = content,
         )
     }
+}
+
+/** The edition when no activity resolved one (previews, screenshot tests): the phone's own theme. */
+@Composable
+private fun systemEdition(): TypesetEdition =
+    if (isSystemInDarkTheme()) TypesetEdition.NIGHT else TypesetEdition.DAY
+
+/** What [SoftTheme] provides: the palette behind `SoftColors`, the Material scheme, the semantics. */
+internal data class SoftLook(
+    val palette: SoftPalette,
+    val scheme: ColorScheme,
+    val semantics: LegionSemantics,
+    val typography: Typography,
+    val shapes: Shapes,
+)
+
+/**
+ * Pure choice of look (ADR 0081). Matrix mode keeps exactly the look soft screens had before
+ * Typeset: the soft-dark palette behind `SoftColors`, with Matrix's scheme and semantics on top.
+ * Otherwise the Typeset edition: paper by day, cream on warm black by night, set in Source Serif 4, square.
+ */
+internal fun softLook(matrix: Boolean, edition: TypesetEdition): SoftLook = when {
+    matrix -> SoftLook(
+        SoftDarkPalette, pickColorScheme(true, SoftColorScheme), pickSemantics(true, SoftSemantics),
+        SoftFigtreeTypography, SoftRoundedShapes,
+    )
+    edition == TypesetEdition.DAY -> SoftLook(
+        TypesetDayPalette, TypesetDayScheme, TypesetDaySemantics, SoftTypography, TypesetShapes,
+    )
+    else -> SoftLook(
+        TypesetNightPalette, TypesetNightScheme, TypesetNightSemantics, SoftTypography, TypesetShapes,
+    )
 }
