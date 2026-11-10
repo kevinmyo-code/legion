@@ -39,6 +39,7 @@ internal class LiveAudit(
     private val toolNames = HashMap<String, String>()
     private var readThroughToolThisTurn = false
     private var redactionLoggedThisTurn = false
+    private val readThroughLoggedThisTurn = HashSet<String>()
 
     /**
      * [pack] is the Alfred pack the session's prompt was built from, `<version>/<remote|cache|bundled>`
@@ -103,6 +104,20 @@ internal class LiveAudit(
     fun toolCancelled(id: String) =
         emit("tool_cancelled id=${token(id)} name=${token(toolNames[id] ?: "unknown")}")
 
+    /**
+     * The turn was just marked read-through (`remember` refused for the rest of it), and why:
+     * [source] is the read-through tool's name, `grounding` (the Live model's own Google Search),
+     * `fleet_web` (a sub-agent behind [tool] got web text back, [com.kevin.legion.ai.WebReadMark]),
+     * `proactive` (a timed raise carrying third-party text) or `carry` (a NON_BLOCKING web result
+     * spoken in this turn, marked in the last). Names only: never a query, URL or any content. Once
+     * per source and tool per turn: grounding metadata can ride on many messages of one turn.
+     */
+    @Synchronized
+    fun readThrough(source: String, tool: String? = null) {
+        val line = "read_through source=${token(source)}" + (tool?.let { " tool=${token(it)}" } ?: "")
+        if (readThroughLoggedThisTurn.add(line)) emit(line)
+    }
+
     /** Logs the turn's end, then clears the per-turn read-through state. */
     @Synchronized
     fun turnComplete() {
@@ -137,6 +152,7 @@ internal class LiveAudit(
     private fun resetTurn() {
         readThroughToolThisTurn = false
         redactionLoggedThisTurn = false
+        readThroughLoggedThisTurn.clear()
     }
 
     private fun emit(line: String) {

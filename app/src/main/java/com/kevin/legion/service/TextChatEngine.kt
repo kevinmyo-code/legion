@@ -92,6 +92,9 @@ class TextChatEngine(
     private val toolTimeoutMs: (String) -> Long = { DEFAULT_TOOL_TIMEOUT_MS },
     private val maxRounds: Int = MAX_ROUNDS,
     private val budgetMs: Long = BUDGET_MS,
+    // A LIVE_AUDIT `read_through` line each time the turn is marked read-through
+    // ([TypedChatAudit.readThrough]): the tool's name, or `fleet_web` with the tool behind it.
+    private val onReadThrough: (source: String, tool: String?) -> Unit = { _, _ -> },
 ) {
     /** Per-turn state, kept outside the budget timeout so a timed-out turn can still report its writes. */
     private class TurnState {
@@ -182,7 +185,10 @@ class TextChatEngine(
         executor: TextToolExecutor,
         state: TurnState,
     ): JSONObject {
-        if (isReadThrough(call.name)) state.readThrough = true
+        if (isReadThrough(call.name)) {
+            state.readThrough = true
+            onReadThrough(call.name, null)
+        }
         var confirmedOutcome = false
         // Round 3: web text a sub-agent behind this call got back (ask_fleet's web_lookup) makes the
         // rest of the turn read-through too, exactly as a read-through tool does.
@@ -200,7 +206,10 @@ class TextChatEngine(
             // The voice path's own wording for a thrown tool; the model is told in words.
             JSONObject().put("success", false).put("message", "Something went wrong running that.")
         }
-        if (webRead.touched) state.readThrough = true
+        if (webRead.touched) {
+            state.readThrough = true
+            onReadThrough(GeminiLiveSession.READ_THROUGH_FLEET_WEB, call.name)
+        }
         if (isMutating(call.name, call.args)) {
             when {
                 confirmedOutcome && response.optBoolean("success", false) -> state.writesDone.add(call.name)

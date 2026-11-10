@@ -23,10 +23,17 @@ the free-text field always last, JSON-quoted, capped at 400 characters with a ".
     turn_complete | interrupted source=<server|barge_in> | activity_start | activity_end
     mic_open reason=<first_open|turn_handback> | mic_closed reason=<half_duplex|park|session_end|superseded>
     nudge reason=<still_checking|late_holding_line|empty_holding_line> tool=<name|none> [after_ms=<n>]
+    read_through source=<tool name|grounding|fleet_web|proactive|carry> [tool=<name>]
 
 A nudge is a system note the phone sent the model (async-lookups ticket 07): still_checking when a
 lookup has run 4 s (and again at 12 s), late_holding_line when a turn after a lookup's result was only
 a holding line, empty_holding_line when a turn was only a holding line with no tool behind it.
+
+read_through is the turn being marked as having read third-party text, so a `remember` in it is
+refused (round 3): the read-through tool's name, grounding (the Live model's own Google Search),
+fleet_web with the tool a sub-agent behind it read the web for (web_lookup), proactive (a timed raise
+such as the sitrep) or carry (a WHEN_IDLE web answer spoken in the turn after it was marked). Once
+per source per turn. Names only, never the query, URL or text.
 
 A turn that ran a mail tool (LiveToolbox.EPISODIC_EXCLUDED_TOOLS) logs its assistant speech as one
 text="[redacted: third-party content]" line, and that tool's result as
@@ -498,6 +505,9 @@ def _items(events, verbose):
         elif event == "nudge":
             after = f" after {fields['after_ms']}ms" if "after_ms" in fields else ""
             items.append((time, "nudge", f"{fields.get('reason', '?')} {fields.get('tool', 'none')}{after}", None))
+        elif event == "read_through":
+            tool = f" {fields['tool']}" if "tool" in fields else ""
+            items.append((time, "event", f"read-through ({fields.get('source', '?')}{tool})", None))
         elif event == "mic_open":
             items.append((time, "event", f"mic open ({fields.get('reason', '')})", None))
         elif event == "mic_closed":

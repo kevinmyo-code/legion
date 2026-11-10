@@ -10,6 +10,7 @@ goal-plan constraint at all; a procedure step's third-party read taints its own 
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -242,6 +243,30 @@ def test_run_engine_tool_flags_a_third_party_tool_before_its_handler(household_u
     engine_tools.run_tool(request, "brief_latest", {})
     assert read_through.read_third_party(request)
     assert read_through.remember_refusal(request, "anything") == read_through.REFUSAL
+
+
+def _read_through_lines(caplog):
+    return [r.getMessage() for r in caplog.records if r.getMessage().startswith("read_through")]
+
+
+def test_a_web_turn_logs_read_through_with_the_source_and_no_content(household_user, caplog):
+    caplog.set_level(logging.INFO, logger="assistant.read_through")
+    web = browser(household_user)
+    conversation = _mint(web)
+    _tool(web, "web_search", {"query": "example private query"}, conversation, turn=0)
+    assert _read_through_lines(caplog) == ["read_through source=web_search"]
+    logged = " ".join(r.getMessage() for r in caplog.records if r.name == "assistant.read_through")
+    for content in ("example private query", "Example Motors", "example.com", conversation):
+        assert content not in logged
+
+
+def test_each_door_logs_read_through_and_other_tools_log_nothing(household_user, caplog):
+    caplog.set_level(logging.INFO, logger="assistant.read_through")
+    request = SimpleNamespace(user=household_user, path="/mcp", auth=None)
+    engine_tools.run_tool(request, "legion_docs", {"query": "reconciliation gate"})
+    assert _read_through_lines(caplog) == []
+    engine_tools.run_tool(request, "brief_latest", {})
+    assert _read_through_lines(caplog) == ["read_through source=brief_latest"]
 
 
 def test_the_third_party_set_is_what_the_module_doc_says():

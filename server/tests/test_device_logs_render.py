@@ -71,6 +71,18 @@ def test_the_engine_copy_of_voice_audit_matches_the_repo_tool():
     assert copy.read_bytes().replace(b"\r\n", b"\n") == tool.read_bytes().replace(b"\r\n", b"\n")
 
 
+def test_the_voice_audit_renders_read_through_lines():
+    from devicelogs import voice_audit
+
+    lines = [
+        "11-09 10:00:00.000  0  2 I LIVE_AUDIT: read_through source=grounding",
+        "11-09 10:00:01.000  0  2 I LIVE_AUDIT: read_through source=fleet_web tool=ask_fleet",
+    ]
+    out = " | ".join(voice_audit.timeline(lines))
+    assert "read-through (grounding)" in out
+    assert "read-through (fleet_web ask_fleet)" in out
+
+
 @pytest.mark.django_db
 def test_the_read_command_renders_a_conversation_batch(token_a, capsys):
     body = {
