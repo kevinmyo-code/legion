@@ -598,7 +598,7 @@ class LiveSessionController(context: Context) {
         when {
             // Nothing live: open a short-lived speak-only session for this line. The one door a
             // raise has to a socket (2026-11-05: nothing is held open for it in advance).
-            s == null -> startProactive(prompt, userInitiated)
+            s == null -> startProactive(prompt, userInitiated, carriesReadThroughContent)
             // Mid-conversation: fold the line into the ongoing turn flow (rare).
             // The segment is already active from when the conversation started.
             //
@@ -900,9 +900,13 @@ class LiveSessionController(context: Context) {
     }
 
     /** Cold start a speak-only proactive session (no warm socket existed). */
-    private fun startProactive(prompt: String, userInitiated: Boolean = false) {
+    private fun startProactive(prompt: String, userInitiated: Boolean = false, readThrough: Boolean = false) {
         val s = newSession()
         session = s
+        // The mark in requestSpeak landed on no session (cold). Mark the one that carries the line,
+        // or a read-through raise's words (the wake-up brief's newsletters, ADR 0082) reach the
+        // conversation and memory audits unredacted - the same re-mark speakAndListen does.
+        if (readThrough) s.markTurnReadThrough()
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = prompt
         pendingSpeakUserInitiated = userInitiated

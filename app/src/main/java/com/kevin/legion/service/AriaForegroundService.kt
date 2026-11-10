@@ -807,7 +807,9 @@ class AriaForegroundService : Service() {
                     ArrivalController.onArrived(this@AriaForegroundService, place)
                 }
                 // ADR 0082: the home brief needs proof he was away; leaving home is that proof.
-                if (initialized && lastPlace == HomeBrief.HOME_LABEL && place != HomeBrief.HOME_LABEL) {
+                // A lost fix reads as "no place" too; only a real fix away from home counts.
+                val leftHome = lastPlace == HomeBrief.HOME_LABEL && place != HomeBrief.HOME_LABEL
+                if (initialized && leftHome && LocationController.state.value != null) {
                     HomeBrief.noteLeftHome(this@AriaForegroundService)
                 }
                 lastPlace = place
