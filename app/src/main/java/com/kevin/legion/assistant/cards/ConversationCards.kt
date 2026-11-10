@@ -10,6 +10,8 @@ data class ConversationCardsState(
     val open: Boolean = false,
     val cards: List<ConversationCard> = emptyList(),
     val dismissed: Boolean = false,
+    /** A typed ask opened this stack: a voice conversation ending does not clear it. */
+    val typed: Boolean = false,
 ) {
     /** The card on screen: the newest one, unless Kevin dismissed it. */
     val latest: ConversationCard? get() = if (dismissed) null else cards.lastOrNull()
@@ -21,12 +23,13 @@ data class ConversationCardsState(
  * build). Display-only: never persisted, never synced.
  *
  * Lifecycle, driven by [com.kevin.legion.service.LiveSessionController]:
- * - [begin] when a voice conversation starts. A card published while no conversation is open (a
- *   typed-chat tool call, a background read) is dropped, so a card never lingers on the strip with
- *   no conversation to end it.
+ * - [begin] when a voice conversation starts, [beginTyped] when a typed question is sent: typed
+ *   questions get the same cards as voice (Kevin, 2026-11-10, ADR 0081). A card published while
+ *   neither is open (a background read) is dropped, so a card never lingers with nothing to end it.
  * - [publish] from a tool's own result, inside the tool.
  * - [dismiss] when Kevin closes the card; the next card shows again.
- * - [end] when the conversation ends: everything is cleared.
+ * - [endVoice] when a voice conversation ends: cleared, unless a typed ask opened the stack.
+ * - [end] for the Home button, a new conversation or a crisis: everything is cleared.
  *
  * A car card for the same car as the newest card merges into it ([mergeCar]), so get_next_service,
  * check_recalls and get_codes in one answer build one car rather than three.
@@ -40,6 +43,11 @@ object ConversationCards {
 
     fun begin() {
         _state.update { if (it.open) it else ConversationCardsState(open = true) }
+    }
+
+    /** A typed question was sent: open the stack (or keep it) and mark it as a typed ask's. */
+    fun beginTyped() {
+        _state.update { if (it.open) it.copy(typed = true) else ConversationCardsState(open = true, typed = true) }
     }
 
     fun publish(card: ConversationCard) {
@@ -61,6 +69,11 @@ object ConversationCards {
 
     fun end() {
         _state.value = ConversationCardsState()
+    }
+
+    /** A voice conversation ended. A typed ask's cards stay until the Home button or a new chat. */
+    fun endVoice() {
+        _state.update { if (it.typed) it else ConversationCardsState() }
     }
 
     /**
