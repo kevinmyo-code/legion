@@ -7581,3 +7581,16 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Choices made in the build, not ruled:** the night edition is the default while bedtime is on;
   the day/night switch lasts until the automatic answer next changes; the palette roles keep their
   soft names behind `LocalSoftPalette`; accent is never a button fill.
+
+## 2026-11-10 - Typeset voice and cards: tap interrupts, typed asks get cards, provenance only when real (Kevin)
+
+- **Kevin's words:** *"123 yes to all per ur picks"*, answering the three open Phase B calls of the
+  Typeset build (ADR 0081).
+- **Ruled:**
+  1. **A tap while Alfred speaks interrupts him** (barge-in) so Kevin can talk, instead of ending
+     the conversation. It reuses ADR 0064's barge-in path (the same flush and "interrupted" event),
+     not a second one. **The Home button ends the conversation** (and clears its cards).
+  2. **Typed questions get the same answer cards as voice.**
+  3. **A card shows its source and age** ("Bank feed, 2 h ago") **only when the tool result or
+     record actually carries that provenance or timestamp.** Never inferred. With no data, no line.
+- **Recorded in:** ADR 0081 (section "Voice and cards"), cross-linked from ADR 0064.

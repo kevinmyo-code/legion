@@ -47,6 +47,20 @@ conversation surface (Typeset, Matrix mono, City pop) and picked Typeset: *"i wa
 - Tokens stay in `ui/theme/soft/` under their existing role names, now behind a CompositionLocal
   (`LocalSoftPalette`), so one provider reaches every screen that reads them.
 
+## Voice and cards (Kevin, 2026-11-10)
+
+Ruled with *"123 yes to all per ur picks"*
+([[decisions#2026-11-10 - Typeset voice and cards: tap interrupts, typed asks get cards, provenance only when real (Kevin)]]):
+
+- **A tap while Alfred speaks interrupts him** so Kevin can talk. It reuses the barge-in path of
+  [[0064-phone-turn-taking-local-end-of-turn-and-barge-in]] (the same flush of queued speech and
+  the same "interrupted" event), never a second one. A tap while he is not speaking keeps today's
+  meaning. **The Home button ends the conversation** and clears its cards.
+- **Typed questions get the same answer cards as voice.** The cards stay until the Home button,
+  a new conversation, or the next voice conversation's end.
+- **A card names its source and age only when the tool result or record carries them** (a live
+  read, a stored as-of date, a sync time). Never inferred from the tool's name. No data, no line.
+
 ## Consequences
 
 - **Not a reopen of CLAUDE.md section 2.** City pop stays dead (it was one of the three prototypes
