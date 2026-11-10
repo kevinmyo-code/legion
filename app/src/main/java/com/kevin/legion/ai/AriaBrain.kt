@@ -1057,6 +1057,21 @@ internal fun composeIdentityAndRules(
 }
 
 /**
+ * How to relay ANY tool's result, said once here instead of in each tool's description
+ * (architecture review 2026-11-10, item 7: the tool block carried the same "say X only if the
+ * result says so" sentence per tool, re-billed on every session). Descriptions now say what a tool
+ * does; this says how to speak about what came back. It complements [CANNOT_CLAUSE] (outcome verbs)
+ * and [DATA_ACCESS_CLAUSE] (empty versus failed), and names no tool so it survives the next one.
+ * Presence guarded by [com.kevin.legion.ai.AriaBrainHonestyClauseTest].
+ */
+internal const val TOOL_RESULT_CLAUSE =
+    "A tool result is the whole truth of that call. If it is not successful, or says the engine " +
+        "or a service could not be reached, nothing was read or changed: say so, and never fill " +
+        "the gap. Keep a result's own qualifiers when you relay it - its source, an estimate, " +
+        "unverified, the user's own report, a saved copy and its age. When a result says several " +
+        "things match, ask which one rather than picking. "
+
+/**
  * The shared rules before [PROACTIVE_CLAUSE]: search, tools, the tool-message register and the four
  * file-scope honesty clauses. Split out of [SHARED_INSTRUCTIONS] (alfred-ota ticket 02) so
  * [renderSharedInstructions] can put the Alfred pack's clauses in their slots between these fixed
@@ -1076,7 +1091,8 @@ internal val SHARED_TOOL_RULES =
     CANNOT_CLAUSE +
     WRITE_ON_REQUEST_CLAUSE +
     DATA_ACCESS_CLAUSE +
-    CLAUDE_SESSION_CLAUSE
+    CLAUDE_SESSION_CLAUSE +
+    TOOL_RESULT_CLAUSE
 
 // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
 // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -

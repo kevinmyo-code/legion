@@ -29,7 +29,7 @@ object BrowserToolbox {
             "address or a Google search (kind=images for pictures). read: page text plus numbered " +
             "links, buttons and fields. click: by number or text. type: text into a numbered field, " +
             "submit=true to submit; never passwords (autofill fills them). To ANSWER a question in " +
-            "words use ask_engine instead. Say opened or tapped only if success is true. If the result " +
+            "words use ask_engine instead. If the result " +
             "asks a question, ask it and call again with confirm only after the user's next reply is yes."
 
     fun declarations(): JSONArray = JSONArray().put(

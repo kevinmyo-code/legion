@@ -150,6 +150,8 @@ COPY = {
     "list_recent_meals": ("What have I eaten today?", "Recent meals.", "Body tab, meal history."),
     "get_meal_gap": ("How am I doing on calories today?", "Today's logged calories and protein against your target, as estimates. Says so when nothing is logged yet, never zero.", "Body tab, intake panel."),
     "set_meal_target": ("Set my protein target to 180", "Sets a daily calorie or protein target you say as your own number. Calories alone take protein from the rule. To lock in the plan you made with the assistant, say \"lock it in\" instead.", "Body tab, meal-target dialog."),
+    "ask_money": ("How much have I spent on eating out this month?", "Sends a money question (balances, this month's spend against budget, recent or pending transactions) to the money specialist, which reads the same figures the Money tab shows.", "Is itself a read-only dispatcher; the Money tab already shows what it would answer."),
+    "ask_area": ("Anything I should know about around here?", "Sends a question about where you are now to the area specialist: severe weather, earthquakes, wildfires, disaster declarations, and reported crime history. Needs a live GPS fix and always names its sources.", "Is itself a read-only dispatcher; the Home screen's area card shows the same alerts."),
     "ask_pantry": ("Ask the pantry what I'm low on", "Sends a harder food question to the pantry specialist.", "Is itself a read-only dispatcher; the Pantry sub-route already shows what it would answer."),
 
     # --- Training and sleep ---
@@ -233,11 +235,11 @@ COPY = {
 }
 
 GROUPS = {
-    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation"],
+    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "ask_area", "show_app", "finish_intro", "end_conversation"],
     "Your day": ["manage_item", "manage_checklist", "get_last_ticked", "read_list", "set_reminder", "read_calendar", "complete_task", "tag_place", "rename_place", "forget_place", "show_saved_places", "show_agenda_modal", "show_generated_view", "ask_engine"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "get_spend", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["navigate", "change_trip", "trip_status", "end_trip", "activate_garage", "control_volume"],
-    "Money": ["get_balance", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],
+    "Money": ["get_balance", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction", "ask_money"],
     "Food and shopping": ["bought_log", "import_receipt", "list_recent_groceries", "get_grocery_spend", "log_meal", "list_recent_meals", "get_meal_gap", "set_meal_target", "ask_pantry"],
     "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "get_todays_workout", "get_workout_programme", "get_exercise_alternatives", "suggest_meal", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "get_energy_estimate", "get_weight_trend", "list_saved_meals", "ask_body"],
     "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],

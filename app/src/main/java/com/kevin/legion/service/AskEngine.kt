@@ -277,8 +277,7 @@ class AskEngine(
         const val DESCRIPTION = "Ask or change records only the household ENGINE (the server) " +
             "holds: what is due, checklists, places, body and its plan ('lock it in'), ledger, " +
             "pantry, fleet history; rivers, floods, storms, road closures; GitHub builds and PRs. Use " +
-            "when no named tool or other ask_* fits. If the engine is unreachable it says " +
-            "nothing was read or written. Answer comes back as text to speak."
+            "when no named tool or other ask_* fits. Answer comes back as text to speak."
 
         /** Compact on purpose: this is re-billed every Live turn (LiveSetupPayloadSizeTest). */
         const val INTENT_DESCRIPTION = "\"record\" to write or change something, \"ask\" to only " +

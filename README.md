@@ -38,17 +38,17 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 
 <!-- VOICE-SURFACE:START -->
 
-**139 voice tools across 22 domains**, dispatched from one Gemini Live
+**141 voice tools across 22 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
 | Domain | Tools | Something you would say |
 |---|---|---|
-| Getting started | 8 | &ldquo;Give me my brief&rdquo; |
+| Getting started | 9 | &ldquo;Give me my brief&rdquo; |
 | Your day | 14 | &ldquo;Remind me to renew my registration next month&rdquo; |
 | The cars | 29 | &ldquo;Any trouble codes?&rdquo; |
 | Driving | 6 | &ldquo;Take me to the hardware store&rdquo; |
-| Money | 10 | &ldquo;What's my balance?&rdquo; |
+| Money | 11 | &ldquo;What's my balance?&rdquo; |
 | Food and shopping | 9 | &ldquo;When did we last buy shampoo?&rdquo; |
 | Training and sleep | 16 | &ldquo;Log bench 135 for 8&rdquo; |
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |

@@ -574,8 +574,7 @@ object LiveToolbox {
             name = "change_trip",
             description = "Change the running or previewed trip: add_stop, remove_stop, avoid, " +
                 "take_alternative, mute/unmute (spoken TURN cues only, never you), overview, " +
-                "recenter. Say a change happened only if the result says so; unsuccessful means the " +
-                "trip is unchanged, say that. With no trip, say nothing is navigating. If add_stop " +
+                "recenter. With no trip, say nothing is navigating. If add_stop " +
                 "says several places match, read the top pick back, wait, then call again with choice.",
             params = obj(
                 "action" to schema("string", "What to do.",
@@ -673,9 +672,7 @@ object LiveToolbox {
                 "legion_history row), never search for it by name; that resolves within THIS " +
                 "artist's own catalogue rather than an open search that could land on someone " +
                 "else's album of the same name. Every source needs Spotify connected and approved " +
-                "in Setup (same as play_music); if that's missing or stale, this fails and tells " +
-                "the user exactly what to do about it - never read a failure as 'you have " +
-                "nothing'. Keep the spoken answer short - name a handful of results, don't read " +
+                "in Setup (same as play_music). Keep the spoken answer short - name a handful of results, don't read " +
                 "out the whole list.",
             params = obj(
                 "source" to schema("string", "Which listening data to look up.",
@@ -695,9 +692,7 @@ object LiveToolbox {
             description = "What's coming up next in Spotify's own queue - 'what's playing next', " +
                 "'what's coming up'. Read-only; to ADD something to the queue use control_music's " +
                 "'queue' action instead. Requires Spotify connected and approved in Setup (same " +
-                "as play_music); if that's missing or stale, this fails and says exactly what to " +
-                "do about it - never read a failure as 'nothing's queued'. Keep the spoken answer " +
-                "short.",
+                "as play_music). Keep the spoken answer short.",
             params = obj(
                 "limit" to schema("integer",
                     "How many upcoming tracks to return. Defaults to 5."),
@@ -1886,11 +1881,8 @@ object LiveToolbox {
             description = "Answer the phone call that is RINGING right now. Use when the user says " +
                 "to pick it up, take it, or answer. Only works while a call is actually ringing, " +
                 "and only for normal phone calls - Android does not let this app answer WhatsApp, " +
-                "Signal, Teams or other in-app calls, and the result will say so if that happens. " +
-                "The result tells you what actually happened; never say the call was answered " +
-                "unless it says so. Pass speaker=true when the user asks for it on speaker or " +
-                "speakerphone in the same breath - do NOT use a separate tool for that, and do " +
-                "not claim it is on speaker unless the result says it is.",
+                "Signal, Teams or other in-app calls. Pass speaker=true when the user asks for it on speaker or " +
+                "speakerphone in the same breath - do NOT use a separate tool for that.",
             params = obj(
                 "speaker" to schema("boolean", "True if the user asked for the call on " +
                     "speakerphone, e.g. \"pick it up and put it on speaker\". Omit otherwise."),
@@ -1902,7 +1894,7 @@ object LiveToolbox {
             description = "Decline or reject the phone call that is RINGING right now. Use when the " +
                 "user says to decline, reject, hang up on it, or ignore it. Only works while a call " +
                 "is actually ringing, and not for WhatsApp, Signal, Teams or other in-app calls. " +
-                "Cannot end an emergency call. The result tells you what actually happened.",
+                "Cannot end an emergency call.",
             params = obj(),
             required = emptyList(),
         ))
@@ -2259,6 +2251,8 @@ object LiveToolbox {
             // fat-loss ticket 16 (G4): the CAR's OBD health snapshot. It sat under "body" because of
             // its name, so "is the car okay" routed to the health specialist, which had no car.
             "get_health",
+            // Architecture review 2026-11-10 item 7: the build sheet's spend total, a fleet read.
+            "get_spend",
         ),
         "body" to listOf(
             "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
@@ -2292,6 +2286,15 @@ object LiveToolbox {
         // RECEIPTS, never the trip, and never did.
         "pantry" to listOf("list_recent_groceries", "get_grocery_spend"),
         "mail" to listOf("search_mail", "read_mail"),
+        // Architecture review 2026-11-10 item 7 (Kevin, Q3: the payload is a cost/quality line,
+        // fewer top-level tools, one extra hop accepted on moved READS). Reads only, so the
+        // 2026-08-18 "writes stay direct" ruling above still holds: logging or clearing a pending
+        // transaction, categorising and budgets stay declared to the live session, and so does
+        // list_budget_categories, which set_category and set_budget tell the model to call first.
+        "money" to listOf(
+            "get_balance", "get_monthly_spend", "list_recent_transactions", "list_pending_transactions",
+        ),
+        "area" to listOf("area_info", "get_reported_crime_history"),
     )
 
     /**
@@ -2395,6 +2398,25 @@ object LiveToolbox {
             description = "Anything about Kevin's Gmail: searching for messages or reading one in " +
                 "full. Read-only. Ask a plain-English question; raw results come back to " +
                 "relay.",
+            params = DISPATCHER_PARAMS,
+            required = listOf("question"),
+        ))
+        // Architecture review 2026-11-10 item 7: money and area READS behind routers.
+        fns.put(fn(
+            name = "ask_money",
+            description = "READING money: account balances, spending this or another month " +
+                "against budget, recent transactions, and pending ones the user reported. " +
+                "Read-only - logging or clearing a pending transaction, categorising and budgets " +
+                "are their own tools. Ask a plain-English question; raw results come back to relay.",
+            params = DISPATCHER_PARAMS,
+            required = listOf("question"),
+        ))
+        fns.put(fn(
+            name = "ask_area",
+            description = "What official sources report around the user's current location: severe " +
+                "weather alerts, earthquakes, wildfires, federal disaster declarations, and " +
+                "reported crime history (which never answers 'is it safe'). Needs a GPS fix. " +
+                "Read-only. Ask a plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -2741,6 +2763,26 @@ object LiveToolbox {
         dispatchBoundaryClause("pantry") +
         Priming.dispatchClause(context, "pantry")
 
+    // Architecture review 2026-11-10 item 7. The tools these two hand their sub-agent keep their
+    // own full descriptions (the excluded-movements and uncategorised rules on get_monthly_spend,
+    // the "never answers is it safe" rule on crime history), so the rules travel with the tool.
+    private fun moneyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
+        " You are reading the user's money using the tools you're given: balances, monthly spend " +
+        "against budget, recent transactions and pending ones. Every amount carries its own " +
+        "currency; keep it, never convert. Keep every exclusion and unverified note a tool " +
+        "returns. Pull only what would change your answer, then answer in plain spoken text, no " +
+        "markdown." +
+        dispatchBoundaryClause("money") +
+        Priming.dispatchClause(context, "money")
+
+    private fun areaDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
+        " You are checking official sources around the user's current location using the tools " +
+        "you're given. Name each result's source as it names it. With no GPS fix, say the " +
+        "location is unknown. Pull only what would change your answer, then answer in plain " +
+        "spoken text, no markdown." +
+        dispatchBoundaryClause("area") +
+        Priming.dispatchClause(context, "area")
+
     private fun mailDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are searching and reading the user's Gmail using the tools you're given. " +
         "Read-only - you cannot send, reply to, or delete mail. Pull only what would change your " +
@@ -2925,6 +2967,36 @@ object LiveToolbox {
                         tools = agentToolsFor("mail", context),
                         budgetMs = DISPATCH_ROUTE_BUDGET_MS,
                         mutatingToolNames = mutatingToolsFor("mail"),
+                        probe = probe,
+                    )
+                }
+            }
+            "ask_money" -> agentResult(
+                "Could not reach the money specialist. Try again shortly.",
+                requireMutation = wantsWrite(args),
+                lookupName = "money lookup",
+            ) {
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = moneyDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("money", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("money"),
+                        probe = probe,
+                    )
+                }
+            }
+            "ask_area" -> agentResult(
+                "Could not reach the area specialist. Try again shortly.",
+                requireMutation = wantsWrite(args),
+                lookupName = "area lookup",
+            ) {
+                probedRoute(name) { probe ->
+                    SubAgent(systemInstruction = areaDispatchGrounding(context)).route(
+                        question = args.optString("question"),
+                        tools = agentToolsFor("area", context),
+                        budgetMs = DISPATCH_ROUTE_BUDGET_MS,
+                        mutatingToolNames = mutatingToolsFor("area"),
                         probe = probe,
                     )
                 }

@@ -29,8 +29,7 @@ object BooksToolbox {
     private const val DESCRIPTION =
         "The phone's Books folder. action=status says the last book read and where (what am I reading, " +
             "last book, where was I) and opens nothing; action=continue opens it (pull it up, open it, " +
-            "keep reading); action=open needs title. listen=true reads aloud (ebooks only). " +
-            "Say only the result: opened only if success is true."
+            "keep reading); action=open needs title. listen=true reads aloud (ebooks only)."
 
     fun declarations(): JSONArray = JSONArray().put(
         fn(

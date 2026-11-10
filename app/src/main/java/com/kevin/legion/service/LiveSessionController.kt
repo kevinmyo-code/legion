@@ -1747,7 +1747,7 @@ class LiveSessionController(context: Context) {
         internal const val BROWSER_TOOL_TIMEOUT_MS = 30_000L
         private val SUB_AGENT_TOOLS = setOf(
             "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start",
-            "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail",
+            "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail", "ask_money", "ask_area",
             // 2026-10-27: both run SubAgent.investigate (40 s and 30 s budgets) and were being
             // cut at TOOL_TIMEOUT_MS, so a slow engine answer came back as a failure at 10 s.
             "ask_engine", "aspect_clerk",

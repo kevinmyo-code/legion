@@ -60,7 +60,9 @@ class LiveToolboxDeclarationSetTest {
                 name in live,
             )
         }
-        for (dispatcher in listOf("ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail")) {
+        for (dispatcher in listOf(
+            "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail", "ask_money", "ask_area",
+        )) {
             assertTrue("$dispatcher must be declared to the live session", dispatcher in live)
         }
     }
@@ -379,6 +381,8 @@ class LiveToolboxDeclarationSetTest {
                 "triage_symptom", "list_build_history", "get_trend",
                 // fat-loss ticket 16 (G4): the car's OBD health snapshot belongs to fleet.
                 "get_health",
+                // architecture review 2026-11-10 item 7: the build sheet spend read.
+                "get_spend",
             ),
             "body" to listOf(
                 "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
@@ -389,6 +393,11 @@ class LiveToolboxDeclarationSetTest {
             "goals" to listOf("list_goals", "ask_advisor"),
             "pantry" to listOf("list_recent_groceries", "get_grocery_spend"),
             "mail" to listOf("search_mail", "read_mail"),
+            // architecture review 2026-11-10 item 7: money and area reads behind routers.
+            "money" to listOf(
+                "get_balance", "get_monthly_spend", "list_recent_transactions", "list_pending_transactions",
+            ),
+            "area" to listOf("area_info", "get_reported_crime_history"),
         )
     }
 }

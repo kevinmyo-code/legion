@@ -45,6 +45,7 @@ object VoiceGuideData {
                 Entry(name = "get_current_location", say = "Which way is north?", does = "Your current location, plus field figures worked out on the phone: compass heading and where true north is, MGRS grid, altitude, sunrise, sunset and turnaround time, the moon, and bearing and distance to your saved places ('bearing to the car'). Says it does not know rather than guessing when there is no GPS fix.", hands = "The Field screen in the app drawer shows all of it with no signal; Fleet > Saved places shows the current location at the top."),
                 Entry(name = "area_info", say = "Any severe weather nearby?", does = "Checks a live source for where you are now: severe weather (National Weather Service), earthquakes (USGS), wildfires (National Interagency Fire Center), or federal disaster declarations (FEMA). Always names its source, and needs a live GPS fix.", hands = "Home screen, area card (weather/quake/wildfire/disaster alerts and air quality)."),
                 Entry(name = "get_reported_crime_history", say = "What's the crime history around here?", does = "Reported offenses for the nearest police or sheriff's agency, from the FBI's Crime Data Explorer - agency-wide, roughly a year old, and voluntarily reported. It will not tell you whether somewhere is \"safe\"; nothing can answer that honestly from this data.", hands = "Voice only."),
+                Entry(name = "ask_area", say = "Anything I should know about around here?", does = "Sends a question about where you are now to the area specialist: severe weather, earthquakes, wildfires, disaster declarations, and reported crime history. Needs a live GPS fix and always names its sources.", hands = "Is itself a read-only dispatcher; the Home screen's area card shows the same alerts."),
                 Entry(name = "show_app", say = "Open the ledger", does = "Opens a screen in the app for you.", hands = "Is itself navigation - every screen it can open is also reachable directly from the app's own tabs."),
                 Entry(name = "finish_intro", say = "I'm done setting up", does = "Finishes first-run setup.", hands = "Onboarding screen's own final step."),
                 Entry(name = "end_conversation", say = "That will be all", does = "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight.", hands = "Voice only - closing the app or its notification is the nearest hands equivalent."),
@@ -131,6 +132,7 @@ object VoiceGuideData {
                 Entry(name = "log_pending_transaction", say = "I just spent thirty on petrol", does = "Records a spend by voice before it hits the bank.", hands = "Money tab, add-pending dialog."),
                 Entry(name = "list_pending_transactions", say = "What have I logged but not banked?", does = "Voice-logged spends the bank has not posted yet.", hands = "Money tab, pending list."),
                 Entry(name = "clear_pending_transaction", say = "That petrol one has gone through", does = "Clears a pending spend once the bank catches up.", hands = "Money tab, a pending row's clear action."),
+                Entry(name = "ask_money", say = "How much have I spent on eating out this month?", does = "Sends a money question (balances, this month's spend against budget, recent or pending transactions) to the money specialist, which reads the same figures the Money tab shows.", hands = "Is itself a read-only dispatcher; the Money tab already shows what it would answer."),
             ),
         ),
         Group(
@@ -309,6 +311,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 139 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 139
+    /** Total entries across every group above - 141 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 141
 }

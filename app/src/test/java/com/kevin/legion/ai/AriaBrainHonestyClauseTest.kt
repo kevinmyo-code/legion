@@ -98,6 +98,20 @@ class AriaBrainHonestyClauseTest {
         }
     }
 
+    /**
+     * Architecture review 2026-11-10, item 7: the per-tool "say X only if the result says so"
+     * sentences moved into one shared clause. Presence only, and it names no tool.
+     */
+    @Test
+    fun `the tool-result clause is wired in once and names no tool`() {
+        assertTrue(SHARED_INSTRUCTIONS.contains(TOOL_RESULT_CLAUSE))
+        assertTrue(TOOL_RESULT_CLAUSE.contains("nothing was read or changed"))
+        assertTrue(TOOL_RESULT_CLAUSE.contains("ask which one rather than picking"))
+        for (tool in listOf("play_music", "browser", "books", "ask_engine", "create_record")) {
+            assertTrue(!TOOL_RESULT_CLAUSE.contains(tool))
+        }
+    }
+
     /** Voice audit findings 8 and 9: a tool result ignored, and a blanket "no access" with no call. */
     @Test
     fun `the data-access clause is wired in and forbids an unfounded no-access`() {

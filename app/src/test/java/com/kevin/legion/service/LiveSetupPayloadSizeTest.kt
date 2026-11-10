@@ -315,8 +315,21 @@ class LiveSetupPayloadSizeTest {
      * way you would for a class on a school schedule" (57 chars, an analogy after the rule "say so
      * plainly if asked to mark one done or not done", which stays). After: 97 declarations,
      * 98,436 chars, ~24,609 tokens. Headroom ~41 tokens.
+     *
+     * **LOWERED to 23,600 on 2026-11-10 (architecture review item 7, Kevin's Q3: the payload is a
+     * cost/quality line, not a number to raise).** Two changes. (1) The per-tool "say X only if the
+     * result says so" sentences (books, browser, ask_engine, create/update_record, create/update_
+     * aspect, change_trip, answer/decline_call, browse_my_music, get_music_queue) moved into one
+     * `TOOL_RESULT_CLAUSE` in the system instruction (+400 chars there). (2) Reads went behind
+     * routers, one extra hop accepted on them: `ask_money` (get_balance, get_monthly_spend,
+     * list_recent_transactions, list_pending_transactions), `ask_area` (area_info,
+     * get_reported_crime_history), and get_spend into `ask_fleet`. Writes stay declared directly
+     * (the 2026-08-18 ruling in `LiveToolbox.DISPATCHED`). After: 92 declarations, 82,273 chars of
+     * tools JSON + 10,756 chars of system instruction = 93,029 chars, ~23,257 tokens, ~1,352 fewer.
+     * Ceiling 23,600: headroom ~343 tokens. Real count: `tools/count_live_tokens.py` on the
+     * `build/live-setup/setup.json` this test writes.
      */
-    private val ceilingTokens = 24_650
+    private val ceilingTokens = 23_600
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {
@@ -325,6 +338,17 @@ class LiveSetupPayloadSizeTest {
         val instructionChars = systemInstruction().length
         val totalChars = toolsChars + instructionChars
         val totalTokens = tokens(totalChars)
+
+        // The exact JSON measured here, for tools/count_live_tokens.py (countTokens on Kevin's
+        // own key, run by hand; architecture review 2026-11-10 item 7a). Build output, never
+        // committed; it holds no key and no personal data, only declarations and prompt text.
+        java.io.File("build/live-setup").mkdirs()
+        java.io.File("build/live-setup/setup.json").writeText(
+            JSONObject()
+                .put("systemInstruction", systemInstruction())
+                .put("tools", toolsArray(fns))
+                .toString(),
+        )
 
         println(
             "setup payload: ${fns.length()} declarations, $toolsChars chars of tools JSON + " +
