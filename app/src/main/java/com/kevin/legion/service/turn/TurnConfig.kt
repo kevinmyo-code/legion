@@ -55,6 +55,7 @@ internal data class TurnConfig(
  * The Settings > Assistant voice switches (hands path, ADR 0035). Read when a session starts;
  * a change applies to the next socket.
  */
+@Suppress("TooManyFunctions") // one getter and one setter per voice switch, each a one-liner
 object VoiceTurnSettings {
     private const val PREFS = "voice_turn_settings"
     private const val KEY_SMART_END = "smart_end_of_turn"

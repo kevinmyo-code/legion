@@ -144,7 +144,8 @@ object LedgerConfigBackfill {
             context, OutboxTarget.LEDGER_CATEGORIES, db.categoryDao().getAllIncludingDeleted(),
             localId = { it.id }, localGuid = { it.guid }, localServerId = { it.serverId }, localDeleted = { it.deleted },
             push = { row: Category ->
-                val pushed = backend.upsertCategory(row.guid, LedgerConfigWriteThrough.CategoryPayload.from(row).toFields())
+                val fields = LedgerConfigWriteThrough.CategoryPayload.from(row).toFields()
+                val pushed = backend.upsertCategory(row.guid, fields)
                 val refused = pushed.isFailure && isDefinitiveRefusal(pushed.exceptionOrNull())
                 if (refused && linkCategoryByName(db, backend, row)) {
                     linked++
@@ -194,6 +195,7 @@ object LedgerConfigBackfill {
      * again; the engine's values win on that pull. True when a row was linked. Matched by exact
      * name first, then ignoring case (the phone's own name index is case-insensitive in use).
      */
+    @Suppress("ReturnCount") // no engine list, no row of that name, then the link
     internal suspend fun linkCategoryByName(db: CarDatabase, backend: LedgerConfigBackend, row: Category): Boolean {
         val remote = backend.fetchChangedCategoriesSince(0L).getOrNull()?.filterNot { it.deleted } ?: return false
         val match = remote.firstOrNull { it.name == row.name }

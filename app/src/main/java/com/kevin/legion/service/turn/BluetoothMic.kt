@@ -41,6 +41,7 @@ internal object BluetoothMic {
      */
     fun pick(candidates: List<Candidate>, mediaSinkAddresses: Set<String>): Candidate? {
         val handsFree = candidates.filter { it.isHandsFree }
-        return handsFree.firstOrNull { it.address != null && it.address in mediaSinkAddresses } ?: handsFree.firstOrNull()
+        val playing = handsFree.firstOrNull { it.address != null && it.address in mediaSinkAddresses }
+        return playing ?: handsFree.firstOrNull()
     }
 }

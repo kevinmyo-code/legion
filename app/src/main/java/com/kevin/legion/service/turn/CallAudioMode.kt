@@ -140,7 +140,8 @@ internal class CallAudioMode(private val audio: AudioManager) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     audio.availableCommunicationDevices.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
                 } else {
-                    audio.getDevices(AudioManager.GET_DEVICES_INPUTS).any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                    audio.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                        .any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
                 }
             }.getOrDefault(false)
 
@@ -163,7 +164,8 @@ internal class CallAudioMode(private val audio: AudioManager) {
                 .mapNotNull { runCatching { it.address }.getOrNull() }
                 .toSet()
             val candidates = devices.map {
-                BluetoothMic.Candidate(it.id, it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO, runCatching { it.address }.getOrNull())
+                val handsFree = it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                BluetoothMic.Candidate(it.id, handsFree, runCatching { it.address }.getOrNull())
             }
             val chosen = BluetoothMic.pick(candidates, media) ?: return null
             return devices.firstOrNull { it.id == chosen.id }
