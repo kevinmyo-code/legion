@@ -1,5 +1,7 @@
 package com.kevin.legion.backend
 
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CategoryRule
 import com.kevin.legion.testutil.RoomTestReset
@@ -29,6 +31,7 @@ class LedgerConfigBackfillTest {
         val ruleUpsertCalls = mutableListOf<String>()
         val aliasUpsertCalls = mutableListOf<String>()
         var failGuid: String? = null
+        var refuseGuid: String? = null
 
         // Genuinely succeeds, unlike a bare "not used" stub - MIGRATION_5_6/MIGRATION_11_12 seed
         // `categories` with a starter set on every fresh install, so
@@ -44,6 +47,10 @@ class LedgerConfigBackfillTest {
         override suspend fun upsertCategoryRule(originGuid: String, fields: CategoryRuleFields): Result<RemoteCategoryRule> {
             if (originGuid == failGuid) return Result.failure(LedgerConfigBackendException("forced failure"))
             ruleUpsertCalls.add(originGuid)
+            if (originGuid == refuseGuid) {
+                val refusal = EngineFailure.Refused(400, "That write was refused by the database: duplicate key")
+                return Result.failure(EngineHttpException(refusal))
+            }
             return Result.success(RemoteCategoryRule(originGuid, fields.category, fields.substring, fields.createdAtMs, fields.createdAtMs, false, originGuid))
         }
         override suspend fun softDeleteCategoryRule(originGuid: String) = Result.success(true)
@@ -177,6 +184,33 @@ class LedgerConfigBackfillTest {
         assertEquals(2, second.pushed)
         assertTrue(second.failed.isEmpty())
         assertEquals(listOf("guid-ok-1", "guid-fails", "guid-ok-2"), backend.ruleUpsertCalls)
+    }
+
+    /**
+     * Engine logs 2026-11-10: `PUT /api/ledger/categories/<guid>/` came back 400 on every auto-run.
+     * The engine's refusal of a row does not change on retry (a 400 names a row the database will
+     * not take, e.g. a name another row already holds), and the cursor never moved past it, so the
+     * same request went out every five minutes forever and every row after it waited behind it.
+     * A refusal is reported and stepped over; an unreachable engine still stops and retries.
+     */
+    @Test
+    fun `an engine refusal is reported once and stepped over, never retried forever`() = runBlocking {
+        primeCategoriesBackfillCursor()
+        insertLocalRule("guid-ok-1")
+        insertLocalRule("guid-refused")
+        insertLocalRule("guid-ok-2")
+        backend.refuseGuid = "guid-refused"
+
+        val first = LedgerConfigBackfill.run(context, backend)
+        assertEquals(2, first.pushed)
+        assertEquals(1, first.failed.size)
+        assertTrue(first.failed.single(), first.failed.single().contains("guid-refused"))
+        assertTrue(first.failed.single(), first.failed.single().contains("refused"))
+
+        val second = LedgerConfigBackfill.run(context, backend)
+        assertEquals(0, second.pushed)
+        assertTrue(second.failed.isEmpty())
+        assertEquals(listOf("guid-ok-1", "guid-refused", "guid-ok-2"), backend.ruleUpsertCalls)
     }
 
     @Test

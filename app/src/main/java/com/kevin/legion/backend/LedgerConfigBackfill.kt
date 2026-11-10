@@ -3,6 +3,8 @@ package com.kevin.legion.backend
 import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
 import com.kevin.legion.backend.engine.EngineTransport
 import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.BudgetTarget
@@ -90,7 +92,15 @@ object LedgerConfigBackfill {
                         pushed++
                         LedgerConfigBackfillCursor.advance(context, table, localId(row))
                     } else {
-                        val message = result.exceptionOrNull()?.message ?: "unknown error"
+                        val error = result.exceptionOrNull()
+                        val message = error?.message ?: "unknown error"
+                        if (isDefinitiveRefusal(error)) {
+                            // Stepped over, never retried: see [isDefinitiveRefusal].
+                            failure = (failure?.let { "$it; " } ?: "") +
+                                "$table: refused by the engine, skipped: $message (row id ${localId(row)}, guid ${localGuid(row)})"
+                            LedgerConfigBackfillCursor.advance(context, table, localId(row))
+                            continue
+                        }
                         failure = "$table: $message (row id ${localId(row)}, guid ${localGuid(row)})"
                         break
                     }
@@ -100,6 +110,22 @@ object LedgerConfigBackfill {
 
         return TableResult(pushed, alreadyPresent, skippedLocalOnlyDeleted, failure)
     }
+
+    /**
+     * Whether [error] is the engine refusing the row itself, which no retry changes (engine logs
+     * 2026-11-10: one category's `PUT` came back 400 on every auto-run, five minutes apart, and
+     * every row after it waited behind it). A 4xx other than a timeout or a throttle is; anything
+     * that never reached the engine, a 5xx, or a reply that did not decode is not, and still stops
+     * the table so the next run retries it.
+     */
+    internal fun isDefinitiveRefusal(error: Throwable?): Boolean {
+        val refused = (error as? EngineHttpException)?.failure as? EngineFailure.Refused ?: return false
+        return refused.status in CLIENT_ERRORS && refused.status != REQUEST_TIMEOUT && refused.status != TOO_MANY_REQUESTS
+    }
+
+    private val CLIENT_ERRORS = 400..499
+    private const val REQUEST_TIMEOUT = 408
+    private const val TOO_MANY_REQUESTS = 429
 
     /** Every function below reuses [LedgerConfigWriteThrough]'s own payload-mapping classes rather
      * than re-deriving `Local -> Fields`, same "one mapping, never two" reasoning [BodyBackfill]'s
