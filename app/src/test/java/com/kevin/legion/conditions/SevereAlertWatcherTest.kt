@@ -16,8 +16,10 @@ class SevereAlertWatcherTest {
         override fun forgetOlderThan(cutoffMs: Long) { rows.entries.removeIf { it.value < cutoffMs } }
     }
 
-    private fun alert(id: String, event: String = "Tornado Warning") =
-        SevereAlert(id, event, "Extreme", "Tornado Warning until 4 PM", "Example County", "NWS Example", "2026-11-10T16:00:00-06:00")
+    private fun alert(id: String, event: String = "Tornado Warning") = SevereAlert(
+        id, event, "Extreme", "Tornado Warning until 4 PM", "Example County", "NWS Example",
+        "2026-11-10T16:00:00-06:00",
+    )
 
     private fun read(vararg alerts: SevereAlert) = ConditionsOutcome.Read("text", emptyList(), alerts.toList())
 

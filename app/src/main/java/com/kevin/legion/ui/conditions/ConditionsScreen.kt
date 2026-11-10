@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber") // layout sizes
+
 package com.kevin.legion.ui.conditions
 
 import androidx.compose.foundation.layout.Column

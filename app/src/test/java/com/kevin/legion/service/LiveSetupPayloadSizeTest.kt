@@ -240,6 +240,13 @@ class LiveSetupPayloadSizeTest {
      * out `files true`. Measured on dev `2779ef88` plus the branch: 95 declarations, 88,042 chars of
      * tools JSON plus 10,356 chars of system instruction = 98,398 chars, ~24,599 tokens (+21).
      * Headroom is ~51 tokens.
+     *
+     * **NOT raised on 2026-11-10 (round 5, `feat/conditions`).** No new declaration: rivers, alerts,
+     * storms, roads and fire are the engine's `check_conditions`, reached through `ask_engine`, whose
+     * description gained "rivers, floods, storms, road closures"; the phone's GPS fix rides the
+     * sub-agent's instruction per call, not the setup. Measured on dev `ea6e968b` plus the branch:
+     * 95 declarations, 88,081 chars of tools JSON plus 10,356 chars of system instruction = 98,437
+     * chars, ~24,609 tokens (+10). Headroom is ~41 tokens.
      */
     private val ceilingTokens = 24_650
 

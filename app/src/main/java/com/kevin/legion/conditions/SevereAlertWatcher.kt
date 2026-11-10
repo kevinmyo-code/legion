@@ -53,11 +53,8 @@ class SevereAlertWatcher(
             ConditionsPoint.Place(HOME_LABEL) to "at home",
         )
         for ((point, where) in points) {
-            val outcome = check(point)
-            if (outcome !is ConditionsOutcome.Read) continue
-            for (alert in outcome.severe) {
-                if (alert.id !in seen && alert.id !in found) found[alert.id] = alert to where
-            }
+            val read = check(point) as? ConditionsOutcome.Read ?: continue
+            read.severe.filter { it.id !in seen && it.id !in found }.forEach { found[it.id] = it to where }
         }
         val raised = mutableListOf<SevereAlert>()
         for ((alert, where) in found.values) {

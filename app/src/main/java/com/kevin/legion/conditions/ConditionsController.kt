@@ -94,17 +94,13 @@ class ConditionsController(private val client: EngineMcpClient) {
         }
 
         /** Every alert row the engine marked `severe`, from the `alerts` section only. */
-        internal fun severe(structured: JSONObject?): List<SevereAlert> {
-            val rows = structured?.optJSONArray("sections") ?: return emptyList()
-            val out = mutableListOf<SevereAlert>()
-            for (i in 0 until rows.length()) {
-                val section = rows.optJSONObject(i) ?: continue
-                if (section.optString("kind") != "alerts") continue
-                val alerts = section.optJSONArray("rows") ?: continue
-                for (j in 0 until alerts.length()) {
-                    val a = alerts.optJSONObject(j) ?: continue
-                    if (!a.optBoolean("severe") || a.optString("id").isBlank()) continue
-                    out += SevereAlert(
+        internal fun severe(structured: JSONObject?): List<SevereAlert> =
+            objects(structured?.optJSONArray("sections"))
+                .filter { it.optString("kind") == "alerts" }
+                .flatMap { objects(it.optJSONArray("rows")) }
+                .filter { it.optBoolean("severe") && it.optString("id").isNotBlank() }
+                .map { a ->
+                    SevereAlert(
                         id = a.optString("id"),
                         event = a.optString("event"),
                         severity = a.optString("severity"),
@@ -114,9 +110,9 @@ class ConditionsController(private val client: EngineMcpClient) {
                         ends = a.optString("ends").ifBlank { a.optString("expires") },
                     )
                 }
-            }
-            return out
-        }
+
+        private fun objects(array: JSONArray?): List<JSONObject> =
+            if (array == null) emptyList() else (0 until array.length()).mapNotNull { array.optJSONObject(it) }
     }
 }
 
