@@ -135,7 +135,9 @@ object ClaudeQuickRows {
         while (true) {
             val out = controller.task(id)
             emit(out)
-            if (out is ClaudeOutcome.Ok && out.value.isFinished && !out.value.pagePending) break
+            val settled = out is ClaudeOutcome.Ok && out.value.isFinished &&
+                !out.value.pagePending && !out.value.filesPending
+            if (settled) break
             delay(every.toMillis())
         }
     }

@@ -202,6 +202,19 @@ class ClaudeFilesDeliveryTest {
         assertFalse(result, result.contains("form-scan.pdf (1.1 MB). Want it"))
     }
 
+    /** A `check` that reads a files task out while its files are still coming must not forget it. */
+    @Test
+    fun `a check while the files are coming leaves the task watched, after they land it does not`() {
+        watch.tasks += 58
+        com.kevin.legion.service.ClaudeSessionToolbox.consumeAnnouncement(filesTask(scan), watch)
+        assertEquals(setOf(58), watch.tasks)
+        com.kevin.legion.service.ClaudeSessionToolbox.consumeAnnouncement(
+            filesTask(scan.copy(received = true, gone = true)),
+            watch,
+        )
+        assertTrue(watch.tasks.isEmpty())
+    }
+
     private fun FakeClaudeBackend.tasksOutValue(): List<ClaudeTask> = (tasksOut as ClaudeOutcome.Ok).value
 }
 

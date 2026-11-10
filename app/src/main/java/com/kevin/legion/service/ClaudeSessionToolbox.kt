@@ -207,7 +207,7 @@ object ClaudeSessionToolbox {
      * left alone, because the watcher's announcement is what will say the page is ready.
      */
     internal fun consumeAnnouncement(task: ClaudeTask, watch: ClaudeWatch) {
-        if (!task.isFinished || task.pagePending) return
+        if (!task.isFinished || task.pagePending || task.filesPending) return
         if (task.id in watch.watchedTasks()) watch.forgetTask(task.id)
         LiveNotes.withdraw(LiveNotes.claudeTaskKey(task.id))
     }

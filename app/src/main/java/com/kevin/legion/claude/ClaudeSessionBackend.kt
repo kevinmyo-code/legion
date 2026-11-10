@@ -121,9 +121,12 @@ data class ClaudeTask(
     val offeredFiles: List<ClaudeTaskFile> get() =
         files.filterNot { (wantsPage && it.isPage) || (wantsFiles && it.requested) }
 
-    /** A done files task with a requested file still on its way up from the laptop. */
-    val filesPending: Boolean get() =
-        status == DONE && deliveredFiles.any { !it.uploaded && !it.gone }
+    /**
+     * A files task whose files have not all reached this phone yet: not uploaded, or uploaded and
+     * not yet received. The watcher still owes it a fetch and an announcement, so a `check` must
+     * not forget it (ADR 0080), the way it leaves a page still on its way alone.
+     */
+    val filesPending: Boolean get() = deliveredFiles.any { !it.received && !it.gone }
 
     companion object {
         const val QUEUED = "queued"
