@@ -472,7 +472,8 @@ object LiveToolbox {
                 "if nothing is, or it's a non-Spotify source, say plainly you can't tell who's " +
                 "playing rather than guessing an artist from something heard earlier. " +
                 "'add_to_playlist' adds the CURRENTLY PLAYING track (same subject as 'like') to a " +
-                "playlist the user names - pass 'playlistName'. Only matches playlists the user owns or a friend made them a " +
+                "playlist the user names - pass 'playlistName'. Only matches playlists the user " +
+                "owns or a friend made them a " +
                 "collaborator on - it does NOT search the public catalogue for a playlist to add " +
                 "to, and if the name matches a playlist that's followed but not owned or " +
                 "collaborative (an editorial playlist like Discover Weekly), this fails and says " +

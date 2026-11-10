@@ -88,7 +88,8 @@ class WatchDeliveryTest {
 
     private fun audio() = context.getSystemService(AudioManager::class.java)
 
-    private fun posted(): Int = shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications.size
+    private fun posted(): Int =
+        shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications.size
 
     /** The assistant service's collector, standing in for `AriaForegroundService`. */
     private fun serviceRunning() = runBlocking {

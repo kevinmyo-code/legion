@@ -45,7 +45,8 @@ class CrossBranchReadThroughTest {
         session = GeminiLiveSession(context) {}
         WatchesToolbox.controllerFactory = { WatchesController(watches) }
         MemoryToolbox.controllerFactory = { MemoryController(memories, InMemoryMemoryCache(), now = { NOW }) }
-        watches.watches += FakeWatchesBackend.watch("w1", "A paused balance watch").copy(paused = true, status = "paused")
+        watches.watches += FakeWatchesBackend.watch("w1", "A paused balance watch")
+            .copy(paused = true, status = "paused")
     }
 
     @After
@@ -65,7 +66,8 @@ class CrossBranchReadThroughTest {
         assertTrue(why, session.readThroughToolTouchedThisTurn())
         assertFalse(dispatch("watch", """{"action":"set","kind":"charge_over","dollars":50}""").getBoolean("success"))
         assertFalse(dispatch("watch", """{"action":"resume","text":"w1"}""").getBoolean("success"))
-        assertFalse(dispatch("memory", """{"action":"remember","text":"A made-up fact from a picture"}""").getBoolean("success"))
+        val remember = dispatch("memory", """{"action":"remember","text":"A made-up fact from a picture"}""")
+        assertFalse(remember.getBoolean("success"))
         assertTrue("$why: no watch created", watches.created.isEmpty())
         assertTrue("$why: the paused watch stayed paused", watches.watches.single().paused)
         assertTrue("$why: no memory written, got ${memories.calls}", memories.calls.none { it.startsWith("create") })
@@ -74,7 +76,8 @@ class CrossBranchReadThroughTest {
     private fun assertWritesAllowedAgain() {
         assertFalse(session.readThroughToolTouchedThisTurn())
         assertTrue(dispatch("watch", """{"action":"set","kind":"charge_over","dollars":50}""").getBoolean("success"))
-        assertTrue(dispatch("memory", """{"action":"remember","text":"A made-up fact he said himself"}""").getBoolean("success"))
+        val remember = dispatch("memory", """{"action":"remember","text":"A made-up fact he said himself"}""")
+        assertTrue(remember.getBoolean("success"))
         assertEquals(1, watches.created.size)
         assertEquals(1, memories.calls.count { it.startsWith("create") })
     }
