@@ -111,14 +111,6 @@ private fun Glance(g: TypesetGlance, actions: TypesetHomeActions) {
             verticalAlignment = Alignment.Bottom,
         ) {
             Text(g.time, style = TypesetType.time, color = SoftColors.text)
-            if (g.ampm.isNotEmpty()) {
-                Text(
-                    g.ampm,
-                    style = TypesetType.lead,
-                    color = SoftColors.text2,
-                    modifier = Modifier.padding(start = 8.dp, bottom = 10.dp),
-                )
-            }
         }
         HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
         Figure(g.next, actions.onOpenToday)

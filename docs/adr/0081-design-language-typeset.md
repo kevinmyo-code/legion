@@ -33,7 +33,8 @@ conversation surface (Typeset, Matrix mono, City pop) and picked Typeset: *"i wa
   default whatever the phone says. A one-tap switch on home overrides it; the override lasts until
   the automatic answer next changes (a build choice, open to Kevin).
 - **One face: Source Serif 4**, bundled as static TTFs (minSdk 24 rules out the variable file).
-  One scale: 12, 14, 17, 21, 34, 64, 92. Labels are small caps, metadata italic. The Text optical
+  One scale: 12, 14, 17, 21, 34, 64, 92. Labels are small caps, metadata italic. **Times are
+  24-hour** everywhere Typeset shows one (Kevin, 2026-11-10: *"i want 24 hr clock"*). The Text optical
   size up to 34 and the Display optical size for 64 and 92, which is what the prototype's automatic
   optical sizing picks.
 - **Square.** No corner radius, except round things (the orb, a status dot).
@@ -60,7 +61,9 @@ Ruled with *"123 yes to all per ur picks"*
 - **A tap while Alfred speaks interrupts him** so Kevin can talk. It reuses the barge-in path of
   [[0064-phone-turn-taking-local-end-of-turn-and-barge-in]] (the same flush of queued speech and
   the same "interrupted" event), never a second one. A tap while he is not speaking keeps today's
-  meaning. **The Home button ends the conversation** and clears its cards.
+  meaning. **The masthead's Home link ends the conversation** and clears its cards; the Android
+  Home key or gesture only returns to the front page, answers kept until cleared (a pick, Kevin had
+  no preference, [[decisions#2026-11-10 - Typeset shows 24-hour time; the masthead Home ends the conversation (Kevin, and a pick)]]).
 - **Typed questions get the same answer cards as voice.** The cards stay until the Home button,
   a new conversation, or the next voice conversation's end.
 - **A card names its source and age only when the tool result or record carries them** (a live

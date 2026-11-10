@@ -7609,3 +7609,13 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   Clock, Field, Breathe), and the blocked-feed screen offers "Breathe instead". Field is the screen
   being built on `feat/field-nav` (compass, MGRS, waypoints, sun and moon); Typeset supplies its entry
   point, the ink compass rose and a night-first spec (`C:\Users\kevin\.legion\reports\typeset-build.md`).
+
+## 2026-11-10 - Typeset shows 24-hour time; the masthead Home ends the conversation (Kevin, and a pick)
+
+- **Kevin's words:** *"i want 24 hr clock"*. Ruled: everywhere Typeset shows a time it is 24-hour
+  ("21:41", no AM/PM), whatever the phone's own setting. The app shipped both before; Typeset ends
+  that on its surfaces.
+- **A pick, not his words** (the coordinator's, Kevin had no preference): "the Home button ends the
+  conversation" (ADR 0081, 2026-11-10) means the masthead's Home link on the Typeset front page. The
+  Android Home key or gesture only returns to the front page and keeps the answers reachable until
+  they are cleared.

@@ -140,9 +140,8 @@ class TypesetShotsTest {
 
     private val glance = TypesetGlance(
         dateline = "Monday, 9 November",
-        time = "2:20",
-        ampm = "PM",
-        next = TypesetFigure("3:30", "PM", "Study group", listOf("in 1 h 10 min, the library")),
+        time = "14:20",
+        next = TypesetFigure("15:30", null, "Study group", listOf("in 1 h 10 min, the library")),
         due = TypesetFigure("3", null, "due today", listOf("Essay draft", "Pick up the parcel", "and 1 more")),
         left = TypesetFigure("\$1,240", null, "left for November", listOf("of \$2,000, 21 days left")),
     )

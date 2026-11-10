@@ -44,7 +44,11 @@ fun ProvideTypesetEdition(systemBars: Boolean = true, content: @Composable () ->
     LaunchedEffect(auto) { switch.settle(auto) }
     val edition = remember(auto, version) { switch.resolve(auto) }
     if (systemBars) TypesetSystemBars(edition, LocalMatrixMode.current)
-    CompositionLocalProvider(LocalTypesetEdition provides edition, content = content)
+    CompositionLocalProvider(
+        LocalTypesetEdition provides edition,
+        LocalTypesetEditionToggle provides { switch.toggle(auto) },
+        content = content,
+    )
 }
 
 /** The bar colour and icon tone for [edition]; Matrix mode keeps the launch theme's dark ground. */

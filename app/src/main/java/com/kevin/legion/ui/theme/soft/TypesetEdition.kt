@@ -22,6 +22,12 @@ enum class TypesetEdition {
 val LocalTypesetEdition = staticCompositionLocalOf<TypesetEdition?> { null }
 
 /**
+ * The one-tap switch for the edition in force, provided beside [LocalTypesetEdition] by
+ * [ProvideTypesetEdition], which alone knows the automatic answer. A no-op where nothing provides it.
+ */
+val LocalTypesetEditionToggle = staticCompositionLocalOf<() -> Unit> { {} }
+
+/**
  * The automatic edition, pure: night when the phone is in dark theme, and night while bedtime is
  * on whatever the phone says (paper white at night is the risk the review named).
  */

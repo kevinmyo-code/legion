@@ -27,24 +27,22 @@ class TypesetHomeDeriveTest {
     private fun row(kind: AgendaKind, at: String, title: String) = AgendaRowUi("k$title", kind, at, title, "")
 
     @Test
-    fun `next is the first timed event still ahead, in the phone's clock`() {
+    fun `next is the first timed event still ahead, in 24-hour time`() {
         val rows = listOf(
             row(AgendaKind.EVENT, "09:00", "Standup"),
             row(AgendaKind.TODO, "Due 15:00", "Essay"),
             row(AgendaKind.EVENT, "All day", "Holiday"),
             row(AgendaKind.EVENT, "16:00", "Dentist"),
-            row(AgendaKind.EVENT, "15:30", "Study group"),
+            row(AgendaKind.EVENT, "3:30 PM", "Study group"),
         )
-        val twelve = TypesetHomeDerive.next(rows, now, twentyFourHour = false)
-        assertEquals(TypesetFigure("3:30", "PM", "Study group", listOf("in 1 h 10 min")), twelve)
-        val twentyFour = TypesetHomeDerive.next(rows, now, twentyFourHour = true)
-        assertEquals("15:30", twentyFour.number)
-        assertEquals(null, twentyFour.unit)
+        val figure = TypesetHomeDerive.next(rows, now)
+        assertEquals(TypesetFigure("15:30", null, "Study group", listOf("in 1 h 10 min")), figure)
+        assertEquals("14:20", TypesetHomeDerive.time(now))
     }
 
     @Test
     fun `with nothing ahead today the figure says so in words`() {
-        val figure = TypesetHomeDerive.next(listOf(row(AgendaKind.EVENT, "09:00", "Standup")), now, false)
+        val figure = TypesetHomeDerive.next(listOf(row(AgendaKind.EVENT, "09:00", "Standup")), now)
         assertEquals("None", figure.number)
         assertEquals("Nothing else today", figure.label)
     }

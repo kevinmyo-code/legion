@@ -29,8 +29,8 @@ data class TypesetDockTile(val monogram: String, val name: String)
 /** What the Typeset home draws with nothing asked: the glance. Pure data, built by [TypesetHomeDerive]. */
 data class TypesetGlance(
     val dateline: String,
+    /** 24-hour, "21:41". */
     val time: String,
-    val ampm: String,
     val next: TypesetFigure,
     val due: TypesetFigure,
     val left: TypesetFigure,
@@ -65,24 +65,18 @@ object TypesetHomeDerive {
 
     private const val MINUTES_PER_HOUR = 60L
 
-    private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
-    private val CLOCK_24 = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+    private val CLOCK_12 = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+    private val CLOCK = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
-    /**
-     * "9:41" and "AM", or "21:41" and "" when the phone is set to 24-hour time: the headline
-     * follows the phone's own setting (the app ships both today; no ruling picks one).
-     */
-    fun time(now: LocalTime, twentyFourHour: Boolean): Pair<String, String> {
-        if (twentyFourHour) return now.format(CLOCK_24) to ""
-        val text = now.format(CLOCK)
-        return text.substringBefore(' ') to text.substringAfter(' ')
-    }
+    /** "21:41": Typeset is 24-hour everywhere (Kevin, 2026-11-10, "i want 24 hr clock"). */
+    fun time(now: LocalTime): String = now.format(CLOCK)
 
     /**
      * The next timed event still ahead today, from the day's agenda rows (their `whenLabel` is
-     * "HH:mm", or "h:mm AM"). Past events, all-day events, to-dos and suggestions are not "next".
+     * "HH:mm" today, "h:mm AM" on older rows). Past events, all-day events, to-dos and suggestions
+     * are not "next".
      */
-    fun next(rows: List<AgendaRowUi>, now: LocalTime, twentyFourHour: Boolean): TypesetFigure {
+    fun next(rows: List<AgendaRowUi>, now: LocalTime): TypesetFigure {
         val upcoming = rows.asSequence()
             .filter { it.kind == AgendaKind.EVENT }
             .mapNotNull { row -> parse(row.whenLabel)?.let { row to it } }
@@ -90,9 +84,7 @@ object TypesetHomeDerive {
             .minByOrNull { (_, at) -> at }
             ?: return TypesetFigure(number = "None", label = "Nothing else today", lines = emptyList())
         val (row, at) = upcoming
-        val (clock, ampm) = time(at, twentyFourHour)
-        val unit = ampm.ifBlank { null }
-        return TypesetFigure(number = clock, unit = unit, label = row.title, lines = listOf(inWords(now, at)))
+        return TypesetFigure(number = time(at), label = row.title, lines = listOf(inWords(now, at)))
     }
 
     /** Open to-dos due today: the count, and the first two by name. */
@@ -152,7 +144,7 @@ object TypesetHomeDerive {
 
     private fun parse(label: String): LocalTime? {
         val text = label.trim().uppercase(Locale.US)
-        return listOf(CLOCK_24, CLOCK).firstNotNullOfOrNull { format ->
+        return listOf(CLOCK, CLOCK_12).firstNotNullOfOrNull { format ->
             runCatching { LocalTime.parse(text, format) }.getOrNull()
         }
     }
