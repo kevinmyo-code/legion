@@ -1524,6 +1524,10 @@ def test_every_mcp_tool_is_scoped_by_household(
     covered.add("show_diagram")
     is_error, text, _ = call(mcp_b, "show_diagram", {"project": "legion", "view": "data_model"})
     assert is_error and "Nothing was shown" in text, text
+    # github_status (round 5) reads no household row; with no token it is not set up.
+    covered.add("github_status")
+    is_error, text, _ = call(mcp_b, "github_status", {"aspect": "builds"})
+    assert is_error and text.startswith("Nothing was read."), text
     # web_search reads no row at all; offline here, it fails in words.
     covered.add("web_search")
     is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})

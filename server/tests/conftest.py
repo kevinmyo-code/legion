@@ -531,6 +531,20 @@ def _no_nhtsa(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_github(monkeypatch):
+    """No test reaches GitHub: `github_status`'s one GET fails in words unless a test hands it
+    answers (`tests/test_github_status.py`), and no ambient token configures it."""
+    from engine_mcp import github_status
+
+    def _offline(cfg, path):
+        raise github_status.GitHubFailed("the network is off in tests")
+
+    monkeypatch.setattr(github_status, "_get", _offline)
+    monkeypatch.delenv(github_status.TOKEN_ENV, raising=False)
+    monkeypatch.delenv(github_status.REPOS_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_decide_model(monkeypatch):
     """No test reaches Google from a procedure's `decide` step: its one call fails as
     unreachable unless a test hands it a transport (`tests/test_procedures_runner.py`)."""

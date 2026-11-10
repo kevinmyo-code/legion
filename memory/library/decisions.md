@@ -7625,3 +7625,26 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   TomTom's developer portal; nothing in the repo or on the engine held it. The location-intelligence
   departure advisor (ticket 06) now gets its traffic ETA from Mapbox Directions; that map's
   TomTom decisions (4, 8, 17, 18, 19) are superseded by this entry.
+
+## 2026-11-10 - GitHub status is a read-only engine tool behind the household's own token (round 5)
+
+- **Kevin's ask (2026-11-10, round 5 picks):** Alfred and the web assistant answer "did the build
+  pass", "what's open on legion", "recent commits" and Pages/Actions status. Read only, scoped to his
+  repos, never write.
+- **Built as one engine tool, `github_status`** (`server/engine_mcp/github_status.py`), aspects
+  `builds`, `open`, `commits`, `pages`. It reaches the phone through `ask_engine` (constant Live
+  cost; `AskEngine.DESCRIPTION` gained "GitHub builds and PRs" so the live model routes there) and
+  the web assistant through the registry. No new phone declaration.
+- **Read only by construction:** the module's one network function sends GET and nothing else, the
+  tool is `writes=False`, and `tests/test_github_status.py` asserts both. The token is a
+  fine-grained PAT with read-only Actions, Contents, Issues, Pull requests and Pages.
+- **Scoped by configuration, not code:** `LEGION_GITHUB_REPOS` (comma list of owner/name) is the
+  allowlist; a repo off it is refused before any request. `LEGION_GITHUB_TOKEN` is a Secret Manager
+  secret mounted only when the repo list is set. Missing either: "not set up", nothing read.
+- **Read-through:** issue and PR titles may be written by strangers on a public repo, so the tool is
+  in `assistant.read_through.THIRD_PARTY_TOOLS` (no `remember` in the same web turn).
+- **Recruiter:** excluded (`RECRUITER_EXCLUDED`): it reads through the owner's own credential.
+- **Hands path (ADR 0035):** GitHub's own site and app show the same facts; LEGION adds no screen.
+  Recorded as the hands path rather than building a GitHub screen.
+- **Owed by Kevin:** create the token and the secret, set `LEGION_GITHUB_REPOS`, redeploy
+  (`deploy/cloudrun/README.md`, "GitHub status").
