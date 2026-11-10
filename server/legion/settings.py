@@ -208,6 +208,12 @@ LEGION_OPEN_LOOPS_EXPIRE_DAYS = os.environ.get("LEGION_OPEN_LOOPS_EXPIRE_DAYS", 
 # judges waits on the Memory screen. `on` ("Everything auto", Kevin 2026-11-09): every change that
 # passes the code checks applies on the night, up to LEGION_MEMORY_REVIEW_CAP; each one is undone
 # from the Retired screen (`member_memory.review.effective_mode`).
+# Architecture review 2026-11-10 #11: every request runs as the `legion_app` role under the
+# row-level security policies of `household/migrations/0009_rls_backstop.py`. Unset is off.
+# Turn on only after the role exists and has its grants (`deploy/rls/README.md`): with the role
+# missing every request fails, closed.
+LEGION_RLS = os.environ.get("LEGION_RLS", "").strip().lower() in {"1", "true", "yes", "on"}
+
 LEGION_MEMORY_REVIEW = os.environ.get("LEGION_MEMORY_REVIEW", "").strip().lower() or "off"
 # The most changes one night's review applies; the rest wait for the next night. Default 25.
 try:
@@ -275,6 +281,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Postgres row-level security under the Python choke point (`household/rls.py`). After
+    # AuthenticationMiddleware so a session user is known; a no-op unless LEGION_RLS=on.
+    "household.rls_middleware.RlsMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

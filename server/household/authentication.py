@@ -11,6 +11,7 @@ from __future__ import annotations
 from django.utils import timezone
 from rest_framework import authentication, exceptions
 
+from household import rls
 from household.models import DeviceToken, hash_device_key
 
 AUTH_HEADER_PREFIX = "Token"
@@ -49,6 +50,9 @@ class DeviceTokenAuthentication(authentication.BaseAuthentication):
 
         token.last_seen_at = timezone.now()
         token.save(update_fields=["last_seen_at"])
+        # Row-level security (household/rls.py): the request's transaction now sees this user's
+        # household and no other. A no-op unless RlsMiddleware put the request under RLS.
+        rls.bind_user(token.user)
 
         return (token.user, token)
 

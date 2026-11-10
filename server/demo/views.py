@@ -46,6 +46,7 @@ from rest_framework.views import APIView
 from api.schema import DetailSerializer
 from demo.briefing import seed_visit_procedures
 from demo.models import DemoCode, DemoVisit
+from household import rls
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
@@ -189,6 +190,9 @@ def _make_visit_household() -> Household:
     household = Household.objects.create(
         name=f"Demo visit {tag}", timezone=DEMO_TIMEZONE, is_demo_visit=True
     )
+    # Row-level security: this anonymous request seeds the visit's OWN household and nothing
+    # else, so bind it before the first seeded row (a no-op unless LEGION_RLS is on).
+    rls.bind_household(household.id)
     seed_household(household, created=True)
     # The visit's own morning briefing, built only from the visit's tools (`demo/briefing.py`).
     seed_visit_procedures(household)

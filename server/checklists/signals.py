@@ -7,6 +7,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from checklists.builtin import ensure_builtin_lists
+from household import rls
 from household.models import Household
 
 
@@ -14,4 +15,7 @@ from household.models import Household
 def create_builtin_lists(sender, instance: Household, created: bool, raw: bool = False, **kwargs):
     # `raw` is a fixture load, which brings its own rows.
     if created and not raw:
-        ensure_builtin_lists(instance)
+        # Row-level security (household/rls.py): the lists belong to the household this request
+        # just made, which is not (yet) the request's own. A no-op outside RLS.
+        with rls.as_household(instance.id):
+            ensure_builtin_lists(instance)

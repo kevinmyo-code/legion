@@ -355,6 +355,62 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_plate_column(cursor)
             assert skipped is None, skipped
+            # `household/migrations/0009` (row-level security, ADR 0045 layer 2), the same way:
+            # LAST, once every table exists, then the role the requests run as.
+            from household.rls import apply_rls
+
+            # `item_lists` / `list_items` have no test mirror (no route writes them); every
+            # other RLS table exists here. `tests/test_rls.py` checks the policies by name.
+            apply_rls(cursor)
+            _grant_rls_role(cursor)
+
+
+def _grant_rls_role(cursor) -> None:
+    """The test cluster's `legion_app` (household/rls.py): NOLOGIN, NOBYPASSRLS, owns nothing,
+    with the grants `deploy/rls/grants.sql` gives it on a live database. Created here because the
+    test cluster is a throwaway; on a live database creating it is the operator's step."""
+    from household.rls import RLS_ROLE
+
+    cursor.execute(
+        f"""
+        do $$ begin
+            if not exists (select from pg_roles where rolname = '{RLS_ROLE}') then
+                create role {RLS_ROLE} nologin nosuperuser nobypassrls;
+            end if;
+        end $$;
+        """
+    )
+    # The connecting role must be able to `SET ROLE legion_app`. A superuser always can; a
+    # non-superuser test role is granted it once by whoever made the cluster.
+    cursor.execute(
+        f"""
+        do $$ begin
+            if not pg_has_role(current_user, '{RLS_ROLE}', 'MEMBER') then
+                execute 'grant {RLS_ROLE} to ' || quote_ident(current_user);
+            end if;
+        end $$;
+        """
+    )
+    from pathlib import Path
+
+    grants = (Path(settings.BASE_DIR).parent / "deploy" / "rls" / "grants.sql").read_text(
+        encoding="utf-8"
+    )
+    cursor.execute(grants)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _rls_on():
+    """Every request in the suite runs under row-level security as `legion_app` (household/rls.py),
+    so a code path that reads or writes another household's row fails here, not in production.
+    `LEGION_TEST_RLS=off` runs the suite the old way, to compare."""
+    if os.environ.get("LEGION_TEST_RLS", "on").strip().lower() in {"0", "off", "false", "no"}:
+        yield
+        return
+    previous = getattr(settings, "LEGION_RLS", False)
+    settings.LEGION_RLS = True
+    yield
+    settings.LEGION_RLS = previous
 
 
 def _apply_tenancy(cursor) -> None:
