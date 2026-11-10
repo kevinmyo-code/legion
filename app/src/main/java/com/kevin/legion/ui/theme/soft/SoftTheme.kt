@@ -66,64 +66,64 @@ private val SoftShapes = Shapes(
  * already uses ("nudged +1 in blue"), just applied to more slots because this scheme carries a
  * larger, newer surface-container ladder than VACUUM/SENTRY's did.
  */
-internal val SoftColorScheme = darkColorScheme(
-    primary = SoftColors.primary,
-    onPrimary = SoftColors.ground,
-    primaryContainer = SoftColors.primaryContainer,
-    onPrimaryContainer = SoftColors.onPrimaryContainer,
+internal fun softDarkColorScheme(p: SoftPalette) = darkColorScheme(
+    primary = p.primary,
+    onPrimary = p.ground,
+    primaryContainer = p.primaryContainer,
+    onPrimaryContainer = p.onPrimaryContainer,
     // Placeholder - nothing in this ticket reaches for an inverse accent. Nudged off `outline`
     // (+1 in blue: 0x3A3E47 -> 0x3A3E48) purely to stay distinct from every role below.
     inversePrimary = Color(0xFF3A3E48),
 
     // Secondary is deliberately NOT a second accent (mirrors `Theme.kt`'s own `secondary = DeckFaint`
     // posture) - a muted neutral, since nothing named by ticket 02 spends a second hue.
-    secondary = SoftColors.text2,
-    onSecondary = SoftColors.ground,
+    secondary = p.text2,
+    onSecondary = p.ground,
     // Placeholder, manufactured (no real token behind it) - only required to exist and differ from
     // every other role here.
     secondaryContainer = Color(0xFF242730),
-    onSecondaryContainer = SoftColors.text2,
+    onSecondaryContainer = p.text2,
 
     // Tertiary borrows `caution` as its placeholder value - a real token, reused here only because
     // M3 requires SOME third accent and nothing in this ticket spends one on purpose.
-    tertiary = SoftColors.caution,
-    onTertiary = SoftColors.ground,
+    tertiary = p.caution,
+    onTertiary = p.ground,
     // Placeholder, manufactured, same posture as `secondaryContainer` above.
     tertiaryContainer = Color(0xFF2A2D37),
-    onTertiaryContainer = SoftColors.caution,
+    onTertiaryContainer = p.caution,
 
-    background = SoftColors.ground,
-    onBackground = SoftColors.text,
+    background = p.ground,
+    onBackground = p.text,
 
-    surface = SoftColors.card,
-    onSurface = SoftColors.text,
+    surface = p.card,
+    onSurface = p.text,
 
-    surfaceVariant = SoftColors.cardHigh,
-    onSurfaceVariant = SoftColors.text2,
+    surfaceVariant = p.cardHigh,
+    onSurfaceVariant = p.text2,
 
     // M3 convention, not a hazard: `surfaceTint` is never itself queried as a `contentColorFor`
     // input, so mirroring `primary` here (the standard M3 baseline behaviour) is intentional reuse,
     // not a collision.
-    surfaceTint = SoftColors.primary,
+    surfaceTint = p.primary,
 
     // Inverted surface: light fill, dark content - already distinct from every dark role above by
     // raw value.
-    inverseSurface = SoftColors.text,
-    inverseOnSurface = SoftColors.ground,
+    inverseSurface = p.text,
+    inverseOnSurface = p.ground,
 
     // `error` and `onErrorContainer` deliberately share ONE token (`onAlert`) - see this token's own
     // doc comment on `SoftColors`: "text on [alertContainer]; also alert-coloured text sitting
     // directly on card". Both jobs are the same physical colour by design, matching `Theme.kt`'s
     // own `credit`/`debit` precedent for an intentional, documented reuse.
-    error = SoftColors.onAlert,
-    onError = SoftColors.ground,
-    errorContainer = SoftColors.alertContainer,
-    onErrorContainer = SoftColors.onAlert,
+    error = p.onAlert,
+    onError = p.ground,
+    errorContainer = p.alertContainer,
+    onErrorContainer = p.onAlert,
 
-    outline = SoftColors.outline,
+    outline = p.outline,
     // Reused, not a placeholder: `barRule` is already a hairline colour by design (the rule above
     // the talk bar), and `outlineVariant` is never itself a `contentColorFor` input.
-    outlineVariant = SoftColors.barRule,
+    outlineVariant = p.barRule,
 
     // Placeholder - scrim is rarely rendered by anything this ticket builds. Nudged off
     // `cardHighest` (+1 in blue) to stay distinct.
@@ -131,8 +131,8 @@ internal val SoftColorScheme = darkColorScheme(
 
     // The lightest/dimmest ends of the card ladder map onto M3's bright/dim roles directly - both
     // are real tokens, not manufactured.
-    surfaceBright = SoftColors.cardHighest,
-    surfaceDim = SoftColors.barLow,
+    surfaceBright = p.cardHighest,
+    surfaceDim = p.barLow,
 
     // The five-tier surfaceContainer ladder: nothing this ticket builds reaches for these roles by
     // name (StatusLine/AssistantStrip read `SoftColors` tokens directly), so each is a nudge (+1 in
@@ -144,6 +144,9 @@ internal val SoftColorScheme = darkColorScheme(
     surfaceContainerHigh = Color(0xFF23262E),
     surfaceContainerHighest = Color(0xFF24272F),
 )
+
+/** The soft scheme over [SoftDarkPalette], the values `SoftThemeTest` audits. */
+internal val SoftColorScheme = softDarkColorScheme(SoftDarkPalette)
 
 
 /**
@@ -171,21 +174,24 @@ val LocalSoftActive = staticCompositionLocalOf { false }
  *   estimate stay different hues, as the mission-control pair did.
  * `internal` so `SoftThemeTest` can read it.
  */
-internal val SoftSemantics = LegionSemantics(
-    credit = SoftColors.good,
-    debit = SoftColors.text,
-    estimated = SoftColors.caution,
-    quarantined = SoftColors.onAlert,
-    rule = SoftColors.barRule,
-    ruleFaint = SoftColors.cardHigh,
-    faint = SoftColors.text2,
-    ghost = SoftColors.text3,
-    chrome = SoftColors.primary,
-    chromeText = SoftColors.onPrimaryContainer,
-    chromeDim = SoftColors.primaryContainer,
-    marker = SoftColors.primary,
-    data = SoftColors.text,
+internal fun softSemantics(p: SoftPalette) = LegionSemantics(
+    credit = p.good,
+    debit = p.text,
+    estimated = p.caution,
+    quarantined = p.onAlert,
+    rule = p.barRule,
+    ruleFaint = p.cardHigh,
+    faint = p.text2,
+    ghost = p.text3,
+    chrome = p.primary,
+    chromeText = p.onPrimaryContainer,
+    chromeDim = p.primaryContainer,
+    marker = p.primary,
+    data = p.text,
 )
+
+/** [softSemantics] over [SoftDarkPalette]. */
+internal val SoftSemantics = softSemantics(SoftDarkPalette)
 
 /**
  * Wraps the chrome ticket 02 converted (`StatusLine`, `AssistantStrip`), HOME, Lists, Apps, and every

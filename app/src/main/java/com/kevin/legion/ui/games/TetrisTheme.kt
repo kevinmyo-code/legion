@@ -101,8 +101,11 @@ fun contrastRatio(a: Color, b: Color): Double {
     return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
 }
 
-/** The page every theme sits on. */
-val TetrisPage: Color get() = SoftColors.ground
+/**
+ * The page every theme sits on. The soft dark ground, fixed: the game's own themes were tuned and
+ * contrast-tested against it, so it does not follow the Typeset edition (ADR 0081).
+ */
+val TetrisPage: Color get() = com.kevin.legion.ui.theme.soft.SoftDarkPalette.ground
 
 /** The chosen theme, kept on the device (local UI preference, so SharedPreferences like the rest). */
 class TetrisThemeStore(context: Context) {

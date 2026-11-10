@@ -243,13 +243,14 @@ private fun AssistantStripWithCard(state: AssistantStripResolver.State, onTap: (
  */
 @Composable
 private fun AssistantStripBar(content: @Composable () -> Unit) {
+    val rule = SoftColors.barRule
     Column(
         Modifier
             .fillMaxWidth()
             .background(SoftColors.barLow)
             .drawBehind {
                 drawLine(
-                    color = SoftColors.barRule,
+                    color = rule,
                     start = Offset(0f, 0f),
                     end = Offset(size.width, 0f),
                     strokeWidth = 1.dp.toPx(),

@@ -518,9 +518,11 @@ fun DeckMeter(fraction: Float, paceFraction: Float? = null, modifier: Modifier =
         // "ahead of pace" is also readable from position, not just from the hue.
         val over = paceFraction != null && target > paceFraction
         val softFill = if (over) SoftColors.caution else SoftColors.primary
+        val softTrack = SoftColors.cardHighest
+        val softTick = SoftColors.text
         Canvas(modifier.fillMaxWidth().height(8.dp)) {
             val radius = CornerRadius(size.height / 2f, size.height / 2f)
-            drawRoundRect(SoftColors.cardHighest, cornerRadius = radius)
+            drawRoundRect(softTrack, cornerRadius = radius)
             val fillWidth = size.width * animatedFraction
             if (fillWidth > 0f) {
                 drawRoundRect(softFill, size = size.copy(width = fillWidth.coerceAtLeast(size.height)), cornerRadius = radius)
@@ -528,7 +530,7 @@ fun DeckMeter(fraction: Float, paceFraction: Float? = null, modifier: Modifier =
             if (paceFraction != null) {
                 val x = size.width * paceFraction.coerceIn(0f, 1f)
                 drawRoundRect(
-                    SoftColors.text,
+                    softTick,
                     topLeft = Offset(x - 1.dp.toPx(), 0f),
                     size = size.copy(width = 2.dp.toPx()),
                     cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx()),

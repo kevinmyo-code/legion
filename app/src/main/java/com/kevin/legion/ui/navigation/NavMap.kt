@@ -38,7 +38,7 @@ import com.mapbox.bindgen.Value
 import kotlinx.coroutines.delay
 import com.kevin.legion.navigation.NavPhase
 import com.kevin.legion.ui.theme.soft.AreaAccent
-import com.kevin.legion.ui.theme.soft.SoftColors
+import com.kevin.legion.ui.theme.soft.SoftDarkPalette
 import com.mapbox.geojson.LineString
 import com.mapbox.geojson.Point
 import com.mapbox.geojson.utils.PolylineUtils
@@ -143,13 +143,13 @@ fun NavMap(
                     // The SDK's route line cannot dash; a low-contrast grey keeps the alternative clearly
                     // secondary to the blue primary (layout A).
                     RouteLineColorResources.Builder()
-                        .alternativeRouteDefaultColor(SoftColors.text3.toArgb())
-                        .alternativeRouteUnknownCongestionColor(SoftColors.text3.toArgb())
-                        .alternativeRouteLowCongestionColor(SoftColors.text3.toArgb())
-                        .alternativeRouteModerateCongestionColor(SoftColors.text3.toArgb())
-                        .alternativeRouteHeavyCongestionColor(SoftColors.text3.toArgb())
-                        .alternativeRouteSevereCongestionColor(SoftColors.text3.toArgb())
-                        .alternativeRouteCasingColor(SoftColors.ground.toArgb())
+                        .alternativeRouteDefaultColor(SoftDarkPalette.text3.toArgb())
+                        .alternativeRouteUnknownCongestionColor(SoftDarkPalette.text3.toArgb())
+                        .alternativeRouteLowCongestionColor(SoftDarkPalette.text3.toArgb())
+                        .alternativeRouteModerateCongestionColor(SoftDarkPalette.text3.toArgb())
+                        .alternativeRouteHeavyCongestionColor(SoftDarkPalette.text3.toArgb())
+                        .alternativeRouteSevereCongestionColor(SoftDarkPalette.text3.toArgb())
+                        .alternativeRouteCasingColor(SoftDarkPalette.ground.toArgb())
                         .build(),
                 )
                 .build(),
@@ -435,7 +435,7 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
         } else {
             style.addLayer(
                 lineLayer("$PREVIEW_LINE_ID$i", "$PREVIEW_SOURCE_ID$i") {
-                    lineColor(SoftColors.text3.toArgb())
+                    lineColor(SoftDarkPalette.text3.toArgb())
                     lineWidth(ALT_LINE_WIDTH)
                     lineDasharray(listOf(DASH, DASH_GAP))
                     // Butt, not round: a round cap grows each dash by half the width and closes the gap.
@@ -451,9 +451,9 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
         style.addSource(geoJsonSource(PREVIEW_DEST_ID) { geometry(end) })
         style.addLayer(
             circleLayer(PREVIEW_DEST_ID, PREVIEW_DEST_ID) {
-                circleColor(SoftColors.primary.toArgb())
+                circleColor(SoftDarkPalette.primary.toArgb())
                 circleRadius(DEST_RADIUS)
-                circleStrokeColor(SoftColors.ground.toArgb())
+                circleStrokeColor(SoftDarkPalette.ground.toArgb())
                 circleStrokeWidth(DEST_STROKE)
             },
         )

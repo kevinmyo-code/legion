@@ -7567,3 +7567,17 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   a day, then the rest waits and the 16 MB spool drops the oldest; `logcat` kept 30 days on the
   engine, `crash` and `conversation` 60; nothing dropped as noise (Samsung's per-frame
   `View: setRequestedFrameRate` is about half the compressed bytes; one constant drops it).
+
+## 2026-11-09 - The phone's design language is Typeset (Kevin)
+
+- **Kevin's words:** *"i want typeset"*, picked from three clickable prototypes of one home and
+  conversation surface (Typeset, Matrix mono, City pop); then *"i need a way to open the app tray"*
+  (an "All apps" handle and a tray were added to the prototype); then *"build it"*.
+- **Ruled:** Typeset replaces soft Material (ADR 0051) as the phone's design language. ADR 0081
+  records it; 0051 is superseded. City pop stays dead and Matrix mono was not chosen; Matrix mode
+  itself is unchanged and stays reachable.
+- **Kept exactly as they are:** the ADR 0066 feed-blocker gate, the drawer's "blocked" mark, the
+  hands paths (ADR 0035), the home-app rules (ADR 0050, ADR 0062), Alfred's clock (ADR 0079), Quiet.
+- **Choices made in the build, not ruled:** the night edition is the default while bedtime is on;
+  the day/night switch lasts until the automatic answer next changes; the palette roles keep their
+  soft names behind `LocalSoftPalette`; accent is never a button fill.
