@@ -31,7 +31,12 @@ class FieldWaypointsTest {
     private class Backend(var down: Boolean) : PlacesBackend {
         val rows = mutableMapOf<String, RemotePlace>()
         override suspend fun fetchActive() = Result.success(rows.values.toList())
-        override suspend fun upsert(label: String, latitude: Double, longitude: Double, address: String?): Result<RemotePlace> {
+        override suspend fun upsert(
+            label: String,
+            latitude: Double,
+            longitude: Double,
+            address: String?,
+        ): Result<RemotePlace> {
             if (down) return Result.failure(PlacesBackendException("simulated: no signal"))
             val row = RemotePlace(label, latitude, longitude, updatedAtMs = 1L, deleted = false, address = address)
             rows[label] = row
@@ -58,7 +63,8 @@ class FieldWaypointsTest {
     }
 
     private suspend fun outbox() =
-        CarDatabase.getDatabase(context).outboxDao().pendingForTable(OutboxTarget.FIELD_WAYPOINTS, FieldWaypoints.MAX_ATTEMPTS)
+        CarDatabase.getDatabase(context).outboxDao()
+            .pendingForTable(OutboxTarget.FIELD_WAYPOINTS, FieldWaypoints.MAX_ATTEMPTS)
 
     @Test
     fun `offline, a mark waits on the phone and still lists`() = runBlocking {

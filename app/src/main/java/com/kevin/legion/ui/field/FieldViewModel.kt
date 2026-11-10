@@ -55,7 +55,9 @@ class FieldViewModel(application: Application) : AndroidViewModel(application) {
                         timeMs = it.time,
                     )
                 }
-                FieldReadout.build(c, compass.source, statusOf(g), fix, w, now, ZoneId.systemDefault(), m, Declination::at)
+                FieldReadout.build(
+                    c, compass.source, statusOf(g), fix, w, now, ZoneId.systemDefault(), m, Declination::at,
+                )
             }.combine(extra) { s, e -> s.copy(message = e.message, markBusy = e.busy) }
                 .collect { _state.value = it }
         }
@@ -130,3 +132,11 @@ class FieldViewModel(application: Application) : AndroidViewModel(application) {
         const val MAX_MARGIN = 240
     }
 }
+
+/** What the screen can ask for. One holder so the restyle keeps the same wiring. */
+data class FieldActions(
+    val onBack: () -> Unit,
+    val onGrantLocation: () -> Unit,
+    val onMark: (String) -> Unit,
+    val onMargin: (Int) -> Unit,
+)

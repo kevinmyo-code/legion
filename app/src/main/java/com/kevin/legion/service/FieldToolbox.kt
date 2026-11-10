@@ -5,6 +5,7 @@ import com.kevin.legion.field.CompassSensor
 import com.kevin.legion.field.Declination
 import com.kevin.legion.field.FieldReadout
 import com.kevin.legion.field.FieldUiState
+import com.kevin.legion.field.FieldVoice
 import com.kevin.legion.field.FieldWaypoints
 import com.kevin.legion.field.FixInput
 import com.kevin.legion.field.GpsStatus
@@ -18,7 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Field navigation's voice path (round 5): no new declaration. `get_current_location`'s RESULT
  * carries the field readout (billed per call, not per Live setup; LiveSetupPayloadSizeTest), so
  * "which way is north", "bearing to the car" and "when's sunset" are answered from the same
- * [FieldReadout] the Field screen draws (ADR 0035: one controller, two doors).
+ * [FieldReadout] and [FieldVoice] the Field screen uses (ADR 0035: one controller, two doors).
  *
  * The compass is read once for up to [COMPASS_WAIT_MS] and switched off again; a phone with no
  * compass, or one that answers too slowly, gets "no reading" in words, never a guessed heading.
@@ -60,6 +61,6 @@ object FieldToolbox {
             marginMin = FieldUiState.DEFAULT_MARGIN_MIN,
             declination = Declination::at,
         )
-        return FieldReadout.voiceText(state, ZoneId.systemDefault())
+        return FieldVoice.voiceText(state, ZoneId.systemDefault())
     }
 }

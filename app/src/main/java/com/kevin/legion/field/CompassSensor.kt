@@ -1,21 +1,17 @@
+@file:Suppress("MagicNumber") // sensor vector and matrix sizes (3 and 9) fixed by the Android API
+
 package com.kevin.legion.field
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.PackageManager
-import android.hardware.GeomagneticField
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
-import android.os.Bundle
-import android.os.Looper
-import androidx.core.content.ContextCompat
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -133,7 +129,7 @@ class CompassSensor(context: Context) : SensorEventListener {
                 event.values.copyInto(geomagnetic, endIndex = 3)
                 haveMagnet = true
                 // A first accuracy report can arrive only with the events on some phones.
-                if (event.accuracy != accuracyStatusUnknown) accuracy = CompassAccuracy.of(event.accuracy)
+                if (event.accuracy != ACCURACY_UNKNOWN) accuracy = CompassAccuracy.of(event.accuracy)
             }
         }
     }
@@ -155,75 +151,39 @@ class CompassSensor(context: Context) : SensorEventListener {
     private companion object {
         /** cos(50 deg): tilted further than this from flat counts as held upright. */
         const val UPRIGHT_COS = 0.64f
-        const val accuracyStatusUnknown = -1
+        const val ACCURACY_UNKNOWN = -1
     }
-}
-
-/** GPS state in the field: the provider's own facts, never a network or fused guess. */
-sealed interface GpsState {
-    data object NoPermission : GpsState
-
-    data object Off : GpsState
-
-    data object Searching : GpsState
-
-    data class Fix(val location: Location) : GpsState
 }
 
 /**
- * GPS only (round 5: "work from GPS only, with no network location"): [LocationManager.GPS_PROVIDER]
- * directly, not the fused provider, so a fix means satellites, and no fix means no fix. The last
- * GPS fix the phone kept is shown at once and marked by its age until a fresh one arrives.
+ * Smooths compass headings without the 359-to-0 jump: an exponential average of the unit vector,
+ * not of the angle. [alpha] is the weight of each new reading (0.15 settles in about half a second
+ * at UI sensor rates).
  */
-class FieldGps(private val context: Context) : LocationListener {
-    private val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager?
-    private val _state = MutableStateFlow<GpsState>(GpsState.Searching)
-    val state: StateFlow<GpsState> = _state.asStateFlow()
+class HeadingSmoother(private val alpha: Double = DEFAULT_ALPHA) {
+    private var x = 0.0
+    private var y = 0.0
+    private var primed = false
 
-    fun hasPermission(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
-
-    @SuppressLint("MissingPermission") // checked by hasPermission() on the line before
-    fun start() {
-        val m = manager
-        when {
-            !hasPermission() -> _state.value = GpsState.NoPermission
-            m == null || !m.isProviderEnabled(LocationManager.GPS_PROVIDER) -> _state.value = GpsState.Off
-            else -> {
-                m.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let { _state.value = GpsState.Fix(it) }
-                    ?: run { _state.value = GpsState.Searching }
-                m.requestLocationUpdates(LocationManager.GPS_PROVIDER, INTERVAL_MS, 0f, this, Looper.getMainLooper())
-            }
+    fun update(deg: Double): Double {
+        val r = deg * PI / HALF_TURN_DEG
+        if (!primed) {
+            x = cos(r)
+            y = sin(r)
+            primed = true
+        } else {
+            x += alpha * (cos(r) - x)
+            y += alpha * (sin(r) - y)
         }
+        return FieldMath.normalize(atan2(y, x) * HALF_TURN_DEG / PI)
     }
 
-    fun stop() {
-        manager?.removeUpdates(this)
+    fun reset() {
+        primed = false
     }
-
-    override fun onLocationChanged(location: Location) {
-        _state.value = GpsState.Fix(location)
-    }
-
-    override fun onProviderDisabled(provider: String) {
-        _state.value = GpsState.Off
-    }
-
-    override fun onProviderEnabled(provider: String) {
-        if (_state.value == GpsState.Off) _state.value = GpsState.Searching
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
 
     private companion object {
-        const val INTERVAL_MS = 1_000L
+        const val DEFAULT_ALPHA = 0.15
+        const val HALF_TURN_DEG = 180.0
     }
-}
-
-/** Magnetic declination (east positive) from Android's built-in World Magnetic Model, offline. */
-object Declination {
-    fun at(lat: Double, lon: Double, altitudeM: Double, timeMs: Long): Double =
-        GeomagneticField(lat.toFloat(), lon.toFloat(), altitudeM.toFloat(), timeMs).declination.toDouble()
 }

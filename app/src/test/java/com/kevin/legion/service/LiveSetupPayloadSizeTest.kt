@@ -240,6 +240,13 @@ class LiveSetupPayloadSizeTest {
      * out `files true`. Measured on dev `2779ef88` plus the branch: 95 declarations, 88,042 chars of
      * tools JSON plus 10,356 chars of system instruction = 98,398 chars, ~24,599 tokens (+21).
      * Headroom is ~51 tokens.
+     *
+     * **NOT raised on 2026-11-10 (round 5, `feat/field-nav`).** No new declaration: the offline field
+     * readout (heading, true north, grid, sun, moon, turnaround, bearing to saved places) rides in
+     * `get_current_location`'s RESULT (`FieldToolbox`), billed per call; its description gained one
+     * clause naming it. Measured on dev `ea6e968b` plus the branch: 95 declarations, 88,110 chars of
+     * tools JSON plus 10,356 chars of system instruction = 98,466 chars, ~24,616 tokens (+17).
+     * Headroom is ~34 tokens.
      */
     private val ceilingTokens = 24_650
 

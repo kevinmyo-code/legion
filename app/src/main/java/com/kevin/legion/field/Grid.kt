@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber") // projection constants from the USGS and NGA formulas
+
 package com.kevin.legion.field
 
 import kotlin.math.PI
@@ -37,8 +39,8 @@ object Grid {
     private const val K0 = 0.9996
     private const val FALSE_EASTING = 500_000.0
     private const val FALSE_NORTHING_SOUTH = 10_000_000.0
-    private val E2 = F * (2 - F)
-    private val EP2 = E2 / (1 - E2)
+    private const val E2 = F * (2 - F)
+    private const val EP2 = E2 / (1 - E2)
     private const val DEG = PI / 180.0
 
     const val MIN_LAT = -80.0
@@ -53,9 +55,9 @@ object Grid {
         var zone = floor((lonN + 180.0) / 6.0).toInt() + 1
         if (zone > 60) zone = 60
         // Norway: 32V is widened west over 3-12 E.
-        if (lat >= 56.0 && lat < 64.0 && lonN >= 3.0 && lonN < 12.0) zone = 32
+        if (lat in 56.0..<64.0 && lonN in 3.0..<12.0) zone = 32
         // Svalbard: only the odd zones 31, 33, 35 and 37 exist in band X.
-        if (lat >= 72.0 && lat <= 84.0) {
+        if (lat in 72.0..84.0) {
             zone = when {
                 lonN >= 0.0 && lonN < 9.0 -> 31
                 lonN >= 9.0 && lonN < 21.0 -> 33
@@ -127,19 +129,20 @@ object Grid {
     /** "31N AA 66021 00000" at [digits] per axis (5 = 1 m, 4 = 10 m ... 1 = 10 km), or null
      * outside 80 S to 84 N. */
     fun mgrs(lat: Double, lon: Double, digits: Int = 5): String? {
-        val coord = utm(lat, lon) ?: return null
         require(digits in 1..5) { "MGRS precision is 1 to 5 digits per axis" }
-        val column = COLUMN_SETS[(coord.zone - 1) % 3]
-        val colIndex = floor(coord.easting / HUNDRED_KM).toInt() - 1
-        val rowOffset = if (coord.zone % 2 == 0) 5 else 0
-        val rowIndex = (floor(coord.northing / HUNDRED_KM).toInt() + rowOffset).mod(ROW_LETTERS.length)
-        if (colIndex !in column.indices) return null
-        val divisor = 10.0.pow(5 - digits)
-        val e = floor((coord.easting % HUNDRED_KM) / divisor).toLong()
-        val n = floor((coord.northing % HUNDRED_KM) / divisor).toLong()
-        val fmt = "%0${digits}d"
-        return "${coord.zone}${coord.band} ${column[colIndex]}${ROW_LETTERS[rowIndex]} " +
-            "${fmt.format(e)} ${fmt.format(n)}"
+        return utm(lat, lon)?.let { coord ->
+            val column = COLUMN_SETS[(coord.zone - 1) % 3]
+            val colIndex = floor(coord.easting / HUNDRED_KM).toInt() - 1
+            val rowOffset = if (coord.zone % 2 == 0) 5 else 0
+            val rowIndex = (floor(coord.northing / HUNDRED_KM).toInt() + rowOffset).mod(ROW_LETTERS.length)
+            column.getOrNull(colIndex)?.let { col ->
+                val divisor = 10.0.pow(5 - digits)
+                val e = floor((coord.easting % HUNDRED_KM) / divisor).toLong()
+                val n = floor((coord.northing % HUNDRED_KM) / divisor).toLong()
+                val fmt = "%0${digits}d"
+                "${coord.zone}${coord.band} $col${ROW_LETTERS[rowIndex]} ${fmt.format(e)} ${fmt.format(n)}"
+            }
+        }
     }
 
     private fun meridianArc(phi: Double): Double {

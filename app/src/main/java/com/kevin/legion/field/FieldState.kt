@@ -2,8 +2,6 @@ package com.kevin.legion.field
 
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /** GPS state as the screen shows it. */
@@ -113,7 +111,7 @@ data class FixInput(
 )
 
 /**
- * Builds [FieldUiState] from the sensors' latest values, and words it for the voice path. Pure:
+ * Builds [FieldUiState] from the sensors' latest values ([FieldVoice] words it). Pure:
  * declination is passed in as a function so a test can fix it, and the phone passes
  * [Declination.at].
  */
@@ -134,67 +132,71 @@ object FieldReadout {
         val decl = fix?.let { declination(it.lat, it.lon, it.altitudeM ?: 0.0, it.timeMs) }
         val accuracy = compass?.accuracy
             ?: if (compassSource == CompassSource.NONE) CompassAccuracy.NO_SENSOR else CompassAccuracy.MEDIUM
-        val heading = compass?.let { c ->
-            val trueDeg = decl?.let { FieldMath.trueFromMagnetic(c.magneticDeg, it) }
-            HeadingUi(
-                magneticDeg = c.magneticDeg,
-                trueDeg = trueDeg,
-                point = FieldMath.point16(trueDeg ?: c.magneticDeg),
-                backAzimuthMagDeg = FieldMath.backAzimuth(c.magneticDeg),
-                backAzimuthTrueDeg = trueDeg?.let { FieldMath.backAzimuth(it) },
-                northArrowDeg = trueDeg?.let { FieldMath.arrowDeg(0.0, it) },
-                upright = c.upright,
-            )
-        }
+        val heading = compass?.let { headingOf(it, decl) }
         val position = fix?.let { positionOf(it, nowMs) }
         val rows = if (fix == null) {
             emptyList()
         } else {
             waypoints.map { w -> waypointOf(w, fix, decl, heading) }.sortedBy { it.distanceM }
         }
-        val sun = fix?.let { f ->
-            val d = Almanac.sunDay(nowMs, f.lat, f.lon)
-            SunUi(d.sunrise, d.sunset, d.civilDawn, d.civilDusk, d.nauticalDawn, d.nauticalDusk, d.polarNote)
-        }
-        val moon = fix?.let { f ->
-            val dayStart = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate().atStartOfDay(zone)
-                .toInstant().toEpochMilli()
-            val m = Almanac.moonDay(nowMs, dayStart, f.lat, f.lon)
-            MoonUi(m.rise, m.set, (m.illumination * 100).roundToInt(), m.phaseName, m.waxing)
-        }
-        val turn = sun?.let { s ->
-            val t = Almanac.turnaround(nowMs, s.sunsetMs, marginMin)
-            TurnaroundUi(t.atMs, t.marginMin, t.status)
-        }
+        val sky = fix?.let { skyOf(it, nowMs, zone, marginMin) }
         return FieldUiState(
             heading = heading,
             compassSource = compassSource,
             compassAccuracy = accuracy,
             needsCalibration = accuracy.needsCalibration,
             declinationDeg = decl,
-            declinationText = decl?.let { FieldMath.declinationText(it) },
+            declinationText = decl?.let { FieldWords.declinationText(it) },
             gps = if (fix != null) GpsStatus.FIX else gps,
             position = position,
             waypoints = rows,
-            sun = sun,
-            moon = moon,
-            turnaround = turn,
+            sun = sky?.sun,
+            moon = sky?.moon,
+            turnaround = sky?.turnaround,
             turnaroundMarginMin = marginMin,
         )
     }
+
+    private fun headingOf(c: CompassReading, decl: Double?): HeadingUi {
+        val trueDeg = decl?.let { FieldMath.trueFromMagnetic(c.magneticDeg, it) }
+        return HeadingUi(
+            magneticDeg = c.magneticDeg,
+            trueDeg = trueDeg,
+            point = FieldMath.point16(trueDeg ?: c.magneticDeg),
+            backAzimuthMagDeg = FieldMath.backAzimuth(c.magneticDeg),
+            backAzimuthTrueDeg = trueDeg?.let { FieldMath.backAzimuth(it) },
+            northArrowDeg = trueDeg?.let { FieldMath.arrowDeg(0.0, it) },
+            upright = c.upright,
+        )
+    }
+
+    private data class Sky(val sun: SunUi, val moon: MoonUi, val turnaround: TurnaroundUi)
+
+    private fun skyOf(f: FixInput, nowMs: Long, zone: ZoneId, marginMin: Int): Sky {
+        val d = Almanac.sunDay(nowMs, f.lat, f.lon)
+        val sun = SunUi(d.sunrise, d.sunset, d.civilDawn, d.civilDusk, d.nauticalDawn, d.nauticalDusk, d.polarNote)
+        val dayStart = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate().atStartOfDay(zone)
+            .toInstant().toEpochMilli()
+        val m = Almanac.moonDay(nowMs, dayStart, f.lat, f.lon)
+        val moon = MoonUi(m.rise, m.set, (m.illumination * PERCENT).roundToInt(), m.phaseName, m.waxing)
+        val t = Almanac.turnaround(nowMs, d.sunset, marginMin)
+        return Sky(sun, moon, TurnaroundUi(t.atMs, t.marginMin, t.status))
+    }
+
+    private const val PERCENT = 100
 
     private fun positionOf(f: FixInput, nowMs: Long): PositionUi {
         val utm = Grid.utm(f.lat, f.lon)
         return PositionUi(
             lat = f.lat,
             lon = f.lon,
-            latLonText = FieldMath.latLonText(f.lat, f.lon),
+            latLonText = FieldWords.latLonText(f.lat, f.lon),
             utmText = utm?.text(),
             mgrsText = Grid.mgrs(f.lat, f.lon),
             altitudeM = f.altitudeM,
-            altitudeText = FieldMath.altitudeText(f.altitudeM),
+            altitudeText = FieldWords.altitudeText(f.altitudeM),
             accuracyM = f.accuracyM,
-            accuracyText = FieldMath.accuracyWords(f.accuracyM),
+            accuracyText = FieldWords.accuracyWords(f.accuracyM),
             fixTimeMs = f.timeMs,
             fixAgeMs = (nowMs - f.timeMs).coerceAtLeast(0L),
         )
@@ -216,95 +218,9 @@ object FieldReadout {
             bearingTrueDeg = bearing,
             bearingMagDeg = decl?.let { FieldMath.magneticFromTrue(bearing, it) },
             distanceM = distance,
-            distanceText = FieldMath.distanceText(distance),
+            distanceText = FieldWords.distanceText(distance),
             arrowDeg = arrow,
             pending = w.pending,
         )
     }
-
-    // ------------------------------------------------------------------ words
-
-    fun clock(ms: Long?, zone: ZoneId): String =
-        ms?.let { CLOCK.format(Instant.ofEpochMilli(it).atZone(zone)) } ?: "none today"
-
-    fun ageText(ms: Long): String = when {
-        ms < MINUTE_MS -> "${ms / SECOND_MS} s old"
-        ms < HOUR_MS -> "${ms / MINUTE_MS} min old"
-        else -> "${ms / HOUR_MS} h old: an old fix, not where you are now"
-    }
-
-    /** Which way north is, in words a person turns by: "straight ahead", "40 deg to your left". */
-    fun northWords(arrowDeg: Double): String {
-        val a = arrowDeg.roundToInt() % 360
-        return when {
-            a <= 5 || a >= 355 -> "straight ahead"
-            a in 175..185 -> "behind you"
-            a < 180 -> "$a° to your right"
-            else -> "${360 - a}° to your left"
-        }
-    }
-
-    /** The field readout spoken through `get_current_location` (round 5 voice path). */
-    fun voiceText(state: FieldUiState, zone: ZoneId, maxWaypoints: Int = 5): String = buildString {
-        val p = state.position
-        if (p == null) {
-            append("Field: no GPS fix, so no grid, sun or waypoint figures. ")
-        } else {
-            append("Grid: ${p.mgrsText?.let { "MGRS $it" } ?: "MGRS not available at this latitude"}. ")
-            append("Altitude ${p.altitudeText}. GPS ${p.accuracyText}, ${ageText(p.fixAgeMs)}. ")
-        }
-        val h = state.heading
-        when {
-            h == null -> append("Compass: no reading. ")
-            h.trueDeg != null -> {
-                append("Compass: the phone's ${if (h.upright) "back" else "top"} points ")
-                append("${FieldMath.degText(h.trueDeg)}° true (${h.point}), ")
-                append("${FieldMath.degText(h.magneticDeg)}° magnetic; true north is ")
-                append("${northWords(h.northArrowDeg ?: 0.0)}. ")
-                append("Back azimuth ${FieldMath.degText(h.backAzimuthTrueDeg ?: 0.0)}° true. ")
-            }
-            else -> append(
-                "Compass: ${FieldMath.degText(h.magneticDeg)}° magnetic (${h.point}); true north unknown " +
-                    "without a GPS fix. ",
-            )
-        }
-        if (state.needsCalibration) append("Compass accuracy is ${state.compassAccuracy.words}: move the phone in a figure 8. ")
-        state.declinationText?.let { append("Declination $it. ") }
-        state.sun?.let { s ->
-            s.polarNote?.let { append("$it ") }
-            append("Sun: sunrise ${clock(s.sunriseMs, zone)}, sunset ${clock(s.sunsetMs, zone)}, ")
-            append("civil dusk ${clock(s.civilDuskMs, zone)}, nautical dusk ${clock(s.nauticalDuskMs, zone)}. ")
-        }
-        state.turnaround?.let { t ->
-            when (t.status) {
-                TurnaroundStatus.NO_SUNSET -> Unit
-                TurnaroundStatus.AFTER_SUNSET -> append("The sun has set. ")
-                else -> append(
-                    "Turnaround ${clock(t.atMs, zone)} (sunset less ${t.marginMin} min)" +
-                        if (t.status == TurnaroundStatus.PAST_TURNAROUND) ", already passed. " else ". ",
-                )
-            }
-        }
-        state.moon?.let { m ->
-            append("Moon: ${m.phaseName}, ${m.illuminationPct}% lit, rises ${clock(m.riseMs, zone)}, ")
-            append("sets ${clock(m.setMs, zone)}. ")
-        }
-        if (state.waypoints.isNotEmpty()) {
-            append("Saved places by straight-line distance: ")
-            append(
-                state.waypoints.take(maxWaypoints).joinToString("; ") { w ->
-                    "${w.label} ${w.distanceText}, bearing ${FieldMath.degText(w.bearingTrueDeg)}° true" +
-                        (w.bearingMagDeg?.let { " (${FieldMath.degText(it)}° magnetic)" } ?: "") +
-                        ", ${FieldMath.word8(w.bearingTrueDeg)}" + if (w.pending) ", not synced yet" else ""
-                },
-            )
-            append(". ")
-        }
-        append("All of this is from the phone's own sensors and maths, no network.")
-    }.trim()
-
-    private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
-    private const val SECOND_MS = 1_000L
-    private const val MINUTE_MS = 60_000L
-    private const val HOUR_MS = 3_600_000L
 }

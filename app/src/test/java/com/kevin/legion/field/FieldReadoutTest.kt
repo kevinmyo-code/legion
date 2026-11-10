@@ -11,14 +11,16 @@ import org.junit.Test
 /** Round 5: the Field screen's state and the spoken readout, from fixed inputs. Made-up places. */
 class FieldReadoutTest {
     private val now = 1794330000000L // 2026-11-10 ~19:40 UTC
-    private val fix = FixInput(lat = 39.7392, lon = -104.9903, altitudeM = 1600.0, accuracyM = 8f, timeMs = now - 12_000)
+    private val fix =
+        FixInput(lat = 39.7392, lon = -104.9903, altitudeM = 1600.0, accuracyM = 8f, timeMs = now - 12_000)
     private val zone = ZoneOffset.ofHours(-7)
     private val decl = { _: Double, _: Double, _: Double, _: Long -> 8.0 }
     private val car = Waypoint("car", 39.7410, -104.9930, pending = true)
     private val far = Waypoint("cabin", 40.0, -105.5, pending = false)
 
     private fun build(
-        compass: CompassReading? = CompassReading(350.0, CompassAccuracy.HIGH, CompassSource.ROTATION_VECTOR, upright = false),
+        compass: CompassReading? =
+            CompassReading(350.0, CompassAccuracy.HIGH, CompassSource.ROTATION_VECTOR, upright = false),
         f: FixInput? = fix,
     ) = FieldReadout.build(
         compass, CompassSource.ROTATION_VECTOR, GpsStatus.SEARCHING, f, listOf(far, car), now, zone, 60, decl,
@@ -63,16 +65,17 @@ class FieldReadoutTest {
         assertTrue(s.waypoints.isEmpty())
         assertNull(s.sun)
         assertEquals(GpsStatus.SEARCHING, s.gps)
-        val words = FieldReadout.voiceText(s, zone)
+        val words = FieldVoice.voiceText(s, zone)
         assertTrue(words, words.contains("no GPS fix"))
         assertTrue(words, words.contains("true north unknown"))
     }
 
     @Test
     fun `low magnetometer accuracy asks for the figure 8`() {
-        val s = build(compass = CompassReading(10.0, CompassAccuracy.UNRELIABLE, CompassSource.ACCEL_MAG, upright = true))
+        val shaky = CompassReading(10.0, CompassAccuracy.UNRELIABLE, CompassSource.ACCEL_MAG, upright = true)
+        val s = build(compass = shaky)
         assertTrue(s.needsCalibration)
-        assertTrue(FieldReadout.voiceText(s, zone).contains("figure 8"))
+        assertTrue(FieldVoice.voiceText(s, zone).contains("figure 8"))
     }
 
     @Test
@@ -80,7 +83,7 @@ class FieldReadoutTest {
         val s = build(compass = null)
         assertNull(s.heading)
         assertFalse(s.needsCalibration)
-        assertTrue(FieldReadout.voiceText(s, zone).contains("Compass: no reading"))
+        assertTrue(FieldVoice.voiceText(s, zone).contains("Compass: no reading"))
     }
 
     @Test
@@ -94,8 +97,8 @@ class FieldReadoutTest {
 
     @Test
     fun `the spoken readout answers north, sunset and the car`() {
-        val words = FieldReadout.voiceText(build(), zone)
-        assertTrue(words, words.contains("true north is 2° to your right"))
+        val words = FieldVoice.voiceText(build(), zone)
+        assertTrue(words, words.contains("true north is straight ahead"))
         assertTrue(words, words.contains("Sun: sunrise"))
         assertTrue(words, words.contains("Turnaround"))
         assertTrue(words, words.contains("car "))
@@ -106,9 +109,9 @@ class FieldReadoutTest {
 
     @Test
     fun `north in words`() {
-        assertEquals("straight ahead", FieldReadout.northWords(3.0))
-        assertEquals("40° to your right", FieldReadout.northWords(40.0))
-        assertEquals("40° to your left", FieldReadout.northWords(320.0))
-        assertEquals("behind you", FieldReadout.northWords(180.0))
+        assertEquals("straight ahead", FieldVoice.northWords(3.0))
+        assertEquals("40° to your right", FieldVoice.northWords(40.0))
+        assertEquals("40° to your left", FieldVoice.northWords(320.0))
+        assertEquals("behind you", FieldVoice.northWords(180.0))
     }
 }

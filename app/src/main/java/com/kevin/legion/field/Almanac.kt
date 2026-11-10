@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber") // Meeus lunar-theory coefficients and solar constants
+
 package com.kevin.legion.field
 
 import com.kevin.legion.navigation.SolarDay

@@ -48,7 +48,7 @@ object FieldWaypoints {
 
     /** Saved places (Room replica, offline) plus marks still waiting, a waiting mark winning a name. */
     suspend fun all(context: Context): List<Waypoint> {
-        val pending = pendingPayloads(context).map { Waypoint(it.second.label, it.second.lat, it.second.lon, true) }
+        val pending = pendingPayloads(context).map { (_, p) -> Waypoint(p.label, p.lat, p.lon, pending = true) }
         val pendingLabels = pending.map { it.label.lowercase() }.toSet()
         val saved = PlaceController.all(context)
             .filter { !it.deleted && it.label.lowercase() !in pendingLabels }
@@ -57,9 +57,17 @@ object FieldWaypoints {
     }
 
     /** Marks [label] at the point: local first, then one drain. */
-    suspend fun mark(context: Context, label: String, lat: Double, lon: Double, nowMs: Long = System.currentTimeMillis()): MarkOutcome {
+    suspend fun mark(
+        context: Context,
+        label: String,
+        lat: Double,
+        lon: Double,
+        nowMs: Long = System.currentTimeMillis(),
+    ): MarkOutcome {
         val clean = label.trim().replace(Regex("\\s+"), " ")
-        if (clean.isEmpty()) return MarkOutcome("A waypoint needs a name; nothing was marked.", synced = false, ok = false)
+        if (clean.isEmpty()) {
+            return MarkOutcome("A waypoint needs a name; nothing was marked.", synced = false, ok = false)
+        }
         val payload = WaypointPayload(clean, lat, lon, nowMs)
         val dao = CarDatabase.getDatabase(context).outboxDao()
         val id = lock.withLock {
@@ -120,8 +128,8 @@ object FieldWaypoints {
 
     /** A validated internet connection, the only kind that can reach the engine. */
     fun isOnline(context: Context): Boolean {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager? ?: return false
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager?
+        val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+        return caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
     }
 }

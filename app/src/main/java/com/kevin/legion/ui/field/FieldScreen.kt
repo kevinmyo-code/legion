@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber") // layout sizes and the dial's proportions
+
 package com.kevin.legion.ui.field
 
 import androidx.compose.foundation.Canvas
@@ -28,24 +30,18 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.field.CompassSource
-import com.kevin.legion.field.FieldMath
-import com.kevin.legion.field.FieldReadout
 import com.kevin.legion.field.FieldUiState
+import com.kevin.legion.field.FieldVoice
+import com.kevin.legion.field.FieldWords
 import com.kevin.legion.field.GpsStatus
+import com.kevin.legion.field.HeadingUi
 import com.kevin.legion.field.TurnaroundStatus
+import com.kevin.legion.field.TurnaroundUi
 import com.kevin.legion.field.WaypointUi
 import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckScreenHeader
 import java.time.ZoneId
-
-/** What the screen can ask for. One holder so the restyle keeps the same wiring. */
-data class FieldActions(
-    val onBack: () -> Unit,
-    val onGrantLocation: () -> Unit,
-    val onMark: (String) -> Unit,
-    val onMargin: (Int) -> Unit,
-)
 
 /**
  * The Field screen (round 5): compass, position, waypoints, sun and moon. Plain on purpose and
@@ -84,19 +80,14 @@ private fun CompassPane(state: FieldUiState) {
             Spacer(Modifier.size(12.dp))
             Column {
                 if (h == null) {
-                    Text(
-                        if (state.compassSource == CompassSource.NONE) {
-                            "This phone has no compass sensor."
-                        } else {
-                            "Waiting for the compass..."
-                        },
-                    )
+                    val waiting = if (state.compassSource == CompassSource.NONE) {
+                        "This phone has no compass sensor."
+                    } else {
+                        "Waiting for the compass..."
+                    }
+                    Text(waiting)
                 } else {
-                    Text("${FieldMath.degText(h.trueDeg ?: h.magneticDeg)}° ${h.point}", style = MaterialTheme.typography.headlineMedium)
-                    Text("Magnetic ${FieldMath.degText(h.magneticDeg)}°" + (h.trueDeg?.let { "  True ${FieldMath.degText(it)}°" } ?: "  (true needs a GPS fix)"))
-                    Text("Back azimuth ${FieldMath.degText(h.backAzimuthTrueDeg ?: h.backAzimuthMagDeg)}°" + if (h.backAzimuthTrueDeg != null) " true" else " magnetic")
-                    h.northArrowDeg?.let { Text("True north: ${FieldReadout.northWords(it)}") }
-                    Text(if (h.upright) "Held upright: sighting along the back" else "Held flat: the top edge points")
+                    HeadingLines(h)
                 }
                 state.declinationText?.let { Text("Declination $it") }
                 Text("Accuracy: ${state.compassAccuracy.words}")
@@ -107,13 +98,33 @@ private fun CompassPane(state: FieldUiState) {
                 "Calibrate: move the phone slowly in a figure 8, turning it over a few times, away from " +
                     "metal and the car.",
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp).semantics { contentDescription = "calibrate compass" },
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .semantics { contentDescription = "calibrate compass" },
             )
         }
     }
 }
 
-/** A plain dial: N marked, the needle pointing to north relative to the phone. */
+@Composable
+private fun HeadingLines(h: HeadingUi) {
+    val shown = h.trueDeg ?: h.magneticDeg
+    Text("${FieldWords.degText(shown)}° ${h.point}", style = MaterialTheme.typography.headlineMedium)
+    val trueText = h.trueDeg?.let { "  True ${FieldWords.degText(it)}°" } ?: "  (true needs a GPS fix)"
+    Text("Magnetic ${FieldWords.degText(h.magneticDeg)}°$trueText")
+    val back = h.backAzimuthTrueDeg
+    Text(
+        if (back != null) {
+            "Back azimuth ${FieldWords.degText(back)}° true"
+        } else {
+            "Back azimuth ${FieldWords.degText(h.backAzimuthMagDeg)}° magnetic"
+        },
+    )
+    h.northArrowDeg?.let { Text("True north: ${FieldVoice.northWords(it)}") }
+    Text(if (h.upright) "Held upright: sighting along the back" else "Held flat: the top edge points")
+}
+
+/** A plain dial: the needle points to north relative to the phone. */
 @Composable
 private fun CompassDial(headingDeg: Double?, modifier: Modifier) {
     val color = MaterialTheme.colorScheme.onSurface
@@ -135,7 +146,11 @@ private fun PositionPane(state: FieldUiState, actions: FieldActions) {
         when (state.gps) {
             GpsStatus.NO_PERMISSION -> {
                 Text("LEGION has no location permission, so there is no GPS position.")
-                DeckButton(text = "Allow location", onClick = actions.onGrantLocation, modifier = Modifier.fillMaxWidth())
+                DeckButton(
+                    text = "Allow location",
+                    onClick = actions.onGrantLocation,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             GpsStatus.OFF -> Text("GPS is switched off in the phone's settings.")
             GpsStatus.SEARCHING -> Text("Searching for satellites. Open sky helps; this can take a minute.")
@@ -147,7 +162,7 @@ private fun PositionPane(state: FieldUiState, actions: FieldActions) {
             Text("UTM ${p.utmText ?: "not available at this latitude"}")
             Text("Altitude ${p.altitudeText}")
             Text("Accuracy: ${p.accuracyText}")
-            Text("Fix ${FieldReadout.ageText(p.fixAgeMs)}")
+            Text("Fix ${FieldVoice.ageText(p.fixAgeMs)}")
         }
     }
 }
@@ -155,27 +170,33 @@ private fun PositionPane(state: FieldUiState, actions: FieldActions) {
 @Composable
 private fun WaypointsPane(state: FieldUiState, actions: FieldActions) {
     var name by remember { mutableStateOf("") }
+    val canMark = !state.markBusy && state.position != null
     DeckPane(header = "Waypoints") {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            DeckButton(
-                text = "Mark car here",
-                onClick = { actions.onMark("car") },
-                enabled = !state.markBusy && state.position != null,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        DeckButton(
+            text = "Mark car here",
+            onClick = { actions.onMark("car") },
+            enabled = canMark,
+            modifier = Modifier.fillMaxWidth(),
+        )
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
             label = { Text("Name a spot") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
         )
         DeckButton(
             text = "Mark this spot",
-            onClick = { actions.onMark(name); name = "" },
-            enabled = !state.markBusy && state.position != null && name.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            onClick = {
+                actions.onMark(name)
+                name = ""
+            },
+            enabled = canMark && name.isNotBlank(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
         )
         state.message?.let { Text(it, modifier = Modifier.padding(top = 6.dp)) }
         if (state.position == null) Text("Bearings need a GPS fix.")
@@ -189,10 +210,12 @@ private fun WaypointRow(w: WaypointUi) {
         Arrow(w.arrowDeg, Modifier.size(36.dp))
         Spacer(Modifier.size(8.dp))
         Column {
-            Text(w.label + if (w.pending) " (on this phone, not synced yet)" else "", style = MaterialTheme.typography.titleSmall)
+            val pending = if (w.pending) " (on this phone, not synced yet)" else ""
+            Text(w.label + pending, style = MaterialTheme.typography.titleSmall)
+            val magnetic = w.bearingMagDeg?.let { " / ${FieldWords.degText(it)}° mag" } ?: ""
             Text(
-                "${w.distanceText} straight line, bearing ${FieldMath.degText(w.bearingTrueDeg)}° true" +
-                    (w.bearingMagDeg?.let { " / ${FieldMath.degText(it)}° mag" } ?: ""),
+                "${w.distanceText} straight line, bearing ${FieldWords.degText(w.bearingTrueDeg)}° true" +
+                    magnetic,
             )
         }
     }
@@ -206,9 +229,10 @@ private fun Arrow(deg: Double?, modifier: Modifier) {
         if (deg == null) return@Canvas
         rotate(degrees = deg.toFloat()) {
             val r = size.minDimension / 2
-            drawLine(color, Offset(center.x, center.y + r * 0.8f), Offset(center.x, center.y - r * 0.8f), strokeWidth = 6f)
-            drawLine(color, Offset(center.x, center.y - r * 0.8f), Offset(center.x - r * 0.4f, center.y - r * 0.3f), strokeWidth = 6f)
-            drawLine(color, Offset(center.x, center.y - r * 0.8f), Offset(center.x + r * 0.4f, center.y - r * 0.3f), strokeWidth = 6f)
+            val tip = Offset(center.x, center.y - r * 0.8f)
+            drawLine(color, Offset(center.x, center.y + r * 0.8f), tip, strokeWidth = 6f)
+            drawLine(color, tip, Offset(center.x - r * 0.4f, center.y - r * 0.3f), strokeWidth = 6f)
+            drawLine(color, tip, Offset(center.x + r * 0.4f, center.y - r * 0.3f), strokeWidth = 6f)
         }
     }
 }
@@ -222,28 +246,49 @@ private fun SunMoonPane(state: FieldUiState, actions: FieldActions, zone: ZoneId
             return@DeckPane
         }
         s.polarNote?.let { Text(it) }
-        Text("Sunrise ${FieldReadout.clock(s.sunriseMs, zone)}   Sunset ${FieldReadout.clock(s.sunsetMs, zone)}")
-        Text("Civil dawn ${FieldReadout.clock(s.civilDawnMs, zone)}   Civil dusk ${FieldReadout.clock(s.civilDuskMs, zone)}")
-        Text("Nautical dawn ${FieldReadout.clock(s.nauticalDawnMs, zone)}   Nautical dusk ${FieldReadout.clock(s.nauticalDuskMs, zone)}")
-        state.turnaround?.let { t ->
-            val line = when (t.status) {
-                TurnaroundStatus.NO_SUNSET -> "No sunset today, so no turnaround time."
-                TurnaroundStatus.AFTER_SUNSET -> "The sun has set."
-                TurnaroundStatus.PAST_TURNAROUND -> "Turnaround was ${FieldReadout.clock(t.atMs, zone)}: past it."
-                TurnaroundStatus.AHEAD -> "Turn around by ${FieldReadout.clock(t.atMs, zone)}"
-            }
-            Text("$line (sunset less ${t.marginMin} min)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DeckButton(text = "Margin -15", onClick = { actions.onMargin(t.marginMin - 15) }, modifier = Modifier.weight(1f))
-                DeckButton(text = "Margin +15", onClick = { actions.onMargin(t.marginMin + 15) }, modifier = Modifier.weight(1f))
-            }
-        }
+        Text("Sunrise ${FieldVoice.clock(s.sunriseMs, zone)}   Sunset ${FieldVoice.clock(s.sunsetMs, zone)}")
+        Text(
+            "Civil dawn ${FieldVoice.clock(s.civilDawnMs, zone)}   " +
+                "Civil dusk ${FieldVoice.clock(s.civilDuskMs, zone)}",
+        )
+        Text(
+            "Nautical dawn ${FieldVoice.clock(s.nauticalDawnMs, zone)}   " +
+                "Nautical dusk ${FieldVoice.clock(s.nauticalDuskMs, zone)}",
+        )
+        state.turnaround?.let { TurnaroundBlock(it, actions, zone) }
         state.moon?.let { m ->
             Text(
-                "Moon: ${m.phaseName}, ${m.illuminationPct}% lit. Rises ${FieldReadout.clock(m.riseMs, zone)}, " +
-                    "sets ${FieldReadout.clock(m.setMs, zone)}",
+                "Moon: ${m.phaseName}, ${m.illuminationPct}% lit. Rises ${FieldVoice.clock(m.riseMs, zone)}, " +
+                    "sets ${FieldVoice.clock(m.setMs, zone)}",
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun TurnaroundBlock(t: TurnaroundUi, actions: FieldActions, zone: ZoneId) {
+    val line = when (t.status) {
+        TurnaroundStatus.NO_SUNSET -> "No sunset today, so no turnaround time."
+        TurnaroundStatus.AFTER_SUNSET -> "The sun has set."
+        TurnaroundStatus.PAST_TURNAROUND -> "Turnaround was ${FieldVoice.clock(t.atMs, zone)}: past it."
+        TurnaroundStatus.AHEAD -> "Turn around by ${FieldVoice.clock(t.atMs, zone)}"
+    }
+    Text(
+        "$line (sunset less ${t.marginMin} min)",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        DeckButton(
+            text = "Margin -15",
+            onClick = { actions.onMargin(t.marginMin - 15) },
+            modifier = Modifier.weight(1f),
+        )
+        DeckButton(
+            text = "Margin +15",
+            onClick = { actions.onMargin(t.marginMin + 15) },
+            modifier = Modifier.weight(1f),
+        )
     }
 }

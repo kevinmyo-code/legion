@@ -36,7 +36,10 @@ class FieldActivity : ComponentActivity() {
                         onBack = { finish() },
                         onGrantLocation = {
                             askLocation.launch(
-                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                ),
                             )
                         },
                         onMark = viewModel::mark,

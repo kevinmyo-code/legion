@@ -45,23 +45,23 @@ class FieldMathTest {
         assertEquals("N", FieldMath.point16(355.0))
         assertEquals("SSW", FieldMath.point16(200.0))
         assertEquals("southwest", FieldMath.word8(225.0))
-        assertEquals("007", FieldMath.degText(6.6))
-        assertEquals("000", FieldMath.degText(359.7))
-        assertEquals("3.2° east", FieldMath.declinationText(3.24))
-        assertEquals("12.0° west", FieldMath.declinationText(-12.0))
-        assertEquals("29.97012 N, 98.70011 W", FieldMath.latLonText(29.970118, -98.700111))
-        assertEquals("420 m (0.3 mi)", FieldMath.distanceText(420.0))
-        assertEquals("4.2 km (2.6 mi)", FieldMath.distanceText(4_200.0))
-        assertEquals("520 m (1706 ft)", FieldMath.altitudeText(520.0))
-        assertTrue(FieldMath.altitudeText(null).startsWith("unknown"))
+        assertEquals("007", FieldWords.degText(6.6))
+        assertEquals("000", FieldWords.degText(359.7))
+        assertEquals("3.2° east", FieldWords.declinationText(3.24))
+        assertEquals("12.0° west", FieldWords.declinationText(-12.0))
+        assertEquals("29.97012 N, 98.70011 W", FieldWords.latLonText(29.970118, -98.700111))
+        assertEquals("420 m (0.3 mi)", FieldWords.distanceText(420.0))
+        assertEquals("4.2 km (2.6 mi)", FieldWords.distanceText(4_200.0))
+        assertEquals("520 m (1706 ft)", FieldWords.altitudeText(520.0))
+        assertTrue(FieldWords.altitudeText(null).startsWith("unknown"))
     }
 
     @Test
     fun `accuracy in words`() {
-        assertEquals("excellent, within about 4 m", FieldMath.accuracyWords(4f))
-        assertEquals("good, within about 12 m", FieldMath.accuracyWords(12f))
-        assertTrue(FieldMath.accuracyWords(500f).startsWith("very poor"))
-        assertEquals("accuracy unknown", FieldMath.accuracyWords(null))
+        assertEquals("excellent, within about 4 m", FieldWords.accuracyWords(4f))
+        assertEquals("good, within about 12 m", FieldWords.accuracyWords(12f))
+        assertTrue(FieldWords.accuracyWords(500f).startsWith("very poor"))
+        assertEquals("accuracy unknown", FieldWords.accuracyWords(null))
     }
 
     @Test
