@@ -180,6 +180,9 @@ INSTALLED_APPS = [
     # saved meals and the two-weekly energy proposals (`public.body_profiles`, `waist_logs`,
     # `saved_meals`, `energy_proposals`), and the pure estimate/trend math beside them.
     "body_coach",
+    # watches map (ADR 0083): standing watches and the engine signals, private to the member who
+    # set each (`public.watches`, `public.watch_firings`).
+    "watches",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
@@ -628,6 +631,7 @@ SPECTACULAR_SETTINGS = {
         "MemberMemoryClientSourceEnum": "member_memory.models.CLIENT_SOURCES",
         "MemberMemoryDecayClassEnum": "member_memory.models.DECAY_CLASSES",
         "MemberMemoryImportStoreEnum": "member_memory.importer.STORES",
+        "WatchKindEnum": "watches.models.KINDS",
         "VaultItemKindEnum": "id_vault.models.KINDS",
     },
 }

@@ -67,3 +67,8 @@
 # Files to phone (ADR 0080): a Claude task's delivered files are deleted from the engine once the
 # phone has them, and 24 hours after upload at the latest. Hourly at :50, clear of the others.
 50 * * * * python manage.py claude_files_prune
+
+# watches map (ADR 0083): every household's standing watches and engine signals, evaluated against
+# the rows the jobs above keep; firings wait for the phone's own engine poll. Every fifteen minutes
+# at :07, :22, :37, :52, so one lands seven minutes after each plaid_sync (30 */3) and canvas_poll.
+7,22,37,52 * * * * python manage.py evaluate_watches

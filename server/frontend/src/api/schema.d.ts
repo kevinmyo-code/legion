@@ -4813,6 +4813,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/watches/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own watches (the built-ins seeded on first read) and every kind. */
+        get: operations["api_watches_list"];
+        put?: never;
+        /** @description Sets a watch of one registry kind. A kind that is not in the registry is a 400 whose detail names the kinds there are and the nearest ones. */
+        post: operations["api_watches_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watches/{watch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description "Stop watching X". Never evaluated or listed again; a built-in is not re-seeded. */
+        delete: operations["api_watches_delete"];
+        options?: never;
+        head?: never;
+        /** @description Pause, resume (re-arms: nothing from the pause fires), rename or re-param. */
+        patch: operations["api_watches_update"];
+        trace?: never;
+    };
+    "/api/watches/firings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_watches_firings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watches/firings/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The phone said, posted or silenced these firings; they are not offered again. */
+        post: operations["api_watches_firings_ack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -4867,6 +4936,20 @@ export interface components {
             accepted: boolean;
             meal_target: components["schemas"]["MealTarget"];
             words: string;
+        };
+        Ack: {
+            ids: string[];
+            outcome: components["schemas"]["AckOutcomeEnum"];
+        };
+        /**
+         * @description * `spoken` - spoken
+         *     * `notified` - notified
+         *     * `silenced` - silenced
+         * @enum {string}
+         */
+        AckOutcomeEnum: "spoken" | "notified" | "silenced";
+        Acked: {
+            acked: number;
         };
         /**
          * @description * `sedentary` - sedentary
@@ -6282,6 +6365,12 @@ export interface components {
             proposal: components["schemas"]["Proposal"] | null;
             words: string;
         };
+        /**
+         * @description * `engine` - engine
+         *     * `phone` - phone
+         * @enum {string}
+         */
+        EvaluatedOnEnum: "engine" | "phone";
         Event: {
             /** Format: uuid */
             readonly id: string;
@@ -6388,6 +6477,32 @@ export interface components {
              */
             next_on: string;
             is_estimate: boolean;
+        };
+        Firing: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            watch_id: string;
+            watch_label: string;
+            kind: components["schemas"]["WatchKindEnum"];
+            /** @description The engine's own sentence, from the rows named in sources. */
+            facts: string;
+            detail: {
+                [key: string]: unknown;
+            };
+            sources: {
+                [key: string]: unknown;
+            }[];
+            /** Format: date-time */
+            fired_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            acked_at: string | null;
+            outcome: string | null;
+        };
+        FiringList: {
+            results: components["schemas"]["Firing"][];
         };
         Fixed: {
             category: string;
@@ -6697,6 +6812,16 @@ export interface components {
              */
             push: components["schemas"]["PushEnum"];
             detail: string;
+        };
+        Kind: {
+            kind: components["schemas"]["WatchKindEnum"];
+            title: string;
+            says: string;
+            needs: string;
+            evaluated_on: string;
+            params: {
+                [key: string]: unknown;
+            }[];
         };
         LastBought: {
             query: string;
@@ -8034,6 +8159,13 @@ export interface components {
             kind?: components["schemas"]["VaultItemKindEnum"];
             /** @description Sealed before it is stored. Never returned by this route. */
             value?: string;
+        };
+        PatchedWatchUpdate: {
+            params?: unknown;
+            label?: string | null;
+            repeat?: boolean;
+            paused?: boolean;
+            expires_at?: string | null;
         };
         PendingReview: {
             change_id: number;
@@ -9720,6 +9852,71 @@ export interface components {
         WaistList: {
             results: components["schemas"]["Waist"][];
         };
+        Watch: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["WatchKindEnum"];
+            title: string;
+            label: string;
+            params: {
+                [key: string]: unknown;
+            };
+            repeat: boolean;
+            paused: boolean;
+            status: components["schemas"]["WatchStatusEnum"];
+            builtin: string | null;
+            evaluated_on: components["schemas"]["EvaluatedOnEnum"];
+            /** Format: date-time */
+            expires_at: string | null;
+            /** Format: date-time */
+            last_fired_at: string | null;
+            /** Format: date-time */
+            created_at: string | null;
+        };
+        WatchCreate: {
+            kind: string;
+            params?: unknown;
+            label?: string | null;
+            /** @default true */
+            repeat: boolean;
+            expires_at?: string | null;
+            /** @default screen */
+            source: components["schemas"]["WatchCreateSourceEnum"];
+        };
+        /**
+         * @description * `voice` - voice
+         *     * `screen` - screen
+         * @enum {string}
+         */
+        WatchCreateSourceEnum: "voice" | "screen";
+        WatchCreated: {
+            watch: components["schemas"]["Watch"];
+            /** @description What the watch cannot see yet, in words; null when nothing. */
+            note: string | null;
+        };
+        /**
+         * @description * `charge_over` - charge_over
+         *     * `deposit_over` - deposit_over
+         *     * `balance_under` - balance_under
+         *     * `canvas_due` - canvas_due
+         *     * `grade_posted` - grade_posted
+         *     * `service_due` - service_due
+         *     * `mail_reply` - mail_reply
+         * @enum {string}
+         */
+        WatchKindEnum: "charge_over" | "deposit_over" | "balance_under" | "canvas_due" | "grade_posted" | "service_due" | "mail_reply";
+        WatchList: {
+            results: components["schemas"]["Watch"][];
+            kinds: components["schemas"]["Kind"][];
+        };
+        /**
+         * @description * `on` - on
+         *     * `paused` - paused
+         *     * `done` - done
+         *     * `expired` - expired
+         * @enum {string}
+         */
+        WatchStatusEnum: "on" | "paused" | "done" | "expired";
         WeeklyLine: {
             say: boolean;
             facts: string;
@@ -19842,6 +20039,232 @@ export interface operations {
             };
             /** @description No such row. Nothing was changed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_watches_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_watches_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["WatchCreate"];
+                "multipart/form-data": components["schemas"]["WatchCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchCreated"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_watches_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_watches_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedWatchUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedWatchUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedWatchUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watch"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_watches_firings: {
+        parameters: {
+            query?: {
+                /** @description Only what the phone has not said yet (oldest first). */
+                pending?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiringList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_watches_firings_ack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Ack"];
+                "application/x-www-form-urlencoded": components["schemas"]["Ack"];
+                "multipart/form-data": components["schemas"]["Ack"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Acked"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
