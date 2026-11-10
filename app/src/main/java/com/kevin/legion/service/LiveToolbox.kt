@@ -280,12 +280,11 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "get_current_time",
-            description = "Read the current date and time from the phone's own clock, in the " +
-                "user's timezone. Call this whenever the user asks what time or what day it " +
-                "is, or whenever the answer depends on the current time - how long until " +
-                "something, whether it is morning or evening, what 'today' or 'tonight' means. " +
-                "NEVER state a time or date from your own guess: you do not have a clock, and a " +
-                "wrong one is worse than asking. Instant, offline, free.",
+            // Trimmed 2026-11-10 (watches, ADR 0083) to pay for the `watch` declaration; the
+            // routing ("whenever the answer depends on it") and the never-guess rule are kept.
+            description = "Read the date and time from the phone's clock, in the user's timezone. " +
+                "Call it whenever the answer depends on the time or date. NEVER state a time or " +
+                "date from your own guess; you have no clock.",
             params = obj(),
             required = listOf(),
         ))
@@ -1830,8 +1829,7 @@ object LiveToolbox {
                 "why you said something, why you brought that up, or what prompted it - about a " +
                 "line YOU started, not an answer to their question. Returns the rule that fired " +
                 "and the fact behind it. State those; do not justify the nudge itself and do not " +
-                "guess at how they were feeling. If it returns nothing, say you have not raised " +
-                "anything on your own recently.",
+                "guess at how they were feeling.",
             params = obj(),
             required = emptyList(),
         ))
@@ -2444,6 +2442,8 @@ object LiveToolbox {
         // alfred-clock ticket 06 (ADR 0079): alarms, timers, stopwatch and bedtime, one action-dispatched declaration.
         val clockDecls = ClockToolbox.declarations()
         for (i in 0 until clockDecls.length()) fns.put(clockDecls.getJSONObject(i))
+        // watches (ADR 0083): standing watches, one action-dispatched declaration.
+        fns.put(WatchesToolbox.declarations().getJSONObject(0))
 
         return fns
     }
@@ -2783,6 +2783,7 @@ object LiveToolbox {
         MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         VaultToolbox.dispatch(context, name, args)?.let { return it }
         ClockToolbox.dispatch(context, name, args)?.let { return it }
+        WatchesToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))

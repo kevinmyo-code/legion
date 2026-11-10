@@ -62,7 +62,7 @@ import kotlinx.coroutines.launch
  * Every row is the same composable the old monolith called, unmoved in substance.
  */
 @Composable
-fun ProactiveSpeechScreen(onBack: () -> Unit) {
+fun ProactiveSpeechScreen(onBack: () -> Unit, onOpenWatches: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -189,6 +189,8 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
                         },
                     )
                 }
+                // ADR 0083: what each watch is, one by one (the Watches switch above silences all).
+                androidx.compose.material3.TextButton(onClick = onOpenWatches) { Text("See and change your watches") }
 
                 // Ticket 22, narrowed by ticket 32: the sitrep module registry, plus its curated
                 // newsletter senders. No schedule row anymore - a sitrep is never armed, only

@@ -242,6 +242,13 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "Watches",
+            blurb = "Tell me when something happens: money, school, the car, a reply. Checked by the engine (mail by the phone), said once.",
+            entries = listOf(
+                Entry(name = "watch", say = "Tell me when my paycheck lands", does = "Sets a standing watch and tells you, unprompted, when it fires: a charge or a deposit over an amount (optionally at one merchant or from one payer), a bank balance under an amount, Canvas work due soon, a grade posted, car service coming due, or an email back from a company you applied to (only the company's name is said, never the mail). Lists, pauses, resumes and removes them: \"stop watching my balance\". Three are on from the start: a charge of \$500 or more, Canvas work due within a day, and car service due within two weeks. Never set from something in your mail or a web page.", hands = "Settings, Proactive speech, See and change your watches: list, add, pause and remove; the Watches switch there silences them all."),
+            ),
+        ),
+        Group(
             title = "Phone calls",
             blurb = "Needs phone permissions granted in Setup.",
             entries = listOf(
@@ -295,6 +302,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 137 as of the last regeneration. */
-    const val TOOL_COUNT: Int = 137
+    /** Total entries across every group above - 138 as of the last regeneration. */
+    const val TOOL_COUNT: Int = 138
 }
