@@ -21,6 +21,16 @@
       "color": "1"
     },
     {
+      "id": "9e3e5c426a71d7bc",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/17-voice-set-rulings.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
       "id": "998e7ddc3a3387b2",
       "type": "file",
       "file": ".scratch/worker-workflows/issues/02-definition-format.md",
@@ -39,6 +49,16 @@
       "width": 320,
       "height": 110,
       "color": "4"
+    },
+    {
+      "id": "458e21e941739e6a",
+      "type": "file",
+      "file": ".scratch/worker-workflows/issues/18-voice-set-build.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     },
     {
       "id": "3e46afb86d884e12",
@@ -321,6 +341,13 @@
       "fromNode": "0a482f39fcd19345",
       "fromSide": "right",
       "toNode": "d39369f3b7a94758",
+      "toSide": "left"
+    },
+    {
+      "id": "daba5e30955e3cc0",
+      "fromNode": "9e3e5c426a71d7bc",
+      "fromSide": "right",
+      "toNode": "458e21e941739e6a",
       "toSide": "left"
     }
   ]

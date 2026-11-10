@@ -133,6 +133,8 @@ Four, all in [Rulings](issues/01-rulings.md) with the reasoning. Recommendations
 | 14 | [Workflow miner: the repeated-task loop](issues/14-workflow-miner.md) | build | M | 04, 05 |
 | 15 | [ADR 0067 amendment and decisions entry](issues/15-adr-amendment.md) | task | S | 01 |
 | 16 | [Live run on the Alienware](issues/16-live-run.md) | task | S | 06, 09, 11, 12, 14 |
+| 17 | [Rulings: a recurring workflow set up by voice](issues/17-voice-set-rulings.md) | grilling | S | - |
+| 18 | [Build: propose by voice, approve on the phone, install on the Alienware](issues/18-voice-set-build.md) | build | M | 17 |
 
 Order: 01, then 02 and 15; 03; then 04, 05, 06, 07 in parallel (one engine agent for 03+04, one
 worker agent for 05, one phone agent for 06). Workflow skills (09 to 14) are private-folder work,
@@ -160,7 +162,8 @@ Sizes: S under half a day of agent work, M about a day, L two or more.
 |---|---|
 | 01, 15 | resolved |
 | 02 format, 03 engine, 04 catch-up, 05 worker | built, tests green; owed: engine deploy, live worker update, ticket 16 |
-| 06 phone | deferred: unmerged branches edit the same files and the voice payload is full; build to the contract below |
+| 06 phone | built 2026-11-10 on `feat/workflows-phone`; owed: the A25 run (ticket 16) |
+| 17, 18 voice-set recurring workflows | charted 2026-11-10: 17 needs Kevin's rulings (V2 is a new install path), 18 is the build |
 | 07 web desk | deferred: not nearly free (node, vitest, `schema.d.ts`) |
 | 08, 09, 10, 13 | deferred: they read prod or personal data |
 | 11, 14 | deferred: private-folder workflows (14's input, the task log, is built) |
@@ -208,8 +211,8 @@ already ignores unknown keys.
 
 - Workflows on the work laptop (`listed` scope: summaries only). Probably "repo read-only
   workflows only"; wait for a first real one.
-- Workflows set up by voice ("every Monday, do X"): ruling 15's original wish. The miner covers
-  proposing; authoring a schedule by voice needs its own wording and a yes flow.
+- Workflows set up by voice ("every Monday, do X"): ruling 15's original wish. Charted 2026-11-10 as
+  [Rulings](issues/17-voice-set-rulings.md) and [the build](issues/18-voice-set-build.md).
 - Parameter types beyond free text (a date window, a finding number) once two workflows need the
   same one.
 - A workflow started from a procedure step (procedures ticket 19 option B).

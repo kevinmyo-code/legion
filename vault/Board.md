@@ -92,6 +92,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/web-surface/map\|web-surface]] | [[05-look-back\|05]] | build | Look-back |
 | [[.scratch/web-surface/map\|web-surface]] | [[06-stale-is-a-third-sentence\|06]] | build | Stale is a third sentence |
 | [[.scratch/worker-workflows/map\|worker-workflows]] | [[08-device-logs-read\|08]] | build | Engine: device logs readable by the worker (logcat and crash over the API) |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[17-voice-set-rulings\|17]] | grilling | Rulings: a recurring workflow set up by voice (proposal, approval, install) |
 
 ## Built, owing a run on hardware
 
@@ -421,6 +422,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/worker-workflows/map\|worker-workflows]] | [[13-wf-claude-memory-review\|13]] | build | Workflow: claude-memory-review  waiting on [[05-worker\|05]] |
 | [[.scratch/worker-workflows/map\|worker-workflows]] | [[14-workflow-miner\|14]] | build | Workflow miner: the repeated-task loop  waiting on [[04-catch-up-runs\|04]], [[05-worker\|05]] |
 | [[.scratch/worker-workflows/map\|worker-workflows]] | [[16-live-run\|16]] | task | Live run on the Alienware  waiting on [[06-phone\|06]], [[09-wf-log-audit\|09]], [[11-wf-ship-round\|11]], [[12-wf-memory-review\|12]], [[14-workflow-miner\|14]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | [[18-voice-set-build\|18]] | build | Build: propose a recurring workflow by voice, approve on the phone, install on the Alienware  waiting on [[17-voice-set-rulings\|17]] |
 
 ## KIV
 
@@ -520,4 +522,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/web-calendar-and-lists/map\|web-calendar-and-lists]] | 4 | 3 | [[.scratch/web-calendar-and-lists/web-calendar-and-lists.canvas\|open]] |
 | [[.scratch/web-revamp/map\|web-revamp]] | 18 | 17 | [[.scratch/web-revamp/web-revamp.canvas\|open]] |
 | [[.scratch/web-surface/map\|web-surface]] | 7 | 6 | [[.scratch/web-surface/web-surface.canvas\|open]] |
-| [[.scratch/worker-workflows/map\|worker-workflows]] | 16 | 14 | [[.scratch/worker-workflows/worker-workflows.canvas\|open]] |
+| [[.scratch/worker-workflows/map\|worker-workflows]] | 18 | 16 | [[.scratch/worker-workflows/worker-workflows.canvas\|open]] |

@@ -3,8 +3,8 @@ map: worker-workflows
 ticket: "06"
 title: "Phone: action workflow, workflows in check, Workflows on the Claude session screen"
 type: build
-status: open
-status-detail: "Deferred 2026-11-10 by Kevin's brief: three unmerged branches edit ClaudeResultWatcher, ClaudeResultPolling and LiveToolbox, and the voice payload has no room to spare. Build off the merged tree against the contract in the map (Phone contract)."
+status: built
+status-detail: "Built 2026-11-10 on feat/workflows-phone (stacked on integrate/2026-11-10-jarvis-on-r5 plus feat/worker-workflows): action workflow, check lists, Workflows section with Run, Scheduled labels, the scheduled-question raise, the read-through guard. Owes the A25 run (ticket 16)."
 size: M
 blockers: ["03"]
 blocked-by: ["[[03-engine-catalog-and-trigger]]"]
@@ -46,8 +46,12 @@ tags: [ticket]
 
 ## Verification
 
-- [ ] `LiveSetupPayloadSizeTest` and `MarcusPayloadTest` green with the change.
-- [ ] Unit tests over a fake backend: workflow sent; unknown name reads the names; check lists
-      workflows; screen Run calls the same controller; scheduled needs_confirmation notifies once.
-- [ ] `VoiceGuideDataTest`, `python tools/voice_guide.py`.
-- [ ] On the A25 (ticket 16).
+- [x] `LiveSetupPayloadSizeTest` green with the change (98,424 -> 98,409 chars, ~24,602 tokens; the
+      claude_session growth paid by a manage_item trim). `MarcusPayloadTest` no longer exists: the
+      only mention is a history note inside `LiveSetupPayloadSizeTest`, so that step is impossible.
+- [x] Unit tests over a fake backend: workflow sent; unknown name reads the names; check lists
+      workflows; screen Run calls the same controller; scheduled needs_confirmation notifies once
+      (`ClaudeWorkflowToolboxTest`, `ClaudeWorkflowsTest`, `ClaudeWorkflowsSectionTest`). Plus: a
+      read-through turn cannot start one, driven through `LiveToolbox.dispatch`.
+- [x] `VoiceGuideDataTest`, `python tools/voice_guide.py`.
+- [ ] On the A25 (ticket 16): owed after deploy, worker update and install.
