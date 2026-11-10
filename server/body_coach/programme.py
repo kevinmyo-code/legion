@@ -176,7 +176,8 @@ CATALOG: dict[str, Exercise] = {
         _E("single_leg_rdl", "Single-leg Romanian deadlift",
            aliases=("single leg rdl", "single leg deadlift"),
            equipment=(DUMBBELL, KETTLEBELL, BODYWEIGHT)),
-        _E("kettlebell_swing", "Kettlebell swing", aliases=("swing", "kettlebell swing", "kb swing"),
+        _E("kettlebell_swing", "Kettlebell swing",
+           aliases=("swing", "kettlebell swing", "kb swing"),
            joints=(LOWER_BACK,), **_KB),
         _E("hip_thrust", "Hip thrust", increment_lbs=10, aliases=("hip thrust",),
            equipment=(BARBELL,)),
@@ -230,7 +231,8 @@ CATALOG: dict[str, Exercise] = {
            aliases=("pushdown", "tricep pushdown", "triceps pushdown"), equipment=(MACHINE,)),
         _E("overhead_triceps_extension", "Overhead triceps extension",
            aliases=("overhead extension", "tricep extension"), joints=(SHOULDER,)),
-        _E("close_grip_push_up", "Close-grip push-up", aliases=("close grip push up", "diamond push up"),
+        _E("close_grip_push_up", "Close-grip push-up",
+           aliases=("close grip push up", "diamond push up"),
            **_BW),
         _E("bench_dip", "Bench dip", aliases=("dip", "bench dip"), joints=(SHOULDER,), **_BW),
         # Core.
@@ -325,7 +327,8 @@ TEMPLATES: dict[str, dict[str, tuple[Slot, ...]]] = {
                ranges=(("push_up", 8, 15), ("kettlebell_floor_press", 10, 15))),
             _S("u2_pull", "chin_up", 3, 5, 10, ("lat_pulldown", "inverted_row"),
                ranges=(("lat_pulldown", 8, 10), ("inverted_row", 8, 12))),
-            _S("u2_row", "dumbbell_row", 3, 8, 12, ("seated_cable_row", "kettlebell_row", "inverted_row")),
+            _S("u2_row", "dumbbell_row", 3, 8, 12,
+               ("seated_cable_row", "kettlebell_row", "inverted_row")),
             _S("u2_shoulders", "lateral_raise", 3, 12, 15,
                ("cable_lateral_raise", "face_pull", "reverse_fly")),
             _S("u2_rear", "face_pull", 2, 12, 15, ("reverse_fly",)),
@@ -660,7 +663,11 @@ def slots_for(
     filters: Filters = NO_FILTERS,
 ) -> list[tuple[Slot, str]]:
     """The day's slots that hold an exercise, with the exercise each one holds."""
-    return [(r.slot, r.exercise) for r in resolve_day(template, day_key, swaps, filters) if r.exercise]
+    return [
+        (r.slot, r.exercise)
+        for r in resolve_day(template, day_key, swaps, filters)
+        if r.exercise
+    ]
 
 
 def day_keys(template: str) -> tuple[str, ...]:
@@ -751,7 +758,10 @@ def upcoming_sessions(
 
 def normalise(text: str) -> str:
     text = re.sub(r"[^a-z0-9 ]+", " ", text.lower())
-    words = [w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w for w in text.split()]
+    words = [
+        w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+        for w in text.split()
+    ]
     return " ".join(words)
 
 
@@ -763,7 +773,11 @@ def match_exercise(query: str, keys: list[str]) -> str | None:
     exact, partial = [], []
     for key in keys:
         ex = CATALOG[key]
-        names = {normalise(ex.name), normalise(key.replace("_", " ")), *(normalise(a) for a in ex.aliases)}
+        names = {
+            normalise(ex.name),
+            normalise(key.replace("_", " ")),
+            *(normalise(a) for a in ex.aliases),
+        }
         if q in names:
             exact.append(key)
         elif any(q in n or n in q for n in names):

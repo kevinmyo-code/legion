@@ -240,10 +240,10 @@ def day_events(events=None, utc_offset_minutes=0, said=None) -> str:
     """Today's events from `list_events`'s structured sections, in the household's clock.
     One-off events in the window are listed with their times; repeating events are named and
     NOT worked out for today (`list_events` returns `occurrences` since 2026-11-04, but nothing
-    here reads them yet); suggestions are said to be suggestions, never plans. `said` is the occurrences an earlier
-    step already said (`brief_latest`'s `events_said`: `{event_id, starts_at}`); the same row
-    at the same start is left out here, so it is said once. A different row with the same
-    title is still said."""
+    here reads them yet); suggestions are said to be suggestions, never plans. `said` is the
+    occurrences an earlier step already said (`brief_latest`'s `events_said`:
+    `{event_id, starts_at}`); the same row at the same start is left out here, so it is said
+    once. A different row with the same title is still said."""
     events = events or {}
     already = {_occurrence(s.get("event_id"), s.get("starts_at")) for s in said or []}
     in_window = [

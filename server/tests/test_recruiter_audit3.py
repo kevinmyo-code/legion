@@ -45,7 +45,12 @@ def test_a_narrow_question_keeps_plain_ranking():
 def test_a_procedure_that_reads_nhtsa_gets_time_for_it():
     # car_check stopped at 3.0 s, before its answer, while the recall lookup ran.
     plain = {"steps": [{"kind": "tool", "tool": "next_service"}]}
-    online = {"steps": [{"kind": "tool", "tool": "next_service"}, {"kind": "tool", "tool": "vehicle_recalls"}]}
+    online = {
+        "steps": [
+            {"kind": "tool", "tool": "next_service"},
+            {"kind": "tool", "tool": "vehicle_recalls"},
+        ]
+    }
     assert runner._deadline(plain) == runner.BUDGET_MS * runner.DEADLINE_FACTOR
     assert runner._deadline(online) == runner._deadline(plain) + runner.NETWORK_MS
     assert runner._deadline(online) >= 9000

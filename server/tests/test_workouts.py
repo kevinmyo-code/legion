@@ -84,7 +84,8 @@ def test_two_sessions_under_the_range_at_one_weight_reset_to_ninety_percent():
     t = rules.target_for(BENCH, "bench_press", [perf([6, 5, 5]), perf([6, 6, 5])])
     assert (t.weight_lbs, t.rule) == (90, rules.RULE_RESET)
     # one bad session is not a stall
-    assert rules.target_for(BENCH, "bench_press", [perf([6, 5, 5]), perf([7, 7, 6])]).rule == rules.RULE_HOLD
+    held = rules.target_for(BENCH, "bench_press", [perf([6, 5, 5]), perf([7, 7, 6])])
+    assert held.rule == rules.RULE_HOLD
     # a different weight the session before is not a stall either
     assert (
         rules.target_for(BENCH, "bench_press", [perf([6, 5, 5]), perf([6, 5, 5], weight=95)]).rule
@@ -100,7 +101,9 @@ def test_the_deload_schedule_counts_sessions_not_weeks():
 
 def test_a_deload_is_lighter_and_shorter_and_never_moves_the_working_weight():
     t = rules.target_for(SQUAT, "back_squat", [perf([8, 8, 8], weight=200)], deload=True)
-    assert (t.weight_lbs, t.sets, t.reps_low, t.reps_high, t.rule) == (180, 2, 6, 6, rules.RULE_DELOAD)
+    assert (t.weight_lbs, t.sets, t.reps_low, t.reps_high, t.rule) == (
+        180, 2, 6, 6, rules.RULE_DELOAD
+    )
     after = rules.target_for(
         SQUAT, "back_squat", [perf([6, 6], weight=180, deload=True), perf([8, 8, 8], weight=200)]
     )
@@ -193,7 +196,15 @@ def _tick_all(client, session, reps_from=None, weight=100.0):
     for s in session["sets"]:
         reps = s["reps_high"] if reps_from is None else reps_from(s)
         w = None if s["kind"] != "weighted" else (s["target_weight_lbs"] or weight)
-        sets.append({"exercise_key": s["exercise_key"], "set_number": s["set_number"], "done": True, "reps": reps, "weight_lbs": w})
+        sets.append(
+            {
+                "exercise_key": s["exercise_key"],
+                "set_number": s["set_number"],
+                "done": True,
+                "reps": reps,
+                "weight_lbs": w,
+            }
+        )
     r = client.patch(f"{BASE}/sets/", {"session_id": session["id"], "sets": sets}, format="json")
     assert r.status_code == 200, r.data
     return r.data["session"]
@@ -249,16 +260,23 @@ def test_start_is_idempotent_on_a_phone_minted_id(auth_client):
 
 def test_a_set_replay_changes_nothing_and_untick_clears_it(auth_client):
     s = auth_client.post(f"{BASE}/start/", {}, format="json").data["session"]
-    change = {"exercise_key": "bench_press", "set_number": 2, "done": True, "reps": 7, "weight_lbs": 95}
+    change = {
+        "exercise_key": "bench_press", "set_number": 2, "done": True, "reps": 7, "weight_lbs": 95
+    }
     for _ in range(2):
-        r = auth_client.patch(f"{BASE}/sets/", {"session_id": s["id"], "sets": [change]}, format="json")
+        r = auth_client.patch(
+            f"{BASE}/sets/", {"session_id": s["id"], "sets": [change]}, format="json"
+        )
         assert r.status_code == 200
     assert r.data["session"]["sets_done"] == 1
     row = WorkoutSet.objects.get(exercise_key="bench_press", set_number=2)
     assert (row.done, row.reps_done, row.weight_lbs) == (True, 7, 95)
     r = auth_client.patch(
         f"{BASE}/sets/",
-        {"session_id": s["id"], "sets": [{"exercise_key": "bench_press", "set_number": 2, "done": False}]},
+        {
+            "session_id": s["id"],
+            "sets": [{"exercise_key": "bench_press", "set_number": 2, "done": False}],
+        },
         format="json",
     )
     assert r.data["session"]["sets_done"] == 0
@@ -268,7 +286,18 @@ def test_a_tick_never_takes_a_target_from_the_client(auth_client):
     s = auth_client.post(f"{BASE}/start/", {}, format="json").data["session"]
     auth_client.patch(
         f"{BASE}/sets/",
-        {"session_id": s["id"], "sets": [{"exercise_key": "split_squat", "set_number": 1, "reps": 8, "weight_lbs": 50, "target_weight_lbs": 999}]},
+        {
+            "session_id": s["id"],
+            "sets": [
+                {
+                    "exercise_key": "split_squat",
+                    "set_number": 1,
+                    "reps": 8,
+                    "weight_lbs": 50,
+                    "target_weight_lbs": 999,
+                }
+            ],
+        },
         format="json",
     )
     row = WorkoutSet.objects.get(exercise_key="split_squat", set_number=1)
@@ -285,20 +314,29 @@ def test_unknown_sets_and_bad_numbers_are_refused_in_words(auth_client):
     assert r.status_code == 400 and r.data["detail"].startswith("Nothing was saved")
     r = auth_client.patch(
         f"{BASE}/sets/",
-        {"session_id": s["id"], "sets": [{"exercise_key": "bench_press", "set_number": 1, "reps": -1}]},
+        {
+            "session_id": s["id"],
+            "sets": [{"exercise_key": "bench_press", "set_number": 1, "reps": -1}],
+        },
         format="json",
     )
     assert r.status_code == 400
 
 
 def test_log_by_name_starts_the_day_and_ticks_the_next_open_set(auth_client):
-    r = auth_client.post(f"{BASE}/log/", {"exercise": "bench", "reps": 8, "weight_lbs": 135}, format="json")
+    r = auth_client.post(
+        f"{BASE}/log/", {"exercise": "bench", "reps": 8, "weight_lbs": 135}, format="json"
+    )
     assert r.status_code == 200, r.data
     assert r.data["words"].startswith("Started Day A. Ticked Bench press set 1: 8 reps at 135 lb")
-    r = auth_client.post(f"{BASE}/log/", {"exercise": "bench press", "reps": 7, "weight_lbs": 135}, format="json")
+    r = auth_client.post(
+        f"{BASE}/log/", {"exercise": "bench press", "reps": 7, "weight_lbs": 135}, format="json"
+    )
     assert "set 2" in r.data["words"]
     for reps in (6, 5):
-        r = auth_client.post(f"{BASE}/log/", {"exercise": "bench", "reps": reps, "weight_lbs": 135}, format="json")
+        r = auth_client.post(
+            f"{BASE}/log/", {"exercise": "bench", "reps": reps, "weight_lbs": 135}, format="json"
+        )
     assert "extra set" in r.data["words"]
     r = auth_client.post(f"{BASE}/log/", {"exercise": "deadlift", "reps": 5}, format="json")
     assert r.status_code == 400 and "not one exercise in today's workout" in r.data["detail"]
@@ -307,7 +345,9 @@ def test_log_by_name_starts_the_day_and_ticks_the_next_open_set(auth_client):
 def test_an_extra_set_does_not_count_against_progression(auth_client):
     s = auth_client.post(f"{BASE}/start/", {}, format="json").data["session"]
     _tick_all(auth_client, s, weight=100.0)
-    auth_client.post(f"{BASE}/log/", {"exercise": "bench", "reps": 4, "weight_lbs": 100}, format="json")
+    auth_client.post(
+        f"{BASE}/log/", {"exercise": "bench", "reps": 4, "weight_lbs": 100}, format="json"
+    )
     auth_client.post(f"{BASE}/finish/", {}, format="json")
     history = [
         e for e in auth_client.get(f"{BASE}/").data["next"]["exercises"]
@@ -324,7 +364,9 @@ def test_swap_keeps_on_the_programme_and_changes_an_untouched_running_exercise(a
     keys = {x["exercise_key"] for x in r.data["session"]["sets"]}
     assert "goblet_squat" in keys and "split_squat" not in keys
     assert TrainingProgramme.objects.get().swaps == {"squat": "goblet_squat"}
-    r = auth_client.post(f"{BASE}/swap/", {"exercise": "goblet squat", "to": "split squat"}, format="json")
+    r = auth_client.post(
+        f"{BASE}/swap/", {"exercise": "goblet squat", "to": "split squat"}, format="json"
+    )
     assert TrainingProgramme.objects.get().swaps == {}
     r = auth_client.post(f"{BASE}/swap/", {"exercise": "squat", "to": "bench press"}, format="json")
     assert r.status_code == 400 and "can be swapped for" in r.data["detail"]
@@ -364,7 +406,11 @@ def test_the_week_counts_finished_sessions(auth_client):
 
 
 def test_training_days_are_settable_and_refused_in_words(auth_client):
-    r = auth_client.put(f"{BASE}/programme/", {"training_days": ["Tuesday", "thu", "sat", "tue"]}, format="json")
+    r = auth_client.put(
+        f"{BASE}/programme/",
+        {"training_days": ["Tuesday", "thu", "sat", "tue"]},
+        format="json",
+    )
     assert r.status_code == 200 and r.data["programme"]["training_days"] == ["tue", "thu", "sat"]
     assert auth_client.get(f"{BASE}/").data["week"]["planned"] == 3
     r = auth_client.put(f"{BASE}/programme/", {"training_days": ["funday"]}, format="json")
@@ -381,7 +427,11 @@ def test_the_deload_session_comes_from_the_session_count(auth_client, household_
 
     for n in range(2, 16):
         # the last one is a Day B after the real Day A, so Day A comes round next
-        at = timezone.now() + timezone.timedelta(minutes=1) if n == 15 else timezone.now() - timezone.timedelta(days=30)
+        at = (
+            timezone.now() + timezone.timedelta(minutes=1)
+            if n == 15
+            else timezone.now() - timezone.timedelta(days=30)
+        )
         WorkoutSession.objects.create(
             household=household_a,
             programme=programme,
@@ -419,10 +469,14 @@ def test_the_read_carries_both_days_the_rotation_and_todays_status(auth_client, 
         "Romanian deadlift", "Overhead press", "Lat pulldown", "Wall sit", "Hanging knee raise"
     ]
     rdl = b["exercises"][0]
-    assert (rdl["sets"], rdl["reps_low"], rdl["reps_high"], rdl["weight_lbs"], rdl["calibrating"]) == (3, 8, 10, None, True)
+    assert (
+        rdl["sets"], rdl["reps_low"], rdl["reps_high"], rdl["weight_lbs"], rdl["calibrating"]
+    ) == (3, 8, 10, None, True)
     assert (a["sessions_away"], b["sessions_away"], b["next_on"]) == (0, 1, None)
     assert [(u["day_key"], u["date"], u["is_today"]) for u in data["upcoming"]] == [
-        ("A", "", True), ("B", "", False), ("A", "", False)
+        ("A", "", True),
+        ("B", "", False),
+        ("A", "", False),
     ]
     words = data["programme_words"]
     assert "3 sessions a week, full body" in words and "days are flexible" in words
@@ -441,7 +495,11 @@ def test_once_a_session_is_done_the_next_one_is_the_next_in_the_rotation(auth_cl
     auth_client.post(f"{BASE}/finish/", {"session_id": s["id"]}, format="json")
     data = auth_client.get(f"{BASE}/").data
     assert data["today_status"] == "done"
-    assert [(u["day_key"], u["date"]) for u in data["upcoming"]] == [("B", ""), ("A", ""), ("B", "")]
+    assert [(u["day_key"], u["date"]) for u in data["upcoming"]] == [
+        ("B", ""),
+        ("A", ""),
+        ("B", ""),
+    ]
     a = data["days"][0]
     squat = next(e for e in a["exercises"] if e["exercise_key"] == "split_squat")
     assert (squat["weight_lbs"], squat["rule"]) == (105, "add")
@@ -508,7 +566,9 @@ def test_the_tools_say_the_rules_numbers_and_commit_through_the_views(mcp):
     is_error, text, _ = _call(mcp, "get_todays_workout")
     assert not is_error and "Day A" in text and "never change a number" in text
     assert "Day B: Romanian deadlift" in text and "Next sessions, in order:" in text
-    is_error, text, _ = _call(mcp, "tick_workout_set", {"exercise": "bench", "reps": 8, "weight_lbs": 135})
+    is_error, text, _ = _call(
+        mcp, "tick_workout_set", {"exercise": "bench", "reps": 8, "weight_lbs": 135}
+    )
     assert not is_error and "Ticked Bench press set 1" in text and "committed" in text
     is_error, text, _ = _call(mcp, "swap_exercise", {"exercise": "squats"})
     assert not is_error and "Goblet squat" in text

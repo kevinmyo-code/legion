@@ -35,12 +35,16 @@ DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
 
 LIST_PARAMETERS = [
-    OpenApiParameter("reason", str, enum=list(REASONS), description="Keep only this upload reason."),
+    OpenApiParameter(
+        "reason", str, enum=list(REASONS), description="Keep only this upload reason."
+    ),
     OpenApiParameter(
         "since", str, description="ISO 8601 time; only batches the engine received after it."
     ),
     OpenApiParameter("device", str, description="Keep only this device label, e.g. web."),
-    OpenApiParameter("limit", int, description=f"At most this many (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
+    OpenApiParameter(
+        "limit", int, description=f"At most this many (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."
+    ),
 ]
 
 

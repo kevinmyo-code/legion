@@ -180,8 +180,11 @@ def build_draft(request, data: dict | None = None, *, reason: str = "") -> BodyP
             raise PlanRefused(exc.message.replace("proposed", "drafted", 1)) from exc
     figures = _figures(request, rate)
     own = None if plan_part.get("alfred_sets_target") else own_target_since_lock(request, base)
-    if own is None and base is not None and base.target_set_by == TARGET_BY_MEMBER and not plan_part.get(
-        "alfred_sets_target"
+    if (
+        own is None
+        and base is not None
+        and base.target_set_by == TARGET_BY_MEMBER
+        and not plan_part.get("alfred_sets_target")
     ):
         kcal, protein, setter = base.kcal_target, base.protein_g, TARGET_BY_MEMBER
     elif own is not None:
@@ -327,9 +330,15 @@ def _lbs_week(row: BodyPlan) -> float | None:
 
 def summary(row: BodyPlan) -> str:
     state = change.State.from_dict(row.programme) if row.programme else None
-    food = f"about {row.kcal_target} kcal and {row.protein_g} g protein a day" if row.kcal_target else "no calorie target"
+    food = (
+        f"about {row.kcal_target} kcal and {row.protein_g} g protein a day"
+        if row.kcal_target
+        else "no calorie target"
+    )
     pace = _lbs_week(row)
-    rate = f"{row.rate_bp / 100:.2f}% of bodyweight a week" + (f", about {pace:g} lb" if pace else "")
+    rate = f"{row.rate_bp / 100:.2f}% of bodyweight a week" + (
+        f", about {pace:g} lb" if pace else ""
+    )
     training = change.summary(state) if state else "no programme"
     return f"{food} ({rate}); training {training}"
 
@@ -365,9 +374,7 @@ def draft_words(row: BodyPlan) -> str:
     )
     basis = (row.inputs or {}).get("basis_words")
     tail = f" Estimates, {basis}." if basis else " Estimates."
-    return (
-        f"Draft plan: {summary(row)}.{own}{tail} Nothing is live until you lock it in."
-    )
+    return f"Draft plan: {summary(row)}.{own}{tail} Nothing is live until you lock it in."
 
 
 def lock_words(row: BodyPlan) -> str:
@@ -377,7 +384,11 @@ def lock_words(row: BodyPlan) -> str:
         else f"Your own target of {row.kcal_target} kcal stays"
     )
     pace = _lbs_week(row)
-    why = f", to lose about {pace:g} lb a week ({row.rate_bp / 100:.2f}% of bodyweight)" if pace else ""
+    why = (
+        f", to lose about {pace:g} lb a week ({row.rate_bp / 100:.2f}% of bodyweight)"
+        if pace
+        else ""
+    )
     state = change.State.from_dict(row.programme)
     return (
         f"Locked in, plan version {row.version}. {target}{why}; estimates. Training: "
@@ -389,7 +400,8 @@ def history_words(rows: list[BodyPlan]) -> str:
     if not rows:
         return "No plan is locked in yet."
     lines = [
-        f"Version {r.version} ({r.locked_at.date().isoformat() if r.locked_at else '?'}): {r.reason or 'no reason given'}."
+        f"Version {r.version} ({r.locked_at.date().isoformat() if r.locked_at else '?'}): "
+        f"{r.reason or 'no reason given'}."
         for r in rows[:6]
     ]
     return "Plan history, newest first: " + " ".join(lines)
@@ -415,8 +427,12 @@ def plan_body(request) -> dict:
         "active": plan_dict(current),
         "draft": plan_dict(pending),
         "history": [
-            {"version": r.version, "locked_at": r.locked_at.isoformat() if r.locked_at else None,
-             "reason": r.reason, "summary": summary(r)}
+            {
+                "version": r.version,
+                "locked_at": r.locked_at.isoformat() if r.locked_at else None,
+                "reason": r.reason,
+                "summary": summary(r),
+            }
             for r in rows
         ],
         "history_words": history_words(rows),

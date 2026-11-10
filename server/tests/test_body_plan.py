@@ -69,7 +69,9 @@ def test_the_first_draft_is_built_on_read_and_writes_no_target(auth_client, hous
 def test_lock_makes_the_target_and_programme_live_and_says_so_after(auth_client, household_a):
     _ready(auth_client, household_a)
     target(household_a, 2300, protein=150.0)
-    d = auth_client.post(f"{BASE}/plan/draft/", {"sessions_per_week": 4}, format="json").data["draft"]
+    d = auth_client.post(
+        f"{BASE}/plan/draft/", {"sessions_per_week": 4}, format="json"
+    ).data["draft"]
     assert d["programme"]["template"] == "upper_lower"
     r = auth_client.post(f"{BASE}/plan/{d['id']}/lock/")
     assert r.status_code == 200, r.data
@@ -140,14 +142,18 @@ def test_an_energy_proposal_accepted_versions_the_plan(auth_client, household_a)
     assert "your own" not in auth_client.get(f"{BASE}/plan/").data["words"]
 
 
-def test_discard_changes_nothing_and_a_lock_expires_a_stale_programme_proposal(auth_client, household_a):
+def test_discard_changes_nothing_and_a_lock_expires_a_stale_programme_proposal(
+    auth_client, household_a
+):
     _ready(auth_client, household_a)
     d = auth_client.post(f"{BASE}/plan/draft/", {}, format="json").data["draft"]
     r = auth_client.post(f"{BASE}/plan/{d['id']}/discard/")
     assert r.status_code == 200 and "nothing changed" in r.data["words"]
     assert not MealTarget.objects.filter(household=household_a).exists()
     pending = auth_client.post(f"{BASE}/workout/proposals/", {"cardio": True}, format="json").data
-    d2 = auth_client.post(f"{BASE}/plan/draft/", {"sessions_per_week": 2}, format="json").data["draft"]
+    d2 = auth_client.post(f"{BASE}/plan/draft/", {"sessions_per_week": 2}, format="json").data[
+        "draft"
+    ]
     auth_client.post(f"{BASE}/plan/{d2['id']}/lock/")
     assert ProgrammeProposal.objects.get(pk=pending["proposal"]["id"]).status == "expired"
 
@@ -158,8 +164,9 @@ def test_the_checklist_carries_the_draft_line(auth_client, household_a):
     assert line is not None and line["words"].startswith("Draft plan:")
 
 
-@pytest.mark.parametrize("bad", [{"rate_pct": 2}, {"rate_pct": "fast"}, {"sessions_per_week": 9},
-                                 {"colour": "red"}])
+@pytest.mark.parametrize(
+    "bad", [{"rate_pct": 2}, {"rate_pct": "fast"}, {"sessions_per_week": 9}, {"colour": "red"}]
+)
 def test_choices_outside_the_rules_refuse(auth_client, household_a, bad):
     _ready(auth_client, household_a)
     r = auth_client.post(f"{BASE}/plan/draft/", bad, format="json")

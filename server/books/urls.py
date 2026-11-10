@@ -1,16 +1,16 @@
 from django.urls import path
 
-from books.reading import (
-    BookBookmarkDetailView,
-    BookBookmarkListView,
-    BookPositionDetailView,
-    BookPositionListView,
-)
 from books.library import (
     LibraryDetailView,
     LibraryDownloadView,
     LibraryFileView,
     LibraryListView,
+)
+from books.reading import (
+    BookBookmarkDetailView,
+    BookBookmarkListView,
+    BookPositionDetailView,
+    BookPositionListView,
 )
 from books.views import BookConvertView
 

@@ -24,14 +24,14 @@ pytestmark = pytest.mark.django_db
 URL = "/api/device-logs/"
 
 MAIL_SECRET = "Your order 112-998 ships Tuesday"
-REDACTED_BATCH = f"""\
+REDACTED_BATCH = """\
 11-05 09:00:00.000 1 2 I LIVE_AUDIT: session_start model=gemini-3.1-flash-live-preview async_set=none
 11-05 09:00:01.000 1 2 I LIVE_AUDIT: user final=true text="Read my mail"
-11-05 09:00:01.100 1 2 I LIVE_AUDIT: tool_call id=m1 name=read_mail async=false args={{}}
+11-05 09:00:01.100 1 2 I LIVE_AUDIT: tool_call id=m1 name=read_mail async=false args={}
 11-05 09:00:01.400 1 2 I LIVE_AUDIT: tool_result id=m1 name=read_mail success=true ms=300 scheduling=none sent=true response="[redacted: third-party content]"
 11-05 09:00:01.600 1 2 I LIVE_AUDIT: assistant text="[redacted: third-party content]"
 11-05 09:00:02.000 1 2 I LIVE_AUDIT: turn_complete
-"""
+"""  # noqa: E501 (pinned log lines)
 
 
 def _upload(client, text: str, reason: str = "conversation", label: str = "Phone"):
@@ -41,7 +41,9 @@ def _upload(client, text: str, reason: str = "conversation", label: str = "Phone
         "app_version_name": "1.0",
         "app_version_code": 7,
         "reason": reason,
-        "file": SimpleUploadedFile("c.log.gz", gzip.compress(text.encode()), content_type="application/gzip"),
+        "file": SimpleUploadedFile(
+            "c.log.gz", gzip.compress(text.encode()), content_type="application/gzip"
+        ),
     }
     response = client.post(URL, body, format="multipart")
     assert response.status_code == 201, response.data

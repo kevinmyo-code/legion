@@ -33,7 +33,15 @@ STEP_KINDS: tuple[str, ...] = ("tool", "compute", "decide", "ask", "check", "say
 # before any trace exists. No engine tool reads mail today (`tests/test_engine_mcp.py`); this
 # keeps a future one out. `tests/test_procedures_definition.py` fails while the two sets differ.
 READ_THROUGH_TOOLS: frozenset[str] = frozenset(
-    {"search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status", "browser"}
+    {
+        "search_mail",
+        "read_mail",
+        "ask_mail",
+        "get_sitrep",
+        "track_package",
+        "flight_status",
+        "browser",
+    }
 )
 # Engine-only tools whose results are third-party content, so a procedure may not call them
 # either (ruling 06: a run trace never stores it). web_search returns text from the web.

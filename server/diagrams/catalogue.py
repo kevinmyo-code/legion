@@ -18,7 +18,8 @@ Where each project's views come from:
   visitor's demo code label like `RecruiterContent`, else `current`.
 
 **The LinkedIn version gets no Quanex and no Mid-Continent diagram** (Kevin, 2026-11-05: that
-version strips all Quanex work, and "leave midcon out of the linkedin one"). `WITHHELD` says so here, whatever rows exist, and the loader refuses to load one.
+version strips all Quanex work, and "leave midcon out of the linkedin one"). `WITHHELD` says so
+here, whatever rows exist, and the loader refuses to load one.
 """
 
 from __future__ import annotations

@@ -366,7 +366,8 @@ def dismiss(request, loop_id) -> dict:
         row = _find_for_answer(request, loop_id)
         if row.status == STATUS_TRACKED:
             raise LoopRefused(
-                "Nothing was changed. That one is already tracked; remove it from your list instead.",
+                "Nothing was changed. That one is already tracked; "
+                "remove it from your list instead.",
                 status=409,
             )
         if row.status == STATUS_PENDING:
@@ -389,7 +390,10 @@ def set_proposing(request, on) -> dict:
     said = (
         "Alfred will propose to-dos from what you say again."
         if on
-        else "Alfred will not propose to-dos any more. Turn it back on in Settings, Proactive speech."
+        else (
+            "Alfred will not propose to-dos any more. "
+            "Turn it back on in Settings, Proactive speech."
+        )
     )
     return {"proposing": on, "words": said}
 

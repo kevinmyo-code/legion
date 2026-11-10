@@ -74,7 +74,9 @@ class ClaudeTaskCreateSerializer(serializers.Serializer):
     # catalog; a miss is a 400 that names the workflows there are.
     workflow = serializers.CharField(
         required=False, allow_null=True, default=None, max_length=PARAMS_MAX_CHARS,
-        help_text="Run a named workflow: Kevin's phrase or the exact name. Omitted for a plain task.",
+        help_text=(
+            "Run a named workflow: Kevin's phrase or the exact name. Omitted for a plain task."
+        ),
     )
 
 

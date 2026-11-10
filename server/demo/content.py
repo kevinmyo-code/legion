@@ -119,8 +119,9 @@ CONTENT_SCHEMA: dict = _obj(
         # `phone` the phone section is not drawn.
         "name": _STR,
         "phone": _PHONE,
-        # What LEGION is, for a visitor who has not met it (Kevin, 2026-11-04: "a short section about
-        # legion's architecture ... so people know what it is"). Optional: without it nothing is drawn.
+        # What LEGION is, for a visitor who has not met it (Kevin, 2026-11-04: "a short section
+        # about legion's architecture ... so people know what it is"). Optional: without it
+        # nothing is drawn.
         "legion": _obj(
             {
                 "title": _STR,
@@ -252,9 +253,7 @@ def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
         defaults[f"{kind}_content_type"] = content_type if data is not None else ""
         defaults[f"{kind}_filename"] = name if data is not None else ""
     with transaction.atomic():
-        row, created = RecruiterContent.objects.update_or_create(
-            key=key, defaults=defaults
-        )
+        row, created = RecruiterContent.objects.update_or_create(key=key, defaults=defaults)
     return Loaded(
         row=row,
         created=created,

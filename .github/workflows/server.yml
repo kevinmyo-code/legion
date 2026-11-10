@@ -120,10 +120,11 @@ jobs:
           uv venv --python 3.13
           uv pip install -r requirements.txt
 
-      # NON-BLOCKING for now: 147 findings on dev dfb935b9 (2026-11-10). It used to run first and
-      # block, so pytest never ran. Made blocking again once the cleanup commit clears them.
+      # Blocking. The 147 findings on dev dfb935b9 were cleared by a lint-only commit (2026-11-10).
+      # Run locally before pushing: `ruff check server` (ruff is pinned in requirements.txt).
+      # A ruff failure fails the job but does NOT stop the contract check or pytest (`!cancelled()`
+      # below): lint once hid the whole suite for a month, and must not again.
       - name: ruff
-        continue-on-error: true
         run: uv run --no-sync ruff check .
 
       # The contract check, and it is the same failure the staleness test
@@ -135,6 +136,7 @@ jobs:
       # `git diff --exit-code server/openapi.yaml` from in here would match nothing and exit 0 -
       # a check that passes because it looked in the wrong place is worse than no check.
       - name: OpenAPI contract is not stale
+        if: ${{ !cancelled() }}
         run: |
           uv run --no-sync manage.py write_openapi
           git diff --exit-code -- openapi.yaml
@@ -143,6 +145,7 @@ jobs:
       # listed baseline failures (`.github/known-failures/server.txt`) do not hide every other
       # result behind a permanent red. A crash before the XML is written still fails there.
       - name: pytest
+        if: ${{ !cancelled() }}
         run: uv run --no-sync pytest --junitxml=junit.xml || echo "pytest exited $? (verdict comes from the XML below)"
 
       # CLAUDE.md section 6: the verdict is read from the XML, never the console summary. Fails on

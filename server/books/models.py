@@ -170,16 +170,24 @@ class LibraryBook(models.Model):
         db_table = "book_library"
         indexes = [models.Index(fields=["household", "-added_at"], name="book_library_hh_added")]
         constraints = [
-            models.UniqueConstraint(fields=["household", "sha256"], name="book_library_one_per_file"),
-            models.CheckConstraint(condition=models.Q(format__in=FORMATS), name="book_library_format_valid"),
+            models.UniqueConstraint(
+                fields=["household", "sha256"], name="book_library_one_per_file"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(format__in=FORMATS), name="book_library_format_valid"
+            ),
             models.CheckConstraint(
                 condition=models.Q(sha256__regex=SHA256_PATTERN), name="book_library_sha256_hex"
             ),
             models.CheckConstraint(
                 condition=models.Q(licence_note__regex=r"\S"), name="book_library_licence_required"
             ),
-            models.CheckConstraint(condition=models.Q(title__regex=r"\S"), name="book_library_title_required"),
-            models.CheckConstraint(condition=models.Q(size__gt=0), name="book_library_size_positive"),
+            models.CheckConstraint(
+                condition=models.Q(title__regex=r"\S"), name="book_library_title_required"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(size__gt=0), name="book_library_size_positive"
+            ),
         ]
 
     def __str__(self) -> str:
