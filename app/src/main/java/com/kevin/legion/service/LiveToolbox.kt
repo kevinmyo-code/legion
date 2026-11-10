@@ -6962,6 +6962,9 @@ object LiveToolbox {
             },
             identityClause = { AssistantIdentity.shortClause(context) },
             nowText = { java.time.OffsetDateTime.now().toString() },
+            // Round 5 (conditions): the live fix for a point-taking engine tool. Location only, never
+            // a guessed one: no fix is a blank, and the engine then falls back to a saved place.
+            whereText = { com.kevin.legion.conditions.ConditionsWords.fix(LocationController.state.value) },
             onAgentResult = { r ->
                 when (r) {
                     is AgentResult.Success -> KeyHealth.noteOk()

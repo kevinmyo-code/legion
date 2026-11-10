@@ -665,6 +665,12 @@ class MidnightApplication : Application() {
                 com.kevin.legion.claude.ClaudeResultPolling.bindForeground(this@MidnightApplication, appScope)
             }.onFailure { MidnightEvents.appStartWorkFailed("bind_claude_result_poll", it) }
 
+            // Severe weather alerts (round 5, conditions): the same two loops as Claude results; it
+            // asks the engine nothing while the Safety switch is off.
+            runCatching {
+                com.kevin.legion.conditions.SevereAlertPolling.bindForeground(this@MidnightApplication, appScope)
+            }.onFailure { MidnightEvents.appStartWorkFailed("bind_severe_alert_poll", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

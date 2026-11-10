@@ -67,6 +67,10 @@ class AskEngine(
      * nothing here changes what the sub-agent or Live is told. */
     private val onToolResult: (EngineToolAnswer) -> Unit = {},
     private val clockMs: () -> Long = System::currentTimeMillis,
+    /** Round 5 (conditions): the phone's last GPS fix in words, or blank with none. Rides the
+     * sub-agent's instruction (per call, never the Live setup) so a tool that wants a point, such
+     * as `check_conditions`, gets the phone's own fix instead of a guess. */
+    private val whereText: () -> String = { "" },
 ) {
 
     /** Writes tracked by [ask]: what committed, and what the server refused or failed. */
@@ -227,11 +231,20 @@ class AskEngine(
             "a successful result in this conversation. (4) Repeat any UNVERIFIED or ESTIMATES " +
             "wording a row carries; never present such a figure as fact. (5) Money is integer " +
             "cents; speak it as currency. " +
+            whereClause() +
             if (wantsWrite) {
                 "The user asked for something to be recorded or changed, so use a write tool."
             } else {
                 "The user only wants information; do not call a tool that writes."
             }
+
+    /** The fix sentence, or nothing: with no fix the sub-agent is told nothing about a place, so a
+     * point-taking tool falls back to a saved place it names (home by default). */
+    private fun whereClause(): String =
+        whereText().trim().takeIf { it.isNotEmpty() }?.let {
+            "Where the user is (the phone's own GPS): $it. A tool that asks for a point and the user " +
+                "said here or named no place: pass these as lat and lon. "
+        } ?: ""
 
     companion object {
         private const val CALL_TIMEOUT_MS = 20_000L
@@ -250,7 +263,7 @@ class AskEngine(
         /** The one declaration, in the same shape as the five `ask_*` dispatchers. */
         const val DESCRIPTION = "Ask or change records only the household ENGINE (the server) " +
             "holds: what is due, checklists, places, body and its plan ('lock it in'), ledger, " +
-            "pantry, fleet history. Use " +
+            "pantry, fleet history; rivers, floods, storms, road closures. Use " +
             "when no named tool or other ask_* fits. If the engine is unreachable it says " +
             "nothing was read or written. Answer comes back as text to speak."
 
