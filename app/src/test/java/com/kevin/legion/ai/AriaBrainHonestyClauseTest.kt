@@ -195,6 +195,9 @@ class AriaBrainHonestyClauseTest {
             assertTrue("the figures rule must say: $phrase", LOOKUP_HOLD_CLAUSE.contains(phrase))
         }
         assertTrue(SHARED_INSTRUCTIONS.contains("news, scores, prices, weather and forecasts"))
+        // Phone audit 2026-11-10: "can you look it up?" got an answer from memory and a
+        // "let me check the system" that read the household's car instead.
+        assertTrue(SHARED_INSTRUCTIONS.contains("whenever the user asks you to look something up"))
     }
 
     /**

@@ -15,8 +15,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,9 +41,46 @@ import com.kevin.legion.ui.theme.soft.SoftColors
  */
 @Composable
 fun ListDetailContent(state: ListDetailState, callbacks: ListDetailCallbacks) {
+    Box(Modifier.fillMaxSize()) {
+        ListDetailBody(state, callbacks)
+        ClearTickedSnackbar(
+            pendingCount = state.pendingClear.size,
+            onUndo = callbacks.onUndoClearTicked,
+            onCommit = callbacks.onCommitClearTicked,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+/**
+ * The Undo window for "Clear ticked items" (2026-11-10). The lines are already hidden; Undo brings
+ * them back, and the snackbar going away any other way removes them for real.
+ */
+@Composable
+private fun ClearTickedSnackbar(pendingCount: Int, onUndo: () -> Unit, onCommit: () -> Unit, modifier: Modifier = Modifier) {
+    val host = remember { SnackbarHostState() }
+    LaunchedEffect(pendingCount) {
+        if (pendingCount == 0) return@LaunchedEffect
+        val result = host.showSnackbar(
+            message = clearedTickedMessage(pendingCount),
+            actionLabel = "Undo",
+            duration = SnackbarDuration.Long,
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndo() else onCommit()
+    }
+    SnackbarHost(hostState = host, modifier = modifier.padding(16.dp))
+}
+
+@Composable
+private fun ListDetailBody(state: ListDetailState, callbacks: ListDetailCallbacks) {
     val checklist = state.checklist
     Column(Modifier.fillMaxSize().background(SoftColors.ground)) {
-        DetailTopBar(name = checklist?.name ?: "", builtIn = checklist?.isBuiltIn == true, callbacks = callbacks)
+        DetailTopBar(
+            name = checklist?.name ?: "",
+            builtIn = checklist?.isBuiltIn == true,
+            clearTicked = clearTickedMenu(checklist, state.ticked.size),
+            callbacks = callbacks,
+        )
 
         if (state.loading || checklist == null) return@Column
 
@@ -184,7 +226,7 @@ private val todayDayLabel: String
     get() = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))
 
 @Composable
-private fun DetailTopBar(name: String, builtIn: Boolean, callbacks: ListDetailCallbacks) {
+private fun DetailTopBar(name: String, builtIn: Boolean, clearTicked: ClearTickedMenu, callbacks: ListDetailCallbacks) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = callbacks.onBack, modifier = Modifier.size(48.dp)) {
@@ -213,6 +255,17 @@ private fun DetailTopBar(name: String, builtIn: Boolean, callbacks: ListDetailCa
                 }
                 DropdownMenuItem(text = { Text("Schedule") }, onClick = { menuOpen = false; callbacks.onShowSchedulePicker(true) })
                 DropdownMenuItem(text = { Text("History") }, onClick = { menuOpen = false; callbacks.onOpenHistory() })
+                if (clearTicked != ClearTickedMenu.HIDDEN) {
+                    DropdownMenuItem(
+                        text = { Text("Clear ticked items") },
+                        enabled = clearTicked == ClearTickedMenu.ENABLED,
+                        onClick = {
+                            menuOpen = false
+                            callbacks.onToggleOverflowMenu(false)
+                            callbacks.onClearTicked()
+                        },
+                    )
+                }
                 if (!builtIn) {
                     DropdownMenuItem(text = { Text("Archive/Unarchive") }, onClick = { menuOpen = false; callbacks.onArchiveToggle() })
                     DropdownMenuItem(

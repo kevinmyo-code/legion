@@ -16,6 +16,12 @@ data class SearchQuery(
     val alongRoute: List<GeoPoint>? = null,
     val limit: Int = 5,
     val nearest: Boolean = false,
+    /**
+     * Keep results within this many metres of [near] (a bounding box around the fix). Set only on
+     * the first pass of a "nearest" ask (phone audit 2026-11-10): proximity alone is a bias, and a
+     * brand's far branch can outrank its local ones on text relevance.
+     */
+    val withinM: Double? = null,
 )
 
 sealed interface SearchAnswer {
@@ -147,6 +153,17 @@ object SearchRanking {
      */
     private val BY_DRIVE: Comparator<Candidate> = BY_ETA.then(BY_DISTANCE)
 
+    /**
+     * A "nearest" ask keeps only the hits within [radiusM] when any are (phone audit 2026-11-10: a
+     * branch 141 mi away was started while local ones existed). Drive times sort a hit without one
+     * last, so a far branch WITH a drive time outranked a near one without; and a box the SDK did
+     * not honour leaves far hits in the list. With nothing inside the radius, every hit stays.
+     */
+    fun preferLocal(hits: List<Candidate>, radiusM: Double): List<Candidate> {
+        val local = hits.filter { (it.distanceM ?: Double.MAX_VALUE) <= radiusM }
+        return local.ifEmpty { hits }
+    }
+
     fun rank(parsed: ParsedSearch, alongRoute: Boolean, hits: List<Candidate>): List<Candidate> = when {
         alongRoute || hits.size < 2 -> hits
         parsed.category != null -> hits.sortedWith(if (parsed.nearest) BY_DRIVE else BY_DISTANCE)
@@ -178,15 +195,16 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
         // Along a route only a CATEGORY search honours the route (the SDK marks it unsupported for
         // forward text search), so a via tries the phrase as a category id before falling back.
         val category = parsed.category ?: if (along != null) parsed.term.replace(' ', '_') else null
-        val answer = search.search(
-            SearchQuery(
-                text = parsed.term,
-                category = category,
-                near = ctx.fix,
-                alongRoute = along,
-                nearest = parsed.nearest,
-            ),
+        val request = SearchQuery(
+            text = parsed.term,
+            category = category,
+            near = ctx.fix,
+            alongRoute = along,
+            nearest = parsed.nearest,
         )
+        // A "nearest" ask looks around the fix first, then widens only when nothing is there.
+        val boxed = parsed.nearest && along == null && ctx.fix != null
+        val answer = searchNearestFirst(request, boxed)
         return when (answer) {
             is SearchAnswer.Failed -> SourceAnswer.Unreadable("search couldn't be reached: ${answer.why}")
             SearchAnswer.NoMatch -> SourceAnswer.NoMatch
@@ -196,10 +214,25 @@ class SearchSource(private val search: PlaceSearch) : DestinationSource {
                         c.copy(distanceM = c.distanceM ?: Geo.distanceM(fix, GeoPoint(c.latitude, c.longitude)))
                     }
                 } ?: answer.candidates
-                val ranked = SearchRanking.rank(parsed, along != null, hits)
+                val ranked = SearchRanking.rank(parsed, along != null, nearestFirstPass(parsed, along, hits))
                 val comparable = SearchAmbiguity.comparable(query, ranked)
                 SourceAnswer.Hits(comparable, SearchAmbiguity.isAmbiguous(parsed, along != null, comparable))
             }
         }
+    }
+
+    /** A "nearest" ask (not along a route) keeps only the local hits when there are any. */
+    private fun nearestFirstPass(parsed: ParsedSearch, along: List<GeoPoint>?, hits: List<Candidate>): List<Candidate> =
+        if (parsed.nearest && along == null) SearchRanking.preferLocal(hits, NEAREST_RADIUS_M) else hits
+
+    /** One search, boxed around the fix first for a "nearest" ask and widened only on no match. */
+    private suspend fun searchNearestFirst(request: SearchQuery, boxed: Boolean): SearchAnswer {
+        val first = search.search(if (boxed) request.copy(withinM = NEAREST_RADIUS_M) else request)
+        return if (boxed && first == SearchAnswer.NoMatch) search.search(request) else first
+    }
+
+    companion object {
+        /** How far a "nearest" ask looks before it widens: about 50 miles, a town and its neighbours. */
+        const val NEAREST_RADIUS_M = 80_000.0
     }
 }

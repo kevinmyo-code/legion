@@ -196,7 +196,9 @@ object ClaudeSessionToolbox {
         if (taskId > 0) null else result(false, "Which task? Nothing was sent.")
 
     private fun sendResult(outcome: ClaudeSendResult): JSONObject = when (outcome) {
-        is ClaudeSendResult.Sent -> result(true, outcome.sentence).put("task_id", outcome.created.id)
+        // `done: false` (phone audit 2026-11-10): `success` means the engine took the request, never
+        // that the task's own work (an email, a file) happened; the model read it as the latter.
+        is ClaudeSendResult.Sent -> result(true, outcome.sentence).put("task_id", outcome.created.id).put("done", false)
         is ClaudeSendResult.NeedsMachine -> result(false, outcome.sentence)
             .put("needs_machine", true)
             .apply { outcome.taskId?.let { put("task_id", it) } }

@@ -114,6 +114,41 @@ class ClaudeSessionControllerTest {
         assertNull(draft.machine)
     }
 
+    /**
+     * Phone audit 2026-11-10: a yes to a task that stopped to ask "send the email?" came back as
+     * "The follow-up was sent to the Alienware", and the model told the user the email was on its
+     * way. It was never sent. The yes's result names no outcome verb and says nothing happened yet.
+     */
+    @Test
+    fun `a yes to a stopped task says nothing it asked about has happened`() {
+        backend.machines(machine("Alienware"))
+        backend.createOut = { _ ->
+            ClaudeOutcome.Ok(ClaudeCreated(42, ClaudeTask.QUEUED, ClaudeMachineRef("Alienware", "idle", null)))
+        }
+        backend.taskById[41] = task(41, ClaudeTask.NEEDS_CONFIRMATION, question = "Send the note to the club secretary?")
+        val result = runBlocking { controller.answer(41, "", yes = true, emailMe = false) }
+        assertTrue(result is ClaudeSendResult.Sent)
+        val s = result.sentence
+        assertTrue(s, s.contains("task 41"))
+        assertTrue(s, s.contains("has not happened yet"))
+        assertFalse(s, s.contains("sent", ignoreCase = true))
+        assertFalse(s, s.contains("on its way"))
+        assertFalse(s, s.contains(" done"))
+    }
+
+    @Test
+    fun `any follow-up says it has not run yet and never that it was sent`() {
+        backend.machines(machine("Alienware"))
+        backend.createOut = { _ ->
+            ClaudeOutcome.Ok(ClaudeCreated(42, ClaudeTask.QUEUED, ClaudeMachineRef("Alienware", "idle", null)))
+        }
+        backend.taskById[41] = task(41, ClaudeTask.DONE)
+        val result = runBlocking { controller.answer(41, "now email it to me", yes = false, emailMe = true) }
+        val s = result.sentence
+        assertTrue(s, s.contains("has not run yet"))
+        assertFalse(s, s.contains("sent", ignoreCase = true))
+    }
+
     @Test
     fun `any other follow-up carries no confirms`() {
         backend.taskById[41] = task(41, ClaudeTask.DONE)

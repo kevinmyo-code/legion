@@ -256,4 +256,44 @@ class LiveToolboxManageChecklistTest {
         assertTrue(present.getString("message").contains("built-in"))
         assertEquals(1, ChecklistController.allChecklists(context, includeArchived = true).size)
     }
+
+    // ------------------------------------------------------------------ ticked / clear_ticked
+
+    // 2026-11-10: asked to delete every ticked line, the assistant could only remove them one
+    // name at a time and could not even list which were ticked.
+    @Test
+    fun `ticked lists and counts the ticked lines and clear_ticked removes them in one call`() = runBlocking {
+        dispatch(args("action" to "create", "list" to "Camping"))
+        for (line in listOf("tent pegs", "lantern", "marshmallows")) {
+            dispatch(args("action" to "add", "list" to "Camping", "text" to line))
+        }
+        dispatch(args("action" to "tick", "list" to "Camping", "item" to "tent pegs"))
+        dispatch(args("action" to "tick", "list" to "Camping", "item" to "lantern"))
+
+        val ticked = dispatch(args("action" to "ticked", "list" to "Camping"))
+        assertTrue(ticked.getBoolean("success"))
+        assertEquals(2, ticked.getInt("ticked_count"))
+        assertEquals(1, ticked.getInt("open_count"))
+        val names = (0 until ticked.getJSONArray("ticked").length()).map { ticked.getJSONArray("ticked").getString(it) }
+        assertEquals(listOf("lantern", "tent pegs"), names.sorted())
+
+        val cleared = dispatch(args("action" to "clear_ticked", "list" to "Camping"))
+        assertTrue(cleared.getBoolean("success"))
+        assertEquals(2, cleared.getInt("removed_count"))
+        val checklist = ChecklistController.allChecklists(context).first()
+        assertEquals(listOf("marshmallows"), ChecklistController.itemsFor(context, checklist.id).map { it.text })
+
+        val again = dispatch(args("action" to "clear_ticked", "list" to "Camping"))
+        assertTrue(again.getString("message"), again.getString("message").contains("nothing was removed"))
+    }
+
+    @Test
+    fun `clear_ticked on a routine is refused in words`() = runBlocking {
+        dispatch(args("action" to "create", "list" to "Mornings", "schedule" to "daily"))
+        dispatch(args("action" to "add", "list" to "Mornings", "text" to "water the plants"))
+        dispatch(args("action" to "tick", "list" to "Mornings", "item" to "water the plants"))
+        val result = dispatch(args("action" to "clear_ticked", "list" to "Mornings"))
+        assertFalse(result.getBoolean("success"))
+        assertTrue(result.getString("message").contains("nothing was removed"))
+    }
 }

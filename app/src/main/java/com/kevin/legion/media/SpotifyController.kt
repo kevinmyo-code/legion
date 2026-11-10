@@ -373,6 +373,9 @@ object SpotifyController {
             // in [message] below - the knownUri replay path where the driver's own words already
             // name exactly what's about to play.
             val pickedLabel: String? = null,
+            // True when a single track started while repeat was on and [playUri] turned it off
+            // (phone audit 2026-11-10): said in words, because it changes his playback setting.
+            val repeatCleared: Boolean = false,
         ) : PlayOutcome
 
         /** [isInstalled] said no, or App Remote's own connect attempt threw [CouldNotFindSpotifyApp]. */
@@ -407,6 +410,7 @@ object SpotifyController {
     internal fun message(outcome: PlayOutcome, description: String): String = when (outcome) {
         is PlayOutcome.Started ->
             "Playing \"${outcome.pickedLabel ?: description}\" on Spotify." +
+                (if (outcome.repeatCleared) " $REPEAT_CLEARED" else "") +
                 (outcome.premiumWarning?.let { " $it" } ?: "")
         PlayOutcome.NotInstalled ->
             "Spotify isn't installed on this phone, so there's nothing to play \"$description\" through."
@@ -494,7 +498,37 @@ object SpotifyController {
         }
         if (!started) return@withContext PlayOutcome.PlayRejected
 
-        PlayOutcome.Started(premiumWarning = premiumWarningIfNeeded(r), pickedLabel = pickedLabel)
+        val repeatCleared = uri.startsWith(TRACK_URI_PREFIX) && clearRepeatBestEffort(r)
+        PlayOutcome.Started(
+            premiumWarning = premiumWarningIfNeeded(r),
+            pickedLabel = pickedLabel,
+            repeatCleared = repeatCleared,
+        )
+    }
+
+    /**
+     * Whether a just-started [uri] needs repeat turned off (phone audit 2026-11-10). A bare track
+     * URI is a context of one: with repeat on (ONE, or ALL, which over a one-track context is the
+     * same thing) Spotify loops that one song forever, where with repeat off it plays the song and
+     * then its own autoplay carries on with related songs. Kevin: "you used to play that song and
+     * the radio... now it only loops one song". The play path never changed; a repeat left on did.
+     * An album or playlist keeps whatever repeat the user set.
+     */
+    internal fun shouldClearRepeat(uri: String, repeatMode: Int): Boolean =
+        uri.startsWith(TRACK_URI_PREFIX) && repeatMode != Repeat.OFF
+
+    /** Reads the repeat mode and turns it off when [shouldClearRepeat]; never fails the play. */
+    private fun clearRepeatBestEffort(r: SpotifyAppRemote): Boolean = try {
+        val mode = r.playerApi.getPlayerState().await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+            .takeIf { it.isSuccessful }?.data?.playbackOptions?.repeatMode
+        if (mode != null && shouldClearRepeat(TRACK_URI_PREFIX, mode)) {
+            r.playerApi.setRepeat(Repeat.OFF).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS).isSuccessful
+        } else {
+            false
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "repeat check after play threw: ${e.message}")
+        false
     }
 
     /** Best-effort pull of playback onto this phone. See [playUri]'s doc for why it isn't fatal. */
@@ -526,6 +560,12 @@ object SpotifyController {
     /** Told, never gated on (map decision 7) - see [premiumWarningIfNeeded]. */
     private const val PREMIUM_WARNING =
         "Heads up - this Spotify account doesn't look like it has Premium, so on-demand play may not work as expected."
+
+    /** Said when [playUri] turned repeat off for a single track. */
+    private const val REPEAT_CLEARED = "Repeat was on, so I turned it off; it moves on after this song."
+
+    /** A single track's URI: a context of one, which repeat loops (see [shouldClearRepeat]). */
+    private const val TRACK_URI_PREFIX = "spotify:track:"
 
     /** Bound on the App Remote play round trip - long enough for a slow head unit, short enough not to stall a voice turn. */
     private const val PLAY_TIMEOUT_SEC = 8L

@@ -31,4 +31,10 @@ data class ListDetailCallbacks(
     val onMoveUp: (Long) -> Unit,
     val onMoveDown: (Long) -> Unit,
     val onDeleteItem: (Long) -> Unit,
+    /** Overflow "Clear ticked items": hides the ticked lines and offers Undo (2026-11-10). */
+    val onClearTicked: () -> Unit = {},
+    /** The snackbar's Undo: the hidden lines come back, nothing was removed. */
+    val onUndoClearTicked: () -> Unit = {},
+    /** The snackbar went away without Undo: the hidden lines are removed for real. */
+    val onCommitClearTicked: () -> Unit = {},
 )

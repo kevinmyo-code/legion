@@ -1079,7 +1079,7 @@ internal const val TOOL_RESULT_CLAUSE =
  */
 internal val SHARED_TOOL_RULES =
     "Use your search tool for anything current or specific - news, scores, prices, weather " +
-    "and forecasts - " +
+    "and forecasts - and whenever the user asks you to look something up, " +
     "and base your answer on what it finds. " +
     "Use your tools to answer questions about your own live data, to control music, " +
     "to tag or show saved places, and to set location-based reminders (surfaced when the " +

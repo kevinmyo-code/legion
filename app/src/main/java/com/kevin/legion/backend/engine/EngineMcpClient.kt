@@ -146,12 +146,7 @@ class EngineMcpClient(
         }
 
     private suspend fun rpc(method: String, name: String?, params: JSONObject): Result<String> {
-        params.put("_meta", JSONObject().put(PROTOCOL_META_KEY, PROTOCOL_VERSION))
-        val body = JSONObject()
-            .put("jsonrpc", "2.0")
-            .put("id", 1)
-            .put("method", method)
-            .put("params", params)
+        val body = requestBody(method, params)
         val headers = buildMap {
             put("Accept", "application/json, text/event-stream")
             put("MCP-Protocol-Version", PROTOCOL_VERSION)
@@ -198,6 +193,27 @@ class EngineMcpClient(
         const val MCP_PATH = "/mcp"
         const val PROTOCOL_VERSION = "2026-07-28"
         private const val PROTOCOL_META_KEY = "io.modelcontextprotocol/protocolVersion"
+
+        /**
+         * Required beside the protocol version in every 2026-07-28 request envelope. The engine's
+         * SDK (mcp 2.2) refuses a request without it with INVALID_PARAMS, HTTP 400 ("params._meta
+         * is missing the required envelope key(s)"), which is why every phone call to `/mcp`
+         * came back 400 (phone audit 2026-11-10). The phone offers no client capabilities: `{}`.
+         */
+        private const val CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities"
+
+        /** One JSON-RPC request with the 2026-07-28 per-request envelope in `params._meta`. */
+        internal fun requestBody(method: String, params: JSONObject): JSONObject {
+            params.put(
+                "_meta",
+                JSONObject().put(PROTOCOL_META_KEY, PROTOCOL_VERSION).put(CAPABILITIES_META_KEY, JSONObject()),
+            )
+            return JSONObject()
+                .put("jsonrpc", "2.0")
+                .put("id", 1)
+                .put("method", method)
+                .put("params", params)
+        }
         private const val NOT_FOUND = 404
         private const val DETAIL_MAX = 400
         const val CACHE_MS = 5 * 60 * 1000L

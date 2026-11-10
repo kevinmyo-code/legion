@@ -367,6 +367,49 @@ object ChecklistController {
         pushLater(context) { itemDeleted(itemId) }
     }
 
+    /** What [clearTicked] did. */
+    sealed interface ClearTickedOutcome {
+        /** [items] were removed (soft-deleted, each pushed like [deleteItem]); empty when none was ticked. */
+        data class Cleared(val items: List<ChecklistItem>) : ClearTickedOutcome
+
+        /** Nothing was removed; [message] says why in words. */
+        data class Refused(val message: String) : ClearTickedOutcome
+    }
+
+    /**
+     * Removes every ticked line from a plain list in one go (Kevin, 2026-11-10: asked to delete the
+     * 74 ticked grocery items, the assistant could only remove them one name at a time). Each line
+     * goes through [deleteItem]: soft-deleted in Room, never cascaded to its ticks (the bought log
+     * and tick history keep them), and pushed in order like any other removal.
+     *
+     * [onlyIds], when given, limits it to those lines (the screen's Undo snackbar commits exactly
+     * the lines it hid, not whatever happens to be ticked by then). A routine (daily/weekly) is
+     * refused: its ticks are per day and reset on their own, and its lines are the routine itself.
+     */
+    @Suppress("ReturnCount") // no list, a routine, an unreadable list, then the clear
+    suspend fun clearTicked(
+        context: Context,
+        checklistId: Long,
+        onlyIds: Set<Long>? = null,
+        at: Long = System.currentTimeMillis(),
+    ): ClearTickedOutcome {
+        val checklist = db(context).checklistDao().getById(checklistId)
+            ?: return ClearTickedOutcome.Refused("That list is not on this phone. Nothing was removed.")
+        if (checklist.scheduleKind != null) {
+            return ClearTickedOutcome.Refused(
+                "\"${checklist.name}\" is a routine: its ticks reset by day on their own, so nothing was removed.",
+            )
+        }
+        val ticked = when (val loaded = itemsWithTickState(context, checklistId)) {
+            is ChecklistItemsResult.Failed ->
+                return ClearTickedOutcome.Refused("Could not read \"${checklist.name}\", so nothing was removed.")
+            is ChecklistItemsResult.Loaded ->
+                loaded.items.filter { it.ticked && (onlyIds == null || it.item.id in onlyIds) }
+        }
+        ticked.forEach { deleteItem(context, it.item.id, at) }
+        return ClearTickedOutcome.Cleared(ticked.map { it.item })
+    }
+
     // ---- tick / untick -------------------------------------------------------------------------
 
     /** What [tick] actually did. */

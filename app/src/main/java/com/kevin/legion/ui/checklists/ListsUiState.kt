@@ -77,6 +77,9 @@ data class ListDetailState(
      * successful write and left in place across an unrelated `refresh()` (loadDetail's own
      * `.copy(...)` never mentions this field). */
     val writeError: String? = null,
+    /** Ticked lines hidden by "Clear ticked items" and waiting out the Undo snackbar; removed for
+     * real only when it goes away without Undo (or the list is left). Empty when none is pending. */
+    val pendingClear: List<Long> = emptyList(),
 )
 
 /** History mode's own slice - "shown, never scored" (unchanged from before this ticket; only its

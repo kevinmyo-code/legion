@@ -91,6 +91,7 @@ fun AssistantSettingsScreen(
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
+    var bluetoothMic by remember { mutableStateOf(VoiceTurnSettings.bluetoothMic(context)) }
     var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
     var auditLog by remember { mutableStateOf(VoiceTurnSettings.auditLog(context)) }
     var keepConversationLog by remember { mutableStateOf(VoiceTurnSettings.keepConversationLog(context)) }
@@ -232,6 +233,20 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceTurnSettings.setBargeIn(context, on)
                         bargeIn = on
+                    },
+                )
+
+                // 2026-11-10 (BluetoothMic): in the car, listen through the car's own mic.
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Use the car's or headset's microphone",
+                    explanation = "with a Bluetooth hands-free device connected, listen through it " +
+                        "instead of the phone. The link becomes call audio while you talk, so music " +
+                        "pauses until the conversation ends. Applies from the next conversation.",
+                    enabled = bluetoothMic,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setBluetoothMic(context, on)
+                        bluetoothMic = on
                     },
                 )
 

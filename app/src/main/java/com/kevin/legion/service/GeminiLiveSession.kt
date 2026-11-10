@@ -38,10 +38,12 @@ import com.kevin.legion.look.LookRules
 import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.service.turn.AudioRoute
+import com.kevin.legion.service.turn.BluetoothMic
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.HoldingLineWatch
+import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.RefusalWatch
 import com.kevin.legion.service.turn.StillCheckingNudge
 import com.kevin.legion.service.turn.TurnConfig
@@ -93,7 +95,7 @@ sealed interface LiveEvent {
      * fix for "shows Listening but the mic is shut" (same defect shape as 57ed400's
      * Phase.THINKING fix, a UI phase claiming one thing while the code does another). Real
      * capture sits behind [awaitPlaybackDrained], which can run up to
-     * PLAYBACK_DRAIN_TIMEOUT_MS + MIC_REOPEN_SETTLE_MS (~1.56s) after [TurnComplete] fires -
+     * PLAYBACK_DRAIN_TIMEOUT_MS + MicReopen.settleMs (~1.56s, ~2.2s on Bluetooth) after [TurnComplete] fires -
      * an owner that flips to "Listening..." on TurnComplete itself is lying to the driver for
      * up to that long, and keeps lying indefinitely if capture then dies silently. The owner
      * should gate any "Listening" UI state on THIS event, not on TurnComplete.
@@ -824,6 +826,7 @@ class GeminiLiveSession(
         ConversationState.setBusy(true)
         MicArbiter.request(micClaimant, micPreemptionListener)
         prepareBargeIn()
+        prepareBluetoothMic()
         return if (opener != null) {
             sendText(opener)
         } else {
@@ -2205,6 +2208,45 @@ class GeminiLiveSession(
         }
     }
 
+    /**
+     * Kevin, 2026-11-10: in the car the conversation listened through the phone's mic. With a
+     * Bluetooth hands-free device connected (and the setting on, and no phone call), call mode now
+     * puts the car's hands-free link up as the communication device, so the mic is the car's and
+     * Alfred plays on the same link; [BluetoothMic] has the costs. The first capture waits for the
+     * link ([awaitBluetoothMicReady]); every exit path's [exitCallAudio] takes it down.
+     */
+    private fun prepareBluetoothMic() {
+        val route = CallAudioMode.route(audioManager)
+        val wanted = BluetoothMic.wanted(
+            settingOn = VoiceTurnSettings.bluetoothMic(appContext),
+            route = route,
+            inCall = TelephonyController.isInCall,
+            handsFreeAvailable = CallAudioMode.handsFreeAvailable(audioManager),
+        )
+        if (!wanted) return
+        val mode = callAudio ?: CallAudioMode(audioManager).also { callAudio = it }
+        if (mode.isActive) return
+        LiveLatency.log(TurnTaker.BARGE_TAG, "bluetooth mic: ${mode.enterBluetooth()} route=$route")
+        if (mode.onBluetoothMic) {
+            bluetoothMicPending = true
+            rebuildTrack()
+        }
+    }
+
+    /** Set when the hands-free link was just requested; the next capture waits for it to route. */
+    @Volatile private var bluetoothMicPending = false
+
+    /** Waits up to [BluetoothMic.SCO_SETTLE_MS] for the hands-free link to carry the route. */
+    private suspend fun awaitBluetoothMicReady() {
+        if (!bluetoothMicPending) return
+        bluetoothMicPending = false
+        val deadline = System.currentTimeMillis() + BluetoothMic.SCO_SETTLE_MS
+        while (System.currentTimeMillis() < deadline && !CallAudioMode.handsFreeRouted(audioManager)) {
+            delay(PLAYBACK_DRAIN_POLL_MS)
+        }
+        LiveLatency.log(TurnTaker.BARGE_TAG, "bluetooth mic routed=${CallAudioMode.handsFreeRouted(audioManager)}")
+    }
+
     /** A Bluetooth device appearing mid-conversation turns barge-in off for the session (v1 ruling). */
     private fun registerRouteWatch() {
         if (routeCallback != null) return
@@ -2753,6 +2795,7 @@ class GeminiLiveSession(
                         // short. Wait for the playback head to actually catch up
                         // instead of guessing (see awaitPlaybackDrained).
                         if (everCaptured) awaitPlaybackDrained()
+                        awaitBluetoothMicReady()
                         record.startRecording()
                         everCaptured = true
                         recording = true
@@ -3239,8 +3282,9 @@ class GeminiLiveSession(
             delay(PLAYBACK_DRAIN_POLL_MS)
         }
         // Small settle after the last sample lands - the HAL needs a beat to release
-        // the output path before capture opens on units that share it.
-        delay(MIC_REOPEN_SETTLE_MS)
+        // the output path before capture opens on units that share it. Longer on Bluetooth,
+        // whose sink is still playing its own buffer ([MicReopen], phone audit 2026-11-10).
+        delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
     }
 
     // --- Navigation turn cues (mapbox-nav tickets 05 and 11) -----------------------------------
@@ -3928,10 +3972,6 @@ class GeminiLiveSession(
         private const val NUDGE_TICK_MS = 250L
         /** Turn-taking notices already said in words this process ([announceOnce]). */
         private val ANNOUNCED: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
-        // Settle after playback has actually drained, before capture opens. Small
-        // on purpose - awaitPlaybackDrained already waited for the real tail, this
-        // is just a beat for the HAL to release the output path.
-        private const val MIC_REOPEN_SETTLE_MS = 60L
         // Mono PCM16 output: 2 bytes per frame.
         private const val BYTES_PER_FRAME = 2
         // Upper bound on waiting for playback to drain, so a stalled AudioTrack

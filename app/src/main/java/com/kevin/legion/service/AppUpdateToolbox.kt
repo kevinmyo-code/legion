@@ -6,6 +6,11 @@ import com.kevin.legion.update.UpdateController
 import com.kevin.legion.update.UpdateGraph
 import com.kevin.legion.update.UpdateRules
 import com.kevin.legion.update.UpdateState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -72,13 +77,59 @@ object AppUpdateToolbox {
         }
     }
 
-    internal suspend fun check(controller: UpdateController): JSONObject =
-        when (val state = controller.check()) {
+    /** How long a voice `check` waits for the controller, well inside the 10 s tool timeout. */
+    internal const val CHECK_WAIT_MS = 6_000L
+
+    /** Test seam for [CHECK_WAIT_MS]. */
+    internal var checkWaitMs = CHECK_WAIT_MS
+
+    /**
+     * Where a voice check runs. Not the tool call's own coroutine: a check that finds a newer
+     * release downloads it inline, and the tool runner's timeout would cancel that download.
+     */
+    private val checkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Phone audit 2026-11-10: the first "check for updates" ran the whole download inside the
+     * tool call and hit the runner's 10 s timeout, so the user heard "timed out" while the update
+     * was in fact arriving; the retry found the file. Now a download already under way is
+     * answered from the state at once (never waiting on the controller's lock), and a check is
+     * awaited for at most [checkWaitMs] while it carries on in [checkScope]. A check still
+     * running says so in words; the ready notification and the spoken offer follow on their own.
+     */
+    @Suppress("ReturnCount") // a download under way, a check still running, then the result
+    internal suspend fun check(controller: UpdateController): JSONObject {
+        (controller.state.value as? UpdateState.Downloading)?.let { return stillWorking(it) }
+        val running = checkScope.async { controller.check() }
+        val state = withTimeoutOrNull(checkWaitMs) { running.await() } ?: return stillWorking(controller.state.value)
+        return describe(controller, state)
+    }
+
+    private fun stillWorking(state: UpdateState): JSONObject = when (state) {
+        is UpdateState.Downloading -> result(
+            true,
+            "An update is downloading now: ${UpdateRules.describe(state.release)} (${mb(state.bytes)} of " +
+                "${mb(state.release.sizeBytes)} MB so far). Nothing is installed yet; once it is downloaded and " +
+                "checked it is offered, or ask again in a minute.",
+        )
+        else -> result(
+            true,
+            "The update check is still running. Nothing is installed yet; ask again in a minute.",
+        )
+    }
+
+    private fun mb(bytes: Long): Long = bytes / BYTES_PER_MB
+
+    private const val BYTES_PER_MB = 1_048_576L
+
+    private fun describe(controller: UpdateController, state: UpdateState): JSONObject =
+        when (state) {
             UpdateState.DebugBuild -> result(true, "This is a debug build (version code 1); it never updates itself.")
             is UpdateState.UpToDate -> result(true, "LEGION is up to date. ${controller.whatsNew()}")
             is UpdateState.Available -> result(
                 true,
-                "An update is published, ${UpdateRules.describe(state.release)}, but it is not ready to install. ${state.why}",
+                "An update is published, ${UpdateRules.describe(state.release)}, but it is not ready to " +
+                    "install. ${state.why}",
             )
             is UpdateState.Ready -> {
                 controller.offered()
@@ -88,7 +139,8 @@ object AppUpdateToolbox {
                         "installed yet. Ask whether to install it now; installing closes LEGION for about a minute.",
                 )
             }
-            is UpdateState.Waiting -> result(true, "LEGION ${state.release.versionName} installs as soon as this conversation ends.")
+            is UpdateState.Waiting ->
+                result(true, "LEGION ${state.release.versionName} installs as soon as this conversation ends.")
             is UpdateState.Installing -> result(true, "LEGION ${state.release.versionName} is installing now.")
             is UpdateState.Failed -> result(false, state.sentence)
             else -> result(false, "The update check did not finish. Nothing was installed.")

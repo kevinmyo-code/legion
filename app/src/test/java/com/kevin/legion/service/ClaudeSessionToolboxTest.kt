@@ -95,6 +95,7 @@ class ClaudeSessionToolboxTest {
         assertTrue(r.getBoolean("success"))
         assertEquals(41, r.getInt("task_id"))
         assertFalse(r.getString("message").contains(" is done"))
+        assertFalse(r.getBoolean("done"))
         assertEquals("offered", backend.created.single().origin)
     }
 

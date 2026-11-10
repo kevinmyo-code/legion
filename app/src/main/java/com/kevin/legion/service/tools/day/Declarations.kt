@@ -145,10 +145,11 @@ internal object Declarations {
                 "for yesterday, that is expected. A measured line needs a real number to tick - " +
                 "with none given, refuse and ask, via 'value'; never invent one. 'item' fuzzily " +
                 "matches an existing line, never a position - on 'add' it is accepted as an alias " +
-                "for 'text'. 'lists' reads back every name and schedule.",
+                "for 'text'. 'lists' reads back every name and schedule. 'ticked' lists and counts " +
+                "ticked lines; 'clear_ticked' removes them all at once.",
             params = obj(
                 "action" to schema("string", "What to do.",
-                    enum = listOf("create", "add", "tick", "untick", "remove", "read", "lists")),
+                    enum = listOf("create", "add", "tick", "untick", "remove", "read", "lists", "ticked", "clear_ticked")),
                 "list" to schema("string", "The checklist's name, e.g. 'bio' - required except for 'lists'."),
                 "schedule" to schema("string", "Only for 'create'. Omit or 'none' for a plain, done-once list.",
                     enum = listOf("none", "daily", "weekly")),

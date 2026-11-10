@@ -4,6 +4,7 @@ import android.util.Log
 import com.kevin.legion.navigation.GeoPoint
 import com.kevin.legion.navigation.NavFormat
 import com.kevin.legion.navigation.RouteFailure
+import com.mapbox.geojson.BoundingBox
 import com.mapbox.geojson.Point
 import com.mapbox.search.ApiType
 import com.mapbox.search.CategorySearchOptions
@@ -72,6 +73,7 @@ class MapboxPlaceSearch : PlaceSearch {
         val done = CompletableDeferred<SearchAnswer>()
         val options = CategorySearchOptions.Builder().apply {
             query.near?.let { proximity(it.toPoint()) }
+            boxFor(query)?.let { boundingBox(it) }
             limit(query.limit)
             routeOptionsFor(query)?.let { routeOptions(it) }
             // The category builder has origin and profile but no ETA type; Search Box's own
@@ -104,6 +106,7 @@ class MapboxPlaceSearch : PlaceSearch {
         val done = CompletableDeferred<SearchAnswer>()
         val options = ForwardSearchOptions.Builder().apply {
             query.near?.let { proximity(it.toPoint()) }
+            boxFor(query)?.let { boundingBox(it) }
             limit(query.limit)
             etaOrigin(query)?.let {
                 origin(it)
@@ -221,6 +224,15 @@ class MapboxPlaceSearch : PlaceSearch {
 
     private fun GeoPoint.toPoint(): Point = Point.fromLngLat(longitude, latitude)
 
+    /** [SearchQuery.withinM] around the fix as a box, or null when the query is not bounded. */
+    private fun boxFor(query: SearchQuery): BoundingBox? {
+        val near = query.near
+        val within = query.withinM
+        if (near == null || within == null) return null
+        val b = GeoBox.around(near, within)
+        return BoundingBox.fromLngLats(b.west, b.south, b.east, b.north)
+    }
+
     /** The live fix as the ETA origin, only for a "nearest" ask (ticket 03); null otherwise. */
     private fun etaOrigin(query: SearchQuery): Point? = query.near?.takeIf { query.nearest }?.toPoint()
 
@@ -240,5 +252,27 @@ object RouteSampler {
         val step = (points.size - 1).toDouble() / (max - 1)
         // The last point is taken explicitly: floating-point stepping can land one short of it.
         return List(max) { i -> if (i == max - 1) points.last() else points[(i * step).toInt()] }
+    }
+}
+
+/** A box [radiusM] each way around a point, in degrees; pure so a JVM test can check it. */
+object GeoBox {
+    data class Box(val west: Double, val south: Double, val east: Double, val north: Double)
+
+    private const val METRES_PER_DEGREE_LAT = 111_320.0
+    private const val MAX_LAT = 89.9
+    private const val MAX_LNG = 180.0
+    private const val MIN_COS = 0.01
+
+    fun around(center: GeoPoint, radiusM: Double): Box {
+        val dLat = radiusM / METRES_PER_DEGREE_LAT
+        val cos = Math.cos(Math.toRadians(center.latitude)).coerceAtLeast(MIN_COS)
+        val dLng = (radiusM / (METRES_PER_DEGREE_LAT * cos)).coerceAtMost(MAX_LNG)
+        return Box(
+            west = (center.longitude - dLng).coerceAtLeast(-MAX_LNG),
+            south = (center.latitude - dLat).coerceAtLeast(-MAX_LAT),
+            east = (center.longitude + dLng).coerceAtMost(MAX_LNG),
+            north = (center.latitude + dLat).coerceAtMost(MAX_LAT),
+        )
     }
 }

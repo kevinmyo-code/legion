@@ -3,6 +3,8 @@ package com.kevin.legion.backend
 import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.backend.engine.EngineBackends
+import com.kevin.legion.backend.engine.EngineFailure
+import com.kevin.legion.backend.engine.EngineHttpException
 import com.kevin.legion.backend.engine.EngineTransport
 import com.kevin.legion.backend.engine.Transport
 import com.kevin.legion.data.local.BudgetTarget
@@ -54,6 +56,8 @@ object LedgerConfigBackfill {
         val alreadyPresent: Int,
         val skippedLocalOnlyDeleted: Int,
         val failed: List<String>,
+        /** Categories the engine already had under the same name, linked rather than pushed. */
+        val linkedByName: Int = 0,
     )
 
     private suspend fun <L> backfillTable(
@@ -90,9 +94,13 @@ object LedgerConfigBackfill {
                         pushed++
                         LedgerConfigBackfillCursor.advance(context, table, localId(row))
                     } else {
-                        val message = result.exceptionOrNull()?.message ?: "unknown error"
-                        failure = "$table: $message (row id ${localId(row)}, guid ${localGuid(row)})"
-                        break
+                        val error = result.exceptionOrNull()
+                        val line = "$table: " + failureLine(error, "row id ${localId(row)}, guid ${localGuid(row)}")
+                        failure = failure?.let { "$it; $line" } ?: line
+                        // A refusal is stepped over, never retried (see [isDefinitiveRefusal]);
+                        // anything else stops this table so the next run retries the row.
+                        if (!isDefinitiveRefusal(error)) break
+                        LedgerConfigBackfillCursor.advance(context, table, localId(row))
                     }
                 }
             }
@@ -101,16 +109,51 @@ object LedgerConfigBackfill {
         return TableResult(pushed, alreadyPresent, skippedLocalOnlyDeleted, failure)
     }
 
+    private fun failureLine(error: Throwable?, where: String): String {
+        val message = error?.message ?: "unknown error"
+        val prefix = if (isDefinitiveRefusal(error)) "refused by the engine, skipped: " else ""
+        return "$prefix$message ($where)"
+    }
+
+    /**
+     * Whether [error] is the engine refusing the row itself, which no retry changes (engine logs
+     * 2026-11-10: one category's `PUT` came back 400 on every auto-run, five minutes apart, and
+     * every row after it waited behind it). A 4xx other than a timeout or a throttle is; anything
+     * that never reached the engine, a 5xx, or a reply that did not decode is not, and still stops
+     * the table so the next run retries it.
+     */
+    internal fun isDefinitiveRefusal(error: Throwable?): Boolean {
+        val refused = (error as? EngineHttpException)?.failure as? EngineFailure.Refused ?: return false
+        return refused.status in CLIENT_ERROR_FIRST..CLIENT_ERROR_LAST &&
+            refused.status != REQUEST_TIMEOUT && refused.status != TOO_MANY_REQUESTS
+    }
+
+    private const val CLIENT_ERROR_FIRST = 400
+    private const val CLIENT_ERROR_LAST = 499
+    private const val REQUEST_TIMEOUT = 408
+    private const val TOO_MANY_REQUESTS = 429
+
     /** Every function below reuses [LedgerConfigWriteThrough]'s own payload-mapping classes rather
      * than re-deriving `Local -> Fields`, same "one mapping, never two" reasoning [BodyBackfill]'s
      * own class doc gives. */
     suspend fun run(context: Context, backend: LedgerConfigBackend): Report {
         val db = CarDatabase.getDatabase(context)
 
+        var linked = 0
         val categories = backfillTable(
             context, OutboxTarget.LEDGER_CATEGORIES, db.categoryDao().getAllIncludingDeleted(),
             localId = { it.id }, localGuid = { it.guid }, localServerId = { it.serverId }, localDeleted = { it.deleted },
-            push = { row: Category -> backend.upsertCategory(row.guid, LedgerConfigWriteThrough.CategoryPayload.from(row).toFields()) },
+            push = { row: Category ->
+                val fields = LedgerConfigWriteThrough.CategoryPayload.from(row).toFields()
+                val pushed = backend.upsertCategory(row.guid, fields)
+                val refused = pushed.isFailure && isDefinitiveRefusal(pushed.exceptionOrNull())
+                if (refused && linkCategoryByName(db, backend, row)) {
+                    linked++
+                    Result.success(Unit)
+                } else {
+                    pushed
+                }
+            },
         )
         val categoryRules = backfillTable(
             context, OutboxTarget.LEDGER_CATEGORY_RULES, db.categoryRuleDao().getAllIncludingDeleted(),
@@ -138,7 +181,29 @@ object LedgerConfigBackfill {
             alreadyPresent = results.sumOf { it.alreadyPresent },
             skippedLocalOnlyDeleted = results.sumOf { it.skippedLocalOnlyDeleted },
             failed = results.mapNotNull { it.failure },
+            linkedByName = linked,
         )
+    }
+
+    /**
+     * Kevin's ruling (2026-11-10): a phone category the engine refuses because the engine already
+     * has one with the same name is LINKED to that row, not skipped. The engine log showed
+     * `PUT /api/ledger/categories/<guid>/` answered 400 on every run: the phone seeds its starter
+     * categories with fresh guids, the engine already holds those names under other guids, and
+     * `categories_name_unique` (household, name) refuses the second. The local row takes the
+     * engine row's guid and id, so the next pull merges the two as one and nothing is pushed
+     * again; the engine's values win on that pull. True when a row was linked. Matched by exact
+     * name first, then ignoring case (the phone's own name index is case-insensitive in use).
+     */
+    @Suppress("ReturnCount") // no engine list, no row of that name, then the link
+    internal suspend fun linkCategoryByName(db: CarDatabase, backend: LedgerConfigBackend, row: Category): Boolean {
+        val remote = backend.fetchChangedCategoriesSince(0L).getOrNull()?.filterNot { it.deleted } ?: return false
+        val match = remote.firstOrNull { it.name == row.name }
+            ?: remote.firstOrNull { it.name.equals(row.name, ignoreCase = true) }
+            ?: return false
+        return runCatching {
+            db.categoryDao().update(row.copy(guid = match.originGuid, serverId = match.serverId))
+        }.isSuccess
     }
 
     // --- Foreground auto-trigger ------------------------------------------------------------------
