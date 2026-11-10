@@ -52,6 +52,7 @@ from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_
                     norm, read_json, write_json_atomic)
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
+import containment  # noqa: E402
 import warm_worktree  # noqa: E402
 import workflows as wfl  # noqa: E402
 
@@ -286,7 +287,8 @@ class Worker:
         self.state = {"session_id": st.get("session_id"), "session_date": st.get("session_date"),
                       "session_started": bool(st.get("session_started")),
                       "tasks": st.get("tasks", {}), "outbox": st.get("outbox", []),
-                      "agents": st.get("agents", {}), "last_work_prune": st.get("last_work_prune")}
+                      "agents": st.get("agents", {}), "subagents": st.get("subagents", {}),
+                      "last_work_prune": st.get("last_work_prune")}
         self.dirty = False
         self.session: MainSession | None = None
         self.session_started_at = 0.0
@@ -335,6 +337,9 @@ class Worker:
     def _write_agents(self) -> None:
         write_json_atomic(self.paths.agents, self.state["agents"])
 
+    def _write_subagents(self) -> None:
+        write_json_atomic(self.paths.subagents, self.state["subagents"])
+
     # ------------------------------------------------------------ startup
 
     def startup(self) -> None:
@@ -370,9 +375,9 @@ class Worker:
     def write_settings(self) -> None:
         hook = HERE / "asklist_hook.py"
         command = f"{cmd_path(helper_python())} {cmd_path(hook)}"
-        matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit"
-        if self.scope != "full":  # reads and web only need the hook on the work laptop
-            matcher += "|Read|Glob|Grep|WebFetch|WebSearch"
+        # Containment (2026-11-10): reads, web, Gmail and Agent go through the hook on every
+        # machine, so a read-through source marks its task before it runs.
+        matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|" + containment.HOOK_MATCHER_EXTRA
         write_json_atomic(self.paths.settings, {"hooks": {"PreToolUse": [
             {"matcher": matcher, "hooks": [{"type": "command", "command": command}]}]}})
 
@@ -404,6 +409,8 @@ class Worker:
                      "<<SHIP>>": cmd_path(HERE / "ship.py"), "<<UNDO>>": cmd_path(HERE / "undo.py"),
                      "<<BUILD_LOCK>>": cmd_path(HERE / "build_lock.py"),
                      "<<WARM>>": cmd_path(HERE / "warm_worktree.py"),
+                     "<<FETCH>>": cmd_path(HERE / "fetch_file.py"),
+                     "<<TO_XLSX>>": cmd_path(HERE / "to_xlsx.py"),
                      "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
@@ -517,7 +524,14 @@ class Worker:
             if agent:
                 self.live[agent] = parent
             if parent or ev.get("owned_by_subagent"):
-                return  # a helper's own build, wait or subagent: never the helper itself
+                # A helper's own build, wait or subagent: never the helper itself. Its subagents
+                # are mapped to the helper's task for the hook (containment: their reads taint it).
+                owner = self.state["agents"].get(parent or "") or self.state["subagents"].get(parent or "")
+                if agent and owner is not None and self.state["subagents"].get(agent) != owner:
+                    self.state["subagents"][agent] = int(owner)
+                    self._write_subagents()
+                    self.dirty = True
+                return
             tid = self.tool_uses.get(ev.get("tool_use_id", ""))
             if tid is None:
                 tid = self._task_from_text(ev.get("description", ""), ev.get("prompt", ""))
@@ -1005,7 +1019,9 @@ class Worker:
              "started_at": now, "turns": 0, "deliver": task.get("deliver"),
              "confirms": bool(parent) and task.get("confirms") is True,
              "origin": task.get("origin"), "workflow": task.get("workflow"),
-             "params": task.get("params")}
+             "params": task.get("params"),
+             # Containment: files or folders this task marks untrusted (reading one taints it).
+             "untrusted": [str(x) for x in (task.get("untrusted") or []) if isinstance(x, str)][:50]}
         self.state["tasks"][str(tid)] = t
         self.dirty = True
         if (t.get("origin") == ORIGIN_SCHEDULE and not parent
@@ -1052,6 +1068,7 @@ class Worker:
             lines.append(f"Read {self.agent_rules} first.")
         if self.scope == "full" and "report" in entry.get("outputs", ()):
             report = self.report_path(t)
+            t["report_file"] = str(report)  # containment: a tainted task may still create it
             try:
                 report.parent.mkdir(parents=True, exist_ok=True)
             except OSError:
@@ -1179,6 +1196,9 @@ class Worker:
         live = {str(k) for k in self.state["tasks"]}
         self.state["agents"] = {a: n for a, n in self.state["agents"].items() if str(n) in live}
         self._write_agents()
+        self.state["subagents"] = {a: n for a, n in self.state["subagents"].items()
+                                   if str(n) in live}
+        self._write_subagents()
         for f in self.paths.tokens.glob("*.json"):
             if (read_json(f, {}) or {}).get("expires_at", 0) < now:
                 f.unlink(missing_ok=True)
@@ -1186,6 +1206,7 @@ class Worker:
             if (read_json(f, {}) or {}).get("kept_at", 0) < now - keep:
                 f.unlink(missing_ok=True)
         cutoff = now - self.cfg["keep_work_days"] * 86400
+        containment.prune(self.paths, cutoff)  # read-through marks live as long as work folders
         for d in self.paths.work.glob("task-*"):
             try:
                 if d.is_dir() and d.stat().st_mtime < cutoff and not self._task(d.name[5:] or 0):

@@ -151,7 +151,7 @@ class TestAskList(Base):
     def test_ordinary_work_passes(self):
         for cmd in ("Get-ChildItem C:/Users/kevin/Downloads -Filter *.pdf",
                     "python -c \"print(1)\"", "git log --oneline -5", "powercfg /q",
-                    "Get-ItemProperty HKCU:\\Software\\X", "curl https://example.com"):
+                    "Get-ItemProperty HKCU:\\Software\\X", "curl https://api.github.com/repos/o/r"):
             with self.subTest(cmd=cmd):
                 self.assertPassed("PowerShell", {"command": cmd})
         self.assertPassed("Read", {"file_path": str(self.kevin_file)})

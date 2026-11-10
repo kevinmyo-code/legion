@@ -30,6 +30,13 @@ Decisions:
   `%USERPROFILE%/.legion/reports/<workflow>/`, outside the work folder, so they are his files
   under the rules above with no rule of their own: a new dated report passes, rewriting or
   deleting an older one asks. A scheduled run has no token, so it can only add.
+- **Containment** (architecture upgrade 2, Kevin's Q1 ruling, 2026-11-10; `containment.py` holds
+  the rules and their honest limits): a task that read mail, the web or an untrusted file is
+  tainted for the rest of it, a resumed session and its follow-ups included: no shell but this
+  folder's own report, mail, ship, undo, fetch and xlsx scripts, no new helper, writes only as
+  data files in its own task folder (never inside a checkout) or its workflow's report file.
+  Shell commands reach the network only to allowlisted hosts, and no shell ever names a file a
+  tainted task wrote. Runs before every rule below.
 - Anything unexpected inside this hook denies (fails closed).
 
 The hook log records tool, decision, rule and agent id. Never the command, a path, or any text.
@@ -45,6 +52,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
+import containment as C  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -308,6 +316,8 @@ def _agent_task(paths: Paths, agent_id: str | None) -> int | None:
         return None
     agents = read_json(paths.agents, {}) or {}
     t = agents.get(agent_id)
+    if t is None:  # a helper's own subagent (containment: its reads taint the task)
+        t = (read_json(paths.subagents, {}) or {}).get(agent_id)
     return int(t) if t is not None else None
 
 
@@ -391,6 +401,137 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
     return None
 
 
+# This folder's own scripts a tainted task may still run, alone: each checks its own limits
+# (report.py its fields, send_mail.py its token and Kevin on every send, ship.py and undo.py
+# Kevin's yes to the question they print, fetch_file.py its download hosts, to_xlsx.py its task
+# folder).
+CONTAINED_SCRIPTS = ("report.py", "send_mail.py", "ship.py", "undo.py", "fetch_file.py",
+                     "to_xlsx.py")
+
+
+def _write_targets(inp: dict) -> list[str]:
+    t = inp.get("file_path") or inp.get("notebook_path") or ""
+    return [t] if t else []
+
+
+def _write_content(tool: str, inp: dict) -> str:
+    if tool == "Write":
+        return str(inp.get("content") or "")
+    if tool == "Edit":
+        return str(inp.get("new_string") or "")
+    if tool == "MultiEdit":
+        return "\n".join(str(e.get("new_string") or "") for e in inp.get("edits") or []
+                         if isinstance(e, dict))
+    if tool == "NotebookEdit":
+        return str(inp.get("new_source") or "")
+    return ""
+
+
+def _in_checkout(target: str, own_work: Path) -> bool:
+    """A path inside a git checkout under the task folder (`<work>/wt`): code, not data."""
+    try:
+        stop = norm(own_work)
+        p = Path(norm(target)).parent
+        while is_under(p, stop):
+            if (p / ".git").exists():
+                return True
+            if norm(p) == stop:
+                break
+            p = p.parent
+    except (OSError, ValueError):
+        return True
+    return False
+
+
+def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> str | None:
+    """The read-through source this call is, or None."""
+    if tool.startswith(C.GMAIL_PREFIX):
+        return "gmail"
+    if tool in C.WEB_TOOLS:
+        return tool
+    if tool in C.FILE_SOURCE_TOOLS:
+        target = inp.get("file_path") or inp.get("path") or cwd
+        if C.untrusted_file(paths, target, trec, cfg):
+            return "untrusted_file"
+    if tool in SHELL_TOOLS:
+        command = inp.get("command", "") or ""
+        if _is_our_lone_script(command, "fetch_file.py"):
+            return "fetch_file"
+        if C.fetches(command):
+            return "shell_fetch"
+    return None
+
+
+def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
+                 now: float) -> tuple[dict | None, str, bool]:
+    """(hook output, rule, final). `final` skips the other rules (a read source that passed)."""
+    tool = event.get("tool_name", "")
+    inp = event.get("tool_input") or {}
+    cwd = event.get("cwd") or ""
+    agent = event.get("agent_id")
+    tasks = (read_json(paths.state, {}) or {}).get("tasks") or {}
+    trec = tasks.get(str(task)) if task is not None else None
+    own_work = paths.task_work(task) if task is not None else None
+    is_tainted = C.tainted(paths, task, agent, tasks)
+    command = (inp.get("command", "") or "") if tool in SHELL_TOOLS else ""
+    ours = bool(command) and any(_is_our_lone_script(command, s) for s in CONTAINED_SCRIPTS)
+
+    if not agent and (tool in WRITE_TOOLS or (tool in SHELL_TOOLS and not ours)):
+        # The main window only dispatches, and it reads every helper's final message (derived
+        # from whatever that helper read): it runs this folder's scripts alone and writes nothing.
+        return _deny(C.MAIN_SHELL_REASON), "main window", True
+    if is_tainted:
+        if tool in C.AGENT_TOOLS or tool in C.TAINT_DENIED_WRITES:
+            return _deny(C.TAINT_REASON), "read_through", True
+        if tool in SHELL_TOOLS and not ours:
+            return _deny(C.TAINT_REASON), "read_through", True
+        if tool in WRITE_TOOLS:
+            report_file = trec.get("report_file") if isinstance(trec, dict) else None
+            for target in _write_targets(inp) or [""]:
+                if not C.write_allowed_tainted(target, own_work, report_file) or (
+                        own_work is not None and _in_checkout(target, own_work)):
+                    return _deny(C.TAINT_REASON), "read_through", True
+                try:
+                    C.record_written(paths, target, now)
+                except OSError:
+                    return _deny(C.MARK_FAILED_REASON), "read_through", True
+        if tool in READ_TOOLS:
+            target = inp.get("file_path") or inp.get("path") or cwd
+            if target and ((is_under(target, paths.root) and not is_under(target, paths.work))
+                           or C.CREDENTIAL_NAMES.search(str(target))):
+                return _deny(C.CRED_REASON), "read_through", True
+
+    if command and not ours:
+        if C.names_blocked(command, cwd, C.written_paths(paths)):
+            return _deny(C.WRITTEN_REASON), "read_through written", True
+        if C.names_blocked(command, cwd, C.blocked_paths(paths)):
+            return _deny(C.NET_REASON), "net script", True
+        why = C.network_denial(command, cfg)
+        if why:
+            return _deny(why), "network", True
+
+    if tool in WRITE_TOOLS and not is_tainted:
+        content = _write_content(tool, inp)
+        for target in _write_targets(inp):
+            if C.content_net_script(target, content, cfg):
+                try:
+                    C.record_net_script(paths, target, now)
+                except OSError:
+                    return _deny(C.MARK_FAILED_REASON), "net script", True
+
+    source = _source(tool, inp, cwd, paths, trec, cfg)
+    if source:
+        if not agent:
+            return _deny(C.MAIN_SOURCE_REASON), "main window", True
+        try:
+            C.mark(paths, task, agent, source, now)
+        except Exception:
+            return _deny(C.MARK_FAILED_REASON), "read_through mark failed", True
+        # A shell source still goes through the ask list below; a read has nothing more to check.
+        return None, "read_through", tool not in SHELL_TOOLS
+    return None, "", False
+
+
 def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tuple[dict | None, str]:
     """Returns (hook output or None to let normal permissions decide, rule label for the log)."""
     now = time.time() if now is None else now
@@ -408,6 +549,10 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
         out = _listed_scope(tool, inp, cwd, cfg, paths)
         if out:
             return out, "scope"
+
+    out, rule, final = _containment(event, paths, cfg, task, now)
+    if out or final:
+        return out, rule
 
     if tool in WRITE_TOOLS:
         target = inp.get("file_path") or inp.get("notebook_path") or ""

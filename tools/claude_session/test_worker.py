@@ -179,7 +179,10 @@ class TestTasks(WorkerCase):
         self.assertTrue(Path(settings).is_absolute())
         hooks = json.loads(Path(settings).read_text())["hooks"]["PreToolUse"][0]
         self.assertTrue(hooks["matcher"].startswith("Bash|PowerShell|Write|Edit"))
-        self.assertNotIn("Read", hooks["matcher"], "full scope: no hook process per read")
+        # Containment (2026-11-10): reads, web, Gmail and Agent reach the hook on full scope too,
+        # so a read-through source marks its task before it runs.
+        for tool in ("Read", "Grep", "WebFetch", "WebSearch", "Agent", "mcp__claude_ai_Gmail__"):
+            self.assertIn(tool, hooks["matcher"])
         self.assertIn("asklist_hook.py", hooks["hooks"][0]["command"])
         self.assertEqual(argv[argv.index("--setting-sources") + 1], "project,local")
         self.assertEqual(argv[argv.index("--permission-mode") + 1], "dontAsk")

@@ -48,6 +48,12 @@ class Paths:
         self.work = self.root / "work"
         self.logs = self.root / "logs"
         self.agents = self.root / "agents.json"
+        # A helper's own subagents -> the task that helper runs (containment: a subagent's reads
+        # taint its task too).
+        self.subagents = self.root / "subagents.json"
+        # Read-through marks, the written list and net scripts (containment.py). Outside the work
+        # folder, so a helper can never clear its own mark.
+        self.taint = self.root / "taint"
         self.settings = self.root / "worker-settings.json"
         self.pid = self.root / "session.pid"
         self.lock = self.root / "worker.lock"
