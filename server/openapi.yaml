@@ -11352,6 +11352,221 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such row. Nothing was changed.
+  /api/watches/:
+    get:
+      operationId: api_watches_list
+      description: The caller's own watches (the built-ins seeded on first read) and
+        every kind.
+      tags:
+      - watches
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    post:
+      operationId: api_watches_create
+      description: Sets a watch of one registry kind. A kind that is not in the registry
+        is a 400 whose detail names the kinds there are and the nearest ones.
+      tags:
+      - watches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WatchCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WatchCreate'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchCreated'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/watches/{watch_id}:
+    patch:
+      operationId: api_watches_update
+      description: 'Pause, resume (re-arms: nothing from the pause fires), rename
+        or re-param.'
+      parameters:
+      - in: path
+        name: watch_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - watches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedWatchUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedWatchUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedWatchUpdate'
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watch'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    delete:
+      operationId: api_watches_delete
+      description: '"Stop watching X". Never evaluated or listed again; a built-in
+        is not re-seeded.'
+      parameters:
+      - in: path
+        name: watch_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - watches
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: Removed.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/watches/firings:
+    get:
+      operationId: api_watches_firings
+      parameters:
+      - in: query
+        name: pending
+        schema:
+          type: boolean
+        description: Only what the phone has not said yet (oldest first).
+      tags:
+      - watches
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FiringList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/watches/firings/ack:
+    post:
+      operationId: api_watches_firings_ack
+      description: The phone said, posted or silenced these firings; they are not
+        offered again.
+      tags:
+      - watches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Ack'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Ack'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Ack'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Acked'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /health:
     get:
       operationId: health_retrieve
@@ -11417,6 +11632,38 @@ components:
       - accepted
       - meal_target
       - words
+    Ack:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 100
+          minItems: 1
+        outcome:
+          $ref: '#/components/schemas/AckOutcomeEnum'
+      required:
+      - ids
+      - outcome
+    AckOutcomeEnum:
+      enum:
+      - spoken
+      - notified
+      - silenced
+      type: string
+      description: |-
+        * `spoken` - spoken
+        * `notified` - notified
+        * `silenced` - silenced
+    Acked:
+      type: object
+      properties:
+        acked:
+          type: integer
+      required:
+      - acked
     ActivityLevelEnum:
       enum:
       - sedentary
@@ -14502,6 +14749,14 @@ components:
       - weight_lbs
       - weight_source
       - words
+    EvaluatedOnEnum:
+      enum:
+      - engine
+      - phone
+      type: string
+      description: |-
+        * `engine` - engine
+        * `phone` - phone
     Event:
       type: object
       properties:
@@ -14767,6 +15022,64 @@ components:
       - months
       - next_on
       - typical_cents
+    Firing:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        watch_id:
+          type: string
+          format: uuid
+        watch_label:
+          type: string
+        kind:
+          $ref: '#/components/schemas/WatchKindEnum'
+        facts:
+          type: string
+          description: The engine's own sentence, from the rows named in sources.
+        detail:
+          type: object
+          additionalProperties: {}
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        fired_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        acked_at:
+          type: string
+          format: date-time
+          nullable: true
+        outcome:
+          type: string
+          nullable: true
+      required:
+      - acked_at
+      - detail
+      - expires_at
+      - facts
+      - fired_at
+      - id
+      - kind
+      - outcome
+      - sources
+      - watch_id
+      - watch_label
+    FiringList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Firing'
+      required:
+      - results
     Fixed:
       type: object
       properties:
@@ -15345,6 +15658,31 @@ components:
       - detail
       - match
       - push
+    Kind:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/WatchKindEnum'
+        title:
+          type: string
+        says:
+          type: string
+        needs:
+          type: string
+        evaluated_on:
+          type: string
+        params:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - evaluated_on
+      - kind
+      - needs
+      - params
+      - says
+      - title
     LastBought:
       type: object
       properties:
@@ -18134,6 +18472,20 @@ components:
           writeOnly: true
           description: Sealed before it is stored. Never returned by this route.
           maxLength: 128
+    PatchedWatchUpdate:
+      type: object
+      properties:
+        params: {}
+        label:
+          type: string
+          nullable: true
+        repeat:
+          type: boolean
+        paused:
+          type: boolean
+        expires_at:
+          type: string
+          nullable: true
     PendingReview:
       type: object
       properties:
@@ -21694,6 +22046,143 @@ components:
             $ref: '#/components/schemas/Waist'
       required:
       - results
+    Watch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/WatchKindEnum'
+        title:
+          type: string
+        label:
+          type: string
+        params:
+          type: object
+          additionalProperties: {}
+        repeat:
+          type: boolean
+        paused:
+          type: boolean
+        status:
+          $ref: '#/components/schemas/WatchStatusEnum'
+        builtin:
+          type: string
+          nullable: true
+        evaluated_on:
+          $ref: '#/components/schemas/EvaluatedOnEnum'
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_fired_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - builtin
+      - created_at
+      - evaluated_on
+      - expires_at
+      - id
+      - kind
+      - label
+      - last_fired_at
+      - params
+      - paused
+      - repeat
+      - status
+      - title
+    WatchCreate:
+      type: object
+      properties:
+        kind:
+          type: string
+        params: {}
+        label:
+          type: string
+          nullable: true
+        repeat:
+          type: boolean
+          default: true
+        expires_at:
+          type: string
+          nullable: true
+        source:
+          allOf:
+          - $ref: '#/components/schemas/WatchCreateSourceEnum'
+          default: screen
+      required:
+      - kind
+    WatchCreateSourceEnum:
+      enum:
+      - voice
+      - screen
+      type: string
+      description: |-
+        * `voice` - voice
+        * `screen` - screen
+    WatchCreated:
+      type: object
+      properties:
+        watch:
+          $ref: '#/components/schemas/Watch'
+        note:
+          type: string
+          nullable: true
+          description: What the watch cannot see yet, in words; null when nothing.
+      required:
+      - note
+      - watch
+    WatchKindEnum:
+      enum:
+      - charge_over
+      - deposit_over
+      - balance_under
+      - canvas_due
+      - grade_posted
+      - service_due
+      - mail_reply
+      type: string
+      description: |-
+        * `charge_over` - charge_over
+        * `deposit_over` - deposit_over
+        * `balance_under` - balance_under
+        * `canvas_due` - canvas_due
+        * `grade_posted` - grade_posted
+        * `service_due` - service_due
+        * `mail_reply` - mail_reply
+    WatchList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Watch'
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Kind'
+      required:
+      - kinds
+      - results
+    WatchStatusEnum:
+      enum:
+      - 'on'
+      - paused
+      - done
+      - expired
+      type: string
+      description: |-
+        * `on` - on
+        * `paused` - paused
+        * `done` - done
+        * `expired` - expired
     WeeklyLine:
       type: object
       properties:

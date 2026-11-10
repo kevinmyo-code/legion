@@ -95,7 +95,22 @@ enum class ProactiveCategory(
      * can see in Settings, Updates; actionable (install now); never about his absence; silenced by
      * this switch, while the notification keeps the ask.
      */
-    UPDATES("updates", "App updates", "Once per release: an update is ready, install it now?", true);
+    UPDATES("updates", "App updates", "Once per release: an update is ready, install it now?", true),
+
+    /**
+     * Standing watches and engine signals (ADR 0083, Kevin 2026-11-10): what a watch he set found
+     * ("tell me when my paycheck lands"), and the built-in money, school and car signals. **On by
+     * default** ([DEFAULT_ON]), the [CLAUDE_TASKS] precedent: each line answers something he asked
+     * for or data he owns. Inside the master switch and quiet hours. The compulsion test's four:
+     * anchored to a record (a bank row, a Canvas item, a service schedule); actionable; never about
+     * his absence; silenced by "stop watching X" for one watch, or this switch for all.
+     */
+    WATCHES(
+        "watches",
+        "Watches",
+        "Things you asked to be told about, and money, school and car signals.",
+        true,
+    );
 
     companion object {
         fun fromKey(key: String): ProactiveCategory? = entries.firstOrNull { it.key == key }
@@ -121,6 +136,6 @@ enum class ProactiveCategory(
          * deliberate exception to "a fresh install is quiet": every line it carries answers a task
          * he sent.
          */
-        val DEFAULT_ON = setOf(CLAUDE_TASKS, UPDATES)
+        val DEFAULT_ON = setOf(CLAUDE_TASKS, UPDATES, WATCHES)
     }
 }

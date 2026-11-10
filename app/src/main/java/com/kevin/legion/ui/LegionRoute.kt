@@ -328,6 +328,10 @@ object LegionRoute {
      */
     const val SETTINGS_MEMORY = "settings/memory"
 
+    /** Standing watches (ADR 0083), [com.kevin.legion.ui.watches.WatchesScreen]: a leaf, reached
+     * from Proactive speech. The `watch` voice tool's hands path. */
+    const val SETTINGS_WATCHES = "settings/watches"
+
     /**
      * The hands path for the four voice-note tools (`start_voice_note`, `stop_voice_note`,
      * `read_voice_note`, `list_voice_notes`) - see [com.kevin.legion.ui.voicenotes.VoiceNotesScreen],

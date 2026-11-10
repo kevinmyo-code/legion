@@ -38,7 +38,7 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 
 <!-- VOICE-SURFACE:START -->
 
-**137 voice tools across 20 domains**, dispatched from one Gemini Live
+**138 voice tools across 21 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
@@ -59,6 +59,7 @@ model rather than to sell the feature.
 | Claude session | 1 | &ldquo;Use Claude on my Alienware to find the AW4 wiring PDF in my Downloads&rdquo; |
 | LEGION itself | 1 | &ldquo;Is there an update for LEGION?&rdquo; |
 | Clock | 1 | &ldquo;Wake me up at 6:30 on weekdays&rdquo; |
+| Watches | 1 | &ldquo;Tell me when my paycheck lands&rdquo; |
 | Phone calls | 3 | &ldquo;Answer it&rdquo; |
 | Recordings | 4 | &ldquo;Record this meeting&rdquo; |
 | Memory | 3 | &ldquo;Remember that the XJ takes 5W-30 / What do you remember about the Jeep? / Forget that&rdquo; |

@@ -62,6 +62,8 @@ object ClaudeResultPolling {
         shelf = ClaudeFileStore(app),
         openFiles = { id -> openOrNotify(app, id) },
         filesReady = { id, text -> announce(app, id, text, "", ClaudeFileActivity.pendingIntent(app, id)) },
+        // ADR 0083: standing watches ride this loop (no loop of their own).
+        alsoEachTick = { com.kevin.legion.watches.WatchPolling.poller(app).maybePoll() },
     )
 
     /**

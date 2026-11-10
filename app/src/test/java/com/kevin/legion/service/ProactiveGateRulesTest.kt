@@ -202,8 +202,11 @@ class ProactiveGateRulesTest {
     }
 
     @Test
-    fun `claude tasks and app updates are the categories on by default`() {
-        assertEquals(setOf(ProactiveCategory.CLAUDE_TASKS, ProactiveCategory.UPDATES), ProactiveCategory.DEFAULT_ON)
+    fun `claude tasks, app updates and watches are the categories on by default`() {
+        assertEquals(
+            setOf(ProactiveCategory.CLAUDE_TASKS, ProactiveCategory.UPDATES, ProactiveCategory.WATCHES),
+            ProactiveCategory.DEFAULT_ON,
+        )
     }
 
     @Test

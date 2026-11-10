@@ -60,6 +60,12 @@ class ClaudeResultWatcher(
     /** The files result: said like any result, its notification opening the files when tapped. */
     private val filesReady: suspend (taskId: Int, text: String) -> ClaudeDelivery =
         { id, text -> announce(id, text, "") },
+    /**
+     * Rides every tick of [run], whatever this watcher found (ADR 0083: standing watches ask the
+     * engine on this same loop at their own slower cadence, `WatchFiringPoller.maybePoll`). Its
+     * failure never ends the loop or skips this watcher's own poll.
+     */
+    private val alsoEachTick: suspend () -> Unit = {},
 ) {
     private val lock = Mutex()
 
@@ -236,6 +242,13 @@ class ClaudeResultWatcher(
         while (coroutineContext.isActive) {
             try {
                 pollOnce()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                onCrash(e)
+            }
+            try {
+                alsoEachTick()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {

@@ -89,6 +89,8 @@ urlpatterns = [
     # memory-and-vault map: memory v2 (ADR 0075) and the ID vault (ADR 0076).
     path("api/member-memories/", include("member_memory.urls")),
     path("api/vault/", include("id_vault.urls")),
+    # watches map (ADR 0083): standing watches and what they found.
+    path("api/watches/", include("watches.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

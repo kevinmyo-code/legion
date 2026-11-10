@@ -119,6 +119,7 @@ _UPLOAD = "uploading documents (Drive, ingestion) is not part of the demo"
 _DEVICE = "it reaches a device or an account outside the household's own rows"
 _CLAUDE = "the Claude session runs on a household member's own laptop"
 _VAULT = "the ID vault holds a member's own identity numbers and opens only on their phone"
+_WATCHES = "standing watches make Alfred speak to a member later; not part of the demo"
 
 RECRUITER_DENIED: dict[str, str] = {
     # household settings, members, invites, tokens, passwords
@@ -187,6 +188,11 @@ RECRUITER_DENIED: dict[str, str] = {
     "id_vault.views.VaultListCreateView": _VAULT,
     "id_vault.views.VaultDetailView": _VAULT,
     "id_vault.views.VaultRevealView": _VAULT,
+    # watches map (ADR 0083). `watches.service.refusal` refuses a recruiter a second time.
+    "watches.views.WatchListCreateView": _WATCHES,
+    "watches.views.WatchDetailView": _WATCHES,
+    "watches.views.FiringListView": _WATCHES,
+    "watches.views.FiringAckView": _WATCHES,
     # ingestion: uploads, feed logins, the bank link, the files ledger
     "api.ingest_files.IngestedFileViewSet": (
         "the document-ingestion ledger is not part of the demo"

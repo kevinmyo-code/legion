@@ -280,12 +280,11 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "get_current_time",
-            description = "Read the current date and time from the phone's own clock, in the " +
-                "user's timezone. Call this whenever the user asks what time or what day it " +
-                "is, or whenever the answer depends on the current time - how long until " +
-                "something, whether it is morning or evening, what 'today' or 'tonight' means. " +
-                "NEVER state a time or date from your own guess: you do not have a clock, and a " +
-                "wrong one is worse than asking. Instant, offline, free.",
+            // Trimmed 2026-11-10 (watches, ADR 0083) to pay for the `watch` declaration; the
+            // routing ("whenever the answer depends on it") and the never-guess rule are kept.
+            description = "Read the date and time from the phone's clock, in the user's timezone. " +
+                "Call it whenever the answer depends on the time or date. NEVER state a time or " +
+                "date from your own guess; you have no clock.",
             params = obj(),
             required = listOf(),
         ))
@@ -1831,8 +1830,7 @@ object LiveToolbox {
             description = "Why you last spoke without being asked: use when the user asks why you " +
                 "said or brought up something YOU started, not an answer to their question. Returns " +
                 "the rule that fired and its fact; state those, never justify it or guess how they " +
-                "felt. Nothing returned: say you raised nothing on your own recently. With stop, " +
-                "turns that spoken line off for good instead.",
+                "felt. With stop, turns that spoken line off for good instead.",
             params = obj("stop" to schema("string", "Line to turn off, e.g. morning brief or home brief")),
             required = emptyList(),
         ))
@@ -2445,6 +2443,8 @@ object LiveToolbox {
         // alfred-clock ticket 06 (ADR 0079): alarms, timers, stopwatch and bedtime, one action-dispatched declaration.
         val clockDecls = ClockToolbox.declarations()
         for (i in 0 until clockDecls.length()) fns.put(clockDecls.getJSONObject(i))
+        // watches (ADR 0083): standing watches, one action-dispatched declaration.
+        fns.put(WatchesToolbox.declarations().getJSONObject(0))
 
         return fns
     }
@@ -2784,6 +2784,7 @@ object LiveToolbox {
         MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         VaultToolbox.dispatch(context, name, args)?.let { return it }
         ClockToolbox.dispatch(context, name, args)?.let { return it }
+        WatchesToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))

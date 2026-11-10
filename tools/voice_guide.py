@@ -62,6 +62,8 @@ TOOLBOXES = [
     ROOT / 'app/src/main/java/com/kevin/legion/service/BodyCoachToolbox.kt',
     # alfred-clock ticket 06 (ADR 0079): the one `clock` tool (alarms, timers, stopwatch, bedtime).
     ROOT / 'app/src/main/java/com/kevin/legion/service/ClockToolbox.kt',
+    # watches (ADR 0083): the one `watch` tool (standing watches).
+    ROOT / 'app/src/main/java/com/kevin/legion/service/WatchesToolbox.kt',
 ]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'

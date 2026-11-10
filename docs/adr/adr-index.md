@@ -87,6 +87,7 @@ Format and the test for whether something deserves an ADR:
 | 0079 | [[0079-alfreds-clock\|Alfred's clock lives inside LEGION, rings on its own, and briefs only on a tap]] | amended | 2026-11-09 | 2026-11-10 |
 | 0080 | [[0080-claude-files-to-phone\|Files Kevin names come from his PC to his phone, open there, and leave the engine at once]] | accepted | 2026-11-09 | - |
 | 0082 | [[0082-proactive-speech-uncapped-and-briefs\|Proactive speech has no daily cap, speaks with the screen off, briefs on waking and at home, and rings for an emergency]] | accepted | 2026-11-10 | - |
+| 0083 | [[0083-standing-watches\|Standing watches: typed rules on the engine, said once on the phone]] | accepted | 2026-11-10 | - |
 
 ## Superseded
 

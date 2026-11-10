@@ -196,6 +196,10 @@ TENANT_TABLES: tuple[str, ...] = (
     # member (`id_vault/models.py`).
     "vault_items",
     "vault_reveals",
+    # watches map (ADR 0083): standing watches and their firings, always private to the member
+    # who set them (`OWNER_PATHS`; `watches/models.py`).
+    "watches",
+    "watch_firings",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -274,6 +278,8 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "workout_sets",
         "programme_proposals",
         "body_plans",
+        "watches",
+        "watch_firings",
     }
 )
 
@@ -455,6 +461,9 @@ OWNER_PATHS: dict[str, str] = {
     "body_profiles": "owner_user",
     # body coach 2: the plan is one member's, never null.
     "body_plans": "owner_user",
+    # ADR 0083: never null, so a member reads and changes their own watches and firings only.
+    "watches": "owner_user",
+    "watch_firings": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

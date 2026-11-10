@@ -1145,7 +1145,10 @@ private fun LegionShell(
                 )
             }
             composable(LegionRoute.SETTINGS_PROACTIVE_SPEECH) {
-                com.kevin.legion.ui.settings.ProactiveSpeechScreen(onBack = { navController.popBackStack() })
+                com.kevin.legion.ui.settings.ProactiveSpeechScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenWatches = { navController.navigate(LegionRoute.SETTINGS_WATCHES) },
+                )
             }
             // SETTINGS_BACKEND_MIGRATION/BackendMigrationScreen deleted 2026-09-03 (live-sync).
             // Every reconcile it hosted now runs automatically on foreground, so the screen's
@@ -1277,6 +1280,10 @@ private fun LegionShell(
             }
             composable(LegionRoute.SETTINGS_MEMORY) {
                 MemoryScreen(onBack = { navController.popBackStack() })
+            }
+            // Standing watches (ADR 0083): the `watch` voice tool's hands path.
+            composable(LegionRoute.SETTINGS_WATCHES) {
+                com.kevin.legion.ui.watches.WatchesScreen(onBack = { navController.popBackStack() })
             }
             // ui/voicenotes/VoiceNotesScreen.kt shipped with the voice-notes work but was never
             // given a route, so the four voice-note tools were voice-only in practice - the exact
