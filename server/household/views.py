@@ -109,7 +109,18 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        _token, raw_key = DeviceToken.issue(user, data["device_name"])
+        # Architecture upgrade 2 (2026-11-10): the Claude worker signs in as
+        # `claude-session-<Machine>` (`tools/claude_session/install.ps1`), and its token is
+        # minted `claude_worker`: it reaches only the worker's routes. Narrowing only; a token
+        # issued before keeps its scope until the worker is re-installed with -NewToken.
+        from claude_session.tokens import WORKER_TOKEN_PREFIX
+
+        scope = (
+            DeviceToken.SCOPE_CLAUDE_WORKER
+            if data["device_name"].startswith(WORKER_TOKEN_PREFIX)
+            else DeviceToken.SCOPE_WRITE
+        )
+        _token, raw_key = DeviceToken.issue(user, data["device_name"], scope=scope)
         body = LoginResponseSerializer({"token": raw_key, "user_id": user.id}).data
         return Response(body, status=status.HTTP_200_OK)
 

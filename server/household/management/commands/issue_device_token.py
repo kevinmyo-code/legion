@@ -1,4 +1,4 @@
-"""`manage.py issue_device_token <email> --name <device> [--scope read|write]`.
+"""`manage.py issue_device_token <email> --name <device> [--scope read|write|claude_worker]`.
 
 engine-mcp ticket 05 (Kevin, 2026-10-02): Claude Code authenticates to `/mcp`
 with a device token, and a token for a TOOL rather than a person is minted
@@ -8,6 +8,10 @@ worse". `--scope write` is the explicit opt-in.
 The raw key is printed once, on stdout, and never stored: only its hash is
 (`DeviceToken.issue`). Put it in `.claude/mcp.env` (gitignored), never in a
 committed file. Revoke it from the web app's device list or the admin.
+
+`--scope claude_worker` (architecture upgrade 2, 2026-11-10) is the laptop worker's token: it may
+write, on the worker's own routes only (`claude_session.tokens.WORKER_ROUTES`). Name it
+`claude-session-<Machine>`, as `tools/claude_session/install.ps1` does.
 """
 from __future__ import annotations
 
@@ -29,9 +33,16 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--scope",
-            choices=[DeviceToken.SCOPE_READ, DeviceToken.SCOPE_WRITE],
+            choices=[
+                DeviceToken.SCOPE_READ,
+                DeviceToken.SCOPE_WRITE,
+                DeviceToken.SCOPE_CLAUDE_WORKER,
+            ],
             default=DeviceToken.SCOPE_READ,
-            help="read (default) may read and change nothing; write may change data.",
+            help=(
+                "read (default) may read and change nothing; write may change data; "
+                "claude_worker may write on the Claude worker's routes only."
+            ),
         )
 
     def handle(self, *args, **options):
