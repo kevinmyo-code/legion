@@ -67,6 +67,12 @@ jobs:
     # The suite is ~3,500 tests including Robolectric. The default 360-minute limit would let a hung
     # Gradle daemon burn six hours before anyone noticed.
     timeout-minutes: 90
+    # Pin the JVM default locale to the phone's (en-US). Some formatting reads Locale.getDefault()
+    # (`navigation/NavFormat.kt`'s miles-vs-km), and the runner's bare C locale turns "2.0 mi" into
+    # "3.2 km" (TrafficSummaryTest, first CI run 2026-11-10). The laptop is en-US, so this makes
+    # CI match the machine the suite was written on; it hides no failure the laptop would show.
+    env:
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
 
     steps:
       - uses: actions/checkout@v4
@@ -194,6 +200,8 @@ jobs:
     # differ too. A golden test that is always red is not a gate. The job still runs and uploads
     # the diff images; make it blocking once the goldens are re-recorded (a human-reviewed act).
     continue-on-error: true
+    env:
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
 
     steps:
       - uses: actions/checkout@v4
