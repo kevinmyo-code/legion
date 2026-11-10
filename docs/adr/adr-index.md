@@ -86,6 +86,7 @@ Format and the test for whether something deserves an ADR:
 | 0078 | [[0078-workouts-come-from-rules\|Workouts come from rules, not from the model]] | accepted | 2026-11-06 | - |
 | 0079 | [[0079-alfreds-clock\|Alfred's clock lives inside LEGION, rings on its own, and briefs only on a tap]] | accepted | 2026-11-09 | - |
 | 0080 | [[0080-claude-files-to-phone\|Files Kevin names come from his PC to his phone, open there, and leave the engine at once]] | accepted | 2026-11-09 | - |
+| 0084 | [[0084-alfred-looks-through-the-phone-camera\|Alfred looks through the phone camera, parked, and what he sees is an estimate he never keeps]] | accepted | 2026-11-10 | - |
 
 ## Superseded
 
