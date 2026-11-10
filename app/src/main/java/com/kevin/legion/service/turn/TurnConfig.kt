@@ -62,6 +62,10 @@ object VoiceTurnSettings {
     private const val KEY_ASYNC_LOOKUPS = "async_lookups"
     private const val KEY_AUDIT_LOG = "conversation_audit_log"
     private const val KEY_KEEP_CONVERSATION_LOG = "conversation_log_keep_and_send"
+    private const val KEY_BLUETOOTH_MIC = "bluetooth_mic"
+
+    /** Kevin, 2026-11-10: in the car, listen through the car's own mic. Default ON. */
+    internal const val BLUETOOTH_MIC_DEFAULT = true
 
     /**
      * ADR 0065's default: ON (Kevin, 2026-10-28). Whether a `WHEN_IDLE` result makes
@@ -86,6 +90,14 @@ object VoiceTurnSettings {
     /** Default ON; never applies over Bluetooth ([TurnConfig.decide]). */
     fun bargeIn(context: Context): Boolean = prefs(context).getBoolean(KEY_BARGE_IN, true)
     fun setBargeIn(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_BARGE_IN, on).apply()
+
+    /**
+     * "Use the car's or headset's microphone" ([BluetoothMic]): with a Bluetooth hands-free device
+     * connected, a conversation listens through it instead of the phone. Read when a conversation
+     * starts.
+     */
+    fun bluetoothMic(context: Context): Boolean = prefs(context).getBoolean(KEY_BLUETOOTH_MIC, BLUETOOTH_MIC_DEFAULT)
+    fun setBluetoothMic(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_BLUETOOTH_MIC, on).apply()
 
     /**
      * "Answer lookups while talking" (ADR 0065): [com.kevin.legion.service.LiveToolbox.NON_BLOCKING_READ_TOOLS]

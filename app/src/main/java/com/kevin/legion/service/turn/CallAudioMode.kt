@@ -19,6 +19,10 @@ internal class CallAudioMode(private val audio: AudioManager) {
     private var active = false
     private var prevMode = AudioManager.MODE_NORMAL
     private var prevSpeaker = false
+    private var bluetoothSco = false
+
+    /** True while this conversation listens through a Bluetooth hands-free mic ([enterBluetooth]). */
+    val onBluetoothMic: Boolean @Synchronized get() = active && bluetoothSco
 
     @Synchronized
     fun enter(): String {
@@ -44,14 +48,55 @@ internal class CallAudioMode(private val audio: AudioManager) {
         }.getOrElse { "enter failed: ${it.message}" }.also { Log.i(TAG, it) }
     }
 
+    /**
+     * Call mode with a Bluetooth hands-free device as the communication device, so the
+     * conversation's mic is the car's (or headset's) and Alfred's voice rides the same link
+     * ([BluetoothMic] has the costs). Returns a log line; [onBluetoothMic] says whether it took.
+     */
+    @Synchronized
+    fun enterBluetooth(): String {
+        if (active) return "already active"
+        return runCatching {
+            prevMode = audio.mode
+            @Suppress("DEPRECATION")
+            prevSpeaker = audio.isSpeakerphoneOn
+            audio.mode = AudioManager.MODE_IN_COMMUNICATION
+            val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val target = pickHandsFree(audio)
+                target != null && audio.setCommunicationDevice(target)
+            } else {
+                @Suppress("DEPRECATION")
+                audio.startBluetoothSco()
+                @Suppress("DEPRECATION")
+                audio.isBluetoothScoOn = true
+                true
+            }
+            active = true
+            bluetoothSco = ok
+            ownCommActive = true
+            if (!ok) {
+                // No hands-free device took: back to normal so the phone mic carries on as before.
+                exit("bluetooth mic unavailable")
+            }
+            "bluetooth mic ok=$ok mode=${audio.mode}"
+        }.getOrElse { "bluetooth enter failed: ${it.message}" }.also { Log.i(TAG, it) }
+    }
+
     @Synchronized
     fun exit(why: String) {
         if (!active) return
         active = false
         ownCommActive = false
+        val wasSco = bluetoothSco
+        bluetoothSco = false
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audio.clearCommunicationDevice()
+            } else if (wasSco) {
+                @Suppress("DEPRECATION")
+                audio.isBluetoothScoOn = false
+                @Suppress("DEPRECATION")
+                audio.stopBluetoothSco()
             } else {
                 @Suppress("DEPRECATION")
                 audio.isSpeakerphoneOn = prevSpeaker
@@ -88,6 +133,41 @@ internal class CallAudioMode(private val audio: AudioManager) {
         }
 
         fun isBluetooth(type: Int): Boolean = type in BLUETOOTH
+
+        /** A Bluetooth hands-free (HFP/SCO) device is available to listen through. */
+        fun handsFreeAvailable(audio: AudioManager): Boolean =
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audio.availableCommunicationDevices.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                } else {
+                    audio.getDevices(AudioManager.GET_DEVICES_INPUTS).any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                }
+            }.getOrDefault(false)
+
+        /** True once the Bluetooth hands-free link is the live communication route. */
+        fun handsFreeRouted(audio: AudioManager): Boolean =
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audio.communicationDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                } else {
+                    @Suppress("DEPRECATION")
+                    audio.isBluetoothScoOn
+                }
+            }.getOrDefault(false)
+
+        @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+        private fun pickHandsFree(audio: AudioManager): AudioDeviceInfo? {
+            val devices = audio.availableCommunicationDevices
+            val media = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                .filter { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+                .mapNotNull { runCatching { it.address }.getOrNull() }
+                .toSet()
+            val candidates = devices.map {
+                BluetoothMic.Candidate(it.id, it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO, runCatching { it.address }.getOrNull())
+            }
+            val chosen = BluetoothMic.pick(candidates, media) ?: return null
+            return devices.firstOrNull { it.id == chosen.id }
+        }
 
         private fun hasWired(audio: AudioManager): Boolean =
             audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in WIRED }

@@ -38,6 +38,7 @@ import com.kevin.legion.look.LookRules
 import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.service.turn.AudioRoute
+import com.kevin.legion.service.turn.BluetoothMic
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
@@ -825,6 +826,7 @@ class GeminiLiveSession(
         ConversationState.setBusy(true)
         MicArbiter.request(micClaimant, micPreemptionListener)
         prepareBargeIn()
+        prepareBluetoothMic()
         return if (opener != null) {
             sendText(opener)
         } else {
@@ -2206,6 +2208,45 @@ class GeminiLiveSession(
         }
     }
 
+    /**
+     * Kevin, 2026-11-10: in the car the conversation listened through the phone's mic. With a
+     * Bluetooth hands-free device connected (and the setting on, and no phone call), call mode now
+     * puts the car's hands-free link up as the communication device, so the mic is the car's and
+     * Alfred plays on the same link; [BluetoothMic] has the costs. The first capture waits for the
+     * link ([awaitBluetoothMicReady]); every exit path's [exitCallAudio] takes it down.
+     */
+    private fun prepareBluetoothMic() {
+        val route = CallAudioMode.route(audioManager)
+        val wanted = BluetoothMic.wanted(
+            settingOn = VoiceTurnSettings.bluetoothMic(appContext),
+            route = route,
+            inCall = TelephonyController.isInCall,
+            handsFreeAvailable = CallAudioMode.handsFreeAvailable(audioManager),
+        )
+        if (!wanted) return
+        val mode = callAudio ?: CallAudioMode(audioManager).also { callAudio = it }
+        if (mode.isActive) return
+        LiveLatency.log(TurnTaker.BARGE_TAG, "bluetooth mic: ${mode.enterBluetooth()} route=$route")
+        if (mode.onBluetoothMic) {
+            bluetoothMicPending = true
+            rebuildTrack()
+        }
+    }
+
+    /** Set when the hands-free link was just requested; the next capture waits for it to route. */
+    @Volatile private var bluetoothMicPending = false
+
+    /** Waits up to [BluetoothMic.SCO_SETTLE_MS] for the hands-free link to carry the route. */
+    private suspend fun awaitBluetoothMicReady() {
+        if (!bluetoothMicPending) return
+        bluetoothMicPending = false
+        val deadline = System.currentTimeMillis() + BluetoothMic.SCO_SETTLE_MS
+        while (System.currentTimeMillis() < deadline && !CallAudioMode.handsFreeRouted(audioManager)) {
+            delay(PLAYBACK_DRAIN_POLL_MS)
+        }
+        LiveLatency.log(TurnTaker.BARGE_TAG, "bluetooth mic routed=${CallAudioMode.handsFreeRouted(audioManager)}")
+    }
+
     /** A Bluetooth device appearing mid-conversation turns barge-in off for the session (v1 ruling). */
     private fun registerRouteWatch() {
         if (routeCallback != null) return
@@ -2754,6 +2795,7 @@ class GeminiLiveSession(
                         // short. Wait for the playback head to actually catch up
                         // instead of guessing (see awaitPlaybackDrained).
                         if (everCaptured) awaitPlaybackDrained()
+                        awaitBluetoothMicReady()
                         record.startRecording()
                         everCaptured = true
                         recording = true
