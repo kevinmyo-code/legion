@@ -9,7 +9,8 @@ import kotlin.math.roundToInt
 /**
  * [FieldUiState] in words: the screen's clock and age lines, and the field readout spoken through
  * `get_current_location` (round 5 voice path, `service/FieldToolbox.kt`). Every figure is the
- * phone's own; with no fix or no compass it says so rather than guessing.
+ * phone's own; with no fix or no compass it says so rather than guessing. The voice path takes the
+ * app's usual fix (`LocationController`, which may be fused); the Field screen is GPS only.
  */
 object FieldVoice {
     private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
@@ -48,7 +49,7 @@ object FieldVoice {
         compassWords(state),
         skyWords(state, zone),
         waypointWords(state, maxWaypoints),
-        "All of this is from the phone's own sensors and maths, no network.",
+        "Heading, grid, sun and moon are worked out on the phone, no network.",
     ).filter { it.isNotBlank() }.joinToString(" ")
 
     private fun positionWords(state: FieldUiState): String {

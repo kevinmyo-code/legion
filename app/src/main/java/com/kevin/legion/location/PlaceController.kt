@@ -45,6 +45,10 @@ import com.kevin.legion.notes.NotesController
  *   [com.kevin.legion.engine.RecordStore] or `engineRecordDao()` at all** - the engine's Place
  *   records are left exactly where they are (ticket 15: nothing is deleted until every aspect is
  *   repointed and soaked), just no longer read or written from here.
+ *
+ * **One exception to write-through (round 5, 2026-11-10, `memory/library/decisions.md`):** a waypoint
+ * marked on the Field screen queues in `sync_outbox` first (`field/FieldWaypoints.kt`) and reaches this
+ * controller through [savePlaceAt] when the engine answers. Every other caller is still write-through.
  */
 object PlaceController {
     private const val TAG = "PlaceController"
