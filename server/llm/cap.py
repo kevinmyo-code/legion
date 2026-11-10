@@ -32,6 +32,10 @@ from llm import client
 
 LIVE_MINT_FEATURE = "live_mint"
 DEFAULT_MINT_COST_USD = "0.50"
+# Named constants so `tools/tests/test_ship.py` can see that the server reads what `_common.py`
+# passes (it scans for `os.environ.get("X")` or a `*ENV* = "X"` constant).
+CAP_ENV = "LEGION_MEMBER_DAILY_CAP"
+MINT_COST_ENV = "LEGION_MEMBER_MINT_COST_USD"
 USED_UP = (
     "Today's assistant spend limit for your account is used up, so no conversation was "
     "started. It resets at midnight UTC."
@@ -56,12 +60,12 @@ def _micro_usd(name: str, default: str) -> int:
 
 def cap_micro_usd() -> int | None:
     """The cap in micro-dollars, or None when the cap is off."""
-    cap = _micro_usd("LEGION_MEMBER_DAILY_CAP", "0")
+    cap = _micro_usd(CAP_ENV, "0")
     return cap or None
 
 
 def mint_cost_micro_usd() -> int:
-    return _micro_usd("LEGION_MEMBER_MINT_COST_USD", DEFAULT_MINT_COST_USD)
+    return _micro_usd(MINT_COST_ENV, DEFAULT_MINT_COST_USD)
 
 
 def applies_to(user) -> bool:

@@ -1,0 +1,47 @@
+# Feature switches for the Cloud Run service AND the legion-worker job, versioned with the code.
+#
+# `deploy/ship.py` reads this file from the commit it ships (so a flag change is a reviewed
+# commit, not an edit to an untracked `.env` on one laptop). NON-SECRET values only: a secret is
+# named here by its Secret Manager name and never has a value anywhere in git.
+#
+# Site configuration (ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS, MEDIA_ROOT, bucket names, VAPID keys,
+# the project id) stays in the gitignored `deploy/cloudrun/.env`: it is per engine, and part of
+# it is a person's contact address. A name may live in one file or the other, never both with
+# different values (ship.py stops on a clash).
+#
+# Each entry is one of:
+#   NAME: "value"          set on the service and the job.
+#   NAME: null             must be UNSET on both (ship.py stops if .env sets it).
+#   NAME: {value: "...", secret: SECRET_NAME, readme: "README section"}
+#                          set only when SECRET_NAME exists and the runtime service account can
+#                          read it; otherwise the switch stays off and ship.py prints what is owed.
+#
+# `tools/tests/test_ship.py` checks every name here is read by the server (settings.py, the module
+# that owns it, or entrypoint.sh) and passed to Cloud Run by `_common.py`.
+flags:
+  # engine-mcp ticket 10: the /mcp endpoint.
+  LEGION_MCP: "on"
+  # memory-review (2026-11-09): the nightly review applies gated changes.
+  LEGION_MEMORY_REVIEW: "on"
+  # open loops (ADR 0085), Kevin 2026-11-10: on at ship.
+  LEGION_OPEN_LOOPS: "on"
+  # Worker workflows: no unattended run on the work laptop. Must stay unset (off).
+  LEGION_WORKFLOW_SCHEDULES_LISTED: null
+  # Round 5, read-only GitHub status. Mounts LEGION_GITHUB_TOKEN.
+  LEGION_GITHUB_REPOS:
+    value: "kevinmyo-code/legion"
+    secret: LEGION_GITHUB_TOKEN
+    readme: "GitHub status"
+  # Round 5 conditions. Each mounts its key.
+  LEGION_FIRMS:
+    value: "on"
+    secret: LEGION_FIRMS_MAP_KEY
+    readme: "Conditions keys"
+  LEGION_DRIVETEXAS:
+    value: "on"
+    secret: LEGION_DRIVETEXAS_KEY
+    readme: "Conditions keys"
+  # Upgrade #3: skip `migrate` on service boot. ship.py migrates as a job step before the service
+  # deploy, so this is safe to turn on ("1") once the engine change lands. Unset (null) keeps the
+  # boot-time migrate, which is a no-op after ship.py's step.
+  LEGION_SKIP_MIGRATE: null

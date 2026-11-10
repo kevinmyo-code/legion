@@ -29,6 +29,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 import re
 from pathlib import Path
 
@@ -80,6 +82,49 @@ def parse_crontab(path: Path) -> list[tuple[str, str]]:
 
 def scheduler_job_name(prefix: str, task: str) -> str:
     return f"{prefix}-{task}".replace("_", "-")
+
+
+def invoker_bound(gcloud: str, job: str, region: str, account: str) -> bool:
+    """True when `account` already holds roles/run.invoker on the job (a read, no change)."""
+    got = capture(
+        [gcloud, "run", "jobs", "get-iam-policy", job, "--region", region, "--format", "json"]
+    )
+    if got.returncode != 0:
+        return False
+    try:
+        policy = json.loads(got.stdout or "{}")
+    except ValueError:
+        return False
+    member = f"serviceAccount:{account}"
+    return any(
+        b.get("role") == "roles/run.invoker" and member in b.get("members", [])
+        for b in policy.get("bindings", [])
+    )
+
+
+def describe_scheduler_job(gcloud: str, name: str, region: str) -> dict | None:
+    """The three fields this script sets on one Scheduler job, or None when it does not exist."""
+    got = capture(
+        [gcloud, "scheduler", "jobs", "describe", name, "--location", region, "--format", "json"]
+    )
+    if got.returncode != 0:
+        return None
+    try:
+        job = json.loads(got.stdout or "{}")
+    except ValueError:
+        return None
+    return scheduler_fields(job)
+
+
+def scheduler_fields(job: dict) -> dict:
+    """schedule, uri and decoded body of a described Scheduler job (the API returns base64)."""
+    target = job.get("httpTarget") or {}
+    raw = target.get("body") or ""
+    try:
+        body = base64.b64decode(raw, validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        body = raw
+    return {"schedule": job.get("schedule", ""), "uri": target.get("uri", ""), "body": body}
 
 
 def main() -> int:
@@ -161,16 +206,19 @@ def main() -> int:
             die(f"Could not resolve the project number for {project!r}: {described.stderr.strip()}")
         account = f"{described.stdout.strip()}-compute@developer.gserviceaccount.com"
 
-    print(f"\nGranting {account} permission to run {args.job} ...")
-    run(
-        [
-            gcloud, "run", "jobs", "add-iam-policy-binding", args.job,
-            "--region", region,
-            f"--member=serviceAccount:{account}",
-            "--role=roles/run.invoker", "--quiet",
-        ],
-        args.dry_run,
-    )
+    print(f"\nGranting {account} permission to run {args.job} (only if it lacks it) ...")
+    if not args.dry_run and invoker_bound(gcloud, args.job, region, account):
+        print(f"{account} already has roles/run.invoker on {args.job}; nothing to grant.")
+    else:
+        run(
+            [
+                gcloud, "run", "jobs", "add-iam-policy-binding", args.job,
+                "--region", region,
+                f"--member=serviceAccount:{account}",
+                "--role=roles/run.invoker", "--quiet",
+            ],
+            args.dry_run,
+        )
 
     for schedule, task in entries:
         name = scheduler_job_name(prefix, task)
@@ -184,38 +232,30 @@ def main() -> int:
         # line without deploy_job.py needing to know the task list.
         body = f'{{"overrides":{{"containerOverrides":[{{"args":["manage.py","{task}"]}}]}}}}'
         print(f"\nScheduling {name}: '{schedule}' -> manage.py {task}")
-        code = run(
-            [
-                gcloud, "scheduler", "jobs", "create", "http", name,
-                "--location", region,
-                "--schedule", schedule,
-                "--uri", uri,
-                "--http-method", "POST",
-                "--message-body", body,
-                f"--oauth-service-account-email={account}",
-                "--attempt-deadline", "60s",
-                "--quiet",
-            ],
-            args.dry_run,
-        )
-        if code != 0 and not args.dry_run:
-            # Create fails if the job already exists; retry as an update.
-            # No "does it exist" pre-check needed here the way deploy.py
-            # does one for Artifact Registry - `scheduler jobs create`
-            # failing with ALREADY_EXISTS is itself the signal to update.
-            code = run(
-                [
-                    gcloud, "scheduler", "jobs", "update", "http", name,
-                    "--location", region,
-                    "--schedule", schedule,
-                    "--uri", uri,
-                    "--http-method", "POST",
-                    "--message-body", body,
-                    "--attempt-deadline", "60s",
-                    "--quiet",
-                ],
-                False,
-            )
+        # Describe first, then create only what is missing and update only what differs. The old
+        # "create, and on failure update" printed an ALREADY_EXISTS error for every existing line
+        # on every ship, which buried a real failure among a dozen expected ones.
+        existing = None if args.dry_run else describe_scheduler_job(gcloud, name, region)
+        if existing is not None and existing == {"schedule": schedule, "uri": uri, "body": body}:
+            print(f"{name}: unchanged")
+            continue
+        if args.dry_run:
+            verb = "create-or-update"
+        else:
+            verb = "update" if existing is not None else "create"
+        command = [
+            gcloud, "scheduler", "jobs", "update" if verb == "update" else "create", "http", name,
+            "--location", region,
+            "--schedule", schedule,
+            "--uri", uri,
+            "--http-method", "POST",
+            "--message-body", body,
+        ]
+        if verb != "update":
+            command.append(f"--oauth-service-account-email={account}")
+        command += ["--attempt-deadline", "60s", "--quiet"]
+        print(f"{name}: {verb}")
+        code = run(command, args.dry_run)
         if code != 0:
             die(f"Could not schedule {name}. Nothing after this line was scheduled either.")
 

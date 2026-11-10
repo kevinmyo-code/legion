@@ -103,6 +103,42 @@ def image_uri(project: str, region: str, tag: str) -> str:
     return f"{region}-docker.pkg.dev/{project}/{ARTIFACT_REPO}/server:{tag}"
 
 
+def service_deploy_command(
+    gcloud: str, service: str, image: str, region: str, max_instances: int,
+    secrets_value: str, env_file: str | None = None, labels: dict[str, str] | None = None,
+    concurrency: int | None = None,
+) -> list[str]:
+    """The one `gcloud run deploy` line for the service. `deploy/ship.py` builds its deploy from
+    this too, so a change to memory, timeout or concurrency here reaches both doors at once.
+    `max_instances` and `concurrency` come from `connection_plan` (gunicorn workers x threads)."""
+    command = [
+        gcloud, "run", "deploy", service,
+        "--image", image,
+        "--region", region,
+        "--platform", "managed",
+        # Auth is Django's own device-token header (household/authentication.py),
+        # not IAM - the whole point is a stranger's phone can talk to their
+        # own deploy without being added as a GCP principal.
+        "--allow-unauthenticated",
+        "--memory", "512Mi",
+        "--cpu", "1",
+        "--min-instances", "0",
+        "--max-instances", str(max_instances),
+        "--timeout", str(REQUEST_TIMEOUT_SECONDS),
+    ]
+    if concurrency is not None:
+        command += ["--concurrency", str(concurrency)]
+    command += [
+        "--quiet",
+        "--set-secrets", secrets_value,
+    ]
+    if env_file is not None:
+        command += ["--env-vars-file", env_file]
+    if labels:
+        command += ["--update-labels", ",".join(f"{k}={v}" for k, v in labels.items())]
+    return command
+
+
 def build_commands(gcloud: str, docker, image: str, build_with: str) -> list[list[str]]:
     """The command(s) that produce `image` in Artifact Registry. Returned
     as a list rather than run inline so --dry-run can print every one of
@@ -236,24 +272,11 @@ def main() -> int:
 
     print(f"\nDeploying {args.service} to {region} ...")
     try:
-        deploy_command = [
-            gcloud, "run", "deploy", args.service,
-            "--image", image,
-            "--region", region,
-            "--platform", "managed",
-            # Auth is Django's own device-token header (household/authentication.py),
-            # not IAM - the whole point is a stranger's phone can talk to their
-            # own deploy without being added as a GCP principal.
-            "--allow-unauthenticated",
-            "--memory", "512Mi",
-            "--cpu", "1",
-            "--min-instances", "0",
-            "--max-instances", str(max_instances),
-            "--timeout", str(REQUEST_TIMEOUT_SECONDS),
-            "--concurrency", str(concurrency),
-            "--quiet",
-            "--set-secrets", secrets_flag_value(secret_names_for(cloud_env)),
-        ]
+        deploy_command = service_deploy_command(
+            gcloud, args.service, image, region, max_instances,
+            secrets_flag_value(secret_names_for(cloud_env)),
+            concurrency=concurrency,
+        )
         if not args.dry_run:
             deploy_command += ["--env-vars-file", str(env_file)]
         else:

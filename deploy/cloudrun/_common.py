@@ -90,7 +90,8 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # unattended run on the work laptop). Not listed here, a line in `.env` never reached Cloud Run.
 # Engine runtime upgrade (architecture review 2026-11-10, items 3, 4, 5, 12, 15; Q9):
 # LEGION_SKIP_MIGRATE=1 skips `migrate` on container start (`server/entrypoint.sh`); keep it OUT
-#   of `.env` until the ship flow runs migrate as a job execution before the service deploy.
+#   of `.env` until the ship flow runs migrate as a job execution before the service deploy
+#   (`deploy/ship.py` does; then set it in `flags.yaml`, never by hand on one revision).
 # LEGION_CONN_MAX_AGE: seconds a thread keeps its database connection (unset 60; 0 = per request).
 # GOOGLE_CLOUD_PROJECT: already in `.env` for these scripts; passed through so the engine's JSON
 #   logs can name `logging.googleapis.com/trace` (unset: logs carry no trace link).
