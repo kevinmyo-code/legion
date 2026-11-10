@@ -151,3 +151,26 @@ def test_main_rereads_a_saved_pull_without_gcloud(tmp_path, capsys):
     saved.write_text("\n".join(LINES) + "\n", encoding="utf-8")
     assert pa.main(["--file", str(saved)]) == 0
     assert "Sunny." in capsys.readouterr().out
+
+
+def test_gcloud_runs_in_utf8_mode_so_non_ascii_survives_a_windows_pipe():
+    # Phone audit 2026-11-10: a plain gcloud read on Windows turned every non-ASCII character
+    # into "?"; Python's UTF-8 mode in gcloud's environment keeps them.
+    env = pa.gcloud_env({"PATH": "/bin", "PYTHONIOENCODING": "cp1252"})
+    assert env["PYTHONUTF8"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    assert env["PATH"] == "/bin"
+
+
+def test_every_gcloud_call_gets_that_environment(monkeypatch):
+    seen = []
+
+    def fake_run(*args, **kwargs):
+        seen.append(kwargs.get("env"))
+        return pa.subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(pa.subprocess, "run", fake_run)
+    pa._run(["gcloud", "logging", "read", "x"])
+    pa._run(["gcloud.cmd", "logging", "read", "x"])
+    assert len(seen) == 2
+    assert all(e is not None and e["PYTHONUTF8"] == "1" for e in seen)

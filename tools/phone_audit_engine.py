@@ -209,6 +209,21 @@ def _gcloud() -> str:
     return found
 
 
+def gcloud_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment gcloud runs in: the caller's, with Python's UTF-8 mode on.
+
+    gcloud is a Python program. On Windows, writing to a pipe, it encodes its output in the
+    console code page and turns every character outside it into "?" (phone audit 2026-11-10:
+    the same Cloud Logging entry read back with 16 "?" and no non-ASCII character, and with
+    PYTHONUTF8=1 with the 16 characters and no "?"). The engine stores the text correctly; only
+    the read lost it. The `--b64` pulls are immune, a plain `--render` pull is not.
+    """
+    env = dict(os.environ if base is None else base)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def _run(command: list[str]) -> subprocess.CompletedProcess:
     if os.name == "nt" and command[0].lower().endswith(".cmd"):
         return subprocess.run(
@@ -219,9 +234,16 @@ def _run(command: list[str]) -> subprocess.CompletedProcess:
             encoding="utf-8",
             errors="replace",
             check=False,
+            env=gcloud_env(),
         )
     return subprocess.run(
-        command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        env=gcloud_env(),
     )
 
 

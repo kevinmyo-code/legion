@@ -39,6 +39,11 @@ Against the deployed engine (Cloud Run Job, see `deploy/cloudrun/README.md`):
     gcloud run jobs execute legion-worker --region us-south1 --wait \\
         --args=manage.py,device_logs,--last,3
     gcloud run jobs executions logs ...   # or read the execution's log output
+
+Reading that output on Windows, run gcloud with `PYTHONUTF8=1` (and `PYTHONIOENCODING=utf-8`):
+gcloud is a Python program, and writing to a pipe in the console code page it prints every
+character outside it as "?" (other-language turns, dashes, a middle dot). The stored text is
+UTF-8 and correct; only that read loses it (phone audit 2026-11-10).
 """
 
 from __future__ import annotations
