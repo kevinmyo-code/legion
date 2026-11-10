@@ -238,6 +238,14 @@ ACTIVITIES = {
                                          "moon and turnaround. Its own app drawer entry, \"Field\".",
                                     parent="apps", reach=[("text", "Field")], voice=["get_current_location"],
                                     needs="real sensors: the compass and GPS do nothing on an emulator"),
+    ".ui.typeset.BreathActivity": dict(id="breathe", name="Breathe",
+                                       what="Box breathing, full screen (Kevin, 2026-11-10, ADR 0081): an ink "
+                                            "dot traces the square, 4 s a side, the phase in words and the "
+                                            "count. Opened only by a tap: the front page's Breathe line, or "
+                                            "\"Breathe instead\" on the blocked-feed screen. A tap anywhere "
+                                            "or Back ends it. No streak, no count, no reminder.",
+                                       parent="home", reach=[("text", "Breathe")],
+                                       needs="nothing; it is all on the phone"),
     ".ui.claudesession.ClaudePageActivity": dict(id="claude-page", name="Claude page",
                                                  what="A page a Claude session task delivered to the phone "
                                                       "(signed, sandboxed). Opened from a task on the Claude "
