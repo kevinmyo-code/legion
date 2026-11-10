@@ -49,6 +49,26 @@ class FakeClaudeBackend : ClaudeSessionBackend {
         return receivedOut
     }
 
+    var whereOut: ClaudeOutcome<List<ClaudeTask>> = ClaudeOutcome.Ok(emptyList())
+    val whereAsked = mutableListOf<Pair<String, String>>()
+    var workflowsOut: ClaudeOutcome<List<ClaudeWorkflow>> = ClaudeOutcome.Ok(emptyList())
+    var runOut: (String?, String, String?) -> ClaudeOutcome<ClaudeCreated> = { m, name, _ ->
+        ClaudeOutcome.Ok(ClaudeCreated(42, ClaudeTask.QUEUED, m?.let { ClaudeMachineRef(it, "idle", NOW) }, name))
+    }
+    val runs = mutableListOf<Triple<String?, String, String?>>()
+
+    override suspend fun tasksWhere(origin: String, status: String, limit: Int): ClaudeOutcome<List<ClaudeTask>> {
+        whereAsked += origin to status
+        return whereOut
+    }
+
+    override suspend fun workflows() = workflowsOut
+
+    override suspend fun runWorkflow(machine: String?, name: String, params: String?): ClaudeOutcome<ClaudeCreated> {
+        runs += Triple(machine, name, params)
+        return runOut(machine, name, params)
+    }
+
     fun machines(vararg m: ClaudeMachine) {
         statusOut = ClaudeOutcome.Ok(ClaudeStatus(m.toList(), emptyList()))
     }
@@ -63,7 +83,8 @@ class FakeClaudeBackend : ClaudeSessionBackend {
             lastSeen: Instant? = NOW,
             running: List<Int> = emptyList(),
             progress: Map<Int, String> = emptyMap(),
-        ) = ClaudeMachine(name, scope, state, lastSeen, running, progress)
+            workflows: List<ClaudeWorkflowName> = emptyList(),
+        ) = ClaudeMachine(name, scope, state, lastSeen, running, progress, workflows)
 
         fun task(
             id: Int,
@@ -76,10 +97,15 @@ class FakeClaudeBackend : ClaudeSessionBackend {
             request: String = "find the AW4 wiring PDF in my downloads",
             deliver: String? = null,
             finishedAt: Instant? = null,
+            origin: String = "named",
+            kind: String = ClaudeTask.KIND_ASK,
+            workflow: String? = null,
+            parent: Int? = null,
         ) = ClaudeTask(
             id = id, request = request, machine = machine, status = status, summary = summary,
-            question = question, createdAt = NOW, finishedAt = finishedAt, files = files, parent = null,
-            origin = "named", deliver = deliver, confirms = false, progress = progress, progressAt = null,
+            question = question, createdAt = NOW, finishedAt = finishedAt, files = files, parent = parent,
+            origin = origin, deliver = deliver, confirms = false, progress = progress, progressAt = null,
+            kind = kind, workflow = workflow,
         )
     }
 }

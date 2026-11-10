@@ -72,7 +72,26 @@ class ClaudeSessionViewModel(
                     it.copy(loading = false, unavailable = ClaudeWording.failed(out, "read the Claude session"))
                 }
             }
+            if (out is ClaudeOutcome.Ok) loadWorkflows()
         }
+    }
+
+    private suspend fun loadWorkflows() {
+        when (val w = controller.workflows()) {
+            is ClaudeOutcome.Ok -> _state.update {
+                it.copy(workflows = ClaudeWorkflowRows.rows(w.value, controller.wording), workflowsNote = null)
+            }
+            else -> _state.update { it.copy(workflowsNote = ClaudeWording.failed(w, "read the workflows")) }
+        }
+    }
+
+    fun setWorkflowParams(key: String, text: String) =
+        _state.update { it.copy(workflowParams = it.workflowParams + (key to text)) }
+
+    /** The Run button: the same controller call as `action: "workflow"` (ADR 0035), by exact name. */
+    fun runWorkflow(machine: String, name: String) {
+        val params = _state.value.workflowParams["$machine/$name"]
+        act(clearDraft = false) { controller.runWorkflow(name, machine, params = params, byName = true) }
     }
 
     fun setDraft(text: String) = _state.update { it.copy(draft = text, message = null) }

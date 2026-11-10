@@ -62,9 +62,30 @@ object ClaudeResultPolling {
         shelf = ClaudeFileStore(app),
         openFiles = { id -> openOrNotify(app, id) },
         filesReady = { id, text -> announce(app, id, text, "", ClaudeFileActivity.pendingIntent(app, id)) },
-        // ADR 0083: standing watches ride this loop (no loop of their own).
-        alsoEachTick = { com.kevin.legion.watches.WatchPolling.poller(app).maybePoll() },
+        // ADR 0083: standing watches ride this loop (no loop of their own). Worker-workflows
+        // ticket 06: so do scheduled runs waiting on his yes. One failing never skips the other.
+        alsoEachTick = {
+            val scheduled = scheduledQuestions(app)
+            try {
+                com.kevin.legion.watches.WatchPolling.poller(app).maybePoll()
+            } finally {
+                scheduled.maybePoll()
+            }
+        },
     )
+
+    @Volatile private var scheduled: ScheduledQuestionPoller? = null
+
+    /** The ONE [ScheduledQuestionPoller] for the process (its cadence lives in the instance). */
+    private fun scheduledQuestions(app: Context): ScheduledQuestionPoller =
+        scheduled ?: synchronized(this) {
+            scheduled ?: ScheduledQuestionPoller(
+                controller = { ClaudeSessionController.forContext(app) },
+                seen = ScheduledQuestionSeenStore(app),
+                watch = ClaudeWatchStore(app),
+                announce = { id, text, hint -> announce(app, id, text, hint) },
+            ).also { scheduled = it }
+        }
 
     /**
      * Opens task [taskId]'s delivered files over LEGION, only while one of LEGION's screens is in

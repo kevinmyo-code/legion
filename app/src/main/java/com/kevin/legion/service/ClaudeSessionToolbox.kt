@@ -10,6 +10,7 @@ import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.claude.ClaudeTaskDraft
 import com.kevin.legion.claude.ClaudeWatch
 import com.kevin.legion.claude.ClaudeWatchStore
+import com.kevin.legion.claude.ClaudeWorkflowWording
 import com.kevin.legion.claude.ClaudeWording
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,7 +45,8 @@ object ClaudeSessionToolbox {
     internal var modalFactory: (Context) -> ClaudeModalHolder = ClaudeModalHolder::get
 
     private const val DESCRIPTION =
-        "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; check only " +
+        "Kevin's Claude session on his laptops (Alienware, work laptop). send queues a task; workflow runs " +
+            "one check lists; check only " +
             "reads results already in; \"ask Claude to...\" is always a new send; answer follows up a " +
             "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
             "send_file only on his yes to a found file; open_page opens a task's page on his yes; quiet/unquiet stop/restart " +
@@ -60,7 +62,9 @@ object ClaudeSessionToolbox {
                     prop(
                         "string",
                         null,
-                        listOf("send", "check", "answer", "assign", "send_file", "open_page", "quiet", "unquiet"),
+                        listOf(
+                            "send", "workflow", "check", "answer", "assign", "send_file", "open_page", "quiet", "unquiet",
+                        ),
                     ),
                 )
                 .put("request", prop("string", "The task, or the follow-up, in his words."))
@@ -92,14 +96,34 @@ object ClaudeSessionToolbox {
             .apply { if (description != null) put("description", description) }
             .apply { if (enum != null) put("enum", JSONArray(enum)) }
 
-    /** Null when [name] is not this tool, so [LiveToolbox.dispatch] can fall through. */
+    /**
+     * Null when [name] is not this tool, so [LiveToolbox.dispatch] can fall through.
+     *
+     * [touchedReadThroughToolThisTurn] is the turn's read-through flag (mail, web, GitHub text, a
+     * camera look, the turn after a spoken brief or mail line), the one [WatchesToolbox] and
+     * `remember` check through [LiveToolbox.rememberBlockedByReadThroughTool]. Starting a workflow is
+     * a durable outward action (it runs Claude on the laptop, may mail Kevin and may come back on a
+     * schedule's questions), so text other people wrote must never be able to start one: `workflow`
+     * is refused in such a turn before anything is sent.
+     */
     @Suppress("CyclomaticComplexMethod") // one branch per action, each a one-line call to the controller
-    suspend fun dispatch(context: Context, name: String, args: JSONObject): JSONObject? {
+    suspend fun dispatch(
+        context: Context,
+        name: String,
+        args: JSONObject,
+        touchedReadThroughToolThisTurn: Boolean = false,
+    ): JSONObject? {
         if (name != TOOL_NAME) return null
+        val action = args.optString("action")
+        val readThrough = LiveToolbox.rememberBlockedByReadThroughTool(touchedReadThroughToolThisTurn)
+        if (action in READ_THROUGH_GUARDED && readThrough) return result(false, READ_THROUGH_REFUSAL)
         val c = controllerFactory(context)
         val taskId = args.optInt("task_id", 0)
         val shown = { out: ClaudeSendResult -> sendResult(showDialog(context, out)) }
-        return when (args.optString("action")) {
+        return when (action) {
+            "workflow" -> shown(
+                c.runWorkflow(phrase = args.optString("request"), machine = args.optString("machine").ifBlank { null }),
+            )
             "send" -> shown(
                 c.send(
                     request = args.optString("request"),
@@ -114,7 +138,12 @@ object ClaudeSessionToolbox {
                     files = args.optBoolean("files", false),
                 ),
             )
-            "check" -> check(c, args.optString("machine").ifBlank { null }, watchFactory(context))
+            "check" -> check(
+                c,
+                args.optString("machine").ifBlank { null },
+                watchFactory(context),
+                question = args.optString("request"),
+            )
             "answer" -> needsTask(taskId) ?: shown(
                 c.answer(taskId, args.optString("request"), args.optBoolean("yes", false), args.optBoolean("email_me")),
             )
@@ -131,9 +160,19 @@ object ClaudeSessionToolbox {
                 watchFactory(context).setAnnouncements(true)
                 result(true, "Result announcements are on again.")
             }
-            else -> result(false, "Say whether to send, check, answer, assign or send a file. Nothing was sent.")
+            else -> result(
+                false,
+                "Say whether to send, run a workflow, check, answer, assign or send a file. Nothing was sent.",
+            )
         }
     }
+
+    /** The actions a read-through turn may not take: each starts Claude work on a laptop. */
+    private val READ_THROUGH_GUARDED = setOf("workflow")
+
+    internal const val READ_THROUGH_REFUSAL =
+        "Nothing was started. I don't start a Claude workflow in the same breath as reading mail, a web page, " +
+            "the camera or a spoken brief, on purpose. Ask me again in your own words."
 
     /**
      * A task the engine now holds (sent, queued, or waiting for a machine) opens the task dialog
@@ -169,7 +208,12 @@ object ClaudeSessionToolbox {
      * the check spoke task 6's result and the watcher's queued note spoke it a second time).
      */
     @Suppress("ReturnCount") // unreadable, no machine ever, or the answer
-    private suspend fun check(c: ClaudeSessionController, machine: String?, watch: ClaudeWatch): JSONObject {
+    private suspend fun check(
+        c: ClaudeSessionController,
+        machine: String?,
+        watch: ClaudeWatch,
+        question: String = "",
+    ): JSONObject {
         val overview = c.overview()
         if (overview !is ClaudeOutcome.Ok) {
             return result(false, ClaudeWording.failed(overview, "read the Claude session"))
@@ -180,6 +224,10 @@ object ClaudeSessionToolbox {
         if (o.status.machines.isEmpty()) return result(true, ClaudeWording.NO_MACHINE_EVER.substringBefore(","))
         val lines = mutableListOf<String>()
         machines.forEach { lines += c.wording.machineLine(it) }
+        // Worker workflows (ticket 06): names per online machine; "what does log audit do?" is
+        // answered from the same list (the one-liner of each workflow the question names).
+        machines.filter { it.isOnline }.forEach { m -> ClaudeWorkflowWording.checkLine(m)?.let { lines += it } }
+        lines += ClaudeWorkflowWording.describe(question, machines)
         val tasks = o.tasks.filter { wanted(it.machine) }.take(CHECK_TASKS)
         if (tasks.isEmpty()) lines += "No tasks yet."
         tasks.forEach { t ->
