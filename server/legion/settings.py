@@ -91,6 +91,19 @@ CSRF_TRUSTED_ORIGINS = [
 # directly; there is no second hop it could be spoofed at.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# Web hardening (architecture review 2026-11-10, item 5). Cookies only over HTTPS and HSTS,
+# both only with DEBUG off: compose's local dev loop is plain HTTP on localhost, where a
+# Secure cookie is never sent back and login would silently fail. HSTS starts at one hour
+# (no includeSubDomains, no preload), so a mistake costs an hour, not a year; raise it once
+# a week of it has run clean. nosniff and DENY hold everywhere. A response that sets its
+# own X-Frame-Options (the /try report asset, SAMEORIGIN) keeps it: Django's
+# XFrameOptionsMiddleware never overrides one.
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 0 if DEBUG else 3600
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -267,6 +280,9 @@ MIDDLEWARE = [
     # Engine logging upgrade (architecture review 2026-11-10, item 4): first, so every log
     # line of the request, including a 5xx from any middleware below, carries its id and trace.
     "legion.log.RequestIdMiddleware",
+    # Web hardening (item 5): outside everything that builds a response, so WhiteNoise's and
+    # the SPA shell's responses get the policy too. `legion/csp.py` says why each source is there.
+    "legion.csp.ContentSecurityPolicyMiddleware",
     "django.middleware.security.SecurityMiddleware",
     # Immediately after SecurityMiddleware, which is where WhiteNoise's own
     # documentation puts it and the position matters in both directions: after,
