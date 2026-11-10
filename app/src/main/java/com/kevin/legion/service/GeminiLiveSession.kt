@@ -42,6 +42,7 @@ import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.HoldingLineWatch
+import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.RefusalWatch
 import com.kevin.legion.service.turn.StillCheckingNudge
 import com.kevin.legion.service.turn.TurnConfig
@@ -93,7 +94,7 @@ sealed interface LiveEvent {
      * fix for "shows Listening but the mic is shut" (same defect shape as 57ed400's
      * Phase.THINKING fix, a UI phase claiming one thing while the code does another). Real
      * capture sits behind [awaitPlaybackDrained], which can run up to
-     * PLAYBACK_DRAIN_TIMEOUT_MS + MIC_REOPEN_SETTLE_MS (~1.56s) after [TurnComplete] fires -
+     * PLAYBACK_DRAIN_TIMEOUT_MS + MicReopen.settleMs (~1.56s, ~2.2s on Bluetooth) after [TurnComplete] fires -
      * an owner that flips to "Listening..." on TurnComplete itself is lying to the driver for
      * up to that long, and keeps lying indefinitely if capture then dies silently. The owner
      * should gate any "Listening" UI state on THIS event, not on TurnComplete.
@@ -3239,8 +3240,9 @@ class GeminiLiveSession(
             delay(PLAYBACK_DRAIN_POLL_MS)
         }
         // Small settle after the last sample lands - the HAL needs a beat to release
-        // the output path before capture opens on units that share it.
-        delay(MIC_REOPEN_SETTLE_MS)
+        // the output path before capture opens on units that share it. Longer on Bluetooth,
+        // whose sink is still playing its own buffer ([MicReopen], phone audit 2026-11-10).
+        delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
     }
 
     // --- Navigation turn cues (mapbox-nav tickets 05 and 11) -----------------------------------
@@ -3928,10 +3930,6 @@ class GeminiLiveSession(
         private const val NUDGE_TICK_MS = 250L
         /** Turn-taking notices already said in words this process ([announceOnce]). */
         private val ANNOUNCED: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
-        // Settle after playback has actually drained, before capture opens. Small
-        // on purpose - awaitPlaybackDrained already waited for the real tail, this
-        // is just a beat for the HAL to release the output path.
-        private const val MIC_REOPEN_SETTLE_MS = 60L
         // Mono PCM16 output: 2 bytes per frame.
         private const val BYTES_PER_FRAME = 2
         // Upper bound on waiting for playback to drain, so a stalled AudioTrack

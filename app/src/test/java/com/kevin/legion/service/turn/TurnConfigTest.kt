@@ -44,4 +44,13 @@ class TurnConfigTest {
         assertFalse(c.manualActivity)
         assertTrue(c.bargeIn)
     }
+
+    // Phone audit 2026-11-10: on Bluetooth the tail of a reply was heard as the user's turn.
+    @Test
+    fun `the mic waits out a Bluetooth sink's own buffer before it reopens`() {
+        assertEquals(MicReopen.BLUETOOTH_TAIL_MS, MicReopen.settleMs(AudioRoute.BLUETOOTH))
+        assertTrue(MicReopen.settleMs(AudioRoute.BLUETOOTH) >= 500L)
+        assertEquals(MicReopen.SETTLE_MS, MicReopen.settleMs(AudioRoute.PHONE_SPEAKER))
+        assertEquals(MicReopen.SETTLE_MS, MicReopen.settleMs(AudioRoute.WIRED_HEADSET))
+    }
 }

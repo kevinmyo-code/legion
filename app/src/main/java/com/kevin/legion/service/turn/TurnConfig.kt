@@ -112,3 +112,25 @@ object VoiceTurnSettings {
     fun setKeepConversationLog(context: Context, on: Boolean) =
         prefs(context).edit().putBoolean(KEY_KEEP_CONVERSATION_LOG, on).apply()
 }
+
+/**
+ * How long the half-duplex mic waits after Alfred's playback has drained before it opens again.
+ *
+ * Phone audit 2026-11-10: on a Bluetooth route (server VAD, half-duplex) the last words of a reply
+ * came back as the user's turn twice, two seconds after the reply: "on Spotify" after "Playing ...
+ * on Spotify.", and a mishearing of a two-word song title after it was named. The AudioTrack's head
+ * position says the phone has handed the reply over, but a Bluetooth sink (a car, a headset) is
+ * still playing its own buffer for a few hundred milliseconds, and the open mic hears that tail.
+ * The phone speaker and a wired headset keep the short settle they had.
+ */
+internal object MicReopen {
+    const val SETTLE_MS = 60L
+
+    /** A2DP and car head units buffer about 150 to 500 ms past the head position; a margin on top. */
+    const val BLUETOOTH_TAIL_MS = 700L
+
+    fun settleMs(route: AudioRoute): Long = when (route) {
+        AudioRoute.BLUETOOTH -> BLUETOOTH_TAIL_MS
+        AudioRoute.PHONE_SPEAKER, AudioRoute.WIRED_HEADSET -> SETTLE_MS
+    }
+}
