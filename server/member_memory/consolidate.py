@@ -19,6 +19,17 @@ device uploaded it (`DeviceLog.user`).
   `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` plus `web_search`. After one, the assistant's words are
   dropped for the rest of the session, because an async result can be spoken turns later.
 - Never a `tool_result` line, never a line carrying the redaction marker.
+- **A turn the source marked read-through is dropped whole, and so is a turn with a redacted line**
+  (open-loops ticket 07, 2026-11-10): any `read_through` event (a camera look, a spoken brief or
+  watch line, Live search grounding, `fleet_web` / ask_engine's web or GitHub text, and the `carry`
+  turn after one) and any `text` or tool `response` carrying the redaction marker. The same inputs
+  rule `open_loops.words.own_lines` applies. A mark also ends tool-free replies for the rest of the
+  session, as a listed tool does. The turn is decided when it closes (`turn_complete`,
+  `session_start`, `session_end`, or the end of the record): a mark can be logged after his line.
+- **A source that cannot mark a turn gives the person's words only** (`log_transcript`): the head
+  unit declares Google Search grounding and logs no `read_through` event, so a "tool-free" reply
+  there may be a search answer. `open_loops.words.can_mark_turns` decides, the same allowlist open
+  loops uses (web records, phone records with a `run_id`).
 
 So mail never reaches the prompt, and the guarantee is the shape of the extraction, not a
 reminder in it. The prompt also asks the model never to keep anything from mail or the web, never
@@ -61,6 +72,7 @@ from django.db.models import Q
 from django.db.models.functions import Now
 from django.utils import timezone
 
+from assistant.read_through import THIRD_PARTY_TOOLS
 from devicelogs import voice_audit
 from devicelogs.models import REASON_CONVERSATION, DeviceLog
 from devicelogs.render import batch_text
@@ -82,9 +94,12 @@ from member_memory.models import (
     MemoryConsolidation,
 )
 from member_memory.sensitive import looks_sensitive
+from open_loops.words import can_mark_turns
 
 # The phone's `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` (`service/LiveToolbox.kt:3239-3241`, read
-# 2026-11-05), plus the web assistant's `web_search`. A copy: the engine image holds no Kotlin.
+# 2026-11-05), plus the engine's third-party tools (`assistant.read_through.THIRD_PARTY_TOOLS`:
+# `web_search`, `brief_latest`, `github_status`), which the web record logs by name and writes no
+# `read_through` line for. A copy of the phone's half: the engine image holds no Kotlin.
 READ_THROUGH_TOOLS = frozenset(
     {
         "search_mail",
@@ -94,9 +109,11 @@ READ_THROUGH_TOOLS = frozenset(
         "track_package",
         "flight_status",
         "browser",
-        "web_search",
     }
+    | THIRD_PARTY_TOOLS
 )
+READ_THROUGH_EVENT = "read_through"
+REDACTION_MARK = "[redacted"
 
 SETTLE_MINUTES = 15  # a record this new may still be growing
 BATCH_LIMIT = 50
@@ -116,8 +133,13 @@ class Transcript:
         return "\n".join(self.lines)[-MAX_TRANSCRIPT_CHARS:]
 
 
-def transcript(raw: str) -> Transcript:
-    """The person's words and the tool-free replies, from one batch's raw lines (decision D)."""
+def _redacted(value) -> bool:
+    return isinstance(value, str) and (voice_audit.REDACTED in value or REDACTION_MARK in value)
+
+
+def transcript(raw: str, *, marks_turns: bool = True) -> Transcript:
+    """The person's words and the tool-free replies, from one batch's raw lines (decision D).
+    `marks_turns=False` (a source that logs no read-through marks): the person's words only."""
     out = Transcript()
     user: list[str] = []
     assistant: list[str] = []
@@ -131,7 +153,7 @@ def transcript(raw: str) -> Transcript:
             out.dropped_turns += 1
         else:
             out.lines.extend(f"User: {text}" for text in user)
-            if assistant and not tool_seen and not tainted_session:
+            if assistant and marks_turns and not tool_seen and not tainted_session:
                 joined = "".join(assistant).strip()
                 if joined:
                     out.lines.append(f"Assistant: {joined}")
@@ -141,19 +163,28 @@ def transcript(raw: str) -> Transcript:
         if tag != "LIVE_AUDIT":
             continue
         event, fields = voice_audit.parse_audit(msg)
+        if event == READ_THROUGH_EVENT:
+            read_through = True
+            tainted_session = True
+            continue
         if event in ("tool_call", "tool_result"):
             tool_seen = True
-            if fields.get("name") in READ_THROUGH_TOOLS:
+            if fields.get("name") in READ_THROUGH_TOOLS or _redacted(fields.get("response")):
                 read_through = True
                 tainted_session = True
             continue
+        if event in ("turn_complete", "session_start"):
+            close_turn()
+            continue
+        if event == "session_end":
+            close_turn()
+            tainted_session = False
+            continue
         text = fields.get("text")
-        if not isinstance(text, str) or voice_audit.REDACTED in text or "[redacted" in text:
-            if event == "turn_complete":
-                close_turn()
-            elif event == "session_end":
-                close_turn()
-                tainted_session = False
+        if _redacted(text):
+            read_through = True
+            continue
+        if not isinstance(text, str):
             continue
         if event == "user" and fields.get("final") == "true":
             cleaned = " ".join(text.split())
@@ -163,6 +194,12 @@ def transcript(raw: str) -> Transcript:
             assistant.append(text)
     close_turn()
     return out
+
+
+def log_transcript(log: DeviceLog, raw: str | None = None) -> Transcript:
+    """`transcript` for one stored record, with its source's ability to mark turns (module doc).
+    Raises `ValueError` when the stored batch cannot be read."""
+    return transcript(batch_text(log) if raw is None else raw, marks_turns=can_mark_turns(log))
 
 
 PROMPT = """You keep a household assistant's long-term memory about one person.
@@ -403,7 +440,7 @@ def consolidate_one(log: DeviceLog, *, key: str, transport: Transport) -> tuple[
     except ValueError:
         _mark(log, OUTCOME_FAILED, detail="The stored batch could not be read.")
         return OUTCOME_FAILED, 0
-    words = transcript(raw)
+    words = log_transcript(log, raw)
     if not words.lines:
         _mark(log, OUTCOME_SKIPPED, detail="No words of the person's own to read.")
         return OUTCOME_SKIPPED, 0

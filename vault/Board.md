@@ -67,7 +67,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[09-a-list-you-tick-every-day\|09]] | build | A list you tick every day, and can look back on |
 | [[.scratch/open-loops/map\|open-loops]] | [[04-worker-update\|04]] | test | Worker update and a live night |
 | [[.scratch/open-loops/map\|open-loops]] | [[06-picks\|06]] | decision | Kevin's rulings on the built picks |
-| [[.scratch/open-loops/map\|open-loops]] | [[07-consolidation-read-through\|07]] | build | Consolidation and the review ignore read_through marks |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | [[01-geofences-refused\|01]] | build | Why Google refuses LEGION's geofences, and saying so when it does |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[01-recruiter-role-and-allowlist\|01]] | build | Recruiter role and tool allowlist (default deny) |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[03-demo-household-seed\|03]] | build | Demo household seed: fake bank, car, receipts, one failing receipt, nightly reset |
@@ -510,7 +509,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/one-home/map\|one-home]] | 12 | 8 | [[.scratch/one-home/one-home.canvas\|open]] |
 | [[.scratch/one-today/map\|one-today]] | 10 | 7 | [[.scratch/one-today/one-today.canvas\|open]] |
-| [[.scratch/open-loops/map\|open-loops]] | 7 | 7 | [[.scratch/open-loops/open-loops.canvas\|open]] |
+| [[.scratch/open-loops/map\|open-loops]] | 7 | 6 | [[.scratch/open-loops/open-loops.canvas\|open]] |
 | [[.scratch/phone-verify/map\|phone-verify]] | 6 | 1 | [[.scratch/phone-verify/phone-verify.canvas\|open]] |
 | [[.scratch/place-arrivals/map\|place-arrivals]] | 1 | 1 | [[.scratch/place-arrivals/place-arrivals.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 14 | 4 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |

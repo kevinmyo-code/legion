@@ -238,6 +238,145 @@ def test_the_read_through_list_covers_the_phones():
 
 
 # =============================================================================
+# Open-loops ticket 07 (2026-11-10): read_through marks and redacted lines drop the turn
+# =============================================================================
+
+A = "11-10 08:00:{:02d}.000  1 2 I LIVE_AUDIT: {}"
+
+
+def _record(*events):
+    return "\n".join(A.format(i, e) for i, e in enumerate(events)) + "\n"
+
+
+MARKED = _record(
+    "session_start model=gemini-live async_set=none",
+    'user final=true text="I want to repaint the shed blue."',
+    'assistant text="Blue it is."',
+    "turn_complete",
+    # A camera look: the frame went out, the turn is marked after his line.
+    'user final=true text="What does this label say?"',
+    "read_through source=look",
+    'assistant text="[redacted: third-party content]"',
+    "turn_complete",
+    # The carry turn after the look: still read-through, his words included.
+    "read_through source=carry",
+    'user final=true text="Remember the bottle says Zephyr Tonic."',
+    'assistant text="[redacted: third-party content]"',
+    "turn_complete",
+    # Live search grounding.
+    'user final=true text="Who won the regatta?"',
+    "read_through source=grounding",
+    'assistant text="[redacted: third-party content]"',
+    "turn_complete",
+    # A spoken brief raise (proactive) and the turn after it.
+    "read_through source=proactive",
+    'assistant text="[redacted: third-party content]"',
+    "turn_complete",
+    "read_through source=carry",
+    'user final=true text="Yes, add the Marlow newsletter thing."',
+    "turn_complete",
+    # ask_engine's GitHub or web text (fleet_web), marked by the phone.
+    'user final=true text="Did the build pass?"',
+    'tool_call id=e1 name=ask_engine async=false args={"question":"build"}',
+    "read_through source=fleet_web tool=ask_engine",
+    'tool_result id=e1 name=ask_engine success=true ms=200 scheduling=none sent=true response={"answer":"x"}',
+    'assistant text="[redacted: third-party content]"',
+    "turn_complete",
+    # A clean turn, but after marks in this session: his words stay, the reply goes.
+    'user final=true text="My bike is the green one."',
+    'assistant text="Got it, the green one."',
+    "turn_complete",
+    'session_end reason="stopped"',
+    # A new session starts clean.
+    "session_start model=gemini-live async_set=none",
+    'user final=true text="I moved my dentist to Thursdays."',
+    'assistant text="Thursdays, noted."',
+    "turn_complete",
+)
+
+
+def test_read_through_marks_drop_the_whole_turn_and_later_replies():
+    words = consolidate.transcript(MARKED)
+    assert words.lines == [
+        "User: I want to repaint the shed blue.",
+        "Assistant: Blue it is.",
+        "User: My bike is the green one.",
+        "User: I moved my dentist to Thursdays.",
+        "Assistant: Thursdays, noted.",
+    ]
+    assert words.dropped_turns == 6
+    text = "\n".join(words.lines)
+    for absent in ("label", "Zephyr", "regatta", "Marlow", "build", "redacted", "Got it"):
+        assert absent not in text
+
+
+def test_a_redacted_line_drops_its_turn_even_with_no_mark():
+    raw = _record(
+        'user final=true text="Read that to me again."',
+        'assistant text="[redacted: third-party content]"',
+        "turn_complete",
+        'user final=true text="What did the Quillon mail say?"',
+        'tool_call id=t1 name=some_new_tool async=false args={}',
+        'tool_result id=t1 name=some_new_tool success=true ms=1 scheduling=none sent=true response="[redacted: third-party content]"',
+        "turn_complete",
+        'user final=true text="I park on level three."',
+        "turn_complete",
+    )
+    words = consolidate.transcript(raw)
+    assert words.lines == ["User: I park on level three."]
+    assert words.dropped_turns == 2
+
+
+def test_the_engines_third_party_tools_drop_web_turns():
+    from assistant.read_through import THIRD_PARTY_TOOLS
+
+    assert THIRD_PARTY_TOOLS <= consolidate.READ_THROUGH_TOOLS
+    raw = _record(
+        'user final=true text="Any open pull requests on Frobnitz?"',
+        'tool_call id=g1 name=github_status async=false args={}',
+        'tool_result id=g1 name=github_status success=true ms=1 scheduling=none sent=true response={"message":"PR: rename the widget"}',
+        'assistant text="One, rename the widget."',
+        "turn_complete",
+        'user final=true text="Thanks."',
+        'assistant text="That widget PR is from a stranger."',
+        "turn_complete",
+    )
+    words = consolidate.transcript(raw)
+    assert words.lines == ["User: Thanks."]
+
+
+def test_a_source_that_cannot_mark_turns_gives_his_words_only(household_user, household_a):
+    """The head unit logs no read_through event (its Live socket grounds on Google Search), so a
+    tool-free reply there may be a search answer: only his own lines reach the model."""
+    raw = _record(
+        'user final=true text="My plates renew in March."',
+        'assistant text="The Harbourfest is on Saturday, says the web."',
+        "turn_complete",
+    )
+    head_unit = _log(household_a, household_user, raw, app_version_name="1.0+abc1234")
+    phone = _log(household_a, household_user, raw, run_id="run-1")
+    assert consolidate.log_transcript(head_unit).lines == ["User: My plates renew in March."]
+    assert consolidate.log_transcript(phone).lines == [
+        "User: My plates renew in March.",
+        "Assistant: The Harbourfest is on Saturday, says the web.",
+    ]
+    model = FakeModel()
+    consolidate.run(key="k", transport=model)
+    assert len(model.prompts) == 2
+    assert sum("Harbourfest" in prompt for prompt in model.prompts) == 1
+
+
+def test_a_marked_turn_never_reaches_the_model(household_user, household_a):
+    _log(household_a, household_user, MARKED, run_id="run-2")
+    model = FakeModel()
+    consolidate.run(key="k", transport=model)
+    assert len(model.prompts) == 1
+    for absent in ("Zephyr", "Marlow", "regatta", "label"):
+        assert absent not in model.prompts[0]
+    assert "shed blue" in model.prompts[0]
+
+
+# =============================================================================
 # Health (2026-11-09): an `ingest_runs` row per household, give-ups counted
 # =============================================================================
 
@@ -332,3 +471,13 @@ def test_one_households_run_reads_only_its_own_records(
     assert report.read == 1
     assert consolidate.pending(household=household_a).count() == 1
     assert consolidate.pending(household=household_b).count() == 0
+
+
+def test_the_nightly_reviews_conversations_drop_marked_turns_too(household_user, household_a):
+    from member_memory import review
+
+    log = _log(household_a, household_user, MARKED, run_id="run-3")
+    text = review._filtered_text(log)
+    assert "shed blue" in text
+    for absent in ("Zephyr", "Marlow", "regatta"):
+        assert absent not in text

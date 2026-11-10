@@ -432,8 +432,10 @@ here.
   worker on the Alienware (*"claude can write too."*); never a recruiter, never the work laptop.
   A shared household fact is marked shared by a member, never by the consolidation job. Saving is
   automatic, visible and forgettable, and **forgetting is a hard delete**. Consolidation reads the
-  person's own words and tool-free replies only, so the read-through rule above holds by
-  construction.
+  person's own words and tool-free replies only, and drops whole every turn that called a
+  read-through tool, carries a `read_through` mark (look, brief, grounding, web, carry) or a
+  redacted line; a source that cannot mark turns (the head unit) gives his words only
+  (open-loops ticket 07, 2026-11-10). That is how the read-through rule above holds there.
 - **The ID vault is phone only, behind the fingerprint (Kevin, 2026-11-05, ADR 0076).** Passport,
   NRIC, SSN, A-number and bank account numbers: never on the web, never readable by Claude, never
   spoken aloud, never sent to a model, never logged, never a memory. A plate, a VIN or a policy

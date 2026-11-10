@@ -1,7 +1,8 @@
 """His own words, and nothing that could have come from anyone else (ADR 0085, CLAUDE.md section 7).
 
 Open loops are extracted ONLY from what the member himself said or typed to Alfred. This is
-stricter than memory consolidation's filter (`member_memory.consolidate.transcript`), on purpose:
+stricter than memory consolidation's filter (`member_memory.consolidate.transcript`), on purpose
+(no assistant line at all, and any tool turn dropped):
 
 - **Only `user final=true` lines.** No assistant line at all, tool-free or not.
 - **A whole turn is dropped** when anything in it could carry third-party text or already closed
@@ -9,9 +10,8 @@ stricter than memory consolidation's filter (`member_memory.consolidate.transcri
   a tool is either read-through, or it set the reminder itself), any `read_through` event (mail,
   web grounding, `fleet_web`, a camera `look`, a spoken brief or watch line (`proactive`), and the
   turn after one (`carry`)), and any line carrying the redaction marker.
-  Consolidation drops only turns that called a listed read-through tool; it does not read the
-  `read_through` events at all, so a carry turn or a look reaches it. That gap is consolidation's
-  and is named in the open-loops report; it is not widened here.
+  Consolidation applies the same read-through and redaction drop since open-loops ticket 07
+  (2026-11-10), and keeps only the person's words from a source `can_mark_turns` refuses.
 - **Only sources that can mark a turn, by allowlist.** A web record (`device_label` "web": the
   engine writes every tool line itself, `devicelogs/web_conversation.py`) or a phone record that
   carries a `run_id` (sent by phone builds from 2026-11-09 on, the same day the phone began logging

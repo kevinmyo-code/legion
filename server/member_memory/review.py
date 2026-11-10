@@ -8,8 +8,9 @@ prompt.
 
 - `build_context` answers `GET review/context`: the member's private live memories with short
   handles (`m1`..`mN`), the household facts about them as context only, the last 7 days of their
-  conversations through `consolidate.transcript()` (the person's words and tool-free replies only,
-  so mail and web content never reach the laptop), and the exact-text duplicate groups the engine
+  conversations through `consolidate.log_transcript()` (the person's words and tool-free replies
+  only, every read-through or redacted turn dropped whole, so mail and web content never reach the
+  laptop), and the exact-text duplicate groups the engine
   merges itself. It writes a `memory_reviews` row holding the handle map (ids and stamps only).
 - `submit` answers `POST review/changes`: exact-text merges by code first (ruling 03), then each
   of Claude's changes is mapped back, gated and applied or proposed, in one transaction under the
@@ -50,7 +51,7 @@ from django.utils import timezone
 
 from household.tenancy import household_of
 from member_memory import service
-from member_memory.consolidate import _norm, transcript
+from member_memory.consolidate import _norm, log_transcript
 from member_memory.models import (
     ACTION_CORRECT,
     ACTION_EXPIRE,
@@ -281,7 +282,6 @@ def _clean_text(value) -> str | None:
 def _transcripts(member, household, now):
     """Label -> (device_log, filtered text), newest first, capped at `REVIEW_MAX_CHARS`."""
     from devicelogs.models import REASON_CONVERSATION, DeviceLog
-    from devicelogs.render import batch_text
 
     logs = DeviceLog.objects.filter(
         household=household,
@@ -293,7 +293,7 @@ def _transcripts(member, household, now):
     out, used = [], 0
     for log in logs:
         try:
-            lines = transcript(batch_text(log)).lines
+            lines = log_transcript(log).lines
         except ValueError:
             continue
         text = "\n".join(lines)
@@ -309,10 +309,8 @@ def _transcripts(member, household, now):
 
 
 def _filtered_text(log) -> str:
-    from devicelogs.render import batch_text
-
     try:
-        return "\n".join(transcript(batch_text(log)).lines)
+        return "\n".join(log_transcript(log).lines)
     except ValueError:
         return ""
 
