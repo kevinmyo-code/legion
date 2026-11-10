@@ -295,6 +295,17 @@ class LiveSetupPayloadSizeTest {
      * chars of tools JSON plus 10,356 chars of system instruction = 98,421 chars, ~24,605 tokens
      * (+6). Headroom is ~45 tokens. With round 5's field-nav (+68 chars) and conditions (+39) on top:
      * 98,528 chars, ~24,632 tokens, headroom ~18 (computed from the three measurements).
+     *
+     * **Jarvis on round 5, NOT raised, 2026-11-10 (`integrate/2026-11-10-jarvis-on-r5`).** Each
+     * side was ~17-18 under on its own. Merged: 97 declarations, 88,309 chars of tools JSON plus
+     * 10,356 chars of system instruction = 98,665 chars, ~24,666 tokens, 16 over. Trimmed text with
+     * no steering value: `flight_status` lost "`read_calendar` no longer sees anything pushed onto
+     * the user's real Google Calendar by an airline after the calendar was disconnected from Google
+     * - it only knows what is stored locally." (history; the next sentence already routes: only
+     * call this when read_calendar has nothing), 1,014 to 828 chars; `end_conversation` lost "and
+     * ending the conversation there would be infuriating" (the reason, not the rule), 1,158 to
+     * 1,103. After: 97 declarations, 88,068 + 10,356 = 98,424 chars, ~24,606
+     * tokens. Headroom ~44 tokens.
      */
     private val ceilingTokens = 24_650
 

@@ -539,7 +539,7 @@ object LiveToolbox {
                 "the conversation closes once you finish speaking, and the user can always call " +
                 "you again. Do NOT call this when the user is merely answering 'no' to something " +
                 "you asked, declining one suggestion, or pausing to think - those are ordinary " +
-                "turns and ending the conversation there would be infuriating. Only call it when " +
+                "turns. Only call it when " +
                 "they are dismissing YOU, not rejecting an offer.",
             params = obj(),
             required = emptyList(),
@@ -1793,9 +1793,7 @@ object LiveToolbox {
             name = "flight_status",
             description = "When's my flight? CHECK `read_calendar` FIRST for the trip - a flight " +
                 "the user (or Alfred) put on the calendar shows up there exactly, with no " +
-                "guessing. `read_calendar` no longer sees anything pushed onto the user's real " +
-                "Google Calendar by an airline after the calendar was disconnected from Google - " +
-                "it only knows what is stored locally. Only call this tool when `read_calendar` " +
+                "guessing. Only call this tool when `read_calendar` " +
                 "has nothing for the trip, or Kevin is asking about a hotel/flight that was never " +
                 "added to the calendar. " +
                 "Reads Kevin's most recent travel-confirmation email for the airline/hotel, flight " +
