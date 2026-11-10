@@ -18,7 +18,13 @@ from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from devicelogs.models import MAX_UPLOAD_BYTES, NAV_AUDIT_RETENTION_DAYS, RETENTION_DAYS, DeviceLog
+from devicelogs.models import (
+    MAX_UPLOAD_BYTES,
+    NAV_AUDIT_RETENTION_DAYS,
+    RETENTION_DAYS,
+    DeviceLog,
+    retention_days,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -161,10 +167,10 @@ _NAV = (
 )
 
 
-def _aged(household, text: str, days: int, nav: bool) -> DeviceLog:
+def _aged(household, text: str, days: int, nav: bool, reason: str = "conversation") -> DeviceLog:
     raw = text.encode()
     row = DeviceLog.objects.create(
-        household=household, batch_id=uuid.uuid4(), device_label="Phone", reason="conversation",
+        household=household, batch_id=uuid.uuid4(), device_label="Phone", reason=reason,
         raw_bytes=len(raw), line_count=raw.count(b"\n"), body_gz=gzip.compress(raw),
         nav_audit_lines=2 if nav else 0,
     )
@@ -202,6 +208,28 @@ def test_nav_audit_is_kept_ninety_days_and_the_rest_of_its_batch_goes_at_sixty(t
     assert token_a.post(URL, _payload(), format="multipart").status_code == 201
     old_nav.refresh_from_db()
     assert bytes(old_nav.body_gz) == cut_bytes
+
+
+def test_a_logcat_batch_with_nav_audit_is_cut_at_thirty_days_and_gone_at_ninety(token_a, household_a):
+    """Round 4 merge of nav-audit (D7) with per-reason retention (logcat 30): a raw logcat batch
+    holding NAV_AUDIT lines is cut to them at its own 30 days, not deleted; it goes at 90."""
+    assert retention_days("logcat") == 30
+    young = _aged(household_a, _NAV, 29, nav=True, reason="logcat")
+    cut = _aged(household_a, _NAV, 31, nav=True, reason="logcat")
+    gone = _aged(household_a, _NAV, NAV_AUDIT_RETENTION_DAYS + 1, nav=True, reason="logcat")
+    plain = _aged(household_a, "11-06 08:00:00.000  1  2 I Tag: x\n", 31, nav=False, reason="logcat")
+    conv = _aged(household_a, _NAV, 31, nav=True)
+
+    assert token_a.post(URL, _payload(), format="multipart").status_code == 201
+
+    assert not DeviceLog.objects.filter(pk__in=[gone.pk, plain.pk]).exists()
+    for row in (young, conv):
+        row.refresh_from_db()
+        assert gzip.decompress(bytes(row.body_gz)).decode() == _NAV, "inside its reason's retention"
+    cut.refresh_from_db()
+    body = gzip.decompress(bytes(cut.body_gz)).decode()
+    assert "LIVE_AUDIT" not in body and body.count("NAV_AUDIT") == 2
+    assert (cut.line_count, cut.nav_audit_lines) == (2, 2)
 
 
 def test_the_cap_constant_is_five_megabytes():
