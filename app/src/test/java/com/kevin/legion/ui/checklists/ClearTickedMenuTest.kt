@@ -30,7 +30,10 @@ class ClearTickedMenuTest {
     private val routine = Checklist(id = 4, name = "Evenings", scheduleKind = "DAILY", scheduleEvery = 1)
 
     private fun row(id: Long, text: String, ticked: Boolean) =
-        ListItemUi(ChecklistItem(id = id, checklistId = 3, text = text, sortOrder = id.toInt()), ticked, null, if (ticked) 20_000 else null, false)
+        ListItemUi(
+            ChecklistItem(id = id, checklistId = 3, text = text, sortOrder = id.toInt()),
+            ticked, null, if (ticked) 20_000 else null, false,
+        )
 
     @Test
     fun `the entry is hidden on a routine, disabled with nothing ticked, enabled otherwise`() {

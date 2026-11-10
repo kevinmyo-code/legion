@@ -398,7 +398,9 @@ class DestinationResolverTest {
     // while branches existed in town. A nearest ask now searches a box around the fix first, and
     // only widens when nothing is in it.
     @Test fun nearestSearchesAroundTheFixFirstAndWidensOnlyWhenNothingIsThere() {
-        search.reply = { q -> if (q.withinM != null) SearchAnswer.NoMatch else SearchAnswer.Hits(listOf(hit("Far Feed Co"))) }
+        search.reply = { q ->
+            if (q.withinM != null) SearchAnswer.NoMatch else SearchAnswer.Hits(listOf(hit("Far Feed Co")))
+        }
         val r = resolve("nearest far feed co") as Resolution.Resolved
         assertEquals(2, search.queries.size)
         assertEquals(SearchSource.NEAREST_RADIUS_M, search.queries[0].withinM!!, 0.0)

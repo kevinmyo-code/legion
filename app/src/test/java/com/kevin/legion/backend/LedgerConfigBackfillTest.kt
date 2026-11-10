@@ -57,13 +57,18 @@ class LedgerConfigBackfillTest {
 
         override suspend fun fetchChangedCategoryRulesSince(sinceMs: Long) = Result.success(emptyList<RemoteCategoryRule>())
         override suspend fun upsertCategoryRule(originGuid: String, fields: CategoryRuleFields): Result<RemoteCategoryRule> {
-            if (originGuid == failGuid) return Result.failure(LedgerConfigBackendException("forced failure"))
-            ruleUpsertCalls.add(originGuid)
-            if (originGuid == refuseGuid) {
-                val refusal = EngineFailure.Refused(400, "That write was refused by the database: duplicate key")
-                return Result.failure(EngineHttpException(refusal))
+            if (originGuid != failGuid) ruleUpsertCalls.add(originGuid)
+            val refusal = EngineFailure.Refused(400, "That write was refused by the database: duplicate key")
+            return when (originGuid) {
+                failGuid -> Result.failure(LedgerConfigBackendException("forced failure"))
+                refuseGuid -> Result.failure(EngineHttpException(refusal))
+                else -> {
+                    val ms = fields.createdAtMs
+                    val row =
+                        RemoteCategoryRule(originGuid, fields.category, fields.substring, ms, ms, false, originGuid)
+                    Result.success(row)
+                }
             }
-            return Result.success(RemoteCategoryRule(originGuid, fields.category, fields.substring, fields.createdAtMs, fields.createdAtMs, false, originGuid))
         }
         override suspend fun softDeleteCategoryRule(originGuid: String) = Result.success(true)
 
@@ -301,6 +306,7 @@ class LedgerConfigBackfillTest {
 
         assertEquals(0, report.linkedByName)
         assertTrue(report.failed.single(), report.failed.single().contains("refused by the engine, skipped"))
-        assertEquals("phone-guid-2", db.categoryDao().getAllIncludingDeleted().single { it.name == "Kite Supplies" }.guid)
+        val kite = db.categoryDao().getAllIncludingDeleted().single { it.name == "Kite Supplies" }
+        assertEquals("phone-guid-2", kite.guid)
     }
 }

@@ -555,7 +555,9 @@ class ChecklistControllerTest {
 
     @Test
     fun `clearTicked refuses a routine and removes nothing`() = runBlocking {
-        val routine = backdatedChecklist("Stretch", createdAt = epochMs(2026, 1, 1), scheduleKind = "DAILY", scheduleEvery = 1)
+        val routine = backdatedChecklist(
+            "Stretch", createdAt = epochMs(2026, 1, 1), scheduleKind = "DAILY", scheduleEvery = 1,
+        )
         val line = ChecklistController.addItem(context, routine.id, "hamstrings")
         ChecklistController.tick(context, line.id, ChecklistController.today())
         val outcome = ChecklistController.clearTicked(context, routine.id)

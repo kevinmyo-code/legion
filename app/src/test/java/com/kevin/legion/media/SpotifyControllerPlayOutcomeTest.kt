@@ -147,8 +147,10 @@ class SpotifyControllerPlayOutcomeTest {
 
     @Test
     fun `turning repeat off is said in words`() {
-        val message = SpotifyController.message(PlayOutcome.Started(pickedLabel = "Night Drive, The Placeholders", repeatCleared = true), "x")
-        assertTrue(message, message.startsWith("Playing \"Night Drive, The Placeholders\" on Spotify. Repeat was on, so I turned it off"))
+        val outcome = PlayOutcome.Started(pickedLabel = "Night Drive, The Placeholders", repeatCleared = true)
+        val message = SpotifyController.message(outcome, "x")
+        val expected = "Playing \"Night Drive, The Placeholders\" on Spotify. Repeat was on, so I turned it off"
+        assertTrue(message, message.startsWith(expected))
     }
 
     // ------------------------------------------------------- pickedLabel (ticket 07)

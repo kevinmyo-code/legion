@@ -14,7 +14,11 @@ class BluetoothMicTest {
 
     @Test
     fun `on Bluetooth with a hands-free device and the setting on, listen through it`() {
-        assertTrue(BluetoothMic.wanted(settingOn = true, route = AudioRoute.BLUETOOTH, inCall = false, handsFreeAvailable = true))
+        assertTrue(
+            BluetoothMic.wanted(
+                settingOn = true, route = AudioRoute.BLUETOOTH, inCall = false, handsFreeAvailable = true,
+            ),
+        )
     }
 
     @Test

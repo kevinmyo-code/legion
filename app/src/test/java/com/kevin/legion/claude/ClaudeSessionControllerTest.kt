@@ -125,7 +125,8 @@ class ClaudeSessionControllerTest {
         backend.createOut = { _ ->
             ClaudeOutcome.Ok(ClaudeCreated(42, ClaudeTask.QUEUED, ClaudeMachineRef("Alienware", "idle", null)))
         }
-        backend.taskById[41] = task(41, ClaudeTask.NEEDS_CONFIRMATION, question = "Send the note to the club secretary?")
+        backend.taskById[41] =
+            task(41, ClaudeTask.NEEDS_CONFIRMATION, question = "Send the note to the club secretary?")
         val result = runBlocking { controller.answer(41, "", yes = true, emailMe = false) }
         assertTrue(result is ClaudeSendResult.Sent)
         val s = result.sentence
