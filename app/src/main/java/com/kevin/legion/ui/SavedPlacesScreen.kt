@@ -165,7 +165,7 @@ private class SavedPlacesState(private val context: Context, private val scope: 
  * Moved out of `FleetScreen.kt` (1,695 lines) when it grew these flows.
  */
 @Composable
-fun SavedPlacesScreen(onBack: () -> Unit) {
+fun SavedPlacesScreen(onBack: () -> Unit, onOpenConditions: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = remember { SavedPlacesState(context, scope) }
@@ -192,6 +192,7 @@ fun SavedPlacesScreen(onBack: () -> Unit) {
                 )
             },
             onDialog = { state.dialog = it },
+            onOpenConditions = onOpenConditions,
         )
     }
     SavedPlacesDialogs(state)
@@ -207,6 +208,7 @@ private fun SavedPlacesContent(
     onBack: () -> Unit,
     onGrant: () -> Unit,
     onDialog: (PlacesDialog) -> Unit,
+    onOpenConditions: (() -> Unit)? = null,
 ) {
     val navEntry = LocalNavEntryPoints.current
     val sem = LocalLegionSemantics.current
@@ -233,6 +235,15 @@ private fun SavedPlacesContent(
             enabled = hasLocationPermission && !busy,
             modifier = Modifier.fillMaxWidth(),
         )
+        // Round 5 (conditions): the hands path to `check_conditions` (ADR 0035).
+        if (onOpenConditions != null) {
+            Spacer(Modifier.height(8.dp))
+            DeckButton(
+                text = "Conditions: rivers, alerts, storms",
+                onClick = onOpenConditions,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         lastActionMessage?.let { message ->
             Spacer(Modifier.height(12.dp))

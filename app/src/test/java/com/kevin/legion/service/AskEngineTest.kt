@@ -305,4 +305,22 @@ class AskEngineTest {
         assertEquals("checklist", only.card?.optString("card"))
         assertEquals(250L, only.roundTripMs)
     }
+
+    @Test
+    fun `the phone's fix rides the sub-agent instruction, and nothing is said with no fix`() = runBlocking {
+        val rec = engine(callAnswer = callReply("ok"))
+        var seen = ""
+        val capture: suspend (String, String, List<AgentTool>) -> AgentResult = { instruction, _, _ ->
+            seen = instruction
+            AgentResult.Success("ok")
+        }
+        AskEngine(
+            client(rec), capture, identityClause = { "You are a helper." }, nowText = { "now" },
+            whereText = { "lat 30.05000, lon -98.85000 (about 12 m, 3 min old)" },
+        ).ask("is the river up", wantsWrite = false, touchedReadThroughTool = false)
+        assertTrue(seen, seen.contains("Where the user is (the phone's own GPS): lat 30.05000, lon -98.85000"))
+        AskEngine(client(rec), capture, identityClause = { "You are a helper." }, nowText = { "now" })
+            .ask("is the river up", wantsWrite = false, touchedReadThroughTool = false)
+        assertFalse(seen, seen.contains("Where the user is"))
+    }
 }

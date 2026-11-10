@@ -164,7 +164,10 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
         "dismiss_programme_change", "suggest_meal", "log_meal_option",
         "get_body_plan", "draft_body_plan", "lock_body_plan", "discard_body_plan",
     }
-    assert set(RECRUITER_EXCLUDED) == {"list_tables", "brief_latest", *memory, *body}
+    # check_conditions (round 5): agency feeds at the owner's places, outside the demo's rows.
+    assert set(RECRUITER_EXCLUDED) == {
+        "list_tables", "brief_latest", "check_conditions", *memory, *body
+    }
     assert surface.BODY_COACH_TOOLS == body
     assert (
         RECRUITER_EXCLUDED["brief_latest"]

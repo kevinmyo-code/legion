@@ -74,6 +74,11 @@ ROUTES = {
                      needs="", voice=[]),
     "checklists": dict(name="Lists", what="Checklists and to-dos; the Bought log is in its top bar.",
                        marker="Bought log"),
+    "conditions": dict(name="Conditions", what="Rivers and flood stage, NWS alerts, tropical storms, road "
+                       "closures and satellite fire detections here or at a saved place, from the "
+                       "engine's check_conditions (round 5). Online only; offline it says nothing was read.",
+                       parent="fleet/places", reach=[("text", "Conditions: rivers, alerts, storms")],
+                       voice=["ask_engine"]),
     "bought": dict(name="Bought log", what="What the household bought (purchase-log).",
                    parent="checklists", reach=[("text", "Bought log")], voice=["bought_log"]),
     "money": dict(

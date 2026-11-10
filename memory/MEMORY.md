@@ -29,6 +29,12 @@ believed.
   turnaround; voice rides `get_current_location`'s result. Owed by Kevin: install `fast`, the compass run
   on the phone (steps in the round 5 report).
 
+## Conditions - 2026-11-10
+
+- `feat/conditions` (pushed, not merged): engine `check_conditions` (NWS alerts, USGS + NWS flood stage,
+  NHC, DriveTexas, FIRMS), Conditions screen, severe-alert raise on SAFETY. Owed by Kevin: engine deploy,
+  FIRMS MAP_KEY and DriveTexas key (`deploy/cloudrun/README.md`, Conditions keys), a place labelled home.
+
 ## Workouts - 2026-11-06
 
 - `feat/workouts` (pushed, not merged): deterministic 3-day A/B programme on the engine

@@ -7656,3 +7656,37 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   `LiveSetupPayloadSizeTest` (NOT raised).
 - **Offline-hiking overlap:** tickets 16 and 17 on `docs/offline-hiking` note what this covers; no
   offline maps were built.
+
+## 2026-11-10 - Conditions: engine-first agency feeds and the severe-weather raise (round 5)
+
+- **Kevin's ask (2026-11-10, round 5 picks):** river and flood (USGS gauges, NWS flood stage,
+  DriveTexas closures), weather alerts (NWS point alerts, NHC storms) and wildfire (NASA FIRMS),
+  engine-first, one voice entry, and a proactive raise for severe alerts at his current or home
+  location: default on for Severe/Extreme and hurricane watches/warnings only.
+- **One engine tool, `check_conditions`** (`server/conditions/`, read only, kinds alerts, rivers,
+  storms, roads, fire). The point is lat/lon, a saved place's label, or the place labelled home.
+  Every section says its source and time, and "could not be read" is never worded as clear.
+  Per-process locmem cache for minutes; nothing stored.
+- **Voice rides `ask_engine`, no new declaration.** `AskEngine.DESCRIPTION` gained "rivers, floods,
+  storms, road closures" and the sub-agent's instruction now carries the phone's last GPS fix (per
+  call, never the Live setup) so it can pass lat/lon. The phone's own `area_info` (NWS alerts,
+  quakes, NIFC fires, FEMA) is untouched and stays the phone-direct precedent.
+- **FIRMS sits beside NIFC, it does not replace it.** `area_info`'s map chose NIFC named incidents
+  over FIRMS hot pixels to avoid false alarms; FIRMS here is worded every time as "a hot spot seen
+  from orbit, not a confirmed wildfire". Behind `LEGION_FIRMS_MAP_KEY`.
+- **DriveTexas needs a key** (its feed answered 401 on 2026-11-10); behind `LEGION_DRIVETEXAS_KEY`,
+  "not set up" until then. Its field names are unverified; the fixture is a stand-in, to re-record.
+- **The raise uses the SAFETY switch, no new category** (`ProactiveCategory`'s rule: every raise maps
+  onto an existing switch). "Default on" is the severity filter inside the raise
+  (`conditions.sources.is_severe`, the engine's one copy of the rule), not a new opt-in. Rule id
+  `severe_alert:<NWS id>`, so a brush-off silences that alert only. It polls every 15 minutes on the
+  `ClaudeResultPolling` loops (app in front, assistant on), asks nothing while Safety is off, and
+  each alert raises once (ids kept 48 h). Compulsion test: (a) an NWS alert he can look up, (b) a
+  current warning for where he is or home, (c) facts and prompt name only the alert, (d) the Safety
+  switch silences it. A fresh install has Safety off, so the raise is on for Kevin's upgraded phone
+  (Safety carried over) and off for a stranger's until they turn Safety on.
+- **Hands path (ADR 0035):** a Conditions screen (route `conditions`), from Saved places and from the
+  raise's notification, calling the same engine tool.
+- **Recruiter:** `check_conditions` excluded.
+- **Owed by Kevin:** FIRMS MAP_KEY, DriveTexas API key (`deploy/cloudrun/README.md`, "Conditions
+  keys"); a saved place labelled `home` for the home half of the raise.

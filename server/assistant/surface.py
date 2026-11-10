@@ -142,6 +142,12 @@ RECRUITER_TOOLS: tuple[str, ...] = (
 RECRUITER_ONLY_TOOLS = {ABOUT_KEVIN.name: ABOUT_KEVIN, SHOW_RESUME.name: SHOW_RESUME}
 
 RECRUITER_EXCLUDED: dict[str, str] = {
+    # Round 5 (2026-11-10): public agency feeds at a point the owner's saved places or GPS name;
+    # a visit's demo places are not a reason to spend the household's NWS/USGS/FIRMS calls.
+    "check_conditions": (
+        "it reaches public agency feeds at the household's own places and keys, outside the "
+        "demo's rows"
+    ),
     "list_tables": (
         "its answer names every table, body and memory included, as readable and writable; "
         "for a recruiter that is false. The record tools' own table enums, narrowed below, "

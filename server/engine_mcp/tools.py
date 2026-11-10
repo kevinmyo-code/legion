@@ -2270,6 +2270,57 @@ def _web_search(request, args) -> ToolResult:
 
 
 # =============================================================================
+# check_conditions: rivers, weather alerts, tropical storms, road closures and
+# satellite fire detections around a point (round 5, Kevin 2026-11-10). Public
+# agency feeds, read through `conditions/`; nothing stored. The point is the
+# caller's coordinates, a saved place's label, or the place labelled "home".
+# =============================================================================
+
+
+def _conditions_point(request, args):
+    """(lat, lon, words) or (None, None, refusal)."""
+    from household.tenancy import scoped
+    from legacy.models.places import Place
+
+    lat, lon = args.get("lat"), args.get("lon")
+    if (lat is None) != (lon is None):
+        return None, None, "Nothing was read. Give both lat and lon, or a saved place's name."
+    if lat is not None:
+        return float(lat), float(lon), "the given point"
+    label = (args.get("place") or "").strip() or "home"
+    # Places carry no owner column: every row is the household's (ADR 0052), so `scoped`.
+    place = (
+        scoped(Place, request)
+        .filter(deleted_at__isnull=True, label__iexact=label)
+        .first()
+    )
+    if place is None:
+        named = "No point was given and no saved place is labelled home" if not args.get(
+            "place"
+        ) else f"No saved place is labelled {label!r}"
+        return None, None, (
+            f"Nothing was read. {named}, so there is no point to check conditions at. Give a "
+            f"location or a saved place's name."
+        )
+    return place.latitude, place.longitude, f"the saved place {place.label!r}"
+
+
+def _check_conditions(request, args) -> ToolResult:
+    from conditions import report
+
+    lat, lon, where = _conditions_point(request, args)
+    if lat is None:
+        return refused(where)
+    kinds = list(dict.fromkeys(args.get("kinds") or report.KINDS))
+    text, structured = report.check(
+        lat, lon, kinds, where, severe_only=bool(args.get("severe_only"))
+    )
+    if all(s["status"] in ("failed", "not_configured") for s in structured["sections"]):
+        return failed(f"Nothing was read. {text}")
+    return ok(text, structured)
+
+
+# =============================================================================
 # run_procedure: one call runs a whole procedure (procedures ticket 12, ADR 0070).
 # The runner is `procedures/runner.py`; it applies the caller's surface fence and
 # the write fence to EVERY step itself, which is why this tool is `writes=False`.
@@ -3113,6 +3164,39 @@ TOOLS: tuple[EngineTool, ...] = (
             {"query": {"type": "string", "minLength": 1, "maxLength": 300}}, ("query",)
         ),
         handler=_web_search,
+    ),
+    EngineTool(
+        name="check_conditions",
+        title="Conditions around a place",
+        description=(
+            "Public agency conditions around a point: `alerts` (National Weather Service "
+            "alerts), `rivers` (USGS gauge height and flow, NWS flood stage), `storms` "
+            "(National Hurricane Center), `roads` (DriveTexas closures and flooding, Texas) and "
+            "`fire` (NASA FIRMS satellite heat detections, not confirmed fires). Pass lat and "
+            "lon, or `place` (a saved place's name); with neither it uses the place labelled "
+            "home. Leave `kinds` out for all. Say each source and its time; a section that "
+            "could not be read means nothing is known, never that all is clear."
+        ),
+        input_schema=_object(
+            {
+                "lat": {"type": "number", "minimum": -90, "maximum": 90},
+                "lon": {"type": "number", "minimum": -180, "maximum": 180},
+                "place": {"type": "string", "maxLength": 60},
+                "kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["alerts", "rivers", "storms", "roads", "fire"],
+                    },
+                    "minItems": 1,
+                },
+                "severe_only": {
+                    "type": "boolean",
+                    "description": "Alerts only Severe, Extreme or a hurricane watch/warning.",
+                },
+            },
+        ),
+        handler=_check_conditions,
     ),
     # Memory v2 (ADR 0075, memory-and-vault ticket 02).
     EngineTool(

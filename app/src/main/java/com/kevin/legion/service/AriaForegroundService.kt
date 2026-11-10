@@ -245,6 +245,10 @@ class AriaForegroundService : Service() {
         serviceScope.launch {
             com.kevin.legion.claude.ClaudeResultPolling.watcher(this@AriaForegroundService).run()
         }
+        // Severe weather alerts (round 5, conditions), on the same terms as the two above.
+        serviceScope.launch {
+            com.kevin.legion.conditions.SevereAlertPolling.watcher(this@AriaForegroundService).run()
+        }
 
         // The phone's own memory distillation (MemoryConsolidator, ReflectionEngine) is RETIRED
         // (memory-and-vault ticket 10, ADR 0075): the engine's `consolidate_memories` job distils
