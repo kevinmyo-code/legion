@@ -62,6 +62,7 @@ class NewPhoneOldEngineTest {
         val path = request.url.encodedPath
         when {
             path.endsWith("/api/claude/status/") -> json(OLD_STATUS)
+            path.endsWith("/api/claude/tasks/") -> json(OLD_TASKS)
             else -> respond(DJANGO_404, HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "text/html"))
         }
     }
@@ -188,6 +189,29 @@ class NewPhoneOldEngineTest {
     }
 
     @Test
+    fun `an old engine's task rows decode, and its ignored origin filter raises nothing`() = runBlocking {
+        val backend = DjangoClaudeSessionBackend(http())
+        val c = ClaudeSessionController(backend, onSent = {})
+        val listed = c.scheduledQuestions()
+        assertTrue("old rows (no workflow, no params) still decode: $listed", listed is ClaudeOutcome.Ok)
+        val row = (listed as ClaudeOutcome.Ok).value.single()
+        assertNull(row.workflow)
+        assertFalse(row.isScheduled)
+        val raised = mutableListOf<Int>()
+        val poller = ScheduledQuestionPoller(
+            controller = { c },
+            seen = FakeSeen(),
+            watch = FakeWatch(),
+            announce = { id, _, _ -> raised += id; com.kevin.legion.claude.ClaudeDelivery.DELIVERED },
+            now = { NOW },
+        )
+        assertEquals(0, poller.pollNow())
+        assertTrue(raised.isEmpty())
+        // The Claude tasks screen's own list reads the same rows.
+        assertTrue(backend.tasks(20) is ClaudeOutcome.Ok)
+    }
+
+    @Test
     fun `a scheduled question with no workflow name is not said as Scheduled A scheduled task`() {
         val q = task(
             11, ClaudeTask.NEEDS_CONFIRMATION, question = "Send it?", origin = ClaudeTaskDraft.ORIGIN_SCHEDULE,
@@ -249,6 +273,13 @@ class NewPhoneOldEngineTest {
 
         const val OLD_STATUS = """{"machines": [{"name": "Alienware", "scope": "full", "state": "idle",
             "last_seen_at": "2026-11-10T12:00:00Z", "running": [], "progress": []}], "sessions": []}"""
+
+        /** `legion-deploy` (round 4) `claude_session/views.py` `_task_row`: no workflow, no params. */
+        const val OLD_TASKS = """[{"id": 9, "request": "tidy the downloads folder", "machine": "Alienware",
+            "status": "needs_confirmation", "summary": null, "question": "Delete the old exports?",
+            "created_at": "2026-11-10T11:00:00Z", "finished_at": "2026-11-10T11:05:00Z", "files": [],
+            "artifacts": [], "parent": null, "origin": "named", "kind": "ask", "deliver": null,
+            "confirms": false, "progress": null, "progress_at": null, "steps": []}]"""
 
         const val NEW_STATUS_NO_WORKFLOWS = """{"machines": [{"name": "Alienware", "scope": "full",
             "state": "idle", "last_seen_at": "2026-11-10T12:00:00Z", "running": [], "progress": [],

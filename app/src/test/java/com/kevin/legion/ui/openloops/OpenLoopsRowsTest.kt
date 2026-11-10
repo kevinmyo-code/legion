@@ -92,7 +92,8 @@ class OpenLoopsRowsTest {
 
     @Test
     fun `against an engine without open loops the rows say not available yet, never none, and offer no switch`() {
-        compose.setContent { SoftTheme { OpenLoopsRows(controllerFor = { OpenLoopsController(backend = { OldEngine }) }) } }
+        val old = OpenLoopsController(backend = { OldEngine })
+        compose.setContent { SoftTheme { OpenLoopsRows(controllerFor = { old }) } }
         compose.waitForIdle()
         compose.onNodeWithText(OpenLoopsBrief.NOT_ON_ENGINE).assertIsDisplayed()
         assertTrue(compose.onAllNodesWithText("No proposed to-dos.").fetchSemanticsNodes().isEmpty())

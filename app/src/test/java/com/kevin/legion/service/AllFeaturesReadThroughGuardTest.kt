@@ -64,7 +64,8 @@ class AllFeaturesReadThroughGuardTest {
         memories = FakeMemberMemoryBackend()
         claude = FakeClaudeBackend()
         loops = FakeOpenLoopsBackend()
-        watches.watches += FakeWatchesBackend.watch("w1", "A paused balance watch").copy(paused = true, status = "paused")
+        watches.watches += FakeWatchesBackend.watch("w1", "A paused balance watch")
+            .copy(paused = true, status = "paused")
         claude.machines(machine("Alienware", workflows = listOf(ClaudeWorkflowName("tidy-downloads", "Tidies."))))
         loops.proposals += listOf(DENTIST, REGISTRATION)
         WatchesToolbox.controllerFactory = { WatchesController(watches) }
