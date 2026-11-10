@@ -46,8 +46,8 @@ tags: [ticket]
 
 ## Verification
 
-- [x] `LiveSetupPayloadSizeTest` green with the change (98,424 -> 98,409 chars, ~24,602 tokens; the
-      claude_session growth paid by a manage_item trim). `MarcusPayloadTest` no longer exists: the
+- [x] `LiveSetupPayloadSizeTest` green with the change (98,424 -> 98,436 chars, ~24,609 tokens; the
+      claude_session growth partly paid by a manage_item trim). `MarcusPayloadTest` no longer exists: the
       only mention is a history note inside `LiveSetupPayloadSizeTest`, so that step is impossible.
 - [x] Unit tests over a fake backend: workflow sent; unknown name reads the names; check lists
       workflows; screen Run calls the same controller; scheduled needs_confirmation notifies once

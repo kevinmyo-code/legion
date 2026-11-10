@@ -7628,8 +7628,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   a read-through turn cannot start a workflow (the watches/remember guard), while `check`,
   `assign` and `answer` stay allowed there as before; a scheduled run's question is raised once
   through the same path as a Claude result (spoken or posted by the proactive bus, Claude tasks
-  category), never when answered, older than 3 days, or silenced; `claude_session` grew 42 chars,
-  paid for by an analogy cut from `manage_item` (ceiling unchanged).
+  category), never when answered, older than 3 days, or silenced; `claude_session` grew 69 chars,
+  partly paid for by an analogy cut from `manage_item` (net +12 chars, ceiling unchanged).
 - **Not built: a recurring workflow set up by voice.** By voice Kevin can run a named workflow,
   hear the list, and answer a scheduled run's question; he cannot yet create one ("every morning,
   check X"). Charted as tickets 17 (rulings: what his yes on the phone covers, and a new install
