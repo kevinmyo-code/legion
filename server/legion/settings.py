@@ -334,7 +334,31 @@ def _parse_database_url(url: str) -> dict:
         "PASSWORD": unquote(parsed.password or ""),
         "HOST": parsed.hostname or "",
         "PORT": str(parsed.port or 5432),
+        # Engine runtime upgrade (architecture review 2026-11-10, item 3): libpq
+        # parameters in the URL's query string were dropped here, so a URL saying
+        # `?sslmode=require` connected with libpq's `prefer`. Only the TLS keys are
+        # honoured; `options` is refused because the search_path below owns it.
+        "OPTIONS": _libpq_options(parsed.query),
     }
+
+
+# The libpq connection parameters a DATABASE_URL query string may carry through to
+# psycopg. `ingest/backup.py` already reads `sslmode` from the same URL for pg_dump.
+_LIBPQ_URL_KEYS = frozenset(
+    {"sslmode", "sslrootcert", "sslcert", "sslkey", "connect_timeout", "target_session_attrs"}
+)
+
+
+def _libpq_options(query: str) -> dict:
+    from urllib.parse import parse_qs
+
+    params = parse_qs(query, keep_blank_values=False)
+    if "options" in params:
+        raise RuntimeError(
+            "DATABASE_URL carries an `options=` parameter. LEGION sets the server options "
+            "itself (search_path=django,public); remove it from the URL."
+        )
+    return {key: values[-1] for key, values in params.items() if key in _LIBPQ_URL_KEYS}
 
 
 DATABASES = {"default": _parse_database_url(DATABASE_URL)}
@@ -355,7 +379,24 @@ DATABASES = {"default": _parse_database_url(DATABASE_URL)}
 # exists. Unqualified references to any of the 41 legacy tables still
 # resolve correctly: `public` is second in the path, and none of Django's
 # own table names collide with one of the 41.
-DATABASES["default"]["OPTIONS"] = {"options": "-c search_path=django,public"}
+DATABASES["default"]["OPTIONS"] = {
+    **DATABASES["default"]["OPTIONS"],
+    "options": "-c search_path=django,public",
+}
+
+# Engine runtime upgrade (item 3): keep a connection per gunicorn thread for up to
+# LEGION_CONN_MAX_AGE seconds (default 60) instead of a new TLS handshake to the
+# Supabase pooler on every request, and check it before reuse so a connection the
+# pooler dropped is replaced rather than failing the request. 0 restores the old
+# per-request connections. Connection budget: every gunicorn thread may hold one
+# connection, so workers x threads x Cloud Run max-instances must stay under the
+# pooler's session-mode pool size; `deploy/cloudrun/deploy.py` checks that product
+# before it deploys (`LEGION_DB_CONN_BUDGET`). A session advisory lock a job forgot
+# to release (`ingest/jobs.py` always releases in `finally`) now outlives the request
+# by up to this long, never longer.
+CONN_MAX_AGE = int(os.environ.get("LEGION_CONN_MAX_AGE", "").strip() or "60")
+DATABASES["default"]["CONN_MAX_AGE"] = CONN_MAX_AGE
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = CONN_MAX_AGE > 0
 
 # A second, read-only alias for ticket 02's per-table round-trip tests and
 # for `inspectdb` itself - `LEGION_PG_URL` is the `legion_reader` role

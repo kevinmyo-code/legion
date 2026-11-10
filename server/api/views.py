@@ -4,12 +4,16 @@ land in ticket 04 - this file is deliberately thin until then.
 """
 from __future__ import annotations
 
+import logging
+
 from django.db import connection
 from django.db.utils import OperationalError
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 
 
 class HealthSerializer(serializers.Serializer):
@@ -20,8 +24,9 @@ class HealthSerializer(serializers.Serializer):
 
 
 class HealthErrorSerializer(serializers.Serializer):
-    """The 503 body. `detail` is psycopg's own message, verbatim - the
-    check says what it actually found rather than a generic failure."""
+    """The 503 body. `detail` names the failure's class only: psycopg's own
+    message can carry the database host and user, and this route is public, so
+    the message itself goes to the server log, never to the caller."""
 
     db = serializers.CharField(help_text='Always "error" on a 503.')
     detail = serializers.CharField()
@@ -42,7 +47,8 @@ class HealthErrorSerializer(serializers.Serializer):
         ),
         503: OpenApiResponse(
             response=HealthErrorSerializer,
-            description="The database did not answer. The body carries psycopg's own message.",
+            description="The database did not answer. The body names the error's class only; "
+            "the full message is in the server log.",
         ),
     },
 )
@@ -60,5 +66,11 @@ def healthz(request):
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
     except OperationalError as exc:
-        return Response({"db": "error", "detail": str(exc)}, status=503)
+        # Unauthenticated route: the exception text can name the host and the
+        # database user (architecture review 2026-11-10), so it is logged, not sent.
+        logger.warning("healthz: database check failed: %s", exc)
+        return Response(
+            {"db": "error", "detail": f"The database did not answer ({type(exc).__name__})."},
+            status=503,
+        )
     return Response({"db": "ok"})

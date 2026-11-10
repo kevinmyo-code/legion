@@ -88,6 +88,20 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # LEGION_WORKFLOW_SCHEDULES=off (unset is on; a schedule exists only once Kevin installs one),
 # LEGION_WORKFLOW_SCHEDULES_OFF=<names>, LEGION_WORKFLOW_SCHEDULES_LISTED=on (unset off: no
 # unattended run on the work laptop). Not listed here, a line in `.env` never reached Cloud Run.
+# Engine runtime upgrade (architecture review 2026-11-10, items 3, 4, 5, 12, 15; Q9):
+# LEGION_SKIP_MIGRATE=1 skips `migrate` on container start (`server/entrypoint.sh`); keep it OUT
+#   of `.env` until the ship flow runs migrate as a job execution before the service deploy.
+# LEGION_CONN_MAX_AGE: seconds a thread keeps its database connection (unset 60; 0 = per request).
+# GOOGLE_CLOUD_PROJECT: already in `.env` for these scripts; passed through so the engine's JSON
+#   logs can name `logging.googleapis.com/trace` (unset: logs carry no trace link).
+# LEGION_CSP=on|report|off: the SPA's Content-Security-Policy (unset is `report`, report-only).
+# LEGION_SCHEDULER_SA + LEGION_TICK_AUDIENCE: the service account Cloud Scheduler's OIDC token must
+#   name and the audience it must carry, for `POST /api/internal/tick/<task>`; either unset, the
+#   endpoint refuses every call (404).
+# LEGION_MODELS: overrides for `GET /api/config/models`, `name=model` comma list (unset: engine
+#   defaults).
+# LEGION_MEMBER_DAILY_CAP: a member's daily web-assistant spend cap in USD (unset or 0 is off;
+#   suggested 3). LEGION_MEMBER_MINT_COST_USD: what one member Live mint is counted as (unset 0.50).
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -95,6 +109,9 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_GITHUB_REPOS",
     "LEGION_OPEN_LOOPS", "LEGION_OPEN_LOOPS_CAP", "LEGION_OPEN_LOOPS_EXPIRE_DAYS",
     "LEGION_WORKFLOW_SCHEDULES", "LEGION_WORKFLOW_SCHEDULES_OFF", "LEGION_WORKFLOW_SCHEDULES_LISTED",
+    "LEGION_SKIP_MIGRATE", "LEGION_CONN_MAX_AGE", "GOOGLE_CLOUD_PROJECT", "LEGION_CSP",
+    "LEGION_SCHEDULER_SA", "LEGION_TICK_AUDIENCE", "LEGION_MODELS",
+    "LEGION_MEMBER_DAILY_CAP", "LEGION_MEMBER_MINT_COST_USD",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
@@ -117,7 +134,14 @@ OPTIONAL_SECRET_ENV_VARS = {
 # default: real bank data, the Trial plan, PLAID_SECRET) or `sandbox` (Plaid's test bank,
 # no real accounts, no Trial slot spent, PLAID_SANDBOX_SECRET). Both secrets are always
 # mounted, so switching is `PLAID_ENV=sandbox` in deploy/cloudrun/.env and a redeploy.
-DEFAULTED_PLAIN_ENV_VARS = {"PLAID_ENV": "production"}
+# Engine runtime upgrade (item 3): gunicorn's gthread shape, read by `server/entrypoint.sh`.
+# Always passed so `deploy.py`'s Cloud Run `--concurrency` (workers x threads) and the database
+# connection budget it checks are computed from the same two numbers the container runs with.
+DEFAULTED_PLAIN_ENV_VARS = {
+    "PLAID_ENV": "production",
+    "LEGION_GUNICORN_WORKERS": "2",
+    "LEGION_GUNICORN_THREADS": "2",
+}
 
 
 def plain_env_from(cloud_env: dict[str, str]) -> dict[str, str]:

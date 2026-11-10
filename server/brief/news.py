@@ -57,7 +57,12 @@ TOPICS = (
 )
 MIN_ITEMS = 5
 MAX_ITEMS = 8
-TIMEOUT_SECONDS = 60
+# Engine runtime upgrade (architecture review 2026-11-10, item 3): this call runs
+# INSIDE `POST /api/brief/refresh`. At 60 s it tied the request's whole budget
+# (Cloud Run and gunicorn were both 60 s), so a slow model became a killed worker
+# and an HTML 502. 30 s, against a 300 s request ceiling, leaves the rest of the
+# brief and one retry room to finish and answer in words.
+TIMEOUT_SECONDS = 30
 
 # Gemini API pricing page (ai.google.dev/gemini-api/docs/pricing, last updated
 # 2026-10-22) for Gemini 3.5 Flash-Lite, standard paid tier: $0.30 per 1M

@@ -40,6 +40,16 @@
 # case to watch: it can run more than one instance, so if it is ever redeployed
 # on this image it should carry LEGION_SKIP_MIGRATE=1.
 #
+# Engine runtime upgrade (architecture review 2026-11-10, item 3): the Cloud Run
+# service IS that case now (max-instances > 1), so a scale-out can run `migrate`
+# twice at once and every cold start pays the migrate check. The switch is wired
+# through `deploy/cloudrun/_common.py` (optional plain env), but it stays OFF in
+# `.env` until the ship flow runs `migrate` as a `legion-worker` job execution
+# BEFORE the service deploy (ship-as-code). Turning it on before then would ship
+# new code against an unmigrated schema. Order, once that exists:
+#   1. ship flow: `gcloud run jobs execute legion-worker --wait --args=manage.py,migrate,--noinput`
+#   2. then set LEGION_SKIP_MIGRATE=1 in deploy/cloudrun/.env and deploy the service.
+#
 # There is no wait-for-Postgres loop, deliberately. `docker-compose.yml` has no
 # `depends_on` for the `postgres` service (its own comment explains why: the
 # dependency is only real in the `full` profile and compose has no per-profile
@@ -85,8 +95,25 @@ fi
 # which is where `docker compose logs web` and `deploy/vm/deploy.sh`'s failure
 # dump both read from; without it a deploy that comes up but answers nothing
 # looks identical to one that answers fine.
+#
+# Engine runtime upgrade (architecture review 2026-11-10, item 3): gthread, so a
+# worker serves LEGION_GUNICORN_THREADS requests at once instead of one. With two
+# sync workers and Cloud Run's default concurrency of 80, request three queued
+# inside the container while a 45 s model call held half the capacity. Cloud Run's
+# `--concurrency` is set to workers x threads by `deploy/cloudrun/deploy.py`, so
+# the front end never sends more than this process can start. Each thread may hold
+# one database connection (CONN_MAX_AGE), which is why the defaults are small:
+# 2 x 2 per instance, sized against the Supabase session pooler in deploy.py.
+#
+# `--timeout 300` matches Cloud Run's `--timeout 300`. Under gthread it bounds a
+# worker whose main loop stops answering, not one slow request; the request ceiling
+# itself is Cloud Run's. `--graceful-timeout 8` fits inside the 10 s Cloud Run
+# allows between SIGTERM and SIGKILL.
 exec gunicorn legion.wsgi:application \
 	--bind "0.0.0.0:${PORT:-8000}" \
-	--workers 2 \
-	--timeout 60 \
+	--worker-class gthread \
+	--workers "${LEGION_GUNICORN_WORKERS:-2}" \
+	--threads "${LEGION_GUNICORN_THREADS:-2}" \
+	--timeout 300 \
+	--graceful-timeout 8 \
 	--access-logfile -

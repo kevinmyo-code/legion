@@ -47,6 +47,57 @@ DEFAULT_SERVICE = "legion"
 DEFAULT_REGION = "us-south1"
 ARTIFACT_REPO = "legion"
 
+# Engine runtime upgrade (architecture review 2026-11-10, item 3).
+# The request ceiling, matched by gunicorn's `--timeout` in `server/entrypoint.sh`. The
+# slowest synchronous model call inside a request (`brief/news.py`, 30 s) sits well inside it.
+REQUEST_TIMEOUT_SECONDS = 300
+
+# Database connections this service may hold at once, across every instance. Every gunicorn
+# thread can hold one (Django CONN_MAX_AGE), so workers x threads x max-instances must fit.
+# ASSUMPTION (Q5, not read from the database secret): `DATABASE_URL` is the Supabase SESSION
+# pooler (`README.md`, and `ingest/jobs.py`'s session advisory locks need session mode), whose
+# pool size on the smallest compute is 15. 12 leaves 3 for the `legion-worker` job executions
+# Cloud Scheduler starts, which run outside this service. Raise it in `.env`
+# (LEGION_DB_CONN_BUDGET) once the plan's real pool size is known.
+DEFAULT_DB_CONN_BUDGET = 12
+
+
+def connection_plan(cloud_env: dict[str, str], max_instances: int) -> tuple[int, int, str | None]:
+    """(concurrency, max_instances, note): Cloud Run's per-instance concurrency is workers x
+    threads, and max-instances is lowered, with a note saying so, when workers x threads x
+    max-instances would exceed the database connection budget."""
+    from _common import DEFAULTED_PLAIN_ENV_VARS
+
+    def number(name: str) -> int:
+        raw = cloud_env.get(name) or DEFAULTED_PLAIN_ENV_VARS.get(name, "")
+        try:
+            value = int(raw)
+        except ValueError:
+            value = 0
+        if value < 1:
+            die(f"{name} must be a whole number of at least 1; got {raw!r}.")
+        return value
+
+    per_instance = number("LEGION_GUNICORN_WORKERS") * number("LEGION_GUNICORN_THREADS")
+    budget_raw = cloud_env.get("LEGION_DB_CONN_BUDGET") or str(DEFAULT_DB_CONN_BUDGET)
+    try:
+        budget = int(budget_raw)
+    except ValueError:
+        die(f"LEGION_DB_CONN_BUDGET must be a whole number; got {budget_raw!r}.")
+    if per_instance > budget:
+        die(
+            f"One instance alone ({per_instance} threads) needs more database connections than "
+            f"LEGION_DB_CONN_BUDGET={budget}. Lower LEGION_GUNICORN_WORKERS/THREADS in .env."
+        )
+    allowed = budget // per_instance
+    if max_instances > allowed:
+        return per_instance, allowed, (
+            f"max-instances {max_instances} -> {allowed}: {per_instance} threads x "
+            f"{max_instances} instances = {per_instance * max_instances} database connections, "
+            f"over LEGION_DB_CONN_BUDGET={budget}."
+        )
+    return per_instance, max_instances, None
+
 
 def image_uri(project: str, region: str, tag: str) -> str:
     return f"{region}-docker.pkg.dev/{project}/{ARTIFACT_REPO}/server:{tag}"
@@ -108,6 +159,7 @@ def main() -> int:
             f"Copy .env.example and fill them in first."
         )
     plain_env = plain_env_from(cloud_env)
+    concurrency, max_instances, clamp_note = connection_plan(cloud_env, max_instances)
 
     # --dry-run must produce readable output even on a machine with no
     # gcloud installed at all (this one, today) - find_gcloud() would
@@ -121,6 +173,9 @@ def main() -> int:
     print(f"region         {region}")
     print(f"image          {image}")
     print(f"max-instances  {max_instances}")
+    print(f"concurrency    {concurrency} (gunicorn workers x threads)")
+    if clamp_note:
+        print(f"NOTE           {clamp_note}")
     print(f"secrets        {secrets_flag_value()}")
     print()
 
@@ -194,7 +249,8 @@ def main() -> int:
             "--cpu", "1",
             "--min-instances", "0",
             "--max-instances", str(max_instances),
-            "--timeout", "60",
+            "--timeout", str(REQUEST_TIMEOUT_SECONDS),
+            "--concurrency", str(concurrency),
             "--quiet",
             "--set-secrets", secrets_flag_value(secret_names_for(cloud_env)),
         ]
