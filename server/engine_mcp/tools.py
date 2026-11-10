@@ -2321,6 +2321,33 @@ def _check_conditions(request, args) -> ToolResult:
 
 
 # =============================================================================
+# github_status: read-only answers about the household's own GitHub repos (round 5,
+# Kevin 2026-11-10: "did the build pass", "what's open on legion"). `engine_mcp/github_status.py`.
+# GET only; "not configured" until LEGION_GITHUB_TOKEN and LEGION_GITHUB_REPOS are set.
+# =============================================================================
+
+
+def _github_status(request, args) -> ToolResult:
+    from engine_mcp import github_status as gh
+
+    cfg = gh.config()
+    if cfg is None:
+        return refused(gh.not_configured_sentence())
+    repo, refusal = gh.resolve_repo(cfg, args.get("repo"))
+    if refusal:
+        return refused(refusal)
+    aspect = args["aspect"]
+    try:
+        text, structured = gh.status(aspect, repo, cfg)
+    except gh.GitHubFailed as exc:
+        return failed(
+            f"Nothing was read from GitHub for {repo}. {exc.message} That is not the same as "
+            f"no builds or nothing open."
+        )
+    return ok(f"From GitHub, read just now. {text}", {"repo": repo, "aspect": aspect, **structured})
+
+
+# =============================================================================
 # run_procedure: one call runs a whole procedure (procedures ticket 12, ADR 0070).
 # The runner is `procedures/runner.py`; it applies the caller's surface fence and
 # the write fence to EVERY step itself, which is why this tool is `writes=False`.
@@ -3197,6 +3224,26 @@ TOOLS: tuple[EngineTool, ...] = (
             },
         ),
         handler=_check_conditions,
+    ),
+    EngineTool(
+        name="github_status",
+        title="GitHub status",
+        description=(
+            "Read-only status of the household's own GitHub repos: aspect `builds` (did the "
+            "build pass: latest GitHub Actions run per workflow), `open` (open pull requests "
+            "and issues), `commits` (latest commits) or `pages` (latest Pages build). `repo` is "
+            "a repo name it may read; leave it out when only one is set up. Say it is from "
+            "GitHub; if it fails or is not set up, say nothing is known. It never changes "
+            "anything on GitHub."
+        ),
+        input_schema=_object(
+            {
+                "aspect": {"type": "string", "enum": ["builds", "open", "commits", "pages"]},
+                "repo": {"type": "string", "maxLength": 140},
+            },
+            ("aspect",),
+        ),
+        handler=_github_status,
     ),
     # Memory v2 (ADR 0075, memory-and-vault ticket 02).
     EngineTool(

@@ -148,6 +148,12 @@ RECRUITER_EXCLUDED: dict[str, str] = {
         "it reaches public agency feeds at the household's own places and keys, outside the "
         "demo's rows"
     ),
+    # Round 5 (2026-11-10): Kevin's own GitHub repos through his token. Nothing of the demo's;
+    # a visitor never reads his builds, issues or commits through the household's credential.
+    "github_status": (
+        "it reads the owner's GitHub repos through the owner's own token, which is not part of "
+        "a demo visit"
+    ),
     "list_tables": (
         "its answer names every table, body and memory included, as readable and writable; "
         "for a recruiter that is false. The record tools' own table enums, narrowed below, "

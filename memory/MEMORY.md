@@ -35,6 +35,12 @@ believed.
   NHC, DriveTexas, FIRMS), Conditions screen, severe-alert raise on SAFETY. Owed by Kevin: engine deploy,
   FIRMS MAP_KEY and DriveTexas key (`deploy/cloudrun/README.md`, Conditions keys), a place labelled home.
 
+## GitHub status - 2026-11-10
+
+- `feat/github-status` (pushed, not merged): engine `github_status` (builds, open, commits, pages), GET
+  only, via ask_engine and the web assistant. Owed by Kevin: fine-grained read-only token as secret
+  LEGION_GITHUB_TOKEN plus LEGION_GITHUB_REPOS, then engine deploy (`deploy/cloudrun/README.md`).
+
 ## Workouts - 2026-11-06
 
 - `feat/workouts` (pushed, not merged): deterministic 3-day A/B programme on the engine

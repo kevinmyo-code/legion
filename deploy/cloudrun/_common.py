@@ -77,12 +77,16 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # Round 5 (2026-11-10, conditions): LEGION_FIRMS=on and LEGION_DRIVETEXAS=on mount the
 # LEGION_FIRMS_MAP_KEY and LEGION_DRIVETEXAS_KEY secrets (OPTIONAL_SECRET_ENV_VARS); unset, the
 # `check_conditions` tool says that source is not set up.
+# Round 5 (2026-11-10): LEGION_GITHUB_REPOS is the comma list of `owner/name` repos the read-only
+# `github_status` tool may read; its token, LEGION_GITHUB_TOKEN, is a secret mounted only when this
+# is set (OPTIONAL_SECRET_ENV_VARS). Unset, the tool says GitHub is not set up.
 # ADR 0080: LEGION_CLAUDE_FILES_BUCKET names the private bucket a Claude task's delivered files wait
 # in (`deploy/claude_files/setup_bucket.sh`); without it they wait in Postgres instead.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
     "LEGION_FIRMS", "LEGION_DRIVETEXAS",
+    "LEGION_GITHUB_REPOS",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
@@ -90,11 +94,13 @@ OPTIONAL_PLAIN_ENV_VARS = (
 # VAPID_PRIVATE_KEY rides with VAPID_PUBLIC_KEY: set the public key in `.env` only after
 # `gcloud secrets create VAPID_PRIVATE_KEY` (README.md, "Push notifications").
 # LEGION_FIRMS_MAP_KEY and LEGION_DRIVETEXAS_KEY ride with LEGION_FIRMS and LEGION_DRIVETEXAS
-# (README.md, "Conditions keys").
+# (README.md, "Conditions keys"). LEGION_GITHUB_TOKEN rides with LEGION_GITHUB_REPOS (README.md,
+# "GitHub status").
 OPTIONAL_SECRET_ENV_VARS = {
     "VAPID_PRIVATE_KEY": "VAPID_PUBLIC_KEY",
     "LEGION_FIRMS_MAP_KEY": "LEGION_FIRMS",
     "LEGION_DRIVETEXAS_KEY": "LEGION_DRIVETEXAS",
+    "LEGION_GITHUB_TOKEN": "LEGION_GITHUB_REPOS",
 }
 
 

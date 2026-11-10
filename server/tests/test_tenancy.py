@@ -1531,6 +1531,10 @@ def test_every_mcp_tool_is_scoped_by_household(
     assert is_error and "No saved place is labelled 'alpha-place'" in text, text
     is_error, text, _ = call(mcp_b, "check_conditions", {"place": "bravo-place"})
     assert is_error and "the saved place 'bravo-place'" in text, text
+    # github_status (round 5) reads no household row; with no token it is not set up.
+    covered.add("github_status")
+    is_error, text, _ = call(mcp_b, "github_status", {"aspect": "builds"})
+    assert is_error and text.startswith("Nothing was read."), text
     # web_search reads no row at all; offline here, it fails in words.
     covered.add("web_search")
     is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})

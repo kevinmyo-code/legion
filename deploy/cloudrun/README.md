@@ -151,6 +151,23 @@ one and say "not set up" until then. Round 5, 2026-11-10.
    drivetexas_standin.geojson` from a real answer and check `conditions/sources.py`'s `_road_text`.
 3. `python deploy.py`.
 
+## GitHub status (optional, read-only)
+
+Off until you do this; `github_status` says GitHub is not set up. Round 5, 2026-11-10.
+
+1. On GitHub: Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate
+   new token. Resource owner: you. Repository access: Only select repositories (pick yours).
+   Repository permissions, all **Read-only**: Actions, Contents, Issues, Pull requests, Pages
+   (Metadata is read-only automatically). Nothing else, and never write.
+2. Store it as a secret and let the runtime account read it:
+   ```
+   echo -n "<TOKEN>" | gcloud secrets create LEGION_GITHUB_TOKEN --data-file=-
+   gcloud secrets add-iam-policy-binding LEGION_GITHUB_TOKEN --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+   ```
+3. Put `LEGION_GITHUB_REPOS=<owner>/<repo>[,<owner>/<repo>]` in `deploy/cloudrun/.env`. Setting it
+   is what mounts the secret, so do step 2 first or the deploy fails.
+4. `python deploy.py`.
+
 ## What is pure standard library and what is not
 
 `deploy.py`, `deploy_job.py`, `install_schedule.py` and `_common.py` import only `argparse`,

@@ -12,6 +12,8 @@ and a memory starting `Plan constraint: ` is a goal constraint to the phone
 - `web_search`: Gemini's answer grounded on Google Search, and the sources' titles.
 - `brief_latest`: the brief's news section is a search-grounded summary of the web
   (`brief/models.py`), the engine's twin of the phone's `get_sitrep`.
+- `github_status` (round 5, 2026-11-10): issue and pull request titles on a public repo may be
+  written by anyone, so a turn that read them may not `remember`.
 - `run_procedure` is not listed but is covered: a procedure step goes through
   `run_engine_tool` with the same request, which marks the turn before the tool runs
   (`before_tool`), so `morning_briefing` (it calls `brief_latest`) taints its turn and
@@ -58,7 +60,7 @@ from django.db import DatabaseError, transaction
 
 log = logging.getLogger(__name__)
 
-THIRD_PARTY_TOOLS: frozenset[str] = frozenset({"web_search", "brief_latest"})
+THIRD_PARTY_TOOLS: frozenset[str] = frozenset({"web_search", "brief_latest", "github_status"})
 
 # The phone's `GoalPlanAgent.CONSTRAINT_PREFIX`, without its trailing space.
 CONSTRAINT_PREFIX = "Plan constraint:"
