@@ -30,7 +30,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The Typeset front page and Controls panel (ADR 0081), committed baselines. `SoftTheme` with no
+ * The Typeset front page under the shell's StatusLine ([ShellHome], as on the phone) and the
+ * Controls panel (ADR 0081), committed baselines. `SoftTheme` with no
  * provided edition follows the phone's theme, so the `-night` qualifier below is what renders the
  * night edition: Robolectric's default is not-night. The orb is still, so the shot is stable.
  */
@@ -70,12 +71,6 @@ class TypesetHomeScreenshotTest {
 
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
-    fun `front page - off-normal words beside Controls`() = shot("typeset-home-status-words.png") {
-        Home(cards = emptyList(), night = false, statusWords = "Not synced, Quiet, 2 alarms")
-    }
-
-    @Test
-    @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     fun `controls panel, day`() = shot("typeset-controls-day.png") { Controls() }
 
     @Test
@@ -88,17 +83,17 @@ class TypesetHomeScreenshotTest {
         night: Boolean,
         phase: OrbPhase = OrbPhase.IDLE,
         status: String = "Tap to talk",
-        statusWords: String? = null,
     ) {
-        TypesetHomeContent(
-            glance = GLANCE,
-            phase = phase,
-            status = status,
-            statusWords = statusWords,
-            night = night,
-            cards = cards,
-            actions = TypesetHomeActions(),
-        )
+        ShellHome {
+            TypesetHomeContent(
+                glance = GLANCE,
+                phase = phase,
+                status = status,
+                night = night,
+                cards = cards,
+                actions = TypesetHomeActions(),
+            )
+        }
     }
 
     @Composable

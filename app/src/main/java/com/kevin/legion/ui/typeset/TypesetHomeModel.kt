@@ -70,27 +70,10 @@ data class TypesetHomeActions(
     val onBrief: () -> Unit = {},
     /** Media (Spotify): the old home's now-playing row. */
     val onOpenMedia: () -> Unit = {},
-    /** The quick line under the masthead: the old header's Quiet, Claude, alarm and settings. */
-    val onToggleQuiet: () -> Unit = {},
-    /** Feed blocker: on is one tap; off opens the ADR 0066 gate in the Controls panel. */
-    val onFeed: () -> Unit = {},
-    /** The Claude sessions watcher (the old header's Claude sheet). */
-    val onOpenClaude: () -> Unit = {},
-    val onOpenLegionSettings: () -> Unit = {},
-    val onOpenPhoneSettings: () -> Unit = {},
     /** A dock tile's long press: the old dock's unpin and move. */
     val onUnpin: (TypesetDockTile) -> Unit = {},
     val onMoveLeft: (TypesetDockTile) -> Unit = {},
     val onMoveRight: (TypesetDockTile) -> Unit = {},
-)
-
-/** The quick line's state: the old header's toggles and watchers, every one in words. */
-data class TypesetQuick(
-    val quietOn: Boolean = false,
-    val feedOn: Boolean = false,
-    /** "06:30", the next alarm, 24-hour; null when none is set. */
-    val alarm: String? = null,
-    val claudeRunning: Int = 0,
 )
 
 /** Where the front page can go. One bag, filled by `HomeScreen` from the shell's navigation. */
@@ -215,15 +198,6 @@ object TypesetHomeDerive {
         "Today", "Money", "Car", "Clock", "Field",
         "Breathe", "Games", "Books", "Lists", "Ideas",
         "Brief", "Media", "More",
-    )
-
-    /** The quick line's labels, short, every state in words. */
-    fun quickLabels(q: TypesetQuick): List<String> = listOf(
-        if (q.quietOn) "Quiet on" else "Quiet off",
-        if (q.feedOn) "Feed on" else "Feed off",
-        q.alarm?.let { "Alarm $it" } ?: "No alarm",
-        if (q.claudeRunning > 0) "Claude ${q.claudeRunning}" else "Claude",
-        "Settings",
     )
 
     /** The prototype's six: monograms, never logos. */

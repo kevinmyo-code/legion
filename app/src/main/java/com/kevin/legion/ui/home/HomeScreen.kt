@@ -135,9 +135,8 @@ fun HomeScreen(
     onOpenClaudeSession: () -> Unit = {},
     /** A Money panel bar: that category's transactions in the Money view (household-finance 13). */
     onOpenMoneyCategory: (category: String) -> Unit = { onOpenMoney() },
-    /** Typeset (ADR 0081): the shell's clock, its off-normal words, and where the page can go. */
+    /** Typeset (ADR 0081): the shell's clock and where the page can go. */
     clock: String = "",
-    statusWords: String? = null,
     onOpenApps: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onOpenClock: () -> Unit = {},
@@ -329,7 +328,6 @@ fun HomeScreen(
         calendar = calendar,
         money = money,
         clock = clock,
-        statusWords = statusWords,
         dockSlots = buildDockSlots(pins, drawerSnapshot),
         onLaunchSlot = launchSlot,
         onUnpinSlot = { slot ->

@@ -1,8 +1,9 @@
 package com.kevin.legion.ui.typeset
 
 import com.kevin.legion.ui.LegionRoute
+import com.kevin.legion.ui.shellShowsStatusLine
 import java.io.File
-import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,7 +14,8 @@ import org.junit.Test
  * The destination list is not typed in here: it is every `LegionRoute` constant (by reflection) and
  * every `<activity>` / `<activity-alias>` in the manifest. A new route or activity with no entry in
  * [taps] or [internalOnly] fails this test. Each tap path ends on the front page, and the front-page
- * words it names must be on the page ([TypesetHomeDerive.CONTENTS], the quick line, the masthead).
+ * words it names must be on the page ([TypesetHomeDerive.CONTENTS], the shell's StatusLine above it,
+ * the masthead).
  */
 class TypesetReachabilityTest {
 
@@ -30,7 +32,7 @@ class TypesetReachabilityTest {
         LegionRoute.FLEET to Page("Car"),
         LegionRoute.APPS to Page("All apps"),
         LegionRoute.SETTINGS to Page("Settings"),
-        LegionRoute.CLAUDE_SESSION to Page("Claude"),
+        LegionRoute.CLAUDE_SESSION to Screen("sheet:claude-watch", "See all"),
         LegionRoute.SETTINGS_SPOTIFY_MEDIA to Page("Media"),
         LegionRoute.CHECKLISTS to Screen("sheet:lists", "a list"),
         LegionRoute.BOUGHT to Screen(LegionRoute.CHECKLISTS, "Bought"),
@@ -75,7 +77,7 @@ class TypesetReachabilityTest {
         "sheet:brief" to Page("Brief"),
         "sheet:more" to Page("More"),
         "sheet:controls" to Page("CONTROLS"),
-        "sheet:claude-watch" to Page("Claude"),
+        "sheet:claude-watch" to Page("Claude sessions"),
         "sheet:groups" to Page("BANK"),
         // Activities.
         "MainActivity" to Page("LEGION"),
@@ -109,9 +111,14 @@ class TypesetReachabilityTest {
         "ClockLauncher" to "the phone launcher's Clock icon; Clock is on the contents line",
     )
 
+    /**
+     * The shell's StatusLine (`ui/common/DeckPanels.kt`), drawn above HOME as on every other route:
+     * the gear ("Settings", LEGION or phone), the Claude button ("Claude sessions"), Apps, Quiet.
+     */
+    private val statusLineWords = setOf("Settings", "Claude sessions", "Apps", "Quiet")
+
     private val pageWords: Set<String> =
-        TypesetHomeDerive.CONTENTS.toSet() +
-            TypesetHomeDerive.quickLabels(TypesetQuick()).map { it.substringBefore(' ') }.toSet() +
+        TypesetHomeDerive.CONTENTS.toSet() + statusLineWords +
             setOf("LEGION", "CONTROLS", "All apps", "due today", "BANK")
 
     private fun routes(): Set<String> = LegionRoute::class.java.declaredFields
@@ -158,16 +165,9 @@ class TypesetReachabilityTest {
     }
 
     @Test
-    fun `the quick line says every state in words`() {
-        assertEquals(
-            listOf("Quiet on", "Feed on", "Alarm 06:30", "Claude 2", "Settings"),
-            TypesetHomeDerive.quickLabels(
-                TypesetQuick(quietOn = true, feedOn = true, alarm = "06:30", claudeRunning = 2),
-            ),
-        )
-        assertEquals(
-            listOf("Quiet off", "Feed off", "No alarm", "Claude", "Settings"),
-            TypesetHomeDerive.quickLabels(TypesetQuick()),
-        )
+    fun `the shell draws its StatusLine on HOME, as on All apps`() {
+        assertTrue(shellShowsStatusLine(isDrivingMode = false, isDumbHome = false))
+        assertFalse("DRIVING is full-bleed", shellShowsStatusLine(isDrivingMode = true, isDumbHome = false))
+        assertFalse("dumb-phone HOME is the list alone", shellShowsStatusLine(isDrivingMode = false, isDumbHome = true))
     }
 }

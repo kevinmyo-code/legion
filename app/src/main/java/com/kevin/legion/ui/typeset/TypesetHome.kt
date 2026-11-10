@@ -53,10 +53,11 @@ import com.kevin.legion.ui.theme.soft.TypesetType
 
 /**
  * The Typeset front page (ADR 0081, `proto-typeset.html`): a ruled column that fits one screen with
- * no scroll (Kevin, 2026-11-10). Top to bottom: masthead; the quick line (Quiet, Feed, Alarm,
- * Claude, Settings, the old header's controls); the glance (dateline, the time as the headline,
- * three figures) or, once Alfred has answered, his cards newest first; the contents line; the orb,
- * centred, with "Type" under it; the app groups; "All apps" and the pinned dock.
+ * no scroll (Kevin, 2026-11-10). The shell's StatusLine sits above it, the same bar as on All apps
+ * (sync, alarm, clock, Quiet, Apps, Claude, settings). Top to bottom: masthead; the glance
+ * (dateline, the time as the headline, three figures) or, once Alfred has answered, his cards
+ * newest first; the contents line; the orb, centred, with "Type" under it; the app groups; "All
+ * apps" and the pinned dock.
  *
  * [FitTiers] picks how much to give up to fit; the time (or the cards) takes the height left over.
  * Stateless: [TypesetHomeHost] wires it.
@@ -67,14 +68,11 @@ fun TypesetHomeContent(
     glance: TypesetGlance,
     phase: OrbPhase,
     status: String,
-    /** Off-normal shell words under the Controls link (not synced, OBD, quiet, alarms); null draws nothing. */
-    statusWords: String?,
     night: Boolean,
     cards: List<ConversationCard>,
     actions: TypesetHomeActions,
     modifier: Modifier = Modifier,
     dock: List<TypesetDockTile> = TypesetHomeDerive.DOCK,
-    quick: TypesetQuick = TypesetQuick(),
     /** The app groups row (Banking, Music, ...), stateful, from HOME; null draws nothing. */
     groups: (@Composable () -> Unit)? = null,
 ) {
@@ -82,13 +80,12 @@ fun TypesetHomeContent(
     FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, measuring ->
         val outer = if (measuring) Modifier.fillMaxWidth() else Modifier.fillMaxSize()
         Column(outer) {
-            Masthead(answering, night, statusWords, actions)
-            QuickLine(quick, actions)
+            Masthead(answering, night, actions)
             if (answering) {
                 Cards(cards, actions, measuring)
             } else {
                 Glance(glance, tier, measuring, actions)
-                Contents(actions)
+                Contents(tier.contentsPerRow, actions)
             }
             Voice(phase, status, tier, measuring, actions)
             groups?.let {
@@ -101,7 +98,7 @@ fun TypesetHomeContent(
 }
 
 @Composable
-private fun Masthead(answering: Boolean, night: Boolean, statusWords: String?, actions: TypesetHomeActions) {
+private fun Masthead(answering: Boolean, night: Boolean, actions: TypesetHomeActions) {
     Row(Modifier.fillMaxWidth().heightIn(min = TapTarget), verticalAlignment = Alignment.CenterVertically) {
         if (answering) {
             Text(
@@ -114,25 +111,15 @@ private fun Masthead(answering: Boolean, night: Boolean, statusWords: String?, a
             Text("LEGION", style = TypesetType.caps, color = SoftColors.text)
         }
         Spacer(Modifier.weight(1f))
-        Row(Modifier.weight(2f, fill = false), verticalAlignment = Alignment.CenterVertically) {
-            statusWords?.let {
-                Text(
-                    it,
-                    style = TypesetType.small,
-                    color = SoftColors.text2,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp),
-                )
-            }
-            Text(
-                "CONTROLS",
-                style = TypesetType.caps.copy(textDecoration = TextDecoration.Underline),
-                color = SoftColors.text,
-                maxLines = 1,
-                modifier = Modifier.tap("Controls", actions.onControls),
-            )
-        }
+        // Controls stays: the feed blocker and its ADR 0066 gate live in that panel, and the
+        // StatusLine above has no Feed. The sync/OBD/alarm words are on the StatusLine now.
+        Text(
+            "CONTROLS",
+            style = TypesetType.caps.copy(textDecoration = TextDecoration.Underline),
+            color = SoftColors.text,
+            maxLines = 1,
+            modifier = Modifier.tap("Controls", actions.onControls),
+        )
         Box(
             Modifier.size(TapTarget).clickable(role = Role.Button, onClick = actions.onToggleEdition)
                 .semantics { contentDescription = "Switch between day and night paper" },
@@ -143,47 +130,6 @@ private fun Masthead(answering: Boolean, night: Boolean, statusWords: String?, a
         }
     }
     HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
-}
-
-/**
- * The old header's controls, one tap each, states in words (Kevin, 2026-11-10: "I need that back").
- * Quiet toggles; Feed on is one tap and off opens the ADR 0066 gate; Alarm opens Clock; Claude
- * opens the watcher; Settings asks LEGION or the phone's, as the old gear did.
- */
-@Composable
-private fun QuickLine(q: TypesetQuick, actions: TypesetHomeActions) {
-    val labels = TypesetHomeDerive.quickLabels(q)
-    val goes = listOf(actions.onToggleQuiet, actions.onFeed, actions.onOpenClock, actions.onOpenClaude)
-    var settingsOpen by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth()) {
-        labels.forEachIndexed { i, label ->
-            val isSettings = i >= goes.size
-            val go = if (isSettings) ({ settingsOpen = true }) else goes[i]
-            // Width by length: "Alarm 06:30" needs more than "Feed on" (it clipped at 360dp, font 1.3).
-            Box(Modifier.weight(label.length.toFloat()).tap(label, go), contentAlignment = Alignment.Center) {
-                FitLine(
-                    label,
-                    TypesetType.small.copy(textDecoration = TextDecoration.Underline),
-                    SoftColors.text,
-                    min = 10.sp,
-                    align = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (!isSettings) return@Box
-                DropdownMenu(expanded = settingsOpen, onDismissRequest = { settingsOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("LEGION settings", style = TypesetType.small, color = SoftColors.text) },
-                        onClick = { settingsOpen = false; actions.onOpenLegionSettings() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Phone settings", style = TypesetType.small, color = SoftColors.text) },
-                        onClick = { settingsOpen = false; actions.onOpenPhoneSettings() },
-                    )
-                }
-            }
-        }
-    }
-    HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
 }
 
 @Composable
@@ -261,9 +207,9 @@ private fun Figure(f: TypesetFigure, tier: FitTier, onOpen: () -> Unit) {
     }
 }
 
-/** The contents line: every place the page leads, in words, five to a row. */
+/** The contents line: every place the page leads, in words, five to a row (seven when [FitTier.PACKED]). */
 @Composable
-private fun Contents(actions: TypesetHomeActions) {
+private fun Contents(perRow: Int, actions: TypesetHomeActions) {
     val go: Map<String, () -> Unit> = mapOf(
         "Today" to actions.onOpenToday, "Money" to actions.onOpenMoney, "Car" to actions.onOpenCar,
         "Clock" to actions.onOpenClock, "Field" to actions.onOpenField, "Breathe" to actions.onBreathe,
@@ -271,7 +217,7 @@ private fun Contents(actions: TypesetHomeActions) {
         "Ideas" to actions.onOpenIdeas, "Brief" to actions.onBrief, "Media" to actions.onOpenMedia,
         "More" to actions.onMore,
     )
-    TypesetHomeDerive.CONTENTS.chunked(CONTENTS_PER_ROW).forEach { row ->
+    TypesetHomeDerive.CONTENTS.chunked(perRow).forEach { row ->
         Row(Modifier.fillMaxWidth()) {
             row.forEach { name ->
                 Box(Modifier.weight(1f).tap(name, go[name] ?: {}), contentAlignment = Alignment.CenterStart) {
@@ -284,7 +230,7 @@ private fun Contents(actions: TypesetHomeActions) {
                     )
                 }
             }
-            repeat(CONTENTS_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
+            repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
         }
     }
     HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
@@ -414,7 +360,6 @@ private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeAct
     }
 }
 
-private const val CONTENTS_PER_ROW = 5
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp

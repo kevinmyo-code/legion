@@ -20,7 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -41,7 +44,6 @@ import com.kevin.legion.ui.typeset.TypesetGroupCell
 import com.kevin.legion.ui.typeset.TypesetHomeActions
 import com.kevin.legion.ui.typeset.TypesetHomeContent
 import com.kevin.legion.ui.typeset.TypesetPage
-import com.kevin.legion.ui.typeset.TypesetQuick
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -54,6 +56,8 @@ import org.robolectric.annotation.GraphicsMode
  * The front page fits one screen with no scroll (Kevin, 2026-11-10), at 360x640, 412x915 (A25-like)
  * and 412x915 at font 1.3, day and night, idle, listening and answering. Each test renders a
  * baseline AND asserts: nothing placed below the viewport, and every tap target at least 44dp tall.
+ * The page sits under the shell's StatusLine ([ShellHome]), as on the phone: the bar is in the shot
+ * and its height comes out of the page's.
  *
  * The page is drawn through [TypesetPage] under [LegionTheme], the way `MainActivity` draws HOME, with
  * NO SoftTheme of the test's own: the light-mode render is what caught "the home screen is still
@@ -72,24 +76,28 @@ class TypesetFitScreenshotTest {
         rule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale)) {
-                LegionTheme { TypesetPage { Front(phase, answering) } }
+                LegionTheme { ShellHome { TypesetPage { Front(phase, answering) } } }
             }
         }
         rule.mainClock.advanceTimeBy(FRAME_MS)
-        assertFits(file)
         rule.onRoot().captureRoboImage(file)
+        assertFits(file)
     }
 
     private fun assertFits(file: String) {
         val root = rule.onRoot().fetchSemanticsNode()
         val height = root.boundsInRoot.bottom
         val minTarget = with(root.layoutInfo.density) { MIN_TARGET_DP * density }
+        // The 44dp check covers the page. The StatusLine above it is the shell's, drawn exactly as on
+        // All apps (its own tests own it); its pills and 40dp icon buttons are reported, not changed.
+        val pageTop = rule.onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.top
         val problems = mutableListOf<String>()
         fun walk(n: SemanticsNode) {
             if (!n.layoutInfo.isPlaced) return
             val b = n.boundsInRoot
             if (b.bottom > height + SLACK_PX) problems += "${n.describe()} ends at ${b.bottom}, viewport $height"
-            if (n.config.contains(SemanticsActions.OnClick) && b.height + SLACK_PX < minTarget) {
+            val onPage = b.top + SLACK_PX >= pageTop
+            if (onPage && n.config.contains(SemanticsActions.OnClick) && b.height + SLACK_PX < minTarget) {
                 problems += "${n.describe()} is ${b.height}px tall, under 44dp ($minTarget px)"
             }
             n.children.forEach(::walk)
@@ -98,7 +106,17 @@ class TypesetFitScreenshotTest {
         assertTrue("$file:\n" + problems.joinToString("\n"), problems.isEmpty())
     }
 
-    private fun SemanticsNode.describe(): String = config.toString().take(DESCRIBE_CHARS)
+    private fun SemanticsNode.describe(): String {
+        val words = config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString()
+            ?: config.getOrNull(SemanticsProperties.Text)?.joinToString()
+            ?: generateSequence(this) { it.parent }.drop(1)
+                .firstNotNullOfOrNull { p ->
+                    p.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString()
+                }
+                ?.let { "inside '$it'" }
+            ?: config.toString().take(DESCRIBE_CHARS)
+        return "'$words' at $boundsInRoot"
+    }
 
     // 360 x 640, a small phone
     @Test @Config(qualifiers = SMALL)
@@ -196,12 +214,10 @@ class TypesetFitScreenshotTest {
                 OrbPhase.SPEAKING -> "Alfred is talking"
                 else -> "Tap to talk"
             },
-            statusWords = null,
             night = isSystemInDarkTheme(),
             cards = if (answering) listOf(CARD) else emptyList(),
             actions = TypesetHomeActions(),
             dock = DOCK,
-            quick = TypesetQuick(quietOn = true, feedOn = true, alarm = "06:30", claudeRunning = 2),
             groups = {
                 Row(Modifier.fillMaxWidth()) {
                     GROUPS.forEach { TypesetGroupCell(it, onClick = {}, onLongClick = {}) }

@@ -27,7 +27,10 @@ import androidx.compose.ui.unit.sp
  * fit and no scrolling"). Tiers run roomiest first; [FitTiers] takes the first whose fixed parts
  * fit, and the time headline takes whatever height is left, shrinking to fit it. The order of what
  * goes is the brief's: spacing, then secondary lines, then the big figures (inline, smaller), then
- * the orb and the dock's names, and last the pinned tiles themselves (they stay in All apps).
+ * the orb and the dock's names, then the pinned tiles themselves (they stay in All apps), and last
+ * the contents line packs seven to a row (two rows, not three). The shell's StatusLine sits above
+ * the page since 2026-11-10 and can wrap to two lines on a narrow phone at a large font; [PACKED]
+ * is what keeps the time readable there.
  */
 internal enum class FitTier(
     val gap: Dp,
@@ -38,6 +41,7 @@ internal enum class FitTier(
     val statusOwnLine: Boolean,
     val dockTiles: Boolean,
     val dockNames: Boolean,
+    val contentsPerRow: Int = 5,
 ) {
     ROOMY(
         gap = 12.dp,
@@ -99,6 +103,17 @@ internal enum class FitTier(
         dockTiles = false,
         dockNames = false,
     ),
+    PACKED(
+        gap = 0.dp,
+        figureLines = 0,
+        stacked = false,
+        dateline = false,
+        orb = 56.dp,
+        statusOwnLine = false,
+        dockTiles = false,
+        dockNames = false,
+        contentsPerRow = 7,
+    ),
 }
 
 /**
@@ -119,7 +134,7 @@ internal fun FitTiers(modifier: Modifier = Modifier, content: @Composable (tier:
         val loose = Constraints(minWidth = c.minWidth, maxWidth = c.maxWidth)
         val chosen = FitTier.entries.firstOrNull { tier ->
             subcompose(tier) { content(tier, true) }.sumOf { it.measure(loose).height } <= c.maxHeight
-        } ?: FitTier.FLOOR
+        } ?: FitTier.entries.last()
         val exact = c.copy(minHeight = c.maxHeight)
         val ps = subcompose("final") { content(chosen, false) }.map { it.measure(exact) }
         layout(c.maxWidth, c.maxHeight) { ps.forEach { it.place(0, 0) } }
