@@ -45,6 +45,7 @@ def main() -> None:
     ap.add_argument("--clip", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=11)
+    ap.add_argument("--clip-note", default="", help="where the TTS clip came from (voice, licence)")
     a = ap.parse_args()
 
     from openwakeword.model import Model
@@ -78,6 +79,7 @@ def main() -> None:
     meta = {
         "source": "openwakeword.Model (dscripka/openWakeWord 368c037), onnx, fed 1280 samples per call",
         "clip": "seeded noise (+-300) 2 s, one synthetic TTS utterance, 1 s noise; no human recording",
+        "clip_source": a.clip_note,
         "frames": len(scores),
         "head_input_frames": int(frames),
         # Every head window from here on holds only rows computed from this audio.

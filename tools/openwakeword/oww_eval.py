@@ -3,7 +3,7 @@
 Scores audio exactly the way the phone's OwwStream does (and `openwakeword.Model.predict` fed
 1280-sample frames): per 80 ms frame, the embedding of the newest 76 mel rows (the mel buffer starts
 as 76 rows of ones), the head on the newest N feature rows, the first five scores zeroed. It does it
-in batches, which is what makes 10+ hours of audio take minutes; `--check` compares it with
+with the embedding and head batched where the models allow; `--check` compares it with
 `openwakeword.Model` streaming on one file first.
 
 Decisions copy OwwDecider: a frame at or above the threshold opens, and no second open within 4 s.
@@ -70,17 +70,10 @@ class Scorer:
         if n_frames == 0:
             return np.zeros(0, np.float32)
         audio = audio[: n_frames * FRAME].astype(np.float32)
-        # Mel rows of the whole clip equal the streamed ones: frame 0 gives rows 0..4, frame k rows
-        # up to 8k+4 (window 512, hop 160, no centring). Long files go in 60 s pieces on row bounds.
-        rows = []
-        piece = 160 * 6000
-        start = 0
-        while start < len(audio):
-            seg = audio[start: start + piece + 352]
-            if len(seg) >= 512:
-                r = self._mel(seg)
-                rows.append(r[: min(len(r), piece // 160)])
-            start += piece
+        # The mel model is NOT frame-local (its dB floor follows the loudest value in its input), so
+        # a whole-clip mel differs from the streamed one by up to 0.13 in score. Run it exactly as
+        # the phone does: per frame, on that frame plus the 480 samples before it.
+        rows = [self._mel(audio[max(0, (k + 1) * FRAME - FRAME - 480): (k + 1) * FRAME]) for k in range(n_frames)]
         mel = np.concatenate([np.ones((76, 32), np.float32)] + rows)
         ends = 76 + 8 * np.arange(n_frames) + 5  # exclusive end of each frame's window
         windows = np.stack([mel[e - 76:e] for e in ends])
@@ -107,8 +100,11 @@ def opens(scores: np.ndarray, threshold: float) -> int:
 def pad(clip: np.ndarray, bed: np.ndarray | None, snr_db: float | None, rng) -> np.ndarray:
     lead, tail = 16000 * 2, 16000
     total = lead + len(clip) + tail
-    x = np.zeros(total, np.float32)
-    x[lead: lead + len(clip)] = clip
+    # A microphone never gives exact digital zeros, and on exact zeros the batch mel and the
+    # streamed mel differ (openwakeword.utils notes it): a noise floor about -70 dBFS, seeded per
+    # clip so every engine and every run hears the same one.
+    x = np.random.default_rng(len(clip)).normal(0, 10, total).astype(np.float32)
+    x[lead: lead + len(clip)] += clip
     if bed is not None and snr_db is not None:
         s = rng.integers(0, max(1, len(bed) - total))
         noise = bed[s: s + total].astype(np.float32)
@@ -166,9 +162,11 @@ def main() -> None:
         for _, c in clips:
             c = np.clip(c.astype(np.float32) * 10 ** (gain_db / 20), -32768, 32767)
             peaks.append(float(sc.scores(pad(c, bed, snr, rng)).max()))
+        names = [p.stem for p, _ in clips]
         peaks = np.array(peaks)
         return {"clips": len(clips), "rate": {str(t): float(np.mean(peaks >= t)) for t in th},
-                "peak_median": float(np.median(peaks)) if len(peaks) else None}
+                "peak_median": float(np.median(peaks)) if len(peaks) else None,
+                "peaks": dict(zip(names, [round(float(v), 4) for v in peaks]))}
 
     t0 = time.time()
     pos = clip_set(a.positive)
@@ -177,13 +175,13 @@ def main() -> None:
         for lv in [float(v) for v in a.levels.split(",") if v]:
             r = caught_rate(pos, gain_db=lv)
             rows[f"clean_{lv:+.0f}dB"] = {"clips": r["clips"], "miss": {t: 1 - v for t, v in r["rate"].items()},
-                                          "peak_median": r["peak_median"]}
+                                          "peak_median": r["peak_median"], "peaks": r["peaks"]}
         for s in [float(v) for v in a.snr.split(",") if v]:
             r = caught_rate(pos, snr=s)
             rows[f"noise_{s:.0f}dB_snr"] = {"clips": r["clips"], "miss": {t: 1 - v for t, v in r["rate"].items()},
-                                            "peak_median": r["peak_median"]}
+                                            "peak_median": r["peak_median"], "peaks": r["peaks"]}
         result["positive"] = rows
-        print(json.dumps(rows, indent=1), flush=True)
+        print(json.dumps({k: {"miss": v["miss"]} for k, v in rows.items()}), flush=True)
 
     near = clip_set(a.near)
     if near:
