@@ -204,7 +204,12 @@ internal fun CardPage(
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             CardBody(card)
             card.note?.let {
-                Text(it, style = TypesetType.smallItalic, color = SoftColors.text2, modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    it,
+                    style = TypesetType.smallItalic,
+                    color = SoftColors.text2,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
         HorizontalDivider(Modifier.padding(top = 8.dp), thickness = 1.dp, color = SoftColors.text)
@@ -235,7 +240,7 @@ private fun CardBody(card: ConversationCard) {
         is ConversationCard.Timeline -> {
             card.items.groupBy { it.date }.forEach { (date, items) ->
                 if (date != null) DayHeading(dayHeading(date))
-                items.forEach { TimeRow(CardWords.timelineTime(it), CardWords.timelineTitle(it)) }
+                items.forEach { TimeRow(timelineTime(it), timelineTitle(it)) }
             }
             MoreLine(card.more)
         }
@@ -286,7 +291,12 @@ private fun TimeRow(time: String, words: String) {
 @Composable
 private fun MoreLine(count: Int) {
     if (count > 0) {
-        Text("And $count more.", style = TypesetType.smallItalic, color = SoftColors.text2, modifier = Modifier.padding(top = 8.dp))
+        Text(
+            "And $count more.",
+            style = TypesetType.smallItalic,
+            color = SoftColors.text2,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }
 

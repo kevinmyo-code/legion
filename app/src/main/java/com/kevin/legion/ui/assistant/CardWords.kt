@@ -31,26 +31,6 @@ internal object CardWords {
     fun barValue(p: BarPoint, unit: String): String =
         PhoneCards.money(p.value, unit) + (p.flag?.let { " (${it.words})" } ?: "")
 
-    fun timeline(i: TimelineItem): String = "${timelineTime(i)}: ${timelineTitle(i)}"
-
-    /** The time column of a timeline row: "09:30 to 10:45", "All day", "No time". */
-    fun timelineTime(i: TimelineItem): String = when {
-        i.allDay -> "All day"
-        i.start != null && i.end != null -> "${i.start} to ${i.end}"
-        i.start != null -> i.start
-        else -> "No time"
-    }
-
-    /** The words of a timeline row, its kind said in words: "Quiz due (to-do)". */
-    fun timelineTitle(i: TimelineItem): String {
-        val kind = when (i.kind) {
-            TimelineKind.EVENT -> ""
-            TimelineKind.TODO -> " (to-do)"
-            TimelineKind.SUGGESTION -> " (suggestion, not a plan)"
-        }
-        return i.title + kind
-    }
-
     fun mileage(card: ConversationCard.Car): String =
         card.mileage
             ?.let { m -> "Mileage: ${"%,d".format(m)} mi" + (card.mileageAsOf?.let { " (last reading $it)" } ?: "") }
@@ -93,6 +73,24 @@ internal object CardWords {
     fun check(l: ChecklistLine): String = (if (l.done) "Done: " else "To do: ") + l.text
 
     fun seconds(ms: Long): String = if (ms < MS_PER_SECOND) "$ms ms" else "%.1f s".format(ms / MS_PER_SECOND.toDouble())
+}
+
+/** The time column of a timeline row: "09:30 to 10:45", "All day", "No time". */
+internal fun timelineTime(i: TimelineItem): String = when {
+    i.allDay -> "All day"
+    i.start != null && i.end != null -> "${i.start} to ${i.end}"
+    i.start != null -> i.start
+    else -> "No time"
+}
+
+/** The words of a timeline row, its kind said in words: "Quiz due (to-do)". */
+internal fun timelineTitle(i: TimelineItem): String {
+    val kind = when (i.kind) {
+        TimelineKind.EVENT -> ""
+        TimelineKind.TODO -> " (to-do)"
+        TimelineKind.SUGGESTION -> " (suggestion, not a plan)"
+    }
+    return i.title + kind
 }
 
 private val DAY_HEADING = java.time.format.DateTimeFormatter.ofPattern("EEE MMM d", java.util.Locale.US)

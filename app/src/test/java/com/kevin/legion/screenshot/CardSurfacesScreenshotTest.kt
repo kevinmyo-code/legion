@@ -83,10 +83,12 @@ class CardSurfacesScreenshotTest {
         val below = rule.onAllNodes(SemanticsMatcher("placed") { it.layoutInfo.isPlaced }, useUnmergedTree = true)
             .fetchSemanticsNodes().filter { it.boundsInRoot.bottom > root.bottom + 1f }
         assertTrue("$file: placed below the screen: ${below.map { it.boundsInRoot }}", below.isEmpty())
-        val talk = rule.onAllNodes(hasContentDescription("Talk to Alfred") or hasText("Speaking…"), useUnmergedTree = true)
+        val voice = hasContentDescription("Talk to Alfred") or hasText("Speaking…")
+        val talk = rule.onAllNodes(voice, useUnmergedTree = true)
             .fetchSemanticsNodes().count { it.layoutInfo.isPlaced }
         assertTrue("$file: the voice control is not drawn", talk >= 1)
-        assertTrue("$file: the shell bar is not drawn", rule.onAllNodes(hasText("14:20")).fetchSemanticsNodes().isNotEmpty())
+        val bar = rule.onAllNodes(hasText("14:20")).fetchSemanticsNodes()
+        assertTrue("$file: the shell bar is not drawn", bar.isNotEmpty())
     }
 
     private fun home(file: String, cards: List<ConversationCard>, fontScale: Float) = render(file, fontScale) {
