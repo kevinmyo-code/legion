@@ -3,14 +3,13 @@ package com.kevin.legion.service.local
 import android.content.Context
 import android.content.Intent
 import android.speech.tts.TextToSpeech
-import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.ui.MainActivity
 import java.util.Locale
 import org.json.JSONObject
 
 /**
  * Carries out a [LocalAction] on the phone and returns the words to say (phase 2). A tool runs
- * through `LiveToolbox.dispatch`, the same code Alfred's call runs (ADR 0035), and the tool's own
+ * through the controller's tool runner, the same code Alfred's call runs (ADR 0035), and the tool's own
  * result message is what is said, so a refusal ("Nothing was set") is said as plainly as a success.
  * A screen opens through the app's deep link. Nothing here asks a model anything.
  */
@@ -23,7 +22,7 @@ object LocalCommandRunner {
     suspend fun run(
         context: Context,
         action: LocalAction,
-        runTool: suspend (String, JSONObject) -> JSONObject? = { n, a -> LiveToolbox.dispatch(context, n, a) },
+        runTool: suspend (String, JSONObject) -> JSONObject?,
     ): String = when (action) {
         is LocalAction.Tool -> spoken(runTool(action.name, JSONObject(action.args)))
         is LocalAction.Open -> {
