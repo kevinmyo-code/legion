@@ -92,6 +92,7 @@ Format and the test for whether something deserves an ADR:
 | 0085 | [[0085-open-loops-are-proposed-never-asserted\|Open loops are proposed from his own words, never asserted, and nothing is tracked without his yes]] | accepted | 2026-11-10 | - |
 | 0086 | [[0086-alfred-drafts-email-kevin-sends\|Alfred drafts email in Kevin's Gmail; it sends only on Kevin's own "send"]] | accepted | 2026-11-10 | - |
 | 0087 | [[0087-live-surface-diet-and-scripted-opening\|The Live tool surface is a budget; a tap opens the mic with a scripted line]] | accepted | 2026-11-10 | - |
+| 0088 | [[0088-simple-commands-on-the-phone\|Simple commands are done on the phone; everything else goes to Alfred unchanged]] | accepted | 2026-11-10 | - |
 
 ## Superseded
 

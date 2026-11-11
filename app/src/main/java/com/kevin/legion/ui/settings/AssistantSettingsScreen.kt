@@ -92,6 +92,7 @@ fun AssistantSettingsScreen(
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
     var bluetoothMic by remember { mutableStateOf(VoiceTurnSettings.bluetoothMic(context)) }
+    var localCommands by remember { mutableStateOf(VoiceTurnSettings.localCommands(context)) }
     var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
     var auditLog by remember { mutableStateOf(VoiceTurnSettings.auditLog(context)) }
     var keepConversationLog by remember { mutableStateOf(VoiceTurnSettings.keepConversationLog(context)) }
@@ -247,6 +248,22 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceTurnSettings.setBluetoothMic(context, on)
                         bluetoothMic = on
+                    },
+                )
+
+                // Voice cost work phase 2: simple commands done on the phone, no model. Off by default.
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Simple commands on the phone",
+                    explanation = "timers, alarms, pause, skip, volume, \"that's all\", opening a " +
+                        "screen and clearing ticked items are recognised on the phone and done at once, " +
+                        "without asking ${activeName ?: "the assistant"}. Anything else goes to " +
+                        "${activeName ?: "the assistant"} unchanged. Not over car Bluetooth. Applies " +
+                        "from the next conversation.",
+                    enabled = localCommands,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setLocalCommands(context, on)
+                        localCommands = on
                     },
                 )
 

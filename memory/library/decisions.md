@@ -7948,3 +7948,10 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   system instruction. ADR 0087.
 - The coordinator's defaults Kevin may overrule: which tools stay direct, and that instant reads
   such as the calendar and trip status ride action tools rather than a router.
+
+## 2026-11-10 - Simple commands on the phone's own recogniser (Kevin)
+
+- **Kevin's words:** *"we offload as much as we can to the phones own speech recognizer."*
+- Ruled: a closed set of simple commands (timers, alarms, playback, volume, dismissal, open a
+  screen, clear ticked lines) is matched on the phone with no model; a miss goes to Alfred with the
+  same audio. Off by default until it has run on the phone. ADR 0088.
