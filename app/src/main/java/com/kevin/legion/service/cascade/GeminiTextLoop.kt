@@ -185,7 +185,7 @@ class GeminiTextLoop(
                         round--
                         continue
                     }
-                    return fail(TextChatEngine.failureForPublic(classify(RestOutcome.HttpError(outcome.code, outcome.body))), state)
+                    return fail(TextChatEngine.failureFor(classify(RestOutcome.HttpError(outcome.code, outcome.body))), state)
                 }
                 is StreamOutcome.Network -> return fail(TextFailure.OFFLINE, state)
                 StreamOutcome.Ok -> Unit

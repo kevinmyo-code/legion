@@ -785,11 +785,19 @@ internal class CascadeSession(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun release(reason: String) = withContext(NonCancellable) {
+    private suspend fun release(reason: String) {
+        // Called from inside a turn too (a hand-over, a dismissal): that turn must not cancel
+        // itself, or the step after release (opening Live) would never run.
+        val caller = kotlin.coroutines.coroutineContext[Job]
+        withContext(NonCancellable) { releaseNow(reason, caller) }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun releaseNow(reason: String, caller: Job?) {
         isOpen = false
         followUpJob?.cancel()
         speaker?.interrupt()
-        turnJob?.takeIf { it != currentJob() }?.cancel()
+        turnJob?.takeIf { it !== caller }?.cancel()
         currentUtt?.cancel()
         currentUtt = null
         try {
@@ -810,8 +818,6 @@ internal class CascadeSession(
             scope.cancel()
         }
     }
-
-    private suspend fun currentJob(): Job? = kotlin.coroutines.coroutineContext[Job]
 
     // --- microphone (a trimmed copy of Live's micLoop) -----------------------------------------------
 
