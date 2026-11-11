@@ -835,8 +835,8 @@ class LiveSessionController(context: Context) {
 
     /** A proactive line while a laptop conversation holds the mic: logged, and shown when asked for. */
     private fun refuseUnderCascade(prompt: String, userInitiated: Boolean) {
-        android.util.Log.d("LiveSessionController", "requestSpeak refused under the laptop pipeline (${prompt.length} chars)")
-        if (userInitiated) CompanionPhase.showNotice("Didn't speak - a laptop voice conversation is open")
+        android.util.Log.d("LiveSessionController", "requestSpeak under the laptop pipeline (${prompt.length} chars)")
+        refuse(VoiceRefusal.LAPTOP_CONVERSATION_OPEN, userInitiated)
     }
 
     // --- session lifecycle ----------------------------------------------
@@ -1844,6 +1844,9 @@ class LiveSessionController(context: Context) {
         /** A connect was already in flight for something else (a tap's conversation, another
          *  raise), so this line had nowhere to go without overwriting it (2026-11-05). */
         CONNECT_IN_FLIGHT,
+
+        /** A laptop-pipeline conversation holds the mic; Live cannot open under it (2026-11-10). */
+        LAPTOP_CONVERSATION_OPEN,
     }
 
     companion object {
@@ -1883,6 +1886,7 @@ class LiveSessionController(context: Context) {
             VoiceRefusal.OFFLINE -> "Didn't start - no network"
             VoiceRefusal.SOCKET_GONE -> "Didn't speak - the connection had already closed"
             VoiceRefusal.CONNECT_IN_FLIGHT -> "Didn't speak - another voice session was still connecting"
+            VoiceRefusal.LAPTOP_CONVERSATION_OPEN -> "Didn't speak - a laptop voice conversation is open"
         }
 
         // Close reasons that are expected (user stop / idle timeout / teardown /

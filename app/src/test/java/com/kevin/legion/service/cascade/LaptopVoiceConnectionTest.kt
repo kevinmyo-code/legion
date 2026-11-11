@@ -1,6 +1,5 @@
 package com.kevin.legion.service.cascade
 
-import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,7 +16,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.net.InetSocketAddress
+import java.net.InetAddress
+import java.net.ServerSocket
+import kotlin.concurrent.thread
 import java.util.Collections
 
 /**
@@ -91,7 +92,7 @@ class LaptopVoiceConnectionTest {
     // --- open ---------------------------------------------------------------------------------
 
     @Test
-    fun `hello, ready, and the bearer on the upgrade`() = runBlocking {
+    fun `hello, ready, and the bearer on the upgrade`() = runBlocking<Unit> {
         val fake = FakeLaptop()
         val c = connection(fake)
         assertEquals(LaptopVoiceConnection.OpenResult.Ready, c.open(1_000))
@@ -105,7 +106,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `a laptop that never says ready times out and the socket is closed`() = runBlocking {
+    fun `a laptop that never says ready times out and the socket is closed`() = runBlocking<Unit> {
         val fake = FakeLaptop(sendReady = false)
         val r = connection(fake).open(150)
         assertTrue(r is LaptopVoiceConnection.OpenResult.Failed)
@@ -113,20 +114,20 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `a different protocol is refused`() = runBlocking {
+    fun `a different protocol is refused`() = runBlocking<Unit> {
         val r = connection(FakeLaptop(protocol = 2)).open(500)
         assertEquals(LaptopVoiceConnection.OpenResult.Failed("protocol_2"), r)
     }
 
     @Test
-    fun `busy at connect (close 1013) fails the open`() = runBlocking {
+    fun `busy at connect (close 1013) fails the open`() = runBlocking<Unit> {
         val fake = FakeLaptop(sendReady = false, onMessage = { if (it.getString("type") == "hello") drop(1013) })
         val r = connection(fake).open(500)
         assertEquals(LaptopVoiceConnection.OpenResult.Failed("busy"), r)
     }
 
     @Test
-    fun `ready advertises streamed text and the service's own end of turn`() = runBlocking {
+    fun `ready advertises streamed text and the service's own end of turn`() = runBlocking<Unit> {
         val fake = FakeLaptop(
             readyStt = JSONObject().put("end_of_turn", true),
             readyTts = JSONObject().put("sample_rate", 24000).put("text_streaming", true),
@@ -140,7 +141,7 @@ class LaptopVoiceConnectionTest {
     // --- STT ----------------------------------------------------------------------------------
 
     @Test
-    fun `an utterance streams up with its id and the final comes back`() = runBlocking {
+    fun `an utterance streams up with its id and the final comes back`() = runBlocking<Unit> {
         val fake = FakeLaptop(onMessage = {
             if (it.getString("type") == "stt.end") {
                 text(JSONObject().put("type", "stt.final").put("id", it.getInt("id")).put("text", " Set a timer. ").put("lang", "en").put("decode_ms", 90))
@@ -163,7 +164,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `the service ends the turn itself with an unasked final, and the phone sends nothing more for it`() = runBlocking {
+    fun `the service ends the turn itself with an unasked final, and the phone sends nothing more for it`() = runBlocking<Unit> {
         val fake = FakeLaptop(readyStt = JSONObject().put("end_of_turn", true))
         val c = connection(fake)
         c.open(500)
@@ -184,7 +185,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `a final the phone asked for is not a service end`() = runBlocking {
+    fun `a final the phone asked for is not a service end`() = runBlocking<Unit> {
         val fake = FakeLaptop(readyStt = JSONObject().put("end_of_turn", true), onMessage = {
             if (it.getString("type") == "stt.end") {
                 text(JSONObject().put("type", "stt.final").put("id", it.getInt("id")).put("text", "Hi.").put("reason", "client_end"))
@@ -200,7 +201,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `the capabilities object is read as well`() = runBlocking {
+    fun `the capabilities object is read as well`() = runBlocking<Unit> {
         val fake = FakeLaptop()
         val c = LaptopVoiceConnection(
             object : WireConnector {
@@ -230,7 +231,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `a slow final times out and a busy one fails, both in words`() = runBlocking {
+    fun `a slow final times out and a busy one fails, both in words`() = runBlocking<Unit> {
         val fake = FakeLaptop(onMessage = {
             if (it.getString("type") == "stt.end" && it.getInt("id") > 1) {
                 text(JSONObject().put("type", "error").put("id", it.getInt("id")).put("code", "busy").put("retry", false))
@@ -249,7 +250,7 @@ class LaptopVoiceConnectionTest {
     // --- TTS ----------------------------------------------------------------------------------
 
     @Test
-    fun `a sentence's audio arrives in order and the clip completes`() = runBlocking {
+    fun `a sentence's audio arrives in order and the clip completes`() = runBlocking<Unit> {
         val fake = FakeLaptop(onMessage = {
             if (it.getString("type") == "tts.speak") {
                 val id = it.getInt("id")
@@ -269,7 +270,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `cancel stops a clip at once and late frames are dropped`() = runBlocking {
+    fun `cancel stops a clip at once and late frames are dropped`() = runBlocking<Unit> {
         val fake = FakeLaptop()
         val c = connection(fake)
         c.open(500)
@@ -285,7 +286,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `a laptop that drops mid-reply fails every pending wait at once and says so`() = runBlocking {
+    fun `a laptop that drops mid-reply fails every pending wait at once and says so`() = runBlocking<Unit> {
         val drops = mutableListOf<String>()
         val fake = FakeLaptop()
         val c = connection(fake) { drops.add(it) }
@@ -303,7 +304,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `streamed text goes in as written and ends with stream end`() = runBlocking {
+    fun `streamed text goes in as written and ends with stream end`() = runBlocking<Unit> {
         val fake = FakeLaptop(readyTts = JSONObject().put("text_streaming", true))
         val c = connection(fake)
         c.open(500)
@@ -316,7 +317,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `a voice that refuses streamed text turns the feature off`() = runBlocking {
+    fun `a voice that refuses streamed text turns the feature off`() = runBlocking<Unit> {
         val fake = FakeLaptop(readyTts = JSONObject().put("text_streaming", true), onMessage = {
             if (it.getString("type") == "tts.stream.start") {
                 text(JSONObject().put("type", "error").put("id", it.getInt("id")).put("code", "bad_request"))
@@ -330,7 +331,7 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `close says bye and nothing reports a drop`() = runBlocking {
+    fun `close says bye and nothing reports a drop`() = runBlocking<Unit> {
         val drops = mutableListOf<String>()
         val fake = FakeLaptop()
         val c = connection(fake) { drops.add(it) }
@@ -361,20 +362,33 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `the probe against a real server - ready, unauthorized, and too slow`() = runBlocking {
-        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/health") { ex ->
-            val auth = ex.requestHeaders.getFirst("Authorization")
-            val slow = ex.requestURI.path.startsWith("/health") && ex.requestHeaders.getFirst("X-Slow") != null
-            if (slow) Thread.sleep(800)
-            val (code, body) = if (auth == "Bearer invented-token") 200 to """{"status":"ready","protocol":1}""" else 401 to ""
-            val bytes = body.toByteArray()
-            ex.sendResponseHeaders(code, if (bytes.isEmpty()) -1 else bytes.size.toLong())
-            if (bytes.isNotEmpty()) ex.responseBody.use { it.write(bytes) } else ex.close()
+    fun `the probe against a real server - ready, unauthorized, and too slow`() = runBlocking<Unit> {
+        // A bare HTTP/1.1 server on a socket (the JDK's HttpServer is not on the Android test
+        // classpath): /health answers by the bearer, and sleeps when X-Slow is sent.
+        val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
+        thread(isDaemon = true) {
+            while (!server.isClosed) {
+                val sock = runCatching { server.accept() }.getOrNull() ?: break
+                thread(isDaemon = true) {
+                    sock.use { s ->
+                        val reader = s.getInputStream().bufferedReader()
+                        val headers = generateSequence { reader.readLine()?.takeIf { it.isNotEmpty() } }.toList()
+                        val auth = headers.firstOrNull { it.startsWith("Authorization:", true) }?.substringAfter(":")?.trim()
+                        if (headers.any { it.startsWith("X-Slow:", true) }) Thread.sleep(800)
+                        val (code, body) = if (auth == "Bearer invented-token") {
+                            "200 OK" to """{"status":"ready","protocol":1}"""
+                        } else {
+                            "401 Unauthorized" to ""
+                        }
+                        val out = "HTTP/1.1 $code\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n" +
+                            "Connection: close\r\n\r\n$body"
+                        runCatching { s.getOutputStream().apply { write(out.toByteArray()); flush() } }
+                    }
+                }
+            }
         }
-        server.start()
         try {
-            val base = "http://127.0.0.1:${server.address.port}"
+            val base = "http://127.0.0.1:${server.localPort}"
             assertTrue(LaptopProbe.probe(LaptopVoiceConfig(base, "invented-token"), 2_000) is LaptopProbe.Result.Ready)
             assertEquals(LaptopProbe.Result.Unauthorized, LaptopProbe.probe(LaptopVoiceConfig(base, "wrong"), 2_000))
             val slow = LaptopProbe.probe(LaptopVoiceConfig(base, "invented-token", listOf("X-Slow" to "1")), 200)
@@ -383,7 +397,7 @@ class LaptopVoiceConnectionTest {
             assertTrue(off is LaptopProbe.Result.Unreachable)
             assertEquals(LaptopProbe.Result.NotConfigured, LaptopProbe.probe(LaptopVoiceConfig("", ""), 500))
         } finally {
-            server.stop(0)
+            server.close()
         }
     }
 }

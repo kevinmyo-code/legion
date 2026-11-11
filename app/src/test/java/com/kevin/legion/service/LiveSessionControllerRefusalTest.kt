@@ -244,6 +244,9 @@ class LiveSessionControllerRefusalTest {
         //   7. the TurnNotice branch (2026-10-27): a turn-taking fallback or barge-in switching
         //      off for the conversation, said once in words. A change in how listening works, not
         //      a refused ask.
+        //   8. the laptop pipeline's bridge (2026-11-10): what its conversation says in words (it
+        //      fell back to Live and why, it closed). Not a refused ask; its one refusal (a
+        //      proactive line under it) goes through refuse().
         // The count is pinned rather than the call banned: a sixth one should be a decision
         // somebody makes out loud.
         val direct = Regex("CompanionPhase\\.showNotice\\(").findAll(controllerSource()).count()
@@ -251,7 +254,7 @@ class LiveSessionControllerRefusalTest {
             "a new CompanionPhase.showNotice() appeared in LiveSessionController. If it is a " +
                 "refused ask, route it through refuse() so the reason is logged even when the " +
                 "screen stays quiet; if it is not, update this count and say which it is.",
-            7,
+            8,
             direct,
         )
     }

@@ -105,7 +105,7 @@ class ReplySpeakerTest {
     )
 
     @Test
-    fun `sentences are spoken one clip each, in order`() = runBlocking {
+    fun `sentences are spoken one clip each, in order`() = runBlocking<Unit> {
         val voice = FakeVoice()
         val ear = Ear()
         val s = speaker(voice, ear)
@@ -119,7 +119,7 @@ class ReplySpeakerTest {
     }
 
     @Test
-    fun `a streaming voice gets one clip fed whole words`() = runBlocking {
+    fun `a streaming voice gets one clip fed whole words`() = runBlocking<Unit> {
         val voice = FakeVoice(streamsText = true)
         val ear = Ear()
         val s = speaker(voice, ear)
@@ -131,7 +131,7 @@ class ReplySpeakerTest {
     }
 
     @Test
-    fun `a voice that never starts fails at the first-audio deadline`() = runBlocking {
+    fun `a voice that never starts fails at the first-audio deadline`() = runBlocking<Unit> {
         val voice = FakeVoice(silentFor = setOf("Hello."))
         val s = speaker(voice, Ear(), timeoutMs = 150)
         s.say("Hello.")
@@ -139,7 +139,7 @@ class ReplySpeakerTest {
     }
 
     @Test
-    fun `a voice that fails mid-reply is a failure, after what was already heard`() = runBlocking {
+    fun `a voice that fails mid-reply is a failure, after what was already heard`() = runBlocking<Unit> {
         val voice = FakeVoice(failFor = setOf("Second part."))
         val ear = Ear()
         val s = speaker(voice, ear)
@@ -150,7 +150,7 @@ class ReplySpeakerTest {
     }
 
     @Test
-    fun `an interruption stops the reply and history keeps only what was heard`() = runBlocking {
+    fun `an interruption stops the reply and history keeps only what was heard`() = runBlocking<Unit> {
         val voice = FakeVoice(frameDelayMs = 60)
         val ear = Ear()
         val s = speaker(voice, ear)
@@ -164,7 +164,7 @@ class ReplySpeakerTest {
     }
 
     @Test
-    fun `a refused stream replays the reply sentence by sentence`() = runBlocking {
+    fun `a refused stream replays the reply sentence by sentence`() = runBlocking<Unit> {
         val voice = FakeVoice(streamsText = true, refuseStream = true)
         val ear = Ear()
         val s = speaker(voice, ear)

@@ -184,7 +184,7 @@ class GeminiTextLoopTest {
     // --- the loop -----------------------------------------------------------------------------------
 
     @Test
-    fun `a plain answer streams to the listener and counts usage`() = runBlocking {
+    fun `a plain answer streams to the listener and counts usage`() = runBlocking<Unit> {
         val t = Scripted(ok(textEv("Hello "), textEv("there."), usageEv(1000, 0, 4)))
         val l = Collect()
         val r = loop(t).answer(prefix, contents, okTool, l)
@@ -199,7 +199,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `parallel calls run at the same time and all results go back in one turn`() = runBlocking {
+    fun `parallel calls run at the same time and all results go back in one turn`() = runBlocking<Unit> {
         val t = Scripted(ok(callEv("add_item", "get_weather")), ok(textEv("Done, and it is mild.")))
         val bothStarted = CompletableDeferred<Unit>()
         val started = Collections.synchronizedSet(mutableSetOf<String>())
@@ -224,7 +224,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `multi-step calls go round after round, then a forced inline answer at the cap`() = runBlocking {
+    fun `multi-step calls go round after round, then a forced inline answer at the cap`() = runBlocking<Unit> {
         val t = Scripted(ok(callEv("get_weather")), ok(callEv("get_weather")), ok(textEv("Enough.")))
         val r = loop(t, maxRounds = 2).answer(prefix, contents, okTool, Collect())
         assertEquals("Enough.", r.text)
@@ -239,7 +239,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `a write that did not say success is not counted done`() = runBlocking {
+    fun `a write that did not say success is not counted done`() = runBlocking<Unit> {
         val t = Scripted(ok(callEv("add_item")), ok(textEv("Tried.")))
         val r = loop(t).answer(prefix, contents, TextToolExecutor { _, _, _ -> JSONObject().put("note", "?") }, Collect())
         assertTrue(r.writesDone.isEmpty())
@@ -247,7 +247,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `a read-through tool marks the turn`() = runBlocking {
+    fun `a read-through tool marks the turn`() = runBlocking<Unit> {
         val t = Scripted(ok(callEv("ask_mail")), ok(textEv("You have mail.")))
         val l = Collect()
         val r = loop(t).answer(prefix, contents, okTool, l)
@@ -256,7 +256,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `search grounding marks the turn read-through`() = runBlocking {
+    fun `search grounding marks the turn read-through`() = runBlocking<Unit> {
         val grounded = textEv("The invented team won.")
         grounded.getJSONArray("candidates").getJSONObject(0).put("groundingMetadata", JSONObject())
         val r = loop(Scripted(ok(grounded))).answer(prefix, contents, okTool, Collect())
@@ -264,7 +264,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `a cache that is gone falls back inline in the same round and is dropped`() = runBlocking {
+    fun `a cache that is gone falls back inline in the same round and is dropped`() = runBlocking<Unit> {
         val api = CacheApi { CacheCreateOutcome.Created("cachedContents/old") }
         val store = ContextCacheStore(api, CoroutineScope(Dispatchers.Unconfined))
         store.warm(prefix)
@@ -283,7 +283,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `a ready cache is used and its hits are counted`() = runBlocking {
+    fun `a ready cache is used and its hits are counted`() = runBlocking<Unit> {
         val store = ContextCacheStore({ CacheCreateOutcome.Created("cachedContents/c1") }, CoroutineScope(Dispatchers.Unconfined))
         store.warm(prefix)
         val t = Scripted(ok(textEv("Hi."), usageEv(14_000, 13_500, 2)))
@@ -294,7 +294,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `a cache not ready yet means inline now, never a wait`() = runBlocking {
+    fun `a cache not ready yet means inline now, never a wait`() = runBlocking<Unit> {
         val gate = CompletableDeferred<Unit>()
         val store = ContextCacheStore({ gate.await(); CacheCreateOutcome.Created("cachedContents/late") }, CoroutineScope(Dispatchers.Default))
         val t = Scripted(ok(textEv("Quick.")))
@@ -305,7 +305,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `a rejected search is dropped and the round retried without it`() = runBlocking {
+    fun `a rejected search is dropped and the round retried without it`() = runBlocking<Unit> {
         val t = Scripted(
             StreamOutcome.HttpError(400, "Please enable tool_config.include_server_side_tool_invocations to use Built-in tools") to emptyList(),
             ok(textEv("Fine without search.")),
@@ -317,7 +317,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `failures come back in words`() = runBlocking {
+    fun `failures come back in words`() = runBlocking<Unit> {
         val rate = loop(Scripted(StreamOutcome.HttpError(429, "quota") to emptyList())).answer(prefix, contents, okTool, Collect())
         assertEquals(TextFailure.RATE_LIMITED, rate.failure)
         assertTrue(rate.failureWords!!.contains("Nothing was changed"))
@@ -328,7 +328,7 @@ class GeminiTextLoopTest {
     }
 
     @Test
-    fun `cancelling mid-stream stops at once, and a tool already running still finishes`() = runBlocking {
+    fun `cancelling mid-stream stops at once, and a tool already running still finishes`() = runBlocking<Unit> {
         val toolFinished = CompletableDeferred<Unit>()
         val toolStarted = CompletableDeferred<Unit>()
         val t = object : GeminiStreamTransport {
