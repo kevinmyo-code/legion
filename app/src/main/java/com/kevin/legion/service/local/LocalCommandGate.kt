@@ -37,6 +37,7 @@ class VoskLocalCommandGate(
             .filter { w -> w.any(Char::isLetter) }.toSortedSet().toList() + listOf(LocalCommandMatcher.UNKNOWN),
     ).toString()
 
+    @Suppress("ReturnCount") // no model, recogniser failed, or the matcher's verdict
     override fun decide(pcm16k: ByteArray): LocalCommand? {
         val t0 = System.currentTimeMillis()
         val model = model(context) ?: return null.also { log("miss model-not-ready") }
@@ -70,6 +71,7 @@ class VoskLocalCommandGate(
         @Volatile private var loaded: Model? = null
 
         @Synchronized
+        @Suppress("ReturnCount") // loaded, not copied yet, or load now
         private fun model(context: Context): Model? {
             loaded?.let { return it }
             val dir = File(context.filesDir, MODEL_DIR)

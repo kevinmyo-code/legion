@@ -2207,10 +2207,9 @@ class GeminiLiveSession(
      * on server VAD (Bluetooth) it refuses and the turn goes to Live as before.
      */
     fun armLocalFirstTurn(): Boolean {
-        val held = heldSink ?: return false
-        if (!turnConfig.manualActivity || localCommandGate == null) return false
-        held.arm()
-        return true
+        val held = heldSink?.takeIf { turnConfig.manualActivity && localCommandGate != null }
+        held?.arm()
+        return held != null
     }
 
     /** [HeldTurnSink]'s decision: true when the gate matched and the owner will carry it out. */

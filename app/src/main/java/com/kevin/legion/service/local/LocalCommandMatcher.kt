@@ -1,3 +1,7 @@
+// Number words, clock hours and unit lengths are the vocabulary this parser reads: naming each
+// literal (TWELVE = 12) would read worse than the table it is.
+@file:Suppress("MagicNumber")
+
 package com.kevin.legion.service.local
 
 /**
@@ -26,6 +30,7 @@ class LocalCommandMatcher(
 ) {
     private val nameTokens: Set<String> = tokens(companionName).toSet()
 
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // one early miss per reason, said in words
     fun match(utterance: Utterance): LocalMatch {
         val raw = utterance.text
         if (raw.contains(UNKNOWN)) return LocalMatch.Miss("unknown word")
@@ -48,6 +53,7 @@ class LocalCommandMatcher(
     private fun sleep(w: List<String>): LocalCommand? =
         if (w.joinToString(" ") in SLEEP_PHRASES) LocalCommand.Sleep else null
 
+    @Suppress("ReturnCount") // no timer word, no duration: two different misses
     private fun timer(w: List<String>): LocalCommand? {
         if ("timer" !in w) return null
         val d = Duration.parse(w) ?: return null
@@ -55,7 +61,8 @@ class LocalCommandMatcher(
         return if (rest.isEmpty() && d.seconds in 1..MAX_TIMER_SECONDS) LocalCommand.Timer(d.seconds) else null
     }
 
-    @Suppress("ReturnCount") // one exit per reason the time is not a clear time of day
+    // One exit per reason the time is not a clear time of day; the half-of-day words are the rule.
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "ComplexCondition")
     private fun alarm(w: List<String>): LocalCommand? {
         if ("alarm" !in w && "wake" !in w) return null
         val nums = mutableListOf<Int>()
@@ -65,7 +72,7 @@ class LocalCommandMatcher(
             val n = Numbers.read(w, i)
             if (n != null) {
                 nums += n.value
-                (i until i + n.length).forEach(used::add)
+                for (j in i until i + n.length) used += j
                 i += n.length
             } else {
                 i++
@@ -90,6 +97,7 @@ class LocalCommandMatcher(
         return LocalCommand.Alarm(h24, minute)
     }
 
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition") // each action's words, side by side
     private fun media(w: List<String>): LocalCommand? {
         if (w.any { it !in MEDIA_WORDS }) return null
         val set = w.toSet()
@@ -105,6 +113,7 @@ class LocalCommandMatcher(
         return actions.singleOrNull()?.let { LocalCommand.Media(it) }
     }
 
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition", "ReturnCount") // as media, plus a level
     private fun volume(w: List<String>): LocalCommand? {
         val number = w.indices.firstNotNullOfOrNull { i -> Numbers.read(w, i)?.let { i to it } }
         val used = number?.let { (i, n) -> (i until i + n.length).toSet() }.orEmpty()
@@ -268,6 +277,7 @@ internal object Numbers {
     val WORDS: Set<String> get() = ONES.keys + TENS.keys
 
     /** The number starting at [i], or null. Digits are capped at 4 characters (no huge values). */
+    @Suppress("ReturnCount") // digits, a ones word, a tens word with or without its ones
     fun read(w: List<String>, i: Int): Read? {
         val t = w.getOrNull(i) ?: return null
         if (t.length <= 4 && t.all(Char::isDigit)) return Read(t.toInt(), 1)
@@ -291,7 +301,7 @@ internal object Duration {
     /** The unit words, for the recogniser's grammar. */
     val WORDS: Set<String> get() = UNITS.keys
 
-    @Suppress("CyclomaticComplexMethod", "ReturnCount") // one token walk, one branch per word kind
+    @Suppress("CyclomaticComplexMethod", "ReturnCount", "ComplexCondition") // one walk, one branch per word kind
     fun parse(w: List<String>): Parsed? {
         var total = 0
         val used = mutableSetOf<Int>()

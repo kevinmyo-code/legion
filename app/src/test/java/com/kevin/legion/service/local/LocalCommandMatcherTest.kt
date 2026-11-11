@@ -110,7 +110,10 @@ class LocalCommandMatcherTest {
 
     @Test
     fun `dismissals`() {
-        for (s in listOf("that's all", "that will be all", "go to sleep", "stand down", "never mind", "be quiet", "quiet")) {
+        val phrases = listOf(
+            "that's all", "that will be all", "go to sleep", "stand down", "never mind", "be quiet", "quiet",
+        )
+        for (s in phrases) {
             assertEquals(s, LocalCommand.Sleep, hit(s))
         }
         miss("that's all for the groceries")

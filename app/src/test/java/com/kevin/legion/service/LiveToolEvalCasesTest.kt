@@ -47,6 +47,7 @@ class LiveToolEvalCasesTest {
         }
     }
 
+    @Suppress("ReturnCount") // unknown tool, a plain tool, or an action to look up
     private fun exists(call: String): Boolean {
         val (tool, action) = call.split("/").let { it[0] to it.getOrNull(1) }
         val decl = declared[tool] ?: return false
