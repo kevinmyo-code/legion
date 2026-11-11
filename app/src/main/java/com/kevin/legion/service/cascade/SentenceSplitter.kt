@@ -45,6 +45,7 @@ class SentenceSplitter(private val firstClauseWords: Int = FIRST_CLAUSE_WORDS) {
     }
 
     /** The end index (exclusive) of the next complete sentence in [buf], or null. */
+    @Suppress("ReturnCount")
     private fun nextCut(): Int? {
         var i = 0
         while (i < buf.length) {
@@ -63,6 +64,7 @@ class SentenceSplitter(private val firstClauseWords: Int = FIRST_CLAUSE_WORDS) {
     }
 
     /** First sentence only: a clause break after enough words. */
+    @Suppress("ReturnCount")
     private fun clauseCut(): Int? {
         if (emitted > 0) return null
         var words = 0
@@ -75,7 +77,8 @@ class SentenceSplitter(private val firstClauseWords: Int = FIRST_CLAUSE_WORDS) {
                 inWord = true
                 words++
             }
-            if (words >= firstClauseWords && c in CLAUSE_MARKS && k + 1 < buf.length && buf[k + 1].isWhitespace()) {
+            val spaceAfter = k + 1 < buf.length && buf[k + 1].isWhitespace()
+            if (words >= firstClauseWords && c in CLAUSE_MARKS && spaceAfter) {
                 // "1,284" has no space after the comma, so it never lands here.
                 return k + 1
             }
@@ -84,6 +87,7 @@ class SentenceSplitter(private val firstClauseWords: Int = FIRST_CLAUSE_WORDS) {
     }
 
     /** True when the `.` at [dot] ends an abbreviation or an initial rather than a sentence. */
+    @Suppress("ReturnCount")
     private fun isAbbreviation(dot: Int): Boolean {
         var s = dot - 1
         while (s >= 0 && (buf[s].isLetter() || buf[s] == '.')) s--

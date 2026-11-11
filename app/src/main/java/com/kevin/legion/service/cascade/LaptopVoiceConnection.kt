@@ -73,7 +73,8 @@ class LaptopVoiceConnection(
         private set
 
     /**
-     * From `ready.tts.text_streaming` or `ready.capabilities.text_streaming` (contract 4a). False until `ready`, and false again if the
+     * From `ready.tts.text_streaming` or `ready.capabilities.text_streaming` (contract 4a). False
+     * until `ready`, and false again if the
      * service refuses a stream (`bad_request` on `tts.stream.*`), so the caller falls back to
      * [speak] per sentence.
      */
@@ -91,6 +92,7 @@ class LaptopVoiceConnection(
     val isDropped: Boolean get() = dropped.get()
 
     /** Connects, says hello and waits for `ready`. Never throws. */
+    @Suppress("ReturnCount") // one worded failure per open step
     suspend fun open(timeoutMs: Long): OpenResult {
         val s = try {
             connector.connect(config.conversationUrl, config.requestHeaders(), listener)
@@ -154,7 +156,8 @@ class LaptopVoiceConnection(
         val ended = AtomicBoolean(false)
 
         override fun audio(pcm: ByteArray, offset: Int, length: Int) {
-            if (ended.get() || result.isCompleted || length <= 0) return
+            val closed = ended.get() || result.isCompleted
+            if (closed || length <= 0) return
             val even = length - (length % 2)
             if (even == 0) return
             socket?.sendBinary(frame(KIND_MIC, id, pcm, offset, even))
@@ -260,6 +263,7 @@ class LaptopVoiceConnection(
 
     // --- wire ----------------------------------------------------------------------------------
 
+    @Suppress("ReturnCount")
     private fun send(msg: JSONObject): Boolean {
         val s = socket ?: return false
         if (dropped.get()) return false
@@ -278,6 +282,7 @@ class LaptopVoiceConnection(
     }
 
     private val listener = object : WireListener {
+        @Suppress("ReturnCount") // one early exit per message type that names an unknown id
         override fun onText(text: String) {
             val m = runCatching { JSONObject(text) }.getOrNull() ?: return
             val id = if (m.has("id") && !m.isNull("id")) m.optInt("id") else null
@@ -385,6 +390,7 @@ class LaptopVoiceConnection(
         private const val BYTE_MASK = 0xff
 
         /** `[kind, 0, 0, 0, id LE uint32, pcm...]`. */
+        @Suppress("MagicNumber") // the contract's byte layout, spelled out
         fun frame(kind: Byte, id: Int, pcm: ByteArray, offset: Int = 0, length: Int = pcm.size): ByteArray {
             val out = ByteArray(HEADER_BYTES + length)
             out[0] = kind
@@ -396,6 +402,7 @@ class LaptopVoiceConnection(
             return out
         }
 
+        @Suppress("MagicNumber") // the contract's byte layout, spelled out
         fun readId(bytes: ByteArray): Int =
             (bytes[4].toInt() and BYTE_MASK) or
                 ((bytes[5].toInt() and BYTE_MASK) shl 8) or

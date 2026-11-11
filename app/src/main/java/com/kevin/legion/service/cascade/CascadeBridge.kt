@@ -16,7 +16,13 @@ class CascadeBridge(
     private val post: (() -> Unit) -> Unit,
     private val setPhase: (Phase, String) -> Unit,
     private val showNotice: (String) -> Unit,
-    private val tool: suspend (name: String, args: JSONObject, readThrough: Boolean, userText: String, turnSeq: Long) -> JSONObject,
+    private val tool: suspend (
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        userText: String,
+        turnSeq: Long,
+    ) -> JSONObject,
     private val transcript: (heard: String, said: String) -> Unit,
     private val onCrisis: () -> Unit,
     private val tone: () -> Unit,
@@ -31,8 +37,13 @@ class CascadeBridge(
 
     override fun notice(text: String) = ifAttached { showNotice(text) }
 
-    override suspend fun runTool(name: String, args: JSONObject, readThrough: Boolean, userText: String, turnSeq: Long): JSONObject =
-        tool(name, args, readThrough, userText, turnSeq)
+    override suspend fun runTool(
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        userText: String,
+        turnSeq: Long,
+    ): JSONObject = tool(name, args, readThrough, userText, turnSeq)
 
     override fun turnTranscript(heard: String, said: String) = ifAttached { transcript(heard, said) }
 

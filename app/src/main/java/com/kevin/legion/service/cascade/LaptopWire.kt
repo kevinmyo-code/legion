@@ -80,6 +80,7 @@ object LaptopProbe {
     }
 
     /** The decision from a `/health` reply. Pure, so a test pins it. */
+    @Suppress("ReturnCount") // one verdict per kind of reply
     fun interpret(code: Int, body: String?, ms: Long): Result {
         if (code == HTTP_UNAUTHORIZED || code == HTTP_FORBIDDEN) return Result.Unauthorized
         if (code != HTTP_OK) return Result.Unreachable("http_$code", ms)
@@ -116,7 +117,8 @@ object LaptopProbe {
 
                     override fun onResponse(call: Call, response: Response) {
                         val result = response.use {
-                            interpret(it.code, runCatching { it.body?.string() }.getOrNull(), System.currentTimeMillis() - started)
+                            val body = runCatching { it.body?.string() }.getOrNull()
+                            interpret(it.code, body, System.currentTimeMillis() - started)
                         }
                         if (cont.isActive) cont.resume(result)
                     }

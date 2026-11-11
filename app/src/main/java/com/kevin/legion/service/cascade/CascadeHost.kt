@@ -16,7 +16,13 @@ interface CascadeHost {
     fun notice(text: String)
 
     /** The controller's bounded tool runner plus its per-call audit row and panel line. */
-    suspend fun runTool(name: String, args: JSONObject, readThrough: Boolean, userText: String, turnSeq: Long): JSONObject
+    suspend fun runTool(
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        userText: String,
+        turnSeq: Long,
+    ): JSONObject
 
     /** One finished turn for the panel. */
     fun turnTranscript(heard: String, said: String)

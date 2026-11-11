@@ -51,7 +51,10 @@ data class LaptopVoiceConfig(
     private fun root(): String = baseUrl.trim().trimEnd('/')
 
     /** Never print the secrets: the host only, for logs and the settings row. */
-    override fun toString(): String = "LaptopVoiceConfig(${hostOf(baseUrl)}, token=${if (token.isBlank()) "none" else "set"}, headers=${headers.size})"
+    override fun toString(): String {
+        val t = if (token.isBlank()) "none" else "set"
+        return "LaptopVoiceConfig(${hostOf(baseUrl)}, token=$t, headers=${headers.size})"
+    }
 
     companion object {
         fun isValidBaseUrl(url: String): Boolean {
@@ -78,6 +81,7 @@ data class LaptopVoiceConfig(
  * encrypted with [KeyVault] (Keystore AES/GCM) where the Keystore works, plain app-private
  * otherwise, which is how the engine's device token is kept today.
  */
+@Suppress("TooManyFunctions") // a getter and setter per stored value, as VoiceTurnSettings
 object VoiceEngineSettings {
     private const val PREFS = "voice_engine"
     private const val KEY_ENGINE = "engine"

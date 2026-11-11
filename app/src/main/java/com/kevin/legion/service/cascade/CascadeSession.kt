@@ -178,7 +178,7 @@ internal class CascadeSession(
         }
     }
 
-    @Suppress("ReturnCount", "LongMethod")
+    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one worded exit per open step
     private suspend fun openNow() {
         val started = System.currentTimeMillis()
         val config = VoiceEngineSettings.laptop(ctx)
@@ -226,7 +226,8 @@ internal class CascadeSession(
                 handOver(Handover.Moment.AtOpen, "open", "connect_${r.reason}")
                 return
             }
-            LaptopVoiceConnection.OpenResult.Ready -> VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
+            LaptopVoiceConnection.OpenResult.Ready ->
+                VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
         }
         if (closing.get()) return
         requestFocus()
@@ -239,8 +240,9 @@ internal class CascadeSession(
             preamble = CascadePrompt.preamble(split.volatile, live)
             CascadePrefix(MODEL, split.cacheable, CascadeRules.declarations(LiveToolbox.declarations()))
         }
-        val cache = CACHE ?: ContextCacheStore(OkHttpGemini(), CACHE_SCOPE, log = { LiveLatency.log(LiveLatency.TAG, it) })
-            .also { CACHE = it }
+        val cache = CACHE
+            ?: ContextCacheStore(OkHttpGemini(), CACHE_SCOPE, log = { LiveLatency.log(LiveLatency.TAG, it) })
+                .also { CACHE = it }
         textLoop = GeminiTextLoop(
             transport = OkHttpGemini(),
             cache = cache,
@@ -284,8 +286,12 @@ internal class CascadeSession(
         audit.enabled = ConversationLog.auditWantedAfterReading(ctx)
         audit.sessionStart("$ENGINE_TOKEN+$MODEL", emptySet(), brain.basePackToken)
         auditStarted = true
-        LiveLatency.log("LIVE_TURN", "config manual=true bargeIn=${p.config.bargeIn} smartTurn=${p.config.smartTurn} (${p.config.note})")
-        LiveLatency.log(LiveLatency.TAG, CascadeLines.open(System.currentTimeMillis() - started, probeMs, p, c.streamsText))
+        LiveLatency.log(
+            "LIVE_TURN",
+            "config manual=true bargeIn=${p.config.bargeIn} smartTurn=${p.config.smartTurn} (${p.config.note})",
+        )
+        val openMs = System.currentTimeMillis() - started
+        LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, c.streamsText))
         startMic()
         prefix = prefixJob.await()
         prefix?.let { cache.warm(it) }
@@ -377,7 +383,10 @@ internal class CascadeSession(
         }
 
         override fun onEndOfTurn(end: EndOfTurnPolicy.Action.EndActivity) {
-            LiveLatency.log(LiveLatency.TAG, "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} st_checks=${end.scores.size}")
+            LiveLatency.log(
+                LiveLatency.TAG,
+                "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} st_checks=${end.scores.size}",
+            )
         }
 
         override fun onBargeIn(fire: BargeInGate.Event.Fire) {
@@ -415,7 +424,8 @@ internal class CascadeSession(
         // He started again before the last answer began playing: that answer is dropped and his
         // words carry into this turn, so a mid-thought pause never splits one request in two.
         val pending = turn
-        if (pending != null && !speaking && turnJob?.isActive == true && pending.toolsRan.isEmpty()) {
+        val answering = turnJob?.isActive == true && !speaking
+        if (pending != null && answering && pending.toolsRan.isEmpty()) {
             carry = (carry + " " + pending.heard).trim()
             turnJob?.cancel()
             speaker?.interrupt()
@@ -447,7 +457,7 @@ internal class CascadeSession(
         }
     }
 
-    @Suppress("LongMethod", "ReturnCount")
+    @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
     private suspend fun runTurn(u: SttUtterance, eotAtMs: Long) {
         val stt = u.result(STT_FINAL_TIMEOUT_MS)
         LiveLatency.log(LiveLatency.TAG, "stt_final_ms=${System.currentTimeMillis() - eotAtMs}" +
@@ -561,7 +571,8 @@ internal class CascadeSession(
                 // Arm, do not fire: the sign-off is spoken first (Live's ticket 11 rule).
                 "end_conversation" -> {
                     scope.launch(loop) { dismissAfterReply = true }
-                    JSONObject().put("success", true).put("instruction", LiveSessionController.END_CONVERSATION_INSTRUCTION)
+                    JSONObject().put("success", true)
+                        .put("instruction", LiveSessionController.END_CONVERSATION_INSTRUCTION)
                 }
                 in CascadeRules.LIVE_ONLY_TOOLS ->
                     JSONObject().put("success", false).put("message", "That only works on the Live voice engine.")
@@ -651,7 +662,8 @@ internal class CascadeSession(
         playbackActive = false
         turnTaker?.onReplyEnd()
         audit.turnComplete()
-        if (dismissAfterReply || ((oneShot || oneShotRequested) && answeredOnce)) {
+        val oneShotDone = (oneShot || oneShotRequested) && answeredOnce
+        if (dismissAfterReply || oneShotDone) {
             host.closingTone()
             shutdown("dismissed")
             host.closed("dismissed")
@@ -705,7 +717,12 @@ internal class CascadeSession(
 
     // --- records ---------------------------------------------------------------------------------
 
-    private fun recordTurn(heard: String, said: String, readThrough: Boolean = false, seq: Long = turnSeq.getAndIncrement()) {
+    private fun recordTurn(
+        heard: String,
+        said: String,
+        readThrough: Boolean = false,
+        seq: Long = turnSeq.getAndIncrement(),
+    ) {
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
         // A read-through reply (mail, web) is never kept as history or in the record in clear.
         val kept = if (readThrough) LiveAudit.REDACTED else said
@@ -717,7 +734,13 @@ internal class CascadeSession(
                 val dao = CarDatabase.getDatabase(ctx).conversationAuditDao()
                 val uploaded = com.kevin.legion.backend.conversationAuditUploadedThroughId(ctx)
                 if (heard.isNotBlank()) {
-                    dao.record(turnSeq = seq, kind = ConversationAudit.Kind.USER, content = heard, vehicleId = vehicle, uploadedThroughId = uploaded)
+                    dao.record(
+                        turnSeq = seq,
+                        kind = ConversationAudit.Kind.USER,
+                        content = heard,
+                        vehicleId = vehicle,
+                        uploadedThroughId = uploaded,
+                    )
                 }
                 if (said.isNotBlank()) {
                     dao.record(
@@ -823,9 +846,8 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback(stage, reason))
             val words = VoiceEngineSettings.statusWords(if (stage == "open") reason else "${stage}_$reason")
             VoiceEngineSettings.noteStatus(ctx, words)
-            host.notice(
-                if (moment == Handover.Moment.AtOpen) "Laptop voice: $words" else "Laptop voice dropped - switched to Live",
-            )
+            val notice = if (moment == Handover.Moment.AtOpen) "Laptop voice: $words" else DROPPED_NOTICE
+            host.notice(notice)
             release(reason)
         } finally {
             // Whatever happened above, Live is opened: never a dead assistant.
@@ -906,15 +928,26 @@ internal class CascadeSession(
     }
 
     @SuppressLint("MissingPermission") // checked first, below
-    @Suppress("LongMethod", "NestedBlockDepth")
+    @Suppress(
+        "LongMethod",
+        "NestedBlockDepth",
+        "ReturnCount",
+        "CyclomaticComplexMethod",
+        "LoopWithTooManyJumpStatements",
+    ) // a copy of Live's capture loop, trimmed; its shape is Live's
     private suspend fun micLoop() {
-        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO)
+        if (granted != PackageManager.PERMISSION_GRANTED) {
             host.notice("Didn't start - microphone permission is off")
             close("no_mic_permission")
             return
         }
         delay(MIC_HANDOFF_MS)
-        val minBuf = AudioRecord.getMinBufferSize(INPUT_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val minBuf = AudioRecord.getMinBufferSize(
+            INPUT_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        )
         val builder = AudioRecord.Builder()
             .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
             .setAudioFormat(
@@ -998,8 +1031,12 @@ internal class CascadeSession(
     private fun attachEffects(sessionId: Int): List<AudioEffect> {
         val out = mutableListOf<AudioEffect>()
         runCatching {
-            if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(sessionId)?.also { it.enabled = true; out.add(it) }
-            if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(sessionId)?.also { it.enabled = true; out.add(it) }
+            if (AcousticEchoCanceler.isAvailable()) {
+                AcousticEchoCanceler.create(sessionId)?.also { it.enabled = true; out.add(it) }
+            }
+            if (NoiseSuppressor.isAvailable()) {
+                NoiseSuppressor.create(sessionId)?.also { it.enabled = true; out.add(it) }
+            }
         }
         return out
     }
@@ -1040,6 +1077,7 @@ internal class CascadeSession(
         /** Under the service's 30 s utterance limit. */
         const val UTTERANCE_CAP_MS = 28_000L
         private const val CAPTION_CHARS = 160
+        private const val DROPPED_NOTICE = "Laptop voice dropped - switched to Live"
         private const val READ_ERROR_BACKOFF_MS = 50L
         private const val SCOPE_GRACE_MS = 2_000L
 

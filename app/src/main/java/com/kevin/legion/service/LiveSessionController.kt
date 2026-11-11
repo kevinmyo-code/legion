@@ -400,13 +400,8 @@ class LiveSessionController(context: Context) {
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
-        // A laptop session that already released (it failed while closing) is dropped, never kept.
-        if (cascade?.isOpen == false) {
-            cascadeBridge?.attached = false
-            cascade = null
-        }
         // The laptop pipeline's own conversation takes the tap (interrupt a reply, else end it).
-        if (cascade != null) { onTapCascade(); return }
+        if (cascadeOwnsTap()) { onTapCascade(); return }
         // Set before anything async can emit MicOpened; a plain tap always clears it.
         oneShotGate.start(oneShot)
         val s = session
@@ -767,6 +762,18 @@ class LiveSessionController(context: Context) {
     }
 
     // --- the laptop pipeline (Voice engine = Laptop) ----------------------------------------------
+
+    /**
+     * Whether a laptop conversation is open to take a tap. One that already released (it failed
+     * while closing) is dropped here, never kept, so the tap goes on to open a new conversation.
+     */
+    private fun cascadeOwnsTap(): Boolean {
+        if (cascade?.isOpen == false) {
+            cascadeBridge?.attached = false
+            cascade = null
+        }
+        return cascade != null
+    }
 
     /** A tap during a laptop conversation: interrupt a reply, else end it (Live's two tap meanings). */
     private fun onTapCascade() {

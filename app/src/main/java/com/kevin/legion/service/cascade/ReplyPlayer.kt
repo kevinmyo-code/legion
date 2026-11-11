@@ -27,6 +27,7 @@ internal class ReplyPlayer(private val sampleRate: Int, private val callAudio: (
     fun generation(): Int = generation.get()
 
     /** Writes [pcm] (blocking while the buffer is full). False once flushed or released. */
+    @Suppress("ReturnCount") // every way a write stops early is a flush or a release
     fun write(pcm: ByteArray, gen: Int): Boolean {
         val t = synchronized(lock) {
             if (released || gen != generation.get()) return false
@@ -101,11 +102,16 @@ internal class ReplyPlayer(private val sampleRate: Int, private val callAudio: (
     }
 
     private fun build(): AudioTrack {
-        val minBuf = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val minBuf = AudioTrack.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        )
+        val usage = if (callAudio()) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_ASSISTANT
         val t = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(if (callAudio()) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_ASSISTANT)
+                    .setUsage(usage)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build(),
             )

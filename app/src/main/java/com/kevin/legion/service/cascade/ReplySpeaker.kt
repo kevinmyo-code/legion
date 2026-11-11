@@ -140,7 +140,7 @@ internal class ReplySpeaker(
         queue.trySend(tts.speak(line))
     }
 
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements") // one exit per clip outcome
     private suspend fun drain(): Outcome {
         for (clip in queue) {
             if (interrupted) {
@@ -184,7 +184,8 @@ internal class ReplySpeaker(
                 if (interrupted || !play(pcm)) return Outcome.Interrupted
             }
             when (val o = clip.outcome()) {
-                is TtsOutcome.Failed -> return if (interrupted) Outcome.Interrupted else Outcome.Failed("tts_${o.reason}")
+                is TtsOutcome.Failed ->
+                    return if (interrupted) Outcome.Interrupted else Outcome.Failed("tts_${o.reason}")
                 TtsOutcome.Cancelled -> return Outcome.Interrupted
                 is TtsOutcome.Done -> Unit
             }
@@ -197,6 +198,7 @@ internal class ReplySpeaker(
      * in the chunker, goes again as sentences. [queue] may already be closed (the model finished),
      * so the sentences are spoken from here directly.
      */
+    @Suppress("ReturnCount")
     private suspend fun fallbackToSentences(sentSoFar: String) {
         val rest = chunker.flush().orEmpty()
         val sentences = SentenceSplitter().let { s -> s.feed(sentSoFar + rest) + listOfNotNull(s.flush()) }
@@ -204,7 +206,8 @@ internal class ReplySpeaker(
             if (interrupted) return
             val clip = tts.speak(normalise(s))
             current = clip
-            val first = withTimeoutOrNull(firstFrameTimeoutMs) { clip.frames.receiveCatching() }?.getOrNull() ?: continue
+            val first = withTimeoutOrNull(firstFrameTimeoutMs) { clip.frames.receiveCatching() }
+                ?.getOrNull() ?: continue
             synchronized(started) { started.add(clip) }
             if (!anyAudio) {
                 anyAudio = true

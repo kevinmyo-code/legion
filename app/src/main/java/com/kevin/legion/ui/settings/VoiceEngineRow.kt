@@ -44,6 +44,7 @@ import java.util.Date
  * The token is never shown back: the field starts empty and a blank save keeps the stored one.
  * Applies from the next conversation.
  */
+@Suppress("LongMethod") // one settings row: the choice, two fields, two buttons, two status lines
 @Composable
 fun VoiceEngineRow() {
     val context = LocalContext.current
@@ -60,7 +61,11 @@ fun VoiceEngineRow() {
 
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text("Voice engine", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                "Voice engine",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
             Text(
                 "Gemini Live, or the laptop pipeline: speech on your laptop, Gemini text with tools on " +
                     "the phone. If the laptop cannot be reached the conversation uses Live. Applies from " +

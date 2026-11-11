@@ -13,6 +13,8 @@ internal object CascadeRules {
     /** Which tools the text model is offered: the Live set, consumed generically, minus [LIVE_ONLY_TOOLS]. */
     val LIVE_ONLY_TOOLS = setOf("look")
 
+    private const val CAP = EndOfTurnPolicy.CAP_MS
+
     fun declarations(liveDeclarations: JSONArray): JSONArray {
         val out = JSONArray()
         for (i in 0 until liveDeclarations.length()) {
@@ -73,7 +75,7 @@ internal object CascadeRules {
         val barge = bargeSetting && route != AudioRoute.BLUETOOTH && !inCall
         val smart = !serviceEndsTurns && smartSetting && smartTurnReady
         val note = buildString {
-            append(if (serviceEndsTurns) "service end of turn, phone cap ${EndOfTurnPolicy.CAP_MS} ms" else "phone end of turn")
+            append(if (serviceEndsTurns) "service end of turn, phone cap $CAP ms" else "phone end of turn")
             if (!serviceEndsTurns) append(if (smart) " (Smart Turn)" else " (silence only)")
             append(if (barge) ", barge-in on ${route.name.lowercase()}" else ", half-duplex")
         }
@@ -163,8 +165,10 @@ object Handover {
         is Moment.Heard -> heard(m)
     }
 
+    @Suppress("ReturnCount") // one wording per case, each returned whole
     private fun heard(m: Moment.Heard): String {
-        val writes = if (m.writesDone.isEmpty()) "" else " Completed and confirmed: ${m.writesDone.distinct().joinToString(", ")}."
+        val done = m.writesDone.distinct().joinToString(", ")
+        val writes = if (m.writesDone.isEmpty()) "" else " Completed and confirmed: $done."
         // Third-party content (mail, web results) is never carried in clear (CLAUDE.md sec 7).
         if (m.readThrough) {
             return LEAD + "Your answer was cut off.$writes Do not repeat any action. Tell them briefly you " +
@@ -202,7 +206,9 @@ class AckLines(private val lines: List<String> = DEFAULT, private val pick: (Int
 
     companion object {
         /** The short "any time" lines from the approved seed list. */
-        val DEFAULT = listOf("Listening.", "Here.", "Go ahead.", "Yes?", "I'm here.", "Go on.", "Fire away.", "With you.")
+        val DEFAULT = listOf(
+            "Listening.", "Here.", "Go ahead.", "Yes?", "I'm here.", "Go on.", "Fire away.", "With you.",
+        )
     }
 }
 

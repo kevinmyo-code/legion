@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength", "ReturnCount", "EmptyFunctionBlock") // test fixtures: invented JSON and wire frames read best on one line
+
 package com.kevin.legion.service.cascade
 
 import kotlinx.coroutines.CompletableDeferred

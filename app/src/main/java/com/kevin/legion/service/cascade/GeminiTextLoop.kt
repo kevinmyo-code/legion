@@ -136,7 +136,13 @@ class GeminiTextLoop(
         return result ?: fail(TextFailure.TIMED_OUT, state)
     }
 
-    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount", "NestedBlockDepth")
+    @Suppress(
+        "CyclomaticComplexMethod",
+        "LongMethod",
+        "ReturnCount",
+        "NestedBlockDepth",
+        "LoopWithTooManyJumpStatements",
+    )
     private suspend fun loop(
         basePrefix: CascadePrefix,
         initial: JSONArray,
@@ -185,7 +191,8 @@ class GeminiTextLoop(
                         round--
                         continue
                     }
-                    return fail(TextChatEngine.failureFor(classify(RestOutcome.HttpError(outcome.code, outcome.body))), state)
+                    val verdict = classify(RestOutcome.HttpError(outcome.code, outcome.body))
+                    return fail(TextChatEngine.failureFor(verdict), state)
                 }
                 is StreamOutcome.Network -> return fail(TextFailure.OFFLINE, state)
                 StreamOutcome.Ok -> Unit

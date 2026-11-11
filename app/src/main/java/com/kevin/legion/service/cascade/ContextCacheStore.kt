@@ -97,8 +97,9 @@ class ContextCacheStore(
         private const val MS_PER_S = 1_000L
         private const val BASE_BACKOFF_MS = 60_000L
         private const val MAX_BACKOFF_MS = 30 * 60_000L
+        private const val MAX_BACKOFF_SHIFT = 5
 
         fun backoffMs(failures: Int): Long =
-            (BASE_BACKOFF_MS shl (failures - 1).coerceIn(0, 5)).coerceAtMost(MAX_BACKOFF_MS)
+            (BASE_BACKOFF_MS shl (failures - 1).coerceIn(0, MAX_BACKOFF_SHIFT)).coerceAtMost(MAX_BACKOFF_MS)
     }
 }

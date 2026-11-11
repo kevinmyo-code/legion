@@ -39,6 +39,7 @@ sealed interface CacheCreateOutcome {
 /** Server-sent events, as Gemini sends them: one JSON object per `data:` line. Pure. */
 object SseLines {
     /** The JSON after `data:`, or null for a blank line, a comment, or any other field. */
+    @Suppress("ReturnCount")
     fun dataOf(line: String): JSONObject? {
         if (!line.startsWith("data:")) return null
         val payload = line.removePrefix("data:").trim()
@@ -70,11 +71,14 @@ class StreamedTurn {
     var events = 0
         private set
 
+    @Suppress("CyclomaticComplexMethod") // one branch per kind of part the stream can carry
     fun onEvent(ev: JSONObject, onText: (String) -> Unit = {}) {
         events++
         ev.optJSONObject("error")?.let { error = it.optString("message").ifBlank { it.toString() } }
         ev.optJSONObject("usageMetadata")?.let { usage = it }
-        ev.optJSONObject("promptFeedback")?.optString("blockReason")?.takeIf { it.isNotBlank() }?.let { blockReason = it }
+        ev.optJSONObject("promptFeedback")?.optString("blockReason")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { blockReason = it }
         val cand = ev.optJSONArray("candidates")?.optJSONObject(0) ?: return
         cand.optString("finishReason").takeIf { it.isNotBlank() }?.let { finishReason = it }
         if (cand.optJSONObject("groundingMetadata") != null) grounded = true
@@ -165,7 +169,7 @@ object CascadeRequests {
 
     /** Without a cache: the whole prefix inline. [force] is the tool-free backstop round (mode NONE). */
     fun inline(prefix: CascadePrefix, contents: JSONArray, force: Boolean): JSONObject = JSONObject().apply {
-        put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prefix.systemInstruction))))
+        put("systemInstruction", instruction(prefix))
         put("tools", prefix.tools(force))
         prefix.toolConfig(force)?.let { put("toolConfig", it) }
         put("contents", contents)
@@ -175,7 +179,7 @@ object CascadeRequests {
     fun cacheCreate(prefix: CascadePrefix): JSONObject = JSONObject().apply {
         put("model", "models/${prefix.model}")
         put("displayName", "legion-cascade")
-        put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prefix.systemInstruction))))
+        put("systemInstruction", instruction(prefix))
         put("tools", prefix.tools())
         prefix.toolConfig()?.let { put("toolConfig", it) }
         put("ttl", "${CACHE_TTL_S}s")
