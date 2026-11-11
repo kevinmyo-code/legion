@@ -74,21 +74,24 @@ def main() -> None:
         return [(p, read_wav(p)) for d in dirs for p in sorted(Path(d).glob("*.wav"))]
 
     def caught(cs, gain_db=0.0, snr=None):
-        hit = 0
-        for _, c in cs:
+        """(share caught, {clip name: caught}) so misses can be broken down like oww_eval's peaks."""
+        hits = {}
+        for p, c in cs:
             c = np.clip(c.astype(np.float32) * 10 ** (gain_db / 20), -32768, 32767)
-            hit += bool(run_engine(pad(c, bed, snr, rng), kws, confirm, a.kws_dir))
-        return hit / max(1, len(cs))
+            hits[p.stem] = bool(run_engine(pad(c, bed, snr, rng), kws, confirm, a.kws_dir))
+        return sum(hits.values()) / max(1, len(cs)), hits
 
     pos = clips(a.positive)
     if pos:
         rows = {}
         for lv in [float(v) for v in a.levels.split(",") if v]:
-            rows[f"clean_{lv:+.0f}dB"] = {"clips": len(pos), "miss": 1 - caught(pos, gain_db=lv)}
-            print(rows, flush=True)
+            rate, hits = caught(pos, gain_db=lv)
+            rows[f"clean_{lv:+.0f}dB"] = {"clips": len(pos), "miss": 1 - rate, "caught": hits}
+            print({k: v['miss'] for k, v in rows.items()}, flush=True)
         for s in [float(v) for v in a.snr.split(",") if v]:
-            rows[f"noise_{s:.0f}dB_snr"] = {"clips": len(pos), "miss": 1 - caught(pos, snr=s)}
-            print(rows, flush=True)
+            rate, hits = caught(pos, snr=s)
+            rows[f"noise_{s:.0f}dB_snr"] = {"clips": len(pos), "miss": 1 - rate, "caught": hits}
+            print({k: v['miss'] for k, v in rows.items()}, flush=True)
         result["positive"] = rows
 
     near = clips(a.near)
