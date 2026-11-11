@@ -218,6 +218,10 @@ fun AssistantSettingsScreen(
                     },
                 )
 
+                // 2026-11-10: Gemini Live or the laptop pipeline, to compare (VoiceEngineRow.kt).
+                Spacer(Modifier.height(8.dp))
+                VoiceEngineRow()
+
                 Spacer(Modifier.height(8.dp))
                 VoiceTurnRow(
                     title = "Smart end of turn",

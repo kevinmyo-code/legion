@@ -131,7 +131,9 @@ class LiveSessionControllerRefusalTest {
         // when nothing parsed is not a check. If BARE_RETURN stops matching - a reformat, a Kotlin
         // idiom this regex does not know - every assertion in the loop above is skipped and the
         // test goes green having examined nothing at all.
-        assertEquals("the return scanner matched nothing, so it proved nothing", 7, examined)
+        // 9 since 2026-11-10: the laptop pipeline adds two, a tap on its open conversation
+        // (onTapCascade) and the Voice engine = Laptop open (openCascade); both hand off.
+        assertEquals("the return scanner matched nothing, so it proved nothing", 9, examined)
     }
 
     @Test
@@ -206,7 +208,8 @@ class LiveSessionControllerRefusalTest {
         // when nothing parsed is not a check. If BARE_RETURN stops matching - a reformat, a Kotlin
         // idiom this regex does not know - every assertion in the loop above is skipped and the
         // test goes green having examined nothing at all.
-        assertEquals("the return scanner matched nothing, so it proved nothing", 1, examined)
+        // 2 since 2026-11-10: a proactive line refused while a laptop-pipeline conversation is open.
+        assertEquals("the return scanner matched nothing, so it proved nothing", 2, examined)
     }
 
     @Test
@@ -241,6 +244,9 @@ class LiveSessionControllerRefusalTest {
         //   7. the TurnNotice branch (2026-10-27): a turn-taking fallback or barge-in switching
         //      off for the conversation, said once in words. A change in how listening works, not
         //      a refused ask.
+        //   8. the laptop pipeline's bridge (2026-11-10): what its conversation says in words (it
+        //      fell back to Live and why, it closed). Not a refused ask; its one refusal (a
+        //      proactive line under it) goes through refuse().
         // The count is pinned rather than the call banned: a sixth one should be a decision
         // somebody makes out loud.
         val direct = Regex("CompanionPhase\\.showNotice\\(").findAll(controllerSource()).count()
@@ -248,7 +254,7 @@ class LiveSessionControllerRefusalTest {
             "a new CompanionPhase.showNotice() appeared in LiveSessionController. If it is a " +
                 "refused ask, route it through refuse() so the reason is logged even when the " +
                 "screen stays quiet; if it is not, update this count and say which it is.",
-            7,
+            8,
             direct,
         )
     }
@@ -338,6 +344,12 @@ class LiveSessionControllerRefusalTest {
          * that goes on to speak (resuming a warm socket, or cold-connecting one), or it interrupted
          * Alfred, which emits Interrupted and shows "Listening" (ADR 0081, 2026-11-10).
          */
-        val REPORTS_OR_HANDS_OFF = listOf("refuse(", "resumeWarm(", "startConversation(", "interruptByTap(")
+        val REPORTS_OR_HANDS_OFF = listOf(
+            "refuse(", "resumeWarm(", "startConversation(", "interruptByTap(",
+            // The laptop pipeline (2026-11-10): its session says what a tap did ("Listening" or
+            // "Ended the chat"), its open falls back to Live in words, and a proactive line refused
+            // under it is logged and, when asked for, shown.
+            "onTapCascade(", "openCascade(", "refuseUnderCascade(",
+        )
     }
 }

@@ -28,6 +28,10 @@ import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.look.LookController
 import com.kevin.legion.look.LookRules
+import com.kevin.legion.service.cascade.CascadeBridge
+import com.kevin.legion.service.cascade.CascadeSession
+import com.kevin.legion.service.cascade.VoiceEngine
+import com.kevin.legion.service.cascade.VoiceEngineSettings
 import com.kevin.legion.ui.LegionRoute
 import com.kevin.legion.ui.MainActivity
 import com.kevin.legion.vehicle.ActiveVehicle
@@ -187,6 +191,18 @@ class LiveSessionController(context: Context) {
         },
     )
 
+    /**
+     * The laptop pipeline (Kevin, 2026-11-10: a "Voice engine" switch to compare it with Live). A
+     * conversation opened while Settings says [VoiceEngine.LAPTOP] runs in a [CascadeSession]
+     * instead of a Live socket; at most one of the two is open. Every failure in it ends in Live
+     * through [CascadeBridge]'s `toLive`. The Live path itself is unchanged.
+     */
+    private var cascade: CascadeSession? = null
+    private var cascadeBridge: CascadeBridge? = null
+
+    /** Run once the cascade has fully released the mic and audio mode (a Live door asked for it). */
+    private var afterCascade: (() -> Unit)? = null
+
     // True while a hands-free conversation (server VAD) is running, vs. a
     // speak-only proactive session. Drives whether a completed turn returns to
     // LISTENING (wait for the driver) or IDLE.
@@ -340,6 +356,10 @@ class LiveSessionController(context: Context) {
      * after answering whatever is said next.
      */
     fun onAssistRequest() {
+        cascade?.let {
+            it.makeOneShot()
+            return
+        }
         val s = session
         if (s != null && s.inConversation) {
             oneShotGate.armMidConversation()
@@ -356,6 +376,8 @@ class LiveSessionController(context: Context) {
      */
     @Suppress("ReturnCount") // one worded exit per guard, as in onTap
     fun onBrief() {
+        // Brief me stays on Live; a laptop conversation still open is closed first, fully.
+        if (endCascadeThen("brief") { onBrief() }) return
         val s = session
         if (s != null && s.inConversation) {
             if (!s.sendText(BRIEF_PROMPT)) refuse(VoiceRefusal.SOCKET_GONE)
@@ -378,6 +400,8 @@ class LiveSessionController(context: Context) {
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
+        // The laptop pipeline's own conversation takes the tap (interrupt a reply, else end it).
+        if (cascadeOwnsTap()) { onTapCascade(); return }
         // Set before anything async can emit MicOpened; a plain tap always clears it.
         oneShotGate.start(oneShot)
         val s = session
@@ -426,6 +450,10 @@ class LiveSessionController(context: Context) {
         // here.
         if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
         if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
+
+        // The "Voice engine" setting, read once here, when the conversation opens. A tap and the
+        // wake word both arrive here, so both follow it.
+        if (VoiceEngineSettings.engine(appContext) == VoiceEngine.LAPTOP) { openCascade(fromWakeWord, oneShot); return }
 
         if (s != null && s.isWarm()) {
             resumeWarm(s, fromWakeWord)
@@ -478,7 +506,7 @@ class LiveSessionController(context: Context) {
 
     /** A voice conversation or a voice tool call owns the strip's phase; typed chat must not touch it. */
     private fun voiceOwnsPhase(): Boolean =
-        conversationMode || session?.inConversation == true || activeToolCalls > 0
+        conversationMode || session?.inConversation == true || activeToolCalls > 0 || cascade != null
 
     /**
      * A typed turn started a tool: show "Working..." (Matrix `> WORKING`) exactly as a voice tool
@@ -508,6 +536,7 @@ class LiveSessionController(context: Context) {
         // reset here.
         // The Home button and "new conversation" both clear the cards, typed or voice (ADR 0081).
         ConversationCards.end()
+        cascade?.close("new conversation")
         if (session != null && !destroyed) {
             supersede("new conversation")
             pendingAction = Pending.NONE
@@ -598,6 +627,9 @@ class LiveSessionController(context: Context) {
         userInitiated: Boolean = false,
         listenHoldMs: Long = 0L,
     ) {
+        // A laptop-pipeline conversation holds the mic: a proactive line cannot open Live under it
+        // (version 1 of that pipeline speaks no proactive lines). Said, never dropped silently.
+        if (cascade != null) { refuseUnderCascade(prompt, userInitiated); return }
         // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
         // still lands in a turn already flagged. See GeminiLiveSession.markTurnReadThrough.
         if (carriesReadThroughContent) session?.markTurnReadThrough()
@@ -691,6 +723,8 @@ class LiveSessionController(context: Context) {
      */
     @Suppress("ReturnCount") // one worded exit per guard, as in onBrief
     private fun onLookByHand(): String? {
+        // The camera needs Live; a laptop conversation still open is closed first, fully.
+        if (endCascadeThen("look") { onLookByHand() }) return null
         val s = session
         if (s != null && s.inConversation) {
             return if (s.sendText(LookRules.HAND_OPENER)) null else refusalNotice(VoiceRefusal.SOCKET_GONE)
@@ -719,9 +753,102 @@ class LiveSessionController(context: Context) {
         LookController.unregister(lookSink)
         LookController.close()
         destroyed = true
+        cascadeBridge?.attached = false
+        cascade?.destroy()
+        cascade = null
         session?.destroy()
         session = null
         scope.cancel()
+    }
+
+    // --- the laptop pipeline (Voice engine = Laptop) ----------------------------------------------
+
+    /**
+     * Whether a laptop conversation is open to take a tap. One that already released (it failed
+     * while closing) is dropped here, never kept, so the tap goes on to open a new conversation.
+     */
+    private fun cascadeOwnsTap(): Boolean {
+        if (cascade?.isOpen == false) {
+            cascadeBridge?.attached = false
+            cascade = null
+        }
+        return cascade != null
+    }
+
+    /** A tap during a laptop conversation: interrupt a reply, else end it (Live's two tap meanings). */
+    private fun onTapCascade() {
+        // The session says which it did ("Listening", or "Ended the chat").
+        cascade?.onTap()
+    }
+
+    /**
+     * Opens a laptop-pipeline conversation. A parked warm Live socket is superseded first, so at most
+     * one engine holds the mic; the session itself falls back to Live if the laptop is not there.
+     */
+    private fun openCascade(fromWakeWord: Boolean, oneShot: Boolean) {
+        supersede("laptop pipeline")
+        ConversationCards.begin()
+        val bridge = CascadeBridge(
+            post = { block -> scope.launch { block() } },
+            setPhase = { p, status -> set(p, status) },
+            showNotice = { CompanionPhase.showNotice(it) },
+            tool = { name, args, readThrough, userText, turnSeq ->
+                withContext(Dispatchers.Main.immediate) {
+                    val response = runToolBounded(name, args, readThrough, userText)
+                    if (response.has("success")) {
+                        val ok = response.optBoolean("success", false)
+                        val detail = if (ok) null else response.optString("message").takeIf { it.isNotBlank() }
+                        AssistantChatStore.update { it.tool(name, ok, detail) }
+                    }
+                    auditToolCall(name, args, response, turnSeq)
+                    response
+                }
+            },
+            transcript = { heard, said ->
+                AssistantChatStore.update { it.withSpeaker(speakerName()).turnComplete(heard, said, false) }
+            },
+            onCrisis = {
+                cascade = null
+                handleEvent(LiveEvent.CrisisDetected)
+            },
+            tone = ::playClosingTone,
+            toLive = { wake, opener ->
+                cascade = null
+                afterCascade = null
+                if (!destroyed) startConversation(fromWakeWord = wake, opener = opener)
+            },
+            onClosed = {
+                cascade = null
+                closeOutTypedChat()
+                ConversationCards.endVoice()
+                set(Phase.IDLE, IDLE_STATUS)
+                afterCascade?.let { next ->
+                    afterCascade = null
+                    if (!destroyed) next()
+                }
+            },
+        )
+        val c = CascadeSession(appContext, bridge, fromWakeWord, oneShot)
+        cascadeBridge = bridge
+        cascade = c
+        c.open()
+    }
+
+    /**
+     * A Live door (Brief me, the look button) while a laptop conversation is open: close it, and run
+     * [then] only once it has released the mic and the audio mode. True when it deferred.
+     */
+    private fun endCascadeThen(why: String, then: () -> Unit): Boolean {
+        val c = cascade ?: return false
+        afterCascade = then
+        c.close(why)
+        return true
+    }
+
+    /** A proactive line while a laptop conversation holds the mic: logged, and shown when asked for. */
+    private fun refuseUnderCascade(prompt: String, userInitiated: Boolean) {
+        android.util.Log.d("LiveSessionController", "requestSpeak under the laptop pipeline (${prompt.length} chars)")
+        refuse(VoiceRefusal.LAPTOP_CONVERSATION_OPEN, userInitiated)
     }
 
     // --- session lifecycle ----------------------------------------------
@@ -1729,6 +1856,9 @@ class LiveSessionController(context: Context) {
         /** A connect was already in flight for something else (a tap's conversation, another
          *  raise), so this line had nowhere to go without overwriting it (2026-11-05). */
         CONNECT_IN_FLIGHT,
+
+        /** A laptop-pipeline conversation holds the mic; Live cannot open under it (2026-11-10). */
+        LAPTOP_CONVERSATION_OPEN,
     }
 
     companion object {
@@ -1768,6 +1898,7 @@ class LiveSessionController(context: Context) {
             VoiceRefusal.OFFLINE -> "Didn't start - no network"
             VoiceRefusal.SOCKET_GONE -> "Didn't speak - the connection had already closed"
             VoiceRefusal.CONNECT_IN_FLIGHT -> "Didn't speak - another voice session was still connecting"
+            VoiceRefusal.LAPTOP_CONVERSATION_OPEN -> "Didn't speak - a laptop voice conversation is open"
         }
 
         // Close reasons that are expected (user stop / idle timeout / teardown /
