@@ -132,7 +132,11 @@ class WakeTwoStageDetector private constructor(
             signal(WakeSignal.KwsHit(hit.keyword, hit.tokens.toList(), hit.timestamps.toList()))
         }
         val accepted = confirm(tail(ring.size))
-        return machine.onConfirm(accepted) == WakeStageMachine.Verdict.OPEN
+        val open = machine.onConfirm(accepted) == WakeStageMachine.Verdict.OPEN
+        // One line per decision in the same shape as OpenWakeWordDetector.decisionLine, so the two
+        // engines compare from logs. The spotter reports no score, so it says "-".
+        log(decisionLine(if (open) "open" else "reject"))
+        return open
     }
 
     private fun trackUtterance(buf: ShortArray, n: Int) {
@@ -186,6 +190,11 @@ class WakeTwoStageDetector private constructor(
         // tools/wake_eval/core.py.
         const val KWS_KEYWORDS_SCORE = 5.0f
         const val KWS_KEYWORDS_THRESHOLD = 0.10f
+
+        /** `decision engine=kws ...`, the keyword spotter's twin of OpenWakeWordDetector.decisionLine. */
+        fun decisionLine(verdict: String): String =
+            "decision engine=kws verdict=$verdict score=- threshold=" + "%.2f".format(java.util.Locale.ROOT, KWS_KEYWORDS_THRESHOLD) +
+                " gain=$WAKE_INPUT_GAIN"
         // Bumped when a bundled model file changes: files already copied to filesDir are never
         // re-copied, so the first (mobile) encoder would otherwise outlive its replacement.
         private const val COPY_DIR = "wake-kws-v2"

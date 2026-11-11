@@ -71,8 +71,8 @@ class OpenWakeWordDetector private constructor(
 
         /** One wake decision, comparable across engines: `decision engine=... verdict=... score=...`. */
         fun decisionLine(verdict: String, score: Float, threshold: Float): String =
-            "decision engine=$ENGINE verdict=$verdict score=" + "%.3f".format(score) +
-                " threshold=" + "%.2f".format(threshold) + " gain=$INPUT_GAIN"
+            "decision engine=$ENGINE verdict=$verdict score=" + "%.3f".format(java.util.Locale.ROOT, score) +
+                " threshold=" + "%.2f".format(java.util.Locale.ROOT, threshold) + " gain=$INPUT_GAIN"
 
         sealed interface Created {
             data class Ready(val detector: OpenWakeWordDetector) : Created
@@ -94,7 +94,7 @@ class OpenWakeWordDetector private constructor(
                 val models = OwwOrtModels(OrtEnvironment.getEnvironment(), files.mel, files.embedding, files.head)
                 log(
                     "openwakeword ready: head=" + files.headName + " from " + files.source +
-                        " frames=" + models.inputFrames + " threshold=" + "%.2f".format(threshold) +
+                        " frames=" + models.inputFrames + " threshold=" + "%.2f".format(java.util.Locale.ROOT, threshold) +
                         " gain=" + INPUT_GAIN,
                 )
                 Created.Ready(OpenWakeWordDetector(models, threshold, log))
