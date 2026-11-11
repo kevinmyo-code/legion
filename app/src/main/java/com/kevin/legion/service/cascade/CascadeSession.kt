@@ -315,9 +315,9 @@ internal class CascadeSession(
         override fun sendActivityStart() {
             val c = conn ?: return
             var self: SttUtterance? = null
-            val u = c.begin { prob ->
+            val u = c.begin {
                 val utt = self ?: return@begin
-                scope.launch(loop) { onServiceEndpoint(utt, prob) }
+                scope.launch(loop) { onServiceEnd(utt) }
             }
             self = u
             currentUtt = u
@@ -388,14 +388,16 @@ internal class CascadeSession(
         }
     }
 
-    /** The laptop's own end of turn (Kyutai endpointing): end the utterance the phone is streaming. */
-    private fun onServiceEndpoint(u: SttUtterance, prob: Float) {
+    /**
+     * The laptop ended the turn itself (contract 4b, Kyutai's pause head): its final text is already
+     * waiting in the utterance. Stop streaming to that id.
+     */
+    private fun onServiceEnd(u: SttUtterance) {
         if (currentUtt !== u) return
         currentUtt = null
-        u.end()
         // The phone's own turn is over too: forget it, so its silence cap does not end a second one.
         turnTaker?.reset()
-        onTurnEnd(u, System.currentTimeMillis(), CascadeRules.EotSource.SERVICE, prob)
+        onTurnEnd(u, System.currentTimeMillis(), CascadeRules.EotSource.SERVICE, null)
     }
 
     private fun onTurnEnd(u: SttUtterance, eotAtMs: Long, source: CascadeRules.EotSource, prob: Float?) {

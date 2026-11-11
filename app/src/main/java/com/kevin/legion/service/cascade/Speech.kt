@@ -15,12 +15,13 @@ interface SpeechToText {
     /**
      * True when the engine has its own end-of-turn signal (Kyutai STT's endpointing). Kevin,
      * 2026-11-10: "since kyutai has end of turn built in lets use that first and ditch smart turn".
-     * The phone then streams until [begin]'s `onEndpoint` fires, with only a silence cap of its own.
+     * The phone then streams until [begin]'s `onServiceEnd` fires (the final text is then already
+     * waiting in [SttUtterance.result]), with only a silence cap of its own.
      */
     val endsTurns: Boolean
 
-    /** [onEndpoint] gets the engine's end-of-turn signal for this utterance, with its probability. */
-    fun begin(onEndpoint: (prob: Float) -> Unit = {}): SttUtterance
+    /** [onServiceEnd] fires when the engine itself ended this utterance (contract 4b). */
+    fun begin(onServiceEnd: () -> Unit = {}): SttUtterance
 }
 
 interface SttUtterance {

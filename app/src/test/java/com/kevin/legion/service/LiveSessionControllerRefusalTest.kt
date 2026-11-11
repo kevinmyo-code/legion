@@ -131,7 +131,9 @@ class LiveSessionControllerRefusalTest {
         // when nothing parsed is not a check. If BARE_RETURN stops matching - a reformat, a Kotlin
         // idiom this regex does not know - every assertion in the loop above is skipped and the
         // test goes green having examined nothing at all.
-        assertEquals("the return scanner matched nothing, so it proved nothing", 7, examined)
+        // 9 since 2026-11-10: the laptop pipeline adds two, a tap on its open conversation
+        // (onTapCascade) and the Voice engine = Laptop open (openCascade); both hand off.
+        assertEquals("the return scanner matched nothing, so it proved nothing", 9, examined)
     }
 
     @Test
@@ -206,7 +208,8 @@ class LiveSessionControllerRefusalTest {
         // when nothing parsed is not a check. If BARE_RETURN stops matching - a reformat, a Kotlin
         // idiom this regex does not know - every assertion in the loop above is skipped and the
         // test goes green having examined nothing at all.
-        assertEquals("the return scanner matched nothing, so it proved nothing", 1, examined)
+        // 2 since 2026-11-10: a proactive line refused while a laptop-pipeline conversation is open.
+        assertEquals("the return scanner matched nothing, so it proved nothing", 2, examined)
     }
 
     @Test
@@ -338,6 +341,12 @@ class LiveSessionControllerRefusalTest {
          * that goes on to speak (resuming a warm socket, or cold-connecting one), or it interrupted
          * Alfred, which emits Interrupted and shows "Listening" (ADR 0081, 2026-11-10).
          */
-        val REPORTS_OR_HANDS_OFF = listOf("refuse(", "resumeWarm(", "startConversation(", "interruptByTap(")
+        val REPORTS_OR_HANDS_OFF = listOf(
+            "refuse(", "resumeWarm(", "startConversation(", "interruptByTap(",
+            // The laptop pipeline (2026-11-10): its session says what a tap did ("Listening" or
+            // "Ended the chat"), its open falls back to Live in words, and a proactive line refused
+            // under it is logged and, when asked for, shown.
+            "onTapCascade(", "openCascade(", "refuseUnderCascade(",
+        )
     }
 }

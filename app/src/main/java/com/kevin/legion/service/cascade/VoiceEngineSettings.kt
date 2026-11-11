@@ -174,6 +174,7 @@ object VoiceEngineSettings {
         token.startsWith("busy") -> "laptop busy, used Live"
         token.startsWith("protocol") -> "laptop service is a different version"
         token == "turn_models_unavailable" -> "phone turn detection unavailable, used Live"
+        token.endsWith("http_429") -> "laptop locked out after bad tokens, try again in 30 seconds"
         token.startsWith("unreachable") || token.startsWith("connect_") ->
             "laptop not reachable (is Tailscale on, and the laptop awake?), used Live"
         else -> "laptop dropped ($token), switched to Live"

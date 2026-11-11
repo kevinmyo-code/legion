@@ -163,19 +163,70 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
-    fun `the service's end-of-turn signal reaches the utterance, and proves the feature`() = runBlocking {
-        val fake = FakeLaptop()
+    fun `the service ends the turn itself with an unasked final, and the phone sends nothing more for it`() = runBlocking {
+        val fake = FakeLaptop(readyStt = JSONObject().put("end_of_turn", true))
         val c = connection(fake)
         c.open(500)
-        val probs = mutableListOf<Float>()
-        val u = c.begin { probs.add(it) }
-        fake.text(JSONObject().put("type", "stt.endpoint").put("id", u.id).put("prob", 0.8))
-        assertEquals(listOf(0.8f), probs)
         assertTrue(c.endsTurns)
+        var ends = 0
+        val u = c.begin { ends++ }
+        fake.text(JSONObject().put("type", "stt.pause").put("id", u.id).put("prob", 0.4).put("silence_ms", 120))
+        assertEquals(0, ends)
+        fake.text(
+            JSONObject().put("type", "stt.final").put("id", u.id).put("text", "Add oat milk.").put("reason", "end_of_turn"),
+        )
+        assertEquals(1, ends)
+        assertEquals("Add oat milk.", (u.result(500) as SttResult.Text).text)
+        u.end() // the id is closed: no stt.end goes out
+        u.audio(ByteArray(320), 0, 320) // nor audio
+        assertEquals(listOf("hello", "stt.start"), fake.types())
+        assertTrue(fake.mic.isEmpty())
+    }
+
+    @Test
+    fun `a final the phone asked for is not a service end`() = runBlocking {
+        val fake = FakeLaptop(readyStt = JSONObject().put("end_of_turn", true), onMessage = {
+            if (it.getString("type") == "stt.end") {
+                text(JSONObject().put("type", "stt.final").put("id", it.getInt("id")).put("text", "Hi.").put("reason", "client_end"))
+            }
+        })
+        val c = connection(fake)
+        c.open(500)
+        var ends = 0
+        val u = c.begin { ends++ }
         u.end()
-        // After the phone ended it, a late signal is ignored.
-        fake.text(JSONObject().put("type", "stt.endpoint").put("id", u.id).put("prob", 0.9))
-        assertEquals(1, probs.size)
+        assertEquals("Hi.", (u.result(500) as SttResult.Text).text)
+        assertEquals(0, ends)
+    }
+
+    @Test
+    fun `the capabilities object is read as well`() = runBlocking {
+        val fake = FakeLaptop()
+        val c = LaptopVoiceConnection(
+            object : WireConnector {
+                override fun connect(url: String, headers: List<Pair<String, String>>, listener: WireListener): WireSocket {
+                    return object : WireSocket {
+                        override fun sendText(text: String): Boolean {
+                            if (JSONObject(text).getString("type") == "hello") {
+                                listener.onText(
+                                    JSONObject().put("type", "ready").put("protocol", 1)
+                                        .put("capabilities", JSONObject().put("end_of_turn", true).put("text_streaming", true))
+                                        .toString(),
+                                )
+                            }
+                            return true
+                        }
+                        override fun sendBinary(bytes: ByteArray) = true
+                        override fun close(code: Int, reason: String) {}
+                    }
+                }
+            },
+            config, "legion-phone/test", scope,
+        )
+        c.open(500)
+        assertTrue(c.endsTurns)
+        assertTrue(c.streamsText)
+        assertFalse(fake.closed)
     }
 
     @Test

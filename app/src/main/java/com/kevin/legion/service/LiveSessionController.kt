@@ -401,7 +401,7 @@ class LiveSessionController(context: Context) {
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
         // The laptop pipeline's own conversation takes the tap (interrupt a reply, else end it).
-        if (cascade != null) return onTapCascade()
+        if (cascade != null) { onTapCascade(); return }
         // Set before anything async can emit MicOpened; a plain tap always clears it.
         oneShotGate.start(oneShot)
         val s = session
@@ -453,7 +453,7 @@ class LiveSessionController(context: Context) {
 
         // The "Voice engine" setting, read once here, when the conversation opens. A tap and the
         // wake word both arrive here, so both follow it.
-        if (VoiceEngineSettings.engine(appContext) == VoiceEngine.LAPTOP) return openCascade(fromWakeWord, oneShot)
+        if (VoiceEngineSettings.engine(appContext) == VoiceEngine.LAPTOP) { openCascade(fromWakeWord, oneShot); return }
 
         if (s != null && s.isWarm()) {
             resumeWarm(s, fromWakeWord)
@@ -629,7 +629,7 @@ class LiveSessionController(context: Context) {
     ) {
         // A laptop-pipeline conversation holds the mic: a proactive line cannot open Live under it
         // (version 1 of that pipeline speaks no proactive lines). Said, never dropped silently.
-        if (cascade != null) return refuseUnderCascade(prompt, userInitiated)
+        if (cascade != null) { refuseUnderCascade(prompt, userInitiated); return }
         // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
         // still lands in a turn already flagged. See GeminiLiveSession.markTurnReadThrough.
         if (carriesReadThroughContent) session?.markTurnReadThrough()

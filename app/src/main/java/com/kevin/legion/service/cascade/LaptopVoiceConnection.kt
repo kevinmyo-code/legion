@@ -73,7 +73,7 @@ class LaptopVoiceConnection(
         private set
 
     /**
-     * From `ready.tts.text_streaming` (contract 4a). False until `ready`, and false again if the
+     * From `ready.tts.text_streaming` or `ready.capabilities.text_streaming` (contract 4a). False until `ready`, and false again if the
      * service refuses a stream (`bad_request` on `tts.stream.*`), so the caller falls back to
      * [speak] per sentence.
      */
@@ -81,9 +81,9 @@ class LaptopVoiceConnection(
         private set
 
     /**
-     * The service's own end of turn: advertised in `ready.stt` (`end_of_turn`, `endpointing` or
-     * `endpoint` true; the contract names the `stt.endpoint` event but not yet a flag), or proven
-     * by the first `stt.endpoint` event this connection receives.
+     * The service decides end of turn itself (contract 4b): `ready.stt.end_of_turn` or
+     * `ready.capabilities.end_of_turn`. Its end arrives as an unasked-for `stt.final` with
+     * `reason: "end_of_turn"`; the phone may still force one with `stt.end` (its silence cap).
      */
     @Volatile override var endsTurns: Boolean = false
         private set
@@ -137,9 +137,9 @@ class LaptopVoiceConnection(
 
     // --- SpeechToText --------------------------------------------------------------------------
 
-    override fun begin(onEndpoint: (prob: Float) -> Unit): SttUtterance {
+    override fun begin(onServiceEnd: () -> Unit): SttUtterance {
         val id = nextStt.addAndGet(2)
-        val u = Utterance(id, onEndpoint)
+        val u = Utterance(id, onServiceEnd)
         utterances[id] = u
         if (dropped.get()) {
             u.result.complete(SttResult.Failed(dropReason ?: "dropped"))
@@ -149,7 +149,7 @@ class LaptopVoiceConnection(
         return u
     }
 
-    private inner class Utterance(override val id: Int, val onEndpoint: (Float) -> Unit) : SttUtterance {
+    private inner class Utterance(override val id: Int, val onServiceEnd: () -> Unit) : SttUtterance {
         val result = CompletableDeferred<SttResult>()
         val ended = AtomicBoolean(false)
 
@@ -290,15 +290,12 @@ class LaptopVoiceConnection(
                     }
                     val tts = m.optJSONObject("tts")
                     tts?.optInt("sample_rate", DEFAULT_TTS_RATE)?.takeIf { it > 0 }?.let { sampleRate = it }
-                    streamsText = tts?.optBoolean("text_streaming", false) == true
-                    val stt = m.optJSONObject("stt")
-                    endsTurns = stt != null && EOT_FLAGS.any { stt.optBoolean(it, false) }
+                    val caps = m.optJSONObject("capabilities")
+                    streamsText = tts?.optBoolean("text_streaming", false) == true ||
+                        caps?.optBoolean("text_streaming", false) == true
+                    endsTurns = m.optJSONObject("stt")?.optBoolean("end_of_turn", false) == true ||
+                        caps?.optBoolean("end_of_turn", false) == true
                     ready.complete(OpenResult.Ready)
-                }
-                "stt.endpoint" -> {
-                    endsTurns = true
-                    val u = id?.let { utterances[it] } ?: return
-                    if (!u.ended.get()) u.onEndpoint(m.optDouble("prob", 1.0).toFloat())
                 }
                 "stt.final" -> {
                     val u = id?.let { utterances[it] } ?: return
@@ -312,7 +309,11 @@ class LaptopVoiceConnection(
                             decodeMs = m.optLong("decode_ms", -1L).takeIf { it >= 0 },
                         )
                     }
+                    // The service ended the turn itself (contract 4b): the id is closed, so the
+                    // phone sends nothing more for it, and the session is told.
+                    val byService = m.optString("reason") == REASON_END_OF_TURN && u.ended.compareAndSet(false, true)
                     u.result.complete(r)
+                    if (byService) u.onServiceEnd()
                 }
                 "tts.done" -> {
                     val c = id?.let { clips[it] } ?: return
@@ -328,7 +329,7 @@ class LaptopVoiceConnection(
                     )
                 }
                 "error" -> onError(id, m.optString("code").ifBlank { "internal" })
-                else -> Unit // pong, stt.partial, and anything a later protocol adds
+                else -> Unit // pong, stt.partial, stt.pause, and anything a later protocol adds
             }
         }
 
@@ -371,8 +372,8 @@ class LaptopVoiceConnection(
         const val KIND_TTS: Byte = 0x02
         const val MAX_TTS_CHARS = 1_000
 
-        /** `ready.stt` flags read as "the service ends turns itself". */
-        val EOT_FLAGS = listOf("end_of_turn", "endpointing", "endpoint")
+        /** `stt.final.reason` when the service, not the phone, ended the turn. */
+        const val REASON_END_OF_TURN = "end_of_turn"
         const val NORMAL_CLOSE = 1000
         const val BUSY_CLOSE = 1013
 

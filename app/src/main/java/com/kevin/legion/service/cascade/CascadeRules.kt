@@ -36,7 +36,7 @@ internal object CascadeRules {
 
     /** Where a turn's end came from, for the `eot_source=` log token (Kevin: "so it can be tuned"). */
     enum class EotSource(val wire: String) {
-        /** The laptop's speech engine said the speaker finished (`stt.endpoint`). */
+        /** The laptop's speech engine ended the turn (`stt.final` with `reason: "end_of_turn"`). */
         SERVICE("service"),
 
         /** The service ends turns, but its signal never came: the phone's silence cap ended it. */
