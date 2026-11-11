@@ -1,4 +1,4 @@
-@file:Suppress("MaxLineLength", "MagicNumber", "LongMethod", "TooGenericExceptionCaught")
+@file:Suppress("MaxLineLength", "MagicNumber", "LongMethod", "TooGenericExceptionCaught", "CyclomaticComplexMethod")
 
 package com.kevin.legion.service.cascade
 
