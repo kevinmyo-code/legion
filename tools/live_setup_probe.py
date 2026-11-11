@@ -89,8 +89,11 @@ async def recv_json(ws, timeout: float) -> dict:
     return json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
 
 
+URL = WS_URL  # --url replaces it, for a local fake server in a dry run
+
+
 async def open_session(key: str, msg: dict, timeout: float):
-    ws = await websockets.connect(f"{WS_URL}?key={key}", max_size=None, open_timeout=timeout)
+    ws = await websockets.connect(f"{URL}?key={key}", max_size=None, open_timeout=timeout)
     await ws.send(json.dumps(msg))
     while True:
         m = await recv_json(ws, timeout)
@@ -110,7 +113,7 @@ async def setup_only(key: str, msg: dict, timeout: float) -> str:
 
 
 async def one_case(key: str, msg: dict, say: str, discs: dict, timeout: float, follow: int) -> dict:
-    calls, usage, spoke = [], [], False
+    calls, usage, spoke, said = [], [], False, []
     try:
         ws = await open_session(key, msg, timeout)
     except websockets.ConnectionClosed as e:
@@ -141,6 +144,8 @@ async def one_case(key: str, msg: dict, say: str, discs: dict, timeout: float, f
             sc = m.get("serverContent") or {}
             if sc.get("modelTurn"):
                 spoke = True
+            if (sc.get("outputTranscription") or {}).get("text"):
+                said.append(sc["outputTranscription"]["text"])
             if sc.get("turnComplete"):
                 break
     except websockets.ConnectionClosed as e:
@@ -149,7 +154,8 @@ async def one_case(key: str, msg: dict, say: str, discs: dict, timeout: float, f
         return {"verdict": "TIMEOUT", "calls": calls, "usage": usage}
     finally:
         await ws.close()
-    return {"verdict": "CALL" if calls else ("SPOKE" if spoke else "NOTHING"), "calls": calls, "usage": usage}
+    return {"verdict": "CALL" if calls else ("SPOKE" if spoke else "NOTHING"), "calls": calls, "usage": usage,
+            "said": "".join(said)[:200]}
 
 
 async def main_async(args) -> int:
@@ -177,19 +183,23 @@ async def run(args, key: str) -> int:
     if args.limit:
         cases = cases[: args.limit]
     results = []
+    out_path = Path(args.out) if args.out else None
     for c in cases:
         accept = [c["covers"]] if old else c["accept"]
-        r = await one_case(key, msg, c["say"], discs, args.timeout, args.follow)
+        try:
+            r = await one_case(key, msg, c["say"], discs, args.timeout, args.follow)
+        except Exception as e:  # one bad case must not lose a paid run; never print the URL
+            r = {"verdict": "ERROR", "why": f"{type(e).__name__}: {str(e).replace(key, '<key>')}", "calls": []}
         ok = any(x in accept or x.split("/")[0] in accept for x in r["calls"])
         verdict = "PASS" if ok else ("WRONG" if r["verdict"] == "CALL" else r["verdict"])
         results.append({**c, **r, "verdict": verdict})
         print(f"{verdict[:6]:6} {'|'.join(accept)[:45]:45} got {' > '.join(r['calls']) or '-':38} "
-              f"prompt_tokens={r.get('usage')} | {c['say']}")
+              f"prompt_tokens={r.get('usage')} | {c['say']}" + (f" | said: {r['said']}" if r.get("said") else ""))
+        if out_path:  # written as it goes
+            out_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
     n = len(results)
     counts = Counter(r["verdict"] for r in results)
     print(f"\n{label}: {counts['PASS']}/{n} right; verdicts {dict(counts)}")
-    if args.out:
-        Path(args.out).write_text(json.dumps(results, indent=1), encoding="utf-8")
     return 0
 
 
@@ -206,7 +216,12 @@ def main() -> int:
     ap.add_argument("--follow", type=int, default=1)
     ap.add_argument("--timeout", type=float, default=30.0)
     ap.add_argument("--out")
-    return asyncio.run(main_async(ap.parse_args()))
+    ap.add_argument("--url", help="a different endpoint (a local fake server for a dry run)")
+    args = ap.parse_args()
+    if args.url:
+        global URL
+        URL = args.url
+    return asyncio.run(main_async(args))
 
 
 if __name__ == "__main__":

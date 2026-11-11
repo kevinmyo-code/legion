@@ -35,7 +35,7 @@ class LiveSetupMessageExportTest {
             functionDeclarations = LiveToolbox.declarations(),
             voiceName = "Puck",
             vadMode = true,
-            subtitles = false,
+            subtitles = true, // start() always turns captions on (they drive the transcript)
             resumeHandle = null,
             manualActivity = true,
             nonBlockingTools = LiveSurface.nonBlockingWireNames(LiveToolbox.NON_BLOCKING_READ_TOOLS),

@@ -17,19 +17,23 @@ Function calling is AUTO by default: mode ANY on the full list is refused by the
 produces a constraint that has too many states"), because forced calling compiles every
 declaration into one grammar. Live does not force calls, so AUTO is also the honest comparison.
 
+By default the request MIRRORS TYPED CHAT (`TextChatEngine.requestBody`), which sends this same
+tool list to a text model in production: model gemini-3.8-flash, no toolConfig (AUTO), no
+generationConfig. The 2026-11-10 run used gemini-2.5-flash with forced settings and got 27 EMPTY
+replies (finishReason STOP, no parts) on the new list and 88 on the old: a 2.5 Flash shape with
+large tool lists and thinking, not something typed chat sends. `--model gemini-2.5-flash
+--thinking-budget 0` reproduces that run with thinking off, to test the explanation.
+
 Replies are classed PASS, WRONG (another call), EMPTY (no parts: finishReason and thought tokens
-are kept to tell why), TEXT (words, no call), BLOCKED, ERROR (HTTP code). `--thinking-budget 0`
-(the default) turns thinking off on 2.5 Flash; -1 leaves the model's default. Empty candidates
-with no parts and finishReason STOP after thinking are a known 2.5 Flash shape with large tool
-lists; running both settings shows whether thinking explains them.
+are kept to tell why), TEXT (words, no call), BLOCKED, ERROR (HTTP code).
 
 A first call that only gathers what the real call needs (the time, the record to delete, the
 category names) gets a canned result and one more round (`--follow`, default 1), as the phone's
 loop would; a right call in that round counts as PASS (preamble).
 
 Cost: one generateContent per case and round, each carrying the whole setup as input (about 11k
-tokens new, about 23k old) at the model's text-input price: on gemini-2.5-flash about $0.30 to
-$0.70 for 104 cases. The key is never printed. Results hold invented utterances only.
+tokens new, about 23k old) at the model's text-input price: about $1 new and $2 old for 104 cases
+on gemini-3.8-flash (audit's ~$0.75/M), about $0.4 and $0.7 on gemini-2.5-flash. The key is never printed. Results hold invented utterances only.
 """
 
 from __future__ import annotations
@@ -46,6 +50,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 BUILD = REPO / "app" / "build" / "live-setup"
 API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+API_OVERRIDE: str | None = None  # --api, a local fake for a dry run
 
 # Calls that only gather what the real call needs; answered with a canned result for one more round.
 PREAMBLE = {
@@ -60,7 +65,7 @@ PREAMBLE = {
 
 def call_model(model: str, key: str, body: dict) -> dict:
     req = urllib.request.Request(
-        API.format(model=model), data=json.dumps(body).encode("utf-8"),
+        (API_OVERRIDE or API).format(model=model), data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST",
     )
     with urllib.request.urlopen(req, timeout=90) as resp:
@@ -88,17 +93,21 @@ def classify(out: dict) -> tuple[str, dict | None, dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--model", default="gemini-2.5-flash")
+    ap.add_argument("--model", default="gemini-3.8-flash", help="typed chat's model")
     ap.add_argument("--key-file")
     ap.add_argument("--setup", default=str(BUILD / "setup.json"))
     ap.add_argument("--expected", default=str(BUILD / "eval_expected.jsonl"))
     ap.add_argument("--baseline", action="store_true", help="score on the OLD tool names (covers)")
-    ap.add_argument("--mode", default="AUTO", choices=["AUTO", "ANY"])
-    ap.add_argument("--thinking-budget", type=int, default=0, help="0 off, -1 model default")
+    ap.add_argument("--mode", default=None, choices=["AUTO", "ANY"], help="omit to mirror typed chat")
+    ap.add_argument("--thinking-budget", type=int, default=None, help="omit to mirror typed chat; 0 off")
     ap.add_argument("--follow", type=int, default=1, help="extra rounds after a preamble call")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--out")
+    ap.add_argument("--api", help="endpoint template with {model}, for a local fake (dry run)")
     args = ap.parse_args()
+    if args.api:
+        global API_OVERRIDE
+        API_OVERRIDE = args.api
     key = (Path(args.key_file).read_text(encoding="utf-8").strip() if args.key_file
            else os.environ.get("GEMINI_API_KEY", "").strip())
     if not key:
@@ -113,7 +122,7 @@ def main() -> int:
         cases = cases[: args.limit]
 
     gen = {}
-    if args.thinking_budget >= 0:
+    if args.thinking_budget is not None and args.thinking_budget >= 0:
         gen["thinkingConfig"] = {"thinkingBudget": args.thinking_budget}
 
     results = []
@@ -125,7 +134,7 @@ def main() -> int:
             body = {
                 "systemInstruction": {"parts": [{"text": setup["systemInstruction"]}]},
                 "tools": tools,
-                "toolConfig": {"functionCallingConfig": {"mode": args.mode}},
+                **({"toolConfig": {"functionCallingConfig": {"mode": args.mode}}} if args.mode else {}),
                 "contents": contents,
                 **({"generationConfig": gen} if gen else {}),
             }
@@ -138,6 +147,7 @@ def main() -> int:
                 kind, info = "ERROR", {"why": type(e).__name__}
                 break
             kind, fc, info = classify(out)
+            model_turn = ((out.get("candidates") or [{}])[0]).get("content")
             if kind != "CALL":
                 break
             disc = disc_of.get(fc["name"], "action")
@@ -150,8 +160,9 @@ def main() -> int:
             if canned is None:
                 break
             preamble = True
+            # The model turn goes back verbatim, as typed chat does: it may carry a thought signature.
             contents += [
-                {"role": "model", "parts": [{"functionCall": fc}]},
+                model_turn or {"role": "model", "parts": [{"functionCall": fc}]},
                 {"role": "user", "parts": [{"functionResponse": {"name": fc["name"], "response": canned}}]},
             ]
         verdict = "PASS" if passed else ("WRONG" if kind == "CALL" else kind)
