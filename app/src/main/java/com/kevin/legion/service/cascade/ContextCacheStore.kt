@@ -14,8 +14,9 @@ import kotlinx.coroutines.launch
  * "cache missing or create fails" row: about 0.1 s and a fraction of a cent more, nothing heard).
  * A cache that a request reports broken is dropped by [invalidate] and recreated on a later turn.
  *
- * Keyed by [CascadePrefix.key]; [memo] persists the name across process restarts, so an app
- * restart inside the hour reuses the same cache instead of paying for another.
+ * Keyed by [CascadePrefix.key]. [memo] holds the name; production uses the in-memory one, so the
+ * cache is reused for the life of the app process (a restart creates a new one; the old one
+ * expires on its own TTL).
  */
 class ContextCacheStore(
     private val api: CacheApi,

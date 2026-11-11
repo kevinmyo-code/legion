@@ -400,6 +400,11 @@ class LiveSessionController(context: Context) {
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
+        // A laptop session that already released (it failed while closing) is dropped, never kept.
+        if (cascade?.isOpen == false) {
+            cascadeBridge?.attached = false
+            cascade = null
+        }
         // The laptop pipeline's own conversation takes the tap (interrupt a reply, else end it).
         if (cascade != null) { onTapCascade(); return }
         // Set before anything async can emit MicOpened; a plain tap always clears it.

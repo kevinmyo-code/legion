@@ -231,6 +231,22 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
+    fun `too long is not a failure - the final still comes`() = runBlocking<Unit> {
+        val fake = FakeLaptop(onMessage = {
+            if (it.getString("type") == "stt.end") {
+                val id = it.getInt("id")
+                text(JSONObject().put("type", "error").put("id", id).put("code", "too_long"))
+                text(JSONObject().put("type", "stt.final").put("id", id).put("text", "A very long invented ramble."))
+            }
+        })
+        val c = connection(fake)
+        c.open(500)
+        val u = c.begin()
+        u.end()
+        assertEquals("A very long invented ramble.", (u.result(1_000) as SttResult.Text).text)
+    }
+
+    @Test
     fun `a slow final times out and a busy one fails, both in words`() = runBlocking<Unit> {
         val fake = FakeLaptop(onMessage = {
             if (it.getString("type") == "stt.end" && it.getInt("id") > 1) {

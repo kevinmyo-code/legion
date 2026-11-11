@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.service.cascade.CascadeSession
 import com.kevin.legion.service.cascade.LaptopProbe
 import com.kevin.legion.service.cascade.LaptopVoiceConfig
 import com.kevin.legion.service.cascade.VoiceEngine
@@ -124,6 +125,7 @@ fun VoiceEngineRow() {
                             scope.launch {
                                 val config = VoiceEngineSettings.laptop(context)
                                 val r = LaptopProbe.probe(config, TEST_TIMEOUT_MS)
+                                if (r is LaptopProbe.Result.Ready) CascadeSession.clearRecentFailure()
                                 result = when (r) {
                                     is LaptopProbe.Result.Ready -> "Laptop ready (${r.ms} ms)"
                                     else -> VoiceEngineSettings.statusWords(r.token).replace(", used Live", "")

@@ -353,6 +353,8 @@ class LaptopVoiceConnection(
             }
             return
         }
+        // Over 30 s of audio: the service decodes the first 30 s and still sends the final.
+        if (code == "too_long") return
         if (id % 2 != 0) {
             utterances[id]?.result?.complete(SttResult.Failed(code))
         } else {
