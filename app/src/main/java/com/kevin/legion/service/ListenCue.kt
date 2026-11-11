@@ -171,7 +171,10 @@ object ListenCue {
     const val MAX_CLIP_MS = 2_500L
 
     /** How long [pcm] (24 kHz mono PCM16) plays, in milliseconds. */
-    fun durationMs(pcm: ByteArray): Long = pcm.size / 2 * 1_000L / SAMPLE_RATE
+    fun durationMs(pcm: ByteArray): Long = pcm.size / BYTES_PER_SAMPLE * MS_PER_SECOND / SAMPLE_RATE
+
+    private const val BYTES_PER_SAMPLE = 2
+    private const val MS_PER_SECOND = 1_000L
 
     /** 100 ms of 24 kHz mono PCM16: the size of a reply chunk, see [chunks]. */
     const val CHUNK_BYTES = 4_800

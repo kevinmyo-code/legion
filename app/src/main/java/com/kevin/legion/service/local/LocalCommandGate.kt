@@ -90,10 +90,11 @@ class VoskLocalCommandGate(
          * turn carries (about a second together), floored at a tenth of a second.
          */
         internal fun speechSeconds(pcm16k: ByteArray): Float =
-            (pcm16k.size / BYTES_PER_SECOND - NON_SPEECH_SECONDS).coerceAtLeast(0.1f)
+            (pcm16k.size / BYTES_PER_SECOND - NON_SPEECH_SECONDS).coerceAtLeast(MIN_SPEECH_SECONDS)
 
         private const val BYTES_PER_SECOND = 32_000f
         private const val NON_SPEECH_SECONDS = 1.0f
+        private const val MIN_SPEECH_SECONDS = 0.1f
 
         /** Vosk's final JSON to an [Utterance]: the text, each word's confidence and time span. */
         internal fun parse(json: String, speechSeconds: Float? = null): Utterance {

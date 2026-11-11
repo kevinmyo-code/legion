@@ -264,9 +264,8 @@ data class Utterance(
 ) {
     /** The share of the speech the recognised words cover, or null when unknown. */
     fun coverage(): Float? {
-        val words = wordSeconds ?: return null
-        val speech = speechSeconds?.takeIf { it > 0f } ?: return null
-        return (words / speech).coerceAtMost(1f)
+        val speech = speechSeconds?.takeIf { it > 0f }
+        return if (wordSeconds == null || speech == null) null else (wordSeconds / speech).coerceAtMost(1f)
     }
 }
 
