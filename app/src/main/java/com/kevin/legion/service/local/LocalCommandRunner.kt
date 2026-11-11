@@ -16,11 +16,16 @@ import org.json.JSONObject
  */
 object LocalCommandRunner {
 
-    suspend fun run(context: Context, action: LocalAction): String = when (action) {
-        is LocalAction.Tool -> {
-            val out = LiveToolbox.dispatch(context, action.name, JSONObject(action.args))
-            spoken(out)
-        }
+    /**
+     * [runTool] is the controller's own bounded runner (its timeout, its audit row, the tool's
+     * result rule), so a local hit is recorded and bounded exactly like Alfred's call.
+     */
+    suspend fun run(
+        context: Context,
+        action: LocalAction,
+        runTool: suspend (String, JSONObject) -> JSONObject? = { n, a -> LiveToolbox.dispatch(context, n, a) },
+    ): String = when (action) {
+        is LocalAction.Tool -> spoken(runTool(action.name, JSONObject(action.args)))
         is LocalAction.Open -> {
             context.startActivity(
                 Intent(context, MainActivity::class.java)

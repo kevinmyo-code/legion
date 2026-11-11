@@ -881,6 +881,8 @@ class LiveSessionController(context: Context) {
         // Phase 2: hold the first turn for the phone's own command check (setting, off by default).
         if (VoiceTurnSettings.localCommands(appContext)) {
             s.localCommandGate = VoskLocalCommandGate(appContext, CompanionProfile.name(appContext))
+            // The model loads off the mic thread now, not inside the first decision.
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) { VoskLocalCommandGate.warm(appContext) }
             s.armLocalFirstTurn()
         }
         val cue = ListenCue.next(appContext, CompanionProfile.voice(appContext))
@@ -899,8 +901,11 @@ class LiveSessionController(context: Context) {
      */
     private fun runLocalCommand(command: com.kevin.legion.service.local.LocalCommand) {
         scope.launch {
+            val turnSeq = session?.currentTurnSeq() ?: 0L
             val words = runCatching {
-                LocalCommandRunner.run(appContext, LocalCommandPlan.of(command))
+                LocalCommandRunner.run(appContext, LocalCommandPlan.of(command)) { name, args ->
+                    runToolBounded(name, args, readThrough = false).also { auditToolCall(name, args, it, turnSeq) }
+                }
             }.getOrElse { "That didn't work, so nothing was changed." }
             session?.stop()
             LocalSpeaker.say(appContext, words)

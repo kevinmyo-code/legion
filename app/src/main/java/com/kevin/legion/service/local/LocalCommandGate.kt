@@ -33,7 +33,8 @@ class VoskLocalCommandGate(
 
     private val matcher = LocalCommandMatcher(companionName)
     private val grammar: String = JSONArray(
-        (LocalCommandMatcher.VOCABULARY + LocalCommandMatcher.tokens(companionName) + SPOKEN_FORMS)
+        (LocalCommandMatcher.VOCABULARY + LocalCommandMatcher.tokens(companionName) + SPOKEN_FORMS +
+            LocalCommandMatcher.DECOYS)
             .filter { w -> w.any(Char::isLetter) }.toSortedSet().toList() + listOf(LocalCommandMatcher.UNKNOWN),
     ).toString()
 
@@ -45,7 +46,7 @@ class VoskLocalCommandGate(
             Recognizer(model, SAMPLE_RATE, grammar).use { rec ->
                 rec.setWords(true)
                 rec.acceptWaveForm(pcm16k, pcm16k.size)
-                parse(rec.finalResult)
+                parse(rec.finalResult, speechSeconds(pcm16k))
             }
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             log("miss recogniser ${e.javaClass.simpleName}")
@@ -79,14 +80,28 @@ class VoskLocalCommandGate(
             return runCatching { Model(dir.absolutePath) }.getOrNull()?.also { loaded = it }
         }
 
-        /** Vosk's final JSON to an [Utterance]: the text and each word's confidence. */
-        internal fun parse(json: String): Utterance {
+        /** Warms the model off the mic thread, so the first held turn does not pay for the load. */
+        fun warm(context: Context) {
+            model(context)
+        }
+
+        /**
+         * The held audio's length less the pre-roll and the end-of-turn silence that every held
+         * turn carries (about a second together), floored at a tenth of a second.
+         */
+        internal fun speechSeconds(pcm16k: ByteArray): Float =
+            (pcm16k.size / BYTES_PER_SECOND - NON_SPEECH_SECONDS).coerceAtLeast(0.1f)
+
+        private const val BYTES_PER_SECOND = 32_000f
+        private const val NON_SPEECH_SECONDS = 1.0f
+
+        /** Vosk's final JSON to an [Utterance]: the text, each word's confidence and time span. */
+        internal fun parse(json: String, speechSeconds: Float? = null): Utterance {
             val o = JSONObject(json)
-            val words = o.optJSONArray("result")
-            val conf = words?.let { a ->
-                (0 until a.length()).map { a.getJSONObject(it).optDouble("conf", 0.0).toFloat() }
-            }
-            return Utterance(o.optString("text"), conf)
+            val words = o.optJSONArray("result")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+            val conf = words?.map { it.optDouble("conf", 0.0).toFloat() }
+            val spans = words?.sumOf { (it.optDouble("end", 0.0) - it.optDouble("start", 0.0)) }?.toFloat()
+            return Utterance(o.optString("text"), conf, spans, speechSeconds)
         }
     }
 }

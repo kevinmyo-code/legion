@@ -20,6 +20,21 @@ class LocalCommandGateTest {
     }
 
     @Test
+    fun `word time spans become coverage of the held speech`() {
+        val u = VoskLocalCommandGate.parse(
+            """{"result":[{"conf":0.98,"start":0.5,"end":0.9,"word":"pause"}],"text":"pause"}""",
+            speechSeconds = 2.0f,
+        )
+        assertEquals(0.2f, u.coverage()!!, 0.001f)
+        assertEquals(1.0f, VoskLocalCommandGate.speechSeconds(ByteArray(64_000)), 0.001f)
+    }
+
+    @Test
+    fun `decoys are in the grammar the recogniser is given`() {
+        assertTrue("cancel" in LocalCommandMatcher.DECOYS)
+    }
+
+    @Test
     fun `an empty result is a miss downstream, not a crash`() {
         val u = VoskLocalCommandGate.parse("""{"text":""}""")
         assertEquals("", u.text)

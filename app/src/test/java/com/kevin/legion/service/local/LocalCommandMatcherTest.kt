@@ -156,6 +156,25 @@ class LocalCommandMatcherTest {
     }
 
     @Test
+    fun `decoy words the recogniser may hear always miss`() {
+        for (d in LocalCommandMatcher.DECOYS) {
+            assertTrue("$d must not be command vocabulary", d !in LocalCommandMatcher.VOCABULARY)
+        }
+        miss("cancel the timer")
+        miss("what is the weather")
+        miss("don't pause")
+        miss("tell me the news")
+    }
+
+    @Test
+    fun `words that cover little of the speech are not trusted`() {
+        val r = m.match(Utterance("pause", listOf(0.99f), wordSeconds = 0.4f, speechSeconds = 3.0f))
+        assertTrue(r is LocalMatch.Miss)
+        val ok = m.match(Utterance("pause the music", listOf(0.99f, 0.98f, 0.97f), 1.0f, 1.4f))
+        assertTrue(ok is LocalMatch.Hit)
+    }
+
+    @Test
     fun `the matcher is fast on long noise`() {
         val noise = List(2_000) { "blah" }.joinToString(" ")
         val t0 = System.nanoTime()

@@ -34,6 +34,7 @@ class LocalCommandMatcher(
     fun match(utterance: Utterance): LocalMatch {
         val raw = utterance.text
         if (raw.contains(UNKNOWN)) return LocalMatch.Miss("unknown word")
+        utterance.coverage()?.let { if (it < MIN_COVERAGE) return LocalMatch.Miss("most of the speech unrecognised") }
         utterance.confidences?.let { c ->
             if (c.isNotEmpty() && c.min() < minConfidence) return LocalMatch.Miss("low confidence ${c.min()}")
         }
@@ -154,6 +155,21 @@ class LocalCommandMatcher(
     companion object {
         const val DEFAULT_MIN_CONFIDENCE = 0.8f
         const val UNKNOWN = "[unk]"
+
+        /** Under this share of the speech covered by recognised words, a hit is not trusted. */
+        const val MIN_COVERAGE = 0.35f
+
+        /**
+         * Words the recogniser may hear that no command uses, so a grammar-bound recogniser does
+         * not force "cancel the timer" onto "the timer" or "what's the weather" onto "the": each one
+         * is an unaccounted word, so a miss.
+         */
+        val DECOYS: Set<String> = setOf(
+            "cancel", "dont", "don't", "not", "no", "what", "whats", "what's", "how", "when", "why",
+            "where", "who", "tell", "find", "call", "text", "send", "remind", "add", "weather",
+            "if", "but", "after", "before", "tomorrow", "today", "every", "some",
+            "message", "email", "navigate", "directions", "buy", "order",
+        )
         private const val MAX_WORDS = 24
         private const val MAX_TIMER_SECONDS = 24 * 3_600
 
@@ -236,8 +252,23 @@ class LocalCommandMatcher(
     }
 }
 
-/** What the recogniser heard, with a confidence per word when it gives one. */
-data class Utterance(val text: String, val confidences: List<Float>? = null)
+/**
+ * What the recogniser heard, with a confidence per word when it gives one, and how much of the held
+ * audio its words span ([wordSeconds] of [speechSeconds]) when it says.
+ */
+data class Utterance(
+    val text: String,
+    val confidences: List<Float>? = null,
+    val wordSeconds: Float? = null,
+    val speechSeconds: Float? = null,
+) {
+    /** The share of the speech the recognised words cover, or null when unknown. */
+    fun coverage(): Float? {
+        val words = wordSeconds ?: return null
+        val speech = speechSeconds?.takeIf { it > 0f } ?: return null
+        return (words / speech).coerceAtMost(1f)
+    }
+}
 
 sealed interface LocalMatch {
     data class Hit(val command: LocalCommand, val confidence: Float) : LocalMatch
