@@ -64,6 +64,7 @@ object VoiceTurnSettings {
     private const val KEY_AUDIT_LOG = "conversation_audit_log"
     private const val KEY_KEEP_CONVERSATION_LOG = "conversation_log_keep_and_send"
     private const val KEY_BLUETOOTH_MIC = "bluetooth_mic"
+    private const val KEY_LOCAL_COMMANDS = "local_commands"
 
     /** Kevin, 2026-11-10: in the car, listen through the car's own mic. Default ON. */
     internal const val BLUETOOTH_MIC_DEFAULT = true
@@ -99,6 +100,15 @@ object VoiceTurnSettings {
      */
     fun bluetoothMic(context: Context): Boolean = prefs(context).getBoolean(KEY_BLUETOOTH_MIC, BLUETOOTH_MIC_DEFAULT)
     fun setBluetoothMic(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_BLUETOOTH_MIC, on).apply()
+
+    /**
+     * Simple commands on the phone (voice cost work phase 2): the first turn of a tapped or woken
+     * conversation is held and checked against a closed set of commands with no model; a miss
+     * goes to Alfred unchanged. OFF by default until it has run on the phone.
+     */
+    fun localCommands(context: Context): Boolean = prefs(context).getBoolean(KEY_LOCAL_COMMANDS, false)
+    fun setLocalCommands(context: Context, on: Boolean) =
+        prefs(context).edit().putBoolean(KEY_LOCAL_COMMANDS, on).apply()
 
     /**
      * "Answer lookups while talking" (ADR 0065): [com.kevin.legion.service.LiveToolbox.NON_BLOCKING_READ_TOOLS]

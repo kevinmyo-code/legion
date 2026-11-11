@@ -45,6 +45,7 @@ import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.HoldingLineWatch
+import com.kevin.legion.service.turn.HeldTurnSink
 import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.RefusalWatch
@@ -177,6 +178,11 @@ sealed interface LiveEvent {
     data object FollowUpExpired : LiveEvent
     /** The session ended (closed, timed out, or errored). */
     data class Closed(val reason: String) : LiveEvent
+    /**
+     * Phase 2: the held first turn was a simple command, done on the phone; nothing was sent to
+     * Live for it. The owner runs [command] and ends the conversation.
+     */
+    data class LocalCommand(val command: com.kevin.legion.service.local.LocalCommand) : LiveEvent
     /**
      * Ticket 02 (drive-test-2026-08-18, "the context dies with the socket"): the server sent a
      * resumable [SessionResumptionUpdate] - `handle` is the token a REPLACEMENT socket can pass
@@ -2188,6 +2194,32 @@ class GeminiLiveSession(
         return sent
     }
 
+    // --- Simple commands on the phone (voice cost work phase 2) ------------------------------------
+
+    @Volatile private var heldSink: HeldTurnSink? = null
+
+    /** Set by the owner before [armLocalFirstTurn]; null means every turn goes to Live. */
+    @Volatile var localCommandGate: com.kevin.legion.service.local.LocalCommandGate? = null
+
+    /**
+     * Holds this conversation's next turn on the phone for [localCommandGate]. Only with manual
+     * activity (the phone decides where a turn starts and ends, so the whole utterance is in hand);
+     * on server VAD (Bluetooth) it refuses and the turn goes to Live as before.
+     */
+    fun armLocalFirstTurn(): Boolean {
+        val held = heldSink ?: return false
+        if (!turnConfig.manualActivity || localCommandGate == null) return false
+        held.arm()
+        return true
+    }
+
+    /** [HeldTurnSink]'s decision: true when the gate matched and the owner will carry it out. */
+    private fun decideLocally(pcm: ByteArray): Boolean {
+        val command = localCommandGate?.decide(pcm) ?: return false
+        emit(LiveEvent.LocalCommand(command))
+        return true
+    }
+
     // --- Turn-taking (2026-10-27, service/turn/) ---------------------------------------------------
 
     /**
@@ -2210,7 +2242,11 @@ class GeminiLiveSession(
         )
         turnConfig = config
         turnTaker = if (ready != null && (config.manualActivity || config.bargeIn)) {
-            TurnTaker(config, ready.silero.stream(), ready.smartTurn.takeIf { smartOk }, turnSink)
+            // Phase 2: the sink can hold the first turn for the local command gate (armed per
+            // conversation by [armLocalFirstTurn]); unarmed it passes everything straight through.
+            val held = HeldTurnSink(turnSink, ::decideLocally, armed = false)
+            heldSink = held
+            TurnTaker(config, ready.silero.stream(), ready.smartTurn.takeIf { smartOk }, held)
         } else {
             null
         }

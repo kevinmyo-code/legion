@@ -1,5 +1,10 @@
 package com.kevin.legion.service
 
+import com.kevin.legion.service.turn.VoiceTurnSettings
+import com.kevin.legion.service.local.VoskLocalCommandGate
+import com.kevin.legion.service.local.LocalSpeaker
+import com.kevin.legion.service.local.LocalCommandRunner
+import com.kevin.legion.service.local.LocalCommandPlan
 import com.kevin.legion.service.tools.LiveSurface
 import android.Manifest
 import android.content.Context
@@ -873,12 +878,32 @@ class LiveSessionController(context: Context) {
      * [ListenCue] needs no socket for that.
      */
     private fun openListening(s: GeminiLiveSession, warm: Boolean = false): Boolean {
+        // Phase 2: hold the first turn for the phone's own command check (setting, off by default).
+        if (VoiceTurnSettings.localCommands(appContext)) {
+            s.localCommandGate = VoskLocalCommandGate(appContext, CompanionProfile.name(appContext))
+            s.armLocalFirstTurn()
+        }
         val cue = ListenCue.next(appContext, CompanionProfile.voice(appContext))
         return if (warm) {
             s.beginConversation(null, cue)
         } else {
             s.playListenCue(cue)
             true
+        }
+    }
+
+    /**
+     * Carries out a command the phone matched itself (phase 2): the same tool Alfred would call,
+     * the tool's own words said by on-device speech, then the conversation ends (a one-shot, as a
+     * tap to set a timer is). The Live socket ran no generation for it.
+     */
+    private fun runLocalCommand(command: com.kevin.legion.service.local.LocalCommand) {
+        scope.launch {
+            val words = runCatching {
+                LocalCommandRunner.run(appContext, LocalCommandPlan.of(command))
+            }.getOrElse { "That didn't work, so nothing was changed." }
+            session?.stop()
+            LocalSpeaker.say(appContext, words)
         }
     }
 
@@ -1148,6 +1173,8 @@ class LiveSessionController(context: Context) {
                 set(Phase.LISTENING, "Listening...")
             }
             is LiveEvent.TurnNotice -> CompanionPhase.showNotice(event.text)
+            // Phase 2: a simple command the phone matched on its own. Nothing went to Live for it.
+            is LiveEvent.LocalCommand -> runLocalCommand(event.command)
             // No phase change: SpeakingStarted already covers the ordinary half-duplex-mute
             // close (fires effectively simultaneously, off the same server message), and a
             // session-teardown close is about to be followed by its own Idle/Closed event

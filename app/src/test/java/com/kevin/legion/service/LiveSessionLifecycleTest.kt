@@ -235,6 +235,20 @@ class LiveSessionLifecycleTest {
         assertFalse("openListening must not send text to the model", open.contains("sendText("))
     }
 
+    @Test
+    fun `simple commands are held on the phone only behind the setting, and a hit ends the chat`() {
+        // Phase 2 (Kevin: "we offload as much as we can to the phones own speech recognizer").
+        val code = controller()
+        val open = bodyOf(code, "openListening")
+        assertTrue(open.contains("VoiceTurnSettings.localCommands(appContext)"))
+        assertTrue(open.contains("armLocalFirstTurn()"))
+        assertTrue(bodyOf(code, "handleEvent").contains("is LiveEvent.LocalCommand -> runLocalCommand("))
+        val run = bodyOf(code, "runLocalCommand")
+        assertTrue(run.contains("LocalCommandRunner.run("))
+        assertTrue("a handled command must end the conversation", run.contains("session?.stop()"))
+        assertFalse("the local path never asks the model", run.contains("sendText("))
+    }
+
     // --- source access (same approach and limits as LiveSessionControllerRefusalTest) -----------
 
     private fun controller(): String = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
