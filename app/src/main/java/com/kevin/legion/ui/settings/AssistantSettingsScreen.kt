@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,7 @@ import com.kevin.legion.advisor.PrimingTopic
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.personaFor
 import com.kevin.legion.service.AssistantIgnition
+import com.kevin.legion.service.WakeEngineKind
 import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.WakeWordPreferences
 import com.kevin.legion.service.conversationlog.ConversationLog
@@ -41,6 +43,7 @@ import com.kevin.legion.ui.SettingsNavRow
 import com.kevin.legion.ui.TemperatureUnitRow
 import com.kevin.legion.ui.WakePipelineRow
 import com.kevin.legion.ui.VoiceTurnRow
+import com.kevin.legion.ui.WakeEngineRow
 import com.kevin.legion.ui.WakeWordRow
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.help.VoiceGuideData
@@ -88,6 +91,9 @@ fun AssistantSettingsScreen(
     var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
     var wakeTwoStage by remember { mutableStateOf(WakeWordPreferences.useTwoStage(context)) }
     val wakeTripped = WakeWordPreferences.twoStageTripped(context)
+    var wakeEngine by remember { mutableStateOf(WakeWordPreferences.engine(context)) }
+    var owwThreshold by remember { mutableStateOf(WakeWordPreferences.owwThreshold(context)) }
+    val wakeEngineNote by WakeWordEngine.engineNote.collectAsState()
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
@@ -320,6 +326,31 @@ fun AssistantSettingsScreen(
                         WakeWordPreferences.setUseTwoStage(context, on)
                         wakeTwoStage = on
                         if (wakeWordOn) {
+                            WakeWordEngine.stop()
+                            WakeWordEngine.start(context)
+                        }
+                    },
+                )
+
+                // Kevin 2026-11-10 ("i rather openwakeword"): which detector listens. The engine is
+                // chosen when capture opens, so a change restarts it, same as the switch above.
+                Spacer(Modifier.height(8.dp))
+                WakeEngineRow(
+                    engine = wakeEngine,
+                    threshold = owwThreshold,
+                    note = if (wakeWordOn) wakeEngineNote else null,
+                    onSelect = { kind ->
+                        WakeWordPreferences.setEngine(context, kind)
+                        wakeEngine = kind
+                        if (wakeWordOn) {
+                            WakeWordEngine.stop()
+                            WakeWordEngine.start(context)
+                        }
+                    },
+                    onThreshold = { value ->
+                        WakeWordPreferences.setOwwThreshold(context, value)
+                        owwThreshold = WakeWordPreferences.owwThreshold(context)
+                        if (wakeWordOn && wakeEngine == WakeEngineKind.OPEN_WAKE_WORD) {
                             WakeWordEngine.stop()
                             WakeWordEngine.start(context)
                         }
