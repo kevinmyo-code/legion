@@ -21,8 +21,8 @@ import java.nio.FloatBuffer
  * after `gate.close()`, so no session is closed while a chunk is running. The shared
  * [OrtEnvironment] is never closed: the turn models use it too.
  */
-class OpenWakeWordDetector private constructor(
-    private val models: OwwOrtModels,
+class OpenWakeWordDetector internal constructor(
+    private val models: OwwModels,
     val threshold: Float,
     private val log: (String) -> Unit,
 ) {
@@ -154,13 +154,16 @@ object OwwModelFiles {
     }
 }
 
+/** The three models [OpenWakeWordDetector] runs and frees together; a fake in tests. */
+internal interface OwwModels : OwwMel, OwwEmbedding, OwwHead, AutoCloseable
+
 /** The three ONNX sessions behind [OwwMel], [OwwEmbedding] and [OwwHead]. */
 internal class OwwOrtModels(
     private val env: OrtEnvironment,
     melBytes: ByteArray,
     embeddingBytes: ByteArray,
     headBytes: ByteArray,
-) : OwwMel, OwwEmbedding, OwwHead, AutoCloseable {
+) : OwwModels {
     private val mel = session(melBytes)
     private val embedding = session(embeddingBytes)
     private val head = session(headBytes)
