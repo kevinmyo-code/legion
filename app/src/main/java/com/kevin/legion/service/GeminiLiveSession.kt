@@ -860,6 +860,14 @@ class GeminiLiveSession(
     @Volatile private var cueDrainPending = false
 
     /**
+     * Wall-clock time the queued cue finishes playing (its length from the moment it was queued,
+     * plus the priming wait). [awaitPlaybackDrained] gives up after [PLAYBACK_DRAIN_TIMEOUT_MS]
+     * and returns at once if the track is not playing, which is right for a reply's tail but not
+     * for a cue that has only just started: the mic's first capture waits for this first.
+     */
+    @Volatile private var cueEndsAtMs = 0L
+
+    /**
      * Plays the scripted opening line (or earcon) through Alfred's own track (voice cost audit
      * 2026-11-10, F2), so it routes where his replies route, and holds the mic shut until it has
      * drained: [cueDrainPending] makes the next capture start wait for the playback head plus the
@@ -875,6 +883,7 @@ class GeminiLiveSession(
         prepareBluetoothMic()
         audit.listenCue(cue.label)
         cueDrainPending = true
+        cueEndsAtMs = System.currentTimeMillis() + ListenCue.durationMs(cue.pcm) + PRIME_MAX_WAIT_MS
         flushCapture = true
         // Reply-sized chunks, so the drain check sees the cue as unplayed until it has played.
         ListenCue.chunks(cue.pcm).forEach { audioQueue.trySend(it) }
@@ -2877,6 +2886,10 @@ class GeminiLiveSession(
                         // AudioTrack's ~0.5s buffer, so 120ms was several times too
                         // short. Wait for the playback head to actually catch up
                         // instead of guessing (see awaitPlaybackDrained).
+                        if (cueDrainPending) {
+                            val untilCueEnds = cueEndsAtMs - System.currentTimeMillis()
+                            if (untilCueEnds > 0) delay(untilCueEnds)
+                        }
                         if (everCaptured || cueDrainPending) awaitPlaybackDrained()
                         cueDrainPending = false
                         awaitBluetoothMicReady()

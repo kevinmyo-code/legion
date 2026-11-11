@@ -167,6 +167,12 @@ object ListenCue {
         return out.array()
     }
 
+    /** A clip longer than this plays the earcon instead: an opening line is a few words. */
+    const val MAX_CLIP_MS = 2_500L
+
+    /** How long [pcm] (24 kHz mono PCM16) plays, in milliseconds. */
+    fun durationMs(pcm: ByteArray): Long = pcm.size / 2 * 1_000L / SAMPLE_RATE
+
     /** 100 ms of 24 kHz mono PCM16: the size of a reply chunk, see [chunks]. */
     const val CHUNK_BYTES = 4_800
 
@@ -210,7 +216,7 @@ object ListenCue {
         val pcm = runCatching {
             context.assets.open("$ASSET_DIR/${pick.line.id}.wav").use { wavPcm(it.readBytes()) }
         }.getOrNull()
-        return if (pcm != null && pcm.isNotEmpty()) {
+        return if (pcm != null && pcm.isNotEmpty() && durationMs(pcm) <= MAX_CLIP_MS) {
             Cue(pcm, pick.line.id)
         } else {
             Cue(earconPcm(), "earcon:${pick.line.id}")

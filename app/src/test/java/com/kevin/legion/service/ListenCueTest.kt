@@ -110,6 +110,12 @@ class ListenCueTest {
     }
 
     @Test
+    fun `a clip's length is known, so the mic can wait it out, and long clips are refused`() {
+        assertEquals(1_000L, ListenCue.durationMs(ByteArray(48_000)))
+        assertTrue(ListenCue.durationMs(ListenCue.earconPcm()) < ListenCue.MAX_CLIP_MS)
+    }
+
+    @Test
     fun `the earcon is short 24 kHz PCM16`() {
         val pcm = ListenCue.earconPcm()
         val seconds = pcm.size / 2.0 / ListenCue.SAMPLE_RATE
