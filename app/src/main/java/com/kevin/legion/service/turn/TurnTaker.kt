@@ -30,6 +30,8 @@ internal class TurnTaker(
     private val silero: SpeechProbStream,
     private val smartTurn: TurnEndModel?,
     private val sink: Sink,
+    /** [EndOfTurnPolicy]'s silence end; Live never passes it (see that parameter's doc). */
+    endBaseMs: Int = EndOfTurnPolicy.BASE_MS,
 ) {
     interface Sink {
         fun sendActivityStart()
@@ -51,7 +53,7 @@ internal class TurnTaker(
     val manual = config.manualActivity
     @Volatile var bargeIn = config.bargeIn
         private set
-    private val policy = EndOfTurnPolicy(smartAvailable = config.smartTurn && smartTurn != null)
+    private val policy = EndOfTurnPolicy(smartAvailable = config.smartTurn && smartTurn != null, baseMs = endBaseMs)
     private val gate = BargeInGate()
 
     private val ring = ByteArray(maxOf(PRE_ROLL_MS, BARGE_PRE_ROLL_MS) * BYTES_PER_MS)

@@ -25,7 +25,16 @@ package com.kevin.legion.service.turn
  *   again and the final silence ended at the base. [Action.EndActivity.longestSilenceMs] says how far.
  * - Without a working Smart Turn ([smartAvailable] false) it is silence only, [Reason.FALLBACK].
  */
-internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
+internal class EndOfTurnPolicy(
+    var smartAvailable: Boolean,
+    /**
+     * The silence that ends a turn when nothing holds it. [BASE_MS] for every Live session. The
+     * laptop pipeline passes [CAP_MS] when its speech service ends turns itself (Kevin, 2026-11-10:
+     * "since kyutai has end of turn built in lets use that first and ditch smart turn"): the phone's
+     * silence end is then only the safety net.
+     */
+    private val baseMs: Int = BASE_MS,
+) {
 
     enum class Reason(val wire: String) { BASE("base"), EXTENDED("extended"), CAP("cap"), FALLBACK("fallback") }
 
@@ -132,13 +141,13 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         anyResult = true
         val done = score >= THRESHOLD
         return when {
-            // The verdict that matters for the base: only a "not done" before BASE_MS holds.
-            first && !done && silenceMs < BASE_MS -> {
+            // The verdict that matters for the base: only a "not done" before baseMs holds.
+            first && !done && silenceMs < baseMs -> {
                 hold = true
                 listOf(request())
             }
             !hold -> emptyList()
-            done && silenceMs < BASE_MS -> {
+            done && silenceMs < baseMs -> {
                 hold = false
                 emptyList()
             }
@@ -153,7 +162,7 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         smartAvailable = false
         if (phase == Phase.SILENCE && hold) {
             hold = false
-            if (silenceMs >= BASE_MS) return end(Reason.FALLBACK)
+            if (silenceMs >= baseMs) return end(Reason.FALLBACK)
         }
         return emptyList()
     }
@@ -184,12 +193,12 @@ internal class EndOfTurnPolicy(var smartAvailable: Boolean) {
         val before = silenceMs
         silenceMs += WINDOW_MS
         if (silenceMs > longestSilenceMs) longestSilenceMs = silenceMs
-        if (hold && before < BASE_MS && silenceMs >= BASE_MS) extendedThisTurn = true
+        if (hold && before < baseMs && silenceMs >= baseMs) extendedThisTurn = true
         val out = mutableListOf<Action>()
         if (crossedGate(before)) out += request()
         when {
             silenceMs >= CAP_MS -> out += end(Reason.CAP)
-            silenceMs >= BASE_MS && !hold -> out += end(
+            silenceMs >= baseMs && !hold -> out += end(
                 when {
                     extendedThisTurn -> Reason.EXTENDED
                     smartAvailable -> Reason.BASE
