@@ -87,9 +87,10 @@ class LiveSurfaceTest {
         val r = LiveSurface.resolve("manage_checklist", args)
         assertEquals("manage_checklist", r.name)
         assertEquals("add", r.args.getString("action"))
-        assertEquals("get_last_ticked", LiveSurface.resolve("manage_checklist", JSONObject().put("action", "get_last_ticked")).name)
-        assertEquals("read_list", LiveSurface.resolve("manage_item", JSONObject().put("action", "read_list")).name)
-        assertEquals("get_music_queue", LiveSurface.resolve("control_music", JSONObject().put("action", "get_music_queue")).name)
+        fun via(tool: String, action: String) = LiveSurface.resolve(tool, JSONObject().put("action", action)).name
+        assertEquals("get_last_ticked", via("manage_checklist", "get_last_ticked"))
+        assertEquals("read_list", via("manage_item", "read_list"))
+        assertEquals("get_music_queue", via("control_music", "get_music_queue"))
     }
 
     @Test
@@ -139,7 +140,8 @@ class LiveSurfaceTest {
         val ask = desc("ask")
         assertTrue(ask, ask.contains("records NOTHING"))
         assertTrue(ask, ask.contains("body_log"))
-        val goalsHint = LiveSurface.ACTION_TOOLS.first { it.name == "ask" }.actions.first { it.value == "ask_goals" }.hint
+        val goalsHint = LiveSurface.ACTION_TOOLS.first { it.name == "ask" }
+            .actions.first { it.value == "ask_goals" }.hint
         for (word in listOf("workout", "meal", "sleep", "weigh")) assertFalse(goalsHint, word in goalsHint)
         assertTrue(desc("body_log").contains("ask_body"))
         assertTrue(desc("car").contains("ask_fleet"))

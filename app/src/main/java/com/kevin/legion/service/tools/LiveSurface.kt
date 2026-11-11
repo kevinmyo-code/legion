@@ -432,14 +432,18 @@ internal object LiveSurface {
 
     /** A call as the model made it, resolved to the tool it stands for. Unchanged when not an action. */
     fun resolve(name: String, args: JSONObject): Resolved {
-        val tool = byName[name] ?: return Resolved(name, args)
-        val value = args.optString(tool.discriminator)
-        val action = tool.actions.firstOrNull { it.value == value }
-            ?: return Resolved(tool.base ?: name, args)
-        val out = JSONObject(args.toString())
-        out.remove(tool.discriminator)
-        action.fixed.forEach { (k, v) -> out.put(k, v) }
-        return Resolved(action.target, out)
+        val tool = byName[name]
+        val action = tool?.actions?.firstOrNull { it.value == args.optString(tool.discriminator) }
+        return when {
+            tool == null -> Resolved(name, args)
+            action == null -> Resolved(tool.base ?: name, args)
+            else -> {
+                val out = JSONObject(args.toString())
+                out.remove(tool.discriminator)
+                action.fixed.forEach { (k, v) -> out.put(k, v) }
+                Resolved(action.target, out)
+            }
+        }
     }
 
     /** The failure an action tool's call gets when its action is missing or unknown; null otherwise. */
@@ -528,32 +532,43 @@ internal object LiveSurface {
     ) {
         for (action in tool.actions) {
             val target = decls[action.target] ?: error("${tool.name}: no declaration for ${action.target}")
-            val tProps = target.optJSONObject("parameters")?.optJSONObject("properties") ?: continue
+            val tProps = target.optJSONObject("parameters")?.optJSONObject("properties") ?: JSONObject()
             for (key in tProps.keys()) {
                 if (key in skip || key in action.fixed) continue
-                val src = tProps.getJSONObject(key)
-                val slim = JSONObject().put("type", src.optString("type", "string"))
-                src.optJSONArray("enum")?.let { slim.put("enum", JSONArray(it.toString())) }
-                tool.paramNotes[key]?.let { slim.put("description", it) }
-                val existing = props.optJSONObject(key)
-                if (existing == null) {
-                    props.put(key, slim)
-                } else {
-                    val (t1, t2) = existing.optString("type") to slim.optString("type")
-                    check(t1 == t2) { "${tool.name}: param $key is $t1 and $t2" }
-                    // An extended tool's own params are left exactly as they were.
-                    if (tool.base != null) continue
-                    // Two targets with different enums for one name: the union of both.
-                    val e1 = existing.optJSONArray("enum")
-                    val e2 = slim.optJSONArray("enum")
-                    if (e1 != null && e2 != null) {
-                        val seen = (0 until e1.length()).map { e1.getString(it) }.toMutableSet()
-                        for (i in 0 until e2.length()) if (seen.add(e2.getString(i))) e1.put(e2.getString(i))
-                    } else if (e1 != null && e2 == null) {
-                        existing.remove("enum")
-                    }
-                }
+                mergeOne(props, key, slim(tool, key, tProps.getJSONObject(key)), tool)
             }
+        }
+    }
+
+    /** A target's param with its description dropped (or replaced by [ActionTool.paramNotes]). */
+    private fun slim(tool: ActionTool, key: String, src: JSONObject): JSONObject {
+        val slim = JSONObject().put("type", src.optString("type", "string"))
+        src.optJSONArray("enum")?.let { slim.put("enum", JSONArray(it.toString())) }
+        tool.paramNotes[key]?.let { slim.put("description", it) }
+        return slim
+    }
+
+    /**
+     * Puts [slim] under [key], or reconciles it with what is there: one type only, enums unioned,
+     * and an extended tool's own params left exactly as they were.
+     */
+    private fun mergeOne(props: JSONObject, key: String, slim: JSONObject, tool: ActionTool) {
+        val existing = props.optJSONObject(key)
+        if (existing == null) {
+            props.put(key, slim)
+            return
+        }
+        val (t1, t2) = existing.optString("type") to slim.optString("type")
+        check(t1 == t2) { "${tool.name}: param $key is $t1 and $t2" }
+        val e1 = existing.optJSONArray("enum")
+        val e2 = slim.optJSONArray("enum")
+        when {
+            tool.base != null -> Unit
+            e1 != null && e2 != null -> {
+                val seen = (0 until e1.length()).map { e1.getString(it) }.toMutableSet()
+                for (i in 0 until e2.length()) if (seen.add(e2.getString(i))) e1.put(e2.getString(i))
+            }
+            e1 != null -> existing.remove("enum")
         }
     }
 }

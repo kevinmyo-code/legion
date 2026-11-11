@@ -363,10 +363,14 @@ object LiveToolbox {
     internal fun reachableNamesForTest(): Set<String> {
         val live = declarations()
         val declared = (0 until live.length()).map { live.getJSONObject(it).getString("name") }.toSet()
-        val folded = LiveSurface.ACTION_TOOLS.filter { it.name in declared }.flatMap { t -> t.actions.map { it.target } }
+        val folded = LiveSurface.ACTION_TOOLS.filter { it.name in declared }
+            .flatMap { t -> t.actions.map { it.target } }
         return declared + folded + DISPATCHED.values.flatten()
     }
 
+    // The pre-diet declarations() body, renamed (live cost diet): its LongMethod was baselined
+    // under the old name.
+    @Suppress("LongMethod")
     private fun surfaceCandidates(): JSONArray {
         val dispatchedNames = DISPATCHED.values.flatten().toSet()
         val all = allDeclarations()

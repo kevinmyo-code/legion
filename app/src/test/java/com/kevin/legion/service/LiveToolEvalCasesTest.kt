@@ -30,7 +30,8 @@ class LiveToolEvalCasesTest {
         assertTrue("no eval case covers: $missing", missing.isEmpty())
 
         val decls = LiveToolbox.declarations()
-        val declared = (0 until decls.length()).associate { decls.getJSONObject(it).let { d -> d.getString("name") to d } }
+        val declared = (0 until decls.length())
+            .associate { decls.getJSONObject(it).let { d -> d.getString("name") to d } }
         val routerOf = LiveToolbox.DISPATCHED.flatMap { (domain, names) -> names.map { it to "ask_$domain" } }.toMap()
         val out = StringBuilder()
         for (c in cases) {

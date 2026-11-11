@@ -64,7 +64,10 @@ class LiveToolboxDeclarationSetTest {
             "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail", "ask_money", "ask_area",
         )) {
             // Live cost diet (2026-11-10): reachable as a domain of `ask` / `look_up`.
-            assertTrue("$dispatcher must be reachable from the live session", dispatcher in LiveToolbox.reachableNamesForTest())
+            assertTrue(
+                "$dispatcher must be reachable from the live session",
+                dispatcher in LiveToolbox.reachableNamesForTest(),
+            )
         }
     }
 
@@ -282,7 +285,10 @@ class LiveToolboxDeclarationSetTest {
                 tool in reachable,
             )
         }
-        assertTrue("ask_goals must be reachable so the live model can route goal/advisor questions to it", "ask_goals" in reachable)
+        assertTrue(
+            "ask_goals must be reachable so the live model can route goal/advisor questions to it",
+            "ask_goals" in reachable,
+        )
 
         val goalAgentToolNames = LiveToolbox.agentToolsFor("goals", context).map { it.name }.toSet()
         for (tool in listOf("list_goals", "ask_advisor")) {
@@ -305,7 +311,10 @@ class LiveToolboxDeclarationSetTest {
      */
     @Test
     fun `clear_codes is declared to the live session, not to onboarding`() {
-        assertTrue("clear_codes must be declared() so the live model can call it", "clear_codes" in LiveToolbox.reachableNamesForTest())
+        assertTrue(
+            "clear_codes must be reachable so the live model can call it",
+            "clear_codes" in LiveToolbox.reachableNamesForTest(),
+        )
         assertTrue(
             "clear_codes must NOT be in onboardingDeclarations() - onboarding has no OBD write path",
             "clear_codes" !in names(LiveToolbox.onboardingDeclarations()),

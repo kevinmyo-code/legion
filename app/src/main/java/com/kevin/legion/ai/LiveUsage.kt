@@ -119,7 +119,8 @@ internal class LiveUsageFold {
     @Synchronized
     fun report(usage: LiveUsage): LiveUsage? {
         val open = pending
-        if (open != null && open.prompt != null && usage.prompt != null && open.prompt != usage.prompt) {
+        val openPrompt = open?.prompt
+        if (openPrompt != null && usage.prompt != null && openPrompt != usage.prompt) {
             pending = usage
             return open
         }

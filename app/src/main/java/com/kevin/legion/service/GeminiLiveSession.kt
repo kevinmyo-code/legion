@@ -724,13 +724,10 @@ class GeminiLiveSession(
         vadMode = vad
         smartSetting = VoiceTurnSettings.smartEndOfTurn(appContext)
         bargeSetting = VoiceTurnSettings.bargeIn(appContext)
-        // Live cost diet (2026-11-10): the routers are folded into `ask`, which is NON_BLOCKING when
-        // every domain it resolves to is ([LiveSurface.nonBlockingWireNames]).
-        nonBlockingTools = if (VoiceTurnSettings.asyncLookups(appContext)) {
-            LiveSurface.nonBlockingWireNames(LiveToolbox.NON_BLOCKING_READ_TOOLS)
-        } else {
-            emptySet()
-        }
+        // Live cost diet: `ask` is NON_BLOCKING when all its domains are ([LiveSurface.nonBlockingWireNames]).
+        nonBlockingTools = LiveSurface.nonBlockingWireNames(
+            if (VoiceTurnSettings.asyncLookups(appContext)) LiveToolbox.NON_BLOCKING_READ_TOOLS else emptySet(),
+        )
         audit.enabled = com.kevin.legion.service.conversationlog.ConversationLog.auditWantedAfterReading(appContext)
         audit.sessionStart(
             MODEL.removePrefix("models/"),

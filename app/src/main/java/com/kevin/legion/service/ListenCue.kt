@@ -115,6 +115,9 @@ object ListenCue {
      * The PCM samples of a WAV clip, or null unless it is 24 kHz mono 16-bit PCM (anything else
      * would play at the wrong speed on the session's track).
      */
+    // The WAV header is byte offsets and sizes by definition (RIFF, fmt, data); naming each one
+    // would read worse than the format it parses.
+    @Suppress("MagicNumber", "ReturnCount", "CyclomaticComplexMethod")
     fun wavPcm(wav: ByteArray): ByteArray? {
         if (wav.size < 12 || String(wav, 0, 4, Charsets.US_ASCII) != "RIFF" ||
             String(wav, 8, 4, Charsets.US_ASCII) != "WAVE"
@@ -147,6 +150,7 @@ object ListenCue {
      * Two soft rising tones, about 0.25 s, 24 kHz mono PCM16: the fallback when a line has no clip
      * or the voice is not Puck. Raised-cosine edges so it never clicks.
      */
+    @Suppress("MagicNumber") // tone frequencies, durations and the edge length are the design
     fun earconPcm(): ByteArray {
         val tones = listOf(660.0 to 0.09, 0.0 to 0.03, 990.0 to 0.11)
         val samples = tones.sumOf { (it.second * SAMPLE_RATE).toInt() }
@@ -193,6 +197,7 @@ object ListenCue {
      * The next cue for an open: a picked line's clip, else the earcon. [voice] is the runtime voice;
      * clips in any other voice ([parseVoice]) give the earcon rather than a second speaker.
      */
+    @Suppress("ReturnCount") // one exit per fallback: no lines, wrong voice, clip or earcon
     fun next(context: Context, voice: String?, now: LocalDateTime = LocalDateTime.now()): Cue {
         val bundle = bundle(context)
         val all = bundle.lines
