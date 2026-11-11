@@ -47,7 +47,11 @@ fun WakeEngineRow(
     var dragging by remember(threshold) { mutableFloatStateOf(threshold) }
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text("Wake word engine", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                "Wake word engine",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
             Text(
                 "Which detector listens for the wake phrase. openWakeWord is new and not yet tested on this phone.",
                 style = LegionType.stamp,

@@ -193,7 +193,8 @@ class WakeTwoStageDetector private constructor(
 
         /** `decision engine=kws ...`, the keyword spotter's twin of OpenWakeWordDetector.decisionLine. */
         fun decisionLine(verdict: String): String =
-            "decision engine=kws verdict=$verdict score=- threshold=" + "%.2f".format(java.util.Locale.ROOT, KWS_KEYWORDS_THRESHOLD) +
+            "decision engine=kws verdict=$verdict score=- threshold=" +
+                "%.2f".format(java.util.Locale.ROOT, KWS_KEYWORDS_THRESHOLD) +
                 " gain=$WAKE_INPUT_GAIN"
         // Bumped when a bundled model file changes: files already copied to filesDir are never
         // re-copied, so the first (mobile) encoder would otherwise outlive its replacement.

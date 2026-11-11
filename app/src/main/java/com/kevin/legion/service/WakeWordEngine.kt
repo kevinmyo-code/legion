@@ -530,7 +530,8 @@ object WakeWordEngine {
         WakeSampleRecorder.onAudio(buf, n)
         if (openWakeWord != null) {
             // openWakeWord hears its own gain (1, the raw capture; see OpenWakeWordDetector.INPUT_GAIN).
-            val input = if (OpenWakeWordDetector.INPUT_GAIN == 1) buf else WakeInputGain.apply(buf, n, OpenWakeWordDetector.INPUT_GAIN)
+            val gain = OpenWakeWordDetector.INPUT_GAIN
+            val input = if (gain == 1) buf else WakeInputGain.apply(buf, n, gain)
             if (openWakeWord.process(input, n)) triggerConversation(context)
             return
         }
@@ -579,7 +580,8 @@ object WakeWordEngine {
             return null
         }
         val threshold = WakeWordPreferences.owwThreshold(context)
-        return when (val c = OpenWakeWordDetector.create(context, CompanionProfile.name(context), threshold, ::stageLog)) {
+        val name = CompanionProfile.name(context)
+        return when (val c = OpenWakeWordDetector.create(context, name, threshold, ::stageLog)) {
             is OpenWakeWordDetector.Companion.Created.Ready -> {
                 _engineNote.value = "openWakeWord listening, threshold " + "%.2f".format(threshold)
                 c.detector

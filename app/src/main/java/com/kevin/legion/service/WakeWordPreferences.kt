@@ -86,7 +86,9 @@ object WakeWordPreferences {
 
     /** openWakeWord's score threshold, clamped to [WakeEngineKind.THRESHOLD_RANGE]. */
     fun owwThreshold(context: Context): Float =
-        WakeEngineKind.clampThreshold(prefs(context).getFloat(KEY_OWW_THRESHOLD, OpenWakeWordDetector.DEFAULT_THRESHOLD))
+        WakeEngineKind.clampThreshold(
+            prefs(context).getFloat(KEY_OWW_THRESHOLD, OpenWakeWordDetector.DEFAULT_THRESHOLD),
+        )
 
     fun setOwwThreshold(context: Context, value: Float) =
         prefs(context).edit().putFloat(KEY_OWW_THRESHOLD, WakeEngineKind.clampThreshold(value)).apply()
