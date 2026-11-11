@@ -72,9 +72,11 @@ class OwwStreamGoldenTest {
         val emb = model(OwwModelFiles.EMBEDDING)
         val head = model("hey_alfred.onnx")
         assumeTrue("openWakeWord models not on this machine (gitignored); golden test skipped", mel != null && emb != null && head != null)
+        val m = mel!!
+        val e = emb!!
         assumeTrue("base models differ from the ones the vectors were made with",
-            sha256(mel!!) == meta.getString("mel_sha256") && sha256(emb!!) == meta.getString("embedding_sha256"))
-        return Triple(mel, emb, head!!)
+            sha256(m) == meta.getString("mel_sha256") && sha256(e) == meta.getString("embedding_sha256"))
+        return Triple(m, e, head!!)
     }
 
     @Test
