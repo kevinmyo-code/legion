@@ -43,7 +43,7 @@ class LiveToolboxLastTickedTest {
 
     @Test
     fun `the tool description never claims a purchase, and says ticked instead`() {
-        val live = LiveToolbox.declarations()
+        val live = LiveToolbox.sourceDeclarationsForTest()
         val decl = (0 until live.length()).map { live.getJSONObject(it) }
             .first { it.getString("name") == "get_last_ticked" }
         val description = decl.getString("description")

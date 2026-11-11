@@ -43,23 +43,14 @@ internal object Declarations {
         // would make this maddening: "shall I add that?" / "no" must never hang up.
         add(fn(
             name = "end_conversation",
-            description = "End the conversation because the user has signalled they are DONE " +
-                "talking to you - 'never mind', 'nothing', 'I'm good', 'that's all', 'go away', " +
-                "'I don't need you right now'. " +
-                "**'That will be all' is the user's chosen dismissal phrase and ALWAYS means " +
-                "this.** Treat it as unambiguous however politely it is said, including with a " +
-                "trailing 'please', 'thanks' or 'for now'. " +
-                "**'Go to sleep', 'sleep', 'go dormant' and 'stand down' mean exactly this too: " +
-                "stop listening and go quiet.** They are about YOU going dormant, not about the " +
-                "user going to bed - do not wish them goodnight, do not comment on the hour, and " +
-                "do not treat it as a bedtime remark. It may well be the middle of the day. " +
-                "Acknowledge in two or three words and stop. " +
-                "Say one dry sign-off line in your own register in the same turn; " +
-                "the conversation closes once you finish speaking, and the user can always call " +
-                "you again. Do NOT call this when the user is merely answering 'no' to something " +
-                "you asked, declining one suggestion, or pausing to think - those are ordinary " +
-                "turns. Only call it when " +
-                "they are dismissing YOU, not rejecting an offer.",
+            // Live cost diet 2026-11-10: trimmed, every trigger and the one exclusion kept.
+            description = "End the conversation when he is DONE with you: 'never mind', 'nothing', " +
+                "'I'm good', 'that's all', 'go away'. 'That will be all' ALWAYS means this, " +
+                "however politely. 'Go to sleep', 'sleep', 'go dormant', 'stand down' mean this " +
+                "too: about YOU going quiet, not his bedtime; no goodnight. Say one dry sign-off " +
+                "line in your own register in the same turn; it closes when you finish. Do NOT " +
+                "call this when he is answering 'no' to something you offered, declining a " +
+                "suggestion, or pausing.",
             params = obj(),
             required = emptyList(),
         ))

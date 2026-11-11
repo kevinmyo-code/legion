@@ -7933,3 +7933,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   strip, Back puts them away. Midcon's 60 s auto-clear and tap-anywhere-to-clear are NOT copied:
   ADR 0081 keeps answers until cleared. The typed chat panel is unchanged (it shows the transcript;
   the cards wait full screen behind it).
+
+## 2026-11-10 - Cut the Live tool list; scripted opening lines instead of a spoken greeting (Kevin)
+
+- **Kevin's words:** *"lets cut the toollist"* and *"drop the spoken greeting and wake reply, can we
+  seed a few scripted lines instead?"*, after the voice cost audit modelled the setup (re-billed on
+  every generation) as about 86% of Live spend. He then gave 25 lines of his own: 18 any time, 7
+  for a time of day, never the same twice in a row, a time-of-day line once per window per day.
+- Then *"yes trim tools"*: about 15 always-loaded core tools plus helpers, not 40.
+- Ruled: at most 24 top-level declarations (12 direct, 10 action tools, 2 routers) under a
+  tools-JSON budget; writes and instant reads folded into action tools (never a second model),
+  the routers folded into two by blocking behaviour, the most used kept direct. A tap or wake
+  word plays a scripted Puck clip and asks the model for nothing; the live context rides the
+  system instruction. ADR 0087.
+- The coordinator's defaults Kevin may overrule: which tools stay direct, and that instant reads
+  such as the calendar and trip status ride action tools rather than a router.

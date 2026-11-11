@@ -122,8 +122,8 @@ class AndroidUpdateNotifier(private val app: Application) : UpdateNotifier {
             reason = facts,
             facts = facts,
             prompt = "$facts Tell the user in one short sentence, in your own words, and ask whether to " +
-                "install it now. Installing closes LEGION for about a minute. Call app_update with " +
-                "action=install and confirmed=true only if they say yes in their reply; otherwise say " +
+                "install it now. Installing closes LEGION for about a minute. Call phone with " +
+                "action=update_install and confirmed=true only if they say yes in their reply; otherwise say " +
                 "nothing more about it. Mention no other subject.",
             callerPostsItsOwnNotification = true,
             listensForReply = true,

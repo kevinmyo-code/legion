@@ -334,8 +334,47 @@ class LiveSetupPayloadSizeTest {
      * gate, the read-back and every failure wording ride in `EmailToolbox`'s results, billed per call.
      * Measured on dev `29791a0b` plus the branch: 93 declarations, 82,766 chars of tools JSON +
      * 10,756 chars of system instruction = 93,522 chars, ~23,380 tokens (+123). Headroom ~220.
+     *
+     * **LOWERED to 10,500 on 2026-11-10 (live cost diet, ADR 0087; Kevin: "lets cut the toollist",
+     * then "yes trim tools").** Writes and instant reads folded into action tools, the routers into
+     * two (`tools/LiveSurface.kt`), long caveats moved onto results. Measured on
+     * `feat/live-cost-diet` over dev `8672ba6c`: 24 declarations, 29,723 chars of tools JSON +
+     * 10,814 chars of system instruction = 40,537 chars, ~10,134 tokens, against the same test on
+     * dev itself before the diet (the figure in the live cost diet report). Headroom ~366 tokens.
      */
-    private val ceilingTokens = 23_600
+    private val ceilingTokens = 10_500
+
+    /**
+     * **Live cost diet, 2026-11-10 (voice cost audit row F1; Kevin: "lets cut the toollist").** The
+     * audit found the setup is about 86% of Live spend, billed as text input on every generation.
+     * Kevin's size ruling the same day: "yes trim tools", about 15 always-loaded core tools plus
+     * helpers. Two budgets now, so the list cannot quietly grow back: at most [maxDeclarations]
+     * top-level declarations (12 direct, 10 action tools, 2 routers), and at most
+     * [toolsCharsBudget] chars of tools JSON. A new capability goes in as
+     * an action of an existing action tool or behind a router (`tools/LiveSurface.kt`), not as a new
+     * declaration; raising either number is Kevin's call, with the measured figure written here.
+     */
+    private val maxDeclarations = 24
+    // Measured 2026-11-10 on feat/live-cost-diet over dev 8672ba6c: 24 declarations, 29,723 chars
+    // of tools JSON + 10,814 chars of system instruction = 40,537 chars, ~10,134 tokens (chars/4).
+    // Budget is that plus ~4% (about one action's worth of text).
+    private val toolsCharsBudget = 31_000
+
+    @Test
+    fun `the declaration count and the tools JSON stay inside the diet's budget`() {
+        val fns = LiveToolbox.declarations()
+        val toolsChars = toolsArray(fns).toString().length
+        assertTrue(
+            "${fns.length()} top-level declarations, budget $maxDeclarations: fold the new tool into " +
+                "an action tool or a router (LiveSurface) instead of declaring it",
+            fns.length() <= maxDeclarations,
+        )
+        assertTrue(
+            "$toolsChars chars of tools JSON, budget $toolsCharsBudget: trim, or move the text onto " +
+                "the tool's result (LiveSurface.RESULT_RULES)",
+            toolsChars <= toolsCharsBudget,
+        )
+    }
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {

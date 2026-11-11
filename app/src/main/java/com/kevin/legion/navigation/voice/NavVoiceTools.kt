@@ -103,7 +103,7 @@ class NavVoiceTools(
             val going = controller.state.value.destination?.name
             return fail(
                 "Already navigating to $going, so nothing new was started. To change that trip use " +
-                    "change_trip, or end_trip first.",
+                    "trip, or trip end_trip first.",
             )
         }
         val context = LookupContext(fix())

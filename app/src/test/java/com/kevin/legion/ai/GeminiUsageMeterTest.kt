@@ -40,49 +40,48 @@ class GeminiUsageMeterTest {
     private fun dao() = CarDatabase.getDatabase(context).geminiUsageDao()
 
     @Test
-    fun `one live session is one row however many usage reports arrive`() = runTest {
-        // The Live API sends usageMetadata repeatedly on one socket. One row per SESSION, not per
-        // message, is what makes a spend figure line up with a conversation.
+    fun `one live session is one row however many generations it carries`() = runTest {
+        // One row per SESSION, not per generation, is what makes a spend figure line up with a
+        // conversation. Each call is one finished generation (LiveUsageFold).
         GeminiUsageMeter.recordLiveUsageNow(context, "session-a", "live-model", 100, 20, 130)
         GeminiUsageMeter.recordLiveUsageNow(context, "session-a", "live-model", 250, 60, 340)
         GeminiUsageMeter.recordLiveUsageNow(context, "session-a", "live-model", 400, 90, 520)
 
         val row = checkNotNull(dao().bySessionKey("session-a"))
-        assertEquals("three reports, one row", 3, row.reports)
+        assertEquals("three generations, one row", 3, row.reports)
         assertEquals(GeminiUsage.SURFACE_LIVE, row.surface)
-        assertEquals(400, row.promptTokens)
-        assertEquals(90, row.responseTokens)
-        assertEquals(520, row.totalTokens)
+        assertEquals(750, row.promptTokens)
+        assertEquals(170, row.responseTokens)
+        assertEquals(990, row.totalTokens)
     }
 
     @Test
-    fun `repeat reports are maxed, never summed`() = runTest {
-        // Whether Live's usageMetadata is cumulative or incremental is NOT verified on device.
-        // Maxing is exact if it is cumulative and a floor if it is incremental; summing would
-        // multiply the real figure by the message count. See GeminiUsage's class doc.
+    fun `generations are summed, never maxed`() = runTest {
+        // Voice cost audit 2026-11-10 (F7b): Live re-bills the setup on every generation, so the
+        // session's spend is the SUM. The old MAX fold reported the largest single turn.
         GeminiUsageMeter.recordLiveUsageNow(context, "session-b", "m", 100, 10, 110)
         GeminiUsageMeter.recordLiveUsageNow(context, "session-b", "m", 100, 10, 110)
         GeminiUsageMeter.recordLiveUsageNow(context, "session-b", "m", 100, 10, 110)
 
         val row = checkNotNull(dao().bySessionKey("session-b"))
-        assertEquals("the total must be the greatest seen, not the sum of the three", 110, row.totalTokens)
-        assertEquals("but the report count is the evidence that says which arithmetic applied", 3, row.reports)
+        assertEquals("three generations of 110 are 330", 330, row.totalTokens)
+        assertEquals(3, row.reports)
     }
 
     @Test
-    fun `an out-of-order report never drags a figure backwards`() = runTest {
+    fun `a smaller later generation still adds`() = runTest {
         GeminiUsageMeter.recordLiveUsageNow(context, "session-c", "m", 900, 200, 1100)
         GeminiUsageMeter.recordLiveUsageNow(context, "session-c", "m", 100, 20, 120)
 
         val row = checkNotNull(dao().bySessionKey("session-c"))
-        assertEquals(900, row.promptTokens)
-        assertEquals(1100, row.totalTokens)
+        assertEquals(1000, row.promptTokens)
+        assertEquals(1220, row.totalTokens)
     }
 
     @Test
     fun `a report that omits a field does not erase one an earlier report gave`() = runTest {
-        // SQLite's MAX(x, y) is NULL when EITHER argument is NULL, which would silently wipe a
-        // figure the API had already reported. GeminiUsageDao.foldReport coalesces around that.
+        // In SQLite `x + NULL` is NULL, which would silently wipe a figure the API had already
+        // reported. GeminiUsageDao.foldReport coalesces around that.
         GeminiUsageMeter.recordLiveUsageNow(context, "session-d", "m", 500, 100, 600)
         GeminiUsageMeter.recordLiveUsageNow(context, "session-d", "m", null, null, null)
 

@@ -24,6 +24,8 @@ import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiUsageMeter
+import com.kevin.legion.ai.LiveUsage
+import com.kevin.legion.ai.LiveUsageFold
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.data.local.CarDatabase
@@ -44,6 +46,7 @@ import com.kevin.legion.service.turn.CancelledToolReport
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.HoldingLineWatch
 import com.kevin.legion.service.turn.MicReopen
+import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.RefusalWatch
 import com.kevin.legion.service.turn.StillCheckingNudge
 import com.kevin.legion.service.turn.TurnConfig
@@ -443,6 +446,9 @@ class GeminiLiveSession(
     // declarations and [sendToolResponse]'s WHEN_IDLE always agree for the life of one socket.
     // Empty when "Answer lookups while talking" is off: every declaration is then BLOCKING.
     @Volatile private var nonBlockingTools: Set<String> = emptySet()
+
+    /** Call id to the name the model called, for calls [LiveSurface.resolve] renamed. */
+    private val wireNames = java.util.concurrent.ConcurrentHashMap<String, String>()
     // True from the reply's first audio chunk until it has drained or been flushed. Barge-in listens
     // only while this is true, and the local follow-up signal ignores what the mic hears meanwhile.
     @Volatile private var playbackActive = false
@@ -718,8 +724,13 @@ class GeminiLiveSession(
         vadMode = vad
         smartSetting = VoiceTurnSettings.smartEndOfTurn(appContext)
         bargeSetting = VoiceTurnSettings.bargeIn(appContext)
-        nonBlockingTools =
-            if (VoiceTurnSettings.asyncLookups(appContext)) LiveToolbox.NON_BLOCKING_READ_TOOLS else emptySet()
+        // Live cost diet (2026-11-10): the routers are folded into `ask`, which is NON_BLOCKING when
+        // every domain it resolves to is ([LiveSurface.nonBlockingWireNames]).
+        nonBlockingTools = if (VoiceTurnSettings.asyncLookups(appContext)) {
+            LiveSurface.nonBlockingWireNames(LiveToolbox.NON_BLOCKING_READ_TOOLS)
+        } else {
+            emptySet()
+        }
         audit.enabled = com.kevin.legion.service.conversationlog.ConversationLog.auditWantedAfterReading(appContext)
         audit.sessionStart(
             MODEL.removePrefix("models/"),
@@ -803,7 +814,7 @@ class GeminiLiveSession(
      */
     /** @return false if the socket is already gone (stale warm socket), so the
      *  controller can cold-connect instead of sitting silently in LISTENING. */
-    fun beginConversation(opener: String? = null): Boolean {
+    fun beginConversation(opener: String? = null, listenCue: ListenCue.Cue? = null): Boolean {
         if (!running.get() || closed.get() || webSocket == null) return false
         warmHoldJob?.cancel()
         warm.set(false)
@@ -830,9 +841,40 @@ class GeminiLiveSession(
         return if (opener != null) {
             sendText(opener)
         } else {
+            // F2 (voice cost audit 2026-11-10): a warm resume plays its scripted line here; a cold
+            // start played it at tap time ([playListenCue]). Either way the mic below waits for it.
+            if (listenCue != null) playListenCue(listenCue)
             openMicForUser()
             true
         }
+    }
+
+    /**
+     * True from [playListenCue] until the mic's next open has waited for that cue to drain. The
+     * first open of a socket normally skips [awaitPlaybackDrained] (nothing has played yet); a cue
+     * makes it wait like a turn handback, Bluetooth settle included ([MicReopen]).
+     */
+    @Volatile private var cueDrainPending = false
+
+    /**
+     * Plays the scripted opening line (or earcon) through Alfred's own track (voice cost audit
+     * 2026-11-10, F2), so it routes where his replies route, and holds the mic shut until it has
+     * drained: [cueDrainPending] makes the next capture start wait for the playback head plus the
+     * route's settle (700 ms on Bluetooth), and [flushCapture] drops any pre-roll captured while it
+     * played. Nothing the mic hears during the cue is ever sent, so it cannot become a user turn.
+     *
+     * Safe before the socket connects: [start] builds the track and its consumer up front, which is
+     * why a cold tap can call this at once and overlap the cue with the connect. The Bluetooth
+     * hands-free link is brought up first, so the cue does not start on a route about to change.
+     */
+    fun playListenCue(cue: ListenCue.Cue) {
+        if (!running.get() || closed.get()) return
+        prepareBluetoothMic()
+        audit.listenCue(cue.label)
+        cueDrainPending = true
+        flushCapture = true
+        // Reply-sized chunks, so the drain check sees the cue as unplayed until it has played.
+        ListenCue.chunks(cue.pcm).forEach { audioQueue.trySend(it) }
     }
 
     /**
@@ -1041,6 +1083,8 @@ class GeminiLiveSession(
      */
     fun sendToolResponse(id: String, name: String, response: JSONObject): Boolean {
         val async = isNonBlockingTool(name)
+        // The model gets the answer under the name it called (an action tool's, not its target's).
+        val wireName = wireNames.remove(id) ?: name
         stillChecking.onResult(id)
         // Released before the send, so a dropped send cannot leave the count stuck above zero.
         toolCallsInFlight.updateAndGet { (it - 1).coerceAtLeast(0) }
@@ -1062,7 +1106,7 @@ class GeminiLiveSession(
         // ADR 0065: a lookup that outlived the holding line answers into a follow-up window that
         // may already be counting. Restart it so the answer has a full window to begin in.
         if (async) followUpEvent(FollowUpWindow.Event.ToolResponse)
-        val msg = toolResponseMessage(id, name, response, async)
+        val msg = toolResponseMessage(id, wireName, response, async)
         val sent = webSocket?.send(msg.toString()) ?: false
         val timed = latency.toolResponse(id, System.currentTimeMillis())
         if (async && sent) {
@@ -1454,8 +1498,16 @@ class GeminiLiveSession(
             return
         }
 
+        // Voice cost audit 2026-11-10 (F7): usage is read FIRST, so a report riding the same
+        // message as its generation's turnComplete or toolCall is folded before that boundary
+        // commits it. It rides at the ROOT, a sibling of serverContent (it was ignored until
+        // 2026-09-06; see [com.kevin.legion.data.local.GeminiUsage]).
+        root.optJSONObject("usageMetadata")?.let { onUsageReport(it) }
         root.optJSONObject("serverContent")?.let { handleServerContent(it) }
-        root.optJSONObject("toolCall")?.let { handleToolCall(it) }
+        root.optJSONObject("toolCall")?.let {
+            commitUsage()
+            handleToolCall(it)
+        }
         root.optJSONObject("toolCallCancellation")?.let { handleToolCallCancellation(it) }
         // Ticket 02 (drive-test-2026-08-18): both used to be ignored outright, which is
         // half of why a dropped socket silently dropped the conversation's memory with it.
@@ -1477,43 +1529,32 @@ class GeminiLiveSession(
                 followUpEvent(FollowUpWindow.Event.UserSpeech)
             }
         }
-        // The sixth message field, and the one this class ignored for its whole life until
-        // 2026-09-06. The Live API reports token usage alongside serverContent, and dropping it
-        // meant NOTHING in this app had ever read a measured token count off a voice conversation -
-        // every spend figure any surface showed was estimated from prompt length. Kevin asked why
-        // his credits burned fast and the honest answer was that nobody knew. Handled last and
-        // unconditionally (not inside the serverContent branch) because usageMetadata rides at the
-        // ROOT of the server message, as a sibling of serverContent rather than a child.
-        root.optJSONObject("usageMetadata")?.let { handleUsageMetadata(it) }
+    }
+
+    /** Per-generation fold of this socket's usage reports ([LiveUsageFold]). */
+    private val usageFold = LiveUsageFold()
+
+    /**
+     * One `usageMetadata` message: logged raw as a LIVE_AUDIT `usage` line (counts only), and folded
+     * into the current generation. See [LiveUsage] for the field names.
+     */
+    private fun onUsageReport(usage: JSONObject) {
+        val parsed = LiveUsage.parse(usage)
+        audit.usage(parsed.auditFields())
+        usageFold.report(parsed)?.let(::meter)
     }
 
     /**
-     * Records what this socket has cost so far, against [episodicSessionId] so the spend can be
-     * lined up with the transcript it paid for.
-     *
-     * Reads `responseTokenCount` and falls back to `candidatesTokenCount`: the Live API documents
-     * the former, the REST `generateContent` API uses the latter, and this is one WebSocket whose
-     * exact field name is not worth asserting from a doc page - trying both costs nothing and
-     * neither present is recorded as null, which the meter keeps distinct from zero.
-     *
-     * `totalTokenCount` is taken as reported and never derived from the other two: on the Live API
-     * the total legitimately exceeds prompt + response, because audio input and output are counted
-     * in it and broken out under `responseTokensDetails` by modality.
-     *
-     * See [com.kevin.legion.data.local.GeminiUsage] for why repeat reports on one socket are
-     * max-folded rather than summed, and for the fact that whether they are cumulative or
-     * incremental is NOT yet verified on device.
+     * Ends a generation: its folded usage is ADDED to this socket's meter row ([GeminiUsageMeter],
+     * SUM since 2026-11-10). Called at a toolCall, at turnComplete, and when the socket closes, so a
+     * report is metered once whichever of them follows it.
      */
-    private fun handleUsageMetadata(usage: JSONObject) {
-        val prompt = usage.takeIf { it.has("promptTokenCount") }?.optInt("promptTokenCount")
-        val response = when {
-            usage.has("responseTokenCount") -> usage.optInt("responseTokenCount")
-            usage.has("candidatesTokenCount") -> usage.optInt("candidatesTokenCount")
-            else -> null
-        }
-        val total = usage.takeIf { it.has("totalTokenCount") }?.optInt("totalTokenCount")
-        GeminiUsageMeter.recordLiveUsage(episodicSessionId, MODEL, prompt, response, total)
+    private fun commitUsage() {
+        usageFold.boundary()?.let(::meter)
     }
+
+    private fun meter(u: LiveUsage) =
+        GeminiUsageMeter.recordLiveUsage(episodicSessionId, MODEL, u.prompt, u.response, u.total)
 
     /**
      * Ticket 02: the server just confirmed a checkpoint we can resume from. `resumable=false`
@@ -1831,6 +1872,7 @@ class GeminiLiveSession(
             interruptReply("server")
         }
         if (content.optBoolean("turnComplete")) {
+            commitUsage()
             tapCutReply = false
             speakingThisTurn = false
             awaitingReply = false
@@ -2015,7 +2057,13 @@ class GeminiLiveSession(
         followUpEvent(FollowUpWindow.Event.ToolCall)
         for (i in 0 until calls.length()) {
             val call = calls.optJSONObject(i) ?: continue
-            val name = call.optString("name")
+            // Live cost diet (2026-11-10): an action tool or an extra action resolves to the tool
+            // it stands for HERE, so every name-keyed check below and in the controller sees the
+            // real tool. The response goes back under the name the model called ([wireNames]).
+            val wireName = call.optString("name")
+            val resolved = LiveSurface.resolve(wireName, call.optJSONObject("args") ?: JSONObject())
+            val name = resolved.name
+            if (name != wireName) wireNames[call.optString("id")] = wireName
             latency.toolCall(call.optString("id"), name, System.currentTimeMillis())
             // Ticket 15: flag the whole turn as mail-shaped the moment the ASK arrives, not
             // once dispatch returns - captureEpisodicTurn (below) checks this on turnComplete,
@@ -2026,8 +2074,11 @@ class GeminiLiveSession(
             // that the model ASKED for a tool, which is already proof this turn did something,
             // whatever the dispatch later returns.
             toolCalledThisTurn = true
-            val args = call.optJSONObject("args") ?: JSONObject()
-            audit.toolCall(call.optString("id"), name, isNonBlockingTool(name), args.toString())
+            val args = resolved.args
+            audit.toolCall(
+                call.optString("id"), name, isNonBlockingTool(name), args.toString(),
+                via = wireName.takeIf { it != name },
+            )
             if (isNonBlockingTool(name)) {
                 stillChecking.onAsyncCall(call.optString("id"), name, System.currentTimeMillis())
             } else {
@@ -2794,7 +2845,8 @@ class GeminiLiveSession(
                         // AudioTrack's ~0.5s buffer, so 120ms was several times too
                         // short. Wait for the playback head to actually catch up
                         // instead of guessing (see awaitPlaybackDrained).
-                        if (everCaptured) awaitPlaybackDrained()
+                        if (everCaptured || cueDrainPending) awaitPlaybackDrained()
+                        cueDrainPending = false
                         awaitBluetoothMicReady()
                         record.startRecording()
                         everCaptured = true
@@ -3599,6 +3651,7 @@ class GeminiLiveSession(
         conversationActive = false
         if (capturing) audit.micClosed("session_end")
         capturing = false
+        commitUsage()
         audit.sessionEnd(reason)
         warmHoldJob?.cancel(); warmHoldJob = null
         clearAnswerTracking()

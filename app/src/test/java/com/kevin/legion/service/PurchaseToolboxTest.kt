@@ -202,7 +202,7 @@ class PurchaseToolboxTest {
 
     @Test
     fun `the tool is declared to the live session and says the honest things`() {
-        val live = LiveToolbox.declarations()
+        val live = LiveToolbox.sourceDeclarationsForTest()
         val decl = (0 until live.length()).map { live.getJSONObject(it) }.first { it.getString("name") == "bought_log" }
         val description = decl.getString("description")
 

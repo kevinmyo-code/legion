@@ -129,9 +129,10 @@ object GeminiUsageMeter {
      * is grouped by, so a spend row lines up with what was actually said. Blank is ignored rather
      * than written under an empty key, which would merge every unattributable report into one row.
      *
-     * Insert-then-fold rather than a Room `@Upsert`: the fold has to keep the GREATEST value seen
-     * per column and increment a counter, which is arithmetic on the row's own current contents,
-     * and an upsert replaces rather than accumulates. See [GeminiUsage] for why max and not sum.
+     * One call per finished GENERATION ([com.kevin.legion.ai.LiveUsageFold]); its counts are ADDED
+     * to the socket's row (SUM since 2026-11-10, voice cost audit F7b). Insert-then-fold rather than
+     * a Room `@Upsert`: the fold is arithmetic on the row's own current contents, and an upsert
+     * replaces rather than accumulates. See [GeminiUsage] for why sum and not max.
      */
     fun recordLiveUsage(
         sessionKey: String,
@@ -163,7 +164,7 @@ object GeminiUsageMeter {
         // flight at once. INSERT OR IGNORE is idempotent against the unique index on
         // sessionKey (at most one row is ever created, whoever wins), and foldReport is
         // then applied exactly once per report by every racer alike - so `reports` counts
-        // reports and not insert-attempts, and the MAX arithmetic is order-independent.
+        // reports and not insert-attempts, and the SUM arithmetic is order-independent.
         // Seeding the counts NULL rather than with this report's values is what stops the
         // first report being counted twice; the fold immediately below supplies them.
         dao.insertIfAbsent(

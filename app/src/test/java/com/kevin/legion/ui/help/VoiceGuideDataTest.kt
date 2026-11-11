@@ -118,8 +118,13 @@ class VoiceGuideDataTest {
     @Test
     fun `every tool the live session can reach has an entry in VoiceGuideData`() {
         val generated = VoiceGuideData.GROUPS.flatMap { it.entries }.map { it.name }.toSet()
+        // Live cost diet (2026-11-10): an action tool stands for the old tools it folds; the
+        // guide documents those capabilities, so each action's target is what must be covered.
+        val folded = com.kevin.legion.service.tools.LiveSurface.ACTION_TOOLS
+            .filter { it.base == null }.associate { t -> t.name to t.actions.map { it.target }.distinct() }
         val live = (0 until LiveToolbox.declarations().length())
             .map { LiveToolbox.declarations().getJSONObject(it).getString("name") }
+            .flatMap { folded[it] ?: listOf(it) }
         for (name in live) {
             assertTrue(
                 "\"$name\" is declared to the live Gemini session but has no entry in " +

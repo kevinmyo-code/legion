@@ -16,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class WhyDidYouSayThatMergeTest {
 
-    private val decl = LiveToolbox.declarations().let { fns ->
+    private val decl = LiveToolbox.sourceDeclarationsForTest().let { fns ->
         (0 until fns.length()).map { fns.getJSONObject(it) }.single { it.getString("name") == "why_did_you_say_that" }
     }
 

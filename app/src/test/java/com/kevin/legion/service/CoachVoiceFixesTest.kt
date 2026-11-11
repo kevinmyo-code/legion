@@ -200,7 +200,7 @@ class CoachVoiceFixesTest {
     }
 
     private fun declaration(name: String): JSONObject {
-        val all: JSONArray = LiveToolbox.declarations()
+        val all: JSONArray = LiveToolbox.sourceDeclarationsForTest()
         for (i in 0 until all.length()) {
             val d = all.getJSONObject(i)
             if (d.getString("name") == name) return d

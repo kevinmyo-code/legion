@@ -1,5 +1,6 @@
 package com.kevin.legion.service
 
+import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.ai.AgentProtocol
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.GeminiRest
@@ -165,8 +166,11 @@ class TextChatEngine(
             // Echo the model turn verbatim: parts may carry a thoughtSignature that must survive.
             AgentProtocol.modelContent(json)?.let { contents.put(it) }
             val results = calls.map { call ->
-                val response = runOne(call, executor, state)
-                onToolResult(call.name, response)
+                // Live cost diet (2026-11-10): an action tool's call is accounted and run as the
+                // tool it stands for; its answer goes back under the name the model called.
+                val resolved = LiveSurface.resolve(call.name, call.args)
+                val response = runOne(call.copy(name = resolved.name, args = resolved.args), executor, state)
+                onToolResult(resolved.name, response)
                 AgentProtocol.ToolResult(call.name, call.id, response)
             }
             val nudge = if (round + 1 >= maxRounds) "Answer now with what you have." else null

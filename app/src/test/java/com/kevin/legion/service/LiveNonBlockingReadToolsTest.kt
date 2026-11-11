@@ -64,11 +64,17 @@ class LiveNonBlockingReadToolsTest {
     }
 
     @Test
-    fun `every name is really declared to the Live socket - no dormant entries`() {
+    fun `every name is really reachable on the Live socket through a NON_BLOCKING declaration`() {
+        // Live cost diet (2026-11-10): the four routers are domains of `ask`, and the wire
+        // declaration carries NON_BLOCKING exactly when every domain it resolves to is in the set.
         val decls = LiveToolbox.declarations()
         val live = (0 until decls.length()).map { decls.getJSONObject(it).getString("name") }.toSet()
+        val wire = com.kevin.legion.service.tools.LiveSurface.nonBlockingWireNames(set)
+        assertTrue("ask must be stamped NON_BLOCKING", "ask" in wire)
+        assertFalse("look_up holds ask_mail and must stay BLOCKING", "look_up" in wire)
         for (name in set) {
-            assertTrue("$name is not on the Live socket, so a stamp would do nothing", name in live)
+            val (tool, _) = com.kevin.legion.service.tools.LiveSurface.ACTION_HOME.getValue(name)
+            assertTrue("$name is not on the Live socket, so a stamp would do nothing", tool in live && tool in wire)
         }
     }
 }

@@ -63,7 +63,8 @@ class LiveToolboxDeclarationSetTest {
         for (dispatcher in listOf(
             "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail", "ask_money", "ask_area",
         )) {
-            assertTrue("$dispatcher must be declared to the live session", dispatcher in live)
+            // Live cost diet (2026-11-10): reachable as a domain of `ask` / `look_up`.
+            assertTrue("$dispatcher must be reachable from the live session", dispatcher in LiveToolbox.reachableNamesForTest())
         }
     }
 
@@ -155,8 +156,9 @@ class LiveToolboxDeclarationSetTest {
     @Test
     fun `the list tools tell the model where groceries actually go`() {
         val live = LiveToolbox.declarations()
+        val source = LiveToolbox.sourceDeclarationsForTest()
         fun descriptionOf(name: String): String =
-            (0 until live.length()).map { live.getJSONObject(it) }
+            (0 until source.length()).map { source.getJSONObject(it) }
                 .first { it.getString("name") == name }
                 .getString("description")
 
@@ -271,15 +273,16 @@ class LiveToolboxDeclarationSetTest {
     @Test
     fun `goal and advisor tools are declared to the live session, directly or via ask_goals`() {
         val live = names(LiveToolbox.declarations())
+        val reachable = LiveToolbox.reachableNamesForTest()
         for (tool in listOf("set_goal", "close_goal", "accept_proposal")) {
             assertTrue(
                 "$tool is dispatchable but NOT declared in declarations() - the live model will " +
                     "never know it exists, which is exactly how 'I do not seem to have any " +
                     "recorded goals' happened with the goal sitting in the database",
-                tool in live,
+                tool in reachable,
             )
         }
-        assertTrue("ask_goals must be declared so the live model can route goal/advisor questions to it", "ask_goals" in live)
+        assertTrue("ask_goals must be reachable so the live model can route goal/advisor questions to it", "ask_goals" in reachable)
 
         val goalAgentToolNames = LiveToolbox.agentToolsFor("goals", context).map { it.name }.toSet()
         for (tool in listOf("list_goals", "ask_advisor")) {
@@ -302,7 +305,7 @@ class LiveToolboxDeclarationSetTest {
      */
     @Test
     fun `clear_codes is declared to the live session, not to onboarding`() {
-        assertTrue("clear_codes must be declared() so the live model can call it", "clear_codes" in names(LiveToolbox.declarations()))
+        assertTrue("clear_codes must be declared() so the live model can call it", "clear_codes" in LiveToolbox.reachableNamesForTest())
         assertTrue(
             "clear_codes must NOT be in onboardingDeclarations() - onboarding has no OBD write path",
             "clear_codes" !in names(LiveToolbox.onboardingDeclarations()),
@@ -344,7 +347,7 @@ class LiveToolboxDeclarationSetTest {
      */
     @Test
     fun `the voice-modal tools are declared with no required params`() {
-        val live = LiveToolbox.declarations()
+        val live = LiveToolbox.sourceDeclarationsForTest()
         for (name in listOf("show_agenda_modal")) {
             val decl = (0 until live.length()).map { live.getJSONObject(it) }
                 .first { it.getString("name") == name }

@@ -34,7 +34,7 @@ import org.robolectric.RobolectricTestRunner
 class LiveToolboxInboxIntelligenceTest {
 
     private fun declarationFor(name: String): org.json.JSONObject {
-        val all: JSONArray = LiveToolbox.declarations()
+        val all: JSONArray = LiveToolbox.sourceDeclarationsForTest()
         for (i in 0 until all.length()) {
             val decl = all.getJSONObject(i)
             if (decl.getString("name") == name) return decl
@@ -52,8 +52,12 @@ class LiveToolboxInboxIntelligenceTest {
         // LiveToolbox.DISPATCHED's members do - a boundary instruction the model never reads
         // cannot steer it, and rule 4's read-through exclusion below only fires for a tool the
         // GeminiLiveSession functionCall handler actually sees by name off the socket.
-        assertTrue("track_package" in namesOf(LiveToolbox.declarations()))
-        assertTrue("flight_status" in namesOf(LiveToolbox.declarations()))
+        // Live cost diet (2026-11-10): actions of `day`, resolved to their own names before the
+        // read-through check runs, never behind ask_mail.
+        assertTrue("track_package" in LiveToolbox.reachableNamesForTest())
+        assertTrue("flight_status" in LiveToolbox.reachableNamesForTest())
+        assertFalse("track_package" in LiveToolbox.DISPATCHED.values.flatten())
+        assertFalse("flight_status" in LiveToolbox.DISPATCHED.values.flatten())
     }
 
     private fun namesOf(arr: JSONArray): Set<String> =

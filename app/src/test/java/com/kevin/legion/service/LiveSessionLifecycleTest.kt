@@ -212,6 +212,29 @@ class LiveSessionLifecycleTest {
         assertTrue(bodyOf(controller(), "startConversation").contains("newSession()"))
     }
 
+    @Test
+    fun `a tap or the wake word asks the model for nothing and plays a scripted line`() {
+        // Voice cost audit 2026-11-10, F2: no GREETING_PROMPT / WAKE_ACK_PROMPT generation.
+        val code = controller()
+        assertFalse("GREETING_PROMPT is back", code.contains("GREETING_PROMPT"))
+        assertFalse("WAKE_ACK_PROMPT is back", code.contains("WAKE_ACK_PROMPT"))
+        val start = bodyOf(code, "startConversation")
+        assertTrue("a cold open no longer plays the scripted line", start.contains("openListening(s)"))
+        assertTrue("the cue timing is one constant", start.contains("CUE_TIMING"))
+        assertTrue(
+            "ON_CONNECT plays the line when the socket is up",
+            bodyOf(code, "handleEvent").contains("openListening(held, warm = true)"),
+        )
+        assertTrue(
+            "the live context must ride the system instruction, not an opener turn",
+            start.contains("LiveOpenContext.systemInstruction("),
+        )
+        assertTrue(bodyOf(code, "resumeWarm").contains("openListening(s, warm = true)"))
+        val open = bodyOf(code, "openListening")
+        assertTrue(open.contains("ListenCue.next("))
+        assertFalse("openListening must not send text to the model", open.contains("sendText("))
+    }
+
     // --- source access (same approach and limits as LiveSessionControllerRefusalTest) -----------
 
     private fun controller(): String = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())

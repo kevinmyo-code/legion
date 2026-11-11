@@ -91,6 +91,7 @@ Format and the test for whether something deserves an ADR:
 | 0084 | [[0084-alfred-looks-through-the-phone-camera\|Alfred looks through the phone camera, parked, and what he sees is an estimate he never keeps]] | accepted | 2026-11-10 | - |
 | 0085 | [[0085-open-loops-are-proposed-never-asserted\|Open loops are proposed from his own words, never asserted, and nothing is tracked without his yes]] | accepted | 2026-11-10 | - |
 | 0086 | [[0086-alfred-drafts-email-kevin-sends\|Alfred drafts email in Kevin's Gmail; it sends only on Kevin's own "send"]] | accepted | 2026-11-10 | - |
+| 0087 | [[0087-live-surface-diet-and-scripted-opening\|The Live tool surface is a budget; a tap opens the mic with a scripted line]] | accepted | 2026-11-10 | - |
 
 ## Superseded
 

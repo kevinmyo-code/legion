@@ -1,0 +1,31 @@
+{
+  "_comment": "Alfred's scripted opening lines (voice cost audit 2026-11-10, F2; Kevin's list 2026-11-10). The ONE list: the phone's picker (service/ListenCue.kt) and the clip renderer (tools/render_listen_cues.py) both read this file. Each line's clip is <id>.wav beside this file, 24 kHz mono PCM16, Puck voice. A line with no clip plays the earcon. window: phone-local HH:MM-HH:MM, inclusive; a windowed line plays at most once per window per day.",
+  "voice": "Puck",
+  "lines": [
+    {"id": "listening", "text": "Listening."},
+    {"id": "here", "text": "Here."},
+    {"id": "go_ahead", "text": "Go ahead."},
+    {"id": "yes", "text": "Yes?"},
+    {"id": "ready", "text": "Ready."},
+    {"id": "im_here", "text": "I'm here."},
+    {"id": "go_on", "text": "Go on."},
+    {"id": "standing_by", "text": "Standing by."},
+    {"id": "say_the_word", "text": "Say the word."},
+    {"id": "what_do_you_need", "text": "What do you need?"},
+    {"id": "whats_first", "text": "What's first?"},
+    {"id": "all_ears", "text": "All ears."},
+    {"id": "at_your_service", "text": "At your service."},
+    {"id": "ready_when_you_are", "text": "Ready when you are."},
+    {"id": "good_to_hear", "text": "Good to hear from you."},
+    {"id": "how_can_i_help", "text": "How can I help?"},
+    {"id": "fire_away", "text": "Fire away."},
+    {"id": "with_you", "text": "With you."},
+    {"id": "morning_go_ahead", "text": "Morning. Go ahead.", "window": "05:00-11:59"},
+    {"id": "good_morning", "text": "Good morning.", "window": "05:00-11:59"},
+    {"id": "afternoon_go_ahead", "text": "Afternoon. Go ahead.", "window": "12:00-16:59"},
+    {"id": "good_afternoon", "text": "Good afternoon.", "window": "12:00-16:59"},
+    {"id": "evening_go_ahead", "text": "Evening. Go ahead.", "window": "17:00-23:59"},
+    {"id": "good_evening", "text": "Good evening.", "window": "17:00-23:59"},
+    {"id": "up_late", "text": "Up late. Go ahead.", "window": "00:00-04:59"}
+  ]
+}

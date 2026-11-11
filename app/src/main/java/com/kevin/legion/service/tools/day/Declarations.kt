@@ -56,38 +56,25 @@ internal object Declarations {
             // (`notes/ReminderChecklistMigration.kt`). This tool is now scoped to a REMINDER - one
             // with a real trigger (a due date/time, a place, or a repeat) - and a plain todo with
             // none of those redirects to manage_checklist instead.
-            description = "Add, tick, untick, remove, schedule (time and/or repeat), or skip one " +
-                "occurrence of a REMINDER - a to-do tied to a real trigger: a due date/time, a " +
-                "place, or a repeat rule. NOT for a plain to-do with none of those - that's a " +
-                "checklist line now, route it to manage_checklist (list=Todo, create it first with " +
-                "action=create if it doesn't exist yet). NOT for shopping: the grocery/shopping " +
-                "list is a checklist named \"Groceries\" now, so 'add tums to the grocery list', " +
-                "'put milk on the shopping list' and anything else naming groceries or shopping " +
-                "goes to manage_checklist (list=Groceries) - never here. A " +
-                "dated appointment (see 'kind') goes on the user's calendar instead of a reminder, " +
-                // Trimmed 2026-11-10 (worker-workflows ticket 06 paid for claude_session's
-                // workflow action): ", the same way you would for a class on a school schedule"
-                // was an analogy after the rule, not a rule.
-                "and it just passes at its time - it is NEVER tickable or untickable (say so " +
-                "plainly if asked to mark one done or not done), and it is not removable, " +
-                "schedulable or skippable " +
-                "that way either (edit it on the calendar day view instead). " +
-                "Pass any date/time the user gives on the SAME 'add' call via date/time - never add " +
-                "first and schedule in a second call, which stores an appointment with no date at " +
-                "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
-                "For every action but 'add', 'item' fuzzily matches the existing item's text, " +
-                "never a position like 'the third one'. A recurring item can't be ticked - edit " +
-                "its repeat instead.",
+            // Live cost diet 2026-11-10 (Kevin: "yes trim tools"): every routing rule kept, the
+            // restatements cut. The old text is in git history at this line.
+            description = "A REMINDER with a trigger: a due date/time, a place, or a repeat. add, " +
+                "tick, untick, remove, schedule (a date or a repeat), skip one occurrence. A plain " +
+                "to-do with no trigger is manage_checklist list=Todo (create it if missing). " +
+                "A grocery or shopping item is manage_checklist list=Groceries, never here. " +
+                "kind=appointment puts a dated item on his calendar: it passes at its time, is " +
+                "NEVER tickable (say so if asked), and is edited on the calendar. Pass a date or " +
+                "time on the same add call, never add then schedule. item fuzzily matches existing " +
+                "text, never a position. A recurring item cannot be ticked: edit its repeat.",
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "tick", "untick", "remove", "schedule", "skip")),
                 "item" to schema("string", "For 'add', the new item's text. For every other action, which existing item to match, in the user's words."),
                 "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add'/'schedule': the item's due date - always pass it on 'add' if the user said one. For 'skip': which occurrence to skip."),
                 "time" to schema("string", "24-hour HH:mm. For 'add'/'schedule' only if a specific time was given - omit for an all-day item. Requires 'date'."),
-                "kind" to schema("string", "Only for 'add' with a date. 'appointment' goes on the " +
-                    "user's calendar (e.g. 'dentist Tuesday at 3', 'lunch with Sam Friday'); " +
-                    "'reminder' stays local and private (e.g. 'remind me to change the oil', " +
-                    "'don't forget to call mom'). Omit if genuinely unclear - defaults to reminder.",
+                "kind" to schema("string", "'add' with a date: appointment goes on his calendar " +
+                    "('dentist Tuesday at 3'); reminder stays private ('remind me to call mom'). " +
+                    "Omit if unclear.",
                     enum = listOf("appointment", "reminder")),
                 "repeat_kind" to schema("string", "Only for 'schedule'. Omit to leave any existing repeat untouched; 'none' clears one.",
                     enum = listOf("none", "daily", "weekly", "monthly_on_date", "yearly")),
@@ -186,7 +173,7 @@ internal object Declarations {
                 "nothing matches, that is an absent RECORD, not proof nothing was acquired - say " +
                 "plainly that you have no record of it being ticked, and leave it there. Matches " +
                 "on the exact line text (case/whitespace only) - 'toothpaste' will not match " +
-                "'Colgate toothpaste'. For 'when did we last buy X' use bought_log.",
+                "'Colgate toothpaste'. For 'when did we last buy X' use money last_bought.",
             params = obj(
                 "item" to schema("string", "The line to look for, e.g. 'toothpaste'."),
             ),

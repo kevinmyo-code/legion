@@ -1,6 +1,7 @@
 package com.kevin.legion.service
 
 import com.kevin.legion.service.tools.DECLARATION_ORDER
+import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.tools.declarationsByName
 import com.kevin.legion.service.tools.fn
 import com.kevin.legion.service.tools.obj
@@ -324,6 +325,49 @@ object LiveToolbox {
      * [DISPATCHED]'s doc comment for why).
      */
     fun declarations(): JSONArray {
+        // Live cost diet (voice cost audit 2026-11-10, F1): every candidate below, then
+        // LiveSurface folds writes and instant reads into action tools. See LiveSurface.
+        val candidates = surfaceCandidates()
+        return LiveSurface.apply((0 until candidates.length()).map { candidates.getJSONObject(it) })
+    }
+
+    /**
+     * Everything that could be top-level, in order: [allDeclarations] minus [DISPATCHED], the
+     * routers, and every sibling toolbox's declarations. [declarations] then applies
+     * [LiveSurface]. Internal for `LiveSurfaceTest`, which checks every old name has a home.
+     */
+    internal fun surfaceCandidatesForTest(): JSONArray = surfaceCandidates()
+
+    /**
+     * Every declaration as written in its own file, before [LiveSurface] folds them: the
+     * candidates plus the router-hidden reads. Tests that pin a tool's own wording read it here;
+     * for a folded tool that wording now reaches a router's sub-agent or nobody, and the live
+     * model sees the action tool's hint instead (`LiveSurfaceTest` pins those).
+     */
+    internal fun sourceDeclarationsForTest(): JSONArray {
+        val out = JSONArray()
+        val seen = mutableSetOf<String>()
+        for (arr in listOf(surfaceCandidates(), allDeclarations())) {
+            for (i in 0 until arr.length()) {
+                val d = arr.getJSONObject(i)
+                if (seen.add(d.getString("name"))) out.put(d)
+            }
+        }
+        return out
+    }
+
+    /**
+     * Every tool name the live model can reach: declared, an action of a declared action tool, or
+     * behind a router.
+     */
+    internal fun reachableNamesForTest(): Set<String> {
+        val live = declarations()
+        val declared = (0 until live.length()).map { live.getJSONObject(it).getString("name") }.toSet()
+        val folded = LiveSurface.ACTION_TOOLS.filter { it.name in declared }.flatMap { t -> t.actions.map { it.target } }
+        return declared + folded + DISPATCHED.values.flatten()
+    }
+
+    private fun surfaceCandidates(): JSONArray {
         val dispatchedNames = DISPATCHED.values.flatten().toSet()
         val all = allDeclarations()
         val fns = JSONArray()
@@ -336,8 +380,8 @@ object LiveToolbox {
             name = "ask_fleet",
             description = "READING anything about the cars: live sensor readings, trouble codes, " +
                 "mileage, specs, recalls, service history, maintenance schedules, or the build " +
-                "log. Read-only - it records NOTHING. Recording work that was done is " +
-                "log_service, log_past_service or log_build_entry, never here. Ask in the " +
+                "log. Read-only - it records NOTHING. Recording work that was done is the car " +
+                "tool (log_service, log_past_service, log_build_entry), never here. Ask in the " +
                 "user's words, naming only a car they named; raw results come back to relay. How the car is doing " +
                 "or whether it is connected is answered only from this, never from memory.",
             params = DISPATCHER_PARAMS,
@@ -351,7 +395,7 @@ object LiveToolbox {
             description = "READING BACK the user's own body and training: meals, sleep, workouts " +
                 "and the programme (Day A/B, sessions), weight trend, waist, and estimates of " +
                 "maintenance, calorie target and protein. Read-only - it records NOTHING. Anything the user just " +
-                "ate, slept, lifted or weighed is a RECORD for its named tool - log_meal, " +
+                "ate, slept, lifted or weighed is a RECORD for body_log - log_meal, " +
                 "log_sleep, log_workout_set, log_bodyweight - never here. Recording a " +
                 "body profile, waist or saved meal, or starting, swapping or finishing a workout, " +
                 "is ask_engine. Ask a " +
@@ -364,10 +408,10 @@ object LiveToolbox {
             description = "The user's long-term goals and a domain advisor's coaching, and " +
                 "nothing else: listing the goals currently set, or asking an advisor to reason " +
                 "about progress. Records NOTHING: a workout, meal, sleep or weigh-in goes to " +
-                "log_workout_set, log_meal, log_sleep, log_bodyweight. Workouts, sessions, the " +
+                "body_log (log_workout_set, log_meal, log_sleep, log_bodyweight). Workouts, sessions, the " +
                 "programme, calories or protein go to " +
                 "ask_body; groceries to manage_checklist; setting or closing a goal is " +
-                "set_goal/close_goal. Ask a plain-English question; raw results come back to relay.",
+                "the goal tool. Ask a plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -395,7 +439,7 @@ object LiveToolbox {
             description = "READING money: account balances, spending this or another month " +
                 "against budget, recent transactions, and pending ones the user reported. " +
                 "Read-only - logging or clearing a pending transaction, categorising and budgets " +
-                "are their own tools. Ask a plain-English question; raw results come back to relay.",
+                "are the money tool. Ask a plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
@@ -802,6 +846,12 @@ object LiveToolbox {
         // has no turn to read it from. Only clear_codes' yes-check reads it (2026-11-05).
         userText: String? = null,
     ): JSONObject? {
+        // Live cost diet (2026-11-10): an action tool's call runs as the tool it stands for. The
+        // voice and typed paths resolve before they get here; this keeps any other caller honest.
+        LiveSurface.resolve(name, args).let { r ->
+            if (r.name != name) return dispatch(context, r.name, r.args, touchedReadThroughToolThisTurn, userText)
+        }
+        LiveSurface.unknownAction(name, args)?.let { return it }
         MidnightEvents.toolDispatched(name)
         // Category A guard (ticket 01 §0): if a live-hardware tool got handed a
         // `vehicle` argument anyway (the model shouldn't, since these declare no
@@ -2243,7 +2293,7 @@ object LiveToolbox {
                     "Checked as the ${stated.year} ${stated.make} ${stated.model} the user said. ${theCar(label)
                         .replaceFirstChar { it.uppercase() }} record is missing its ${stated.filled.joinToString(" and ")}; " +
                         "nothing was saved. Ask whether to save it to the car, and save only on a yes, " +
-                        "with manage_vehicle action correct.",
+                        "with car action correct_vehicle.",
                 )
         }
         return when (val outcome = VehicleSpecController.recalls(context, vehicle.obdMac)) {

@@ -249,7 +249,7 @@ class AriaBrain private constructor(context: Context) {
         sb.append("\n\nToday's date is $today. ").append(whereAndWhen())
         sb.append(" You do NOT have a clock and cannot tell the time on your own. " +
             "Whenever the user asks the time, or the answer depends on it, call the " +
-            "get_current_time tool and use what it returns. Never guess a time - a confidently " +
+            "day tool (get_current_time) and use what it returns. Never guess a time - a confidently " +
             "wrong one is worse than a moment's pause.")
 
         // Driver's self-set profile (control panel -> About You): name + anything
@@ -423,7 +423,7 @@ class AriaBrain private constructor(context: Context) {
         val zone = ZoneId.systemDefault()
         val stamp = java.time.ZonedDateTime.now(zone)
             .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a"))
-        sb.appendSection("Right now it is $stamp (${utcOffset(zone)}). Call get_current_time rather " +
+        sb.appendSection("Right now it is $stamp (${utcOffset(zone)}). Call day get_current_time rather " +
             "than reusing this if the conversation has been going a while.")
 
         buildContinuityNote()?.let { sb.appendSection(it) }
@@ -470,7 +470,7 @@ class AriaBrain private constructor(context: Context) {
         } else {
             sb.appendSection("Your real-time GPS location is currently unavailable in the prompt. " +
                 "If the user asks where they are, or to find something 'near me', call the " +
-                "get_current_location tool to fetch the latest fix.")
+                "place tool (get_current_location) to fetch the latest fix.")
         }
 
         // Navigation (ticket 03 of .scratch/drive-test-2026-08-18/, rewritten by mapbox-nav ticket
@@ -481,9 +481,9 @@ class AriaBrain private constructor(context: Context) {
         sb.appendSection("To take the user somewhere, call navigate with the destination: LEGION " +
             "navigates inside its own map. To change a trip that is running or previewed (add or " +
             "drop a stop, avoid tolls, highways or ferries, another route, mute the turn cues, " +
-            "show the whole route) call change_trip. To answer how long is left, how far, when " +
-            "they arrive, the next turn, the road, the speed limit or traffic, call trip_status " +
-            "and read what it returns. To stop, call end_trip. NEVER say you have started " +
+            "show the whole route) call trip. To answer how long is left, how far, when " +
+            "they arrive, the next turn, the road, the speed limit or traffic, call trip trip_status " +
+            "and read what it returns. To stop, call trip end_trip. NEVER say you have started " +
             "navigation, changed the trip, ended it or given an arrival time unless the tool " +
             "came back successful in that turn: if it fails, say plainly that nothing happened " +
             "and why it said it couldn't. When navigate says several places match, read the top " +
@@ -524,7 +524,7 @@ class AriaBrain private constructor(context: Context) {
         // observation on this device and must never be presented as Spotify's.
         sb.appendSection("If the user asks about their music library, favourite or recent " +
             "albums, top artists/tracks, or what LEGION itself has noticed them playing, use " +
-            "browse_my_music - don't guess or answer from memory. Its legion_history source is " +
+            "control_music browse_my_music - don't guess or answer from memory. Its legion_history source is " +
             "LEGION's own observation, not Spotify's data, and must be described as such; any " +
             "'favourite' derived from it is LEGION's own inference, never a figure Spotify " +
             "reported.")
@@ -573,7 +573,7 @@ class AriaBrain private constructor(context: Context) {
         val openItems = NotesController.openItemCount(appContext)
         if (openItems > 0) {
             sb.appendSection("The user has $openItems open item(s) on their list - car to-dos, " +
-                "errands, appointments and reminders all live on the one list. Call read_list to " +
+                "errands, appointments and reminders all live on the one list. Call manage_item read_list to " +
                 "read them out, and use manage_item to add, tick off, or remove items - always use " +
                 "the tools, don't just claim you did. When an item has a date or a time, pass it on " +
                 "the SAME manage_item add call; never add it first and schedule it after. If it " +
@@ -1123,13 +1123,13 @@ internal const val SHARED_RECORD_RULES =
     "Never claim to remember something without checking the memory tool first. " +
     "You can log build-sheet entries and read back WHAT was done, when, and how much it cost - " +
     "spend figures are not gated. " +
-    "Before calling activate_garage with confirmed=true, you must have asked the user to confirm " +
+    "Before calling car activate_garage with confirmed=true, you must have asked the user to confirm " +
     "in the immediately preceding turn and gotten a yes - first call it with confirmed=false to " +
     "trigger that prompt. The garage relay is a single-button toggle: you cannot know or promise " +
     "whether the door will open or close, so never say 'opening' or 'closing' - say 'triggering' or " +
     "'hitting' the garage. " +
     "Only if the user asks to set up, fill in, or go through their maintenance schedule, walk " +
-    "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
+    "its unknown items one at a time in a multi-turn conversation, calling car log_past_service for " +
     "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
     "unprompted - it's user-initiated only. " +
     // 2026-08-13: the record grew four domains and five advisors while this prompt still only
@@ -1143,7 +1143,7 @@ internal const val SHARED_RECORD_RULES =
     "lists, reminders, calendar), fleet (the car), cred (money), and a cross-aspect view. " +
     "A GOAL and a TARGET are different things and are not interchangeable. A goal is the " +
     "long-term intention in the user's own words - 'lose fat and recomp', 'save thirty " +
-    "thousand by 2028' - and it lives in set_goal, list_goals and close_goal. A target is the " +
+    "thousand by 2028' - and it lives in the goal tool and ask_goals. A target is the " +
     "per-period number that serves it: daily calories, a monthly budget, hours of sleep. " +
     "When the user says goal, call the goal tools. Setting a target is NOT recording a goal, " +
     "so if they ask for a goal, record the goal itself even when you also set targets that " +
@@ -1156,7 +1156,7 @@ internal const val SHARED_RECORD_RULES =
     // 2026-10-28 for non-blocking lookups (ADR 0065); see the constant's own doc.
     LOOKUP_HOLD_CLAUSE +
     "If a lookup returns a " +
-    "proposal, read the proposal out and call accept_proposal only after the user says yes. "
+    "proposal, read the proposal out and call goal accept_proposal only after the user says yes. "
 
 // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
 // own currency (or explicitly say none was recorded), but a persona-primed model still

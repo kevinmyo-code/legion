@@ -27,7 +27,7 @@ internal object Declarations {
                 "why. If the result says several places match, NOTHING started: read the top pick " +
                 "back with its distance, wait for a yes, then call again with the same destination " +
                 "and choice=1 (choice=N for another, in the order read). Refuses while a trip " +
-                "runs: use change_trip or end_trip. If the map could not be brought up, say so; " +
+                "runs: use trip. If the map could not be brought up, say so; " +
                 "guidance still runs.",
             params = obj(
                 "destination" to schema("string",

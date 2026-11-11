@@ -20,41 +20,15 @@ internal object Declarations {
     fun declarations(): List<JSONObject> = buildList {
         add(fn(
             name = "control_music",
-            description = "Music playback: 'play', 'pause', 'next', 'previous' " +
-                "work with whatever's playing on the phone. 'queue' adds a NAMED track (pass " +
-                "'query') to Spotify's own up-next queue via search - requires Spotify connected " +
-                "in Setup, same as play_music. 'Play X next' and 'add X to the queue' are the " +
-                "SAME thing here: Spotify has no way to insert at a specific position, only " +
-                "next-up, so don't imply otherwise. To hear what's already queued, use " +
-                "get_music_queue instead - this tool only adds, it doesn't read. " +
-                "'like'/'unlike' act on the CURRENTLY PLAYING track only, never an album or the " +
-                "whole queue. 'follow_artist'/'unfollow_artist' act on the current track's " +
-                "artist. All four require Spotify connected in Setup and something actually " +
-                "playing - if you say 'like this' twice, the second call comes back telling you " +
-                "it was already liked, which is a real distinct answer, not a failure. " +
-                "'shuffle' toggles shuffle to whatever it currently isn't; 'shuffle_on'/" +
-                "'shuffle_off' set it explicitly - the spoken confirmation always says the state " +
-                "that RESULTED, read back from Spotify, not just what was asked for. " +
-                "'repeat_track' repeats ONLY the current track ('repeat this'); " +
-                "'repeat_context' repeats the whole album/playlist ('repeat the album') - these " +
-                "are genuinely different requests, don't collapse them. 'repeat_off' turns " +
-                "repeat off entirely. 'seek_forward'/'seek_back' jump within the current track " +
-                "- pass 'seconds' if the user named a duration, otherwise it defaults to 30. " +
-                "Seeking forward past the end of the track moves on to the next song - say so " +
-                "plainly if it happens, don't just report a jump. " +
-                "'restart' jumps back to the start of the current track. 'more_from_artist' " +
-                "('more from this artist', 'keep going with this artist') plays the CURRENT " +
-                "track's artist directly - no search, no query needed, it's exact catalogue " +
-                "navigation, not a suggestion. Requires something actually playing on Spotify; " +
-                "if nothing is, or it's a non-Spotify source, say plainly you can't tell who's " +
-                "playing rather than guessing an artist from something heard earlier. " +
-                "'add_to_playlist' adds the CURRENTLY PLAYING track (same subject as 'like') to a " +
-                "playlist the user names - pass 'playlistName'. Only matches playlists the user " +
-                "owns or a friend made them a " +
-                "collaborator on - it does NOT search the public catalogue for a playlist to add " +
-                "to, and if the name matches a playlist that's followed but not owned or " +
-                "collaborative (an editorial playlist like Discover Weekly), this fails and says " +
-                "so - never report it as done and never claim there's no such playlist.",
+            // Live cost diet 2026-11-10: trimmed to what picks and fills the call; what to say
+            // about the outcome rides on the result (LiveSurface.RESULT_RULES["control_music"]).
+            description = "Playback of whatever is playing: play, pause, next, previous, restart, " +
+                "seek_forward/seek_back (seconds, default 30). Spotify only, on the CURRENT track: " +
+                "queue adds a named track next-up (query; 'play X next' is the same, no other " +
+                "position exists), like/unlike, follow_artist/unfollow_artist, more_from_artist, " +
+                "add_to_playlist (playlistName; his own or collaborative playlists only), " +
+                "shuffle/shuffle_on/shuffle_off, repeat_track (this song) versus repeat_context " +
+                "(the album or playlist), repeat_off.",
             params = obj(
                 "action" to schema("string", "The playback action.",
                     enum = listOf(
@@ -65,14 +39,9 @@ internal object Declarations {
                         "seek_forward", "seek_back", "restart",
                         "more_from_artist", "add_to_playlist",
                     )),
-                "query" to schema("string",
-                    "Required for 'queue': what to add, in the user's own words, e.g. " +
-                        "'Plastic Love by Mariya Takeuchi'."),
-                "seconds" to schema("integer",
-                    "For 'seek_forward'/'seek_back' only: how many seconds to jump. Defaults to 30."),
-                "playlistName" to schema("string",
-                    "Required for 'add_to_playlist': which playlist to add the current track to, " +
-                        "in the user's own words, e.g. 'Roadtrip' or 'my summer playlist'."),
+                "query" to schema("string", "queue: what to add, in his words."),
+                "seconds" to schema("integer", "seek: seconds to jump."),
+                "playlistName" to schema("string", "add_to_playlist: which playlist, in his words."),
             ),
             required = listOf("action"),
         ))
@@ -92,43 +61,21 @@ internal object Declarations {
 
         add(fn(
             name = "play_music",
-            description = "Play something specific by name - a song, artist, album, or playlist - " +
-                "directly in-app via Spotify (requires the user to have connected their own Spotify " +
-                "account in Setup). Use when the user names what they want to hear, e.g. 'play " +
-                "Plastic Love' or 'play some city pop' (song, the default), 'play the album Discovery' " +
-                "(album), or 'play my Roadtrip playlist' (playlist). Set 'type' to match what the " +
-                "user actually asked for - defaults to song if they didn't say. For type 'playlist', " +
-                "this checks the user's OWN playlists (including ones friends made him a " +
-                "collaborator on) FIRST, and only falls back to Spotify's public catalogue if " +
-                "nothing there matches - when it falls back, say so and name what actually played, " +
-                "since it may not be what the user meant. Once something's playing, control_music " +
-                "handles play/pause/skip. To replay something the user names from LEGION's own " +
-                "history (browse_my_music's legion_history source, e.g. 'play that thing from " +
-                "Tuesday'), OR to play a NAMED album from the current artist's own catalogue " +
-                "(browse_my_music's artist_albums source, e.g. 'play his album Discovery'), pass " +
-                "its spotifyUri exactly as returned - this skips search entirely and plays that " +
-                "exact track/album, resolved within the artist's own catalogue rather than an open " +
-                "search that could land on someone else's album of the same name. Only pass a " +
-                "spotifyUri you actually received from a tool result; never invent one, and never " +
-                "pass one for a legion_history row whose replayable field was false - say plainly " +
-                "you can't replay that one instead.",
+            // Live cost diet 2026-11-10: trimmed; the fallback and uri rules ride on the result
+            // (LiveSurface.RESULT_RULES["play_music"]).
+            description = "Play a named song, artist, album or playlist on Spotify. type: song " +
+                "(default), artist, album or playlist; a playlist is looked up in his own first. " +
+                "spotifyUri: only one a tool result gave you (control_music browse_my_music " +
+                "legion_history rows with replayable true, artist_albums rows); never invent one. " +
+                "Play, pause and skip are control_music.",
             params = obj(
                 "query" to schema("string",
-                    "What to play, in the user's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
-                        "or 'Discovery by Daft Punk'. Still required even when spotifyUri is set - " +
-                        "used to build the spoken confirmation."),
-                "artist" to schema("string",
-                    "The artist, whenever you know it - including from earlier in the " +
-                        "conversation ('play that song' after discussing an album). When you " +
-                        "pass it, put ONLY the title in 'query'. Used for songs and albums; " +
-                        "ignored for artist and playlist requests."),
-                "type" to schema("string",
-                    "What kind of thing 'query' names. Defaults to 'song' if omitted.",
+                    "What to play, his words; required even with spotifyUri. With artist set, " +
+                        "the title only."),
+                "artist" to schema("string", "The artist whenever you know it, also from earlier."),
+                "type" to schema("string", "Defaults to song.",
                     enum = listOf("song", "artist", "album", "playlist")),
-                "spotifyUri" to schema("string",
-                    "A concrete Spotify URI already known from a prior tool result - only " +
-                        "legion_history rows with replayable true, and artist_albums rows, carry " +
-                        "one. When set, this is played directly with no search."),
+                "spotifyUri" to schema("string", "A URI a tool result gave you; played with no search."),
             ),
             required = listOf("query"),
         ))

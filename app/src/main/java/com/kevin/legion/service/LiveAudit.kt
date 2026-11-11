@@ -79,13 +79,27 @@ internal class LiveAudit(
     }
 
     @Synchronized
-    fun toolCall(id: String, name: String, async: Boolean, argsJson: String) {
+    fun toolCall(id: String, name: String, async: Boolean, argsJson: String, via: String? = null) {
         toolNames[id] = name
         if (isReadThroughTool(name)) readThroughToolThisTurn = true
         // ADR 0086: an email's body never reaches this log; EmailToolbox.redactArgs keeps its length.
         val logged = EmailToolbox.redactArgs(name, argsJson)
-        emit("tool_call id=${token(id)} name=${token(name)} async=$async args=${json(logged)}")
+        // `via` (live cost diet, 2026-11-10): the action tool the model called when [name] is the
+        // tool it resolved to. Before args, which stays the last field.
+        val viaField = via?.let { " via=${token(it)}" } ?: ""
+        emit("tool_call id=${token(id)} name=${token(name)} async=$async$viaField args=${json(logged)}")
     }
+
+    /**
+     * Voice cost audit 2026-11-10, F7a: one line per `usageMetadata` message, raw (not folded),
+     * counts and modality names only ([com.kevin.legion.ai.LiveUsage.auditFields]). Raw on purpose:
+     * how the reports line up against turn_complete and tool_call lines is what settles whether
+     * Live bills per generation, per turn, or cumulatively.
+     */
+    fun usage(fields: String) = emit("usage $fields")
+
+    /** The scripted opening line played on a tap or wake word (F2): a clip id, or `earcon[:why]`. */
+    fun listenCue(label: String) = emit("listen_cue clip=${token(label)}")
 
     /**
      * `scheduling=WHEN_IDLE` when the result went back non-blocking (ADR 0065), else `none`.

@@ -14,7 +14,7 @@ import org.robolectric.RobolectricTestRunner
 class AuditDescriptionRulesTest {
 
     private fun declaration(name: String): JSONObject {
-        val fns = LiveToolbox.declarations()
+        val fns = LiveToolbox.sourceDeclarationsForTest()
         return (0 until fns.length()).map { fns.getJSONObject(it) }.first { it.getString("name") == name }
     }
 

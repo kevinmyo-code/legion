@@ -36,16 +36,11 @@ import androidx.room.Query
  * **[surface] decides how a row is aggregated, and the two rules genuinely differ.**
  * - [SURFACE_REST] - one row per `generateContent` round trip, and a day's REST spend is their
  *   SUM. Each call reports its own independent counts.
- * - [SURFACE_LIVE] - one row per socket, upserted in place as reports arrive, holding the
- *   GREATEST figures seen ([reports] counts how many arrived). **Whether the Live API's
- *   `usageMetadata` is cumulative-per-session or incremental-per-message is NOT verified on
- *   device**, and the two demand opposite arithmetic: summing cumulative reports would multiply
- *   the real figure by the number of messages, while maxing incremental ones undercounts. Taking
- *   the max is the choice that can only ever UNDERSTATE - exact if the reports are cumulative, a
- *   floor if they are incremental - and understating is the failure that does not tell Kevin he
- *   is fine when he is not. [reports] is stored so the question stays answerable from the data
- *   later: a session with one report proves nothing, a session with forty reports whose total
- *   never moved proves the reports are cumulative.
+ * - [SURFACE_LIVE] - one row per socket, the SUM of its generations (2026-11-10, voice cost
+ *   audit F7b; it was the MAX of its reports before, which equals the largest single turn when the
+ *   API reports per generation). [reports] counts generations. Repeat reports inside one
+ *   generation are max-folded by [com.kevin.legion.ai.LiveUsageFold] first. Still not verified on
+ *   device: the raw LIVE_AUDIT `usage` lines are what will confirm it.
  */
 @Entity(
     tableName = "gemini_usage",
@@ -144,22 +139,29 @@ interface GeminiUsageDao {
     )
 
     /**
-     * Folds a fresh report into an existing Live row, keeping the GREATEST value seen for each
-     * count and bumping [GeminiUsage.reports].
+     * Adds one finished GENERATION's counts to an existing Live row and bumps
+     * [GeminiUsage.reports] (one per generation since 2026-11-10).
      *
-     * `MAX(x, y)` in SQLite returns NULL if EITHER argument is NULL, which is the wrong answer
-     * here - a report that omits `promptTokenCount` must not erase a figure an earlier report DID
-     * give. Coalescing both sides first makes the null case mean "no information", not "zero",
-     * while the outer CASE keeps a column NULL only while NOTHING has ever reported it.
+     * **SUM, not MAX (voice cost audit 2026-11-10, F7b).** This used to keep the greatest value
+     * seen, on the theory that reports might be cumulative per socket. The audit's reading of the
+     * Live API reference and forum is that `usageMetadata` is reported per generation, and Live
+     * re-bills the setup on every generation, so MAX equalled the single largest turn and hid
+     * the rest. [com.kevin.legion.ai.LiveUsageFold] now max-folds repeat reports INSIDE one
+     * generation before calling this, so a cumulative-within-a-generation report is still counted
+     * once. Rows written before this change hold the old MAX figure. If on-device LIVE_AUDIT
+     * `usage` lines ever show the reports are cumulative ACROSS generations, this overstates.
+     *
+     * A count the report omits adds nothing and never erases an earlier figure: COALESCE makes
+     * NULL mean "no information", and a column stays NULL only while nothing has reported it.
      */
     @Query(
         "UPDATE gemini_usage SET " +
             "promptTokens = CASE WHEN promptTokens IS NULL AND :promptTokens IS NULL THEN NULL " +
-            "ELSE MAX(COALESCE(promptTokens, 0), COALESCE(:promptTokens, 0)) END, " +
+            "ELSE COALESCE(promptTokens, 0) + COALESCE(:promptTokens, 0) END, " +
             "responseTokens = CASE WHEN responseTokens IS NULL AND :responseTokens IS NULL THEN NULL " +
-            "ELSE MAX(COALESCE(responseTokens, 0), COALESCE(:responseTokens, 0)) END, " +
+            "ELSE COALESCE(responseTokens, 0) + COALESCE(:responseTokens, 0) END, " +
             "totalTokens = CASE WHEN totalTokens IS NULL AND :totalTokens IS NULL THEN NULL " +
-            "ELSE MAX(COALESCE(totalTokens, 0), COALESCE(:totalTokens, 0)) END, " +
+            "ELSE COALESCE(totalTokens, 0) + COALESCE(:totalTokens, 0) END, " +
             "reports = reports + 1, updatedAt = :at " +
             "WHERE sessionKey = :sessionKey"
     )

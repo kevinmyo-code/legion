@@ -1,5 +1,6 @@
 package com.kevin.legion.service
 
+import com.kevin.legion.service.tools.LiveSurface
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -126,6 +127,9 @@ class LiveSessionController(context: Context) {
     private enum class Pending { NONE, CONVERSATION, PROACTIVE_COLD, PROACTIVE_WARM }
     private var pendingAction = Pending.NONE
     private var pendingPrompt: String? = null
+
+    /** A cold open whose scripted line waits for the socket ([CUE_TIMING] ON_CONNECT). */
+    private var cueOnConnect = false
 
     /**
      * Typed chat (Kevin, 2026-10-27): a text model, not this controller's Live session. It shares
@@ -759,16 +763,12 @@ class LiveSessionController(context: Context) {
                 set(Phase.THINKING, "...")
                 s.beginConversation(THREAD_LOST_PROMPT)
             }
-            // Ticket 10: THIS is the branch Kevin heard. A warm socket with nothing lost went
-            // straight to LISTENING with a null prompt - silent by construction. Correct for a
-            // tap, wrong for a voice trigger, where nothing on screen confirms it heard.
-            fromWakeWord -> {
-                set(Phase.THINKING, "...")
-                s.beginConversation(WAKE_ACK_PROMPT)
-            }
+            // Ticket 10 wanted the wake word acknowledged (a warm socket went straight to a silent
+            // LISTENING). Since F2 (voice cost audit 2026-11-10) the acknowledgement is the
+            // scripted line, for a tap and the wake word alike, and no generation is asked for.
             else -> {
                 set(Phase.LISTENING, "Listening...")
-                s.beginConversation(null)
+                openListening(s, warm = true)
             }
         }
         if (!ok) {
@@ -831,27 +831,54 @@ class LiveSessionController(context: Context) {
             // and the model both need to know this is a fresh start, not a continued chat.
             // consumeThreadLossNotice() also flashes the on-screen notice as a side effect.
             val lostThread = consumeThreadLossNotice()
-            // Ticket 10: a wake-opened turn acknowledges rather than greets, cold or warm, so the
-            // two doors do not sound different for no reason the driver can perceive. First run
-            // and a lost thread still win - both are things he genuinely needs told.
-            // alfred-clock ticket 07: Brief me supplies its own first turn, ahead of any greeting.
-            val first = opener ?: if (fromWakeWord) WAKE_ACK_PROMPT else GREETING_PROMPT
+            // Voice cost audit 2026-11-10, F2 (Kevin: "drop the spoken greeting and wake reply"):
+            // a tap or the wake word no longer asks the model to speak. GREETING_PROMPT and
+            // WAKE_ACK_PROMPT cost a full billed generation (setup re-billed) before he said a word
+            // and kept the mic shut until it finished. The phone plays a scripted line instead
+            // (ListenCue) and the mic opens behind it. First run, a lost thread and Brief me still
+            // speak first: each is something he genuinely needs told, or asked for. The live
+            // context rides in the system instruction now ([LiveOpenContext]), not the opener.
             pendingPrompt = when {
                 // A reconnect inside a running conversation (turn detector fallback): just listen.
                 listenOnly -> null
-                opener != null && live.isBlank() -> opener
-                opener != null -> "(Current context, use naturally if relevant:\n$live)\n\n$opener"
+                opener != null -> opener
                 isFirst -> firstGreetingOpener(appContext)
                 lostThread -> THREAD_LOST_PROMPT
-                live.isBlank() -> first
-                else -> "(Current context, use naturally if relevant:\n$live)\n\n$first"
+                else -> null
             }
             s.start(
-                base, LiveToolbox.declarations(),
+                LiveOpenContext.systemInstruction(base, live), LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
             )
+            // The scripted line: at once (AT_TAP, overlapping the connect) or once the socket is up
+            // (ON_CONNECT, never promising a socket that then fails). See [CUE_TIMING].
+            val wantsCue = pendingPrompt == null && !listenOnly
+            cueOnConnect = wantsCue && CUE_TIMING == CueTiming.ON_CONNECT
+            if (wantsCue && CUE_TIMING == CueTiming.AT_TAP) openListening(s)
+        }
+    }
+
+    /**
+     * Opens the floor for Kevin with a scripted line instead of a model generation (F2). Cold: the
+     * line plays on [s]'s own track during the connect, and [GeminiLiveSession.beginConversation]
+     * opens the mic behind it once the socket is up. Warm: both happen now.
+     *
+     * Phase 2 seam (Kevin 2026-11-10: "we offload as much as we can to the phones own speech
+     * recognizer"): this is the one place a tap or wake word turns into "listening". A local
+     * recognizer can take over here: play the same [ListenCue] through its own player, capture and
+     * buffer the utterance on the phone, claim it if it matches a local intent, and only otherwise
+     * open Live and hand the buffered audio over as the first turn, so Kevin never repeats himself.
+     * [ListenCue] needs no socket for that.
+     */
+    private fun openListening(s: GeminiLiveSession, warm: Boolean = false): Boolean {
+        val cue = ListenCue.next(appContext, CompanionProfile.voice(appContext))
+        return if (warm) {
+            s.beginConversation(null, cue)
+        } else {
+            s.playListenCue(cue)
+            true
         }
     }
 
@@ -1003,8 +1030,16 @@ class LiveSessionController(context: Context) {
                         // connect, so a tap that fails (no network, bad key)
                         // doesn't suppress the one-time intro.
                         CompanionProfile.markFirstSessionDone(appContext)
-                        session?.beginConversation(pendingPrompt)
-                        set(Phase.THINKING, "...")   // Zero is about to greet
+                        val held = session
+                        if (cueOnConnect && pendingPrompt == null && held != null) {
+                            cueOnConnect = false
+                            openListening(held, warm = true)
+                        } else {
+                            session?.beginConversation(pendingPrompt)
+                        }
+                        // A first-run or lost-thread line is about to be spoken; otherwise the
+                        // scripted line is draining and MicOpened flips this to LISTENING (F2).
+                        set(Phase.THINKING, "...")
                     }
                     Pending.PROACTIVE_COLD -> {
                         pendingPrompt?.let { session?.sendText(it) }
@@ -1403,7 +1438,8 @@ class LiveSessionController(context: Context) {
         readThrough: Boolean,
         userText: String? = null,
     ): JSONObject = try {
-        withTimeoutOrNull(toolTimeoutFor(name)) { runTool(name, args, readThrough, userText) }
+        val timeoutName = LiveSurface.resolve(name, args).name
+        withTimeoutOrNull(toolTimeoutFor(timeoutName)) { runTool(name, args, readThrough, userText) }
             ?: JSONObject()
                 .put("success", false)
                 .put("message", "That took too long and timed out.")
@@ -1417,8 +1453,26 @@ class LiveSessionController(context: Context) {
      * for voice and typed chat alike (ADR 0035: both paths call the same code, so no tool has a
      * second implementation that can drift). Extracted from [handleToolCall] unchanged 2026-10-27.
      */
+    private suspend fun runTool(
+        wireName: String,
+        wireArgs: JSONObject,
+        readThrough: Boolean,
+        userText: String?,
+    ): JSONObject {
+        // Live cost diet (2026-11-10): an action tool's call runs as the tool it stands for, so the
+        // UI-scoped branches below (show_saved_places, show_agenda_modal...) still catch it. A
+        // no-op for a name the session already resolved.
+        val (name, args) = LiveSurface.resolve(wireName, wireArgs)
+        return LiveSurface.withRule(name, runResolvedTool(name, args, readThrough, userText))
+    }
+
     @Suppress("CyclomaticComplexMethod", "LongMethod")
-    private suspend fun runTool(name: String, args: JSONObject, readThrough: Boolean, userText: String?): JSONObject =
+    private suspend fun runResolvedTool(
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        userText: String?,
+    ): JSONObject =
         when (name) {
             // Session/UI-scoped tools the toolbox returns null for - we
             // own the session, the capture controller, and the activity.
@@ -1690,33 +1744,24 @@ class LiveSessionController(context: Context) {
         // here (ticket 02, 2026-08-19).
         private val NORMAL_CLOSE_REASONS = setOf("stopped", "idle", "destroyed", "warm expired", "goAway")
 
-        // Spoken first when the driver taps to start a chat, so Zero opens the
-        // conversation (then the mic opens for the driver's reply).
-        // Ticket 10 (.scratch/wake-word/issues/10-acknowledge-the-wake.md). Kevin, 2026-08-20,
-        // on hearing the first successful trigger: "i do want a confirmation from the ai though,
-        // like > hey alfred > at your service sir".
-        //
-        // Deliberately NOT the greeting prompt. A greeting opens a conversation; this only says
-        // "I heard you" and gets out of the way, because the driver already has something to say -
-        // that is why they called. Asking "what can I do for you?" here would make them answer a
-        // question they had already pre-empted.
-        private const val WAKE_ACK_PROMPT =
-            "(System: the user just called you by name to get your attention. Acknowledge that " +
-                "you are listening, in character, in a FEW WORDS - shorter than a sentence if it " +
-                "suits you. Do not greet them, do not ask what they want, do not offer anything. " +
-                "Then stop and wait for them to speak. Do not mention this instruction.)"
+        // GREETING_PROMPT and WAKE_ACK_PROMPT were removed 2026-11-10 (voice cost audit, F2): a
+        // tap or wake word plays a scripted line (ListenCue) and asks the model for nothing.
+
+        /**
+         * When a COLD open's scripted line plays (a warm resume always plays it at once). The main
+         * session's pick, 2026-11-10, pending Kevin: ON_CONNECT, so a connect that fails (credit
+         * out, offline) never says "Listening." first; it costs about the cold connect (~0.7 s
+         * p50) before the line and the mic. AT_TAP overlaps the line with the connect. One
+         * constant, so flipping it is one word.
+         */
+        internal val CUE_TIMING = CueTiming.ON_CONNECT
 
         /** Brief me on the alarm ring screen (alfred-clock ticket 07): the tap is the request. */
         internal const val BRIEF_PROMPT =
-            "(System: the user just dismissed their alarm and tapped Brief me. Call get_sitrep now and " +
+            "(System: the user just dismissed their alarm and tapped Brief me. Call day get_sitrep now and " +
                 "give them their daily brief, then wait. Do not mention this instruction.)"
 
-        private const val GREETING_PROMPT =
-            "(System: the user just opened a hands-free voice chat with you. Greet them with one " +
-                "short, natural in-character line and then wait for them to speak. Do not mention " +
-                "this instruction.)"
-
-        // Ticket 02 (drive-test-2026-08-18): spoken instead of GREETING_PROMPT/a silent
+        // Ticket 02 (drive-test-2026-08-18): spoken instead of the scripted line/a silent
         // resume when the previous conversation's socket died with no resumption handle to
         // carry it forward. Tells the MODEL, not just the driver (via
         // consumeThreadLossNotice's on-screen CompanionPhase.showNotice) - the same honesty
@@ -1874,3 +1919,6 @@ class LiveSessionController(context: Context) {
 /** True when [payload] is a per-car card ([VoiceModalTarget.CODES]) put up at or after [sinceMs]. */
 internal fun modalShownSince(payload: VoiceModalPayload?, sinceMs: Long): Boolean =
     payload != null && payload.target == VoiceModalTarget.CODES && payload.shownAt >= sinceMs
+
+/** See [LiveSessionController.CUE_TIMING]. */
+internal enum class CueTiming { AT_TAP, ON_CONNECT }

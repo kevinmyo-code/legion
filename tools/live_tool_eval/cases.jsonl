@@ -1,0 +1,104 @@
+{"say": "what time is it", "covers": "get_current_time"}
+{"say": "what's today's date", "covers": "get_current_time"}
+{"say": "clear the check engine codes", "covers": "clear_codes"}
+{"say": "skip this song", "covers": "control_music"}
+{"say": "pause the music", "covers": "control_music"}
+{"say": "turn it up a bit", "covers": "control_volume"}
+{"say": "mute the volume", "covers": "control_volume"}
+{"say": "that's all, thanks", "covers": "end_conversation"}
+{"say": "take me to the nearest gas station", "covers": "navigate"}
+{"say": "add a coffee stop on the way", "covers": "change_trip"}
+{"say": "avoid tolls on this route", "covers": "change_trip"}
+{"say": "how long until we get there", "covers": "trip_status"}
+{"say": "stop the navigation", "covers": "end_trip"}
+{"say": "play some lo-fi beats", "covers": "play_music"}
+{"say": "play the album Blue Harbor by The Example Band", "covers": "play_music"}
+{"say": "what's in my liked songs", "covers": "browse_my_music"}
+{"say": "what's queued up next", "covers": "get_music_queue"}
+{"say": "open the app", "covers": "show_app"}
+{"say": "remind me to grab the gym bag when I get to the gym", "covers": "set_reminder"}
+{"say": "save this spot as the trailhead", "covers": "tag_place"}
+{"say": "rename the trailhead to north lot", "covers": "rename_place"}
+{"say": "forget the place called old office", "covers": "forget_place"}
+{"say": "show me my saved places", "covers": "show_saved_places"}
+{"say": "start recording this meeting", "covers": "start_voice_note"}
+{"say": "stop the recording", "covers": "stop_voice_note"}
+{"say": "read me the summary of the planning note", "covers": "read_voice_note"}
+{"say": "what voice notes do I have", "covers": "list_voice_notes"}
+{"say": "sort out my uncategorised transactions", "covers": "categorize_transactions"}
+{"say": "yes, the corner bakery is groceries", "covers": "set_category"}
+{"say": "I just spent forty dollars at the hardware store on the visa", "covers": "log_pending_transaction"}
+{"say": "that pending hardware store charge posted, clear it", "covers": "clear_pending_transaction"}
+{"say": "open the receipt scanner", "covers": "import_receipt"}
+{"say": "bench 135 for 8, three sets", "covers": "log_workout_set"}
+{"say": "I weigh 181 this morning", "covers": "log_bodyweight"}
+{"say": "I had a turkey sandwich and an apple for lunch", "covers": "log_meal"}
+{"say": "set my daily calories to 2200 with 160 grams of protein", "covers": "set_meal_target"}
+{"say": "budget three hundred a month for dining out", "covers": "set_budget"}
+{"say": "what budget categories are there", "covers": "list_budget_categories"}
+{"say": "I slept seven and a half hours, quality four", "covers": "log_sleep"}
+{"say": "I want eight hours of sleep a night", "covers": "set_sleep_target"}
+{"say": "no, undo that last log", "covers": "undo_last_log"}
+{"say": "the odometer says 84,200", "covers": "set_odometer"}
+{"say": "I just changed the oil, cost thirty five", "covers": "log_service"}
+{"say": "the brakes were done about 10,000 miles ago", "covers": "log_past_service"}
+{"say": "set the oil interval to every 7,500 miles", "covers": "set_maintenance_interval"}
+{"say": "this car is a 2012 Example Motors Roadster", "covers": "register_vehicle"}
+{"say": "add milk to the grocery list", "covers": "manage_checklist"}
+{"say": "tick off eggs", "covers": "manage_checklist"}
+{"say": "remind me to call the dentist tomorrow at 9", "covers": "manage_item"}
+{"say": "add pick up dry cleaning to my to-dos", "covers": "manage_checklist"}
+{"say": "when did I last tick water the plants", "covers": "get_last_ticked"}
+{"say": "what reminders do I have", "covers": "read_list"}
+{"say": "show my agenda", "covers": "show_agenda_modal"}
+{"say": "chart my grocery spend by month", "covers": "show_generated_view"}
+{"say": "I just put new wiper blades on, twenty bucks", "covers": "log_build_entry"}
+{"say": "hit the garage door", "covers": "activate_garage"}
+{"say": "where am I right now", "covers": "get_current_location"}
+{"say": "add my other car, a 2019 Example pickup", "covers": "manage_vehicle"}
+{"say": "where's my package", "covers": "track_package"}
+{"say": "is my flight on time", "covers": "flight_status"}
+{"say": "why did you just say that", "covers": "why_did_you_say_that"}
+{"say": "give me my morning brief", "covers": "get_sitrep"}
+{"say": "what's the news today", "covers": "get_sitrep"}
+{"say": "answer it on speaker", "covers": "answer_call"}
+{"say": "decline the call", "covers": "decline_call"}
+{"say": "call Sam Example", "covers": "place_call"}
+{"say": "what's on my calendar tomorrow", "covers": "read_calendar"}
+{"say": "I finished the stats homework", "covers": "complete_task"}
+{"say": "my goal is to save ten thousand by next year", "covers": "set_goal"}
+{"say": "I hit my savings goal, close it", "covers": "close_goal"}
+{"say": "make me a plan to lose fat and keep muscle", "covers": "generate_goal_plan"}
+{"say": "yes, go with that plan", "covers": "accept_goal_plan"}
+{"say": "yes, accept the advisor's proposal", "covers": "accept_proposal"}
+{"say": "draft an email to Sam saying I'll be late", "covers": "email"}
+{"say": "how's the car doing", "covers": "ask_fleet"}
+{"say": "what's my gas mileage been", "covers": "ask_fleet"}
+{"say": "what did I eat yesterday", "covers": "ask_body"}
+{"say": "what's today's workout", "covers": "ask_body"}
+{"say": "what are my goals right now", "covers": "ask_goals"}
+{"say": "how much have I spent on groceries this month", "covers": "ask_pantry"}
+{"say": "did I get an email from the landlord", "covers": "ask_mail"}
+{"say": "what's my checking balance", "covers": "ask_money"}
+{"say": "any severe weather alerts around here", "covers": "ask_area"}
+{"say": "how's the river level at the park", "covers": "ask_engine"}
+{"say": "what aspects do you track", "covers": "list_aspects"}
+{"say": "what fields does the plants aspect have", "covers": "describe_aspect"}
+{"say": "find my records for the fern", "covers": "query_records"}
+{"say": "add a record that I repotted the fern today", "covers": "create_record"}
+{"say": "change that record's date to yesterday", "covers": "update_record"}
+{"say": "delete that fern record", "covers": "delete_record"}
+{"say": "go through my plants records and mark the cactus watered", "covers": "aspect_clerk"}
+{"say": "start tracking my houseplants as a new aspect", "covers": "create_aspect"}
+{"say": "add a light level field to the plants aspect", "covers": "update_aspect"}
+{"say": "when did we last buy coffee filters", "covers": "bought_log"}
+{"say": "continue my book", "covers": "books"}
+{"say": "open the example news site", "covers": "browser"}
+{"say": "ask Claude to tidy the notes folder on my laptop", "covers": "claude_session"}
+{"say": "is there an update for the app", "covers": "app_update"}
+{"say": "remember that my locker code is on the blue card", "covers": "memory"}
+{"say": "show me my passport", "covers": "show_vault_item"}
+{"say": "set a timer for ten minutes", "covers": "clock"}
+{"say": "wake me up at 6:30", "covers": "clock"}
+{"say": "tell me if the electric bill goes over a hundred", "covers": "watch"}
+{"say": "look at this", "covers": "look"}
