@@ -61,7 +61,7 @@ class LaptopVoiceConnectionTest {
                     if (m.getString("type") == "hello" && sendReady) {
                         text(JSONObject().put("type", "ready").put("protocol", protocol).put("stt", readyStt).put("tts", readyTts))
                     }
-                    onMessage(m)
+                    this@FakeLaptop.onMessage(m)
                     return true
                 }
 
