@@ -58,6 +58,7 @@ internal class ReplySpeaker(
     private val splitter = SentenceSplitter()
     private val chunker = WordChunker()
     private var stream: StreamingSpeechClip? = null
+    private var streamChars = 0
     private var streaming = tts.streamsText
     @Volatile private var current: SpeechClip? = null
     @Volatile private var interrupted = false
@@ -76,11 +77,7 @@ internal class ReplySpeaker(
         if (interrupted || delta.isEmpty()) return
         anyText = true
         if (streaming) {
-            val s = stream ?: tts.openStream().also {
-                stream = it
-                queue.trySend(it)
-            }
-            chunker.feed(delta)?.let { s.append(speakable(it)) }
+            chunker.feed(delta)?.let { appendStreamed(speakable(it)) }
         } else {
             splitter.feed(delta).forEach { enqueue(it) }
         }
@@ -90,10 +87,8 @@ internal class ReplySpeaker(
     fun finishText() {
         if (interrupted) return
         if (streaming) {
-            stream?.let { s ->
-                chunker.flush()?.let { s.append(speakable(it)) }
-                s.finish()
-            }
+            chunker.flush()?.let { appendStreamed(speakable(it)) }
+            stream?.finish()
         } else {
             splitter.flush()?.let { enqueue(it) }
         }
@@ -125,6 +120,26 @@ internal class ReplySpeaker(
 
     /** What was heard: whole clips whose audio started. */
     fun spoken(): String = synchronized(started) { started.joinToString(" ") { it.text.trim() } }.trim()
+
+    /**
+     * Into the current streamed clip; a clip that would pass [STREAM_CHAR_CAP] is finished and the
+     * text goes on in a new one (the service closes an id past 1,000 chars, contract changelog).
+     */
+    private fun appendStreamed(chunk: String) {
+        if (chunk.isEmpty()) return
+        val current = stream
+        if (current != null && streamChars + chunk.length > STREAM_CHAR_CAP) {
+            current.finish()
+            stream = null
+        }
+        val s = stream ?: tts.openStream().also {
+            stream = it
+            streamChars = 0
+            queue.trySend(it)
+        }
+        s.append(chunk)
+        streamChars += chunk.length
+    }
 
     private fun speakable(chunk: String): String {
         // Keep the edges: a streamed chunk's spaces are part of the text.
@@ -217,4 +232,10 @@ internal class ReplySpeaker(
             for (pcm in clip.frames) if (interrupted || !play(pcm)) return
         }
     }
+
+    companion object {
+        /** Under the service's 1,000 chars per streamed id, with room for a last word. */
+        const val STREAM_CHAR_CAP = 900
+    }
 }
+

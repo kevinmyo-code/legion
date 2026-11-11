@@ -133,6 +133,19 @@ class ReplySpeakerTest {
     }
 
     @Test
+    fun `a long streamed reply goes on in a new clip before the service's per-id cap`() = runBlocking<Unit> {
+        val voice = FakeVoice(streamsText = true)
+        val ear = Ear()
+        val s = speaker(voice, ear)
+        val words = List(400) { "word$it" } // about 3,000 chars
+        words.forEach { s.text("$it ") }
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(5_000) { s.await() })
+        assertTrue("expected several clips, got ${voice.asked}", voice.asked.count { it == "<stream>" } >= 3)
+        assertEquals(words, ear.heard)
+    }
+
+    @Test
     fun `a voice that never starts fails at the first-audio deadline`() = runBlocking<Unit> {
         val voice = FakeVoice(silentFor = setOf("Hello."))
         val s = speaker(voice, Ear(), timeoutMs = 150)

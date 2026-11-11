@@ -129,7 +129,7 @@ fun VoiceEngineRow() {
                             testing = true
                             scope.launch {
                                 val config = VoiceEngineSettings.laptop(context)
-                                val r = LaptopProbe.probe(config, TEST_TIMEOUT_MS)
+                                val r = LaptopProbe.probe(config, CascadeTimings.SETTINGS_TEST_TIMEOUT_MS)
                                 if (r is LaptopProbe.Result.Ready) CascadeSession.clearRecentFailure()
                                 result = when (r) {
                                     is LaptopProbe.Result.Ready -> "Laptop ready (${r.ms} ms)"
@@ -155,4 +155,3 @@ fun VoiceEngineRow() {
     }
 }
 
-private const val TEST_TIMEOUT_MS = 3_000L

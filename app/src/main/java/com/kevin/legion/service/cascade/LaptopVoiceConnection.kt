@@ -139,14 +139,27 @@ class LaptopVoiceConnection(
 
     // --- SpeechToText --------------------------------------------------------------------------
 
+    /** The utterance the service is working on (contract: one live STT utterance at a time). */
+    @Volatile private var liveStt: Utterance? = null
+
     override fun begin(onServiceEnd: () -> Unit): SttUtterance {
         val id = nextStt.addAndGet(2)
         val u = Utterance(id, onServiceEnd)
         utterances[id] = u
         if (dropped.get()) {
             u.result.complete(SttResult.Failed(dropReason ?: "dropped"))
+            return u
+        }
+        val previous = liveStt
+        liveStt = u
+        if (previous != null && !previous.result.isCompleted) {
+            // He spoke again while the last turn's final is still coming: a second stt.start
+            // would be refused (bad_request), so this one waits, its audio held, and goes the
+            // moment the last one is done. Nothing he says is dropped.
+            u.deferred = true
+            previous.result.invokeOnCompletion { u.startNow() }
         } else {
-            send(JSONObject().put("type", "stt.start").put("id", id))
+            u.startNow()
         }
         return u
     }
@@ -154,32 +167,56 @@ class LaptopVoiceConnection(
     private inner class Utterance(override val id: Int, val onServiceEnd: () -> Unit) : SttUtterance {
         val result = CompletableDeferred<SttResult>()
         val ended = AtomicBoolean(false)
+        @Volatile var deferred = false
+        private val held = ArrayList<ByteArray>()
+        private var started = false
+
+        /** Sends `stt.start`, then any audio and the end held while it waited. */
+        fun startNow() = synchronized(this) {
+            if (started || result.isCompleted) return@synchronized
+            started = true
+            deferred = false
+            send(JSONObject().put("type", "stt.start").put("id", id))
+            held.forEach { socket?.sendBinary(it) }
+            held.clear()
+            if (ended.get()) send(JSONObject().put("type", "stt.end").put("id", id))
+        }
 
         override fun audio(pcm: ByteArray, offset: Int, length: Int) {
             val closed = ended.get() || result.isCompleted
             if (closed || length <= 0) return
             val even = length - (length % 2)
             if (even == 0) return
-            socket?.sendBinary(frame(KIND_MIC, id, pcm, offset, even))
+            val f = frame(KIND_MIC, id, pcm, offset, even)
+            synchronized(this) {
+                if (!started) held.add(f) else socket?.sendBinary(f)
+            }
         }
 
         override fun end() {
-            if (ended.compareAndSet(false, true) && !result.isCompleted) {
-                send(JSONObject().put("type", "stt.end").put("id", id))
+            if (!ended.compareAndSet(false, true) || result.isCompleted) return
+            synchronized(this) {
+                if (started) send(JSONObject().put("type", "stt.end").put("id", id))
             }
         }
 
         override fun cancel() {
             ended.set(true)
-            if (!result.isCompleted) send(JSONObject().put("type", "stt.cancel").put("id", id))
+            val wasStarted = synchronized(this) { started }
+            if (!result.isCompleted && wasStarted) send(JSONObject().put("type", "stt.cancel").put("id", id))
             result.complete(SttResult.Failed("cancelled"))
             utterances.remove(id)
         }
 
         override suspend fun result(timeoutMs: Long): SttResult {
-            val r = withTimeoutOrNull(timeoutMs) { result.await() } ?: SttResult.Failed("timeout")
+            val r = withTimeoutOrNull(timeoutMs) { result.await() }
+            if (r == null) {
+                // Give up on it on both sides, so the next utterance is not held behind it.
+                send(JSONObject().put("type", "stt.cancel").put("id", id))
+                result.complete(SttResult.Failed("timeout"))
+            }
             utterances.remove(id)
-            return r
+            return r ?: SttResult.Failed("timeout")
         }
     }
 

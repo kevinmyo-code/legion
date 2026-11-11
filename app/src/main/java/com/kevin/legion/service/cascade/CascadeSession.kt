@@ -184,7 +184,7 @@ internal class CascadeSession(
         val config = VoiceEngineSettings.laptop(ctx)
         // A laptop that just failed to answer is not asked again for a little while: the wake word
         // must not wait out the probe on every conversation while Tailscale is off.
-        if (config.isComplete && started - lastUnreachableAtMs < RECENT_UNREACHABLE_MS) {
+        if (config.isComplete && started - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS) {
             handOver(Handover.Moment.AtOpen, "open", "unreachable_recent")
             return
         }
@@ -197,8 +197,8 @@ internal class CascadeSession(
             return
         }
         micClaimed = true
-        val models = withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, MODEL_WAIT_MS) }
-        val probe = if (config.isComplete) LaptopProbe.probe(config, PROBE_TIMEOUT_MS) else null
+        val models = withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
+        val probe = if (config.isComplete) LaptopProbe.probe(config, CascadeTimings.PROBE_TIMEOUT_MS) else null
         lastUnreachableAtMs = if (probe is LaptopProbe.Result.Unreachable) System.currentTimeMillis() else 0L
         val probeMs = when (probe) {
             is LaptopProbe.Result.Ready -> probe.ms
@@ -220,7 +220,7 @@ internal class CascadeSession(
             onDrop = { reason -> scope.launch(loop) { onLaptopDropped(reason) } },
         )
         conn = c
-        when (val r = c.open(OPEN_TIMEOUT_MS)) {
+        when (val r = c.open(CascadeTimings.OPEN_TIMEOUT_MS)) {
             is LaptopVoiceConnection.OpenResult.Failed -> {
                 lastUnreachableAtMs = System.currentTimeMillis()
                 handOver(Handover.Moment.AtOpen, "open", "connect_${r.reason}")
@@ -354,7 +354,7 @@ internal class CascadeSession(
                 // fires, and a turn must still end.
                 uttCapJob?.cancel()
                 uttCapJob = scope.launch(loop) {
-                    delay(UTTERANCE_CAP_MS)
+                    delay(CascadeTimings.UTTERANCE_CAP_MS)
                     if (currentUtt === u) {
                         currentUtt = null
                         u.end()
@@ -459,7 +459,7 @@ internal class CascadeSession(
 
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
     private suspend fun runTurn(u: SttUtterance, eotAtMs: Long) {
-        val stt = u.result(STT_FINAL_TIMEOUT_MS)
+        val stt = u.result(CascadeTimings.STT_FINAL_TIMEOUT_MS)
         LiveLatency.log(LiveLatency.TAG, "stt_final_ms=${System.currentTimeMillis() - eotAtMs}" +
             ((stt as? SttResult.Text)?.decodeMs?.let { " stt_decode_ms=$it" } ?: ""))
         val words = when (stt) {
@@ -629,7 +629,7 @@ internal class CascadeSession(
             tts = c,
             scope = scope,
             play = { pcm -> p.write(pcm, gen) },
-            firstFrameTimeoutMs = TTS_FIRST_AUDIO_TIMEOUT_MS,
+            firstFrameTimeoutMs = CascadeTimings.TTS_FIRST_AUDIO_TIMEOUT_MS,
             onFirstAudio = {
                 val now = System.currentTimeMillis()
                 eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
@@ -1050,21 +1050,6 @@ internal class CascadeSession(
         /** `session_start model=` carries the engine, so Live and laptop sessions part in the log. */
         const val ENGINE_TOKEN = "laptop"
 
-        /**
-         * The contract asks for 250 ms. Through a tunnel, a cold probe would miss that often enough
-         * that nearly every conversation would land on Live and there would be nothing to compare.
-         * The real figure is logged (`cascade_probe_ms`, `probe_ms`) so this can come down.
-         */
-        const val PROBE_TIMEOUT_MS = 1_200L
-        const val OPEN_TIMEOUT_MS = 2_500L
-        const val MODEL_WAIT_MS = 1_500L
-
-        /** Above the service's own 5 s STT budget (contract section 6), so its `timeout` error wins. */
-        const val STT_FINAL_TIMEOUT_MS = 6_000L
-
-        /** Above the service's 3 s first-audio budget. */
-        const val TTS_FIRST_AUDIO_TIMEOUT_MS = 4_000L
-
         /** The loop's own backstop; the controller's runner already applies each tool's real ceiling. */
         const val TOOL_BACKSTOP_MS = 47_000L
 
@@ -1074,8 +1059,6 @@ internal class CascadeSession(
         private const val MIC_HANDOFF_MS = 250L
         private const val MAX_READ_ERRORS = 20
 
-        /** Under the service's 30 s utterance limit. */
-        const val UTTERANCE_CAP_MS = 28_000L
         private const val CAPTION_CHARS = 160
         private const val DROPPED_NOTICE = "Laptop voice dropped - switched to Live"
         private const val READ_ERROR_BACKOFF_MS = 50L
@@ -1083,8 +1066,6 @@ internal class CascadeSession(
 
         private val ACK = AckLines()
 
-        /** How long a failed probe or connect sends conversations straight to Live. */
-        const val RECENT_UNREACHABLE_MS = 30_000L
         @Volatile private var lastUnreachableAtMs = 0L
 
         /** A successful Test connection in Settings: try the laptop again at once. */

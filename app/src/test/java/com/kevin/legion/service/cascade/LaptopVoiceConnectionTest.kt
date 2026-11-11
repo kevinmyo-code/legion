@@ -233,6 +233,30 @@ class LaptopVoiceConnectionTest {
     }
 
     @Test
+    fun `a second utterance waits for the first final, its audio held, and nothing is lost`() = runBlocking<Unit> {
+        val fake = FakeLaptop(readyStt = JSONObject().put("end_of_turn", true))
+        val c = connection(fake)
+        c.open(500)
+        val first = c.begin()
+        first.audio(ByteArray(320), 0, 320)
+        first.end()
+        // He speaks again before the first final arrived: no second stt.start yet.
+        val second = c.begin()
+        second.audio(ByteArray(640) { 2 }, 0, 640)
+        assertEquals(listOf("hello", "stt.start", "stt.end"), fake.types())
+        assertEquals(1, fake.mic.size)
+        fake.text(JSONObject().put("type", "stt.final").put("id", first.id).put("text", "Add milk.").put("reason", "client_end"))
+        // Now the second starts, with the audio it held, in order.
+        assertEquals(listOf("hello", "stt.start", "stt.end", "stt.start"), fake.types())
+        assertEquals(second.id, fake.sent.last().getInt("id"))
+        assertEquals(2, fake.mic.size)
+        assertEquals(second.id, LaptopVoiceConnection.readId(fake.mic[1]))
+        second.end()
+        assertEquals("stt.end", fake.sent.last().getString("type"))
+        assertEquals("Add milk.", (first.result(500) as SttResult.Text).text)
+    }
+
+    @Test
     fun `too long is not a failure - the final still comes`() = runBlocking<Unit> {
         val fake = FakeLaptop(onMessage = {
             if (it.getString("type") == "stt.end") {
