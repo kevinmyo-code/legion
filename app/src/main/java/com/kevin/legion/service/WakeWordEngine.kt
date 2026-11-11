@@ -86,7 +86,7 @@ object WakeWordEngine {
     // floor between triggers, one "hey <name>" would fire ACTION_TALK repeatedly before
     // the started conversation flips ConversationState.isBusy and the watchdog above
     // tears this recognizer down.
-    private const val MIN_TRIGGER_GAP_MS = 4_000L
+    internal const val MIN_TRIGGER_GAP_MS = 4_000L
 
     /** One recognized utterance, for the on-screen debug panel (debug builds only). */
     data class Event(
@@ -120,6 +120,9 @@ object WakeWordEngine {
     // Ticket 18: stage 0 (VAD) and stage 1 (keyword spotter). Null means the Vosk-only path, either
     // because Settings chose it or because the native pipeline could not start (said in words).
     private var detector: WakeTwoStageDetector? = null
+    // The openWakeWord detector when Settings chose it and its models loaded; when set, [detector] is
+    // null and neither the keyword spotter nor Vosk hears the audio.
+    private var oww: OpenWakeWordDetector? = null
     private var effects: List<AudioEffect> = emptyList()
     private var recordingCallback: AudioManager.AudioRecordingCallback? = null
 
@@ -168,6 +171,13 @@ object WakeWordEngine {
     val peakLevel = _peakLevel.asStateFlow()
     private var targetWords: List<String> = emptyList()
     private var lastTriggerAtMs = 0L
+
+    private val _engineNote = MutableStateFlow<String?>(null)
+    /**
+     * Which detector the open capture runs, in words, or why openWakeWord was asked for and could
+     * not run (model missing, load failed). Settings shows it under the engine choice.
+     */
+    val engineNote = _engineNote.asStateFlow()
 
     /**
      * Starts the engine if it isn't already running. Safe to call unconditionally (e.g.
@@ -355,7 +365,8 @@ object WakeWordEngine {
         // Vosk was, not only what it picked. The match rule reads "text" and is unaffected.
         rec.setWords(true)
         recognizer = rec
-        detector = createDetector(context)
+        oww = createOpenWakeWord(context)
+        detector = if (oww == null) createDetector(context) else null
 
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE.toInt(), AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
@@ -428,7 +439,7 @@ object WakeWordEngine {
             return false
         }
         _running.value = true
-        captureJob = launchCaptureLoop(r, rec, detector, chunk, context)
+        captureJob = launchCaptureLoop(r, rec, detector, oww, chunk, context)
         return true
     }
 
@@ -437,6 +448,7 @@ object WakeWordEngine {
         r: AudioRecord,
         rec: Recognizer,
         twoStage: WakeTwoStageDetector?,
+        openWakeWord: OpenWakeWordDetector?,
         chunk: Int,
         context: Context,
     ): Job? {
@@ -455,7 +467,7 @@ object WakeWordEngine {
                     }
                     if (n == 0) continue
                     // Native work only while this capture is still open (see [WakeCaptureGate]).
-                    if (!gate.whileOpen(ticket) { handleChunk(buf, n, rec, twoStage, context) }) break
+                    if (!gate.whileOpen(ticket) { handleChunk(buf, n, rec, twoStage, openWakeWord, context) }) break
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "capture loop ended: " + e.message)
@@ -465,6 +477,8 @@ object WakeWordEngine {
 
     /** Frees what [openCapture] built before it gave up (no record, no loop yet). */
     private fun discardOpen() {
+        oww?.release()
+        oww = null
         detector?.release()
         detector = null
         recognizer?.let { runCatching { it.close() } }
@@ -504,6 +518,7 @@ object WakeWordEngine {
         n: Int,
         rec: Recognizer,
         twoStage: WakeTwoStageDetector?,
+        openWakeWord: OpenWakeWordDetector?,
         context: Context,
     ) {
         var peak = 0
@@ -513,6 +528,13 @@ object WakeWordEngine {
         }
         _peakLevel.value = peak
         WakeSampleRecorder.onAudio(buf, n)
+        if (openWakeWord != null) {
+            // openWakeWord hears its own gain (1, the raw capture; see OpenWakeWordDetector.INPUT_GAIN).
+            val gain = OpenWakeWordDetector.INPUT_GAIN
+            val input = if (gain == 1) buf else WakeInputGain.apply(buf, n, gain)
+            if (openWakeWord.process(input, n)) triggerConversation(context)
+            return
+        }
         // Ticket 20 interim: the detectors hear a gained copy; the meter and recordings stay raw.
         val gained = WakeInputGain.apply(buf, n, WAKE_INPUT_GAIN)
         when {
@@ -542,6 +564,32 @@ object WakeWordEngine {
             is WakeTwoStageDetector.Companion.Created.Ready -> c.detector
             is WakeTwoStageDetector.Companion.Created.Unavailable -> {
                 stageLog("two-stage unavailable (" + c.reason + ") - falling back to Vosk-only, gain=$WAKE_INPUT_GAIN")
+                null
+            }
+        }
+    }
+
+    /**
+     * openWakeWord when Settings chose it ([WakeWordPreferences.engine]), or null: either the
+     * current engine was chosen, or openWakeWord could not start and the current engine runs
+     * instead, said in words in the log, the debug ring and [engineNote].
+     */
+    private fun createOpenWakeWord(context: Context): OpenWakeWordDetector? {
+        if (WakeWordPreferences.engine(context) != WakeEngineKind.OPEN_WAKE_WORD) {
+            _engineNote.value = null
+            return null
+        }
+        val threshold = WakeWordPreferences.owwThreshold(context)
+        val name = CompanionProfile.name(context)
+        return when (val c = OpenWakeWordDetector.create(context, name, threshold, ::stageLog)) {
+            is OpenWakeWordDetector.Companion.Created.Ready -> {
+                _engineNote.value = "openWakeWord listening, threshold " + "%.2f".format(threshold)
+                c.detector
+            }
+            is OpenWakeWordDetector.Companion.Created.Unavailable -> {
+                val note = "openWakeWord unavailable (" + c.reason + ") - using the current engine"
+                _engineNote.value = note
+                stageLog(note)
                 null
             }
         }
@@ -698,11 +746,12 @@ object WakeWordEngine {
         // objects this release can never free (see [WakeCaptureGate]).
         val taken = gate.locked {
             gate.close()
-            val t = Taken(captureJob, record, effects, detector, recognizer)
+            val t = Taken(captureJob, record, effects, detector, recognizer, oww)
             captureJob = null
             record = null
             effects = emptyList()
             detector = null
+            oww = null
             recognizer = null
             t
         }
@@ -749,6 +798,7 @@ object WakeWordEngine {
         taken.effects.forEach { runCatching { it.release() } }
         // Safe after close(): the loop holding this recognizer and detector runs no more chunks.
         taken.detector?.release()
+        taken.openWakeWord?.release()
         taken.recognizer?.let { runCatching { it.close() } }
 
         _peakLevel.value = 0
@@ -822,5 +872,6 @@ object WakeWordEngine {
         val effects: List<AudioEffect>,
         val detector: WakeTwoStageDetector?,
         val recognizer: Recognizer?,
+        val openWakeWord: OpenWakeWordDetector?,
     )
 }

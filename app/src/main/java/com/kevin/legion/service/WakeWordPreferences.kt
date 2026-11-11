@@ -73,4 +73,54 @@ object WakeWordPreferences {
 
     fun setEnabled(context: Context, on: Boolean) =
         prefs(context).edit().putBoolean(KEY_ENABLED, on).apply()
+
+    /**
+     * Which detector hears the wake phrase (Kevin 2026-11-10: "i rather openwakeword"). Unset reads
+     * as [WakeEngineKind.DEFAULT], the one place the default lives.
+     */
+    fun engine(context: Context): WakeEngineKind =
+        WakeEngineKind.fromKey(prefs(context).getString(KEY_ENGINE, null))
+
+    fun setEngine(context: Context, kind: WakeEngineKind) =
+        prefs(context).edit().putString(KEY_ENGINE, kind.key).apply()
+
+    /** openWakeWord's score threshold, clamped to [WakeEngineKind.THRESHOLD_RANGE]. */
+    fun owwThreshold(context: Context): Float =
+        WakeEngineKind.clampThreshold(
+            prefs(context).getFloat(KEY_OWW_THRESHOLD, OpenWakeWordDetector.DEFAULT_THRESHOLD),
+        )
+
+    fun setOwwThreshold(context: Context, value: Float) =
+        prefs(context).edit().putFloat(KEY_OWW_THRESHOLD, WakeEngineKind.clampThreshold(value)).apply()
+
+    private const val KEY_ENGINE = "engine"
+    private const val KEY_OWW_THRESHOLD = "oww_threshold"
+}
+
+/**
+ * The two wake detectors Settings chooses between. [CURRENT] is the VAD + keyword spotter + Vosk
+ * confirm ([WakeTwoStageDetector], or Vosk alone when two-stage is off); [OPEN_WAKE_WORD] is
+ * [OpenWakeWordDetector]. Stored by [key] so a rename never flips anyone's choice.
+ */
+enum class WakeEngineKind(val key: String, val label: String) {
+    CURRENT("current", "Current (keyword spotter + confirm)"),
+    OPEN_WAKE_WORD("openwakeword", "openWakeWord"),
+    ;
+
+    companion object {
+        /**
+         * THE default, in one place. CURRENT for the first build: openWakeWord is unproven on the
+         * phone and has no real-voice numbers yet (report: openwakeword-1110.md). Flip this one
+         * line once the phone checklist passes.
+         */
+        val DEFAULT = CURRENT
+
+        val THRESHOLD_RANGE = 0.05f..0.95f
+
+        fun fromKey(key: String?): WakeEngineKind = entries.firstOrNull { it.key == key } ?: DEFAULT
+
+        fun clampThreshold(value: Float): Float =
+            if (value.isNaN()) OpenWakeWordDetector.DEFAULT_THRESHOLD
+            else value.coerceIn(THRESHOLD_RANGE.start, THRESHOLD_RANGE.endInclusive)
+    }
 }
