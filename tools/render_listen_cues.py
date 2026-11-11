@@ -50,8 +50,9 @@ CUES = REPO / "app" / "src" / "main" / "assets" / "listen_cues"
 LINES = CUES / "lines.json"
 API = "https://generativelanguage.googleapis.com/v1beta"
 RATE = 24_000
-# Alfred: calm, fast, dry; never "sir".
-STYLE = "Say it calmly and briskly, warm but dry, like a capable assistant who is already listening:"
+# Alfred: calm, fast, dry; never "sir". Only the line itself is sent: a style instruction in front of
+# it (tried 2026-11-10) was read aloud with the line, giving 7 to 9 s clips. MAX_CLIP_S guards that.
+MAX_CLIP_S = 2.5
 
 
 # ---- renderers: text in, (pcm16 mono bytes, sample rate) out ------------------------------------
@@ -65,7 +66,7 @@ class GeminiRenderer:
 
     def render(self, text: str) -> tuple[bytes, int]:
         body = {
-            "contents": [{"parts": [{"text": f"{STYLE} {text}"}]}],
+            "contents": [{"parts": [{"text": text}]}],
             "generationConfig": {
                 "responseModalities": ["AUDIO"],
                 "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": self.voice}}},
@@ -240,6 +241,9 @@ def main() -> int:
         try:
             pcm, rate = renderer.render(ln["text"])
             pcm = trim(resample(pcm, rate))
+            secs = len(pcm) / 2 / RATE
+            if secs > MAX_CLIP_S:
+                raise ValueError(f"clip is {secs:.2f} s, over {MAX_CLIP_S} s: the voice said more than the line")
             (CUES / f"{ln['id']}.wav").write_bytes(to_wav(pcm))
             print(f"  ok   {ln['id']}  {len(pcm) / 2 / RATE:.2f}s")
         except (urllib.error.URLError, subprocess.SubprocessError, OSError, KeyError, IndexError,
