@@ -122,8 +122,8 @@ internal object Declarations {
             description = "Manage a user-authored, reusable CHECKLIST like \"bio\" or \"morning " +
                 "routine\" - named lines ticked off, optionally daily/weekly, optionally MEASURED " +
                 "(a number against a target, e.g. '8,400 of 10,000 steps') instead of a plain tick. " +
-                "NOT the one persistent list (manage_item) - never route a to-do here, or a " +
-                "checklist line there. The grocery/shopping list is a checklist named " +
+                "A plain to-do with no date, place or repeat is a line on list=Todo here; a " +
+                "reminder with one of those is manage_item. The grocery/shopping list is a checklist named " +
                 "\"Groceries\": 'add milk to the grocery list' is action=add, list=Groceries, " +
                 "text=milk (it is built in and always exists - never create it); 'the list' with " +
                 "food or a household item means Groceries. " +

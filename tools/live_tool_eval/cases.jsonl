@@ -3,12 +3,12 @@
 {"say": "clear the check engine codes", "covers": "clear_codes"}
 {"say": "skip this song", "covers": "control_music"}
 {"say": "pause the music", "covers": "control_music"}
-{"say": "turn it up a bit", "covers": "control_volume"}
-{"say": "mute the volume", "covers": "control_volume"}
+{"say": "turn it up a bit", "covers": "control_volume", "action": "volume_up"}
+{"say": "mute the volume", "covers": "control_volume", "action": "mute"}
 {"say": "that's all, thanks", "covers": "end_conversation"}
 {"say": "take me to the nearest gas station", "covers": "navigate"}
-{"say": "add a coffee stop on the way", "covers": "change_trip"}
-{"say": "avoid tolls on this route", "covers": "change_trip"}
+{"say": "add a coffee stop on the way", "covers": "change_trip", "action": "add_stop"}
+{"say": "avoid tolls on this route", "covers": "change_trip", "action": "avoid"}
 {"say": "how long until we get there", "covers": "trip_status"}
 {"say": "stop the navigation", "covers": "end_trip"}
 {"say": "play some lo-fi beats", "covers": "play_music"}
@@ -52,10 +52,10 @@
 {"say": "what reminders do I have", "covers": "read_list"}
 {"say": "show my agenda", "covers": "show_agenda_modal"}
 {"say": "chart my grocery spend by month", "covers": "show_generated_view"}
-{"say": "I just put new wiper blades on, twenty bucks", "covers": "log_build_entry"}
+{"say": "I just put new wiper blades on, twenty bucks", "covers": "log_build_entry", "also": ["car/log_service"]}
 {"say": "hit the garage door", "covers": "activate_garage"}
 {"say": "where am I right now", "covers": "get_current_location"}
-{"say": "add my other car, a 2019 Example pickup", "covers": "manage_vehicle"}
+{"say": "add my other car, a 2019 Example pickup", "covers": "manage_vehicle", "action": "add_vehicle"}
 {"say": "where's my package", "covers": "track_package"}
 {"say": "is my flight on time", "covers": "flight_status"}
 {"say": "why did you just say that", "covers": "why_did_you_say_that"}
@@ -77,7 +77,7 @@
 {"say": "what did I eat yesterday", "covers": "ask_body"}
 {"say": "what's today's workout", "covers": "ask_body"}
 {"say": "what are my goals right now", "covers": "ask_goals"}
-{"say": "how much have I spent on groceries this month", "covers": "ask_pantry"}
+{"say": "how much have I spent on groceries this month", "covers": "ask_pantry", "also": ["look_up/ask_money"]}
 {"say": "did I get an email from the landlord", "covers": "ask_mail"}
 {"say": "what's my checking balance", "covers": "ask_money"}
 {"say": "any severe weather alerts around here", "covers": "ask_area"}
@@ -85,20 +85,20 @@
 {"say": "what aspects do you track", "covers": "list_aspects"}
 {"say": "what fields does the plants aspect have", "covers": "describe_aspect"}
 {"say": "find my records for the fern", "covers": "query_records"}
-{"say": "add a record that I repotted the fern today", "covers": "create_record"}
-{"say": "change that record's date to yesterday", "covers": "update_record"}
-{"say": "delete that fern record", "covers": "delete_record"}
+{"say": "add a record that I repotted the fern today", "covers": "create_record", "also": ["ask_engine"]}
+{"say": "change that record's date to yesterday", "covers": "update_record", "also": ["records/aspect_clerk"]}
+{"say": "delete that fern record", "covers": "delete_record", "also": ["records/aspect_clerk"]}
 {"say": "go through my plants records and mark the cactus watered", "covers": "aspect_clerk"}
 {"say": "start tracking my houseplants as a new aspect", "covers": "create_aspect"}
 {"say": "add a light level field to the plants aspect", "covers": "update_aspect"}
-{"say": "when did we last buy coffee filters", "covers": "bought_log"}
-{"say": "continue my book", "covers": "books"}
+{"say": "when did we last buy coffee filters", "covers": "bought_log", "action": "last_bought"}
+{"say": "continue my book", "covers": "books", "action": "book_continue"}
 {"say": "open the example news site", "covers": "browser"}
 {"say": "ask Claude to tidy the notes folder on my laptop", "covers": "claude_session"}
-{"say": "is there an update for the app", "covers": "app_update"}
+{"say": "is there an update for the app", "covers": "app_update", "action": "update_check"}
 {"say": "remember that my locker code is on the blue card", "covers": "memory"}
 {"say": "show me my passport", "covers": "show_vault_item"}
 {"say": "set a timer for ten minutes", "covers": "clock"}
 {"say": "wake me up at 6:30", "covers": "clock"}
-{"say": "tell me if the electric bill goes over a hundred", "covers": "watch"}
+{"say": "tell me if the electric bill goes over a hundred", "covers": "watch", "action": "watch_set"}
 {"say": "look at this", "covers": "look"}

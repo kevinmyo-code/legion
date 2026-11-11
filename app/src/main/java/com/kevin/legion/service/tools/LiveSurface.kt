@@ -70,7 +70,10 @@ internal object LiveSurface {
             name = "car",
             summary = "Changes to the cars. Readings, codes, specs, recalls and service history are ask_fleet.",
             actions = listOf(
-                Action("log_service", "log_service", "work just done (service, cost)"),
+                Action(
+                    "log_service", "log_service",
+                    "a scheduled maintenance item just done: oil change, rotation, brakes (service, cost)",
+                ),
                 Action(
                     "log_past_service", "log_past_service",
                     "when an item was last done, from memory (mileage, miles_ago or date; never_done only " +
@@ -80,7 +83,8 @@ internal object LiveSurface {
                 Action("set_maintenance_interval", "set_maintenance_interval", "how often an item is due"),
                 Action(
                     "log_build_entry", "log_build_entry",
-                    "a mod, part, repair or purchase for the car (title, type, cost only if stated)",
+                    "a part, consumable, mod or repair he fitted or bought, e.g. wiper blades, " +
+                        "coilovers (title, type, cost only if stated)",
                 ),
                 Action(
                     "register_vehicle", "register_vehicle",
@@ -283,7 +287,9 @@ internal object LiveSurface {
         ),
         ActionTool(
             name = "records",
-            summary = "The household engine's own aspects and records (anything without its own tool).",
+            summary = "Records in the aspects he defined himself (plants, collections, anything with no " +
+                "tool of its own). Unsure which exist: list_aspects. describe_aspect before a first " +
+                "create, update or delete; aspect_clerk when a record must be found first or several change.",
             actions = listOf(
                 Action("list_aspects", "list_aspects", "which aspects exist"),
                 Action("describe_aspect", "describe_aspect", "an aspect's record types and fields"),
@@ -316,7 +322,10 @@ internal object LiveSurface {
                     "meals, sleep, workouts and the programme, weight trend, calorie and protein estimates",
                 ),
                 Action("ask_goals", "ask_goals", "the goals he set and an advisor's coaching"),
-                Action("ask_pantry", "ask_pantry", "grocery receipts and grocery spend, not the shopping list"),
+                Action(
+                    "ask_pantry", "ask_pantry",
+                    "groceries bought, from receipts: items, macros, grocery spend; not the shopping list",
+                ),
             ),
             paramNotes = ROUTER_NOTES,
         ),
@@ -329,7 +338,7 @@ internal object LiveSurface {
                 Action("ask_mail", "ask_mail", "his Gmail: find or read a message"),
                 Action(
                     "ask_money", "ask_money",
-                    "balances, spending against budget, recent and pending transactions",
+                    "balances, spending by budget category, recent and pending transactions",
                 ),
                 Action(
                     "ask_area", "ask_area",
