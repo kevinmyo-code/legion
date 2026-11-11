@@ -59,7 +59,7 @@ class CascadeWiringTest {
         val liveAt = body.indexOf("host.handOverToLive(")
         assertTrue(releaseAt >= 0 && liveAt > releaseAt)
         val release = bodyOf(s, "releaseNow")
-        for (step in listOf("micJob?.cancelAndJoin()", "player?.release()", "exit(", "MicArbiter.release(", "conn?.close(")) {
+        for (step in listOf("cancelAndJoin()", "player?.release()", "exit(", "abandonFocus()", "MicArbiter.release(", "conn?.close(")) {
             assertTrue("releaseNow() no longer does $step", release.contains(step))
         }
     }
