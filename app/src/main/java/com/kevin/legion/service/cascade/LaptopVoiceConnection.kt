@@ -226,7 +226,8 @@ class LaptopVoiceConnection(
         override val text: String get() = sent.toString()
 
         override fun append(text: String) {
-            if (!streamed || text.isEmpty() || finished.get() || outcome.isCompleted) return
+            val open = streamed && !finished.get() && !outcome.isCompleted
+            if (!open || text.isEmpty()) return
             sent.append(text)
             send(JSONObject().put("type", "tts.stream.text").put("id", id).put("text", text))
         }

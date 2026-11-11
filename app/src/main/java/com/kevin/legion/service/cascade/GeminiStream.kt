@@ -154,6 +154,9 @@ data class CascadePrefix(
 /** The three request shapes. Pure, so the "cachedContent never travels with tools" rule is pinned by a test. */
 object CascadeRequests {
     const val MAX_OUTPUT_TOKENS = 800
+
+    private fun instruction(prefix: CascadePrefix): JSONObject =
+        JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prefix.systemInstruction)))
     const val CACHE_TTL_S = 3_600L
 
     fun generationConfig(): JSONObject = JSONObject().put("maxOutputTokens", MAX_OUTPUT_TOKENS)
