@@ -30,26 +30,37 @@ class OwwDecider(
     private var inRun = false
     private var runOpened = false
 
-    fun onScore(score: Float, nowMs: Long): Decision? {
-        if (score >= threshold && nowMs - lastOpenAtMs >= gapMs) {
-            lastOpenAtMs = nowMs
+    fun onScore(score: Float, nowMs: Long): Decision? = when {
+        score >= threshold && nowMs - lastOpenAtMs >= gapMs -> open(score, nowMs)
+        score >= nearMissFloor -> {
+            extendRun(score)
+            null
+        }
+        else -> endRun()
+    }
+
+    private fun open(score: Float, nowMs: Long): Decision {
+        lastOpenAtMs = nowMs
+        inRun = true
+        runOpened = true
+        runPeak = score
+        return Decision.Open(score)
+    }
+
+    private fun extendRun(score: Float) {
+        if (!inRun) {
             inRun = true
-            runOpened = true
+            runOpened = false
             runPeak = score
-            return Decision.Open(score)
+        } else if (score > runPeak) {
+            runPeak = score
         }
-        if (score >= nearMissFloor) {
-            if (!inRun) {
-                inRun = true
-                runOpened = false
-                runPeak = score
-            } else if (score > runPeak) {
-                runPeak = score
-            }
-            // Above threshold inside the gap: the trigger gap held it back, which is not a near miss.
-            if (score >= threshold) runOpened = true
-            return null
-        }
+        // Above threshold inside the gap: the trigger gap held it back, which is not a near miss.
+        if (score >= threshold) runOpened = true
+    }
+
+    /** A frame under the near-miss floor ends any run; a run that never opened is one near miss. */
+    private fun endRun(): Decision? {
         val ended = inRun && !runOpened
         val peak = runPeak
         inRun = false

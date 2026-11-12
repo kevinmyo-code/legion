@@ -71,7 +71,10 @@ class OwwStreamGoldenTest {
         val mel = model(OwwModelFiles.MEL)
         val emb = model(OwwModelFiles.EMBEDDING)
         val head = model("hey_alfred.onnx")
-        assumeTrue("openWakeWord models not on this machine (gitignored); golden test skipped", mel != null && emb != null && head != null)
+        assumeTrue(
+            "openWakeWord models not on this machine (gitignored); golden test skipped",
+            mel != null && emb != null && head != null,
+        )
         val m = mel!!
         val e = emb!!
         assumeTrue("base models differ from the ones the vectors were made with",
@@ -101,7 +104,10 @@ class OwwStreamGoldenTest {
     @Test
     fun `scores match python from the first frame free of start-up rows`() {
         val (mel, emb, head) = requireModels()
-        assumeTrue("hey_alfred.onnx is not the head the vectors were made with", sha256(head) == meta.getString("head_sha256"))
+        assumeTrue(
+            "hey_alfred.onnx is not the head the vectors were made with",
+            sha256(head) == meta.getString("head_sha256"),
+        )
         val want = meta.getJSONArray("scores")
         val from = meta.getInt("first_comparable_frame")
         for (chunk in listOf(1280, 3200)) {

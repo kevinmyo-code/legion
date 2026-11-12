@@ -94,7 +94,8 @@ class OpenWakeWordDetector internal constructor(
                 val models = OwwOrtModels(OrtEnvironment.getEnvironment(), files.mel, files.embedding, files.head)
                 log(
                     "openwakeword ready: head=" + files.headName + " from " + files.source +
-                        " frames=" + models.inputFrames + " threshold=" + "%.2f".format(java.util.Locale.ROOT, threshold) +
+                        " frames=" + models.inputFrames +
+                        " threshold=" + "%.2f".format(java.util.Locale.ROOT, threshold) +
                         " gain=" + INPUT_GAIN,
                 )
                 Created.Ready(OpenWakeWordDetector(models, threshold, log))
@@ -136,14 +137,23 @@ object OwwModelFiles {
     fun load(context: Context, companionName: String): Loaded {
         val head = headName(companionName) ?: return Loaded.Missing("no companion name - no wake phrase")
         val names = listOf(MEL, EMBEDDING, head)
-        context.getExternalFilesDir(DIR)?.let { dir ->
-            if (names.all { File(dir, it).isFile }) {
-                return Loaded.Found(
-                    File(dir, MEL).readBytes(), File(dir, EMBEDDING).readBytes(), File(dir, head).readBytes(),
-                    head, "external files",
-                )
-            }
+        return fromExternalFiles(context, names, head) ?: fromAssets(context, names, head)
+    }
+
+    /** The external-files copy wins when all three models are there; null otherwise. */
+    private fun fromExternalFiles(context: Context, names: List<String>, head: String): Loaded.Found? {
+        val dir = context.getExternalFilesDir(DIR) ?: return null
+        return if (names.all { File(dir, it).isFile }) {
+            Loaded.Found(
+                File(dir, MEL).readBytes(), File(dir, EMBEDDING).readBytes(), File(dir, head).readBytes(),
+                head, "external files",
+            )
+        } else {
+            null
         }
+    }
+
+    private fun fromAssets(context: Context, names: List<String>, head: String): Loaded {
         val bundled = runCatching { context.assets.list(DIR)?.toSet() }.getOrNull().orEmpty()
         val missing = names.filterNot { it in bundled }
         if (missing.isNotEmpty()) {

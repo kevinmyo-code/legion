@@ -44,7 +44,8 @@ class OwwDeciderTest {
 
     @Test
     fun `scores under half the threshold say nothing`() {
-        assertEquals(emptyList<OwwDecider.Decision>(), run(OwwDecider(0.6f), listOf(0.1f, 0.29f, 0.2f, 0.0f)).filterNotNull())
+        val decisions = run(OwwDecider(0.6f), listOf(0.1f, 0.29f, 0.2f, 0.0f)).filterNotNull()
+        assertEquals(emptyList<OwwDecider.Decision>(), decisions)
     }
 
     @Test
