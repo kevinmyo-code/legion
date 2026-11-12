@@ -79,8 +79,15 @@ def _bad(detail: str) -> Response:
     return Response({"detail": f"Nothing was read. {detail}"}, status=status.HTTP_400_BAD_REQUEST)
 
 
+def _own(request):
+    """The caller's own records in their household. A conversation record carries one member's
+    words and tool results, private rows among them (ADR 0052/0075), so a household member never
+    reads another member's, the same rule `web_conversation.owned()` applies to the write."""
+    return scoped(DeviceLog, request).filter(user=request.user)
+
+
 def list_records(request) -> Response:
-    rows = scoped(DeviceLog, request)
+    rows = _own(request)
     reason = request.query_params.get("reason")
     if reason:
         if reason not in REASONS:
@@ -133,7 +140,7 @@ class DeviceLogRenderView(APIView):
         },
     )
     def get(self, request, log_id):
-        row = scoped(DeviceLog, request).filter(id=log_id).first()
+        row = _own(request).filter(id=log_id).first()
         if row is None:
             return Response(
                 {"detail": "No device log with that id in this household."},

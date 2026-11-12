@@ -130,15 +130,30 @@ def test_another_households_records_are_invisible(token_a, token_b):
     assert "household" in response.data["detail"]
 
 
+def test_another_members_records_in_the_same_household_are_invisible(token_a, household_a):
+    """A conversation record carries one member's words and tool results, private rows among
+    them (ADR 0052/0075). Sharing a household is not enough to read it."""
+    from tests.conftest import _client_for, _member
+
+    mia = _client_for(_member(household_a, "mia@example.com"))
+    log_id = _upload(token_a, FIXTURE)
+    assert mia.get(URL).data["results"] == []
+    assert mia.get(f"{URL}{log_id}/render").status_code == 404
+    own = _upload(mia, FIXTURE, label="Mia's phone")
+    assert [str(r["id"]) for r in mia.get(URL).data["results"]] == [own]
+    assert own not in {str(r["id"]) for r in token_a.get(URL).data["results"]}
+
+
 def test_a_recruiter_visits_record_is_never_readable_by_a_member(token_a):
     visit = _visit_row(FIXTURE)
     assert token_a.get(URL).data["results"] == []
     assert token_a.get(f"{URL}{visit.id}/render").status_code == 404
 
 
-def test_an_unreadable_body_is_said_in_words(token_a, household_a):
+def test_an_unreadable_body_is_said_in_words(token_a, household_a, household_user):
     row = DeviceLog.objects.create(
         household=household_a,
+        user=household_user,
         batch_id=uuid.uuid4(),
         device_label="Phone",
         reason="conversation",

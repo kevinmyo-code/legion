@@ -96,6 +96,15 @@ def test_a_member_who_is_not_an_owner_cannot_publish(member_client):
     assert not AppRelease.objects.exists()
 
 
+def test_an_owner_of_another_household_cannot_publish_an_engine_wide_release(token_b):
+    """`user_b` owns household B, not the household that runs the engine. Releases serve every
+    household, so publishing is the engine's owners' call, never any owner's."""
+    refused = token_b.post("/api/releases/", _body(version_code=2147483647), format="json")
+    assert refused.status_code == 403
+    assert refused.data["detail"].startswith("Nothing was published.")
+    assert not AppRelease.objects.exists()
+
+
 def test_a_read_scoped_token_cannot_publish(household_user):
     _token, raw = DeviceToken.issue(household_user, "Read only", DeviceToken.SCOPE_READ)
     client = APIClient()
