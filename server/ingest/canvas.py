@@ -35,6 +35,19 @@ has matched them once) cannot be placed in a course and is never tombstoned.
 **Course notices are not read.** `decisions.md` 2026-09-04 makes a notice an
 `event`, but the assignments endpoint returns only assignments, so this
 module writes only tasks.
+
+**Course grades (Kevin, 2026-11-12: "Canvas grades + what-I-need").** The same
+run reads each course's totals as Canvas states them (`include[]=total_scores`
+on the course list), its assignment groups with their weights and drop rules,
+and its grading scheme when the course names one, and writes one
+`canvas_course_grades` row per course for the member whose login was read
+(`grades/store.py`). A total Canvas does not show is stored NULL and said to be
+absent; nothing here computes a substitute and calls it Canvas's. The grade
+rows ride the same transaction as the tasks, so a run lands whole or not at
+all, and a course whose groups came back missing or inconsistent with its
+assignments keeps its previous grade row, with a note saying so. A login no
+member is recorded as owning writes no grade rows: grades are private to one
+member, and there is no one to make them private to.
 """
 
 from __future__ import annotations
@@ -48,6 +61,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db import connection, transaction
@@ -211,9 +225,23 @@ class CanvasClient:
             url = next_link(response.header("Link"))
         return out
 
+    def _object(self, url: str, *, forbidden_is_refusal: bool) -> dict:
+        response = self._get(url, forbidden_is_refusal=forbidden_is_refusal)
+        try:
+            payload = parse_json(response.body)
+        except ValueError as exc:
+            raise CanvasError("Canvas answered 200 with something that is not JSON.") from exc
+        if not isinstance(payload, dict):
+            raise CanvasError("Canvas answered with a JSON list where an object was expected.")
+        return payload
+
     def active_courses(self) -> list[dict]:
+        """Each active course, with the student's own totals on its enrollment
+        (`include[]=total_scores`): `computed_current_score` and the rest, absent
+        when the course hides totals."""
         return self._paged(
-            f"{self.base_url}/api/v1/courses?enrollment_state=active&per_page={PER_PAGE}",
+            f"{self.base_url}/api/v1/courses?enrollment_state=active"
+            f"&include%5B%5D=total_scores&per_page={PER_PAGE}",
             forbidden_is_refusal=True,
         )
 
@@ -221,6 +249,22 @@ class CanvasClient:
         return self._paged(
             f"{self.base_url}/api/v1/courses/{course_id}/assignments"
             f"?include%5B%5D=submission&per_page={PER_PAGE}",
+            forbidden_is_refusal=False,
+        )
+
+    def assignment_groups(self, course_id: int) -> list[dict]:
+        """`id`, `name`, `group_weight` and `rules` (drop_lowest, drop_highest,
+        never_drop) for each of the course's assignment groups."""
+        return self._paged(
+            f"{self.base_url}/api/v1/courses/{course_id}/assignment_groups?per_page={PER_PAGE}",
+            forbidden_is_refusal=False,
+        )
+
+    def grading_standard(self, course_id: int, standard_id: int) -> dict:
+        """The course's grading scheme: `title` and `grading_scheme`, a list of
+        `{name, value}` where `value` is the lower bound as a fraction."""
+        return self._object(
+            f"{self.base_url}/api/v1/courses/{course_id}/grading_standards/{standard_id}",
             forbidden_is_refusal=False,
         )
 
@@ -508,6 +552,10 @@ def assignment_tasks(
         "excused": submission.get("excused"),
         "points_possible": assignment.get("points_possible"),
         "submission_types": _submission_types(assignment),
+        # For the grade calculator (`grades/calculator.py`): which weighted
+        # group the assignment counts in, and whether it counts at all.
+        "assignment_group_id": assignment.get("assignment_group_id"),
+        "omit_from_final_grade": assignment.get("omit_from_final_grade"),
     }
     parent = {
         "canvas_assignment_id": aid,
@@ -570,6 +618,9 @@ class Plan:
     seen_assignment_ids: set[int] = field(default_factory=set)
     watermark: str | None = None
     notes: list[str] = field(default_factory=list)
+    # One `canvas_course_grades` payload per course whose totals and groups
+    # were read whole (`course_grade_payload`).
+    grades: list[dict] = field(default_factory=list)
 
 
 def _owned_live_rows(household):
@@ -639,7 +690,177 @@ def read_canvas(client: CanvasClient, household, *, fallback_zone: str | None) -
             plan.tasks.extend(tasks)
             if skipped:
                 plan.notes.append(f"{tasks[0]['title']}: no sub-deadline written ({skipped}).")
+        grade = read_course_grade(client, course, assignments, name, plan.notes)
+        if grade is not None:
+            plan.grades.append(grade)
     return plan
+
+
+# =============================================================================
+# Course grades: what Canvas said about the totals and the weights
+# =============================================================================
+
+
+def _stated_number(value, what: str, course: dict):
+    """A number exactly as Canvas wrote it, as a Decimal, or None when Canvas
+    stated none. Never a float: the figure is stored as Canvas's own."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise CanvasError(f"Canvas gave {what} for {course_label(course)} as {value!r}.")
+    try:
+        number = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise CanvasError(
+            f"Canvas gave {what} for {course_label(course)} as {value!r}, which is not a "
+            f"number. Nothing was written."
+        ) from exc
+    if not number.is_finite():
+        raise CanvasError(f"Canvas gave {what} for {course_label(course)} as {value!r}.")
+    return number
+
+
+def _stated_text(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def student_enrollment(course: dict) -> dict:
+    """The student enrollment Canvas returned on the course, or {}. Several
+    sections carry the same totals; the first student one is read."""
+    for enrollment in course.get("enrollments") or []:
+        if not isinstance(enrollment, dict):
+            continue
+        if enrollment.get("type") in ("student", "StudentEnrollment") or (
+            enrollment.get("role") == "StudentEnrollment"
+        ):
+            return enrollment
+    return {}
+
+
+def group_entry(group: dict) -> dict:
+    rules = group.get("rules") if isinstance(group.get("rules"), dict) else {}
+    kept = {}
+    for key in ("drop_lowest", "drop_highest"):
+        value = rules.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            kept[key] = value
+    never = rules.get("never_drop")
+    if isinstance(never, list) and never:
+        kept["never_drop"] = [int(x) for x in never if str(x).isdigit()]
+    weight = group.get("group_weight")
+    if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+        weight = None
+    return {
+        "id": int(group["id"]),
+        "name": tidy_name(group.get("name")) or f"Group {group['id']}",
+        "weight": weight,
+        "rules": kept,
+    }
+
+
+def scheme_entry(standard: dict | None) -> dict | None:
+    """`{title, levels: [{name, value}]}` from a Canvas grading standard, or
+    None when it does not carry a usable scheme."""
+    if not isinstance(standard, dict):
+        return None
+    levels = []
+    for level in standard.get("grading_scheme") or []:
+        if not isinstance(level, dict):
+            return None
+        name = _stated_text(level.get("name"))
+        value = level.get("value")
+        if name is None or isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        levels.append({"name": name, "value": value})
+    if not levels:
+        return None
+    return {"title": _stated_text(standard.get("title")), "levels": levels}
+
+
+def course_grade_payload(
+    course: dict, groups: list[dict], scheme: dict | None, name: CourseName
+) -> dict:
+    """One `canvas_course_grades` row as Canvas stated it. A total the course
+    does not show is None, never worked out here."""
+    enrollment = student_enrollment(course)
+    return {
+        "canvas_course_id": int(course["id"]),
+        "course_label": name.label,
+        "course_code": name.code,
+        "current_score": _stated_number(
+            enrollment.get("computed_current_score"), "a current score", course
+        ),
+        "current_grade": _stated_text(enrollment.get("computed_current_grade")),
+        "final_score": _stated_number(
+            enrollment.get("computed_final_score"), "a final score", course
+        ),
+        "final_grade": _stated_text(enrollment.get("computed_final_grade")),
+        "apply_weights": bool(course.get("apply_assignment_group_weights")),
+        "groups": sorted(
+            (group_entry(g) for g in groups if g.get("id") is not None),
+            key=lambda g: g["id"],
+        ),
+        "grading_scheme": scheme,
+    }
+
+
+def read_course_grade(
+    client: CanvasClient, course: dict, assignments: list[dict], name: CourseName, notes: list
+) -> dict | None:
+    """The course's grade payload, or None (with a note) when what Canvas
+    answered cannot be trusted whole: its previous grade row is then kept."""
+    course_id = int(course["id"])
+    label = course_label(course)
+    try:
+        groups = client.assignment_groups(course_id)
+    except CourseForbidden:
+        notes.append(
+            f"{label}: Canvas refused its assignment groups (HTTP 403); its grades were left "
+            f"as they were."
+        )
+        return None
+    group_ids = {int(g["id"]) for g in groups if g.get("id") is not None}
+    published = [
+        a for a in assignments if a.get("id") is not None and a.get("published") is not False
+    ]
+    if published and not group_ids:
+        notes.append(
+            f"{label}: Canvas returned assignments but no assignment groups, which reads as a "
+            f"partial answer; its grades were left as they were."
+        )
+        return None
+    strays = sorted(
+        int(a["id"])
+        for a in published
+        if a.get("assignment_group_id") is not None
+        and int(a["assignment_group_id"]) not in group_ids
+    )
+    if strays:
+        notes.append(
+            f"{label}: {len(strays)} assignment(s) name a group Canvas did not return, which "
+            f"reads as a partial answer; its grades were left as they were."
+        )
+        return None
+    scheme = None
+    standard_id = course.get("grading_standard_id")
+    if standard_id not in (None, "") and str(standard_id).isdigit():
+        try:
+            scheme = scheme_entry(client.grading_standard(course_id, int(standard_id)))
+        except CourseForbidden:
+            notes.append(
+                f"{label}: Canvas refused its grading scheme (HTTP 403); a letter target uses "
+                f"the default scale and says so."
+            )
+        else:
+            if scheme is None:
+                notes.append(
+                    f"{label}: Canvas's grading scheme did not read as a list of letters and "
+                    f"cut-offs; a letter target uses the default scale and says so."
+                )
+    return course_grade_payload(course, groups, scheme, name)
 
 
 def upsert(household, task: dict, read_at: datetime.datetime, owner_user_id=None) -> dict:
@@ -684,9 +905,19 @@ def apply_plan(
     household, plan: Plan, read_at: datetime.datetime, owner_user_id=None
 ) -> list[dict]:
     """Every write, in one transaction: a run lands whole or not at all."""
+    from grades.store import write_course_grades
+
     with transaction.atomic():
         results = [upsert(household, task, read_at, owner_user_id) for task in plan.tasks]
         results.extend(tombstones(household, plan, read_at))
+        if plan.grades and owner_user_id is None:
+            plan.notes.append(
+                "Grades were not stored: this Canvas login is not recorded as any member's, and "
+                "grades are private to one member. Hand the session over again from the "
+                "member's own account."
+            )
+        elif plan.grades:
+            results.extend(write_course_grades(household, owner_user_id, plan.grades, read_at))
     return results
 
 
@@ -737,7 +968,7 @@ def describe(result: dict) -> str:
     line = f"{action:<12} {result.get('title', '')}"
     if result.get("changed"):
         line += f"  [{', '.join(result['changed'])}]"
-    if action in {"inserted", "updated", "resurrected"}:
+    if action in {"inserted", "updated", "resurrected"} and "starts_at" in result:
         line += f"  due={result.get('starts_at')} done={result.get('done')}"
     if result.get("reason"):
         line += f"  ({result['reason']})"

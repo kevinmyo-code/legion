@@ -7282,6 +7282,127 @@ paths:
                 items:
                   $ref: '#/components/schemas/Opponent'
           description: ''
+  /api/grades/:
+    get:
+      operationId: api_grades_list
+      description: 'The caller''s own Canvas courses: Canvas''s totals as stated,
+        and each score.'
+      tags:
+      - grades
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseGradeList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/grades/{course_id}:
+    get:
+      operationId: api_grades_detail
+      description: One of the caller's Canvas courses, by Canvas course id.
+      parameters:
+      - in: path
+        name: course_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - grades
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseGrade'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/grades/{course_id}/what-i-need:
+    get:
+      operationId: api_grades_what_i_need
+      description: The score needed on the remaining work (or one assignment or group)
+        to reach a target, worked out from Canvas's scores and group weights. Never
+        Canvas's figure; an ESTIMATE in words when a drop rule applies or the total
+        disagrees with Canvas's.
+      parameters:
+      - in: query
+        name: assignment
+        schema:
+          type: string
+        description: 'One assignment: id or name words.'
+      - in: path
+        name: course_id
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: group
+        schema:
+          type: string
+        description: 'One assignment group: id or name words.'
+      - in: query
+        name: others_at
+        schema:
+          type: string
+        description: Assume other ungraded work scores this percent.
+      - in: query
+        name: target
+        schema:
+          type: string
+        description: A percent (85) or a letter (B).
+        required: true
+      tags:
+      - grades
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Need'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/households/me:
     get:
       operationId: api_households_me_retrieve
@@ -11977,6 +12098,18 @@ components:
         * `light` - light
         * `moderate` - moderate
         * `very` - very
+    AnchorEnum:
+      enum:
+      - matches
+      - differs
+      - canvas_shows_no_total
+      - nothing_graded
+      type: string
+      description: |-
+        * `matches` - matches
+        * `differs` - differs
+        * `canvas_shows_no_total` - canvas_shows_no_total
+        * `nothing_graded` - nothing_graded
     AppEnum:
       enum:
       - phone
@@ -12053,6 +12186,61 @@ components:
       - size_bytes
       - url
       - version_code
+    Assignment:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: The Canvas assignment id.
+        event_id:
+          type: string
+          format: uuid
+          description: The task row in events.
+        name:
+          type: string
+        group_id:
+          type: integer
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        points_possible:
+          type: number
+          format: double
+          nullable: true
+        score:
+          type: number
+          format: double
+          nullable: true
+        grade:
+          type: string
+          nullable: true
+        graded:
+          type: boolean
+        excused:
+          type: boolean
+        missing:
+          type: boolean
+        late:
+          type: boolean
+        counts:
+          type: boolean
+          description: False when Canvas leaves it out of the grade.
+      required:
+      - counts
+      - due_at
+      - event_id
+      - excused
+      - grade
+      - graded
+      - group_id
+      - id
+      - late
+      - missing
+      - name
+      - points_possible
+      - score
     AssistantCompanion:
       type: object
       properties:
@@ -14990,6 +15178,84 @@ components:
       description: |-
         * `US` - US
         * `SG` - SG
+    CourseGrade:
+      type: object
+      properties:
+        canvas_course_id:
+          type: integer
+        course:
+          type: string
+        course_code:
+          type: string
+          nullable: true
+        canvas_current_score:
+          type: number
+          format: double
+          nullable: true
+          description: Canvas's own figure; null when Canvas shows none.
+        canvas_current_grade:
+          type: string
+          nullable: true
+        canvas_final_score:
+          type: number
+          format: double
+          nullable: true
+        canvas_final_grade:
+          type: string
+          nullable: true
+        canvas_says:
+          type: string
+          description: Canvas's totals, or that it shows none, in words.
+        current_worked_out_percent:
+          type: number
+          format: double
+          nullable: true
+          description: Worked out here from the scores on file; never Canvas's.
+        worked_out_note:
+          type: string
+          nullable: true
+        apply_weights:
+          type: boolean
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/Group'
+        grading_scheme:
+          type: object
+          additionalProperties: {}
+          nullable: true
+        read_at:
+          type: string
+          format: date-time
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assignment'
+      required:
+      - apply_weights
+      - assignments
+      - canvas_course_id
+      - canvas_current_grade
+      - canvas_current_score
+      - canvas_final_grade
+      - canvas_final_score
+      - canvas_says
+      - course
+      - course_code
+      - current_worked_out_percent
+      - grading_scheme
+      - groups
+      - read_at
+      - worked_out_note
+    CourseGradeList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseGrade'
+      required:
+      - results
     CredentialKindEnum:
       enum:
       - cookie_jar
@@ -15835,6 +16101,26 @@ components:
       - origin_guid
       - provenance
       - updated_at
+    Group:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        weight:
+          type: number
+          format: double
+          nullable: true
+        rules:
+          type: object
+          additionalProperties: {}
+          description: drop_lowest, drop_highest, never_drop as Canvas set.
+      required:
+      - id
+      - name
+      - rules
+      - weight
     Health:
       type: object
       description: |-
@@ -17465,6 +17751,113 @@ components:
       - live
       - schema_generator
       - text
+    Need:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/NeedStatusEnum'
+        course:
+          type: string
+        canvas_course_id:
+          type: integer
+        target_percent:
+          type: number
+          format: double
+        target_letter:
+          type: string
+          nullable: true
+        scale:
+          type: string
+          nullable: true
+          description: How a letter became a percent.
+        remaining:
+          type: string
+        remaining_assignment_ids:
+          type: array
+          items:
+            type: integer
+        remaining_points:
+          type: number
+          format: double
+        needed_percent:
+          type: number
+          format: double
+          nullable: true
+          description: Rounded up.
+        needed_points:
+          type: number
+          format: double
+          nullable: true
+          description: Rounded up.
+        best_reachable_percent:
+          type: number
+          format: double
+          nullable: true
+          description: Rounded down.
+        worst_reachable_percent:
+          type: number
+          format: double
+          nullable: true
+          description: Rounded down.
+        current_worked_out_percent:
+          type: number
+          format: double
+          nullable: true
+        canvas_current_score:
+          type: number
+          format: double
+          nullable: true
+        anchor:
+          $ref: '#/components/schemas/AnchorEnum'
+        estimate:
+          type: boolean
+        estimate_reasons:
+          type: array
+          items:
+            type: string
+        assumptions:
+          type: array
+          items:
+            type: string
+        words:
+          type: string
+        read_at:
+          type: string
+          format: date-time
+      required:
+      - anchor
+      - assumptions
+      - best_reachable_percent
+      - canvas_course_id
+      - canvas_current_score
+      - course
+      - current_worked_out_percent
+      - estimate
+      - estimate_reasons
+      - needed_percent
+      - needed_points
+      - read_at
+      - remaining
+      - remaining_assignment_ids
+      - remaining_points
+      - scale
+      - status
+      - target_letter
+      - target_percent
+      - words
+      - worst_reachable_percent
+    NeedStatusEnum:
+      enum:
+      - needed
+      - guaranteed
+      - impossible
+      - nothing_left
+      type: string
+      description: |-
+        * `needed` - needed
+        * `guaranteed` - guaranteed
+        * `impossible` - impossible
+        * `nothing_left` - nothing_left
     NetWorth:
       type: object
       properties:
@@ -22922,6 +23315,7 @@ components:
       - grade_posted
       - service_due
       - mail_reply
+      - budget_pace
       type: string
       description: |-
         * `charge_over` - charge_over
@@ -22931,6 +23325,7 @@ components:
         * `grade_posted` - grade_posted
         * `service_due` - service_due
         * `mail_reply` - mail_reply
+        * `budget_pace` - budget_pace
     WatchList:
       type: object
       properties:

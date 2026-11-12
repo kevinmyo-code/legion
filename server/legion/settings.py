@@ -199,6 +199,10 @@ INSTALLED_APPS = [
     # open-loops map (ADR 0085): proposed to-dos from the member's own words, private to him
     # (`public.open_loops`, `open_loop_runs`, `open_loop_settings`).
     "open_loops",
+    # Kevin, 2026-11-12 ("Canvas grades + what-I-need"): each course's totals as Canvas stated
+    # them, private to the member whose Canvas login was read (`public.canvas_course_grades`),
+    # and the what-I-need calculator over them.
+    "grades",
     # Architecture review 2026-11-10, item 15: the engine's model-call helper (retry and
     # backoff), the model config route, and `llm_usage`, per-member token accounting.
     "llm",

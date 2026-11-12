@@ -1732,6 +1732,24 @@ def test_every_mcp_tool_is_scoped_by_household(
     b_places = {row["label"]: row for row in token_b.get("/api/places/").data["results"]}
     assert b_places["alpha-place"]["latitude"] == 9.0
 
+    # Canvas grades (2026-11-12): A's member holds a course; B sees none of it, by route or tool.
+    from grades.models import CourseGrade
+
+    alpha_course = CourseGrade.objects.create(
+        household=household_user.household, owner_user=household_user, canvas_course_id=9101,
+        course_label="ALPHA 1001 alpha course", current_score=91, current_grade="A-",
+        read_at=timezone.now(),
+    )
+    a_marks = (*a_marks, "alpha course", "9101")
+    assert "real empty result" in b_reads("canvas_grades", {})
+    assert "No Canvas grades are on file for you" in b_reads("canvas_grades", {"course": "9101"})
+    covered.add("what_i_need")
+    is_error, text, _ = call(mcp_b, "what_i_need", {"course": "alpha", "target": "B"})
+    assert is_error and text.startswith("Nothing was") and "alpha" not in text.lower(), text
+    assert token_b.get("/api/grades/").data == {"results": []}
+    assert token_b.get(f"/api/grades/{alpha_course.canvas_course_id}").status_code == 404
+    assert "alpha course" in call(mcp_a, "canvas_grades", {})[1]
+
     assert covered == set(TOOLS_BY_NAME), sorted(set(TOOLS_BY_NAME) - covered)
 
     # The audit trail is tenanted like every other table.

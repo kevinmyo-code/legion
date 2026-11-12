@@ -166,8 +166,11 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
     }
     # check_conditions (round 5): agency feeds at the owner's places, outside the demo's rows.
     # github_status (round 5): the owner's repos through the owner's token.
+    # canvas_grades and what_i_need (2026-11-12): one member's own coursework.
+    grades = {"canvas_grades", "what_i_need"}
     assert set(RECRUITER_EXCLUDED) == {
-        "list_tables", "brief_latest", "check_conditions", "github_status", *memory, *body
+        "list_tables", "brief_latest", "check_conditions", "github_status", *memory, *body,
+        *grades,
     }
     assert surface.BODY_COACH_TOOLS == body
     assert (

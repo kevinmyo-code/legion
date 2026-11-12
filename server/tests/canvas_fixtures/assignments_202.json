@@ -1,6 +1,7 @@
 [
   {
     "id": 6001,
+    "assignment_group_id": 21,
     "course_id": 202,
     "name": "Sprint 1 Report",
     "description": "<p>Submit as a PDF.</p>",
@@ -27,6 +28,7 @@
   },
   {
     "id": 6002,
+    "assignment_group_id": 21,
     "course_id": 202,
     "name": "Module 2: Discussion - User Authentication",
     "description": "<p>Describe one way a web app authenticates its users. Reply to two classmates.</p>",

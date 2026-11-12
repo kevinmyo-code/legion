@@ -121,6 +121,7 @@ _CLAUDE = "the Claude session runs on a household member's own laptop"
 _VAULT = "the ID vault holds a member's own identity numbers and opens only on their phone"
 _WATCHES = "standing watches make Alfred speak to a member later; not part of the demo"
 _OPEN_LOOPS = "proposed to-dos come from a member's own words to Alfred; not part of the demo"
+_GRADES = "Canvas grades are one member's own coursework; not part of the demo"
 
 RECRUITER_DENIED: dict[str, str] = {
     # architecture review 2026-11-10, item 15: model ids are for the household's own clients;
@@ -203,6 +204,10 @@ RECRUITER_DENIED: dict[str, str] = {
     "open_loops.views.OpenLoopTrackView": _OPEN_LOOPS,
     "open_loops.views.OpenLoopDismissView": _OPEN_LOOPS,
     "open_loops.views.OpenLoopSettingsView": _OPEN_LOOPS,
+    # Kevin, 2026-11-12. `grades.service.refusal` refuses a recruiter a second time.
+    "grades.views.GradeListView": _GRADES,
+    "grades.views.GradeDetailView": _GRADES,
+    "grades.views.WhatINeedView": _GRADES,
     # ingestion: uploads, feed logins, the bank link, the files ledger
     "api.ingest_files.IngestedFileViewSet": (
         "the document-ingestion ledger is not part of the demo"

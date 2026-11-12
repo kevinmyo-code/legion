@@ -1,0 +1,27 @@
+{
+  "id": 7,
+  "title": "COSC scale",
+  "context_type": "Course",
+  "grading_scheme": [
+    {
+      "name": "A",
+      "value": 0.93
+    },
+    {
+      "name": "B",
+      "value": 0.83
+    },
+    {
+      "name": "C",
+      "value": 0.73
+    },
+    {
+      "name": "D",
+      "value": 0.63
+    },
+    {
+      "name": "F",
+      "value": 0.0
+    }
+  ]
+}

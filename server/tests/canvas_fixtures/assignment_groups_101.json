@@ -1,0 +1,32 @@
+[
+  {
+    "id": 11,
+    "name": "Quizzes",
+    "position": 1,
+    "group_weight": 30.0,
+    "rules": {}
+  },
+  {
+    "id": 12,
+    "name": "Homework",
+    "position": 2,
+    "group_weight": 30.0,
+    "rules": {
+      "drop_lowest": 1
+    }
+  },
+  {
+    "id": 13,
+    "name": "Discussions",
+    "position": 3,
+    "group_weight": 20.0,
+    "rules": {}
+  },
+  {
+    "id": 14,
+    "name": "Final Exam",
+    "position": 4,
+    "group_weight": 20.0,
+    "rules": {}
+  }
+]

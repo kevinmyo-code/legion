@@ -1,6 +1,7 @@
 [
   {
     "id": 5004,
+    "assignment_group_id": 12,
     "course_id": 101,
     "name": "Assignment (on Webassign)",
     "description": null,
@@ -25,6 +26,7 @@
   },
   {
     "id": 5005,
+    "assignment_group_id": 13,
     "course_id": 101,
     "name": "Module 4: Discussion - Confidence",
     "description": "<p>Make your first post on Wednesday or Thursday, and reply to two peers.</p>",

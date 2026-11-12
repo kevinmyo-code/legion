@@ -5,13 +5,27 @@
     "course_code": "2026FA-MATH3391-20937",
     "workflow_state": "available",
     "time_zone": "America/Chicago",
-    "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
+    "apply_assignment_group_weights": true,
+    "enrollments": [
+      {
+        "type": "student",
+        "role": "StudentEnrollment",
+        "enrollment_state": "active",
+        "computed_current_score": 90.0,
+        "computed_current_grade": "A-",
+        "computed_final_score": 27.0,
+        "computed_final_grade": "F"
+      }
+    ]
   },
   {
     "id": 202,
     "name": "2026FA COSC3318 21007 MAIN - Python Programming",
     "course_code": "2026FA-COSC3318-21007",
     "workflow_state": "available",
+    "apply_assignment_group_weights": false,
+    "hide_final_grades": true,
+    "grading_standard_id": 7,
     "enrollments": [{"type": "student", "role": "StudentEnrollment", "enrollment_state": "active"}]
   },
   {

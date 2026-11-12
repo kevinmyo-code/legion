@@ -1,6 +1,7 @@
 [
   {
     "id": 5001,
+    "assignment_group_id": 11,
     "course_id": 101,
     "name": "Module 2: Quiz",
     "description": "<p>Covers sections 2.1-2.4.</p>",
@@ -25,6 +26,7 @@
   },
   {
     "id": 5002,
+    "assignment_group_id": 12,
     "course_id": 101,
     "name": "Module 3: Problem Set",
     "description": "<p>Problems 3.1 through 3.12.</p>",
@@ -49,6 +51,7 @@
   },
   {
     "id": 5003,
+    "assignment_group_id": 13,
     "course_id": 101,
     "name": "Module 3: Discussion - Sampling Bias",
     "description": "<p>Read the case study.</p><p><strong>Initial post due Wednesday</strong> by 11:59 PM. Then reply to two classmates by Friday.</p>",

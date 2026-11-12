@@ -3,8 +3,8 @@ map: daily-loops
 ticket: "02"
 title: "Canvas grades and what-I-need (engine)"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-12: grades app (canvas_course_grades, private), poll reads totals, groups and schemes, calculator, /api/grades/, engine tools canvas_grades and what_i_need; 542 server tests green. Owed: engine deploy with grades 0001, one real poll checked against Canvas's Grades page, and a ruling on the default letter scale"
 blocked-by: []
 tags: [ticket]
 ---

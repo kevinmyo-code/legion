@@ -1,8 +1,9 @@
 """backend-etl ticket 04: `canvas_poll`, over recorded Canvas JSON.
 
 The fixtures in `tests/canvas_fixtures/` are hand-written in the shape
-Canvas's REST API returns (courses with `enrollment_state=active`,
-assignments with `include[]=submission`), including the `while(1);` prefix
+Canvas's REST API returns (courses with `enrollment_state=active` and
+`include[]=total_scores`, assignments with `include[]=submission`, assignment
+groups, a grading standard), including the `while(1);` prefix
 Canvas puts on session-authenticated JSON and a `Link: rel="next"` page.
 
 Owed and not provable here: the live run against Kevin's Canvas, diffed
@@ -31,7 +32,17 @@ from legacy.models.dates import Event
 
 FIXTURES = Path(__file__).resolve().parent / "canvas_fixtures"
 BASE = "https://canvas.example.edu"
-COURSES_URL = f"{BASE}/api/v1/courses?enrollment_state=active&per_page=100"
+COURSES_URL = (
+    f"{BASE}/api/v1/courses?enrollment_state=active&include%5B%5D=total_scores&per_page=100"
+)
+
+
+def groups_url(course_id: int) -> str:
+    return f"{BASE}/api/v1/courses/{course_id}/assignment_groups?per_page=100"
+
+
+def standard_url(course_id: int, standard_id: int) -> str:
+    return f"{BASE}/api/v1/courses/{course_id}/grading_standards/{standard_id}"
 
 
 def assignments_url(course_id: int, page: int | None = None) -> str:
@@ -69,6 +80,12 @@ class FakeCanvas:
             101: [load("assignments_101_page1.json"), load("assignments_101_page2.json")],
             202: [load("assignments_202.json")],
         }
+        # Course grades (2026-11-12): each course's assignment groups and its grading scheme.
+        self.groups = {
+            101: load("assignment_groups_101.json"),
+            202: load("assignment_groups_202.json"),
+        }
+        self.standards = {(202, 7): load("grading_standard_202_7.json")}
         self.queued: dict[str, list[Response]] = {}
         self.calls: list[tuple[str, dict]] = []
 
@@ -102,7 +119,13 @@ class FakeCanvas:
                             f'<{assignments_url(course_id)}>; rel="first"'
                         )
                     return Response(200, headers_out, json.dumps(page).encode())
-        if "/courses/" in url and "/assignments" in url:
+        for course_id, groups in self.groups.items():
+            if url == groups_url(course_id):
+                return Response(200, {}, json.dumps(groups).encode())
+        for (course_id, standard_id), standard in self.standards.items():
+            if url == standard_url(course_id, standard_id):
+                return Response(200, {}, json.dumps(standard).encode())
+        if "/courses/" in url and ("/assignments" in url or "/assignment_groups" in url):
             return Response(200, {}, b"[]")
         return Response(404, {}, b'{"errors":[{"message":"not found"}]}')
 

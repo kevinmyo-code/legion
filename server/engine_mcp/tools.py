@@ -2060,6 +2060,60 @@ def _budgets(request, args) -> ToolResult:
     return ok(" ".join(parts), structured=body)
 
 
+def _canvas_grades(request, args) -> ToolResult:
+    """The member's own Canvas grades (`grades/service.py`): Canvas's totals as stated, and with a
+    course named, each assignment's score and the group weights."""
+    from grades import service
+
+    reason = service.refusal(request)
+    if reason:
+        return refused(reason)
+    course = args.get("course")
+    if course:
+        try:
+            row = service.find_course(request, course)
+        except service.NotFound as exc:
+            return refused(exc.message) if exc.message.startswith("Nothing") else ok(exc.message)
+        body = service.course_dict(request, row)
+        return ok(service.grades_words([body], detail=True), structured={"results": [body]})
+    rows = list(service.my_courses(request))
+    if not rows:
+        return ok(
+            "No Canvas grades are on file for you. That is a real empty result, not a failure to "
+            "read: the Canvas read stores them on its next run once your Canvas login is "
+            "connected from your own account.",
+            structured={"results": []},
+        )
+    bodies = [service.course_dict(request, row, with_assignments=False) for row in rows]
+    return ok(service.grades_words(bodies, detail=False), structured={"results": bodies})
+
+
+def _what_i_need(request, args) -> ToolResult:
+    """`grades.calculator.what_i_need` over the member's own course: worked out here, never
+    Canvas's figure, and an ESTIMATE in words when a drop rule or a mismatch makes it one."""
+    from grades import service
+    from grades.calculator import Refusal
+
+    reason = service.refusal(request)
+    if reason:
+        return refused(reason)
+    try:
+        body = service.need(
+            request,
+            args.get("course"),
+            args["target"],
+            assignment=args.get("assignment"),
+            group=args.get("group"),
+            others_at=args.get("others_at"),
+        )
+    except service.NotFound as exc:
+        return refused(exc.message if exc.message.startswith("Nothing") else
+                       f"Nothing was worked out. {exc.message}")
+    except Refusal as exc:
+        return refused(exc.message)
+    return ok(body["words"], structured=body)
+
+
 def _local_day_window(request) -> dict:
     """The household's local today as a date and as the instants it starts and ends, plus the
     UTC offset now (never a zone id: CLAUDE.md section 1)."""
@@ -2797,6 +2851,46 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"vehicle": {"type": "string"}, "date": {"type": "string"}}),
         handler=_next_service,
+    ),
+    EngineTool(
+        name="canvas_grades",
+        title="Canvas grades",
+        description=(
+            "The signed-in member's own Canvas course grades as Canvas states them (current and "
+            "final score and letter), from the last Canvas read. With `course` (words from its "
+            "name or code, or its Canvas id) it also gives each assignment's score and the "
+            "assignment-group weights. The totals are Canvas's own figures: repeat them as "
+            "Canvas's. A course where Canvas shows no total says so; never fill one in. An empty "
+            "result is a real empty result."
+        ),
+        input_schema=_object({"course": {"type": "string", "minLength": 1}}),
+        handler=_canvas_grades,
+    ),
+    EngineTool(
+        name="what_i_need",
+        title="What do I need for a grade",
+        description=(
+            "What the signed-in member needs on the remaining ungraded work in a Canvas course "
+            "(or on one `assignment`, e.g. the final, or one assignment `group`) to finish at a "
+            "`target`: a percent (85) or a letter (B). Worked out by the engine from Canvas's "
+            "scores and assignment-group weights, so it is never a figure Canvas stated. Says "
+            "when the target is already guaranteed, or out of reach and the best reachable. A "
+            "letter uses the course's own grading scheme when on file, else a default scale it "
+            "names. When a group drops its lowest or highest score, or the worked-out total "
+            "disagrees with Canvas's, the answer is an ESTIMATE: say so. Optional `others_at`: "
+            "assume other ungraded work scores that percent."
+        ),
+        input_schema=_object(
+            {
+                "course": {"type": "string", "minLength": 1},
+                "target": {"type": ["string", "number"]},
+                "assignment": {"type": "string", "minLength": 1},
+                "group": {"type": "string", "minLength": 1},
+                "others_at": {"type": "number", "minimum": 0, "maximum": 200},
+            },
+            ("target",),
+        ),
+        handler=_what_i_need,
     ),
     EngineTool(
         name="account_balances",

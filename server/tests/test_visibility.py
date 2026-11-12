@@ -779,3 +779,41 @@ def test_a_proposed_to_do_is_private_to_its_member(household_a, kevin, kevin_cli
     assert mia_client.post(f"/api/open-loops/{row.id}/dismiss").status_code == 404
     row.refresh_from_db()
     assert row.status == "pending"
+
+
+# =============================================================================
+# Canvas grades (Kevin, 2026-11-12): private to the member whose Canvas login was read
+# =============================================================================
+
+
+def test_canvas_grades_are_private_to_their_member(household_a, kevin, kevin_client, mia_client):
+    """`canvas_course_grades.owner_user` is never null (`OWNER_PATHS`): `visible()` hands a member
+    only his own courses, so the other member lists none, and the course and its what-I-need are
+    a 404 for them, the shape of another household's row. A made-up course."""
+    from django.utils import timezone
+
+    from grades.models import CourseGrade
+
+    CourseGrade.objects.create(
+        household=household_a, owner_user=kevin, canvas_course_id=4242,
+        course_label="SECRET 1001 Private Course", current_score=88, current_grade="B+",
+        read_at=timezone.now(),
+    )
+    mine = kevin_client.get("/api/grades/").data["results"]
+    assert [c["canvas_course_id"] for c in mine] == [4242]
+    assert mia_client.get("/api/grades/").data == {"results": []}
+    assert mia_client.get("/api/grades/4242").status_code == 404
+    assert mia_client.get("/api/grades/4242/what-i-need?target=B").status_code == 404
+    assert kevin_client.get("/api/grades/4242").status_code == 200
+
+
+def test_the_database_refuses_a_canvas_grade_owned_by_a_non_member(household_a, user_b):
+    from django.utils import timezone
+
+    from grades.models import CourseGrade
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        CourseGrade.objects.create(
+            household=household_a, owner_user=user_b, canvas_course_id=1, course_label="x",
+            read_at=timezone.now(),
+        )

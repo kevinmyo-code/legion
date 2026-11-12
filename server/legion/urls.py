@@ -96,6 +96,8 @@ urlpatterns = [
     path("api/watches/", include("watches.urls")),
     # open-loops map (ADR 0085): proposed to-dos, answered by the member only.
     path("api/open-loops/", include("open_loops.urls")),
+    # Kevin, 2026-11-12: the member's Canvas grades and what they need, read only.
+    path("api/grades/", include("grades.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.
