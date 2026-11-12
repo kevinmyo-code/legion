@@ -34,6 +34,7 @@ from household.tenancy import scoped, visible
 from household.timezones import zone_named
 from watches.models import (
     KIND_BALANCE_UNDER,
+    KIND_BUDGET_PACE,
     KIND_CANVAS_DUE,
     KIND_CHARGE_OVER,
     KIND_DEPOSIT_OVER,
@@ -51,7 +52,9 @@ SERVICE_OVERDUE_DAYS = 30
 FIRING_KEEP = dt.timedelta(days=60)
 # Kinds whose facts are bounded in time by the evaluator itself (money rows within LOOKBACK, a due
 # time in the future, a balance as-of time), so a pruned firing can never fire again.
-PRUNABLE_KINDS = (KIND_CHARGE_OVER, KIND_DEPOSIT_OVER, KIND_BALANCE_UNDER, KIND_CANVAS_DUE)
+PRUNABLE_KINDS = (
+    KIND_CHARGE_OVER, KIND_DEPOSIT_OVER, KIND_BALANCE_UNDER, KIND_CANVAS_DUE, KIND_BUDGET_PACE
+)
 CREDIT_TYPES = frozenset({"credit", "loan"})
 DEPOSIT_TYPES = frozenset({"depository"})
 
@@ -390,6 +393,71 @@ def service_due(viewer, watch, now) -> list[Fact]:
     return out
 
 
+def _pace_line(
+    line: dict, over_percent: int, elapsed: int, days: int, month_name: str
+) -> str | None:
+    """The sentence for one category, or None when it is on pace. Integer cents throughout."""
+    spent, cap, projection = line["spent_cents"], line["cap_cents"], line["projection_cents"]
+    if not cap:
+        return None
+    unverified = " That figure includes rows not yet verified." if line.get("unverified") else ""
+    head = (
+        f"{line['category']}: {money(spent)} spent of a {money(cap)} budget "
+        f"by day {elapsed} of {days}."
+    )
+    if spent >= cap:
+        return f"{head} It is already over.{unverified}"
+    if projection is None or projection * 100 < cap * (100 + over_percent):
+        return None
+    return (
+        f"{head} At this pace it reaches about {money(projection)} by the end of {month_name}, "
+        f"an estimate.{unverified}"
+    )
+
+
+def budget_pace(viewer, watch, now) -> list[Fact]:
+    from api.spend import Month
+    from finance.budgets import budgets
+
+    household = watch.household
+    zone = zone_of(household)
+    today = now.astimezone(zone).date()
+    month = Month.of(today)
+    body = budgets(viewer, household, month, today)
+    wanted = (watch.params.get("category") or "").lower()
+    over = watch.params.get("over_percent", 10)
+    month_name = today.strftime("%B")
+    month_end = dt.datetime.combine(
+        month.last + dt.timedelta(days=1), dt.time.min, tzinfo=zone
+    )
+    out = []
+    for line in body["categories"]:
+        if wanted and wanted not in line["category"].lower():
+            continue
+        words = _pace_line(line, over, body["days_elapsed"], body["days_in_month"], month_name)
+        if words is None:
+            continue
+        out.append(
+            Fact(
+                # Once per category per month, whatever the figures do after.
+                key=f"pace:{month}:{line['category']}",
+                facts=words,
+                sources=[
+                    {"table": "budget_targets", "category": line["category"], "month": str(month)}
+                ],
+                detail={
+                    "category": line["category"],
+                    "spent_cents": line["spent_cents"],
+                    "cap_cents": line["cap_cents"],
+                    "projection_cents": line["projection_cents"],
+                    "projection_is_estimate": True,
+                },
+                expires_at=month_end,
+            )
+        )
+    return out
+
+
 EVALUATORS = {
     KIND_CHARGE_OVER: charge_over,
     KIND_DEPOSIT_OVER: deposit_over,
@@ -397,6 +465,7 @@ EVALUATORS = {
     KIND_CANVAS_DUE: canvas_due,
     KIND_GRADE_POSTED: grade_posted,
     KIND_SERVICE_DUE: service_due,
+    KIND_BUDGET_PACE: budget_pace,
 }
 
 

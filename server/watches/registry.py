@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from brief.compose import money
 from watches.models import (
     KIND_BALANCE_UNDER,
+    KIND_BUDGET_PACE,
     KIND_CANVAS_DUE,
     KIND_CHARGE_OVER,
     KIND_DEPOSIT_OVER,
@@ -183,6 +184,19 @@ REGISTRY: dict[str, Kind] = {
             ),
             "Gmail allowed on the phone",
             PHONE,
+        ),
+        Kind(
+            KIND_BUDGET_PACE,
+            "A budget on pace to go over",
+            "a budget category whose month-end estimate runs over its cap by some percent, or "
+            "is already over; once per category per month",
+            (
+                Param("category", str, words="part of the category name"),
+                Param("over_percent", int, default=10, minimum=0, maximum=100,
+                      words="how far over the cap the estimate must run, in percent"),
+            ),
+            ("budget", "pace", "overspend", "over budget", "spending too", "on track"),
+            "budget caps set",
         ),
     )
 }
@@ -339,6 +353,9 @@ def label_for(kind: str, params: dict) -> str:
         names = params.get("companies") or []
         more = f" and {len(names) - 3} more" if len(names) > 3 else ""
         text = f"A reply from {', '.join(names[:3])}{more}"
+    elif kind == KIND_BUDGET_PACE:
+        which = params["category"] if params.get("category") else "A budget"
+        text = f"{which} on pace to go over by {params.get('over_percent', 10)}% or more"
     elif kind == KIND_GRADE_POSTED:
         course = f" in {params['course']}" if params.get("course") else ""
         text = f"A grade posted{course}"
@@ -378,6 +395,7 @@ BUILTINS: tuple[Builtin, ...] = (
     Builtin("big_charge", KIND_CHARGE_OVER, {"amount_cents": 50_000, "currency": "USD"}),
     Builtin("canvas_due_24h", KIND_CANVAS_DUE, {"hours": 24}),
     Builtin("service_due", KIND_SERVICE_DUE, {"days": 14, "miles": 500}),
+    Builtin("budget_pace", KIND_BUDGET_PACE, {"over_percent": 10}),
 )
 
 # How long an unsaid firing stays sayable, when its fact has no time of its own.

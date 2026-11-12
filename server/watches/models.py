@@ -40,6 +40,10 @@ KIND_SERVICE_DUE = "service_due"
 # the engine (CLAUDE.md section 7), so this kind is evaluated ON THE PHONE (`registry.PHONE`); the
 # engine stores only his own list of companies and never a firing for it.
 KIND_MAIL_REPLY = "mail_reply"
+# Kevin, 2026-11-12 (daily-loops ticket 04): "budget pace", with one alert when a category goes
+# clearly over pace for the month. Read from `finance.budgets`, the same figures the Money tab
+# shows; the end-of-month figure is an ESTIMATE and is said as one.
+KIND_BUDGET_PACE = "budget_pace"
 KINDS: tuple[str, ...] = (
     KIND_CHARGE_OVER,
     KIND_DEPOSIT_OVER,
@@ -48,6 +52,7 @@ KINDS: tuple[str, ...] = (
     KIND_GRADE_POSTED,
     KIND_SERVICE_DUE,
     KIND_MAIL_REPLY,
+    KIND_BUDGET_PACE,
 )
 
 SOURCE_VOICE = "voice"
