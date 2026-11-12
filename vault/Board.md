@@ -44,7 +44,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/conversation-records/map\|conversation-records]] | [[04-phone-user-turn-audio-clips\|04]] | build | Build: phone keeps user-turn audio clips with end-of-turn labels, capped and pullable |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[05-engine-conversation-view\|05]] | build | Build: engine page or report that renders a household's conversation batches |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[01-remove-receipt-path\|01]] | build | Remove the receipt-photo path |
-| [[.scratch/daily-loops/map\|daily-loops]] | [[02-canvas-grades-engine\|02]] | build | Canvas grades and what-I-need (engine) |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[03-canvas-grades-phone\|03]] | build | Canvas grades on the phone: screen and voice |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[05-leave-by\|05]] | build | Leave-by: notification and Alfred says it |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[06-location-reminders\|06]] | build | Location reminders |
@@ -167,6 +166,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/conversation-records/map\|conversation-records]] | [[02-headunit-audit-parity-and-upload\|02]] | build | Build: head unit conversation audit at phone parity, spooled and uploaded as conversation |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[03-phone-conversation-spool-and-upload\|03]] | build | Build: phone spools LIVE_AUDIT and LIVE_LATENCY to disk and uploads them as conversation |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[06-headunit-developer-tools\|06]] | build | Build: Developer tools on the head unit: open developer options and wireless debugging, ADB status, root enable attempt; Kevin 2026-10-28 |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[02-canvas-grades-engine\|02]] | build | Canvas grades and what-I-need (engine) |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[04-budget-pace-alert\|04]] | build | Budget pace alert (engine watch) |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
