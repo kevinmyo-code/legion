@@ -233,6 +233,30 @@ Adaptations:
 Re-fetch the upstream SKILL.md at a newer commit and diff against the vendored copy - it carries
 heavy local edits (invariants preamble, Kotlin rule 5, dropped phrases) - merge, don't overwrite.
 
+## google-gemini/gemini-skills - gemini-live-api-dev (1 skill, 2026-11-12)
+
+- Source: https://github.com/google-gemini/gemini-skills
+- Commit: `87fb0173d36fea4f87de4c3fbd0678cf929c0588`
+- Vendored: 2026-11-12 (Kevin: "yes both", after a look at GitHub trending)
+- License: Apache-2.0 (Google LLC). `LICENSE` copied beside the skill. Files are verbatim.
+- What was copied: `skills/gemini-live-api-dev/SKILL.md` and `references/migration.md`. Pure
+  markdown; nothing executable.
+
+Why this one and not `google/skills`' `gemini-live-api`: that one targets the enterprise Live API on
+Google Cloud (Agent Platform, Application Default Credentials, `ClientMessage` protos). LEGION talks
+to the consumer Gemini API (`generativelanguage.googleapis.com`) on the household's own key, which is
+what this skill covers. Following the enterprise skill would have pointed an agent at the wrong
+endpoint, auth and message shapes. LEGION is already on `gemini-3.8-live`, so its migration
+reference is for knowing what changed, not a to-do.
+
+The skill's SDK examples are Python and JS; the phone speaks the raw WebSocket protocol from Kotlin,
+so read it for protocol behaviour (VAD, NON_BLOCKING tools, `interaction_status`, session
+resumption, GoAway), not for code to paste.
+
+### To refresh
+
+Re-clone the repo, diff `skills/gemini-live-api-dev/`, copy over, update the commit above.
+
 ## Considered but not installed
 - `skydoves/compose-performance-skills` - heavy overlap with the above plus premature tooling
   (baseline profiles, R8 tuning) for this project. Revisit if deep release-mode profiling is needed.
