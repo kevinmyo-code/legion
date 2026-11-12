@@ -83,6 +83,7 @@ const val KIND_CANVAS_DUE = "canvas_due"
 const val KIND_GRADE_POSTED = "grade_posted"
 const val KIND_SERVICE_DUE = "service_due"
 const val KIND_MAIL_REPLY = "mail_reply"
+const val KIND_BUDGET_PACE = "budget_pace"
 
 const val SOURCE_VOICE = "voice"
 const val SOURCE_SCREEN = "screen"

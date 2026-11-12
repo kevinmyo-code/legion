@@ -225,8 +225,8 @@ internal object LiveSurface {
                 Action(
                     "watch_set", "watch",
                     "alert him later: kind charge_over, deposit_over, balance_under, canvas_due, " +
-                        "grade_posted, service_due or mail_reply; text the merchant, payer, account, " +
-                        "course or companies; dollars",
+                        "grade_posted, service_due, mail_reply or budget_pace; text the merchant, payer, " +
+                        "account, course, companies or budget category; dollars",
                     mapOf("action" to "set"),
                 ),
                 Action("watch_pause", "watch", "pause one (text is its id)", mapOf("action" to "pause")),

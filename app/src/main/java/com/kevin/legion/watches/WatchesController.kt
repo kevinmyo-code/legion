@@ -58,6 +58,7 @@ class WatchesController(private val backend: WatchesBackend) {
             KIND_BALANCE_UNDER -> "account"
             KIND_GRADE_POSTED -> "course"
             KIND_MAIL_REPLY -> "companies"
+            KIND_BUDGET_PACE -> "category"
             else -> null
         }
 

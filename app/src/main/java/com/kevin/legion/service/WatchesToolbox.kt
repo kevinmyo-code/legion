@@ -36,8 +36,9 @@ object WatchesToolbox {
 
     private const val DESCRIPTION =
         "Alerts the user later. set: kind charge_over, deposit_over, balance_under, " +
-            "canvas_due, grade_posted, service_due or mail_reply; text is the merchant, payer, account, " +
-            "course or companies. pause, resume, remove: text is the id from list."
+            "canvas_due, grade_posted, service_due, mail_reply or budget_pace; text is the merchant, " +
+            "payer, account, course, companies or budget category. pause, resume, remove: text is the " +
+            "id from list."
 
     fun declarations(): JSONArray = JSONArray().put(
         fn(

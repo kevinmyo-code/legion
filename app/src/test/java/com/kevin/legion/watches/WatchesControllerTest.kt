@@ -35,6 +35,9 @@ class WatchesControllerTest {
             mail["companies"],
         )
         assertTrue(WatchesController.params(KIND_CANVAS_DUE, null, "ignored")!!.isEmpty())
+        val pace = WatchesController.params(KIND_BUDGET_PACE, null, "Groceries")!!
+        assertEquals(JsonPrimitive("Groceries"), pace["category"])
+        assertTrue(WatchesController.params(KIND_BUDGET_PACE, null, null)!!.isEmpty())
     }
 
     @Test
