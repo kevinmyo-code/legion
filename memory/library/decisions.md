@@ -7955,3 +7955,24 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - Ruled: a closed set of simple commands (timers, alarms, playback, volume, dismissal, open a
   screen, clear ticked lines) is matched on the phone with no model; a miss goes to Alfred with the
   same audio. Off by default until it has run on the phone. ADR 0088.
+
+## 2026-11-12 - Receipts retired; daily loops: grades, location reminders, leave-by, budget pace (Kevin)
+
+- **Kevin's words:** *"Receipts are being retired. Im not taking photosnof receipts anymore. I'd rather
+  canvas grades, location reminders, leave by times and budget pace"*, after being shown which
+  aspects he uses daily (Canvas, calendar, todos, groceries, bank).
+- **Receipts:** asked whether to hide or remove the receipt-photo path, he picked **remove**. The
+  photo ingestion, its voice tool and its screens go; receipt rows already stored stay readable.
+  ADR 0089. The purchase-log map is NOT receipts (it is the Groceries "bought" log) and is untouched.
+- **Canvas grades:** picked *grades plus what-I-need*: current grade per course and assignment, and
+  "what do I need on the final for a B" from Canvas's assignment-group weights. A projection the
+  arithmetic cannot make exact (drop rules) is said as an estimate.
+- **Leave-by:** picked *notification plus Alfred says it*, for a calendar event that has a location.
+- **Budget pace:** picked *screen and ask, plus one off-pace alert*: a category whose month-end
+  estimate runs clearly over its cap, or is already over, is raised once per category per month.
+  Built as a standing watch (`budget_pace`, a built-in, 10% margin), so it is silenced like any
+  watch and passes the compulsion test: anchored to a cap he set, actionable, no reference to his
+  use of the app, silenceable in one instruction.
+- **Location reminders:** no new decision; place-arrivals ticket 01 (Google refuses the geofences)
+  is the blocker and is built first.
+- Map `.scratch/daily-loops/`.

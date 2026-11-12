@@ -43,6 +43,11 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[04-phone-user-turn-audio-clips\|04]] | build | Build: phone keeps user-turn audio clips with end-of-turn labels, capped and pullable |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[05-engine-conversation-view\|05]] | build | Build: engine page or report that renders a household's conversation batches |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[01-remove-receipt-path\|01]] | build | Remove the receipt-photo path |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[02-canvas-grades-engine\|02]] | build | Canvas grades and what-I-need (engine) |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[03-canvas-grades-phone\|03]] | build | Canvas grades on the phone: screen and voice |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[05-leave-by\|05]] | build | Leave-by: notification and Alfred says it |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[06-location-reminders\|06]] | build | Location reminders |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
 | [[.scratch/django-engine/map\|django-engine]] | [[12-pytest-leaves-a-connection-behind\|12]] | build | Every pytest run leaves a connection on test_postgres and breaks the next one |
 | [[.scratch/django-engine/map\|django-engine]] | [[14-rules-that-live-only-on-the-phone\|14]] | build | Three rules live only on the phone, and a second app would not have them |
@@ -162,6 +167,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/conversation-records/map\|conversation-records]] | [[02-headunit-audit-parity-and-upload\|02]] | build | Build: head unit conversation audit at phone parity, spooled and uploaded as conversation |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[03-phone-conversation-spool-and-upload\|03]] | build | Build: phone spools LIVE_AUDIT and LIVE_LATENCY to disk and uploads them as conversation |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[06-headunit-developer-tools\|06]] | build | Build: Developer tools on the head unit: open developer options and wireless debugging, ADB status, root enable attempt; Kevin 2026-10-28 |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[04-budget-pace-alert\|04]] | build | Budget pace alert (engine watch) |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | [[01-mode-home-leave\|01]] | build | Build: mode state, Home A, Leave flow, tile, settings row |
@@ -477,6 +483,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/conversation-records/map\|conversation-records]] | 6 | 5 | [[.scratch/conversation-records/conversation-records.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
+| [[.scratch/daily-loops/map\|daily-loops]] | 6 | 6 | [[.scratch/daily-loops/daily-loops.canvas\|open]] |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 2 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
 | [[.scratch/django-engine/map\|django-engine]] | 16 | 11 | [[.scratch/django-engine/django-engine.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |

@@ -230,7 +230,8 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    the earliest date Plaid returns per account they replace the CSV- and statement-derived rows;
    the BofA files are no longer read (`statements.py` skips a `bofa_*` file or any file a BofA parser recognises, and never sends it to Gemini). **This is the only exception, and it is narrow: rules 1
    through 8 still bind every other ingestion path** - pantry receipts, DBS statements, and
-   anything new. **Money stays `Long` cents** (Plaid's float goes through `Decimal(str(x))`, never
+   anything new. **Receipt photos are retired (Kevin, 2026-11-12, ADR 0089):** nothing ingests one
+   any more; stored receipt rows stay readable with their labels. **Money stays `Long` cents** (Plaid's float goes through `Decimal(str(x))`, never
    float arithmetic). ADR 0057; reopens locked ADR 0006 for this one source.
 2. **Extracted rows must reconcile against the document's OWN stated total**, exactly. Sum of
    line items equals the printed total, or the whole document **quarantines**. Nothing partial is

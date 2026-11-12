@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>418 tickets open</h1>
+<h1>424 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 60 maps. <b>13 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 99 are waiting on another ticket first. <b>238 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 61 maps. <b>13 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 104 are waiting on another ticket first. <b>239 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">418</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">424</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">67</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">238</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">99</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">239</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">104</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">13</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">153</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">158</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">14</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -688,6 +688,22 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">Build: a livelier register for Alfred (quick, dry, quietly amused)</span><span class="det">Built 2026-10-28 on feat/async-read-tools, then re-registered the same day on Kevin&#x27;s second ruling: crew chief plus old friend, no butler, no sir or Mr, no accent in the prompt, voice Puck. AlfredRegisterTest pins it. Owed: a phone run read through tools/voice_audit.py.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">07</span><span class="body"><span class="tt">Build: ticket 04 run 3 follow-ups (still-checking nudge, dead holding lines, sign-off, writes, figures, meal dates)</span><span class="det">Built 2026-10-28 on feat/async-read-tools, 10 commits. Still-checking nudge at 4 s and 12 s (Kevin); dead-holding-line nudges and a 20 s answer hold on the follow-up window; sign-off, write-on-request and time-varying-figure prompt rules; meal dates; voice_audit.py fixes. 5,489 tests, 0 failures; detekt the 4 pre-existing; assembleFast builds. Owed: a phone run read through voice_audit.py --summary (nudges and what followed them).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">08</span><span class="body"><span class="tt">Build: runs 5 and 6 follow-ups (echo floor learns the user, empty holding line nudge wording, clipped onset after a reply)</span><span class="det">Built 2026-10-29 on fix/async-lookups-08: the echo floor skips speech windows for 1 s after the user was last heard and seeds each reply from the last learned floor; both holding-line notes say act in this turn, never apologise or wait; a normal start sends 544 ms of pre-roll and every start logs a pre_roll_ms line. Owed on the phone: one ordinary conversation, reading reply_end echo_floor after a barge-in, the nudge reply after an empty holding line, and pre_roll_lead_ms on starts right after a drain.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>daily-loops</h2>
+<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="k amber">5</span> blocked<span class="sep">&middot;</span><span class="dim">of 6 tickets</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:5"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">Budget pace alert (engine watch)</span><span class="det">built 2026-11-12: watches kind budget_pace (built-in, 10% margin), watches 0002; tests/test_watches_budget_pace.py green. Owed: engine deploy with watches 0002, the phone&#x27;s watch-kind list in WatchesToolbox/LiveSurface, and seeing one firing arrive on the phone</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">01</span><span class="body"><span class="tt">Remove the receipt-photo path</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">Canvas grades and what-I-need (engine)</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">Canvas grades on the phone: screen and voice</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Leave-by: notification and Alfred says it</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Location reminders</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
 </ul>
 </section>
 <section class="map">

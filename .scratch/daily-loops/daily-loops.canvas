@@ -1,0 +1,65 @@
+{
+  "nodes": [
+    {
+      "id": "a7c73839420409e4",
+      "type": "file",
+      "file": ".scratch/daily-loops/issues/01-remove-receipt-path.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "7ef833573eeb7292",
+      "type": "file",
+      "file": ".scratch/daily-loops/issues/02-canvas-grades-engine.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2be418d3882d83ce",
+      "type": "file",
+      "file": ".scratch/daily-loops/issues/03-canvas-grades-phone.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f1d530f1ed714ff2",
+      "type": "file",
+      "file": ".scratch/daily-loops/issues/04-budget-pace-alert.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "25305e1f0e0e7137",
+      "type": "file",
+      "file": ".scratch/daily-loops/issues/05-leave-by.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "670efa96b3f21a41",
+      "type": "file",
+      "file": ".scratch/daily-loops/issues/06-location-reminders.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}
