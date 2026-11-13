@@ -75,7 +75,20 @@ def test_the_frame_and_the_honesty_clause_are_whole_twins():
     assert shared_clauses.KOTLIN["CANNOT_CLAUSE"] == ("CANNOT_CLAUSE", "whole")
 
 
-@pytest.mark.parametrize("persona", personas.BUILT_IN_PERSONAS, ids=lambda p: p.key)
+# Since ADR 0063 the phone has one persona (Alfred); Dorothy (Mia's companion on the web) and Kratos
+# stay on the engine only, with no twin in Personas.kt to drift from. Named here so a new persona is
+# a decision: it either gets a phone twin or joins this set.
+ENGINE_ONLY_PERSONAS = {"dorothy", "kratos"}
+PHONE_TWINNED = [p for p in personas.BUILT_IN_PERSONAS if p.key not in ENGINE_ONLY_PERSONAS]
+
+
+def test_every_persona_is_phone_twinned_or_named_engine_only():
+    keys = {p.key for p in personas.BUILT_IN_PERSONAS}
+    assert ENGINE_ONLY_PERSONAS <= keys, "an engine-only persona was removed; drop it from the set"
+    assert [p.key for p in PHONE_TWINNED] == ["alfred"]
+
+
+@pytest.mark.parametrize("persona", PHONE_TWINNED, ids=lambda p: p.key)
 def test_every_persona_copy_matches_personas_kt(persona):
     obj = persona.key.upper()
     for field, kotlin_arg in (
