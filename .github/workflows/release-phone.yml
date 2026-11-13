@@ -1,0 +1,148 @@
+# Build, sign and publish a phone release from GitHub, so an update reaches the phone with no
+# laptop (Kevin, 2026-11-13: "yes to all4"). workflow_dispatch ONLY: nothing releases on a push.
+# Kevin clicks "Run workflow" (or Claude starts it), writes the notes the phone will show, and leaves
+# "dry run" ticked for a build plus every check, or unticks it to publish.
+#
+# What it does, in order:
+#   1. builds `assembleFast` with NO Gemini or AirNow key baked in. The Mapbox `pk.` token is public
+#      by design and is passed in from the MAPBOX_ACCESS_TOKEN variable so navigation keeps working.
+#      The phone uses the Gemini key pasted in Settings (GeminiKeyProvider prefers it).
+#   2. signs it with the key in PHONE_DEBUG_KEYSTORE_B64: the same debug key as the laptop's `fast`
+#      builds, or the phone refuses the update (Android only installs an update signed by the key
+#      the installed app was signed with).
+#   3. runs `tools/release_apk.py`, the same tool as the laptop: signer pin
+#      (`deploy/release/signer.sha256`), package name, no baked keys, versionCode higher than the
+#      newest release, sha256; then uploads to the APK bucket and records the release on the engine.
+#      The phone then offers "Install" on its next check (alfred-ota, ADR 0072).
+#   4. keeps the APK as a 7-day run artifact (no keys in it) for a manual sideload.
+#
+# One-time setup (environment `production`, the same one ship.yml uses; deploy/cloudrun/README.md
+# "Shipping from GitHub" and `deploy/cloudrun/github_setup.sh` do the Google side):
+#   variables: GCP_WIF_PROVIDER, GCP_SHIP_SERVICE_ACCOUNT, LEGION_ENGINE_URL, LEGION_APK_BUCKET,
+#              MAPBOX_ACCESS_TOKEN (the pk. token from the laptop's local.properties)
+#   secret PHONE_DEBUG_KEYSTORE_B64, on the laptop (PowerShell):
+#       [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.android\debug.keystore")) | Set-Clipboard
+#   secret LEGION_ENGINE_TOKEN, an owner device token named for this job, minted once from any shell
+#   (it prints the token once; paste it into the secret and nowhere else):
+#       read -rp "email: " E; read -rsp "password: " P; echo
+#       curl -sS -X POST "$URL/api/auth/login" -H 'Content-Type: application/json' \
+#         -d "{\"email\":\"$E\",\"password\":\"$P\",\"device_name\":\"GitHub release-phone\"}"
+#   Revoke it any time from the web's devices list; the next run then fails at the engine step.
+name: Release phone
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "What the phone shows in the update offer"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run: build and check everything, publish nothing"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write   # the OIDC token Workload Identity Federation exchanges
+
+concurrency:
+  group: release-phone
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production   # its protection rules (required reviewer) apply here too
+    timeout-minutes: 60
+    env:
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # local.properties is gitignored; the runner ships the Android SDK. Only sdk.dir goes in, so
+      # no Gemini or AirNow key can be baked.
+      - name: Point local.properties at the runner's SDK
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
+          echo "sdk.dir=${sdk}" > local.properties
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.PHONE_DEBUG_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEYSTORE_B64" ] || { echo "::error::Secret PHONE_DEBUG_KEYSTORE_B64 is not set. Nothing was built or published; see this file's header."; exit 1; }
+          mkdir -p "$HOME/.android"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+
+      - name: Make the Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - name: Build the fast APK
+        env:
+          MAPBOX_TOKEN: ${{ vars.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          args=(:app:assembleFast --no-daemon)
+          if [ -n "$MAPBOX_TOKEN" ]; then
+            args+=("-PMAPBOX_ACCESS_TOKEN=$MAPBOX_TOKEN")
+          else
+            echo "::warning::MAPBOX_ACCESS_TOKEN is not set: navigation will say it is not set up unless a token is pasted on the phone."
+          fi
+          ./gradlew "${args[@]}"
+          ls -l app/build/outputs/apk/fast/
+
+      - uses: google-github-actions/auth@v2
+        if: ${{ !inputs.dry_run }}
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: ${{ !inputs.dry_run }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check and publish (tools/release_apk.py)
+        env:
+          NOTES: ${{ inputs.notes }}
+          DRY: ${{ inputs.dry_run }}
+          LEGION_ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
+          LEGION_APK_BUCKET: ${{ vars.LEGION_APK_BUCKET }}
+          LEGION_ENGINE_TOKEN: ${{ secrets.LEGION_ENGINE_TOKEN }}
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/fast/app-fast.apk
+          args=(--app phone --apk "$apk" --notes "$NOTES")
+          [ "$DRY" = "true" ] && args+=(--dry-run)
+          python tools/release_apk.py "${args[@]}"
+
+      - name: Keep the APK (7 days, no keys inside)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legion-phone-fast-${{ github.run_number }}
+          path: app/build/outputs/apk/fast/*.apk
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Forget the signing key
+        if: always()
+        run: rm -f "$HOME/.android/debug.keystore"

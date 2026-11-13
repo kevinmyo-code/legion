@@ -7976,3 +7976,25 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Location reminders:** no new decision; place-arrivals ticket 01 (Google refuses the geofences)
   is the blocker and is built first.
 - Map `.scratch/daily-loops/`.
+
+## 2026-11-13 - Release and deploy from GitHub, no laptop; injection guard (Kevin)
+
+- **Kevin's words:** *"How can we get past the laptop limits... Im not home now and laptop is off"*,
+  then *"yes to all4"* to: merge the session branch into dev and main; set up engine deploys from
+  GitHub (Workload Identity Federation, done from Cloud Shell, project `legion-engine-260906`);
+  refuse write tools in a turn that read third-party text; and a GitHub release workflow for the
+  phone.
+- **Release from GitHub:** `.github/workflows/release-phone.yml` (workflow_dispatch only, environment
+  `production`, dry run by default) builds `fast` with no Gemini or AirNow key baked, signs it with
+  the debug key from the `PHONE_DEBUG_KEYSTORE_B64` secret, and runs `tools/release_apk.py`
+  unchanged. This moves the phone build off the laptop, which `ship.yml`'s header and the alfred-ota
+  map had placed there. **Accepted with open eyes:** the signing key lives in GitHub secrets; anyone
+  holding it could sign an APK the phone accepts as an update.
+- **A new key from the phone was asked about; the agent advised against it, Kevin's call is open**
+  (*"Can we sign another apk from the phone"*): Android installs an update only when it is signed by the installed app's key, so a new
+  key means uninstalling LEGION, which wipes the phone-only ID vault (ADR 0076) and settings, and
+  breaks Spotify, Drive backup and Google sign-in, whose clients are keyed to the current SHA-1
+  (`app/build.gradle.kts`, `fast` comment). The advised path: the laptop's existing key goes into
+  the secret, once, when he is home.
+- `deploy/cloudrun/github_setup.sh` does the Google side and prints what to paste into GitHub,
+  rebuilding `CLOUDRUN_ENV` from the live service's non-secret settings (the `.env` is laptop-only).
