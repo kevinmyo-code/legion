@@ -39,6 +39,7 @@ class TypesetReachabilityTest {
         LegionRoute.BOUGHT to Screen(LegionRoute.CHECKLISTS, "Bought"),
         LegionRoute.BODY to Screen("sheet:more", "Body"),
         LegionRoute.NEWS to Screen("sheet:more", "News"),
+        LegionRoute.GRADES to Screen("sheet:more", "Grades"),
         LegionRoute.ASK to Screen("sheet:more", "Reports"),
         LegionRoute.SETTINGS_VOICE_NOTES to Screen("sheet:more", "Recordings"),
         LegionRoute.SETTINGS_DUMB_MODE to Screen("sheet:more", "Dumb phone mode"),
