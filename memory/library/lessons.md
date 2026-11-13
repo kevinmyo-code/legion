@@ -1145,3 +1145,17 @@ until someone has read the relevant tool or function signatures, and the brief t
 The builder's first step on such a claim is to read the signatures, not to implement around it.
 This is CLAUDE.md sec 8's "briefs carry verification tags too", applied to a cause rather than a
 unit.
+
+## L-2026-11-13 - A targeted test run is not the suite (Grades route, TypesetReachabilityTest)
+
+**What happened.** The Grades screen (93f1e245) was verified with `--tests` limited to the packages
+it touched plus `ui.home` and `LegionRouteTest`: 180 green. The full suite, run the next time, failed
+`ui.typeset.TypesetReachabilityTest` ("No tap path and not internal: [grades]"): a cross-package
+check that every route has a tap path. Fixed in 34636779. Same session, an orchestrator brief
+asserted "Hilt + a ViewModel per screen" from CLAUDE.md section 8, which records the ruling and the
+migration order, not a finished migration; the builder found no Hilt in the build.
+
+**Rule.** A change that adds or renames a route, screen, tool or manifest entry runs the FULL
+`testDebugUnitTest` before commit; registry-style checks (reachability, screen map, voice guide,
+Live surface) live in other packages and a targeted run cannot see them. And a brief that cites a
+CLAUDE.md architecture ruling tags it `reasoned` until the build file confirms it is in place.
