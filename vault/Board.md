@@ -63,6 +63,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[05-ledger-gate-defects\|05]] | task | Three ledger gate defects found while grounding backend-erp ticket 03 |
 | [[.scratch/hardening/map\|hardening]] | [[06-kotlin-bump-and-compose-pin\|06]] | task | Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned |
 | [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
+| [[.scratch/hardening/map\|hardening]] | [[14-turn-golden-flaky-on-runner-hardware\|14]] | build | 14-turn-golden-flaky-on-runner-hardware |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/nav-quality/map\|nav-quality]] | [[01-baseline\|01]] | test | Test: a NAV_AUDIT baseline from two weeks on the A25 |
@@ -504,7 +505,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/goal-plans/map\|goal-plans]] | 9 | 8 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
-| [[.scratch/hardening/map\|hardening]] | 8 | 4 | [[.scratch/hardening/hardening.canvas\|open]] |
+| [[.scratch/hardening/map\|hardening]] | 9 | 5 | [[.scratch/hardening/hardening.canvas\|open]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | 7 | 6 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
 | [[.scratch/household-finance/map\|household-finance]] | 14 | 14 | [[.scratch/household-finance/household-finance.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
