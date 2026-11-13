@@ -655,7 +655,8 @@ private fun AgendaRow(row: AgendaRowUi, rowH: Dp, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                row.typeLabel,
+                // The leave-by line rides the type label's own line: no extra height in a fixed-height row.
+                listOfNotNull(row.typeLabel, row.leaveBy).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
                 color = accent,
                 maxLines = 1,

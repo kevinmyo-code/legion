@@ -192,6 +192,10 @@ fun ProactiveSpeechScreen(onBack: () -> Unit, onOpenWatches: () -> Unit = {}) {
                             scope.launch { ProactiveSettings.setCategory(context, category, on) }
                         },
                     )
+                    // Daily-loops ticket 05: the leave-by switch lives inside Timing, so it sits under it.
+                    if (category == ProactiveCategory.TIMING) {
+                        LeaveByRow(timingOn = proactiveOn && proactiveCategories[category] == true)
+                    }
                     // ADR 0082: the two spoken briefs live inside Digest, so their switches sit under it.
                     if (category == ProactiveCategory.DIGEST) {
                         SpokenBriefRows(digestOn = proactiveOn && proactiveCategories[category] == true)

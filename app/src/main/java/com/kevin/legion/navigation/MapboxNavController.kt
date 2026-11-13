@@ -172,6 +172,45 @@ class MapboxNavController(
     }
 
     /**
+     * The drive time to [destination] from the phone's fix with live traffic, for a leave-by time
+     * (daily-loops ticket 05). **It is not a trip and not a preview**: it draws nothing, changes
+     * neither [state] nor the billing guard, and starts no session, so a route request outside a trip
+     * (billed per request, well inside the free tier) is all it costs. It is REFUSED, in words, while
+     * a preview is up or a trip is running: the SDK instance and its one in-flight slot are the
+     * trip's, and a person already driving needs no leave-by. Nothing returned is kept (ToS 2.7.2).
+     * The duration is the SDK's own for the primary route, which Directions' `driving-traffic`
+     * profile computes with traffic as of the request; it is an estimate and callers say so.
+     */
+    // The SDK's Throwable is reported in words, never thrown to a background worker.
+    @Suppress("TooGenericExceptionCaught", "ReturnCount")
+    suspend fun driveSecondsNow(destination: NavDestination): DriveSeconds {
+        if (!tokens.state.value.isSet) return DriveSeconds.Unavailable(NavFormat.NOT_SET_UP)
+        if (tokens.state.value.rejected) return DriveSeconds.Unavailable(NavFormat.TOKEN_REFUSED)
+        if (guard.phase != NavPhase.IDLE && guard.phase != NavPhase.FAILED) {
+            return DriveSeconds.Unavailable("Navigation is busy with a route, so no drive time was asked for.")
+        }
+        val origin = fix() ?: return DriveSeconds.Unavailable("No location fix yet, so no drive time was asked for.")
+        val request = RouteRequest(origin, emptyList(), destination, emptySet())
+        val result = try {
+            awaitRoutes(ensureSdk(), request, RoutePurpose.LEAVE_BY)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Log.w(TAG, "leave-by route request threw", t)
+            return DriveSeconds.Unavailable("Mapbox could not be asked for a drive time.")
+        }
+        return when (result) {
+            is RouteRequestResult.Ready -> result.routes.firstOrNull()?.let { DriveSeconds.Ok(it.durationS) }
+                ?: DriveSeconds.Unavailable("Mapbox returned no route to ${destination.name}.")
+            is RouteRequestResult.Failed -> {
+                if (result.kind == RouteFailure.AUTH) onTokenRefused()
+                DriveSeconds.Unavailable(NavFormat.failureSentence(result.kind, result.message, destination.name))
+            }
+            RouteRequestResult.Canceled -> DriveSeconds.Unavailable("The drive-time request was cancelled.")
+        }
+    }
+
+    /**
      * `navigate(destination, via?, avoid?, preview?)` as one call: [preview], then [start] unless
      * [previewOnly]. Success without [previewOnly] means a route is set AND the session is running.
      */
@@ -918,4 +957,11 @@ class MapboxNavController(
         /** About 100 m: a requested stop comes back from Directions at the coordinates it was given. */
         const val WAYPOINT_TOLERANCE = 1e-3
     }
+}
+
+/** What [MapboxNavController.driveSecondsNow] came back with: seconds with traffic, or the reason there are none. */
+sealed interface DriveSeconds {
+    data class Ok(val seconds: Double) : DriveSeconds
+
+    data class Unavailable(val why: String) : DriveSeconds
 }

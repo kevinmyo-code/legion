@@ -51,8 +51,11 @@ enum class ResolveVerdict(val token: String) {
     CACHED("cached"),
 }
 
-/** Why a route request was made: a fresh preview, or a change to a preview or trip (a stop, an avoid). */
-enum class RoutePurpose(val token: String) { PREVIEW("preview"), CHANGE("change") }
+/**
+ * Why a route request was made: a fresh preview, a change to a preview or trip (a stop, an avoid), or a
+ * leave-by estimate (daily-loops ticket 05), which shows nothing and starts nothing.
+ */
+enum class RoutePurpose(val token: String) { PREVIEW("preview"), CHANGE("change"), LEAVE_BY("leave_by") }
 
 /** How a trip finished. Process death leaves no line at all; the report counts that trip as unknown. */
 enum class TripEnd(val token: String) { ARRIVED("arrived"), CANCELLED("cancelled"), TOKEN("token") }

@@ -3,8 +3,8 @@ map: daily-loops
 ticket: "05"
 title: "Leave-by: notification and Alfred says it"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-13: leaveby/ (3 h window, traffic drive via the Nav SDK seam, leave-by = start - drive - 10 min, recheck 5 min before), notification + proactive speech (Timing), day-view line, Settings switch; 628 tests green, detekt 290. Owed on the phone: a real event with a location, the alarms firing, notification and speech, the geocode hit. Gaps: no spoken stop instruction, not armed after reboot until the app runs, declined events not excluded (no column)"
 blocked-by: []
 tags: [ticket]
 ---

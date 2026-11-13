@@ -29,6 +29,9 @@ data class MonthRead(
     val rows: List<Event>,
     val reminders: List<ListItem>,
     val unreadable: List<String> = emptyList(),
+    /** Event id to its leave-by line (a time, or why there is none) from the last leave-by refresh;
+     * empty when none has run. Daily-loops ticket 05. */
+    val leaveBy: Map<Long, String> = emptyMap(),
 )
 
 // The three splits below filter by kind EXPLICITLY. One query returns all three kinds, so a position
@@ -75,6 +78,7 @@ internal fun deriveDay(read: MonthRead, inbox: List<InboxRowView>, day: LocalDat
             whenLabel = whenLabel(event),
             title = event.title,
             typeLabel = "Event",
+            leaveBy = read.leaveBy[event.id],
         ) to event.startsAt?.takeUnless { event.allDay }
     }
     inbox.filter { it.instantMs != null && it.instantMs >= from && it.instantMs <= to }.forEach { row ->

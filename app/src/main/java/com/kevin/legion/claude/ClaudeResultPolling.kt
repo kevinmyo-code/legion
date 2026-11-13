@@ -63,13 +63,19 @@ object ClaudeResultPolling {
         openFiles = { id -> openOrNotify(app, id) },
         filesReady = { id, text -> announce(app, id, text, "", ClaudeFileActivity.pendingIntent(app, id)) },
         // ADR 0083: standing watches ride this loop (no loop of their own). Worker-workflows
-        // ticket 06: so do scheduled runs waiting on his yes. One failing never skips the other.
+        // ticket 06: so do scheduled runs waiting on his yes. Leave-by times (daily-loops 05) ride it too.
+        // One failing never skips the others.
         alsoEachTick = {
             val scheduled = scheduledQuestions(app)
             try {
-                com.kevin.legion.watches.WatchPolling.poller(app).maybePoll()
+                try {
+                    com.kevin.legion.watches.WatchPolling.poller(app).maybePoll()
+                } finally {
+                    scheduled.maybePoll()
+                }
             } finally {
-                scheduled.maybePoll()
+                // Daily-loops ticket 05: leave-by estimates ride this loop at their own 15-minute floor.
+                com.kevin.legion.leaveby.LeaveBy.maybeRefresh(app)
             }
         },
     )

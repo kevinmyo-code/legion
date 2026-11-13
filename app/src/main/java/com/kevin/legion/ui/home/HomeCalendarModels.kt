@@ -52,6 +52,9 @@ data class AgendaRowUi(
     val typeLabel: String,
     val reminderId: Long? = null,
     val done: Boolean = false,
+    /** The event's leave-by line, or the words for why there is none (daily-loops ticket 05); null when
+     * none was worked out for it. Shown under the title in the day view's row. */
+    val leaveBy: String? = null,
 )
 
 /** What one day's read returned. [unreadable] is as in [MonthMarkers]. */

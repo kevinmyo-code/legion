@@ -49,7 +49,10 @@ enum class ProactiveCategory(
 
     /** Something is due, or you have arrived somewhere it matters. Fired reminders, place arrival,
      * an incoming call, the startup greeting. */
-    TIMING("timing", "Timing", "Reminders coming due, arrivals, calls, and the greeting when you open the app.", true),
+    TIMING(
+        "timing", "Timing",
+        "Reminders coming due, leave-by times, arrivals, calls, and the greeting when you open the app.", true,
+    ),
 
     /**
      * Rest, sleep, and keeping on track. The category this whole map came from - Kevin, 2026-08-16:

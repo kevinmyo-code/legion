@@ -80,7 +80,10 @@ class ContextHomeCalendarSource(context: Context) : HomeCalendarSource {
         // One failed query loses all three kinds, and each is said in words.
         if (rows == null) unreadable += listOf("to-dos", "suggestions")
         val reminders = readOrNull("to-dos", unreadable) { NotesController.allItems(appContext) }
-        return MonthRead(month, rows.orEmpty(), reminders.orEmpty(), unreadable.distinct())
+        return MonthRead(
+            month, rows.orEmpty(), reminders.orEmpty(), unreadable.distinct(),
+            leaveBy = com.kevin.legion.leaveby.LeaveBy.linesNow(appContext),
+        )
     }
 
     // ----------------------------------------------------------------------------- panels
