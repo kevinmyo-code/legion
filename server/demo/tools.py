@@ -66,6 +66,7 @@ ABOUT_KEVIN = EngineTool(
         "additionalProperties": False,
     },
     handler=_about_kevin,
+    writes=False,
 )
 
 
@@ -145,4 +146,5 @@ SHOW_RESUME = EngineTool(
         "additionalProperties": False,
     },
     handler=_show_resume,
+    writes=False,
 )

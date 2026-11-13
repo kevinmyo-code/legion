@@ -34,6 +34,11 @@ live in one `EngineTool` below; `/mcp`'s `tools/list` and `tools/call` read
 - **A write tool refuses a read-scoped token in words** before it runs
   (`household.permissions.write_refusal`), and so does every write tool for a
   recruiter (ADR 0068), whatever credential it carries.
+- **No write in a turn that read third-party text** (2026-11-13): after `web_search`,
+  `brief_latest` or `github_status` in the same turn, a write tool is refused in words and
+  nothing changes (`assistant.read_through.write_refusal`), so an instruction planted in an
+  issue title or a web page cannot delete a row. Reads still run. Every tool says `writes`;
+  none defaults.
 
 ## The honesty contract, in the result (ticket 06 sub-question 4)
 
@@ -2613,7 +2618,13 @@ class EngineTool:
     description: str
     input_schema: dict
     handler: Callable
-    writes: bool = False
+    # Read or write, said by every tool and defaulted for none (2026-11-13): the one place a tool
+    # is classified. `True` means it can create, change or delete a row; it drives the write
+    # scope fence, the read-through write guard (`assistant/read_through.py`), `/mcp`'s
+    # `readOnlyHint` and the procedures' "writes, asks first". No default on purpose: a tool
+    # registered without saying which it is fails at import, and
+    # `tests/test_write_guard.py` pins that this field stays required.
+    writes: bool
     destructive: bool = False
     # The table a table-taking tool may touch. Checked BEFORE the schema, so a
     # gated, memory or unknown table is refused with the reason in words (the
@@ -2676,6 +2687,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=_list_tables,
+        writes=False,
     ),
     EngineTool(
         name="read_records",
@@ -2706,6 +2718,7 @@ TOOLS: tuple[EngineTool, ...] = (
             ("table",),
         ),
         handler=_read_records,
+        writes=False,
         tables=(READABLE, "read"),
     ),
     EngineTool(
@@ -2724,6 +2737,7 @@ TOOLS: tuple[EngineTool, ...] = (
             }
         ),
         handler=_list_events,
+        writes=False,
     ),
     EngineTool(
         name="list_checklists",
@@ -2740,6 +2754,7 @@ TOOLS: tuple[EngineTool, ...] = (
             }
         ),
         handler=_list_checklists,
+        writes=False,
     ),
     EngineTool(
         name="last_ticked",
@@ -2754,6 +2769,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"item": {"type": "string", "minLength": 1}}, ("item",)),
         handler=_last_ticked,
+        writes=False,
     ),
     EngineTool(
         name="monthly_spend",
@@ -2774,6 +2790,7 @@ TOOLS: tuple[EngineTool, ...] = (
             }
         ),
         handler=_monthly_spend,
+        writes=False,
     ),
     EngineTool(
         name="safe_to_spend",
@@ -2787,6 +2804,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=_safe_to_spend,
+        writes=False,
     ),
     EngineTool(
         name="net_worth",
@@ -2800,6 +2818,7 @@ TOOLS: tuple[EngineTool, ...] = (
         input_schema=_object({"currency": {"type": "string", "enum": ["USD", "SGD", "usd",
                                                                         "sgd"]}}),
         handler=_net_worth,
+        writes=False,
     ),
     EngineTool(
         name="cash_flow",
@@ -2812,6 +2831,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"}}),
         handler=_cash_flow,
+        writes=False,
     ),
     EngineTool(
         name="runway",
@@ -2825,6 +2845,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=_runway,
+        writes=False,
     ),
     EngineTool(
         name="budgets",
@@ -2837,6 +2858,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"}}),
         handler=_budgets,
+        writes=False,
     ),
     EngineTool(
         name="next_service",
@@ -2851,6 +2873,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"vehicle": {"type": "string"}, "date": {"type": "string"}}),
         handler=_next_service,
+        writes=False,
     ),
     EngineTool(
         name="canvas_grades",
@@ -2865,6 +2888,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"course": {"type": "string", "minLength": 1}}),
         handler=_canvas_grades,
+        writes=False,
     ),
     EngineTool(
         name="what_i_need",
@@ -2891,6 +2915,7 @@ TOOLS: tuple[EngineTool, ...] = (
             ("target",),
         ),
         handler=_what_i_need,
+        writes=False,
     ),
     EngineTool(
         name="account_balances",
@@ -2910,6 +2935,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"account": {"type": "string"}}),
         handler=_account_balances,
+        writes=False,
     ),
     EngineTool(
         name="grocery_spend",
@@ -2921,6 +2947,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"from": {"type": "string"}, "to": {"type": "string"}}),
         handler=_grocery_spend,
+        writes=False,
     ),
     EngineTool(
         name="vehicle_recalls",
@@ -2934,6 +2961,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"vehicle": {"type": "string"}}),
         handler=_vehicle_recalls,
+        writes=False,
     ),
     EngineTool(
         name="brief_latest",
@@ -2947,6 +2975,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=_brief_latest,
+        writes=False,
     ),
     EngineTool(
         name="write_record",
@@ -3199,6 +3228,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"item": {"type": "string", "minLength": 1}}, ("item",)),
         handler=_last_bought,
+        writes=False,
     ),
     EngineTool(
         name="list_purchases",
@@ -3222,6 +3252,7 @@ TOOLS: tuple[EngineTool, ...] = (
             }
         ),
         handler=_list_purchases,
+        writes=False,
     ),
     EngineTool(
         name="delete_purchase",
@@ -3259,6 +3290,7 @@ TOOLS: tuple[EngineTool, ...] = (
             ("query",),
         ),
         handler=_legion_docs,
+        writes=False,
     ),
     EngineTool(
         name="show_diagram",
@@ -3292,6 +3324,7 @@ TOOLS: tuple[EngineTool, ...] = (
             ("project", "view"),
         ),
         handler=_show_diagram,
+        writes=False,
     ),
     EngineTool(
         name="web_search",
@@ -3311,6 +3344,7 @@ TOOLS: tuple[EngineTool, ...] = (
             {"query": {"type": "string", "minLength": 1, "maxLength": 300}}, ("query",)
         ),
         handler=_web_search,
+        writes=False,
     ),
     EngineTool(
         name="check_conditions",
@@ -3344,6 +3378,7 @@ TOOLS: tuple[EngineTool, ...] = (
             },
         ),
         handler=_check_conditions,
+        writes=False,
     ),
     EngineTool(
         name="github_status",
@@ -3364,6 +3399,7 @@ TOOLS: tuple[EngineTool, ...] = (
             ("aspect",),
         ),
         handler=_github_status,
+        writes=False,
     ),
     # Memory v2 (ADR 0075, memory-and-vault ticket 02).
     EngineTool(
@@ -3382,6 +3418,7 @@ TOOLS: tuple[EngineTool, ...] = (
             }
         ),
         handler=_recall_memory,
+        writes=False,
     ),
     EngineTool(
         name="list_memories",
@@ -3398,6 +3435,7 @@ TOOLS: tuple[EngineTool, ...] = (
             }
         ),
         handler=_list_memories,
+        writes=False,
     ),
     EngineTool(
         name="remember",
@@ -3453,6 +3491,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=coach.get_energy_estimate,
+        writes=False,
     ),
     EngineTool(
         name="get_weight_trend",
@@ -3464,6 +3503,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=coach.get_weight_trend,
+        writes=False,
     ),
     EngineTool(
         name="list_saved_meals",
@@ -3474,6 +3514,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=coach.list_saved_meals,
+        writes=False,
     ),
     EngineTool(
         name="set_body_profile",
@@ -3608,6 +3649,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=coach.get_todays_workout,
+        writes=False,
     ),
     EngineTool(
         name="start_workout",
@@ -3679,6 +3721,7 @@ TOOLS: tuple[EngineTool, ...] = (
             {"exercise": {"type": "string", "minLength": 1, "maxLength": 80}}, ("exercise",)
         ),
         handler=coach.get_exercise_alternatives,
+        writes=False,
     ),
     EngineTool(
         name="propose_programme_change",
@@ -3748,6 +3791,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=coach.suggest_meal,
+        writes=False,
     ),
     EngineTool(
         name="log_meal_option",
@@ -3774,6 +3818,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({}),
         handler=coach.get_body_plan,
+        writes=False,
     ),
     EngineTool(
         name="draft_body_plan",
@@ -3856,6 +3901,7 @@ TOOLS: tuple[EngineTool, ...] = (
             ("name",),
         ),
         handler=_run_procedure,
+        writes=False,
     ),
 )
 
@@ -3886,6 +3932,12 @@ def run_engine_tool(request, tool: EngineTool, arguments: dict) -> ToolResult:
     name = tool.name
     if tool.writes:
         refusal = write_refusal(request)
+        if refusal is not None:
+            return refused(refusal)
+        # A turn that read third-party text (web, the brief's news, GitHub titles) may not
+        # write: an instruction planted in that text must not delete or change a row
+        # (2026-11-13). Every write, a procedure's write step included; never a read.
+        refusal = read_through.write_refusal(request, name, destructive=tool.destructive)
         if refusal is not None:
             return refused(refusal)
     if tool.tables is not None:
