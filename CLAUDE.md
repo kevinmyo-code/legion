@@ -428,6 +428,11 @@ here.
   rule 8: keep the evidence.** Summary anchored by the transcript beside it, transcript anchored by
   the audio beside it, all three deleted together. Nothing numeric heard in a recording may be
   asserted as fact or become a ledger row without going through that aspect's own ingestion path.
+- **No write follows third-party text in the same turn (Kevin, 2026-11-13, ADR 0090).** A turn that
+  read outside text (web search, the brief's news, GitHub titles anyone can write) may still read,
+  but every write tool refuses in words and the change waits for the person's next message.
+  `EngineTool.writes` is required, so no tool escapes the classification; the engine guards its own
+  doors (`read_through.write_refusal`) and the phone guards each `ask_engine` call.
 - **Memory lives on the engine, private to the member it is about (Kevin, 2026-11-05, ADR 0075).**
   *"centralized memory"*. One store (`member_memories`) for the phone, the web and the Claude
   worker on the Alienware (*"claude can write too."*); never a recruiter, never the work laptop.

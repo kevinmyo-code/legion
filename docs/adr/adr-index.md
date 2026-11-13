@@ -94,6 +94,7 @@ Format and the test for whether something deserves an ADR:
 | 0087 | [[0087-live-surface-diet-and-scripted-opening\|The Live tool surface is a budget; a tap opens the mic with a scripted line]] | accepted | 2026-11-10 | - |
 | 0088 | [[0088-simple-commands-on-the-phone\|Simple commands are done on the phone; everything else goes to Alfred unchanged]] | accepted | 2026-11-10 | - |
 | 0089 | [[0089-receipts-retired\|Receipt photos are retired]] | accepted | 2026-11-12 | - |
+| 0090 | [[0090-no-write-after-third-party-text\|No write tool runs in a turn that read third-party text]] | accepted | 2026-11-13 | - |
 
 ## Superseded
 
