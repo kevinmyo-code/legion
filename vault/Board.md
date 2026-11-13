@@ -20,8 +20,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[01-report-a-problem\|01]] | build | Report a problem: voice and button |
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[06-book-library\|06]] | build | Book library on the engine, synced to the phone |
 | [[.scratch/alfred-clock/map\|alfred-clock]] | [[08-on-the-phone\|08]] | acceptance | Acceptance on the A25, and what is deferred |
-| [[.scratch/alfred-greets/map\|alfred-greets]] | [[01-facts-pack\|01]] | build | The facts pack: what Alfred may mention, from real data |
-| [[.scratch/alfred-greets/map\|alfred-greets]] | [[02-greeting-on-tap\|02]] | build | A personal greeting on every tap and wake word |
 | [[.scratch/alfred-greets/map\|alfred-greets]] | [[03-unprompted-check-ins\|03]] | build | Unprompted check-ins at four moments, quiet hours, never twice |
 | [[.scratch/alfred-greets/map\|alfred-greets]] | [[04-travel-tips\|04]] | build | Travel tips from a live web search when somewhere new |
 | [[.scratch/alfred-greets/map\|alfred-greets]] | [[05-answers-become-memories\|05]] | build | His answers become memories |
@@ -119,6 +117,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/alfred-clock/map\|alfred-clock]] | [[05-clock-screen\|05]] | build | Clock screen and Matrix home entry |
 | [[.scratch/alfred-clock/map\|alfred-clock]] | [[06-voice-tool\|06]] | build | The clock voice tool |
 | [[.scratch/alfred-clock/map\|alfred-clock]] | [[07-brief-me\|07]] | build | Brief me on the dismiss screen |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | [[01-facts-pack\|01]] | build | The facts pack: what Alfred may mention, from real data |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | [[02-greeting-on-tap\|02]] | build | A personal greeting on every tap and wake word |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[01-alfred-pack-format-and-endpoint\|01]] | build | Alfred pack: format and engine endpoint |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[04-version-and-publisher\|04]] | build | versionCode, private bucket, releases, publisher |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | [[09-head-unit-updater\|09]] | build | Head unit updater: check, download, verify, tap to install |

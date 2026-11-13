@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>430 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 62 maps. <b>13 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 107 are waiting on another ticket first. <b>242 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 62 maps. <b>13 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 105 are waiting on another ticket first. <b>244 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">430</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">67</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">242</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">107</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n mint">244</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">105</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">13</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">161</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">159</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">14</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -822,12 +822,12 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>alfred-greets</h2>
-<span class="counts"><span class="k">5</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k amber">5</span> blocked<span class="sep">&middot;</span><span class="dim">of 5 tickets</span></span>
-<span class="bar"><i style="flex:0"></i><b style="flex:5"></b></span>
+<span class="counts"><span class="k">5</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="k amber">3</span> blocked<span class="sep">&middot;</span><span class="dim">of 5 tickets</span></span>
+<span class="bar"><i style="flex:2"></i><b style="flex:3"></b></span>
 </header>
 <ul class="tl">
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">01</span><span class="body"><span class="tt">The facts pack: what Alfred may mention, from real data</span><span class="det">engine half built 2026-11-13: GET /api/greeting/facts, POST /api/greeting/topics, tool greeting_facts, greeting_topics table (greeting 0001); 656 server tests green. Owed: the phone half (place, and the prompt citing only the pack), then engine deploy</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">A personal greeting on every tap and wake word</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">The facts pack: what Alfred may mention, from real data</span><span class="det">built 2026-11-13: engine (35a55c77) and phone (greeting/: pack fetch, place source, the facts block that names the only content a greeting may cite). Owed: engine deploy, then a run away from home for the place source</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">A personal greeting on every tap and wake word</span><span class="det">built 2026-11-13: Live (facts block as the opener turn, scripted cue if no audio in 2.5 s) and cascade (one text generation, scripted ack on miss); pack budget 1.5 s; topic POSTed raised. Full suite 7020 green, detekt 290. Owed on the phone: tap-to-first-audio on Live and cascade against the scripted line, then tune GreetingBudget</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">Unprompted check-ins at four moments, quiet hours, never twice</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">Travel tips from a live web search when somewhere new</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">His answers become memories</span></span><span class="chip c-build">build</span><span class="state">waiting on </span></li>
