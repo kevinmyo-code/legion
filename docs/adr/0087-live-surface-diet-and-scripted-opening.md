@@ -20,7 +20,7 @@ every pre-diet tool lives is `service/tools/LiveSurface.kt` (action tools) and
 `LiveToolbox.DISPATCHED` (routers); `LiveSurfaceTest` fails on a tool with no home. Raising either
 budget is Kevin's call, with the measured figure written beside it.
 
-**A tap or the wake word asks the model for nothing.** The phone plays one scripted line in
+**A tap or the wake word asks the model for nothing.** *(Amended 2026-11-13 by ADR 0091: a tap now asks for a personal greeting from his real day, and this scripted line is the fallback when it is slow or unreachable. The tool budget above is unchanged.)* The phone plays one scripted line in
 Alfred's Puck voice (`assets/listen_cues/`, picked by `service/ListenCue.kt`; an earcon until a
 clip exists) through Alfred's own track once the socket is up (`CUE_TIMING`, one constant to flip
 to at-tap), and the mic opens when it has drained. The

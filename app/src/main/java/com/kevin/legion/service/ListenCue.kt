@@ -33,6 +33,10 @@ import org.json.JSONObject
  * drained plus [com.kevin.legion.service.turn.MicReopen]'s settle (700 ms on Bluetooth), with the
  * capture pre-roll flushed. Nothing captured during the clip is ever sent.
  *
+ * **Amended 2026-11-13 (ADR 0091):** this line is now the FALLBACK. A tap or the wake word opens with
+ * a personal greeting from his real day (`greeting/`, `LiveGreeting`), and this plays when the
+ * facts pack or the model does not answer inside `GreetingBudget`, or the engine is unreachable.
+ *
  * Phase 2 seam (Kevin 2026-11-10, local fast path): picking and loading here need no socket. A
  * local recognizer can play the same cue through its own player and claim the utterance before
  * any Live session exists; see `LiveSessionController.openListening`.

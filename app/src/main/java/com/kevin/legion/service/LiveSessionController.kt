@@ -22,6 +22,7 @@ import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.WebReadMark
 import com.kevin.legion.ai.firstGreetingOpener
 import com.kevin.legion.car.CarProbeLog
+import com.kevin.legion.greeting.GreetingFactory
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ConversationAudit
 import com.kevin.legion.data.local.record
@@ -36,6 +37,7 @@ import com.kevin.legion.ui.LegionRoute
 import com.kevin.legion.ui.MainActivity
 import com.kevin.legion.vehicle.ActiveVehicle
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -139,6 +141,25 @@ class LiveSessionController(context: Context) {
 
     /** A cold open whose scripted line waits for the socket ([CUE_TIMING] ON_CONNECT). */
     private var cueOnConnect = false
+
+    /**
+     * The personal greeting (ADR 0091): a tap or the wake word opens with a line from his real day,
+     * the scripted cue being the fallback. Built on first use; see [LiveGreeting].
+     */
+    private val greeting: LiveGreeting by lazy {
+        LiveGreeting(
+            scope = scope,
+            opening = GreetingFactory.create(appContext, scope),
+            isCurrent = { it === session },
+            scripted = { openListening(it, warm = true) },
+            cue = { ListenCue.next(appContext, CompanionProfile.voice(appContext)) },
+            armFirstTurn = { armLocalFirstTurn(it) },
+            log = { LiveLatency.log(LiveLatency.TAG, it) },
+        )
+    }
+
+    /** The cold open's pack fetch, started at the tap so it overlaps the connect. */
+    private var greetingPlan: Deferred<com.kevin.legion.greeting.GreetingPlan>? = null
 
     /**
      * Typed chat (Kevin, 2026-10-27): a text model, not this controller's Live session. It shares
@@ -828,7 +849,7 @@ class LiveSessionController(context: Context) {
                 }
             },
         )
-        val c = CascadeSession(appContext, bridge, fromWakeWord, oneShot)
+        val c = CascadeSession(appContext, bridge, fromWakeWord, oneShot, GreetingFactory.create(appContext, scope))
         cascadeBridge = bridge
         cascade = c
         c.open()
@@ -898,9 +919,16 @@ class LiveSessionController(context: Context) {
             // Ticket 10 wanted the wake word acknowledged (a warm socket went straight to a silent
             // LISTENING). Since F2 (voice cost audit 2026-11-10) the acknowledgement is the
             // scripted line, for a tap and the wake word alike, and no generation is asked for.
+            // ADR 0091 amends that: the open is a greeting from his real day when the pack and the
+            // model answer in time, and the scripted line when they do not (see [LiveGreeting]). It
+            // is async, so a stale warm socket is found there and [onStale] cold-connects instead.
             else -> {
-                set(Phase.LISTENING, "Listening...")
-                openListening(s, warm = true)
+                set(Phase.THINKING, "...")
+                greeting.open(s, greeting.prepare(), onStale = {
+                    supersede("stale warm socket")
+                    startConversation(fromWakeWord)
+                })
+                true
             }
         }
         if (!ok) {
@@ -970,6 +998,10 @@ class LiveSessionController(context: Context) {
             // (ListenCue) and the mic opens behind it. First run, a lost thread and Brief me still
             // speak first: each is something he genuinely needs told, or asked for. The live
             // context rides in the system instruction now ([LiveOpenContext]), not the opener.
+            // AMENDED 2026-11-13 (ADR 0091, Kevin): a tap or the wake word DOES ask the model for a
+            // greeting again, built from his real day, with the scripted line as the fallback when
+            // the pack or the model is slow or unreachable ([LiveGreeting]). The cost audit's 13%
+            // is accepted for it. The scripted path is unchanged and still what plays on a miss.
             pendingPrompt = when {
                 // A reconnect inside a running conversation (turn detector fallback): just listen.
                 listenOnly -> null
@@ -977,6 +1009,13 @@ class LiveSessionController(context: Context) {
                 isFirst -> firstGreetingOpener(appContext)
                 lostThread -> THREAD_LOST_PROMPT
                 else -> null
+            }
+            // ADR 0091: the pack is fetched from the tap, overlapping the connect, for the greeting
+            // that opens the mic once the socket is up (ON_CONNECT only; AT_TAP keeps the cue).
+            greetingPlan = if (pendingPrompt == null && !listenOnly && CUE_TIMING == CueTiming.ON_CONNECT) {
+                greeting.prepare()
+            } else {
+                null
             }
             s.start(
                 LiveOpenContext.systemInstruction(base, live), LiveToolbox.declarations(),
@@ -993,7 +1032,9 @@ class LiveSessionController(context: Context) {
     }
 
     /**
-     * Opens the floor for Kevin with a scripted line instead of a model generation (F2). Cold: the
+     * Opens the floor for Kevin with a scripted line instead of a model generation (F2). Since ADR
+     * 0091 this is the FALLBACK open: [LiveGreeting] tries a personal greeting first and calls this
+     * when the pack or the model is not there in time. Cold: the
      * line plays on [s]'s own track during the connect, and [GeminiLiveSession.beginConversation]
      * opens the mic behind it once the socket is up. Warm: both happen now.
      *
@@ -1005,13 +1046,7 @@ class LiveSessionController(context: Context) {
      * [ListenCue] needs no socket for that.
      */
     private fun openListening(s: GeminiLiveSession, warm: Boolean = false): Boolean {
-        // Phase 2: hold the first turn for the phone's own command check (setting, off by default).
-        if (VoiceTurnSettings.localCommands(appContext)) {
-            s.localCommandGate = VoskLocalCommandGate(appContext, CompanionProfile.name(appContext))
-            // The model loads off the mic thread now, not inside the first decision.
-            scope.launch(kotlinx.coroutines.Dispatchers.IO) { VoskLocalCommandGate.warm(appContext) }
-            s.armLocalFirstTurn()
-        }
+        armLocalFirstTurn(s)
         val cue = ListenCue.next(appContext, CompanionProfile.voice(appContext))
         return if (warm) {
             s.beginConversation(null, cue)
@@ -1019,6 +1054,15 @@ class LiveSessionController(context: Context) {
             s.playListenCue(cue)
             true
         }
+    }
+
+    /** Phase 2: hold the first turn for the phone's own command check (setting, off by default). */
+    private fun armLocalFirstTurn(s: GeminiLiveSession) {
+        if (!VoiceTurnSettings.localCommands(appContext)) return
+        s.localCommandGate = VoskLocalCommandGate(appContext, CompanionProfile.name(appContext))
+        // The model loads off the mic thread now, not inside the first decision.
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) { VoskLocalCommandGate.warm(appContext) }
+        s.armLocalFirstTurn()
     }
 
     /**
@@ -1190,7 +1234,9 @@ class LiveSessionController(context: Context) {
                         val held = session
                         if (cueOnConnect && pendingPrompt == null && held != null) {
                             cueOnConnect = false
-                            openListening(held, warm = true)
+                            val prep = greetingPlan
+                            greetingPlan = null
+                            if (prep != null) greeting.open(held, prep) else openListening(held, warm = true)
                         } else {
                             session?.beginConversation(pendingPrompt)
                         }
@@ -1220,7 +1266,10 @@ class LiveSessionController(context: Context) {
                 playClosingTone()
                 CompanionPhase.showNotice("Conversation closed")
             }
-            is LiveEvent.SpeakingStarted -> set(Phase.SPEAKING, "Speaking...")
+            is LiveEvent.SpeakingStarted -> {
+                greeting.noteSpeaking()
+                set(Phase.SPEAKING, "Speaking...")
+            }
             is LiveEvent.Interrupted -> set(Phase.LISTENING, "Listening...")
             is LiveEvent.CrisisDetected -> {
                 // CLAUDE.md sec 9.1: stop performing the character. Tearing the

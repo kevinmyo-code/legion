@@ -3,8 +3,8 @@ map: alfred-greets
 ticket: "02"
 title: "A personal greeting on every tap and wake word"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-13: Live (facts block as the opener turn, scripted cue if no audio in 2.5 s) and cascade (one text generation, scripted ack on miss); pack budget 1.5 s; topic POSTed raised. Full suite 7020 green, detekt 290. Owed on the phone: tap-to-first-audio on Live and cascade against the scripted line, then tune GreetingBudget"
 blocked-by: []
 tags: [ticket]
 ---

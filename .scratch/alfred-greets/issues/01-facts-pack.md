@@ -3,8 +3,8 @@ map: alfred-greets
 ticket: "01"
 title: "The facts pack: what Alfred may mention, from real data"
 type: build
-status: open
-status-detail: "engine half built 2026-11-13: GET /api/greeting/facts, POST /api/greeting/topics, tool greeting_facts, greeting_topics table (greeting 0001); 656 server tests green. Owed: the phone half (place, and the prompt citing only the pack), then engine deploy"
+status: built
+status-detail: "built 2026-11-13: engine (35a55c77) and phone (greeting/: pack fetch, place source, the facts block that names the only content a greeting may cite). Owed: engine deploy, then a run away from home for the place source"
 blocked-by: []
 tags: [ticket]
 ---

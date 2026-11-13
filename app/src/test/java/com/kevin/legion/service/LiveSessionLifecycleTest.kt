@@ -213,8 +213,10 @@ class LiveSessionLifecycleTest {
     }
 
     @Test
-    fun `a tap or the wake word asks the model for nothing and plays a scripted line`() {
-        // Voice cost audit 2026-11-10, F2: no GREETING_PROMPT / WAKE_ACK_PROMPT generation.
+    fun `a tap or the wake word greets from his day, with the scripted line as the fallback`() {
+        // Voice cost audit 2026-11-10, F2 removed GREETING_PROMPT / WAKE_ACK_PROMPT; ADR 0091
+        // (2026-11-13) amends it: the greeting is built from the facts pack ([LiveGreeting]) and the
+        // scripted line stays as what plays when the pack or the model is slow or unreachable.
         val code = controller()
         assertFalse("GREETING_PROMPT is back", code.contains("GREETING_PROMPT"))
         assertFalse("WAKE_ACK_PROMPT is back", code.contains("WAKE_ACK_PROMPT"))
@@ -222,14 +224,20 @@ class LiveSessionLifecycleTest {
         assertTrue("a cold open no longer plays the scripted line", start.contains("openListening(s)"))
         assertTrue("the cue timing is one constant", start.contains("CUE_TIMING"))
         assertTrue(
-            "ON_CONNECT plays the line when the socket is up",
-            bodyOf(code, "handleEvent").contains("openListening(held, warm = true)"),
+            "ON_CONNECT opens the greeting when the socket is up, scripted line when there is no pack",
+            bodyOf(code, "handleEvent").contains("greeting.open(held, prep)") &&
+                bodyOf(code, "handleEvent").contains("openListening(held, warm = true)"),
+        )
+        assertTrue("the pack is fetched at the tap", start.contains("greeting.prepare()"))
+        assertTrue(
+            "the greeting's fallback is the scripted open",
+            code.contains("scripted = { openListening(it, warm = true) }"),
         )
         assertTrue(
             "the live context must ride the system instruction, not an opener turn",
             start.contains("LiveOpenContext.systemInstruction("),
         )
-        assertTrue(bodyOf(code, "resumeWarm").contains("openListening(s, warm = true)"))
+        assertTrue(bodyOf(code, "resumeWarm").contains("greeting.open(s, greeting.prepare()"))
         val open = bodyOf(code, "openListening")
         assertTrue(open.contains("ListenCue.next("))
         assertFalse("openListening must not send text to the model", open.contains("sendText("))
@@ -239,9 +247,11 @@ class LiveSessionLifecycleTest {
     fun `simple commands are held on the phone only behind the setting, and a hit ends the chat`() {
         // Phase 2 (Kevin: "we offload as much as we can to the phones own speech recognizer").
         val code = controller()
-        val open = bodyOf(code, "openListening")
+        // Split out of openListening so the greeting path arms the same gate (ADR 0091).
+        assertTrue(bodyOf(code, "openListening").contains("armLocalFirstTurn(s)"))
+        val open = bodyOf(code, "armLocalFirstTurn")
         assertTrue(open.contains("VoiceTurnSettings.localCommands(appContext)"))
-        assertTrue(open.contains("armLocalFirstTurn()"))
+        assertTrue(open.contains("s.armLocalFirstTurn()"))
         assertTrue(bodyOf(code, "handleEvent").contains("is LiveEvent.LocalCommand -> runLocalCommand("))
         val run = bodyOf(code, "runLocalCommand")
         assertTrue(run.contains("LocalCommandRunner.run("))

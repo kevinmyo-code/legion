@@ -853,6 +853,23 @@ class GeminiLiveSession(
     }
 
     /**
+     * The personal greeting's model never produced audio inside its budget (ADR 0091, ticket 02):
+     * play the scripted [cue] and open the mic as a plain tap would. The generation may still be
+     * running on the wire, so its remaining audio is dropped with the same latch a tap-cut reply
+     * uses ([tapCutReply], cleared by that turn's turnComplete or interruption); a barge-in by the
+     * person interrupts it server-side anyway. Does nothing once the model has started to speak.
+     *
+     * @return false when nothing was done (already speaking, or the socket is gone).
+     */
+    fun abandonOpener(cue: ListenCue.Cue): Boolean {
+        if (speakingThisTurn) return false
+        tapCutReply = true
+        val ok = beginConversation(null, cue)
+        if (!ok) tapCutReply = false
+        return ok
+    }
+
+    /**
      * True from [playListenCue] until the mic's next open has waited for that cue to drain. The
      * first open of a socket normally skips [awaitPlaybackDrained] (nothing has played yet); a cue
      * makes it wait like a turn handback, Bluetooth settle included ([MicReopen]).

@@ -27,6 +27,9 @@ import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.data.local.record
 import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.CompanionPhase
+import com.kevin.legion.greeting.GreetingBudget
+import com.kevin.legion.greeting.GreetingOpening
+import com.kevin.legion.greeting.GreetingPlan
 import com.kevin.legion.service.FollowUpWindow
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
@@ -55,6 +58,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -65,7 +69,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import java.time.LocalTime
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -95,6 +101,8 @@ internal class CascadeSession(
     private val host: CascadeHost,
     private val fromWakeWord: Boolean,
     private val oneShot: Boolean,
+    /** ADR 0091: the personal greeting's pack and topic memory; null keeps the scripted ack alone. */
+    private val greeting: GreetingOpening? = null,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -181,6 +189,9 @@ internal class CascadeSession(
     @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one worded exit per open step
     private suspend fun openNow() {
         val started = System.currentTimeMillis()
+        // The greeting's pack is fetched from the tap, overlapping the probe, connect and prompt
+        // build, so it is long since answered (or timed out) by the time the line is due.
+        val greetingPlan = greeting?.let { g -> scope.async(Dispatchers.IO) { g.prepare(LocalTime.now()) } }
         val config = VoiceEngineSettings.laptop(ctx)
         // A laptop that just failed to answer is not asked again for a little while: the wake word
         // must not wait out the probe on every conversation while Tailscale is off.
@@ -296,7 +307,16 @@ internal class CascadeSession(
         prefix = prefixJob.await()
         prefix?.let { cache.warm(it) }
         if (closing.get()) return
-        speakScripted(ackLines.next())
+        val plan = greetingPlan?.await()
+        if (closing.get()) return
+        if (plan is GreetingPlan.Personal) {
+            speakGreeting(plan)
+        } else {
+            if (plan is GreetingPlan.Scripted) {
+                LiveLatency.log(LiveLatency.TAG, "greeting scripted reason=${plan.reason}")
+            }
+            speakScripted(ackLines.next())
+        }
     }
 
     // --- the door from the controller ------------------------------------------------------------
@@ -708,6 +728,82 @@ internal class CascadeSession(
         }
     }
 
+    /**
+     * The personal greeting (ADR 0091, ticket 02): ONE streamed text call through the same cached
+     * prefix and the same [textLoop] a turn uses, the reply spoken as it streams. The model is
+     * called here, on the phone, with Alfred's cached instruction; the laptop only speaks it. Cost is
+     * one text generation against the cache, which is what makes the greeting affordable on this
+     * pipeline (Live has no such cheap path, see `LiveGreeting`).
+     *
+     * Every tool is refused for this call (it is a greeting: nothing is read or written, and ADR
+     * 0090's rule that no write follows outside text is kept by construction). **Fallback:** no text
+     * within [GreetingBudget.FIRST_OUTPUT_MS], or a failure with no text, speaks the scripted ack
+     * instead; nothing about the miss is spoken. A tap while it plays interrupts like any reply.
+     */
+    @Suppress("LongMethod", "ReturnCount") // one exit per way the greeting ends
+    private fun speakGreeting(plan: GreetingPlan.Personal) {
+        val pfx = prefix
+        val loopRef = textLoop
+        if (pfx == null || loopRef == null) {
+            speakScripted(ackLines.next())
+            return
+        }
+        val reply = newSpeaker(null)
+        turnJob = scope.launch(loop) {
+            val firstText = CompletableDeferred<Unit>()
+            val call = launch(Dispatchers.IO) {
+                try {
+                    loopRef.answer(
+                        pfx,
+                        contentsFor(plan.prompt),
+                        TextToolExecutor { _, _, _ ->
+                            JSONObject().put("success", false)
+                                .put("message", "No tool runs during the greeting; nothing was done.")
+                        },
+                        object : GeminiTextLoop.Listener {
+                            override fun onText(delta: String) {
+                                reply.text(delta)
+                                firstText.complete(Unit)
+                            }
+
+                            override fun onFirstPart(round: Int, ms: Long) {
+                                LiveLatency.log(LiveLatency.TAG, "greeting_llm_first_ms=$ms")
+                            }
+                        },
+                    )
+                } finally {
+                    firstText.complete(Unit) // a failure with no text ends the wait early too
+                }
+            }
+            try {
+                withTimeoutOrNull(GreetingBudget.FIRST_OUTPUT_MS) { firstText.await() }
+                if (!reply.anyText) {
+                    call.cancel()
+                    reply.interrupt()
+                    LiveLatency.log(LiveLatency.TAG, "greeting model_slow scripted")
+                    speakScripted(ackLines.next())
+                    return@launch
+                }
+                call.join()
+                reply.finishText()
+                greeting?.noteRaised(plan.topic)
+                when (val o = reply.await()) {
+                    ReplySpeaker.Outcome.Played -> {
+                        // So his answer is understood: the greeting is the first exchange.
+                        history.add(ChatTurn(fromUser = true, text = OPENED_NOTE))
+                        history.add(ChatTurn(fromUser = false, text = reply.spoken()))
+                        afterReply()
+                    }
+                    is ReplySpeaker.Outcome.Failed -> handOver(Handover.Moment.Idle, "tts", o.reason)
+                    ReplySpeaker.Outcome.Interrupted -> Unit
+                }
+            } catch (e: CancellationException) {
+                withContext(NonCancellable) { reply.interrupt() }
+                throw e
+            }
+        }
+    }
+
     private suspend fun endByVoice() {
         host.closingTone()
         shutdown("sleep_phrase")
@@ -1065,6 +1161,8 @@ internal class CascadeSession(
         private const val SCOPE_GRACE_MS = 2_000L
 
         private val ACK = AckLines()
+
+        private const val OPENED_NOTE = "(He opened the conversation and you greeted him.)"
 
         @Volatile private var lastUnreachableAtMs = 0L
 
