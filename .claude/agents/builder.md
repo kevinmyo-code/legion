@@ -45,6 +45,11 @@ what it used to claim; a comment that quietly disappears takes its history with 
 
 Build and run the tests. Read counts from the JUnit XML, not the console summary.
 
+**Adding or renaming a route, screen, tool or manifest entry? Run the FULL `testDebugUnitTest`**, not
+just your packages: registry checks (`ui.typeset.TypesetReachabilityTest`, the screen map, the
+voice guide, `LiveSurfaceTest`) live elsewhere and a `--tests` filter cannot see them (lessons.md
+L-2026-11-13: the Grades route shipped without a tap path behind a targeted run).
+
 **A phone change is checked on the phone by you, not handed back as "owed on device".** If the
 change has a device step and `python tools/phone preflight` passes, run it with the
 `verify-on-phone` skill and tag what you saw `on-device`. Do not install a build unless the brief
