@@ -7998,3 +7998,24 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   the secret, once, when he is home.
 - `deploy/cloudrun/github_setup.sh` does the Google side and prints what to paste into GitHub,
   rebuilding `CLOUDRUN_ENV` from the live service's non-secret settings (the `.env` is laptop-only).
+
+## 2026-11-13 - Alfred greets like a person, from your real day (Kevin)
+
+- **Kevin's words:** *"Throughout the day Alfred should reply or greet as if he was a person... if
+  it's morning he would go. Hey how's it going, how did the (event from yesterday) go last night?
+  Or if he sees i had an exam to study on the todo he'd say hey how's the studying going etc...
+  Like now I'm in Georgia. He would say hey don't forget to check out x thing that is must do where
+  I am etc."*, then, interviewed:
+  - **When:** *"Every tap and wake word and also unprompted. We will move to the kyutai pipeline
+    anyways so voice won't be so expensive anymore"*. On Live too, accepting the cost for now.
+    This reverses ADR 0087's "a tap asks the model for nothing" (ADR 0091).
+  - **Topics:** earlier events, today's todos and Canvas work, where he is, body and money: all four.
+  - **Travel tips:** live web search (so that turn is read-through: no writes, ADR 0090).
+  - **His answers:** saved as memories the normal way (ADR 0075: visible, forgettable).
+  - **Compulsion test amended:** a check-in ("How's the studying going?") may be raised unprompted
+    without being actionable; (a) a real anchor, (c) never his absence or app use, and (d)
+    silenceable in one instruction still bind. Only (b) is relaxed, and only for check-ins.
+  - **Unprompted moments:** morning first unlock, after an event ends, arriving somewhere new,
+    before something due. **No daily cap; quiet hours only** (default 10pm to 8am, a setting).
+    Never the same question twice: a topic he answered is done.
+- Map `.scratch/alfred-greets/`.

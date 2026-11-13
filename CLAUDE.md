@@ -486,6 +486,9 @@ here.
     - **(c)** **never reference his absence, his streak, or his engagement with the app**;
     - **(d)** be silenceable forever in one instruction.
 
+    **AMENDED 2026-11-13 (Kevin, ADR 0091): a check-in is exempt from (b).** "How's the studying
+    going?" may be raised unprompted though it offers no action; (a), (c) and (d) still bind it.
+
     **(c) and (d) are the load-bearing halves.** Without them "it's past 10pm" becomes "you haven't
     talked to me in three days" by increments, and nobody notices the day it crosses over.
 

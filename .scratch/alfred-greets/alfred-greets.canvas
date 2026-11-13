@@ -1,0 +1,55 @@
+{
+  "nodes": [
+    {
+      "id": "459f990d48b0881c",
+      "type": "file",
+      "file": ".scratch/alfred-greets/issues/01-facts-pack.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "fa6335b840db2c1c",
+      "type": "file",
+      "file": ".scratch/alfred-greets/issues/02-greeting-on-tap.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5ad4a0540063fd68",
+      "type": "file",
+      "file": ".scratch/alfred-greets/issues/03-unprompted-check-ins.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c12d00f7f86d5698",
+      "type": "file",
+      "file": ".scratch/alfred-greets/issues/04-travel-tips.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "57218e68b01e9adb",
+      "type": "file",
+      "file": ".scratch/alfred-greets/issues/05-answers-become-memories.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}
