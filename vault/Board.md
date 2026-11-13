@@ -20,6 +20,11 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[01-report-a-problem\|01]] | build | Report a problem: voice and button |
 | [[.scratch/alfred-builds/map\|alfred-builds]] | [[06-book-library\|06]] | build | Book library on the engine, synced to the phone |
 | [[.scratch/alfred-clock/map\|alfred-clock]] | [[08-on-the-phone\|08]] | acceptance | Acceptance on the A25, and what is deferred |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | [[01-facts-pack\|01]] | build | The facts pack: what Alfred may mention, from real data |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | [[02-greeting-on-tap\|02]] | build | A personal greeting on every tap and wake word |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | [[03-unprompted-check-ins\|03]] | build | Unprompted check-ins at four moments, quiet hours, never twice |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | [[04-travel-tips\|04]] | build | Travel tips from a live web search when somewhere new |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | [[05-answers-become-memories\|05]] | build | His answers become memories |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
@@ -44,7 +49,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/conversation-records/map\|conversation-records]] | [[04-phone-user-turn-audio-clips\|04]] | build | Build: phone keeps user-turn audio clips with end-of-turn labels, capped and pullable |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[05-engine-conversation-view\|05]] | build | Build: engine page or report that renders a household's conversation batches |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[01-remove-receipt-path\|01]] | build | Remove the receipt-photo path |
-| [[.scratch/daily-loops/map\|daily-loops]] | [[03-canvas-grades-phone\|03]] | build | Canvas grades on the phone: screen and voice |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[05-leave-by\|05]] | build | Leave-by: notification and Alfred says it |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[06-location-reminders\|06]] | build | Location reminders |
 | [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
@@ -167,6 +171,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/conversation-records/map\|conversation-records]] | [[03-phone-conversation-spool-and-upload\|03]] | build | Build: phone spools LIVE_AUDIT and LIVE_LATENCY to disk and uploads them as conversation |
 | [[.scratch/conversation-records/map\|conversation-records]] | [[06-headunit-developer-tools\|06]] | build | Build: Developer tools on the head unit: open developer options and wireless debugging, ADB status, root enable attempt; Kevin 2026-10-28 |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[02-canvas-grades-engine\|02]] | build | Canvas grades and what-I-need (engine) |
+| [[.scratch/daily-loops/map\|daily-loops]] | [[03-canvas-grades-phone\|03]] | build | Canvas grades on the phone: screen and voice |
 | [[.scratch/daily-loops/map\|daily-loops]] | [[04-budget-pace-alert\|04]] | build | Budget pace alert (engine watch) |
 | [[.scratch/django-engine/map\|django-engine]] | [[01-server-skeleton\|01]] | build | Server skeleton: Django, Postgres, compose, two users, one token per device |
 | [[.scratch/django-engine/map\|django-engine]] | [[03-the-gate-in-python\|03]] | build | The section 4 gate in Python: same payload, same verdicts, same corpus |
@@ -465,6 +470,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ai-upgrade/map\|ai-upgrade]] | 3 | 2 | [[.scratch/ai-upgrade/ai-upgrade.canvas\|open]] |
 | [[.scratch/alfred-builds/map\|alfred-builds]] | 9 | 9 | [[.scratch/alfred-builds/alfred-builds.canvas\|open]] |
 | [[.scratch/alfred-clock/map\|alfred-clock]] | 8 | 8 | [[.scratch/alfred-clock/alfred-clock.canvas\|open]] |
+| [[.scratch/alfred-greets/map\|alfred-greets]] | 5 | 5 | [[.scratch/alfred-greets/alfred-greets.canvas\|open]] |
 | [[.scratch/alfred-ota/map\|alfred-ota]] | 9 | 9 | [[.scratch/alfred-ota/alfred-ota.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
