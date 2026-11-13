@@ -22,6 +22,32 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
+## Phone-only cloud session, where we stopped - 2026-11-13 (Kevin away; laptop off)
+
+All on `dev` = `main`. Engine NOT deployed, phone NOT released: nothing below is on the phone yet.
+- **Built, suite green, owed a deploy/install:** budget_pace watch (daily-loops 04), Canvas grades
+  engine + phone Grades screen (02, 03), leave-by (05), engine security fixes (records are the
+  caller's own; releases publish from the engine household), write guard after third-party text
+  (ADR 0090, engine + phone), greeting facts pack engine half (alfred-greets 01).
+- **Rulings today:** ADR 0089 receipts retired (code removal is daily-loops 01, not done); ADR 0090;
+  ADR 0091 Alfred greets like a person (compulsion test (b) relaxed for check-ins).
+- **Owed by Kevin at the laptop, in order:**
+  1. Signing key: run the PowerShell line in `.github/workflows/release-phone.yml`'s header, add
+     secret `PHONE_DEBUG_KEYSTORE_B64` (environment `production`).
+  2. Deploy setup: `bash deploy/cloudrun/github_setup.sh --github` (Cloud Shell or laptop with
+     gcloud + gh). Or skip it and ship from the laptop as before (`deploy/ship.py`).
+  3. Release secrets: `LEGION_ENGINE_TOKEN` (curl line in the workflow header), variable
+     `MAPBOX_ACCESS_TOKEN`. Then tell Claude: dry-run Release phone, then real.
+  4. On the phone after install: Grades screen, a leave-by on a real event with an address,
+     budget pace firing, the greeting once alfred-greets 02 lands.
+- **Open calls for Kevin:** grades letter scale (ours 90/80/70/60 vs Canvas default 94/84/74/64);
+  a spoken "stop leave-by" (costs a Live tool); body rows are household-shared, so another
+  member's greeting pack would show his workout.
+- **Cloud container notes:** Android SDK at `$HOME/android-sdk`; `~/.gradle/init.d/central-mirror.gradle`
+  routes Maven Central and Robolectric to Google's mirror (Central rate-limits these containers);
+  the environment must allow `dl.google.com` and `api.mapbox.com`. Clone is shallow: `git fetch
+  --unshallow` before a commit, or the hook writes a truncated devlog.
+
 ## Proactive voice - 2026-11-10
 
 - `feat/proactive-voice` (pushed, not merged): ADR 0082. No daily cap; speaks with the screen off
