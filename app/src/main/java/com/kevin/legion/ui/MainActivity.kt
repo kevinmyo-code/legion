@@ -972,6 +972,7 @@ private fun LegionShell(
                         onOpenClaudeSession = {
                             navController.navigate(LegionRoute.CLAUDE_SESSION) { launchSingleTop = true }
                         },
+                        onOpenGrades = { navController.navigate(LegionRoute.GRADES) { launchSingleTop = true } },
                         // Household-finance ticket 13: a Money panel bar opens that category's
                         // transactions, through the same pending-category hand-off Money reads.
                         onOpenMoneyCategory = { category ->
@@ -1316,6 +1317,11 @@ private fun LegionShell(
             }
             composable(LegionRoute.SETTINGS_MEMORY) {
                 MemoryScreen(onBack = { navController.popBackStack() })
+            }
+            // Canvas grades (daily-loops ticket 03): the hands path for ask_engine's canvas_grades
+            // and what_i_need tools.
+            composable(LegionRoute.GRADES) {
+                com.kevin.legion.ui.grades.GradesScreen(onBack = { navController.popBackStack() })
             }
             // Standing watches (ADR 0083): the `watch` voice tool's hands path.
             composable(LegionRoute.SETTINGS_WATCHES) {

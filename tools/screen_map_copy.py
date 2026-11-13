@@ -165,6 +165,20 @@ ROUTES = {
             ("text", "ID vault", "opens VaultActivity (FLAG_SECURE)"),
         ],
     ),
+    "grades": dict(
+        name="Grades",
+        what="Canvas grades from the engine (daily-loops 03): each course with Canvas's own grade, "
+             "its assignments, and a What do I need form. A failed read says what did not load and "
+             "when the shown data was read.",
+        parent="home", reach=[("text", "More"), ("text", "Grades")],
+        marker="Grades",
+        controls=[
+            ("tag", "grades-error", "what did not load, and when the data on screen was read"),
+            ("tag", "grades-course-", "one course row (`grades-course-<id>`): opens its assignments"),
+            ("tag", "grades-need-answer", "the engine's what-do-I-need sentence, verbatim"),
+        ],
+        voice=["ask_engine"],
+    ),
     "settings/watches": dict(
         name="Watches",
         what="Standing watches (ADR 0083): what Alfred tells you about when it happens, the built-in "

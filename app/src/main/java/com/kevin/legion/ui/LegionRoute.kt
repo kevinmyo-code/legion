@@ -336,6 +336,10 @@ object LegionRoute {
      */
     const val SETTINGS_MEMORY = "settings/memory"
 
+    /** Canvas grades (daily-loops ticket 03), [com.kevin.legion.ui.grades.GradesScreen]: a leaf
+     * reached from HOME's More sheet. Course and assignment drilldown is internal screen state. */
+    const val GRADES = "grades"
+
     /** Standing watches (ADR 0083), [com.kevin.legion.ui.watches.WatchesScreen]: a leaf, reached
      * from Proactive speech. The `watch` voice tool's hands path. */
     const val SETTINGS_WATCHES = "settings/watches"

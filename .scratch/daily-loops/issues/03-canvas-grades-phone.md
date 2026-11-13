@@ -3,8 +3,8 @@ map: daily-loops
 ticket: "03"
 title: "Canvas grades on the phone: screen and voice"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "built 2026-11-13: HOME > More > Grades (ui/grades/, DjangoGradesBackend); voice rides ask_engine. 180 tests green incl. 14 new, detekt 290. Owed: engine deploy with grades, then on the phone: list, a course, a hidden-total course, what-i-need with B, a bad target, and offline; large font scale"
 blocked-by: []
 tags: [ticket]
 ---

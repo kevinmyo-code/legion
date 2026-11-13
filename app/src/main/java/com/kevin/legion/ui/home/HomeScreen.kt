@@ -102,6 +102,8 @@ data class HomeCallbacks(
     val onStopRecording: () -> Unit,
     /** The More sheet's Claude session row (claude-session ticket 05). */
     val onOpenClaudeSession: () -> Unit = {},
+    /** The More sheet's Grades row (daily-loops ticket 03). */
+    val onOpenGrades: () -> Unit = {},
 )
 
 /**
@@ -133,6 +135,8 @@ fun HomeScreen(
     onPlayTetris: (opponentUserId: String?) -> Unit = {},
     /** The More sheet's Claude session row. */
     onOpenClaudeSession: () -> Unit = {},
+    /** The More sheet's Grades row (daily-loops ticket 03). */
+    onOpenGrades: () -> Unit = {},
     /** A Money panel bar: that category's transactions in the Money view (household-finance 13). */
     onOpenMoneyCategory: (category: String) -> Unit = { onOpenMoney() },
     /** Typeset (ADR 0081): the shell's clock and where the page can go. */
@@ -255,6 +259,7 @@ fun HomeScreen(
             onOpenReports = onOpenReports,
             onOpenMedia = onOpenMedia,
             onOpenClaudeSession = onOpenClaudeSession,
+            onOpenGrades = onOpenGrades,
             onStartRecording = {
                 scope.launch {
                     when (val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO)) {
@@ -390,6 +395,7 @@ fun HomeScreen(
                     onOpenNews = closing(tileCallbacks.onOpenNews),
                     onOpenReports = closing(tileCallbacks.onOpenReports),
                     onOpenClaudeSession = closing(tileCallbacks.onOpenClaudeSession),
+                    onOpenGrades = closing(tileCallbacks.onOpenGrades),
                 ),
                 onDismiss = { moreOpen = false },
             )
@@ -508,6 +514,7 @@ fun HomeContent(
                     onOpenNews = closing(tileCallbacks.onOpenNews),
                     onOpenReports = closing(tileCallbacks.onOpenReports),
                     onOpenClaudeSession = closing(tileCallbacks.onOpenClaudeSession),
+                    onOpenGrades = closing(tileCallbacks.onOpenGrades),
                 ),
                 onDismiss = { moreOpen = false },
             )
@@ -583,6 +590,8 @@ fun MoreSheetContent(
             )
             // Claude session (claude-session ticket 05): the hands path for the claude_session tool.
             com.kevin.legion.ui.claudesession.ClaudeSessionMoreRow(callbacks.onOpenClaudeSession)
+            // Canvas grades (daily-loops ticket 03): the hands path for canvas_grades / what_i_need.
+            com.kevin.legion.ui.grades.GradesMoreRow(callbacks.onOpenGrades)
             // Dumb phone mode's switch-on (ADR 0062); hidden where the context is not the app.
             com.kevin.legion.ui.dumb.DumbModeMoreRow()
         }
