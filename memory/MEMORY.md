@@ -28,7 +28,11 @@ All on `dev` = `main`. Engine NOT deployed, phone NOT released: nothing below is
 - **Built, suite green, owed a deploy/install:** budget_pace watch (daily-loops 04), Canvas grades
   engine + phone Grades screen (02, 03), leave-by (05), engine security fixes (records are the
   caller's own; releases publish from the engine household), write guard after third-party text
-  (ADR 0090, engine + phone), greeting facts pack engine half (alfred-greets 01).
+  (ADR 0090, engine + phone), Alfred's personal greeting on every tap, Live and cascade
+  (alfred-greets 01, 02; scripted line is the fallback). Full app suite 7020 green 2026-11-13.
+- **Next to build:** alfred-greets 03 (unprompted check-ins + spoken silence), 04 (travel tips),
+  05 (answers to memories); daily-loops 01 (remove receipt code), 06 (location reminders,
+  needs place-arrivals 01 on the phone).
 - **Rulings today:** ADR 0089 receipts retired (code removal is daily-loops 01, not done); ADR 0090;
   ADR 0091 Alfred greets like a person (compulsion test (b) relaxed for check-ins).
 - **Owed by Kevin at the laptop, in order:**
