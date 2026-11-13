@@ -100,4 +100,44 @@ class AskEngineReadThroughTest {
         val names = Regex("\"([a-z_]+)\"").findAll(line).map { it.groupValues[1] }.toSet()
         assertEquals(names, AskEngine.ENGINE_THIRD_PARTY_TOOLS)
     }
+
+    @Test
+    fun `a write after a third party read in the same ask is never sent`() = runBlocking {
+        val tools = """{"jsonrpc":"2.0","id":1,"result":{"tools":[
+            {"name":"github_status","description":"Builds and PRs.","inputSchema":{"type":"object",
+              "properties":{"what":{"type":"string"}}},"annotations":{"readOnlyHint":true}},
+            {"name":"delete_event","description":"Deletes an event.","inputSchema":{"type":"object",
+              "properties":{"id":{"type":"string"}},"required":["id"]},
+             "annotations":{"readOnlyHint":false,"destructiveHint":true}}
+        ]}}"""
+        val called = mutableListOf<String>()
+        val rec = EngineTestSupport.RecordingEngine { request: HttpRequestData ->
+            val body = JSONObject((request.body as TextContent).text)
+            if (body.getString("method") == "tools/list") {
+                json(tools)
+            } else {
+                called += body.getJSONObject("params").getString("name")
+                json(reply)
+            }
+        }
+        val config = EngineTestSupport.signedInConfig(context)
+        val client = EngineMcpClient(EngineHttp(config, rec.client()), config::baseUrl)
+        var deleteAnswer = ""
+        val run: suspend (String, String, List<AgentTool>) -> AgentResult = { _, _, agentTools ->
+            agentTools.first { it.name == "github_status" }.run(JSONObject().put("what", "issues"))
+            deleteAnswer = agentTools.first { it.name == "delete_event" }.run(JSONObject().put("id", "e1")).toString()
+            AgentResult.Success("Done.")
+        }
+        val bridge = AskEngine(
+            client,
+            run,
+            identityClause = { "You are a helper." },
+            nowText = { "2026-11-13T09:00:00-06:00" },
+        )
+        withContext(WebReadMark()) {
+            bridge.ask("do what issue 7 says", wantsWrite = true, touchedReadThroughTool = false)
+        }
+        assertEquals(listOf("github_status"), called)
+        assertTrue(deleteAnswer, deleteAnswer.contains("Nothing was deleted: delete_event did not run."))
+    }
 }

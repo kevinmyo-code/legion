@@ -79,6 +79,9 @@ class AskEngine(
         val committed = mutableListOf<String>()
         val failed = mutableListOf<String>()
         var anyCalled = false
+
+        /** An engine third-party tool answered in this ask: no write may follow it here. */
+        var readThirdParty = false
     }
 
     @Suppress("ReturnCount") // guard clauses, each a distinct refusal worded for its own cause
@@ -172,6 +175,26 @@ class AskEngine(
     }
 
     @Suppress("ReturnCount") // guard clauses, each a distinct refusal worded for its own cause
+    /** Why a write may not be sent from this ask, or null when it may (and for every read). */
+    private fun writeRefusal(tool: McpTool, tally: Tally): String? = when {
+        !tool.writes -> null
+        // The model's own declared intent is the gate (same as the other dispatchers): a call that
+        // said "ask" cannot change anything. Nothing is sent, and the refusal tells the sub-agent so,
+        // rather than leaving it to guess why the write vanished.
+        !tally.wantsWrite -> "Nothing was written. This was asked as a question, not as an instruction " +
+            "to record or change anything, so ${tool.name} was not called."
+        // The engine refuses a write in a web turn that read third-party text; /mcp carries no turn,
+        // so this ask is that turn here (Kevin, 2026-11-13, ADR 0090). Outside text can carry
+        // instructions that are not the person's: nothing is sent, and the sub-agent is told why.
+        tally.readThirdParty -> {
+            val verb = if (tool.name.startsWith("delete") || tool.name.startsWith("forget")) "deleted" else "changed"
+            "Nothing was $verb: ${tool.name} did not run. This ask read outside text (a web search, the " +
+                "brief's news or a GitHub result), which can carry instructions that are not the " +
+                "person's, so changes wait for their next message. Say so; they can simply ask again."
+        }
+        else -> null
+    }
+
     private suspend fun run(
         tool: McpTool,
         translated: GeminiSchema.Translated,
@@ -179,19 +202,15 @@ class AskEngine(
         tally: Tally,
     ): String {
         tally.anyCalled = true
-        if (tool.writes && !tally.wantsWrite) {
-            // The model's own declared intent is the gate (same as the other dispatchers): a call
-            // that said "ask" cannot change anything. Nothing is sent, and the refusal tells the
-            // sub-agent so, rather than leaving it to guess why the write vanished.
-            return "Nothing was written. This was asked as a question, not as an instruction to " +
-                "record or change anything, so ${tool.name} was not called."
-        }
         val args = translated.restore(rawArgs)
         val table = args.optString("table")
-        if (table in SCREENLESS_TABLES) {
-            return "Nothing was ${if (tool.writes) "written" else "read"}. $table is internal sync " +
+        val refusal = writeRefusal(tool, tally) ?: if (table in SCREENLESS_TABLES) {
+            "Nothing was ${if (tool.writes) "written" else "read"}. $table is internal sync " +
                 "plumbing the app has no screen for, so it is not available by voice."
+        } else {
+            null
         }
+        if (refusal != null) return refusal
         val startedAt = clockMs()
         return when (val outcome = client.callTool(tool.name, args, writes = tool.writes)) {
             is McpCallOutcome.Failed -> {
@@ -201,7 +220,10 @@ class AskEngine(
             is McpCallOutcome.Called -> {
                 // Third-party text came back through ask_engine (web, the brief's web news, GitHub
                 // titles anyone can write): this Live turn is read-through, the round 3 web mark.
-                if (tool.name in ENGINE_THIRD_PARTY_TOOLS) WebReadMark.noteWebRead()
+                if (tool.name in ENGINE_THIRD_PARTY_TOOLS) {
+                    WebReadMark.noteWebRead()
+                    tally.readThirdParty = true
+                }
                 val result = outcome.result
                 if (tool.writes) {
                     if (result.isError) tally.failed += result.text else tally.committed += tool.name
