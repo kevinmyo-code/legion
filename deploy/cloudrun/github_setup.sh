@@ -3,7 +3,8 @@
 # (release-phone.yml) with no laptop. Kevin, 2026-11-13: run it from Google Cloud Shell
 # (shell.cloud.google.com, gcloud is already signed in there), on the phone if need be.
 #
-#   bash deploy/cloudrun/github_setup.sh
+#   bash deploy/cloudrun/github_setup.sh            # prints what to paste into GitHub
+#   bash deploy/cloudrun/github_setup.sh --github   # and sets it on GitHub itself, through gh
 #
 # It does README.md "Shipping from GitHub" steps 1 to 4, gives the same deploy account write access
 # to the APK bucket, and then PRINTS what to paste into GitHub (step 5): three variables, plus the
@@ -11,6 +12,9 @@
 # lives only on the laptop). It never prints or reads a secret's value. Safe to run twice: steps that
 # already exist are skipped. Undo: README.md "Undo".
 set -euo pipefail
+
+SET_GITHUB=false
+[ "${1:-}" = "--github" ] && SET_GITHUB=true
 
 PROJECT="${GOOGLE_CLOUD_PROJECT:-legion-engine-260906}"
 REPO="kevinmyo-code/legion"
@@ -94,6 +98,46 @@ else
   say "No LEGION_APK_BUCKET on the live service: phone releases cannot publish until one is set"
 fi
 
+WIF_PROVIDER="projects/${NUMBER}/locations/global/workloadIdentityPools/github/providers/legion"
+
+if $SET_GITHUB; then
+  say "5. GitHub: environment production, its reviewer, branch, variables and secret (through gh)"
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "gh is not installed here. Install it (https://cli.github.com) or run without --github and paste by hand."
+    exit 1
+  fi
+  gh auth status >/dev/null 2>&1 || gh auth login --hostname github.com --git-protocol https --web
+  ME_ID="$(gh api user --jq .id)"
+  printf '{"reviewers":[{"type":"User","id":%s}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' \
+    "$ME_ID" | gh api -X PUT "repos/${REPO}/environments/production" --input - >/dev/null
+  echo "environment production: you are its required reviewer"
+  if gh api "repos/${REPO}/environments/production/deployment-branch-policies" \
+       --jq '.branch_policies[].name' | grep -qx dev; then
+    echo "exists: branch policy dev"
+  else
+    gh api -X POST "repos/${REPO}/environments/production/deployment-branch-policies" \
+      -f name=dev -f type=branch >/dev/null
+    echo "deploys only from dev"
+  fi
+  gh variable set GCP_PROJECT --env production --repo "$REPO" --body "$PROJECT"
+  gh variable set GCP_WIF_PROVIDER --env production --repo "$REPO" --body "$WIF_PROVIDER"
+  gh variable set GCP_SHIP_SERVICE_ACCOUNT --env production --repo "$REPO" --body "$SA"
+  gh variable set LEGION_ENGINE_URL --env production --repo "$REPO" --body "$URL"
+  if [ -n "$BUCKET" ]; then
+    gh variable set LEGION_APK_BUCKET --env production --repo "$REPO" --body "$BUCKET"
+  fi
+  printf '%s\n' "$ENV_TEXT" | gh secret set CLOUDRUN_ENV --env production --repo "$REPO"
+  echo "variables set; secret CLOUDRUN_ENV set (its value was not printed)"
+  cat <<EOF
+
+================ Done on GitHub ================
+Environment production is set up for ${REPO}. Tell Claude "done".
+Still to add later, for phone releases (see .github/workflows/release-phone.yml):
+  secrets LEGION_ENGINE_TOKEN and PHONE_DEBUG_KEYSTORE_B64, variable MAPBOX_ACCESS_TOKEN
+EOF
+  exit 0
+fi
+
 cat <<EOF
 
 ================ Paste these into GitHub ================
@@ -102,7 +146,7 @@ github.com/${REPO} > Settings > Environments > New environment: production
   - Deployment branches: dev
   Environment VARIABLES:
     GCP_PROJECT              = ${PROJECT}
-    GCP_WIF_PROVIDER         = projects/${NUMBER}/locations/global/workloadIdentityPools/github/providers/legion
+    GCP_WIF_PROVIDER         = ${WIF_PROVIDER}
     GCP_SHIP_SERVICE_ACCOUNT = ${SA}
     LEGION_ENGINE_URL        = ${URL}
     LEGION_APK_BUCKET        = ${BUCKET:-<none set>}
