@@ -122,6 +122,9 @@ _VAULT = "the ID vault holds a member's own identity numbers and opens only on t
 _WATCHES = "standing watches make Alfred speak to a member later; not part of the demo"
 _OPEN_LOOPS = "proposed to-dos come from a member's own words to Alfred; not part of the demo"
 _GRADES = "Canvas grades are one member's own coursework; not part of the demo"
+_GREETING = (
+    "the greeting facts are one member's own day, coursework and budgets; not part of the demo"
+)
 
 RECRUITER_DENIED: dict[str, str] = {
     # architecture review 2026-11-10, item 15: model ids are for the household's own clients;
@@ -208,6 +211,10 @@ RECRUITER_DENIED: dict[str, str] = {
     "grades.views.GradeListView": _GRADES,
     "grades.views.GradeDetailView": _GRADES,
     "grades.views.WhatINeedView": _GRADES,
+    # alfred-greets ticket 01 (ADR 0091). `greeting.service.refusal` refuses a recruiter a second
+    # time.
+    "greeting.views.GreetingFactsView": _GREETING,
+    "greeting.views.GreetingTopicView": _GREETING,
     # ingestion: uploads, feed logins, the bank link, the files ledger
     "api.ingest_files.IngestedFileViewSet": (
         "the document-ingestion ledger is not part of the demo"

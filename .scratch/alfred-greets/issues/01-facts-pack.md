@@ -4,7 +4,7 @@ ticket: "01"
 title: "The facts pack: what Alfred may mention, from real data"
 type: build
 status: open
-status-detail: ""
+status-detail: "engine half built 2026-11-13: GET /api/greeting/facts, POST /api/greeting/topics, tool greeting_facts, greeting_topics table (greeting 0001); 656 server tests green. Owed: the phone half (place, and the prompt citing only the pack), then engine deploy"
 blocked-by: []
 tags: [ticket]
 ---

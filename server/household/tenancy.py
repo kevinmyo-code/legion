@@ -211,6 +211,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # Kevin, 2026-11-12: each Canvas course's totals as Canvas stated them, always private to the
     # member whose Canvas login was read (`OWNER_PATHS`; `grades/models.py`).
     "canvas_course_grades",
+    # alfred-greets ticket 01 (ADR 0091): the topics Alfred raised and the member answered or
+    # silenced, always private to the member (`OWNER_PATHS`; `greeting/models.py`).
+    "greeting_topics",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -296,6 +299,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "open_loop_settings",
         "llm_usage",
         "canvas_course_grades",
+        "greeting_topics",
     }
 )
 
@@ -487,6 +491,8 @@ OWNER_PATHS: dict[str, str] = {
     # Kevin, 2026-11-12: never null, so a member reads only the course grades from his own
     # Canvas login.
     "canvas_course_grades": "owner_user",
+    # ADR 0091: never null, so a member reads and records only the topics raised with him.
+    "greeting_topics": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

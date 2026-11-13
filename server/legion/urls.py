@@ -98,6 +98,9 @@ urlpatterns = [
     path("api/open-loops/", include("open_loops.urls")),
     # Kevin, 2026-11-12: the member's Canvas grades and what they need, read only.
     path("api/grades/", include("grades.urls")),
+    # alfred-greets ticket 01 (ADR 0091): the facts a greeting may mention, read only, and the
+    # topics the phone has raised, answered or silenced.
+    path("api/greeting/", include("greeting.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

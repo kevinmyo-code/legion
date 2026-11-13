@@ -203,6 +203,9 @@ INSTALLED_APPS = [
     # them, private to the member whose Canvas login was read (`public.canvas_course_grades`),
     # and the what-I-need calculator over them.
     "grades",
+    # alfred-greets ticket 01 (ADR 0091): the facts a greeting may mention, and the topics
+    # already raised, answered or silenced, private to the member (`public.greeting_topics`).
+    "greeting",
     # Architecture review 2026-11-10, item 15: the engine's model-call helper (retry and
     # backoff), the model config route, and `llm_usage`, per-member token accounting.
     "llm",
@@ -724,6 +727,10 @@ SPECTACULAR_SETTINGS = {
         "MemberMemoryImportStoreEnum": "member_memory.importer.STORES",
         "WatchKindEnum": "watches.models.KINDS",
         "VaultItemKindEnum": "id_vault.models.KINDS",
+        # alfred-greets ticket 01: three `state` choice sets, named for what they are the state of.
+        "GreetingSourceStateEnum": "greeting.facts.STATES",
+        "GreetingTopicStateEnum": "greeting.models.STATES",
+        "GreetingTopicsReadStateEnum": "greeting.facts.TOPICS_READ_STATES",
     },
 }
 

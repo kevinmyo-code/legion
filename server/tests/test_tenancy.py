@@ -1750,6 +1750,19 @@ def test_every_mcp_tool_is_scoped_by_household(
     assert token_b.get(f"/api/grades/{alpha_course.canvas_course_id}").status_code == 404
     assert "alpha course" in call(mcp_a, "canvas_grades", {})[1]
 
+    # Greeting facts (alfred-greets ticket 01): A's events, Canvas rows and topics stay A's.
+    from greeting.models import GreetingTopic
+
+    GreetingTopic.objects.create(
+        household=household_user.household, owner_user=household_user,
+        topic_key="event:alpha-topic", state="raised",
+    )
+    a_marks = (*a_marks, "alpha-topic")
+    b_reads("greeting_facts", {})
+    b_pack = token_b.get("/api/greeting/facts").data
+    assert b_pack["said"] == [] and b_pack["closed"] == []
+    assert not [mark for mark in a_marks if mark in str(b_pack)]
+
     assert covered == set(TOOLS_BY_NAME), sorted(set(TOOLS_BY_NAME) - covered)
 
     # The audit trail is tenanted like every other table.

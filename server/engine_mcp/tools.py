@@ -2119,6 +2119,19 @@ def _what_i_need(request, args) -> ToolResult:
     return ok(body["words"], structured=body)
 
 
+def _greeting_facts(request, args) -> ToolResult:
+    """The facts pack (`greeting/facts.py`, ADR 0091): the only things a greeting or check-in
+    may mention, each source facts, empty or unreadable. Read only; the same pack
+    `GET /api/greeting/facts` serves."""
+    from greeting import facts, service
+
+    reason = service.refusal(request)
+    if reason:
+        return refused(reason)
+    body = facts.pack(request)
+    return ok(facts.words(body), structured=body)
+
+
 def _local_day_window(request) -> dict:
     """The household's local today as a date and as the instants it starts and ends, plus the
     UTC offset now (never a zone id: CLAUDE.md section 1)."""
@@ -2888,6 +2901,23 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object({"course": {"type": "string", "minLength": 1}}),
         handler=_canvas_grades,
+        writes=False,
+    ),
+    EngineTool(
+        name="greeting_facts",
+        title="What a greeting may mention",
+        description=(
+            "The signed-in member's facts for a greeting or check-in, and nothing else: calendar "
+            "events that ended in the last 24 hours, today's remaining events, open to-dos and "
+            "Canvas work due within 24 hours, today's workout and the latest weigh-in date, and "
+            "each capped budget's spend against its cap and pace in cents (the month-end "
+            "projection is an ESTIMATE: say so). Each source is facts, empty (nothing on file) or "
+            "unreadable (could not be checked: say so, never that nothing is on). Topics already "
+            "raised are listed in `said`: never ask about them again. Mention nothing that is "
+            "not in this result."
+        ),
+        input_schema=_object({}),
+        handler=_greeting_facts,
         writes=False,
     ),
     EngineTool(

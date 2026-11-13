@@ -168,9 +168,11 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
     # github_status (round 5): the owner's repos through the owner's token.
     # canvas_grades and what_i_need (2026-11-12): one member's own coursework.
     grades = {"canvas_grades", "what_i_need"}
+    # greeting_facts (alfred-greets ticket 01): one member's own day, coursework and budgets.
+    greeting = {"greeting_facts"}
     assert set(RECRUITER_EXCLUDED) == {
         "list_tables", "brief_latest", "check_conditions", "github_status", *memory, *body,
-        *grades,
+        *grades, *greeting,
     }
     assert surface.BODY_COACH_TOOLS == body
     assert (

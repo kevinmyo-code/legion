@@ -7403,6 +7403,74 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/greeting/facts:
+    get:
+      operationId: api_greeting_facts
+      description: 'The facts a greeting or check-in may mention for the signed-in
+        member, and nothing else: events that ended in the last 24 hours, today''s
+        remaining events, open to-dos and Canvas work due within 24 hours, today''s
+        workout and the latest weigh-in, and each capped budget''s pace (the month-end
+        projection is an estimate). Each source is facts, empty or unreadable.'
+      tags:
+      - greeting
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Facts'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/greeting/topics:
+    post:
+      operationId: api_greeting_topics_record
+      description: Records that Alfred raised a topic, or that the member answered
+        or silenced it. An answered or silenced topic is left out of the facts from
+        then on and is never reopened by a later raise.
+      tags:
+      - greeting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopicWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TopicWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TopicWrite'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Topic'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/households/me:
     get:
       operationId: api_households_me_retrieve
@@ -15847,6 +15915,47 @@ components:
           description: What Plaid Link's onSuccess returned.
       required:
       - public_token
+    Facts:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        today:
+          type: string
+          format: date
+          description: Today in the household's own clock.
+        utc_offset:
+          type: string
+          description: Like -05:00. Never a zone id.
+        zone_note:
+          type: string
+          nullable: true
+          description: Set when the household has no timezone and times are UTC.
+        sources:
+          $ref: '#/components/schemas/Sources'
+        said:
+          type: array
+          items:
+            type: string
+          description: 'Topic keys already raised: never ask again.'
+        closed:
+          type: array
+          items:
+            type: string
+          description: Topic keys answered or silenced, the phone's own place keys
+            included.
+        topics:
+          $ref: '#/components/schemas/TopicsRead'
+      required:
+      - closed
+      - generated_at
+      - said
+      - sources
+      - today
+      - topics
+      - utc_offset
+      - zone_note
     FinanceAccount:
       type: object
       properties:
@@ -16042,6 +16151,34 @@ components:
       - sentence
       - source
       - stale
+    GreetingSourceStateEnum:
+      enum:
+      - facts
+      - empty
+      - unreadable
+      type: string
+      description: |-
+        * `facts` - facts
+        * `empty` - empty
+        * `unreadable` - unreadable
+    GreetingTopicStateEnum:
+      enum:
+      - raised
+      - answered
+      - silenced
+      type: string
+      description: |-
+        * `raised` - raised
+        * `answered` - answered
+        * `silenced` - silenced
+    GreetingTopicsReadStateEnum:
+      enum:
+      - read
+      - unreadable
+      type: string
+      description: |-
+        * `read` - read
+        * `unreadable` - unreadable
     GroceryStaple:
       type: object
       description: |-
@@ -22095,6 +22232,39 @@ components:
       - pending_cents
       - pending_count
       - source
+    Source:
+      type: object
+      properties:
+        state:
+          $ref: '#/components/schemas/GreetingSourceStateEnum'
+        reason:
+          type: string
+          nullable: true
+          description: Why the source could not be read, in words; null otherwise.
+        says:
+          type: string
+          description: The source's state in the engine's own words.
+        note:
+          type: string
+          nullable: true
+        left_out:
+          type: integer
+          description: Items left out as answered or silenced.
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          description: Each carries a stable `topic` key, `raised`, and `says`, the
+            engine's sentence. Times are ISO 8601 with the household's UTC offset;
+            money is integer cents.
+      required:
+      - items
+      - left_out
+      - note
+      - reason
+      - says
+      - state
     SourceEnum:
       enum:
       - canvas
@@ -22119,6 +22289,25 @@ components:
         * `plaid` - Bank connection
         * `brief` - Daily brief
         * `memory` - Memory from conversations
+    Sources:
+      type: object
+      properties:
+        ended_events:
+          $ref: '#/components/schemas/Source'
+        today_events:
+          $ref: '#/components/schemas/Source'
+        due_soon:
+          $ref: '#/components/schemas/Source'
+        body:
+          $ref: '#/components/schemas/Source'
+        money:
+          $ref: '#/components/schemas/Source'
+      required:
+      - body
+      - due_soon
+      - ended_events
+      - money
+      - today_events
     Spend:
       type: object
       properties:
@@ -22630,6 +22819,47 @@ components:
           type: string
       required:
       - available
+    Topic:
+      type: object
+      properties:
+        topic_key:
+          type: string
+        state:
+          $ref: '#/components/schemas/GreetingTopicStateEnum'
+        at:
+          type: string
+          format: date-time
+        changed:
+          type: boolean
+          description: False when it already was this, or is closed and a raise was
+            ignored.
+      required:
+      - at
+      - changed
+      - state
+      - topic_key
+    TopicWrite:
+      type: object
+      properties:
+        topic_key:
+          type: string
+          maxLength: 200
+        state:
+          $ref: '#/components/schemas/GreetingTopicStateEnum'
+      required:
+      - state
+      - topic_key
+    TopicsRead:
+      type: object
+      properties:
+        state:
+          $ref: '#/components/schemas/GreetingTopicsReadStateEnum'
+        reason:
+          type: string
+          nullable: true
+      required:
+      - reason
+      - state
     Transfer:
       type: object
       properties:

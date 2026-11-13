@@ -817,3 +817,33 @@ def test_the_database_refuses_a_canvas_grade_owned_by_a_non_member(household_a, 
             household=household_a, owner_user=user_b, canvas_course_id=1, course_label="x",
             read_at=timezone.now(),
         )
+
+
+# =============================================================================
+# Greeting topics (alfred-greets ticket 01, ADR 0091): private to the member they were raised with
+# =============================================================================
+
+
+def test_greeting_topics_and_facts_are_private_to_their_member(
+    household_a, kevin, kevin_client, mia, mia_client
+):
+    """`greeting_topics.owner_user` is never null (`OWNER_PATHS`): `visible()` hands a member only
+    his own topics, so another member's answered topic never closes his, and another member's
+    private event never reaches his facts. A made-up event."""
+    from greeting.models import GreetingTopic
+
+    ids = _private_world(kevin_client)
+    GreetingTopic.objects.create(
+        household=household_a, owner_user=kevin, topic_key="place:secret-town", state="answered"
+    )
+    assert kevin_client.get("/api/greeting/facts").data["closed"] == ["place:secret-town"]
+    mias = mia_client.get("/api/greeting/facts").data
+    assert mias["closed"] == [] and mias["said"] == []
+    assert "secret" not in str(mias)
+    recorded = mia_client.post(
+        "/api/greeting/topics", {"topic_key": f"event:{ids['event']}", "state": "silenced"},
+        format="json",
+    )
+    assert recorded.status_code == 200, recorded.data
+    assert GreetingTopic.objects.get(topic_key=f"event:{ids['event']}").owner_user_id == mia.pk
+    assert kevin_client.get("/api/greeting/facts").data["closed"] == ["place:secret-town"]

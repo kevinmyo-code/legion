@@ -146,6 +146,9 @@ RECRUITER_EXCLUDED: dict[str, str] = {
     # own reason; `grades.service.refusal` refuses a recruiter a second time.
     "canvas_grades": RECRUITER_DENIED["grades.views.GradeListView"],
     "what_i_need": RECRUITER_DENIED["grades.views.GradeListView"],
+    # alfred-greets ticket 01 (ADR 0091): one member's own day, coursework and budgets. The
+    # visit's REST fence's own reason; `greeting.service.refusal` refuses a recruiter again.
+    "greeting_facts": RECRUITER_DENIED["greeting.views.GreetingFactsView"],
     # Round 5 (2026-11-10): public agency feeds at a point the owner's saved places or GPS name;
     # a visit's demo places are not a reason to spend the household's NWS/USGS/FIRMS calls.
     "check_conditions": (
