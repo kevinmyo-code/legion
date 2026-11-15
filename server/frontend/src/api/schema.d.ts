@@ -3133,6 +3133,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/grades/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The caller's own Canvas courses: Canvas's totals as stated, and each score. */
+        get: operations["api_grades_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/grades/{course_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One of the caller's Canvas courses, by Canvas course id. */
+        get: operations["api_grades_detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/grades/{course_id}/what-i-need": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The score needed on the remaining work (or one assignment or group) to reach a target, worked out from Canvas's scores and group weights. Never Canvas's figure; an ESTIMATE in words when a drop rule applies or the total disagrees with Canvas's. */
+        get: operations["api_grades_what_i_need"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/greeting/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The facts a greeting or check-in may mention for the signed-in member, and nothing else: events that ended in the last 24 hours, today's remaining events, open to-dos and Canvas work due within 24 hours, today's workout and the latest weigh-in, and each capped budget's pace (the month-end projection is an estimate). Each source is facts, empty or unreadable. */
+        get: operations["api_greeting_facts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/greeting/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Records that Alfred raised a topic, or that the member answered or silenced it. An answered or silenced topic is left out of the facts from then on and is never reopened by a later raise. */
+        post: operations["api_greeting_topics_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/households/me": {
         parameters: {
             query?: never;
@@ -5104,6 +5189,14 @@ export interface components {
          */
         ActivityLevelEnum: "sedentary" | "light" | "moderate" | "very";
         /**
+         * @description * `matches` - matches
+         *     * `differs` - differs
+         *     * `canvas_shows_no_total` - canvas_shows_no_total
+         *     * `nothing_graded` - nothing_graded
+         * @enum {string}
+         */
+        AnchorEnum: "matches" | "differs" | "canvas_shows_no_total" | "nothing_graded";
+        /**
          * @description * `phone` - phone
          *     * `headunit` - headunit
          * @enum {string}
@@ -5135,6 +5228,30 @@ export interface components {
             sha256: string;
             size_bytes: number;
             version_code: number;
+        };
+        Assignment: {
+            /** @description The Canvas assignment id. */
+            id: number;
+            /**
+             * Format: uuid
+             * @description The task row in events.
+             */
+            event_id: string;
+            name: string;
+            group_id: number | null;
+            /** Format: date-time */
+            due_at: string | null;
+            /** Format: double */
+            points_possible: number | null;
+            /** Format: double */
+            score: number | null;
+            grade: string | null;
+            graded: boolean;
+            excused: boolean;
+            missing: boolean;
+            late: boolean;
+            /** @description False when Canvas leaves it out of the grade. */
+            counts: boolean;
         };
         AssistantCompanion: {
             /** @description What the companion is called. */
@@ -6452,6 +6569,39 @@ export interface components {
          * @enum {string}
          */
         CountryEnum: "US" | "SG";
+        CourseGrade: {
+            canvas_course_id: number;
+            course: string;
+            course_code: string | null;
+            /**
+             * Format: double
+             * @description Canvas's own figure; null when Canvas shows none.
+             */
+            canvas_current_score: number | null;
+            canvas_current_grade: string | null;
+            /** Format: double */
+            canvas_final_score: number | null;
+            canvas_final_grade: string | null;
+            /** @description Canvas's totals, or that it shows none, in words. */
+            canvas_says: string;
+            /**
+             * Format: double
+             * @description Worked out here from the scores on file; never Canvas's.
+             */
+            current_worked_out_percent: number | null;
+            worked_out_note: string | null;
+            apply_weights: boolean;
+            groups: components["schemas"]["Group"][];
+            grading_scheme: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            read_at: string;
+            assignments: components["schemas"]["Assignment"][];
+        };
+        CourseGradeList: {
+            results: components["schemas"]["CourseGrade"][];
+        };
         /**
          * @description * `cookie_jar` - Cookie jar
          *     * `oauth_refresh` - OAuth refresh token
@@ -6717,6 +6867,25 @@ export interface components {
             /** @description What Plaid Link's onSuccess returned. */
             public_token: string;
         };
+        Facts: {
+            /** Format: date-time */
+            generated_at: string;
+            /**
+             * Format: date
+             * @description Today in the household's own clock.
+             */
+            today: string;
+            /** @description Like -05:00. Never a zone id. */
+            utc_offset: string;
+            /** @description Set when the household has no timezone and times are UTC. */
+            zone_note: string | null;
+            sources: components["schemas"]["Sources"];
+            /** @description Topic keys already raised: never ask again. */
+            said: string[];
+            /** @description Topic keys answered or silenced, the phone's own place keys included. */
+            closed: string[];
+            topics: components["schemas"]["TopicsRead"];
+        };
         FinanceAccount: {
             /** @description The household's own name for the account. */
             key: string;
@@ -6798,6 +6967,26 @@ export interface components {
             action_url: string | null;
         };
         /**
+         * @description * `facts` - facts
+         *     * `empty` - empty
+         *     * `unreadable` - unreadable
+         * @enum {string}
+         */
+        GreetingSourceStateEnum: "facts" | "empty" | "unreadable";
+        /**
+         * @description * `raised` - raised
+         *     * `answered` - answered
+         *     * `silenced` - silenced
+         * @enum {string}
+         */
+        GreetingTopicStateEnum: "raised" | "answered" | "silenced";
+        /**
+         * @description * `read` - read
+         *     * `unreadable` - unreadable
+         * @enum {string}
+         */
+        GreetingTopicsReadStateEnum: "read" | "unreadable";
+        /**
          * @description Field-for-field `RemoteGroceryStaple` / `GroceryStapleFields`
          *     (`LastAspectsBackend.kt`).
          *
@@ -6826,6 +7015,16 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
             origin_guid: string;
+        };
+        Group: {
+            id: number;
+            name: string;
+            /** Format: double */
+            weight: number | null;
+            /** @description drop_lowest, drop_highest, never_drop as Canvas set. */
+            rules: {
+                [key: string]: unknown;
+            };
         };
         /**
          * @description The 200 body. `db` is the only key, and it is only ever `"ok"` -
@@ -7686,6 +7885,59 @@ export interface components {
             /** @description Rare, heavy structured generation. */
             schema_generator: string;
         };
+        Need: {
+            status: components["schemas"]["NeedStatusEnum"];
+            course: string;
+            canvas_course_id: number;
+            /** Format: double */
+            target_percent: number;
+            target_letter: string | null;
+            /** @description How a letter became a percent. */
+            scale: string | null;
+            remaining: string;
+            remaining_assignment_ids: number[];
+            /** Format: double */
+            remaining_points: number;
+            /**
+             * Format: double
+             * @description Rounded up.
+             */
+            needed_percent: number | null;
+            /**
+             * Format: double
+             * @description Rounded up.
+             */
+            needed_points: number | null;
+            /**
+             * Format: double
+             * @description Rounded down.
+             */
+            best_reachable_percent: number | null;
+            /**
+             * Format: double
+             * @description Rounded down.
+             */
+            worst_reachable_percent: number | null;
+            /** Format: double */
+            current_worked_out_percent: number | null;
+            /** Format: double */
+            canvas_current_score: number | null;
+            anchor: components["schemas"]["AnchorEnum"];
+            estimate: boolean;
+            estimate_reasons: string[];
+            assumptions: string[];
+            words: string;
+            /** Format: date-time */
+            read_at: string;
+        };
+        /**
+         * @description * `needed` - needed
+         *     * `guaranteed` - guaranteed
+         *     * `impossible` - impossible
+         *     * `nothing_left` - nothing_left
+         * @enum {string}
+         */
+        NeedStatusEnum: "needed" | "guaranteed" | "impossible" | "nothing_left";
         NetWorth: {
             currency: string;
             /** Format: date */
@@ -9647,6 +9899,20 @@ export interface components {
             pending_cents: number | null;
             pending_count: number;
         };
+        Source: {
+            state: components["schemas"]["GreetingSourceStateEnum"];
+            /** @description Why the source could not be read, in words; null otherwise. */
+            reason: string | null;
+            /** @description The source's state in the engine's own words. */
+            says: string;
+            note: string | null;
+            /** @description Items left out as answered or silenced. */
+            left_out: number;
+            /** @description Each carries a stable `topic` key, `raised`, and `says`, the engine's sentence. Times are ISO 8601 with the household's UTC offset; money is integer cents. */
+            items: {
+                [key: string]: unknown;
+            }[];
+        };
         /**
          * @description * `canvas` - Canvas
          *     * `webassign` - WebAssign
@@ -9661,6 +9927,13 @@ export interface components {
          * @enum {string}
          */
         SourceEnum: "canvas" | "webassign" | "drive_statements" | "backup" | "obd_rollup" | "heartbeat" | "push" | "plaid" | "brief" | "memory";
+        Sources: {
+            ended_events: components["schemas"]["Source"];
+            today_events: components["schemas"]["Source"];
+            due_soon: components["schemas"]["Source"];
+            body: components["schemas"]["Source"];
+            money: components["schemas"]["Source"];
+        };
         Spend: {
             /** @description YYYY-MM, the budget month these figures are for. */
             month: string;
@@ -9897,6 +10170,22 @@ export interface components {
             /** Format: date */
             transfer_by?: string | null;
             status?: string;
+        };
+        Topic: {
+            topic_key: string;
+            state: components["schemas"]["GreetingTopicStateEnum"];
+            /** Format: date-time */
+            at: string;
+            /** @description False when it already was this, or is closed and a raise was ignored. */
+            changed: boolean;
+        };
+        TopicWrite: {
+            topic_key: string;
+            state: components["schemas"]["GreetingTopicStateEnum"];
+        };
+        TopicsRead: {
+            state: components["schemas"]["GreetingTopicsReadStateEnum"];
+            reason: string | null;
         };
         Transfer: {
             usd_cents: number;
@@ -10243,9 +10532,10 @@ export interface components {
          *     * `grade_posted` - grade_posted
          *     * `service_due` - service_due
          *     * `mail_reply` - mail_reply
+         *     * `budget_pace` - budget_pace
          * @enum {string}
          */
-        WatchKindEnum: "charge_over" | "deposit_over" | "balance_under" | "canvas_due" | "grade_posted" | "service_due" | "mail_reply";
+        WatchKindEnum: "charge_over" | "deposit_over" | "balance_under" | "canvas_due" | "grade_posted" | "service_due" | "mail_reply" | "budget_pace";
         WatchList: {
             results: components["schemas"]["Watch"][];
             kinds: components["schemas"]["Kind"][];
@@ -16930,6 +17220,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Opponent"][];
+                };
+            };
+        };
+    };
+    api_grades_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseGradeList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_grades_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseGrade"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_grades_what_i_need: {
+        parameters: {
+            query: {
+                /** @description One assignment: id or name words. */
+                assignment?: string;
+                /** @description One assignment group: id or name words. */
+                group?: string;
+                /** @description Assume other ungraded work scores this percent. */
+                others_at?: string;
+                /** @description A percent (85) or a letter (B). */
+                target: string;
+            };
+            header?: never;
+            path: {
+                course_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Need"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_greeting_facts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Facts"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_greeting_topics_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicWrite"];
+                "application/x-www-form-urlencoded": components["schemas"]["TopicWrite"];
+                "multipart/form-data": components["schemas"]["TopicWrite"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topic"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
                 };
             };
         };
