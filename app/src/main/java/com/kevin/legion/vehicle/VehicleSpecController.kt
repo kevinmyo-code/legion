@@ -88,7 +88,46 @@ object VehicleSpecController {
     /** Reads the VIN off the OBD adapter and refreshes specs + identity from it. */
     suspend fun refreshFromObd(context: Context): VinRefreshResult {
         val vin = ObdBluetoothManager.takeIf { it.isConnected }?.getVin() ?: return VinRefreshResult.DecodeFailed
+        obdVinRefusal(context, vin)?.let { return VinRefreshResult.NotThisCar(it) }
         return refreshFromVin(context, vin)
+    }
+
+    /**
+     * Why a VIN just read off the dongle must NOT be saved onto the active car, or null when it may
+     * (OBD VIN attribution, 2026-11-15). One dongle moves between cars, and saving the car it is in
+     * onto whichever car is active is how a Jeep row once came to hold the Outlander's VIN.
+     */
+    suspend fun obdVinRefusal(context: Context, vin: String): String? {
+        val target = VehicleController.currentVehicle(context).obdMac
+        val specs = CarDatabase.getDatabase(context).vehicleSpecDao().getAll()
+        val cars = FleetEngineStore.getAll(context).map { v ->
+            DongleCar.CarVin(v.obdMac, specs.firstOrNull { it.vehicleId == v.obdMac }?.vin.orEmpty())
+        }
+        val labels = FleetEngineStore.getAll(context).associate { it.obdMac to VehicleController.label(it) }
+        return obdVinRefusal(vin, target, cars, DongleCarController.state.value is DongleCar.Held, labels)
+    }
+
+    /** Pure half of [obdVinRefusal]. */
+    internal fun obdVinRefusal(
+        vin: String,
+        targetId: String,
+        cars: List<DongleCar.CarVin>,
+        dongleCarUnknown: Boolean,
+        labels: Map<String, String>,
+    ): String? {
+        val read = DongleCar.normalizeVin(vin)
+        val owner = cars.firstOrNull { it.carId != targetId && DongleCar.normalizeVin(it.vin) == read }
+        val onTarget = DongleCar.normalizeVin(cars.firstOrNull { it.carId == targetId }?.vin)
+        return when {
+            owner != null ->
+                "${DongleCar.vinTail(read)} is the ${labels[owner.carId] ?: "other car"}'s on file, not this car's. Nothing was saved."
+            onTarget.isNotEmpty() && onTarget != read ->
+                "This car already has ${DongleCar.vinTail(onTarget)} on file and the dongle read " +
+                    "${DongleCar.vinTail(read)}. Nothing was saved; the dongle may be in another car."
+            dongleCarUnknown ->
+                "I don't know which car the OBD dongle is in yet. Say which car it is first; that saves the VIN."
+            else -> null
+        }
     }
 
     /**

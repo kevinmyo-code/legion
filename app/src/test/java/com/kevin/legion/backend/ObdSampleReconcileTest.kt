@@ -344,4 +344,39 @@ class ObdSampleReconcileTest {
 
         assertEquals(1, backend.batches.sumOf { it.size })
     }
+
+    // ---- OBD VIN attribution (2026-11-15): held samples halt the upload ------------------------
+
+    @Test
+    fun `a sample held under a pending id halts the run and is never sent under a guess`() = runBlocking {
+        val car = "AA:BB:CC:DD:EE:20"
+        insertLegacyVehicle(car)
+        val backend = FakeObdFleetBackend().apply { vehicles[car] = remoteVehicleFor(car, "vehicle-20") }
+        val before = insertSample(car, ts = 1_000L)
+        insertSample("pending:vin:1A2B3C4D5E6F7G8H9", ts = 2_000L)
+        insertSample(car, ts = 3_000L) // a later, resolvable sample waits behind it
+
+        val report = ObdSampleReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.uploaded)
+        assertEquals(before, report.cursorAt)
+        assertTrue(report.skippedUnresolvedVehicle.single().contains("held until you say which car"))
+        assertTrue(backend.batches.flatten().none { it.recordedAtMs == 2_000L })
+    }
+
+    @Test
+    fun `once the held samples are re-keyed onto the named car they upload under it`() = runBlocking {
+        val car = "AA:BB:CC:DD:EE:21"
+        insertLegacyVehicle(car)
+        val backend = FakeObdFleetBackend().apply { vehicles[car] = remoteVehicleFor(car, "vehicle-21") }
+        insertSample("pending:obd:00:11:22:33:44:55", ts = 2_000L)
+        ObdSampleReconcile.run(context, backend).getOrThrow()
+        assertTrue(backend.batches.isEmpty())
+
+        CarDatabase.getDatabase(context).odbSampleDao().rekeyAll("pending:obd:00:11:22:33:44:55", car)
+        val report = ObdSampleReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.uploaded)
+        assertEquals("vehicle-21", backend.batches.flatten().single().vehicleServerId)
+    }
 }

@@ -179,6 +179,19 @@ object VehicleController {
         // uses that one.
         if (year < 1900 || make.isBlank() || model.isBlank())
             return WriteOutcome(false, "I need a valid year, make, and model to register the car.")
+        // OBD VIN attribution (2026-11-15): with the dongle in a car nobody has named yet, "this car"
+        // has no row to correct, and writing onto the picked car would overwrite a different car.
+        val dongleCar = DongleCarController.state.value
+        if (dongleCar is DongleCar.Held ||
+            (dongleCar is DongleCar.OnCar && dongleCar.basis == DongleCar.Basis.ASSUMED)
+        ) {
+            return WriteOutcome(
+                false,
+                "I don't know for sure which car the OBD dongle is in, so nothing was saved. If it's a car " +
+                    "on file, tell me which one (switch to it); if it's a new car, ask me to add it, then " +
+                    "switch to it; to fix a saved car's details, correct that car by name.",
+            )
+        }
         val vehicleId = ActiveVehicle.current(context)
         val existing = FleetEngineStore.getByMac(context, vehicleId)
         val now = System.currentTimeMillis()
@@ -1300,12 +1313,35 @@ object VehicleController {
     }
 
     /** Makes [vehicleId] the car every stored-data tool answers about. */
-    suspend fun switchTo(context: Context, vehicleId: String): String {
+    suspend fun switchTo(context: Context, vehicleId: String): String = switchToOutcome(context, vehicleId).message
+
+    /**
+     * [switchTo] with an honest success flag. **With the OBD dongle connected, a switch is also the
+     * answer to "which car is the dongle in"** (OBD VIN attribution, 2026-11-15): "this is the
+     * F-150" lands here through the `manage_vehicle` switch action, and goes to the same
+     * [DongleCarController.answer] the notification's buttons and the Cars screen call. The pick is
+     * still stored for questions about stored data; when the dongle read another car's VIN, live
+     * readings stay on that car and the reply says so.
+     */
+    suspend fun switchToOutcome(context: Context, vehicleId: String): WriteOutcome {
         val vehicle = FleetEngineStore.getByMac(context, vehicleId)
-            ?: return "I couldn't find that car on file."
-        if (vehicle.archived) return "The ${label(vehicle)} is archived - want me to bring it back first?"
+            ?: return WriteOutcome(false, "I couldn't find that car on file.")
+        if (vehicle.archived) return WriteOutcome(false, "The ${label(vehicle)} is archived - want me to bring it back first?")
+        if (DongleCarController.state.value != null) {
+            val outcome = DongleCarController.answer(context, vehicleId)
+            val live = DongleCarController.state.value
+            val vinProvedOther = live is DongleCar.OnCar && live.basis == DongleCar.Basis.VIN && live.carId != vehicleId
+            if (outcome.ok || vinProvedOther) ActiveVehicle.select(context, vehicleId)
+            if (vinProvedOther) {
+                return WriteOutcome(
+                    true,
+                    "${outcome.message} Questions about stored data go to the ${label(vehicle)} when nothing is connected.",
+                )
+            }
+            return WriteOutcome(outcome.ok, outcome.message)
+        }
         ActiveVehicle.select(context, vehicleId)
-        return "You're on the ${label(vehicle)} now."
+        return WriteOutcome(true, "You're on the ${label(vehicle)} now.")
     }
 
     /**

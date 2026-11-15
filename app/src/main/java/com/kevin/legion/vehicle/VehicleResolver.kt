@@ -116,7 +116,8 @@ object VehicleResolver {
 
     /**
      * The car a question that names NO car is about (2026-11-03), from the non-archived [roster]:
-     *  1. the car the OBD dongle is plugged into, when it is on file;
+     *  1. the car the OBD dongle is plugged into, when it is on file (a dongle whose car is still
+     *     unknown, a `pending:` id, is skipped);
      *  2. the car picked on the Fleet tab ([ActiveVehicle.selected]), when it is on file;
      *  3. the only car on file;
      *  4. the car the dongle was last plugged into ([ActiveVehicle.lastConnected]), when on file;
@@ -136,7 +137,11 @@ object VehicleResolver {
     ): VehicleMatch? {
         if (roster.isEmpty()) return null
         fun onFile(id: String?) = id?.let { want -> roster.firstOrNull { it.obdMac == want } }
-        if (connectedId != null) return onFile(connectedId)?.let { VehicleMatch.Resolved(it) }
+        // A connection whose car is not known yet (a `pending:` id, OBD VIN attribution 2026-11-15)
+        // names no car: the question falls through to the pick and the rest, never to a guess.
+        if (connectedId != null && !DongleCar.isPending(connectedId)) {
+            return onFile(connectedId)?.let { VehicleMatch.Resolved(it) }
+        }
         val pick = onFile(selectedId)
             ?: roster.singleOrNull()
             ?: onFile(lastConnectedId)

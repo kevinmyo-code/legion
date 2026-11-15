@@ -1227,6 +1227,77 @@ object FleetEngineStore {
         return id
     }
 
+    /** What [reattributeObdData] moved, for the words said back. */
+    data class Reattributed(val samples: Int, val drives: Int, val codeEvents: Int)
+
+    /**
+     * Moves one OBD connection's data from [fromId] to [toId] once Kevin says which car the dongle
+     * was in (OBD VIN attribution, 2026-11-15; [com.kevin.legion.vehicle.DongleCarController]).
+     *
+     * Two shapes, chosen by [asCorrection]:
+     *  - **from a pending id** (false): every row under it moves, samples by a plain re-key. The
+     *    pending id never reached the server (its samples halt the upload, its drives and code events
+     *    have no server vehicle to push to), so there is nothing upstream to correct, and no rule.
+     *  - **from an assumed car** (true): only the window [fromMs]..[toMs] moves, and the samples go
+     *    through [recordDriveReassignment], the existing correction rule, so a later sync pass keeps
+     *    them on [toId]. The assumed window's samples were held back from upload until now
+     *    (`ObdSampleReconcile`), so the server never had them under [fromId] either.
+     *
+     * Drives and code events are re-filed and re-pushed by their `sync_id`; the engine's PUT
+     * updates the row's vehicle (`api/synced.py` `update` sets every validated field), so a drive
+     * pushed under the wrong car is corrected, not duplicated. The capability profile scanned under
+     * a pending id moves with it.
+     */
+    suspend fun reattributeObdData(
+        context: Context,
+        fromId: String,
+        toId: String,
+        fromMs: Long,
+        toMs: Long,
+        asCorrection: Boolean,
+    ): Reattributed {
+        if (fromId == toId) return Reattributed(0, 0, 0)
+        val db = CarDatabase.getDatabase(context)
+        val samples = if (asCorrection) {
+            val n = db.odbSampleDao().countInRange(fromId, fromMs, toMs)
+            recordDriveReassignment(context, fromId, toId, fromMs, toMs)
+            n
+        } else {
+            db.odbSampleDao().rekeyAll(fromId, toId)
+        }
+        val lo = if (asCorrection) fromMs else Long.MIN_VALUE
+        val hi = if (asCorrection) toMs else Long.MAX_VALUE
+        val drives = db.driveDao().getOverlapping(fromId, lo, hi)
+        for (d in drives) {
+            db.driveDao().setVehicle(d.id, toId)
+            syncDriveToServer(context, toId, d.id)
+        }
+        val events = db.codeEventDao().getInRange(fromId, lo, hi)
+        for (e in events) {
+            db.codeEventDao().setVehicle(e.id, toId)
+            syncCodeEventToServer(context, toId, e.id)
+        }
+        if (!asCorrection) {
+            val capabilities = db.vehicleCapabilityDao()
+            val pids = capabilities.pidsForVehicle(fromId).toSet()
+            if (pids.isNotEmpty()) capabilities.replaceForVehicle(toId, pids, System.currentTimeMillis())
+            capabilities.clearForVehicle(fromId)
+        }
+        return Reattributed(samples, drives.size, events.size)
+    }
+
+    /**
+     * Writes [vin] onto [carId]'s `vehicle_specs` row (creating the row when there is none),
+     * keeping every other column, and pushes it. "" clears it. The VIN is how the next connect
+     * recognises the car (OBD VIN attribution).
+     */
+    suspend fun setVin(context: Context, carId: String, vin: String) {
+        val existing = CarDatabase.getDatabase(context).vehicleSpecDao().get(carId)
+            ?: com.kevin.legion.data.local.VehicleSpec(vehicleId = carId)
+        if (existing.vin == vin) return
+        upsertVehicleSpec(context, existing.copy(vin = vin))
+    }
+
     /**
      * Best-effort push of one `drive_reassignments` row, keyed on [DriveReassignment.syncId] - same
      * never-throws, never-rolls-back-the-local-write posture as [syncDriveToServer]. **Both cars

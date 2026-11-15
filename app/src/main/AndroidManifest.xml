@@ -534,6 +534,12 @@
             android:name=".freshness.LoginExpiryStopReceiver"
             android:enabled="true"
             android:exported="false" />
+        <!-- "Which car is the OBD dongle in": the notification's buttons (vehicle/DongleCarNotifier.kt).
+             Takes only this app's own PendingIntents. -->
+        <receiver
+            android:name=".vehicle.DongleCarActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <!-- Fired only by GeofencingClient delivering to GeofenceManager's own PendingIntent
              (location-intelligence ticket 05) - never by the system directly, so exported=false,

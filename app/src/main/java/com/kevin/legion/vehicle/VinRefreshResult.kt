@@ -34,4 +34,11 @@ sealed class VinRefreshResult {
      * other is "tried, and it didn't work" - so the driver is told which one actually happened.
      */
     object NoStoredVin : VinRefreshResult()
+
+    /**
+     * The VIN read off the dongle belongs to another car, or this car has a different VIN on file,
+     * or the dongle's car is not known yet (OBD VIN attribution, 2026-11-15). Nothing was saved;
+     * [message] says why in words.
+     */
+    data class NotThisCar(val message: String) : VinRefreshResult()
 }

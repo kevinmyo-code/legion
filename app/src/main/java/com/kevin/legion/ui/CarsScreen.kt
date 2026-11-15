@@ -38,7 +38,10 @@ import com.kevin.legion.ui.fleet.carLabel
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.DongleCar
+import com.kevin.legion.vehicle.DongleCarController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.launch
@@ -87,6 +90,24 @@ data class CarsUiState(
      * collide silently with a car currently hidden by the toggle.
      */
     val allLabels: List<String> = emptyList(),
+    /**
+     * "Which car is the OBD dongle in?" (OBD VIN attribution, 2026-11-15): the hands path for the
+     * same question the notification and the spoken ask put, calling the same controller.
+     */
+    val dongleQuestions: List<DongleQuestion> = emptyList(),
+    /** What the last answer or switch did, in words. */
+    val dongleMessage: String? = null,
+    /** A VIN conflict waiting for an explicit "replace" (subject id, car id). */
+    val replaceOffer: Pair<String, String>? = null,
+)
+
+/** One open "which car" question. [subjectId] null is the live connection. */
+data class DongleQuestion(
+    val subjectId: String?,
+    val text: String,
+    val canLookUpNewCar: Boolean,
+    /** Car id to label, the choices. */
+    val cars: List<Pair<String, String>>,
 )
 
 @Composable
@@ -98,8 +119,11 @@ fun CarsScreen(onBack: () -> Unit) {
     // as CompanionsScreen's reloadNonce.
     var reloadNonce by remember { mutableStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
+    var dongleMessage by remember { mutableStateOf<String?>(null) }
+    val dongleCar by DongleCarController.state.collectAsStateWithLifecycle()
+    val conflict by DongleCarController.conflict.collectAsStateWithLifecycle()
 
-    LaunchedEffect(reloadNonce, showArchived) {
+    LaunchedEffect(reloadNonce, showArchived, dongleCar, conflict, dongleMessage) {
         // Archived rows are loaded ALWAYS and filtered in buildCarRows, so the
         // SHOW ARCHIVED toggle is a pure display flip with no second DB round
         // trip - and so archivedCount can be honest about how many are hidden.
@@ -116,7 +140,8 @@ fun CarsScreen(onBack: () -> Unit) {
         // deliberately recomputed rather than read from `current`, which would
         // return the driver's own selection and make the auto row describe
         // itself.
-        val autoId = ObdBluetoothManager.connectedDeviceAddress ?: VehicleController.DEFAULT_VEHICLE_ID
+        // 2026-11-15: the car the dongle's VIN (or Kevin's answer) named, when there is one.
+        val autoId = ActiveVehicle.current(null, ObdBluetoothManager.connectedDeviceAddress, dongleCar)
 
         state = CarsUiState(
             loading = false,
@@ -124,7 +149,7 @@ fun CarsScreen(onBack: () -> Unit) {
                 vehicles = vehicles,
                 telemetry = telemetry,
                 selectedId = selectedId,
-                resolvedId = selectedId ?: autoId,
+                resolvedId = ActiveVehicle.current(context),
                 showArchived = showArchived,
             ),
             isAuto = selectedId == null,
@@ -132,7 +157,15 @@ fun CarsScreen(onBack: () -> Unit) {
             showArchived = showArchived,
             archivedCount = vehicles.count { it.archived },
             allLabels = vehicles.map { carLabel(it) },
+            dongleQuestions = dongleQuestions(context, dongleCar),
+            dongleMessage = dongleMessage,
+            replaceOffer = conflict?.let { it.subjectId to it.carId },
         )
+    }
+
+    fun answered(outcome: DongleCarController.Outcome) {
+        dongleMessage = outcome.message
+        reloadNonce++
     }
 
     CarsContent(
@@ -140,10 +173,22 @@ fun CarsScreen(onBack: () -> Unit) {
         onBack = onBack,
         onActivate = { vehicleId ->
             scope.launch {
-                ActiveVehicle.select(context, vehicleId)
+                // The same call as the voice switch (2026-11-15): with the dongle connected, picking
+                // a car also answers which car it is in, and the reply is said in words here.
+                val outcome = VehicleController.switchToOutcome(context, vehicleId)
+                if (DongleCarController.state.value != null) dongleMessage = outcome.message
                 ActiveVehicle.notifyResolutionChanged(context)
                 reloadNonce++
             }
+        },
+        onDongleAnswer = { subjectId, carId ->
+            scope.launch { answered(DongleCarController.answer(context, carId, subjectId)) }
+        },
+        onDongleNewCar = { subjectId ->
+            scope.launch { answered(DongleCarController.answerNewCar(context, subjectId)) }
+        },
+        onDongleReplace = { subjectId, carId ->
+            scope.launch { answered(DongleCarController.answer(context, carId, subjectId, replaceVin = true)) }
         },
         onFollowAdapter = {
             scope.launch {
@@ -205,6 +250,9 @@ fun CarsContent(
     onToggleArchived: () -> Unit,
     onAddCar: (year: Int, make: String, model: String, trim: String, name: String, engine: String) -> Unit,
     onRename: (vehicleId: String, newName: String) -> Unit,
+    onDongleAnswer: (subjectId: String?, carId: String) -> Unit = { _, _ -> },
+    onDongleNewCar: (subjectId: String?) -> Unit = {},
+    onDongleReplace: (subjectId: String, carId: String) -> Unit = { _, _ -> },
 ) {
     // Which dialog is open, if any - plain local UI state, same "ephemeral, not
     // persisted, doesn't belong in CarsUiState" posture as
@@ -268,6 +316,26 @@ fun CarsContent(
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
+                if (state.dongleQuestions.isNotEmpty() || state.dongleMessage != null) {
+                    item(key = "dongle-header") { SectionHeader("OBD dongle", "Which car") }
+                }
+                state.dongleMessage?.let { message ->
+                    item(key = "dongle-message") {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Text(message, style = MaterialTheme.typography.bodyMedium)
+                            state.replaceOffer?.let { (subject, car) ->
+                                TextButton(onClick = { onDongleReplace(subject, car) }) {
+                                    Text("Replace the VIN on file", style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                        }
+                        Hairline()
+                    }
+                }
+                items(state.dongleQuestions, key = { "dongle-q-${it.subjectId ?: "live"}" }) { q ->
+                    DongleQuestionCard(q, onDongleAnswer, onDongleNewCar)
+                    Hairline()
+                }
                 item(key = "auto-header") { SectionHeader("Selection", if (state.isAuto) "Auto" else "Pinned") }
                 item(key = "auto-row") {
                     AutoCarRow(isAuto = state.isAuto, resolvesTo = state.autoResolvesTo, onSelect = onFollowAdapter)
@@ -308,6 +376,69 @@ fun CarsContent(
             }
         }
     }
+}
+
+/** One "which car" question: the sentence, a button per car, and "A new car" when a VIN can be looked up. */
+@Composable
+private fun DongleQuestionCard(
+    q: DongleQuestion,
+    onAnswer: (subjectId: String?, carId: String) -> Unit,
+    onNewCar: (subjectId: String?) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(q.text, style = MaterialTheme.typography.bodyMedium)
+        q.cars.forEach { (carId, label) ->
+            TextButton(onClick = { onAnswer(q.subjectId, carId) }) {
+                Text("It's the $label", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+        if (q.canLookUpNewCar) {
+            TextButton(onClick = { onNewCar(q.subjectId) }) {
+                Text("A new car (look up its VIN)", style = MaterialTheme.typography.labelLarge)
+            }
+        } else {
+            Text(
+                "A new car? Add it above, then pick it here.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The open "which car is the dongle in" questions: the live connection's (held, or an assumed car
+ * not yet confirmed), then any earlier connection whose readings still wait under a pending id.
+ */
+private suspend fun dongleQuestions(context: android.content.Context, live: DongleCar?): List<DongleQuestion> {
+    val labels = DongleCarController.labels(context)
+    val cars = labels.entries.map { it.key to it.value }
+    val out = mutableListOf<DongleQuestion>()
+    when (live) {
+        is DongleCar.Held -> out += DongleQuestion(null, DongleCarController.question(live, labels), live.vin != null, cars)
+        is DongleCar.OnCar -> if (live.basis == DongleCar.Basis.ASSUMED) {
+            val name = labels[live.carId] ?: "car you last confirmed"
+            out += DongleQuestion(
+                null,
+                "Recording as the $name (assumed): the dongle could not read this car's VIN. Which car is it in?",
+                canLookUpNewCar = false,
+                cars = cars,
+            )
+        }
+        null -> Unit
+    }
+    for (id in DongleCarController.openQuestions(context)) {
+        if (id == live?.recordingId) continue
+        val vin = DongleCar.vinOfPending(id)
+        val what = if (vin != null) DongleCar.vinTail(vin) else "an unreadable VIN"
+        out += DongleQuestion(
+            id,
+            "Readings from an earlier connection ($what) are waiting for you to say which car they came from.",
+            canLookUpNewCar = vin != null,
+            cars = cars,
+        )
+    }
+    return out
 }
 
 // ------------------------------------------------------------------------ previews

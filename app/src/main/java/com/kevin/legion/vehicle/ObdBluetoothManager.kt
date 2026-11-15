@@ -530,7 +530,8 @@ object ObdBluetoothManager {
      * pre-CAN cars and some clones don't support it). Multi-frame reply, so it's
      * given a longer timeout than the single-frame PID reads.
      */
-    suspend fun getVin(): String? = ObdResponseParser.vin(sendCommand("0902", timeoutMs = 5000))
+    suspend fun getVin(): String? =
+        ObdResponseParser.vin(sendCommand("0902", timeoutMs = 5000, countsTowardPidSilence = false))
 
     // Common ELM327 dongle name patterns ("OBDII", "OBD-II", "Vlinker MC",
     // "Veepeak", "Vgate iCar", "OBDLink"...). Most contain "OBD" or "ELM"
@@ -613,7 +614,8 @@ object ObdBluetoothManager {
         // voice socket, or the UI that the resolved identity changed once it did.
         val wasDisconnected = connectedDeviceAddress == null
         connectedDeviceAddress = address
-        ActiveVehicle.rememberConnected(context, address)
+        // ActiveVehicle.rememberConnected moved to DongleCarController (2026-11-15): it now stores
+        // the CAR the dongle was in, decided from the VIN below, not the dongle's own MAC.
         if (wasDisconnected) ActiveVehicle.notifyResolutionChanged(context.applicationContext)
 
         // Some adapters need a moment after the link comes up before they're
@@ -647,12 +649,34 @@ object ObdBluetoothManager {
         val info = AdapterInfo(idString, protocolName)
         _adapterInfo.value = info
         ObdDeviceRegistry.setLastKnownInfo(context, address, "$idString · $protocolName")
+        // Which car this is (OBD VIN attribution, 2026-11-15): one dongle moves between cars, so
+        // the VIN is read once per connect, before anything is recorded (TelemetryRecorder waits for
+        // this decision). Bounded and never throws: a dongle that cannot read the VIN still connects.
+        val dongleCar = DongleCarController.onConnected(context.applicationContext, address) { readVinForAttribution() }
+        if (transport == null) {
+            // The link died during the VIN read; disconnect() already ran, before the decision.
+            DongleCarController.onDisconnected(context.applicationContext)
+            _connectionState.value = ConnectionState.ERROR
+            return
+        }
+        ActiveVehicle.notifyResolutionChanged(context.applicationContext)
         Log.d(TAG, "OBD-II connected and initialized: $idString, protocol=$protocolName")
         _connectionState.value = ConnectionState.CONNECTED
         detectSupportedPids(supported0100)
-        MidnightEvents.obdConnected(address)
-        announceActiveCar(context)
+        MidnightEvents.obdConnected(address, dongleCar.recordingId)
+        announceActiveCar(context, dongleCar)
     }
+
+    /** Per-try timeout for the VIN read: a multi-frame reply, slower than one PID. */
+    private const val VIN_TIMEOUT_MS = 5_000L
+
+    /**
+     * Mode 09 PID 02 with one retry ([VinReader]). Excluded from [consecutivePidSilence]: a car
+     * that does not support Mode 09 answers NO DATA twice, which is not a dead K-line, and must not
+     * trigger a protocol re-init in the middle of the handshake.
+     */
+    private suspend fun readVinForAttribution(): VinResponse.Result =
+        VinReader.read { sendCommand("0902", timeoutMs = VIN_TIMEOUT_MS, countsTowardPidSilence = false) }
 
     /**
      * Flashes "RECORDING AS <car>" once, on every OBD connect (car manager,
@@ -673,15 +697,25 @@ object ObdBluetoothManager {
      * Honest limit: a flash the driver doesn't look at prevents nothing. This is the
      * cheap first line; the corrector is the real answer.
      */
-    private suspend fun announceActiveCar(context: Context) {
+    private suspend fun announceActiveCar(context: Context, dongleCar: DongleCar) {
         runCatching {
             // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's
             // doc. Only the fixed "RECORDING AS " chrome is uppercase; the label itself is data
             // (a driver-typed nickname) and must never be transformed - the old
             // `.uppercase()` over the WHOLE string is how this notice used to shout a renamed car's
             // own name back at the driver.
-            val label = VehicleController.label(VehicleController.currentVehicle(context))
-            CompanionPhase.showNotice("RECORDING AS $label")
+            //
+            // 2026-11-15: the car is the VIN decision's, and an assumed or unknown car says so in
+            // words rather than naming a guess.
+            val notice = when (dongleCar) {
+                is DongleCar.OnCar -> {
+                    val label = VehicleController.label(VehicleController.vehicleFor(context, dongleCar.carId))
+                    if (dongleCar.basis == DongleCar.Basis.ASSUMED) "RECORDING AS $label (ASSUMED, NO VIN)"
+                    else "RECORDING AS $label"
+                }
+                is DongleCar.Held -> "WHICH CAR IS THIS? READINGS HELD"
+            }
+            CompanionPhase.showNotice(notice)
         }
     }
 
@@ -733,7 +767,18 @@ object ObdBluetoothManager {
         // the assistant a question it should have been able to answer.
         //
         // Every other per-vehicle writer (TelemetryRecorder, code events) already resolves this way.
-        val vehicleId = ActiveVehicle.current(context)
+        //
+        // 2026-11-15: the connection's recording id (a pending id while the car is unknown; the
+        // answer moves it). An ASSUMED car is skipped: writing another car's profile over it would
+        // lose its own; DongleCarController.answer persists the scan once he confirms or corrects.
+        val dongleCar = DongleCarController.state.value
+        if (dongleCar is DongleCar.OnCar && dongleCar.basis == DongleCar.Basis.ASSUMED) return
+        persistCapabilitiesFor(context, ActiveVehicle.recordingId(context), supported)
+    }
+
+    /** Writes the live supported-PID scan against [vehicleId]; a no-op on an empty scan. */
+    suspend fun persistCapabilitiesFor(context: Context, vehicleId: String, supported: Set<Int> = _supportedPids.value) {
+        if (supported.isEmpty()) return
         runCatching {
             CarDatabase.getDatabase(context).vehicleCapabilityDao()
                 .replaceForVehicle(vehicleId, supported, System.currentTimeMillis())
@@ -795,6 +840,7 @@ object ObdBluetoothManager {
         transport = null
         val wasConnected = connectedDeviceAddress != null
         connectedDeviceAddress = null
+        appContext?.let { DongleCarController.onDisconnected(it) }
         // Symmetric with finishConnect: losing the dongle can flip
         // ActiveVehicle.current() back to the default vehicle id too.
         if (wasConnected) appContext?.let { ActiveVehicle.notifyResolutionChanged(it) }
