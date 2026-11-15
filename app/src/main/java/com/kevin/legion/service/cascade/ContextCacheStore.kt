@@ -45,6 +45,12 @@ class ContextCacheStore(
     @Volatile private var failures = 0
     @Volatile private var lastFailureAtMs = 0L
 
+    /**
+     * Told of each cache this store creates (model, tokens or null, TTL seconds), for the cost
+     * audit: the session open at the time adds it to its summary, so storage can be priced.
+     */
+    @Volatile var onCreated: ((model: String, tokens: Int?, ttlS: Long) -> Unit)? = null
+
     /** The usable cache name for [prefix], or null (and creation started) when there is none. */
     fun peek(prefix: CascadePrefix): String? {
         val e = entry
@@ -81,6 +87,16 @@ class ContextCacheStore(
                     memo.save(e)
                     failures = 0
                     log("cache_create_ms=${now() - started} result=created")
+                    val usage = CallUsage(
+                        kind = CallUsage.CACHE_CREATE,
+                        model = prefix.model,
+                        present = r.tokens != null,
+                        prompt = r.tokens ?: 0,
+                        promptText = r.tokens ?: 0,
+                        chars = prefix.systemInstruction.length,
+                    )
+                    log(usage.line() + " ttl_s=${CascadeRequests.CACHE_TTL_S}")
+                    onCreated?.invoke(prefix.model, r.tokens, CascadeRequests.CACHE_TTL_S)
                 }
                 is CacheCreateOutcome.Failed -> {
                     failures++

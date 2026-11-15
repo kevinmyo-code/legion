@@ -110,8 +110,8 @@ internal class CascadeSession(
     /** Who holds the mic: a tapped conversation, or a ring window a real conversation may take. */
     private val micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
     /** The cloud voice, in the companion's own voice (a fake in a test). */
-    private val cloudSpeech: (CoroutineScope) -> SpeechBackend = {
-        defaultCloudSpeech(it, CompanionProfile.voice(context))
+    private val cloudSpeech: (CoroutineScope, (CallUsage) -> Unit) -> SpeechBackend = { parent, usage ->
+        defaultCloudSpeech(parent, CompanionProfile.voice(context), usage)
     },
     /** Whether the cloud voice can start at all: it runs on the key Kevin pasted in Settings. */
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
@@ -143,6 +143,12 @@ internal class CascadeSession(
     /** The prompt build started at open ([buildPrompt]); null until then. */
     @Volatile private var prefixReady: Deferred<CascadePrefix>? = null
     @Volatile private var preambleReady: Deferred<Unit>? = null
+
+    /** The cost audit: every billed call's counts, summed at the end ([UsageLedger]). */
+    private val usageLedger = UsageLedger()
+    private val enginesUsed = java.util.concurrent.CopyOnWriteArrayList<String>()
+    private val turnsAnswered = AtomicInteger(0)
+    private var greetingLoop: GeminiTextLoop? = null
 
     /** The open's start, for `open_first_audio_ms` (once). */
     private var openStartedAtMs = 0L
@@ -274,15 +280,12 @@ internal class CascadeSession(
         val cache = CACHE
             ?: ContextCacheStore(OkHttpGemini(), CACHE_SCOPE, log = { LiveLatency.log(LiveLatency.TAG, it) })
                 .also { CACHE = it }
+        // The cache this conversation creates is priced with it (storage runs for its TTL).
+        cache.onCreated = { model, tokens, ttlS -> usageLedger.cacheCreated(model, tokens ?: 0, ttlS) }
         buildPrompt(brain, cache, started)
-        textLoop = GeminiTextLoop(
-            transport = OkHttpGemini(),
-            cache = cache,
-            isMutating = LiveToolbox::isMutatingCall,
-            isReadThrough = { GeminiLiveSession.isEpisodicExcludedTool(it) },
-            toolTimeoutMs = { TOOL_BACKSTOP_MS },
-            meter = { model, usage -> meter(model, usage) },
-        )
+        textLoop = newTextLoop(cache, CallUsage.LLM)
+        greetingLoop = newTextLoop(cache, CallUsage.GREETING)
+        enginesUsed.add(b.kind.token)
 
         val smartReady = models?.smartTurn != null && TurnModels.smartTurnBroken == null
         val p = CascadeRules.turnPlan(
@@ -423,7 +426,7 @@ internal class CascadeSession(
             VoiceEngineSettings.noteStatus(ctx, words)
             if (!quiet) host.notice("Laptop voice: $words")
         }
-        return cloudSpeech(scope) to probeMs
+        return cloudSpeech(scope, ::noteUsage) to probeMs
     }
 
     /** What asking the laptop gave: its backend, or why not (a [statusWords] token); the probe's time. */
@@ -747,6 +750,7 @@ internal class CascadeSession(
             val kept = if (outcome == ReplySpeaker.Outcome.Interrupted) withWrites(reply.spoken(), record) else said
             recordTurn(heard, kept, record.readThrough, seq, record.fromUser)
             answeredOnce = true
+            turnsAnswered.incrementAndGet()
         } catch (e: CancellationException) {
             // Interrupted (tap, barge-in) or merged into the next turn: keep only what was heard.
             withContext(NonCancellable) {
@@ -1078,7 +1082,7 @@ internal class CascadeSession(
      */
     @Suppress("LongMethod", "ReturnCount") // one exit per way the greeting ends
     private fun speakGreeting(plan: GreetingPlan.Personal) {
-        val loopRef = textLoop
+        val loopRef = greetingLoop
         if (loopRef == null) {
             speakScripted(ackLines.next())
             return
@@ -1260,6 +1264,28 @@ internal class CascadeSession(
         }
     }
 
+    /** One billed call: its line now, and into the session's sum. Counts and model ids only. */
+    private fun noteUsage(u: CallUsage) {
+        LiveLatency.log(LiveLatency.TAG, u.line())
+        usageLedger.add(u)
+    }
+
+    /** The text loop for [kind] (`llm` for turns, `greeting` for the greeting): same model, cache, tools. */
+    private fun newTextLoop(cache: ContextCacheStore, kind: String) = GeminiTextLoop(
+        transport = OkHttpGemini(),
+        cache = cache,
+        isMutating = LiveToolbox::isMutatingCall,
+        isReadThrough = { GeminiLiveSession.isEpisodicExcludedTool(it) },
+        toolTimeoutMs = { TOOL_BACKSTOP_MS },
+        meter = { model, usage ->
+            meter(model, usage)
+            noteUsage(CallUsage.of(kind, model, usage))
+        },
+        discarded = { model, usage, chars ->
+            noteUsage(CallUsage.of(kind, model, usage, chars = chars, discarded = true))
+        },
+    )
+
     /** What the follow-up lines carry: the backend speaking now. */
     private fun engineToken(): String = backend?.kind?.token ?: SpeechBackend.Kind.LAPTOP.token
 
@@ -1293,7 +1319,8 @@ internal class CascadeSession(
         VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("${stage}_$reason"))
         host.notice(DROPPED_NOTICE)
         step("laptop_close") { failed.close(reason) }
-        val next = cloudSpeech(scope)
+        val next = cloudSpeech(scope, ::noteUsage)
+        enginesUsed.add(next.kind.token)
         backend = next
         val p = player
         if (p != null && p.sampleRate != next.tts.sampleRate) {
@@ -1497,6 +1524,13 @@ internal class CascadeSession(
         step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
         micClaimed = false
         step("socket") { backend?.close(reason) }
+        step("usage") {
+            if (auditStarted) {
+                val engines = enginesUsed.joinToString(">")
+                LiveLatency.log(LiveLatency.TAG, usageLedger.summary(engines, turnsAnswered.get()))
+            }
+            CACHE?.onCreated = null
+        }
         step("audit") { if (auditStarted) audit.sessionEnd(reason) }
         LiveLatency.log("LIVE_TURN", "cascade closed reason=$reason backend=${engineToken()}")
         scope.launch {
@@ -1604,13 +1638,15 @@ internal class CascadeSession(
         }
 
         /** The production cloud voice: Gemini on the user's own key, metered and logged like the text loop. */
-        fun defaultCloudSpeech(parent: CoroutineScope, voice: String): SpeechBackend = CloudSpeech.create(
-            parent = parent,
-            transport = OkHttpGemini(),
-            meter = { model, usage -> meter(model, usage) },
-            log = { LiveLatency.log(LiveLatency.TAG, it) },
-            voice = voice,
-        )
+        fun defaultCloudSpeech(parent: CoroutineScope, voice: String, usage: (CallUsage) -> Unit): SpeechBackend =
+            CloudSpeech.create(
+                parent = parent,
+                transport = OkHttpGemini(),
+                meter = { model, u -> meter(model, u) },
+                log = { LiveLatency.log(LiveLatency.TAG, it) },
+                voice = voice,
+                usage = usage,
+            )
 
         /** One cache store for the process: the cache outlives any one conversation. */
         @Volatile private var CACHE: ContextCacheStore? = null

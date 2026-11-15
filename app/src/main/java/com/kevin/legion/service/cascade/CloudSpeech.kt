@@ -56,13 +56,14 @@ internal class CloudSpeech(
             log: (String) -> Unit = {},
             keepLines: Set<String> = AckLines.DEFAULT.toSet(),
             voice: String = CloudSpeechWire.VOICE,
+            usage: (CallUsage) -> Unit = {},
         ): CloudSpeech {
             val own = CoroutineScope(
                 parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO,
             )
             return CloudSpeech(
-                stt = GeminiStt(transport, own, meter, log),
-                tts = GeminiTts(transport, own, meter, log, keepLines = keepLines, voice = voice),
+                stt = GeminiStt(transport, own, meter, log, usage = usage),
+                tts = GeminiTts(transport, own, meter, log, keepLines = keepLines, voice = voice, usage = usage),
                 ownScope = own,
             )
         }
@@ -253,6 +254,8 @@ internal class GeminiStt(
     private val now: () -> Long = System::currentTimeMillis,
     private val minAudioBytes: Int = MIN_AUDIO_BYTES,
     private val capBytes: Int = TurnUtterance.KEEP_CAP_BYTES,
+    /** Every request's counts, for the cost audit ([CallUsage]). */
+    private val usage: (CallUsage) -> Unit = {},
 ) : SpeechToText {
     override val endsTurns = false
     private val ids = AtomicInteger(-1)
@@ -266,13 +269,12 @@ internal class GeminiStt(
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
         val body = CloudSpeechWire.transcribe(pcm)
         val started = now()
-        var turn = StreamedTurn()
-        var outcome = transport.stream(CloudSpeechWire.STT_MODEL, body) { turn.onEvent(it) }
+        var (outcome, turn) = attempt(body, audioMs.toLong())
         if (CloudSpeechWire.worthRetry(outcome)) {
             log("stt_cloud_retry after=${CloudSpeechWire.token(outcome)}")
-            turn = StreamedTurn()
-            val t = turn
-            outcome = transport.stream(CloudSpeechWire.STT_MODEL, body) { t.onEvent(it) }
+            val again = attempt(body, audioMs.toLong())
+            outcome = again.first
+            turn = again.second
         }
         val ms = now() - started
         when (outcome) {
@@ -288,6 +290,23 @@ internal class GeminiStt(
         if (turn.blockReason != null) return SttResult.Failed("blocked")
         if (turn.error != null && turn.text.isEmpty()) return SttResult.Failed("model_error")
         return SttResult.Text(CloudSpeechWire.cleanTranscript(turn.text.toString()), null, audioMs.toLong(), ms)
+    }
+
+    /** One request, its usage reported whatever happens (a cancel reports what came, as discarded). */
+    private suspend fun attempt(body: JSONObject, audioMs: Long): Pair<StreamOutcome, StreamedTurn> {
+        val turn = StreamedTurn()
+        val o = try {
+            transport.stream(CloudSpeechWire.STT_MODEL, body) { turn.onEvent(it) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            usage(CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage, audioMs, discarded = true))
+            throw e
+        }
+        val ok = o == StreamOutcome.Ok
+        usage(
+            CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage.takeIf { ok }, audioMs, discarded = !ok)
+                .copy(failed = !ok),
+        )
+        return o to turn
     }
 
     private inner class Utterance(override val id: Int) : SttUtterance {
@@ -365,6 +384,8 @@ internal class GeminiTts(
     private val kept: MutableMap<String, ByteArray> = KEPT,
     private val now: () -> Long = System::currentTimeMillis,
     private val voice: String = CloudSpeechWire.VOICE,
+    /** Every request's counts, for the cost audit ([CallUsage]). */
+    private val usage: (CallUsage) -> Unit = {},
 ) : TextToSpeech {
     override val sampleRate = CloudSpeechWire.OUTPUT_RATE
     override val streamsText = false
@@ -441,14 +462,33 @@ internal class GeminiTts(
 
         private suspend fun request(asked: Long): StreamOutcome {
             var usage: JSONObject? = null
-            val o = transport.stream(CloudSpeechWire.TTS_MODEL, CloudSpeechWire.speak(text, legacyVoice, voice)) { ev ->
-                ev.optJSONObject("usageMetadata")?.let { usage = it }
-                for (data in CloudSpeechWire.audioParts(ev)) {
-                    val pcm = CloudSpeechWire.unbase64(data) ?: continue
-                    if (firstAudioMs == null) firstAudioMs = now() - asked
-                    push(pcm)
+            val bytesBefore = bytes
+            fun counts(u: JSONObject?, discarded: Boolean) = CallUsage.of(
+                CallUsage.TTS,
+                CloudSpeechWire.TTS_MODEL,
+                u,
+                audioMs = (bytes - bytesBefore) / BYTES_PER_MS,
+                chars = text.length,
+                discarded = discarded,
+                defaultOut = "AUDIO",
+            )
+            val o = try {
+                transport.stream(CloudSpeechWire.TTS_MODEL, CloudSpeechWire.speak(text, legacyVoice, voice)) { ev ->
+                    ev.optJSONObject("usageMetadata")?.let { usage = it }
+                    for (data in CloudSpeechWire.audioParts(ev)) {
+                        val pcm = CloudSpeechWire.unbase64(data) ?: continue
+                        if (firstAudioMs == null) firstAudioMs = now() - asked
+                        push(pcm)
+                    }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Cut off (barge-in, a tap, the reply dropped): what it had made is still counted.
+                this@GeminiTts.usage(counts(usage, discarded = true))
+                throw e
             }
+            this@GeminiTts.usage(
+                if (o == StreamOutcome.Ok) counts(usage, false) else counts(null, true).copy(failed = true),
+            )
             if (o == StreamOutcome.Ok) {
                 meter(CloudSpeechWire.TTS_MODEL, usage)
                 val prompt = usage?.optInt("promptTokenCount") ?: -1

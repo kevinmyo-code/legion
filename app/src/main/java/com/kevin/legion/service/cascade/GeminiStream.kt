@@ -32,7 +32,8 @@ fun interface CacheApi {
 }
 
 sealed interface CacheCreateOutcome {
-    data class Created(val name: String) : CacheCreateOutcome
+    /** [tokens] is the create response's `usageMetadata.totalTokenCount`, null when absent. */
+    data class Created(val name: String, val tokens: Int? = null) : CacheCreateOutcome
     data class Failed(val code: Int, val body: String) : CacheCreateOutcome
 }
 
@@ -239,8 +240,15 @@ class OkHttpGemini(
             client.newCall(request).execute().use { r ->
                 val text = r.body?.string().orEmpty()
                 if (!r.isSuccessful) return@use CacheCreateOutcome.Failed(r.code, text)
-                val name = runCatching { JSONObject(text).optString("name") }.getOrNull().orEmpty()
-                if (name.isBlank()) CacheCreateOutcome.Failed(r.code, "no name") else CacheCreateOutcome.Created(name)
+                val json = runCatching { JSONObject(text) }.getOrNull()
+                val name = json?.optString("name").orEmpty()
+                val tokens = json?.optJSONObject("usageMetadata")?.takeIf { it.has("totalTokenCount") }
+                    ?.optInt("totalTokenCount")
+                if (name.isBlank()) {
+                    CacheCreateOutcome.Failed(r.code, "no name")
+                } else {
+                    CacheCreateOutcome.Created(name, tokens)
+                }
             }
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             CacheCreateOutcome.Failed(-1, e.javaClass.simpleName)

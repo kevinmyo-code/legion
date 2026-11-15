@@ -18,7 +18,8 @@ What it does:
    line with no ordering promise, so the text travels gzipped and numbered and is checked against
    its sha256.
 3. Saves the text (threadtime lines, the same shape as an adb capture) and prints: the conversation
-   timeline (`tools/voice_audit.py`), slow tools, crashes and exit records, and the nav report when
+   timeline (`tools/voice_audit.py`), the voice cost estimate per conversation
+   (`tools/voice_cost.py`), slow tools, crashes and exit records, and the nav report when
    `tools/nav_audit_report.py` exists (it lives on feat/nav-audit until that merges).
 
 If the logcat batches hold no LIVE_AUDIT lines (the phone's capture was off), it pulls
@@ -328,6 +329,8 @@ def _module(name: str):
         return None
     spec = importlib.util.spec_from_file_location(f"{name}_for_phone_audit", path)
     module = importlib.util.module_from_spec(spec)
+    # Registered first: a module using dataclasses with postponed annotations needs to find itself.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -340,6 +343,11 @@ def report(lines: list[str], *, summary: bool, verbose: bool, out_path: Path) ->
     if voice is not None:
         timeline = voice.summary(lines) if summary else voice.timeline(lines, verbose=verbose)
     out.extend(timeline or ["no LIVE_AUDIT lines in this window"])
+    cost = _module("voice_cost")
+    if cost is not None:
+        out += ["", "-- Voice cost per conversation (voice_cost.py, an ESTIMATE)"]
+        year = datetime.date.today().year
+        out.extend(cost.report(lines, year))
     out += ["", "-- Slow tools (3 s or more)"]
     out.extend(slow_tools(lines) or ["none"])
     out += ["", "-- Crashes and exit records"]

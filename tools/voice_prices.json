@@ -1,0 +1,24 @@
+{
+  "about": "Gemini API paid-tier prices that tools/voice_cost.py uses to ESTIMATE what a voice conversation cost. USD per 1,000,000 tokens; cache_storage_per_hour is per 1,000,000 tokens per hour. 'from'/'to' are inclusive dates (null: open). One row per model, token kind and date range. Update a row when the page changes and say when you read it; never guess a model that is not here (the tool prints 'no price on file').",
+  "prices": [
+    {"model": "gemini-3.5-flash-lite", "kind": "input", "usd_per_mtok": "0.30", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.5-flash-lite", "kind": "cached_input", "usd_per_mtok": "0.03", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.5-flash-lite", "kind": "output", "usd_per_mtok": "2.50", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.5-flash-lite", "kind": "cache_storage_per_hour", "usd_per_mtok": "1.00", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+
+    {"model": "gemini-3.8-flash-tts", "kind": "input", "usd_per_mtok": "0.50", "from": null, "to": "2026-12-31", "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-flash-tts", "kind": "input", "usd_per_mtok": "1.00", "from": "2027-01-01", "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-flash-tts", "kind": "output_audio", "usd_per_mtok": "9.00", "from": null, "to": "2026-12-31", "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-flash-tts", "kind": "output_audio", "usd_per_mtok": "18.00", "from": "2027-01-01", "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+
+    {"model": "gemini-3.8-flash-lite-tts", "kind": "input", "usd_per_mtok": "0.50", "from": null, "to": "2026-12-31", "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-flash-lite-tts", "kind": "input", "usd_per_mtok": "1.00", "from": "2027-01-01", "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-flash-lite-tts", "kind": "output_audio", "usd_per_mtok": "6.00", "from": null, "to": "2026-12-31", "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-flash-lite-tts", "kind": "output_audio", "usd_per_mtok": "12.00", "from": "2027-01-01", "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+
+    {"model": "gemini-3.8-live", "kind": "input_text", "usd_per_mtok": "0.75", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-live", "kind": "input_audio", "usd_per_mtok": "3.00", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-live", "kind": "output_text", "usd_per_mtok": "4.50", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"},
+    {"model": "gemini-3.8-live", "kind": "output_audio", "usd_per_mtok": "12.00", "from": null, "to": null, "read_on": "2026-11-15", "source": "https://aistudio.google.com/docs/pricing"}
+  ]
+}

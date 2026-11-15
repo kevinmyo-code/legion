@@ -49,6 +49,11 @@ class GeminiTextLoop(
     private val isReadThrough: (String) -> Boolean,
     private val toolTimeoutMs: (String) -> Long = { TextChatEngine.DEFAULT_TOOL_TIMEOUT_MS },
     private val meter: (model: String, usage: JSONObject?) -> Unit = { _, _ -> },
+    /**
+     * A round cut off before it finished (the turn was interrupted or merged): what it had used so
+     * far, for the cost audit. [usage] is null when no `usageMetadata` had arrived yet.
+     */
+    private val discarded: (model: String, usage: JSONObject?, chars: Int) -> Unit = { _, _, _ -> },
     private val maxRounds: Int = TextChatEngine.MAX_ROUNDS,
     private val budgetMs: Long = BUDGET_MS,
     private val now: () -> Long = System::currentTimeMillis,
@@ -167,16 +172,21 @@ class GeminiTextLoop(
             val turn = StreamedTurn()
             val sentAt = now()
             var firstSeen = false
-            val outcome = transport.stream(prefix.model, body) { ev ->
-                val before = turn.text.length + turn.calls.size
-                turn.onEvent(ev) { delta ->
-                    state.text.append(delta)
-                    listener.onText(delta)
+            val outcome = try {
+                transport.stream(prefix.model, body) { ev ->
+                    val before = turn.text.length + turn.calls.size
+                    turn.onEvent(ev) { delta ->
+                        state.text.append(delta)
+                        listener.onText(delta)
+                    }
+                    if (!firstSeen && turn.text.length + turn.calls.size > before) {
+                        firstSeen = true
+                        listener.onFirstPart(round, now() - sentAt)
+                    }
                 }
-                if (!firstSeen && turn.text.length + turn.calls.size > before) {
-                    firstSeen = true
-                    listener.onFirstPart(round, now() - sentAt)
-                }
+            } catch (e: CancellationException) {
+                discarded(prefix.model, turn.usage, turn.text.length)
+                throw e
             }
             when (outcome) {
                 is StreamOutcome.HttpError -> {
