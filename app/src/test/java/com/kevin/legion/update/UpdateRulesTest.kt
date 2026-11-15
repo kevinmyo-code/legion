@@ -71,7 +71,8 @@ class UpdateRulesTest {
     fun `the install gate refuses Matrix, the car and a missing grant in words`() {
         assertNull(UpdateRules.installRefusal(matrixOn = false, carConnected = false, mayInstallPackages = true))
         assertTrue(UpdateRules.installRefusal(true, false, true)!!.contains("Matrix"))
-        assertTrue(UpdateRules.installRefusal(false, true, true)!!.contains("car is connected"))
+        // Kevin, 2026-11-15: installing with the car connected is allowed.
+        assertNull(UpdateRules.installRefusal(matrixOn = false, carConnected = true, mayInstallPackages = true))
         assertTrue(UpdateRules.installRefusal(false, false, false)!!.contains("not allowed to install"))
     }
 

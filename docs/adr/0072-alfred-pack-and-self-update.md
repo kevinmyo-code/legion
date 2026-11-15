@@ -44,6 +44,11 @@ commits with `USER_ACTION_NOT_REQUIRED` on Android 12+, so after the first updat
 the only prompt. `MY_PACKAGE_REPLACED` restarts the assistant service. The voice tool `app_update`
 and Settings, Updates call the same `UpdateController` (ADR 0035).
 
+**AMENDED 2026-11-15 (Kevin: "make it so i can install while its connected").** The car being
+connected no longer refuses an install: a yes by voice or tap installs. It still keeps Alfred's
+unprompted mention quiet, so an update in the car happens only when Kevin asks. Matrix mode still
+refuses in words.
+
 **versionCode is `yyDDDHHmm` UTC** for `fast` and `release` (year, day of year, hour, minute;
 monotonic, under Android's 2,100,000,000 cap until 2099), `debug` stays 1 and never self-updates.
 The map first said `yyMMddHHmm`, which is already past both the Int and Android caps.

@@ -199,7 +199,7 @@ class AppUpdateToolboxTest {
     }
 
     @Test
-    fun `Matrix and the car refuse in words, and a conversation holds the yes`() {
+    fun `Matrix refuses in words, and a conversation holds the yes`() {
         val c = controller()
         AppUpdateToolbox.controllerFactory = { c }
         call("""{"action":"check"}""")
@@ -207,9 +207,6 @@ class AppUpdateToolboxTest {
         matrix = true
         assertTrue(call("""{"action":"install","confirmed":true}""").getString("message").contains("Matrix mode is on"))
         matrix = false
-        car = true
-        assertTrue(call("""{"action":"install","confirmed":true}""").getString("message").contains("car is connected"))
-        car = false
         busy = true
         val held = call("""{"action":"install","confirmed":true}""")
         assertFalse(held.getBoolean("success"))

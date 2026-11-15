@@ -23,7 +23,8 @@ import org.json.JSONObject
  * **Install asks every time (map decision 3).** `install` without `confirmed=true` installs
  * nothing and tells the model to ask; with it, the controller still refuses a yes that does not
  * follow an offer made moments ago (the tool's own ask or the spoken announcement), refuses Matrix
- * mode and the car in words, and holds a yes given mid-conversation until it ends. The result says
+ * mode in words (the car no longer refuses, Kevin 2026-11-15), and holds a yes given
+ * mid-conversation until it ends. The result says
  * what did and did not happen, and `success` is true only when PackageInstaller took the file.
  */
 object AppUpdateToolbox {
