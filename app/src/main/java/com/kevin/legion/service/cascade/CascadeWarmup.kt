@@ -135,15 +135,15 @@ internal object LaptopPrewarm {
 
     /** The attempt in hand, for the conversation opening now (and no one else). */
     fun take(): Attempt? {
-        val a = pending ?: return null
+        val a = pending
         pending = null
-        if (System.currentTimeMillis() - a.startedAtMs >= HOLD_MS) {
-            release(a, "stale")
-            return null
+        val fresh = a?.takeIf { System.currentTimeMillis() - it.startedAtMs < HOLD_MS }
+        if (a != null && fresh == null) release(a, "stale")
+        fresh?.let {
+            val age = System.currentTimeMillis() - it.startedAtMs
+            LiveLatency.log(LiveLatency.TAG, "prewarm_taken age_ms=$age reason=${it.reason}")
         }
-        val age = System.currentTimeMillis() - a.startedAtMs
-        LiveLatency.log(LiveLatency.TAG, "prewarm_taken age_ms=$age reason=${a.reason}")
-        return a
+        return fresh
     }
 
     /** Drops the attempt in hand: its socket (if it opened) is closed once its open ends. */

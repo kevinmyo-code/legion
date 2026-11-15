@@ -421,12 +421,7 @@ class LaptopVoiceConnection(
                     )
                 }
                 "error" -> onError(id, m.optString("code").ifBlank { "internal" })
-                "stt.maybe_end" -> if (id != null && utterances.containsKey(id)) {
-                    onMaybeEnd?.invoke(id, m.optString("text").trim(), m.optBoolean("end_of_turn", false))
-                }
-                "stt.partial" -> if (id != null && utterances.containsKey(id)) {
-                    onPartial?.invoke(id, m.optString("text").trim())
-                }
+                "stt.maybe_end", "stt.partial" -> onEarlySignal(m, id)
                 else -> Unit // pong, stt.pause, and anything a later protocol adds
             }
         }
@@ -440,6 +435,17 @@ class LaptopVoiceConnection(
 
         override fun onClosed(code: Int, reason: String) {
             markDropped(if (code == BUSY_CLOSE) "busy" else "dropped_$code")
+        }
+    }
+
+    /** `stt.maybe_end` / `stt.partial` for an utterance still open: to the session's early hooks. */
+    private fun onEarlySignal(m: JSONObject, id: Int?) {
+        if (id == null || !utterances.containsKey(id)) return
+        val text = m.optString("text").trim()
+        if (m.optString("type") == "stt.partial") {
+            onPartial?.invoke(id, text)
+        } else {
+            onMaybeEnd?.invoke(id, text, m.optBoolean("end_of_turn", false))
         }
     }
 

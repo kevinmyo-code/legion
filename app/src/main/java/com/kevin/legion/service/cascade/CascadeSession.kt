@@ -458,7 +458,12 @@ internal class CascadeSession(
     @Suppress("ReturnCount") // the laptop, nothing (Live retired), or the cloud voice
     private suspend fun openBackend(config: LaptopVoiceConfig, started: Long): Pair<SpeechBackend, Long>? {
         // Engine CLOUD: no laptop is asked at all.
-        val laptop = if (laptopFirst) tryLaptop(config, started) else LaptopTry(null, CLOUD_ENGINE, -1L)
+        // The connection started ahead ([LaptopPrewarm]) first; else the usual probe and connect.
+        val laptop = if (laptopFirst) {
+            takePrewarmed() ?: tryLaptop(config, started)
+        } else {
+            LaptopTry(null, CLOUD_ENGINE, -1L)
+        }
         val probeMs = laptop.probeMs
         laptop.speech?.let { return it to probeMs }
         val refusal = laptop.refusal
@@ -490,7 +495,6 @@ internal class CascadeSession(
     /** Probe and connect the laptop voice service, each step's refusal as a worded token. */
     @Suppress("ReturnCount") // one worded exit per open step
     private suspend fun tryLaptop(config: LaptopVoiceConfig, started: Long): LaptopTry {
-        takePrewarmed()?.let { return it }
         // A laptop that just failed to answer is not asked again for a little while: the wake word
         // must not wait out the probe on every conversation while Tailscale is off.
         if (config.isComplete && started - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS) {
@@ -672,8 +676,8 @@ internal class CascadeSession(
             currentUtt = null
             // A cloud draft transcribed this audio and he said nothing since: that transcript is the
             // turn's, so the same words are not paid for twice.
-            val d = draft
-            if (d != null && d.utt === u && d.stt != null && lastLocalSpeechAtMs == d.speechAtSnapshotMs) {
+            val d = draft?.takeIf { confirmsAudio(it, u) }
+            if (d != null) {
                 d.audioConfirmed = true
                 u.cancel()
             } else {
@@ -1535,9 +1539,9 @@ internal class CascadeSession(
                 delay(SpeculationRules.CLOUD_POLL_MS)
                 if (currentUtt !== u) break
                 val last = lastLocalSpeechAtMs
-                val d = draft
                 val quiet = last > 0 && System.currentTimeMillis() - last >= SpeculationRules.CLOUD_SILENCE_MS
-                if (quiet && (d == null || d.utt !== u) && draftRefusal() == null) startCloudDraft(u, last)
+                val drafting = draft?.utt === u
+                if (quiet && !drafting && draftRefusal() == null) startCloudDraft(u, last)
             }
         }
     }
@@ -1612,6 +1616,10 @@ internal class CascadeSession(
         )
         return answer
     }
+
+    /** [d] transcribed [u]'s audio and he has not spoken since: its transcript is the turn's. */
+    private fun confirmsAudio(d: TurnDraft, u: TurnUtterance): Boolean =
+        d.utt === u && d.stt != null && lastLocalSpeechAtMs == d.speechAtSnapshotMs
 
     /** Throws the draft away (it was of [u], and the turn will not use it). */
     private fun discardDraftOf(u: TurnUtterance, reason: String) {

@@ -39,6 +39,7 @@ class WordChunker {
  * speaking mid-reply; the session then hands over to Live). [spoken] is what was actually heard
  * (clips whose audio started), which is what history keeps after an interruption.
  */
+@Suppress("TooManyFunctions") // text in, filler, scripted line, interrupt, drain: one reply's speech
 internal class ReplySpeaker(
     private val tts: TextToSpeech,
     private val scope: CoroutineScope,

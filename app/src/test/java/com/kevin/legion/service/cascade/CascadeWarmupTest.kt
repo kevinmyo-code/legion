@@ -90,7 +90,7 @@ class CascadeWarmupTest {
                     return true
                 }
                 override fun sendBinary(bytes: ByteArray) = true
-                override fun close(code: Int, reason: String) {}
+                override fun close(code: Int, reason: String) = Unit
             }
         }
         val kept = ConcurrentHashMap<String, ByteArray>()
@@ -117,8 +117,8 @@ class CascadeWarmupTest {
         val prewarm = open.indexOf("LaptopPrewarm.start(ctx, \"open\")")
         assertTrue(prewarm in 0 until open.indexOf("MicArbiter.request("))
         assertTrue(open.indexOf("LaptopPrewarm.cancel(\"open_aborted\")") in 0 until open.indexOf("openBackend("))
-        val tryLaptop = s.substring(s.indexOf("private suspend fun tryLaptop"))
-        assertTrue(tryLaptop.indexOf("takePrewarmed()") < tryLaptop.indexOf("LaptopProbe.probe("))
+        val openBackend = s.substring(s.indexOf("private suspend fun openBackend"))
+        assertTrue(openBackend.indexOf("takePrewarmed() ?: tryLaptop(") in 0 until openBackend.indexOf("CascadeRules.nextAfter("))
         val release = s.substring(s.indexOf("private suspend fun releaseNow"))
         assertTrue(release.contains("CascadeWarmup.conversationOpen = false"))
         assertTrue(release.contains("CascadePrep.prepare(ctx, \"close\")"))

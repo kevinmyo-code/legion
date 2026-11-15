@@ -11,9 +11,9 @@ internal class PrefsCacheMemo(context: Context) : ContextCacheStore.Memo {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     override fun load(): ContextCacheStore.Entry? {
-        val key = prefs.getString(KEY, null) ?: return null
-        val name = prefs.getString(NAME, null) ?: return null
-        return ContextCacheStore.Entry(key, name, prefs.getLong(EXPIRES, 0L))
+        val key = prefs.getString(KEY, null)
+        val name = prefs.getString(NAME, null)
+        return if (key == null || name == null) null else ContextCacheStore.Entry(key, name, prefs.getLong(EXPIRES, 0L))
     }
 
     override fun save(entry: ContextCacheStore.Entry?) {
