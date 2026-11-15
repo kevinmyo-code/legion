@@ -14,7 +14,16 @@
 #      (`deploy/release/signer.sha256`), package name, no baked keys, versionCode higher than the
 #      newest release, sha256; then uploads to the APK bucket and records the release on the engine.
 #      The phone then offers "Install" on its next check (alfred-ota, ADR 0072).
-#   4. keeps the APK as a 7-day run artifact (no keys in it) for a manual sideload.
+#   4. keeps NO run artifact: the repo is public, so an artifact is downloadable by any signed-in
+#      GitHub user, and the APK carries the openWakeWord models (CC BY-NC-SA, not redistributed).
+#
+# Fixed 2026-11-15 after the first dry run (43688052490) built an APK signed by a fresh runner key
+# (71c06839...) instead of the pinned debug key, and without the gitignored openWakeWord models:
+#   - the keystore's fingerprint is checked against deploy/release/signer.sha256 before building,
+#     and Gradle is handed it explicitly (android.injected.signing.*), so AGP cannot fall back to a
+#     key of its own;
+#   - the three models come from gs://$LEGION_APK_BUCKET/build-assets/openwakeword/ (private), so
+#     the Google login now runs for dry runs too.
 #
 # One-time setup (environment `production`, the same one ship.yml uses; deploy/cloudrun/README.md
 # "Shipping from GitHub" and `deploy/cloudrun/github_setup.sh` do the Google side):
@@ -84,6 +93,12 @@ jobs:
           [ -n "$KEYSTORE_B64" ] || { echo "::error::Secret PHONE_DEBUG_KEYSTORE_B64 is not set. Nothing was built or published; see this file's header."; exit 1; }
           mkdir -p "$HOME/.android"
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          # The debug key's passwords are Android's public defaults; only the key itself is secret.
+          got=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey \
+            | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | tr -d ':' | tr 'A-F' 'a-f')
+          want=$(tr -d '[:space:]' < deploy/release/signer.sha256)
+          [ "$got" = "$want" ] || { echo "::error::The keystore in PHONE_DEBUG_KEYSTORE_B64 is not the pinned key (got ${got:0:12}..., want ${want:0:12}...). Nothing was built or published."; exit 1; }
+          echo "signing key matches deploy/release/signer.sha256"
 
       - name: Make the Gradle wrapper executable
         run: chmod +x gradlew
@@ -93,12 +108,34 @@ jobs:
         with:
           cache-read-only: true
 
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Wake word models (gitignored; from the private APK bucket)
+        env:
+          BUCKET: ${{ vars.LEGION_APK_BUCKET }}
+        run: |
+          set -euo pipefail
+          dst=app/src/main/assets/openwakeword
+          gcloud storage cp "gs://${BUCKET}/build-assets/openwakeword/*.onnx" "$dst/"
+          n=$(ls "$dst"/*.onnx | wc -l)
+          [ "$n" -eq 3 ] || { echo "::error::Expected 3 openWakeWord models in gs://${BUCKET}/build-assets/openwakeword/, got $n. Nothing was built or published."; exit 1; }
+          ls -l "$dst"
+
       - name: Build the fast APK
         env:
           MAPBOX_TOKEN: ${{ vars.MAPBOX_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
-          args=(:app:assembleFast --no-daemon)
+          args=(:app:assembleFast --no-daemon
+            "-Pandroid.injected.signing.store.file=$HOME/.android/debug.keystore"
+            -Pandroid.injected.signing.store.password=android
+            -Pandroid.injected.signing.key.alias=androiddebugkey
+            -Pandroid.injected.signing.key.password=android)
           if [ -n "$MAPBOX_TOKEN" ]; then
             args+=("-PMAPBOX_ACCESS_TOKEN=$MAPBOX_TOKEN")
           else
@@ -106,15 +143,6 @@ jobs:
           fi
           ./gradlew "${args[@]}"
           ls -l app/build/outputs/apk/fast/
-
-      - uses: google-github-actions/auth@v2
-        if: ${{ !inputs.dry_run }}
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-        if: ${{ !inputs.dry_run }}
 
       - uses: actions/setup-python@v5
         with:
@@ -134,15 +162,6 @@ jobs:
           [ "$DRY" = "true" ] && args+=(--dry-run)
           python tools/release_apk.py "${args[@]}"
 
-      - name: Keep the APK (7 days, no keys inside)
+      - name: Forget the signing key and the models
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: legion-phone-fast-${{ github.run_number }}
-          path: app/build/outputs/apk/fast/*.apk
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Forget the signing key
-        if: always()
-        run: rm -f "$HOME/.android/debug.keystore"
+        run: rm -f "$HOME/.android/debug.keystore" app/src/main/assets/openwakeword/*.onnx
