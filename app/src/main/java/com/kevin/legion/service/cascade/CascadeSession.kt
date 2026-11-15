@@ -1541,10 +1541,13 @@ internal class CascadeSession(
                 val last = lastLocalSpeechAtMs
                 val quiet = last > 0 && System.currentTimeMillis() - last >= SpeculationRules.CLOUD_SILENCE_MS
                 val drafting = draft?.utt === u
-                if (quiet && !drafting && u.cloudDraftBudgetLeft && draftRefusal() == null) startCloudDraft(u, last)
+                if (quiet && !drafting && cloudDraftAllowed(u)) startCloudDraft(u, last)
             }
         }
     }
+
+    /** Another cloud draft may start for [u] now: its cap is not spent and nothing else refuses. */
+    private fun cloudDraftAllowed(u: TurnUtterance): Boolean = u.cloudDraftBudgetLeft && draftRefusal() == null
 
     @Suppress("ReturnCount") // one exit per reason not to draft
     private fun startCloudDraft(u: TurnUtterance, speechAt: Long) {
@@ -1593,8 +1596,7 @@ internal class CascadeSession(
             answer == null -> if (d.audioConfirmed) null else "no_answer"
             !SpeculationRules.sameText(d.heard.orEmpty(), heard) -> "text_changed"
             d.historySize != history.size || d.preamble != preamble -> "context_changed"
-            answer.current != SpeculativeAnswer.State.DRAFTING -> "stale"
-            answer.failed -> "draft_failed"
+            answer.unusableReason != null -> answer.unusableReason
             else -> null
         }
         val age = System.currentTimeMillis() - d.startedAtMs

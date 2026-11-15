@@ -174,6 +174,14 @@ internal class SpeculativeAnswer(
         private set
     val current: State get() = state.get()
 
+    /** Why this draft may not be adopted at confirmation, or null: it was settled, or its call failed. */
+    val unusableReason: String?
+        get() = when {
+            current != State.DRAFTING -> "stale"
+            failed -> "draft_failed"
+            else -> null
+        }
+
     fun start(prefix: CascadePrefix, contents: JSONArray) {
         job = scope.async {
             val r = loop.answer(

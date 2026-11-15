@@ -64,9 +64,9 @@ internal object CascadeWarmup {
         CascadePrep.prepare(ctx, "onset")
         if (missCooling(System.currentTimeMillis())) {
             LiveLatency.log(LiveLatency.TAG, "prewarm_skip reason=miss_cooldown")
-            return
+        } else if (VoiceEngineSettings.engine(ctx) == VoiceEngine.LAPTOP) {
+            LaptopPrewarm.start(ctx, "onset")
         }
-        if (VoiceEngineSettings.engine(ctx) == VoiceEngine.LAPTOP) LaptopPrewarm.start(ctx, "onset")
     }
 
     /** The onset's run ended without a wake: let the laptop go. */

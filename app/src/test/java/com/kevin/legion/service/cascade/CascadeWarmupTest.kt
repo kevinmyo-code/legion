@@ -123,7 +123,7 @@ class CascadeWarmupTest {
     @Test
     fun `the session drops a failed draft at confirmation and the cloud loop is capped`() {
         val s = source("service/cascade/CascadeSession.kt")
-        assertTrue(s.contains("answer.failed -> \"draft_failed\""))
+        assertTrue(s.contains("answer.unusableReason != null"))
         assertTrue(s.contains("u.cloudDraftBudgetLeft"))
         assertTrue(s.contains("u.spendCloudDraft()"))
     }

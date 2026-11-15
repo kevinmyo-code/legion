@@ -214,6 +214,7 @@ class SpeculationTest {
         until { d.isDone }
         until { d.failed }
         assertTrue(d.failed)
+        assertEquals("draft_failed", d.unusableReason)
         assertTrue("it is still live until the session drops it", d.discard())
         assertEquals(SpeculativeAnswer.State.DISCARDED, d.current)
 
@@ -221,6 +222,7 @@ class SpeculationTest {
         good.start(prefix, contents)
         until { good.isDone }
         assertFalse("a draft that answered is not marked failed", good.failed)
+        assertEquals(null, good.unusableReason)
         good.discard()
     }
 
@@ -228,9 +230,9 @@ class SpeculationTest {
     fun `an utterance gets a small fixed number of cloud drafts, then none`() {
         val inner = object : SttUtterance {
             override val id = 1
-            override fun audio(pcm: ByteArray, offset: Int, length: Int) {}
-            override fun end() {}
-            override fun cancel() {}
+            override fun audio(pcm: ByteArray, offset: Int, length: Int) = Unit
+            override fun end() = Unit
+            override fun cancel() = Unit
             override suspend fun result(timeoutMs: Long): SttResult = SttResult.Failed("unused")
         }
         val backend = object : SpeechBackend {
@@ -239,7 +241,7 @@ class SpeculationTest {
             override val tts get() = error("unused")
             override val sttFinalTimeoutMs = 1L
             override val ttsFirstAudioTimeoutMs = 1L
-            override fun close(reason: String) {}
+            override fun close(reason: String) = Unit
         }
         val u = TurnUtterance(inner, backend, keepAudio = true)
         repeat(SpeculationRules.MAX_CLOUD_DRAFTS) {
