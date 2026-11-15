@@ -237,6 +237,19 @@ internal object CascadeLines {
         "eot_source=${source.wire} eot_silence_ms=${silenceMs ?: -1}" +
             (prob?.let { " eot_prob=${"%.2f".format(java.util.Locale.US, it)}" } ?: "")
 
+    /** A speculative draft began ([TurnDraft]); counts only, never the words. */
+    fun specStart(trigger: String, backend: String, chars: Int): String =
+        "spec_start trigger=$trigger backend=$backend chars=$chars"
+
+    /** The turn was confirmed with the draft's words: how far ahead it started and how far it got. */
+    @Suppress("LongParameterList")
+    fun specKept(trigger: String, leadMs: Long, firstPartAheadMs: Long?, draftChars: Int, heldAtTool: Boolean, done: Boolean): String =
+        "spec_kept trigger=$trigger lead_ms=$leadMs first_part_ahead_ms=${firstPartAheadMs ?: -1} " +
+            "draft_chars=$draftChars held_at_tool=$heldAtTool done=$done"
+
+    fun specDiscard(trigger: String, reason: String, ageMs: Long): String =
+        "spec_discard trigger=$trigger reason=$reason age_ms=$ageMs"
+
     fun usage(model: String, u: GeminiTextLoop.Usage): String =
         "llm_usage model=$model prompt=${u.prompt} cached=${u.cached} out=${u.output} thoughts=${u.thoughts} " +
             "rounds=${u.rounds} cache_rounds=${u.cachedRounds} inline_rounds=${u.inlineRounds}"

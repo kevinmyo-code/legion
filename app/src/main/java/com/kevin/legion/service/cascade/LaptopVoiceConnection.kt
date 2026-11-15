@@ -91,6 +91,21 @@ class LaptopVoiceConnection(
 
     val isDropped: Boolean get() = dropped.get()
 
+    /**
+     * The service sends `stt.maybe_end` (contract 4b, 2026-11-15): `ready.capabilities.maybe_end`.
+     * False on an older service, which never sends one.
+     */
+    @Volatile var sendsMaybeEnd: Boolean = false
+        private set
+
+    /**
+     * Early signals for a speculative answer, on the socket's thread: `stt.maybe_end` ([id], the text
+     * so far, whether the service has already decided the turn is over and is flushing) and
+     * `stt.partial` ([id], the running transcript). Nothing is final until `stt.final`.
+     */
+    @Volatile var onMaybeEnd: ((id: Int, text: String, atEndOfTurn: Boolean) -> Unit)? = null
+    @Volatile var onPartial: ((id: Int, text: String) -> Unit)? = null
+
     /** Connects, says hello and waits for `ready`. Never throws. */
     @Suppress("ReturnCount") // one worded failure per open step
     suspend fun open(timeoutMs: Long): OpenResult {
@@ -338,6 +353,7 @@ class LaptopVoiceConnection(
                         caps?.optBoolean("text_streaming", false) == true
                     endsTurns = m.optJSONObject("stt")?.optBoolean("end_of_turn", false) == true ||
                         caps?.optBoolean("end_of_turn", false) == true
+                    sendsMaybeEnd = caps?.optBoolean("maybe_end", false) == true
                     ready.complete(OpenResult.Ready)
                 }
                 "stt.final" -> {
@@ -372,7 +388,13 @@ class LaptopVoiceConnection(
                     )
                 }
                 "error" -> onError(id, m.optString("code").ifBlank { "internal" })
-                else -> Unit // pong, stt.partial, stt.pause, and anything a later protocol adds
+                "stt.maybe_end" -> if (id != null && utterances.containsKey(id)) {
+                    onMaybeEnd?.invoke(id, m.optString("text").trim(), m.optBoolean("end_of_turn", false))
+                }
+                "stt.partial" -> if (id != null && utterances.containsKey(id)) {
+                    onPartial?.invoke(id, m.optString("text").trim())
+                }
+                else -> Unit // pong, stt.pause, and anything a later protocol adds
             }
         }
 

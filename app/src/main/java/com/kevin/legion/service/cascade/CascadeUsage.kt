@@ -128,6 +128,17 @@ internal class UsageLedger {
     private var cacheTokens = 0
     private var cacheTtlS = 0L
     private var cacheModel = ""
+    private var specStarted = 0
+    private var specKept = 0
+    private var specDiscarded = 0
+
+    /** Speculative drafts ([TurnDraft]): started, kept as the turn's answer, thrown away. */
+    @Synchronized
+    fun spec(started: Int = 0, kept: Int = 0, discarded: Int = 0) {
+        specStarted += started
+        specKept += kept
+        specDiscarded += discarded
+    }
 
     @Synchronized
     fun add(u: CallUsage) {
@@ -168,6 +179,11 @@ internal class UsageLedger {
         } else {
             ""
         }
-        return "cascade_usage_summary engine=$engine turns=$turns$cache" + if (buckets.isEmpty()) "" else " | $buckets"
+        val spec = if (specStarted > 0) {
+            " spec_started=$specStarted spec_kept=$specKept spec_discarded=$specDiscarded"
+        } else {
+            ""
+        }
+        return "cascade_usage_summary engine=$engine turns=$turns$cache$spec" + if (buckets.isEmpty()) "" else " | $buckets"
     }
 }

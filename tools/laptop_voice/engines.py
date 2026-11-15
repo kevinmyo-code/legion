@@ -201,39 +201,63 @@ class FakeStreamingStt:
     end_of_turn = True
     partials = True
 
-    def __init__(self, text: str = "set a timer for twelve minutes", quiet_ms: int = 500, feed_delay_s: float = 0.0):
+    def __init__(self, text: str = "set a timer for twelve minutes", quiet_ms: int = 500, feed_delay_s: float = 0.0,
+                 maybe: bool = False, maybe_threshold: float | None = None, flush_words: str = ""):
+        """maybe: behave like the Kyutai engine since 2026-11-15 (stt.maybe_end before the flush, then
+        complete_turn()); maybe_threshold: also an earlier maybe_end at that pause probability;
+        flush_words: trailing words only the flush writes out (so the maybe text is shorter)."""
         self.text, self.quiet_ms, self.feed_delay_s = text, quiet_ms, feed_delay_s
+        self.maybe_end, self.maybe_threshold, self.flush_words = maybe, maybe_threshold, flush_words
 
     def transcribe(self, pcm: np.ndarray, lang: str | None) -> SttResult:
         return SttResult(self.text, "en", 1.0)
 
     def open_stream(self, lang: str | None):
         outer = self
+        before_flush = outer.text[: len(outer.text) - len(outer.flush_words)].strip() if outer.flush_words \
+            else outer.text
 
         class Sess:
             heard = 0
             quiet = 0
+            maybe_sent = False
+            pending = False
 
             def feed(self, pcm: np.ndarray):
                 time.sleep(outer.feed_delay_s)
                 ev = []
+                if self.pending:
+                    return ev
                 loud = np.abs(pcm.astype(np.int32)).mean() > 300
                 ms = len(pcm) * 1000 // STT_RATE
                 if loud:
                     self.heard += ms
                     self.quiet = 0
+                    self.maybe_sent = False
                     ev.append(("partial", " ".join(outer.text.split()[: 1 + self.heard // 400])))
                 else:
                     self.quiet += ms
                 if self.heard:
                     prob = min(1.0, self.quiet / outer.quiet_ms)
                     ev.append(("pause", (prob, self.quiet)))
-                    if self.quiet >= outer.quiet_ms:
+                    ends = self.quiet >= outer.quiet_ms
+                    if (outer.maybe_end and outer.maybe_threshold is not None and not ends
+                            and prob > outer.maybe_threshold and not self.maybe_sent):
+                        self.maybe_sent = True
+                        ev.append(("maybe_end", (before_flush, prob)))
+                    if ends and outer.maybe_end:
+                        self.pending = True
+                        ev.append(("eot_pending", (before_flush, prob)))
+                    elif ends:
                         # like Kyutai: the event carries the text and the session moves on, so a
                         # finish() after it returns an empty string
                         ev.append(("end_of_turn", outer.text))
                         self.heard = 0
                 return ev
+
+            def complete_turn(self) -> str:
+                self.pending, self.heard = False, 0
+                return outer.text
 
             def finish(self) -> SttResult:
                 return SttResult(outer.text if self.heard else "", "en", 1.0)

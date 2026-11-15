@@ -129,10 +129,15 @@ class GeminiTextLoop(
         contents: JSONArray,
         executor: TextToolExecutor,
         listener: Listener,
+        /**
+         * A speculative draft's gate ([SpeculativeAnswer]): awaited before any tool call of a round is
+         * announced or run, so nothing is executed before the turn is confirmed. Null: no gate.
+         */
+        hold: (suspend () -> Unit)? = null,
     ): Result {
         val state = TurnState()
         val result = try {
-            withTimeoutOrNull(budgetMs) { loop(prefix, contents, executor, listener, state) }
+            withTimeoutOrNull(budgetMs) { loop(prefix, contents, executor, listener, state, hold) }
         } catch (e: CancellationException) {
             throw e
         } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
@@ -154,6 +159,7 @@ class GeminiTextLoop(
         executor: TextToolExecutor,
         listener: Listener,
         state: TurnState,
+        hold: (suspend () -> Unit)?,
     ): Result {
         val contents = JSONArray()
         for (i in 0 until initial.length()) contents.put(initial.get(i))
@@ -219,6 +225,8 @@ class GeminiTextLoop(
             if (calls.isEmpty() || force) {
                 return if (state.text.isBlank()) fail(TextFailure.NO_TEXT, state) else reply(state)
             }
+            // A draft waits here for its turn to be confirmed: no tool is announced or run on a guess.
+            hold?.invoke()
             contents.put(turn.modelContent())
             listener.onToolCalls(calls.map { it.name })
             val results = coroutineScope {

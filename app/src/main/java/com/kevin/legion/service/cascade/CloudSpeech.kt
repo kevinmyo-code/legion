@@ -262,17 +262,20 @@ internal class GeminiStt(
 
     override fun begin(onServiceEnd: () -> Unit): SttUtterance = Utterance(ids.addAndGet(2))
 
-    /** One transcript for [pcm] (16 kHz PCM16 mono). Never throws except to cancel. */
+    /**
+     * One transcript for [pcm] (16 kHz PCM16 mono). Never throws except to cancel. [report] gets
+     * each request's counts (a speculative draft holds them until it is kept or dropped).
+     */
     @Suppress("ReturnCount")
-    suspend fun transcribe(pcm: ByteArray): SttResult {
+    suspend fun transcribe(pcm: ByteArray, report: (CallUsage) -> Unit = usage): SttResult {
         val audioMs = pcm.size / BYTES_PER_MS
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
         val body = CloudSpeechWire.transcribe(pcm)
         val started = now()
-        var (outcome, turn) = attempt(body, audioMs.toLong())
+        var (outcome, turn) = attempt(body, audioMs.toLong(), report)
         if (CloudSpeechWire.worthRetry(outcome)) {
             log("stt_cloud_retry after=${CloudSpeechWire.token(outcome)}")
-            val again = attempt(body, audioMs.toLong())
+            val again = attempt(body, audioMs.toLong(), report)
             outcome = again.first
             turn = again.second
         }
@@ -293,16 +296,20 @@ internal class GeminiStt(
     }
 
     /** One request, its usage reported whatever happens (a cancel reports what came, as discarded). */
-    private suspend fun attempt(body: JSONObject, audioMs: Long): Pair<StreamOutcome, StreamedTurn> {
+    private suspend fun attempt(
+        body: JSONObject,
+        audioMs: Long,
+        report: (CallUsage) -> Unit,
+    ): Pair<StreamOutcome, StreamedTurn> {
         val turn = StreamedTurn()
         val o = try {
             transport.stream(CloudSpeechWire.STT_MODEL, body) { turn.onEvent(it) }
         } catch (e: kotlinx.coroutines.CancellationException) {
-            usage(CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage, audioMs, discarded = true))
+            report(CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage, audioMs, discarded = true))
             throw e
         }
         val ok = o == StreamOutcome.Ok
-        usage(
+        report(
             CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage.takeIf { ok }, audioMs, discarded = !ok)
                 .copy(failed = !ok),
         )

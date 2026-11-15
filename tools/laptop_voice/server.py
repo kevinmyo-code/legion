@@ -143,7 +143,9 @@ class Service:
                     "text_streaming": bool(getattr(self.tts, "text_streaming", False))},
             "capabilities": {"end_of_turn": bool(getattr(self.stt, "end_of_turn", False)),
                              "partials": bool(getattr(self.stt, "partials", False)),
-                             "text_streaming": bool(getattr(self.tts, "text_streaming", False))},
+                             "text_streaming": bool(getattr(self.tts, "text_streaming", False)),
+                             "maybe_end": bool(getattr(self.stt, "end_of_turn", False)
+                                               and getattr(self.stt, "maybe_end", False))},
         }
 
     def authorized(self, request: web.Request) -> bool:
@@ -309,6 +311,34 @@ class Conversation:
                     prob, silence_ms = value
                     await self.send_json({"type": "stt.pause", "id": uid, "prob": round(float(prob), 3),
                                           "silence_ms": silence_ms})
+                elif kind == "maybe_end":
+                    # A lower pause probability than the end of turn (launcher --maybe-threshold):
+                    # the phone may start drafting an answer; nothing is final (contract 4b).
+                    text, prob = value
+                    await self.send_json({"type": "stt.maybe_end", "id": uid, "text": text,
+                                          "prob": round(float(prob), 3)})
+                elif kind == "eot_pending":
+                    # The model has decided the turn is over. Its text so far goes out BEFORE the
+                    # flush that writes out the last words, so the phone can start on it; the final
+                    # (possibly longer) follows as always.
+                    text, prob = value
+                    await self.send_json({"type": "stt.maybe_end", "id": uid, "text": text,
+                                          "prob": round(float(prob), 3), "end_of_turn": True})
+                    try:
+                        final, dt = await asyncio.wait_for(self.svc.gpu.run(_timed, sess.complete_turn),
+                                                           STT_BUDGET_S)
+                        feed_s += dt
+                    except Exception as exc:  # noqa: BLE001
+                        self.utts.pop(uid, None)
+                        if isinstance(exc, asyncio.TimeoutError):
+                            self.svc.strike()
+                            return await self.error("timeout", f"STT flush over {STT_BUDGET_S} s", uid)
+                        log.exception("stt flush failed")
+                        return await self.error("internal", type(exc).__name__, uid)
+                    reason = "end_of_turn"
+                    r = E.SttResult(text=final, lang=u["lang"], lang_prob=None)
+                    decode_ms = round((time.perf_counter() - t_feed) * 1000)
+                    break
                 elif kind == "end_of_turn":
                     # The model ended the turn and already flushed: the event carries the final text
                     # (the session has moved on, so finish() would return an empty string).
