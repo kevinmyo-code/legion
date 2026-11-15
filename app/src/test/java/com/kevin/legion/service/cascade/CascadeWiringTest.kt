@@ -158,6 +158,30 @@ class CascadeWiringTest {
     }
 
     @Test
+    fun `the opening line never waits for the prompt or the cache, 11-15 phone logs showed 9 s`() {
+        val s = session()
+        val openNow = bodyOf(s, "openNow")
+        for (blocking in listOf("awaitPrompt(", "prefixReady", ".await()\n        prefix", "cache.warm(", "buildLiveContext(")) {
+            assertFalse("openNow must not wait on $blocking", openNow.contains(blocking))
+        }
+        val build = openNow.indexOf("buildPrompt(")
+        assertTrue(build >= 0)
+        assertTrue("the prompt starts building before the mic and the line", build < openNow.indexOf("startMic()"))
+        assertTrue(openNow.indexOf("speakScripted(") > openNow.indexOf("startMic()"))
+        val prompt = bodyOf(s, "buildPrompt")
+        for (phase in listOf("open_base_ms=", "open_declarations_ms=", "open_live_context_ms=", "open_prefix_ready_ms=")) {
+            assertTrue("buildPrompt no longer logs $phase", prompt.contains(phase))
+        }
+        // The cache create waits on the cacheable prefix only, never on the live context.
+        val prefixPart = prompt.substring(prompt.indexOf("prefixReady ="), prompt.indexOf("preambleReady ="))
+        assertTrue(prefixPart.contains("cache.warm("))
+        assertFalse(prefixPart.contains("buildLiveContext("))
+        // The first turn and the greeting wait for it instead.
+        assertTrue(bodyOf(s, "answerTurn").contains("awaitPrompt()"))
+        assertTrue(bodyOf(s, "speakGreeting").contains("awaitPrompt()"))
+    }
+
+    @Test
     fun `the car's hands-free mic and the Bluetooth watch carry over from Live`() {
         val s = session()
         assertTrue(s.contains("audioRoute.enterBluetoothMic("))

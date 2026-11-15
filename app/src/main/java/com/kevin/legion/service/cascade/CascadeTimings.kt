@@ -38,5 +38,12 @@ object CascadeTimings {
      * unmeasured path does not quietly fall to Live on every turn. A miss still goes to Live.
      */
     const val CLOUD_STT_FINAL_TIMEOUT_MS = 8_000L
+
+    /**
+     * How long the first model call waits for the conversation's live context (clock, place,
+     * continuity) still building from the open; past it the call goes with the date paragraph alone.
+     * Reasoned, not measured: the 11-15 phone logs show the whole prompt build at ~6.5 s cold.
+     */
+    const val LIVE_CONTEXT_WAIT_MS = 2_000L
     const val CLOUD_TTS_FIRST_AUDIO_TIMEOUT_MS = 6_000L
 }

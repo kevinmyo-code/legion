@@ -50,6 +50,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -138,6 +139,14 @@ internal class CascadeSession(
     private var models: TurnModels.State.Ready? = null
     private var textLoop: GeminiTextLoop? = null
     @Volatile private var prefix: CascadePrefix? = null
+
+    /** The prompt build started at open ([buildPrompt]); null until then. */
+    @Volatile private var prefixReady: Deferred<CascadePrefix>? = null
+    @Volatile private var preambleReady: Deferred<Unit>? = null
+
+    /** The open's start, for `open_first_audio_ms` (once). */
+    private var openStartedAtMs = 0L
+    private var firstAudioLogged = false
     private var preamble = ""
     private var plan: CascadeRules.TurnPlan? = null
     @Volatile private var turnTaker: TurnTaker? = null
@@ -220,6 +229,7 @@ internal class CascadeSession(
     @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one worded exit per open step
     private suspend fun openNow() {
         val started = System.currentTimeMillis()
+        openStartedAtMs = started
         // The greeting's pack is fetched from the tap, overlapping the probe, connect and prompt
         // build, so it is long since answered (or timed out) by the time the line is due.
         val greetingPlan = if (opener == null) {
@@ -257,17 +267,14 @@ internal class CascadeSession(
         if (closing.get()) return
         requestFocus()
 
-        // The prompt and the cache start now; the ack line plays while they build.
+        // The prompt and the cache build in the background; nothing he hears waits for them
+        // (2026-11-15: phone logs showed the opening line ~9 s after the tap, held behind ~6.5 s of
+        // prompt building and the cache create). See [buildPrompt].
         val brain = AriaBrain.get(ctx)
-        val prefixJob = scope.async(Dispatchers.IO) {
-            val split = CascadePrompt.split(brain.buildBaseInstruction())
-            val live = runCatching { brain.buildLiveContext() }.getOrDefault("")
-            preamble = CascadePrompt.preamble(split.volatile, live)
-            CascadePrefix(MODEL, split.cacheable, CascadeRules.declarations(LiveToolbox.declarations()))
-        }
         val cache = CACHE
             ?: ContextCacheStore(OkHttpGemini(), CACHE_SCOPE, log = { LiveLatency.log(LiveLatency.TAG, it) })
                 .also { CACHE = it }
+        buildPrompt(brain, cache, started)
         textLoop = GeminiTextLoop(
             transport = OkHttpGemini(),
             cache = cache,
@@ -316,15 +323,14 @@ internal class CascadeSession(
         val openMs = System.currentTimeMillis() - started
         LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, b.tts.streamsText, b.kind.token))
         if (listens) startMic()
-        prefix = prefixJob.await()
-        // A speak-only line makes one round: a cache it would create costs more than it saves.
-        if (listens) prefix?.let { cache.warm(it) }
         if (closing.get()) return
         if (opener != null) {
             speakOpener(opener)
             return
         }
         val plan = greetingPlan?.await()
+        LiveLatency.log(LiveLatency.TAG, "open_greeting_plan_ms=${System.currentTimeMillis() - started} " +
+            "plan=${plan?.javaClass?.simpleName ?: "none"}")
         if (closing.get()) return
         if (plan is GreetingPlan.Personal) {
             speakGreeting(plan)
@@ -334,6 +340,56 @@ internal class CascadeSession(
             }
             speakScripted(ackLines.next())
         }
+    }
+
+    /**
+     * The model's prompt, built off the open path (2026-11-15). Three phases, each logged
+     * (`open_base_ms`, `open_declarations_ms`, `open_live_context_ms`, `open_prefix_ready_ms`) so the
+     * next audit can see which one is slow:
+     * - the base instruction (cached by [AriaBrain] for its TTL; cold it reads memories and the pack),
+     * - the tool declarations, then the cache create (only for a conversation that listens),
+     * - the live context for the first turn's preamble (clock, place by reverse geocode, continuity
+     *   from the engine's memory list): the slowest and the least needed, so it never holds the
+     *   cache, and the first turn waits for it only [CascadeTimings.LIVE_CONTEXT_WAIT_MS].
+     * The opening line needs none of it; the greeting and the first turn await [prefixReady].
+     */
+    private fun buildPrompt(brain: AriaBrain, cache: ContextCacheStore, started: Long) {
+        val base = scope.async(Dispatchers.IO) {
+            val t = System.currentTimeMillis()
+            CascadePrompt.split(brain.buildBaseInstruction()).also {
+                LiveLatency.log(LiveLatency.TAG, "open_base_ms=${System.currentTimeMillis() - t}")
+                // The date paragraph alone until the live context lands.
+                preamble = CascadePrompt.preamble(it.volatile, "")
+            }
+        }
+        prefixReady = scope.async(Dispatchers.IO) {
+            val split = base.await()
+            val t = System.currentTimeMillis()
+            val declarations = CascadeRules.declarations(LiveToolbox.declarations())
+            LiveLatency.log(LiveLatency.TAG, "open_declarations_ms=${System.currentTimeMillis() - t}")
+            CascadePrefix(MODEL, split.cacheable, declarations).also {
+                prefix = it
+                LiveLatency.log(LiveLatency.TAG, "open_prefix_ready_ms=${System.currentTimeMillis() - started}")
+                // A speak-only line makes one round: a cache it would create costs more than it saves.
+                if (listens) cache.warm(it)
+            }
+        }
+        preambleReady = scope.async(Dispatchers.IO) {
+            val split = base.await()
+            val t = System.currentTimeMillis()
+            val live = runCatching { brain.buildLiveContext() }.getOrDefault("")
+            LiveLatency.log(LiveLatency.TAG, "open_live_context_ms=${System.currentTimeMillis() - t}")
+            preamble = CascadePrompt.preamble(split.volatile, live)
+        }
+    }
+
+    /** The prompt for a model call: waits for the build started at open; null if it never came. */
+    private suspend fun awaitPrompt(): CascadePrefix? {
+        prefix?.let { return it }
+        val p = runCatching { prefixReady?.await() }.getOrNull()
+        // The live context gets a short wait; past it the first turn goes with the date alone.
+        withTimeoutOrNull(CascadeTimings.LIVE_CONTEXT_WAIT_MS) { runCatching { preambleReady?.await() } }
+        return p
     }
 
     /**
@@ -438,7 +494,7 @@ internal class CascadeSession(
      */
     fun say(line: CascadeOpener): Boolean {
         // Still opening (no prompt yet): the line would end the conversation he just opened.
-        if (closing.get() || !listens || prefix == null) return false
+        if (closing.get() || !listens || prefixReady == null) return false
         scope.launch(loop) {
             val previous = turnJob
             turnJob = scope.launch(loop) {
@@ -647,7 +703,7 @@ internal class CascadeSession(
     private suspend fun answerTurn(heard: String, eotAtMs: Long?, record: TurnRecord) {
         turn = record
         val seq = turnSeq.getAndIncrement()
-        val pfx = prefix ?: run {
+        val pfx = awaitPrompt() ?: run {
             handOver(heardMoment(heard), "prompt", "prefix_missing")
             return
         }
@@ -903,6 +959,10 @@ internal class CascadeSession(
 
     private fun onReplyAudible() {
         if (closing.get()) return
+        if (!firstAudioLogged && openStartedAtMs > 0) {
+            firstAudioLogged = true
+            LiveLatency.log(LiveLatency.TAG, "open_first_audio_ms=${System.currentTimeMillis() - openStartedAtMs}")
+        }
         speaking = true
         playbackActive = true
         turnTaker?.let { if (it.bargeIn) it.onReplyStart() }
@@ -1018,15 +1078,22 @@ internal class CascadeSession(
      */
     @Suppress("LongMethod", "ReturnCount") // one exit per way the greeting ends
     private fun speakGreeting(plan: GreetingPlan.Personal) {
-        val pfx = prefix
         val loopRef = textLoop
-        if (pfx == null || loopRef == null) {
+        if (loopRef == null) {
             speakScripted(ackLines.next())
             return
         }
         val voice = backend!!
-        val reply = newSpeaker(null)
         turnJob = scope.launch(loop) {
+            // One budget for the whole greeting, prompt build included: past it, the scripted line.
+            val deadline = System.currentTimeMillis() + GreetingBudget.FIRST_OUTPUT_MS
+            val pfx = withTimeoutOrNull(GreetingBudget.FIRST_OUTPUT_MS) { awaitPrompt() }
+            if (pfx == null) {
+                LiveLatency.log(LiveLatency.TAG, "greeting prompt_slow scripted")
+                speakScripted(ackLines.next())
+                return@launch
+            }
+            val reply = newSpeaker(null)
             val firstText = CompletableDeferred<Unit>()
             val call = launch(Dispatchers.IO) {
                 try {
@@ -1053,7 +1120,7 @@ internal class CascadeSession(
                 }
             }
             try {
-                withTimeoutOrNull(GreetingBudget.FIRST_OUTPUT_MS) { firstText.await() }
+                withTimeoutOrNull((deadline - System.currentTimeMillis()).coerceAtLeast(1L)) { firstText.await() }
                 if (!reply.anyText) {
                     call.cancel()
                     reply.interrupt()
