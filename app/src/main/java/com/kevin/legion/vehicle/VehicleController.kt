@@ -1327,7 +1327,21 @@ object VehicleController {
         val vehicle = FleetEngineStore.getByMac(context, vehicleId)
             ?: return WriteOutcome(false, "I couldn't find that car on file.")
         if (vehicle.archived) return WriteOutcome(false, "The ${label(vehicle)} is archived - want me to bring it back first?")
-        if (DongleCarController.state.value != null) {
+        val before = DongleCarController.state.value
+        val vinSaysOther = before is DongleCar.OnCar && before.basis == DongleCar.Basis.VIN && before.carId != vehicleId
+        if (before is DongleCar.OnCar && before.basis == DongleCar.Basis.ANSWER && before.carId != vehicleId) {
+            // He already said which car the dongle is in on this drive: a later switch is a pick for
+            // stored-data questions, not a silent move of the drive. Correcting the answer is the
+            // Cars screen's OBD dongle card.
+            ActiveVehicle.select(context, vehicleId)
+            val inCar = FleetEngineStore.getByMac(context, before.carId)?.let { label(it) } ?: "car you named"
+            return WriteOutcome(
+                true,
+                "You're on the ${label(vehicle)} for questions about stored data. Live readings stay on the " +
+                    "$inCar, the car you said the dongle is in; if that was wrong, change it under Cars, OBD dongle.",
+            )
+        }
+        if (DongleCarController.hasLiveQuestion() || vinSaysOther) {
             val outcome = DongleCarController.answer(context, vehicleId)
             val live = DongleCarController.state.value
             val vinProvedOther = live is DongleCar.OnCar && live.basis == DongleCar.Basis.VIN && live.carId != vehicleId

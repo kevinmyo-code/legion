@@ -24,8 +24,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * The one controller for "which car is the OBD dongle in" (OBD VIN attribution, Kevin 2026-11-15).
  * Voice and hands both call [answer] / [answerNewCar]: the `manage_vehicle` switch action (through
- * [VehicleController.switchTo]), the notification's buttons ([DongleCarActionReceiver]) and the
- * Cars screen's question card.
+ * [VehicleController.switchToOutcome]), the notification's buttons ([DongleCarActionReceiver]) and
+ * the Cars screen's question card.
  *
  * On every connect [onConnected] reads the VIN once, decides with [DongleCar.decide], and says so:
  *  - **matched**: the car is known; recording goes there, even over a hand pick (said once).
@@ -36,15 +36,22 @@ import java.util.concurrent.ConcurrentHashMap
  *    notification says which car in words with one-tap alternatives, and the window's samples are
  *    held back from upload until he confirms, corrects, or the next connect closes the window.
  *
+ * A connect read often comes too early (key on, engine off: the ECU may not answer Mode 09 yet),
+ * so a connection that got no VIN tries once more when the engine starts ([retryVinIfMissing]),
+ * and a reconnect inside the same drive that can read it carries the drive's data to the car the
+ * VIN names. Either way the VIN, a fact, replaces the assumption.
+ *
  * Per-device state, never synced (the same reasoning as [ActiveVehicle]): SharedPreferences for
  * what must survive a restart (the last car per dongle, the held window), memory for the rest.
  */
+@Suppress("TooManyFunctions", "LargeClass") // one controller: connect, ask, answer, hold
 object DongleCarController {
     private const val TAG = "DongleCar"
     private const val PREFS = "dongle_car"
     private const val KEY_LAST_CAR = "last_car:"
     private const val KEY_HELD_CAR = "held_car"
     private const val KEY_HELD_FROM = "held_from"
+    private const val KEY_HELD_MAC = "held_mac"
     private const val KEY_SESSION_ID = "session_id"
     private const val KEY_SESSION_FROM = "session_from"
     private const val KEY_DISCONNECTED_AT = "disconnected_at"
@@ -58,8 +65,13 @@ object DongleCarController {
     /** A reconnect inside this gap continues the same session (a Bluetooth blip, not a new drive). */
     internal const val SESSION_CONTINUES_MS = 30L * 60 * 1000
 
-    /** A second identical answer inside this window is the explicit "yes, replace the VIN". */
+    /**
+     * A second identical answer counts as the explicit "yes, replace the VIN" only inside this
+     * window and only after [REPLACE_MIN_GAP_MS], so a model retrying a failed call at once does not
+     * count as his yes.
+     */
     private const val REPLACE_CONFIRM_MS = 5L * 60 * 1000
+    internal const val REPLACE_MIN_GAP_MS = 10_000L
 
     const val RULE_ID = "obd_which_car"
     private const val LISTEN_HOLD_MS = 15_000L
@@ -69,7 +81,7 @@ object DongleCarController {
     /** This connection's decision, or null when no dongle is connected (or it is still deciding). */
     val state: StateFlow<DongleCar?> = _state.asStateFlow()
 
-    /** The last [answer] that hit a VIN conflict, so the Cars screen can offer "replace". */
+    /** The last [answer] that needs an explicit "replace", so the Cars screen can offer it. */
     private val _conflict = MutableStateFlow<Conflict?>(null)
     val conflict: StateFlow<Conflict?> = _conflict.asStateFlow()
 
@@ -78,13 +90,18 @@ object DongleCarController {
     /** The result of an answer, in words; [ok] is false when nothing changed. */
     data class Outcome(val ok: Boolean, val message: String)
 
+    /** Data to carry to a new recording id: every row of [fromId], or its rows since [fromMs]. */
+    private data class Carry(val fromId: String, val fromMs: Long?)
+
     private val mutex = Mutex()
 
     @Volatile private var sessionFrom = 0L
+    @Volatile private var vinRetried = false
 
-    // What this process wrote under each id, for re-attribution: trip miles added to a car's
-    // odometer, and lifetime gallons/miles. Memory only; a process restart mid-drive loses the
-    // tally (said in the report), never the readings themselves.
+    // What this session wrote under each id, for re-attribution: trip miles added to a car's
+    // odometer, and lifetime gallons/miles. Memory only and cleared when a new session starts, so a
+    // correction moves this drive's miles and never an earlier drive's. A process restart mid-drive
+    // loses the tally (said in the report), never the readings themselves.
     private val tripMiles = ConcurrentHashMap<String, Double>()
     private val lifetime = ConcurrentHashMap<String, Pair<Double, Double>>()
 
@@ -98,7 +115,7 @@ object DongleCarController {
         prefs(context).getString(KEY_LAST_CAR + mac, null)?.takeIf { it.isNotBlank() }
 
     private fun rememberCar(context: Context, mac: String, carId: String) {
-        prefs(context).edit().putString(KEY_LAST_CAR + mac, carId).apply()
+        if (mac.isNotBlank()) prefs(context).edit().putString(KEY_LAST_CAR + mac, carId).apply()
         ActiveVehicle.rememberConnected(context, carId)
     }
 
@@ -109,20 +126,23 @@ object DongleCarController {
      * recorded. [readVin] is bounded here as well as per command; any failure is "no VIN", so a
      * bad read can never keep the connection from coming up.
      */
-    @Suppress("TooGenericExceptionCaught") // a failed read is "no VIN", never a failed connect
     suspend fun onConnected(context: Context, mac: String, readVin: suspend () -> VinResponse.Result): DongleCar {
-        val vinResult = try {
-            withTimeoutOrNull(VIN_READ_BUDGET_MS) { readVin() } ?: VinResponse.Result.NoResponse
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "VIN read failed: ${e.message}")
-            VinResponse.Result.NoResponse
-        }
+        val vinResult = boundedRead(readVin)
+        vinRetried = false
         val decision = mutex.withLock { decideAndApply(context, mac, vinResult) }
         // Outside the lock: a spoken ask can be answered at once, and the answer takes the lock.
         say(context, decision)
         return decision
+    }
+
+    @Suppress("TooGenericExceptionCaught") // a failed read is "no VIN", never a failed connect
+    private suspend fun boundedRead(readVin: suspend () -> VinResponse.Result): VinResponse.Result = try {
+        withTimeoutOrNull(VIN_READ_BUDGET_MS) { readVin() } ?: VinResponse.Result.NoResponse
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "VIN read failed: ${e.message}")
+        VinResponse.Result.NoResponse
     }
 
     private suspend fun decideAndApply(context: Context, mac: String, vinResult: VinResponse.Result): DongleCar {
@@ -130,37 +150,112 @@ object DongleCarController {
         var decision = DongleCar.decide(mac, vinResult, cars, lastConfirmed(context, mac), ActiveVehicle.selected(context))
         val now = System.currentTimeMillis()
         val p = prefs(context)
-        val continues = sessionContinues(
-            previousId = p.getString(KEY_SESSION_ID, null),
-            newId = decision.recordingId,
-            disconnectedAt = p.getLong(KEY_DISCONNECTED_AT, 0L),
-            now = now,
-        )
+        val previousId = p.getString(KEY_SESSION_ID, null)
+        val blip = recentlyDisconnected(p.getLong(KEY_DISCONNECTED_AT, 0L), now)
+        val continues = blip && previousId != null &&
+            DongleCar.sessionKey(previousId) == DongleCar.sessionKey(decision.recordingId)
         // A Bluetooth blip after Kevin answered is the same answer, not a fresh assumption.
         if (continues && p.getBoolean(KEY_SESSION_ANSWERED, false) && decision is OnCar && decision.basis == Basis.ASSUMED) {
             decision = decision.copy(basis = Basis.ANSWER)
         }
-        sessionFrom = if (continues) p.getLong(KEY_SESSION_FROM, now) else now
+        // A blip inside one drive whose first connect read no VIN and whose reconnect reads one:
+        // the drive's data so far goes where the VIN says.
+        val carry = if (blip && !continues && vinResult is VinResponse.Result.Vin && previousId != null) {
+            carryFrom(context, previousId)
+        } else {
+            null
+        }
+        sessionFrom = when {
+            continues || carry != null -> p.getLong(KEY_SESSION_FROM, now)
+            else -> now
+        }
+        return commit(context, decision, newSession = !continues && carry == null, carry = carry, vinResult = vinResult)
+    }
+
+    /** What the previous session left to carry: a no-VIN hold (all of it) or an assumed window. */
+    private fun carryFrom(context: Context, previousId: String): Carry? = when {
+        DongleCar.macOfPending(previousId) != null -> Carry(previousId, null)
+        heldWindow(context)?.first == previousId -> Carry(previousId, heldWindow(context)?.second)
+        else -> null
+    }
+
+    /**
+     * Puts [decision0] in place: prefs, the held window, the state (FIRST, so the recorder writes
+     * under the new id from here on), then any [carry].
+     */
+    private suspend fun commit(
+        context: Context,
+        decision0: DongleCar,
+        newSession: Boolean,
+        carry: Carry?,
+        vinResult: VinResponse.Result,
+    ): DongleCar {
+        var decision = decision0
+        if (decision is Held && decision.vin == null) decision = decision.copy(since = sessionFrom)
+        val p = prefs(context)
         val edit = p.edit().putString(KEY_SESSION_ID, decision.recordingId).putLong(KEY_SESSION_FROM, sessionFrom)
-        // A new session closes the previous assumed window: its samples may upload now.
-        if (!continues) edit.remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).putBoolean(KEY_SESSION_ANSWERED, false)
-        if (decision is OnCar && decision.basis == Basis.ASSUMED && (!continues || p.getString(KEY_HELD_CAR, null) == null)) {
+        if (newSession) {
+            // A new session closes the previous assumed window: its samples may upload now.
+            edit.remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC).putBoolean(KEY_SESSION_ANSWERED, false)
+            tripMiles.clear()
+            lifetime.clear()
+        }
+        if (decision is OnCar && decision.basis == Basis.VIN) {
+            // A VIN proves the car: nothing is assumed any more.
+            edit.remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC)
+        }
+        if (decision is OnCar && decision.basis == Basis.ASSUMED && (newSession || p.getString(KEY_HELD_CAR, null) == null)) {
             edit.putString(KEY_HELD_CAR, decision.carId).putLong(KEY_HELD_FROM, sessionFrom)
+                .putString(KEY_HELD_MAC, decision.mac)
         }
         edit.apply()
         if (decision is OnCar) {
-            if (decision.basis == Basis.VIN) rememberCar(context, mac, decision.carId)
+            if (decision.basis == Basis.VIN) rememberCar(context, decision.mac, decision.carId)
             else ActiveVehicle.rememberConnected(context, decision.carId)
         }
         _state.value = decision
         _conflict.value = null
-        MidnightEvents.obdAttributed(mac, decision.recordingId, describe(vinResult, decision))
+        carry?.let { moveData(context, it.fromId, decision.recordingId, it.fromMs, System.currentTimeMillis()) }
+        MidnightEvents.obdAttributed(decision.mac, decision.recordingId, describe(vinResult, decision, carry))
         return decision
     }
 
-    /** True when a reconnect is the same session: same recording id, and a short gap. */
+    internal fun recentlyDisconnected(disconnectedAt: Long, now: Long): Boolean =
+        disconnectedAt > 0L && now - disconnectedAt in 0..SESSION_CONTINUES_MS
+
+    /** True when a reconnect is the same session: the same held session or car, and a short gap. */
     internal fun sessionContinues(previousId: String?, newId: String, disconnectedAt: Long, now: Long): Boolean =
-        previousId == newId && disconnectedAt > 0L && now - disconnectedAt in 0..SESSION_CONTINUES_MS
+        previousId != null && DongleCar.sessionKey(previousId) == DongleCar.sessionKey(newId) &&
+            recentlyDisconnected(disconnectedAt, now)
+
+    /**
+     * Called by [TelemetryRecorder] when the engine starts. A connection that read no VIN at connect
+     * (key on, engine off, the ECU not yet answering Mode 09) reads it once more; a VIN replaces the
+     * assumption and carries this session's data to the car it names. Once per connection.
+     */
+    suspend fun retryVinIfMissing(context: Context, readVin: suspend () -> VinResponse.Result) {
+        val before = _state.value ?: return
+        if (vinRetried) return
+        val noVin = (before is OnCar && before.basis == Basis.ASSUMED) || (before is Held && before.vin == null)
+        if (!noVin) return
+        vinRetried = true
+        val vinResult = boundedRead(readVin)
+        if (vinResult !is VinResponse.Result.Vin) return
+        val decision = mutex.withLock {
+            val current = _state.value
+            if (current == null || current.recordingId != before.recordingId) return@withLock null
+            val cars = carVins(context)
+            val fresh = DongleCar.decide(current.mac, vinResult, cars, lastConfirmed(context, current.mac), ActiveVehicle.selected(context))
+            val carry = if (fresh.recordingId != current.recordingId) {
+                Carry(current.recordingId, (current as? OnCar)?.let { heldFrom(context, it.carId) ?: sessionFrom })
+            } else {
+                null
+            }
+            commit(context, fresh, newSession = false, carry = carry, vinResult = vinResult)
+        } ?: return
+        ActiveVehicle.notifyResolutionChanged(context)
+        say(context, decision)
+    }
 
     /** Called by [ObdBluetoothManager] when the link drops. Keeps every held window. */
     fun onDisconnected(context: Context, at: Long = System.currentTimeMillis()) {
@@ -169,7 +264,7 @@ object DongleCarController {
         prefs(context).edit().putLong(KEY_DISCONNECTED_AT, at).apply()
     }
 
-    private fun describe(vinResult: VinResponse.Result, decision: DongleCar): String {
+    private fun describe(vinResult: VinResponse.Result, decision: DongleCar, carry: Carry?): String {
         val read = when (vinResult) {
             is VinResponse.Result.Vin -> DongleCar.vinTail(vinResult.vin)
             VinResponse.Result.NoData -> "VIN: no data"
@@ -181,7 +276,7 @@ object DongleCarController {
             is OnCar -> decision.basis.name.lowercase()
             is Held -> "held, ${decision.reason.name.lowercase()}"
         }
-        return "$read; $how"
+        return "$read; $how" + (carry?.let { "; carried from ${it.fromId}" } ?: "")
     }
 
     // ---------------------------------------------------------------------------- the ask
@@ -238,10 +333,9 @@ object DongleCarController {
         val p = prefs(context)
         // One spoken ask per held id; a reconnect does not ask again. The notification stays up.
         if (p.getString(KEY_ASKED, null) == decision.recordingId) return
-        p.edit().putString(KEY_ASKED, decision.recordingId).apply()
         val facts = question(decision, labels)
         val choices = (labels.values + "a new car").joinToString(", ")
-        ProactiveBus.speakIfAllowed(
+        val outcome = ProactiveBus.speakIfAllowed(
             context,
             ProactiveRaise(
                 ruleId = RULE_ID,
@@ -257,98 +351,122 @@ object DongleCarController {
                 listenHoldMs = LISTEN_HOLD_MS,
             ),
         )
+        // "Not now" (mid-conversation, a call) is not an ask: the next connect may try again.
+        if (outcome != ProactiveBus.RaiseOutcome.NotNow) p.edit().putString(KEY_ASKED, decision.recordingId).apply()
     }
 
     // ---------------------------------------------------------------------------- the answer
 
-    /**
-     * Pending ids still holding samples from connections nobody answered for. The live connection's
-     * own held id is included while it holds data.
-     */
+    /** Pending ids still holding samples from connections nobody answered for (the live one included). */
     suspend fun openQuestions(context: Context): List<String> =
         CarDatabase.getDatabase(context).odbSampleDao().pendingVehicleIds()
 
-    /** True when a "this is the X" should answer the dongle question rather than just pick a car. */
+    /** True while the live connection's car is unknown or only assumed: a switch answers it. */
     fun hasLiveQuestion(): Boolean {
         val s = _state.value ?: return false
-        return s is Held || (s is OnCar && s.basis != Basis.VIN)
+        return s is Held || (s is OnCar && s.basis == Basis.ASSUMED)
+    }
+
+    /** The assumed window still waiting for a yes or a correction, as an answerable subject. */
+    private fun heldWindowSubject(context: Context): OnCar? {
+        val p = prefs(context)
+        val car = p.getString(KEY_HELD_CAR, null) ?: return null
+        return OnCar(p.getString(KEY_HELD_MAC, null).orEmpty(), car, null, Basis.ASSUMED)
     }
 
     /**
-     * Kevin says the dongle's data belongs to [carId]. [subjectId] null means the live connection;
-     * otherwise it is a leftover pending id. [replaceVin] is his explicit yes to replacing a
-     * different VIN already on file for that car.
+     * Kevin says the dongle's data belongs to [carId]. [subjectId] null means the live connection, or
+     * after it dropped, the assumed window still waiting; otherwise it is a pending id or the assumed
+     * car's id (both work after the dongle disconnects, which is when a tap usually comes).
+     * [replaceVin] is his explicit yes to replacing a different VIN on file.
      */
     suspend fun answer(context: Context, carId: String, subjectId: String? = null, replaceVin: Boolean = false): Outcome =
         mutex.withLock { answerLocked(context, carId, subjectId, replaceVin) }
 
-    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one branch per plan
-    private suspend fun answerLocked(context: Context, carId: String, subjectId: String?, replaceVinArg: Boolean): Outcome {
+    private fun resolveSubject(context: Context, subjectId: String?): DongleCar? {
         val live = _state.value
-        val subject: DongleCar = when {
-            subjectId == null || subjectId == live?.recordingId -> live
-                ?: return Outcome(false, "The OBD dongle isn't connected, so there is no car to set for it.")
+        val window = heldWindowSubject(context)
+        return when {
+            subjectId == null -> live ?: window
+            subjectId == live?.recordingId -> live
             DongleCar.isPending(subjectId) -> Held(
-                mac = subjectId.removePrefix("pending:obd:"),
+                mac = DongleCar.macOfPending(subjectId).orEmpty(),
                 vin = DongleCar.vinOfPending(subjectId),
                 reason = if (DongleCar.vinOfPending(subjectId) != null) HeldReason.UNKNOWN_VIN else HeldReason.NO_VIN,
+                since = DongleCar.sinceOfPending(subjectId),
             )
-            else -> return Outcome(false, "That is not a dongle connection waiting for a car.")
+            subjectId == window?.carId -> window
+            else -> null
         }
+    }
+
+    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one branch per plan
+    private suspend fun answerLocked(context: Context, carId: String, subjectId: String?, replaceVinArg: Boolean): Outcome {
+        val subject = resolveSubject(context, subjectId)
+            ?: return Outcome(false, "Nothing is waiting for a car: the dongle isn't connected and no readings are held.")
+        val live = _state.value
         val isLive = live != null && subject.recordingId == live.recordingId
+        val window = heldWindow(context)
+        val settlesWindow = subject is OnCar && window?.first == subject.carId
         val cars = carVins(context)
         val labels = labels(context)
         val name = labels[carId] ?: "that car"
         val now = System.currentTimeMillis()
         val replaceVin = replaceVinArg || lastReplaceAsk?.let { (s, c, at) ->
-            s == subject.recordingId && c == carId && now - at < REPLACE_CONFIRM_MS
+            s == subject.recordingId && c == carId && now - at in REPLACE_MIN_GAP_MS..REPLACE_CONFIRM_MS
         } == true
 
         return when (val plan = DongleCar.planAnswer(subject, carId, cars, replaceVin)) {
             is AnswerPlan.NotOnFile -> Outcome(false, "That car isn't on file (or is archived), so nothing changed.")
             is AnswerPlan.VinSaysOtherCar -> {
+                if (lastReplaceAsk?.let { it.first == subject.recordingId && it.second == carId } != true) {
+                    lastReplaceAsk = Triple(subject.recordingId, carId, now)
+                }
                 val other = labels[plan.vinCarId] ?: "another car"
-                Outcome(
-                    false,
-                    "The dongle read the $other's VIN, so live readings stay on the $other. " +
-                        "If that VIN is on the wrong car, fix it on that car's Specs.",
-                )
+                val message = "The dongle read the $other's VIN, so live readings stay on the $other. Nothing " +
+                    "changed. If that VIN is on the wrong car, tap Replace (Cars, OBD dongle), or say it is the " +
+                    "$name again in a moment, and I'll move the VIN and this drive to the $name."
+                _conflict.value = Conflict(subject.recordingId, carId, message)
+                Outcome(false, message)
             }
             is AnswerPlan.VinConflict -> {
-                lastReplaceAsk = Triple(subject.recordingId, carId, now)
+                if (lastReplaceAsk?.let { it.first == subject.recordingId && it.second == carId } != true) {
+                    lastReplaceAsk = Triple(subject.recordingId, carId, now)
+                }
                 val message = "The $name already has ${DongleCar.vinTail(plan.onFile)} on file, and this car " +
                     "reads ${DongleCar.vinTail(plan.read)}. Nothing changed. If the $name's VIN on file is " +
-                    "wrong, say it is the $name again (or tap Replace) and I'll replace it."
+                    "wrong, tap Replace (Cars, OBD dongle), or say it is the $name again in a moment, and I'll replace it."
                 _conflict.value = Conflict(subject.recordingId, carId, message)
                 Outcome(false, message)
             }
             is AnswerPlan.Keep -> {
-                if (isLive) {
+                if (isLive && plan.settles) _state.value = OnCar(subject.mac, carId, (subject as? OnCar)?.vin, Basis.ANSWER)
+                if (isLive || settlesWindow) {
                     rememberCar(context, subject.mac, carId)
-                    prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM)
+                    prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC)
                         .putBoolean(KEY_SESSION_ANSWERED, true).apply()
-                    val vin = (subject as? OnCar)?.vin
-                    if (plan.settles) _state.value = OnCar(subject.mac, carId, vin, Basis.ANSWER)
-                    ObdBluetoothManager.persistCapabilitiesFor(context, carId)
                 }
+                if (isLive) ObdBluetoothManager.persistCapabilitiesFor(context, carId)
                 DongleCarNotifier.clear(context)
                 Outcome(true, "Noted: the dongle is in the $name.")
             }
             is AnswerPlan.Move -> {
+                if (isLive) {
+                    // The state first: from this instant the recorder writes under the named car, so
+                    // nothing lands under the old id after the move below.
+                    val vin = (subject as? Held)?.vin ?: (subject as? OnCar)?.vin
+                    _state.value = OnCar(subject.mac, carId, vin, Basis.ANSWER)
+                    prefs(context).edit().putString(KEY_SESSION_ID, carId).putBoolean(KEY_SESSION_ANSWERED, true).apply()
+                }
                 plan.writeVin?.let { FleetEngineStore.setVin(context, carId, it) }
                 plan.clearVinFrom.forEach { FleetEngineStore.setVin(context, it, "") }
-                val fromMs = if (plan.asCorrection) heldFrom(context, plan.fromId) ?: sessionFrom else 0L
-                val moved = FleetEngineStore.reattributeObdData(context, plan.fromId, carId, fromMs, now, plan.asCorrection)
-                moveTallies(context, plan.fromId, carId, plan.asCorrection)
-                TelemetryRecorder.reattributeDriveInProgress(plan.fromId, carId)
-                if (subject.mac.isNotBlank() && !subject.mac.startsWith("pending:")) rememberCar(context, subject.mac, carId)
+                val fromMs = if (plan.asCorrection) (if (settlesWindow) window?.second else null) ?: sessionFrom else null
+                val moved = moveData(context, plan.fromId, carId, fromMs, System.currentTimeMillis())
+                rememberCar(context, subject.mac, carId)
+                if (isLive || settlesWindow) {
+                    prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC).apply()
+                }
                 if (isLive) {
-                    _state.value = OnCar(subject.mac, carId, (subject as? Held)?.vin ?: (subject as? OnCar)?.vin, Basis.ANSWER)
-                    prefs(context).edit()
-                        .remove(KEY_HELD_CAR).remove(KEY_HELD_FROM)
-                        .putString(KEY_SESSION_ID, carId)
-                        .putBoolean(KEY_SESSION_ANSWERED, true)
-                        .apply()
                     ObdBluetoothManager.persistCapabilitiesFor(context, carId)
                     ActiveVehicle.notifyResolutionChanged(context)
                 }
@@ -361,6 +479,26 @@ object DongleCarController {
         }
     }
 
+    /**
+     * Moves [fromId]'s data to [toId]: every row ([fromMs] null, a pending id) or the rows since
+     * [fromMs] (a car's window). A correction rule is recorded only between two cars; a pending id
+     * never left the phone.
+     */
+    private suspend fun moveData(context: Context, fromId: String, toId: String, fromMs: Long?, toMs: Long): FleetEngineStore.Reattributed {
+        val windowed = fromMs != null
+        val moved = FleetEngineStore.reattributeObdData(
+            context,
+            FleetEngineStore.ObdDataMove(
+                fromId, toId, fromMs ?: 0L, toMs,
+                windowed = windowed,
+                rule = windowed && !DongleCar.isPending(fromId) && !DongleCar.isPending(toId),
+            ),
+        )
+        moveTallies(context, fromId, toId)
+        TelemetryRecorder.reattributeDriveInProgress(fromId, toId)
+        return moved
+    }
+
     private fun movedWords(name: String, moved: FleetEngineStore.Reattributed, plan: AnswerPlan.Move): String {
         val parts = buildList {
             add("${moved.samples} reading${if (moved.samples == 1) "" else "s"}")
@@ -369,7 +507,7 @@ object DongleCarController {
         }
         val vin = plan.writeVin?.let { " Saved its ${DongleCar.vinTail(it)} so I'll know it next time." }.orEmpty()
         val cleared = if (plan.clearVinFrom.isNotEmpty()) {
-            " Cleared that VIN from ${plan.clearVinFrom.size} other car${if (plan.clearVinFrom.size == 1) "" else "s"} that also had it."
+            " Cleared that VIN from ${plan.clearVinFrom.size} other car${if (plan.clearVinFrom.size == 1) "" else "s"} that had it."
         } else {
             ""
         }
@@ -382,13 +520,15 @@ object DongleCarController {
      * names a car already on file is not added twice: it asks whether it is that one.
      */
     suspend fun answerNewCar(context: Context, subjectId: String? = null): Outcome {
-        val subject = if (subjectId == null) _state.value else null
-        val vin = (subject as? Held)?.vin ?: subjectId?.let { DongleCar.vinOfPending(it) }
-            ?: return Outcome(
+        val held = mutex.withLock { resolveSubject(context, subjectId) } as? Held
+        val vin = held?.vin
+        if (held == null || vin == null) {
+            return Outcome(
                 false,
                 "I can't look a car up without its VIN. Add it with its year, make and model (Cars, Add car, " +
                     "or say add my car), then tell me it's that one.",
             )
+        }
         val decoded = VinDecoder.decode(vin)
         if (decoded == null || decoded.year < MIN_YEAR || decoded.make.isBlank() || decoded.model.isBlank()) {
             return Outcome(
@@ -423,7 +563,7 @@ object DongleCarController {
                 confirmed = false,
             ),
         )
-        return answer(context, id, subjectId)
+        return answer(context, id, held.recordingId)
     }
 
     // ---------------------------------------------------------------------------- uploads
@@ -457,16 +597,17 @@ object DongleCarController {
         lifetime.merge(id, gallons to miles) { a, b -> (a.first + b.first) to (a.second + b.second) }
     }
 
-    private suspend fun moveTallies(context: Context, fromId: String, toId: String, asCorrection: Boolean) {
+    private suspend fun moveTallies(context: Context, fromId: String, toId: String) {
         val now = System.currentTimeMillis()
+        val fromIsCar = !DongleCar.isPending(fromId)
         tripMiles.remove(fromId)?.let { miles ->
             // A pending id has no vehicles row, so its odometer add was a no-op; only the target gains.
-            if (asCorrection) FleetEngineStore.addTripMiles(context, fromId, -miles, now)
+            if (fromIsCar) FleetEngineStore.addTripMiles(context, fromId, -miles, now)
             FleetEngineStore.addTripMiles(context, toId, miles, now)
             noteTripMiles(toId, miles)
         }
         val tally = lifetime.remove(fromId)
-        TelemetryRecorder.moveLifetime(context, fromId, toId, tally, moveAll = !asCorrection)
+        TelemetryRecorder.moveLifetime(context, fromId, toId, tally, moveAll = !fromIsCar)
         tally?.let { noteLifetime(toId, it.first, it.second) }
     }
 
@@ -491,10 +632,11 @@ object DongleCarController {
         lifetime.clear()
         lastReplaceAsk = null
         sessionFrom = 0L
+        vinRetried = false
     }
 
-    /** Test seam: put a decision in place without a dongle. */
-    internal fun setStateForTest(state: DongleCar?) {
-        _state.value = state
+    /** Test seam: age the last replace ask, as if he said it again a moment later. */
+    internal fun ageReplaceAskForTest(byMs: Long) {
+        lastReplaceAsk = lastReplaceAsk?.let { Triple(it.first, it.second, it.third - byMs) }
     }
 }

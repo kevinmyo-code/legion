@@ -129,6 +129,13 @@ interface OdbSampleDao {
     @Query("UPDATE obd_samples SET vehicleId = :toVehicleId WHERE vehicleId = :fromVehicleId")
     suspend fun rekeyAll(fromVehicleId: String, toVehicleId: String): Int
 
+    /** [rekeyAll] for one window: an assumed car's held window moving to a pending id. */
+    @Query(
+        "UPDATE obd_samples SET vehicleId = :toVehicleId WHERE vehicleId = :fromVehicleId " +
+            "AND timestamp >= :fromMs AND timestamp <= :toMs"
+    )
+    suspend fun rekeyRange(fromVehicleId: String, toVehicleId: String, fromMs: Long, toMs: Long): Int
+
     /** Pending ids that still hold samples: connections nobody has said the car for yet. */
     @Query("SELECT DISTINCT vehicleId FROM obd_samples WHERE vehicleId LIKE 'pending:%'")
     suspend fun pendingVehicleIds(): List<String>

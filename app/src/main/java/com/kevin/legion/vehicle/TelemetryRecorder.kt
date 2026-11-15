@@ -324,6 +324,11 @@ object TelemetryRecorder {
                 engineWasOn = true
                 isEngineRunning = true
                 driveStartedAt = System.currentTimeMillis()
+                // A connect read made with the engine off often gets no VIN; try once more now the
+                // ECU is awake, BEFORE the drive takes its car (2026-11-15, DongleCarController).
+                runCatching {
+                    DongleCarController.retryVinIfMissing(context) { ObdBluetoothManager.readVinForAttribution() }
+                }.onFailure { Log.w(TAG, "VIN retry failed: ${it.message}") }
                 driveVehicleId = vehicleId(context)
                 val coolant = ObdBluetoothManager.getCoolantTemp()
                 if (coolant != null && coolant < COLD_START_C) {

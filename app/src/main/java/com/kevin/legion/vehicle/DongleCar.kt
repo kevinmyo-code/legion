@@ -38,9 +38,15 @@ sealed interface DongleCar {
         override val mac: String,
         val vin: String?,
         val reason: HeldReason,
+        /**
+         * When this held session began, for a no-VIN hold: two unanswered no-VIN sessions (maybe
+         * two different cars) must never pool under one id. 0 for a VIN-keyed hold, where the VIN
+         * already says which car.
+         */
+        val since: Long = 0L,
     ) : DongleCar {
         override val recordingId: String
-            get() = if (vin != null) pendingIdForVin(vin) else pendingIdForDongle(mac)
+            get() = if (vin != null) pendingIdForVin(vin) else pendingIdForDongle(mac, since)
     }
 
     enum class Basis {
@@ -104,7 +110,19 @@ sealed interface DongleCar {
 
         fun pendingIdForVin(vin: String): String = VIN_PREFIX + vin.uppercase()
 
-        fun pendingIdForDongle(mac: String): String = DONGLE_PREFIX + mac
+        fun pendingIdForDongle(mac: String, since: Long = 0L): String =
+            DONGLE_PREFIX + mac + if (since > 0L) "@$since" else ""
+
+        /** The dongle a dongle-keyed pending id was held for, or null for a VIN-keyed one. */
+        fun macOfPending(id: String): String? =
+            id.takeIf { it.startsWith(DONGLE_PREFIX) }?.removePrefix(DONGLE_PREFIX)?.substringBefore('@')
+
+        /** The session start a dongle-keyed pending id carries, or 0. */
+        fun sinceOfPending(id: String): Long =
+            id.takeIf { it.startsWith(DONGLE_PREFIX) }?.substringAfter('@', "")?.toLongOrNull() ?: 0L
+
+        /** Two ids name the same held session when they differ only in the session start. */
+        fun sessionKey(id: String): String = if (id.startsWith(DONGLE_PREFIX)) id.substringBefore('@') else id
 
         fun isPending(id: String?): Boolean = id?.startsWith(PENDING_PREFIX) == true
 
@@ -166,8 +184,10 @@ sealed interface DongleCar {
                     if (subject.carId == chosenCarId) {
                         return AnswerPlan.Keep(chosenCarId, settles = subject.basis == Basis.ASSUMED)
                     }
-                    if (subject.basis == Basis.VIN) return AnswerPlan.VinSaysOtherCar(subject.carId)
-                    // ASSUMED, or an earlier ANSWER this connection: a correction.
+                    // The VIN on file says another car. Only his explicit "replace" moves it (the VIN
+                    // on file may sit on the wrong car: a 2026-08 Jeep row held an Outlander's VIN).
+                    if (subject.basis == Basis.VIN && !replaceVin) return AnswerPlan.VinSaysOtherCar(subject.carId)
+                    // ASSUMED, an earlier ANSWER this connection, or a replaced VIN: a correction.
                     val vin = subject.vin
                     if (vin != null && chosenVin.isNotEmpty() && chosenVin != vin && !replaceVin) {
                         return AnswerPlan.VinConflict(chosenCarId, chosenVin, vin)

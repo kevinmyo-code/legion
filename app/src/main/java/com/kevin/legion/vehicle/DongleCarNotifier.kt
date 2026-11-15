@@ -43,9 +43,12 @@ object DongleCarNotifier {
     fun ask(context: Context, decision: DongleCar.Held, labels: Map<String, String>) {
         val cars = labels.entries.toList()
         val buttons = mutableListOf<Pair<String, PendingIntent>>()
-        cars.take(2).forEach { (id, label) -> buttons += label to answerIntent(context, id, null, false) }
+        // The subject rides in every button, so a tap after the dongle disconnects (he has parked)
+        // still answers this connection's held readings.
+        val subject = decision.recordingId
+        cars.take(2).forEach { (id, label) -> buttons += label to answerIntent(context, id, subject, false) }
         val canLookUp = decision.reason == DongleCar.HeldReason.UNKNOWN_VIN
-        buttons += if (canLookUp && cars.size <= 2) "New car" to newCarIntent(context) else "Other" to openCars(context)
+        buttons += if (canLookUp && cars.size <= 2) "New car" to newCarIntent(context, subject) else "Other" to openCars(context)
         post(
             context,
             title = "Which car is the OBD dongle in?",
@@ -58,11 +61,13 @@ object DongleCarNotifier {
     fun assumed(context: Context, decision: DongleCar.OnCar, labels: Map<String, String>) {
         val name = labels[decision.carId] ?: "the car you last confirmed"
         val others = labels.filterKeys { it != decision.carId }.entries.toList()
-        val buttons = mutableListOf("Yes, $name" to answerIntent(context, decision.carId, null, false))
+        // The assumed car's id is the subject: after a disconnect it names the held window.
+        val subject = decision.carId
+        val buttons = mutableListOf("Yes, $name" to answerIntent(context, decision.carId, subject, false))
         if (others.size <= 2) {
-            others.forEach { (id, label) -> buttons += label to answerIntent(context, id, null, false) }
+            others.forEach { (id, label) -> buttons += label to answerIntent(context, id, subject, false) }
         } else {
-            buttons += others.first().value to answerIntent(context, others.first().key, null, false)
+            buttons += others.first().value to answerIntent(context, others.first().key, subject, false)
             buttons += "Other" to openCars(context)
         }
         post(
@@ -146,12 +151,13 @@ object DongleCarNotifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun newCarIntent(context: Context): PendingIntent =
+    private fun newCarIntent(context: Context, subjectId: String): PendingIntent =
         PendingIntent.getBroadcast(
             context.applicationContext,
             NOTIFICATION_ID,
             Intent(context.applicationContext, DongleCarActionReceiver::class.java)
-                .setAction(DongleCarActionReceiver.ACTION_NEW_CAR),
+                .setAction(DongleCarActionReceiver.ACTION_NEW_CAR)
+                .putExtra(DongleCarActionReceiver.EXTRA_SUBJECT, subjectId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

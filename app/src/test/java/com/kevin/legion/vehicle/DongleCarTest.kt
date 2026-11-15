@@ -181,4 +181,25 @@ class DongleCarTest {
     fun `the VIN is spoken by its tail only`() {
         assertEquals("VIN ending F7G8H9", DongleCar.vinTail(truckVin))
     }
+
+    @Test
+    fun `his explicit replace moves a VIN that sits on the wrong car`() {
+        val matched = OnCar(mac, "car:suv", suvVin, Basis.VIN)
+        val plan = DongleCar.planAnswer(matched, "car:hybrid", cars, replaceVin = true) as AnswerPlan.Move
+        assertEquals("car:suv", plan.fromId)
+        assertEquals(true, plan.asCorrection)
+        assertEquals(suvVin, plan.writeVin)
+        assertEquals(listOf("car:suv"), plan.clearVinFrom)
+    }
+
+    @Test
+    fun `a no-VIN hold is keyed by dongle and session, and both read back`() {
+        val held = Held(mac, null, HeldReason.NO_VIN, since = 1_700_000_000_000L)
+        assertEquals("pending:obd:$mac@1700000000000", held.recordingId)
+        assertEquals(mac, DongleCar.macOfPending(held.recordingId))
+        assertEquals(1_700_000_000_000L, DongleCar.sinceOfPending(held.recordingId))
+        assertEquals("pending:obd:$mac", DongleCar.sessionKey(held.recordingId))
+        assertEquals(null, DongleCar.macOfPending("pending:vin:$newVin"))
+        assertEquals("car:truck", DongleCar.sessionKey("car:truck"))
+    }
 }

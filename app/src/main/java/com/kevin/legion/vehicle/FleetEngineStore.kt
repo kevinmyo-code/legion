@@ -1227,6 +1227,16 @@ object FleetEngineStore {
         return id
     }
 
+    /** One [reattributeObdData] call's arguments: which rows go where, and whether a rule records it. */
+    data class ObdDataMove(
+        val fromId: String,
+        val toId: String,
+        val fromMs: Long,
+        val toMs: Long,
+        val windowed: Boolean,
+        val rule: Boolean = windowed,
+    )
+
     /** What [reattributeObdData] moved, for the words said back. */
     data class Reattributed(val samples: Int, val drives: Int, val codeEvents: Int)
 
@@ -1234,39 +1244,36 @@ object FleetEngineStore {
      * Moves one OBD connection's data from [fromId] to [toId] once Kevin says which car the dongle
      * was in (OBD VIN attribution, 2026-11-15; [com.kevin.legion.vehicle.DongleCarController]).
      *
-     * Two shapes, chosen by [asCorrection]:
+     * Two shapes, chosen by [windowed]:
      *  - **from a pending id** (false): every row under it moves, samples by a plain re-key. The
      *    pending id never reached the server (its samples halt the upload, its drives and code events
      *    have no server vehicle to push to), so there is nothing upstream to correct, and no rule.
-     *  - **from an assumed car** (true): only the window [fromMs]..[toMs] moves, and the samples go
-     *    through [recordDriveReassignment], the existing correction rule, so a later sync pass keeps
-     *    them on [toId]. The assumed window's samples were held back from upload until now
-     *    (`ObdSampleReconcile`), so the server never had them under [fromId] either.
+     *  - **from a car's window** (true): only [fromMs]..[toMs] moves. Between two cars ([rule]) the
+     *    samples go through [recordDriveReassignment], the existing correction rule, so a later sync
+     *    pass keeps them on [toId]; an assumed window's samples were held back from upload until now
+     *    (`ObdSampleReconcile`), so the server never had them under [fromId] either. Into a pending
+     *    id (a VIN read later that no car has) there is no rule, only a windowed re-key.
      *
      * Drives and code events are re-filed and re-pushed by their `sync_id`; the engine's PUT
      * updates the row's vehicle (`api/synced.py` `update` sets every validated field), so a drive
      * pushed under the wrong car is corrected, not duplicated. The capability profile scanned under
      * a pending id moves with it.
      */
-    suspend fun reattributeObdData(
-        context: Context,
-        fromId: String,
-        toId: String,
-        fromMs: Long,
-        toMs: Long,
-        asCorrection: Boolean,
-    ): Reattributed {
+    suspend fun reattributeObdData(context: Context, move: ObdDataMove): Reattributed {
+        val (fromId, toId, fromMs, toMs, windowed, rule) = move
         if (fromId == toId) return Reattributed(0, 0, 0)
         val db = CarDatabase.getDatabase(context)
-        val samples = if (asCorrection) {
-            val n = db.odbSampleDao().countInRange(fromId, fromMs, toMs)
-            recordDriveReassignment(context, fromId, toId, fromMs, toMs)
-            n
-        } else {
-            db.odbSampleDao().rekeyAll(fromId, toId)
+        val samples = when {
+            windowed && rule -> {
+                val n = db.odbSampleDao().countInRange(fromId, fromMs, toMs)
+                recordDriveReassignment(context, fromId, toId, fromMs, toMs)
+                n
+            }
+            windowed -> db.odbSampleDao().rekeyRange(fromId, toId, fromMs, toMs)
+            else -> db.odbSampleDao().rekeyAll(fromId, toId)
         }
-        val lo = if (asCorrection) fromMs else Long.MIN_VALUE
-        val hi = if (asCorrection) toMs else Long.MAX_VALUE
+        val lo = if (windowed) fromMs else Long.MIN_VALUE
+        val hi = if (windowed) toMs else Long.MAX_VALUE
         val drives = db.driveDao().getOverlapping(fromId, lo, hi)
         for (d in drives) {
             db.driveDao().setVehicle(d.id, toId)
@@ -1277,7 +1284,7 @@ object FleetEngineStore {
             db.codeEventDao().setVehicle(e.id, toId)
             syncCodeEventToServer(context, toId, e.id)
         }
-        if (!asCorrection) {
+        if (!windowed) {
             val capabilities = db.vehicleCapabilityDao()
             val pids = capabilities.pidsForVehicle(fromId).toSet()
             if (pids.isNotEmpty()) capabilities.replaceForVehicle(toId, pids, System.currentTimeMillis())

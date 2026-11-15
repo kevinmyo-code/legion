@@ -173,10 +173,9 @@ fun CarsScreen(onBack: () -> Unit) {
         onBack = onBack,
         onActivate = { vehicleId ->
             scope.launch {
-                // The same call as the voice switch (2026-11-15): with the dongle connected, picking
-                // a car also answers which car it is in, and the reply is said in words here.
-                val outcome = VehicleController.switchToOutcome(context, vehicleId)
-                if (DongleCarController.state.value != null) dongleMessage = outcome.message
+                // The picker is the stored-data pick only; "which car is the dongle in" is the OBD
+                // dongle card above it (2026-11-15), so a tap here never moves a drive.
+                ActiveVehicle.select(context, vehicleId)
                 ActiveVehicle.notifyResolutionChanged(context)
                 reloadNonce++
             }
@@ -416,16 +415,33 @@ private suspend fun dongleQuestions(context: android.content.Context, live: Dong
     val out = mutableListOf<DongleQuestion>()
     when (live) {
         is DongleCar.Held -> out += DongleQuestion(null, DongleCarController.question(live, labels), live.vin != null, cars)
-        is DongleCar.OnCar -> if (live.basis == DongleCar.Basis.ASSUMED) {
-            val name = labels[live.carId] ?: "car you last confirmed"
+        is DongleCar.OnCar -> {
+            val name = labels[live.carId] ?: "car on file"
+            when (live.basis) {
+                DongleCar.Basis.ASSUMED -> out += DongleQuestion(
+                    null,
+                    "Recording as the $name (assumed): the dongle could not read this car's VIN. Which car is it in?",
+                    canLookUpNewCar = false,
+                    cars = cars,
+                )
+                DongleCar.Basis.ANSWER -> out += DongleQuestion(
+                    null,
+                    "Recording as the $name, as you said. Wrong car? Pick the right one and this drive moves.",
+                    canLookUpNewCar = false,
+                    cars = cars.filter { it.first != live.carId },
+                )
+                DongleCar.Basis.VIN -> Unit
+            }
+        }
+        null -> DongleCarController.heldWindow(context)?.let { (car, _) ->
+            // Parked, assumed car not yet confirmed: still answerable by hand.
             out += DongleQuestion(
-                null,
-                "Recording as the $name (assumed): the dongle could not read this car's VIN. Which car is it in?",
+                car,
+                "The last drive was recorded as the ${labels[car] ?: "car you last confirmed"} (assumed, no VIN). Which car was it?",
                 canLookUpNewCar = false,
                 cars = cars,
             )
         }
-        null -> Unit
     }
     for (id in DongleCarController.openQuestions(context)) {
         if (id == live?.recordingId) continue

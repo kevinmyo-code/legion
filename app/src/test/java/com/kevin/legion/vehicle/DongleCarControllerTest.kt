@@ -153,7 +153,12 @@ class DongleCarControllerTest {
         assertEquals(0, db.odbSampleDao().totalCount("car:truck"))
         assertTrue(DongleCarController.conflict.value != null)
 
-        // Saying it again is the explicit yes (the voice path has no replace parameter).
+        // At once again is a model retry, not his yes: still nothing.
+        assertFalse(DongleCarController.answer(context, "car:truck").ok)
+        assertEquals(truckVin, specVin("car:truck"))
+
+        // Saying it again a moment later is the explicit yes (the voice path has no replace parameter).
+        DongleCarController.ageReplaceAskForTest(DongleCarController.REPLACE_MIN_GAP_MS)
         val second = DongleCarController.answer(context, "car:truck")
         assertTrue(second.message, second.ok)
         assertEquals(newVin, specVin("car:truck"))
@@ -186,8 +191,9 @@ class DongleCarControllerTest {
         seed()
         val d = connect(VinResponse.Result.NoData)
         assertTrue(d is DongleCar.Held)
-        assertEquals("pending:obd:$mac", ActiveVehicle.recordingId(context))
-        sample("pending:obd:$mac", 1_000L)
+        val held = ActiveVehicle.recordingId(context)
+        assertTrue(held, held.startsWith("pending:obd:$mac@"))
+        sample(held, 1_000L)
 
         val out = DongleCarController.answer(context, "car:truck")
         assertTrue(out.message, out.ok)
@@ -284,5 +290,123 @@ class DongleCarControllerTest {
         assertTrue(out.message, out.ok)
         assertEquals(1, db.odbSampleDao().totalCount("car:hybrid"))
         assertEquals(newVin, specVin("car:hybrid"))
+    }
+
+    // ---- answers after the dongle is gone, and the VIN read late ----------------------------
+
+    @Test
+    fun `a held connection can be answered after the dongle disconnects`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.Vin(newVin))
+        val held = ActiveVehicle.recordingId(context)
+        sample(held, 1_000L)
+        DongleCarController.onDisconnected(context)
+
+        val out = DongleCarController.answer(context, "car:hybrid", subjectId = held)
+
+        assertTrue(out.message, out.ok)
+        assertEquals(1, db.odbSampleDao().totalCount("car:hybrid"))
+        assertEquals(newVin, specVin("car:hybrid"))
+    }
+
+    @Test
+    fun `an assumed drive can be corrected after the dongle disconnects`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData)
+        DongleCarController.answer(context, "car:truck")
+        DongleCarController.onDisconnected(context, at = longAgo())
+        DongleCarController.resetForTest()
+        connect(VinResponse.Result.NoData)
+        val from = DongleCarController.heldWindow(context)!!.second
+        sample("car:truck", from + 1)
+        DongleCarController.onDisconnected(context) // parked; now he taps
+
+        val out = DongleCarController.answer(context, "car:suv", subjectId = "car:truck")
+
+        assertTrue(out.message, out.ok)
+        assertEquals(1, db.odbSampleDao().totalCount("car:suv"))
+        assertNull(DongleCarController.heldWindow(context))
+        assertEquals("car:suv", DongleCarController.lastConfirmed(context, mac))
+    }
+
+    @Test
+    fun `no VIN at connect, then the VIN at engine start, moves the assumed window to the VIN's car`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData)
+        DongleCarController.answer(context, "car:truck")
+        DongleCarController.onDisconnected(context, at = longAgo())
+        DongleCarController.resetForTest()
+        connect(VinResponse.Result.NoData) // key on, engine off: assumed truck
+        val from = DongleCarController.heldWindow(context)!!.second
+        sample("car:truck", from + 1)
+
+        DongleCarController.retryVinIfMissing(context) { VinResponse.Result.Vin(suvVin) }
+
+        val now = DongleCarController.state.value as DongleCar.OnCar
+        assertEquals("car:suv", now.carId)
+        assertEquals(DongleCar.Basis.VIN, now.basis)
+        assertEquals(1, db.odbSampleDao().totalCount("car:suv"))
+        assertNull(DongleCarController.heldWindow(context))
+        // Once per connection.
+        var reads = 0
+        DongleCarController.retryVinIfMissing(context) { reads++; VinResponse.Result.Vin(truckVin) }
+        assertEquals(0, reads)
+    }
+
+    @Test
+    fun `no VIN at connect, then an unknown VIN at engine start, holds the data under the VIN`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoResponse)
+        val dongleHeld = ActiveVehicle.recordingId(context)
+        sample(dongleHeld, 1_000L)
+
+        DongleCarController.retryVinIfMissing(context) { VinResponse.Result.Vin(newVin) }
+
+        assertEquals("pending:vin:$newVin", ActiveVehicle.recordingId(context))
+        assertEquals(1, db.odbSampleDao().totalCount("pending:vin:$newVin"))
+        assertEquals(0, db.odbSampleDao().totalCount(dongleHeld))
+    }
+
+    @Test
+    fun `a reconnect blip that reads the VIN carries the no-VIN hold to the VIN's car`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData)
+        val dongleHeld = ActiveVehicle.recordingId(context)
+        sample(dongleHeld, 1_000L)
+        DongleCarController.onDisconnected(context) // a blip, seconds later it reconnects
+
+        val d = connect(VinResponse.Result.Vin(truckVin)) as DongleCar.OnCar
+
+        assertEquals("car:truck", d.carId)
+        assertEquals(1, db.odbSampleDao().totalCount("car:truck"))
+        assertTrue(db.odbSampleDao().pendingVehicleIds().isEmpty())
+    }
+
+    @Test
+    fun `two unanswered no-VIN drives never pool under one id`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData)
+        val first = ActiveVehicle.recordingId(context)
+        DongleCarController.onDisconnected(context, at = longAgo())
+        Thread.sleep(2)
+        connect(VinResponse.Result.NoData)
+        val second = ActiveVehicle.recordingId(context)
+        assertFalse(first == second)
+    }
+
+    @Test
+    fun `a VIN on the wrong car on file can be replaced by his explicit word`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.Vin(truckVin)) // the truck's VIN on file is really the hybrid's
+        val first = DongleCarController.answer(context, "car:hybrid")
+        assertFalse(first.ok)
+        assertTrue(DongleCarController.conflict.value != null)
+
+        val replaced = DongleCarController.answer(context, "car:hybrid", replaceVin = true)
+
+        assertTrue(replaced.message, replaced.ok)
+        assertEquals(truckVin, specVin("car:hybrid"))
+        assertEquals("", specVin("car:truck"))
+        assertEquals("car:hybrid", ActiveVehicle.recordingId(context))
     }
 }

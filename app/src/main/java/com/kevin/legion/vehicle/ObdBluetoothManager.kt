@@ -652,6 +652,7 @@ object ObdBluetoothManager {
         // Which car this is (OBD VIN attribution, 2026-11-15): one dongle moves between cars, so
         // the VIN is read once per connect, before anything is recorded (TelemetryRecorder waits for
         // this decision). Bounded and never throws: a dongle that cannot read the VIN still connects.
+        val resolvedBefore = ActiveVehicle.current(context.applicationContext)
         val dongleCar = DongleCarController.onConnected(context.applicationContext, address) { readVinForAttribution() }
         if (transport == null) {
             // The link died during the VIN read; disconnect() already ran, before the decision.
@@ -659,7 +660,9 @@ object ObdBluetoothManager {
             _connectionState.value = ConnectionState.ERROR
             return
         }
-        ActiveVehicle.notifyResolutionChanged(context.applicationContext)
+        if (ActiveVehicle.current(context.applicationContext) != resolvedBefore) {
+            ActiveVehicle.notifyResolutionChanged(context.applicationContext)
+        }
         Log.d(TAG, "OBD-II connected and initialized: $idString, protocol=$protocolName")
         _connectionState.value = ConnectionState.CONNECTED
         detectSupportedPids(supported0100)
@@ -675,7 +678,7 @@ object ObdBluetoothManager {
      * that does not support Mode 09 answers NO DATA twice, which is not a dead K-line, and must not
      * trigger a protocol re-init in the middle of the handshake.
      */
-    private suspend fun readVinForAttribution(): VinResponse.Result =
+    internal suspend fun readVinForAttribution(): VinResponse.Result =
         VinReader.read { sendCommand("0902", timeoutMs = VIN_TIMEOUT_MS, countsTowardPidSilence = false) }
 
     /**
