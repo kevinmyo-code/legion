@@ -177,8 +177,19 @@ object VehicleController {
         // shape as the `remember` blank guard found on the A25 2026-09-07, swept the same day. It
         // is [WriteOutcome] rather than a new type because every other write on this object already
         // uses that one.
-        if (year < 1900 || make.isBlank() || model.isBlank())
-            return WriteOutcome(false, "I need a valid year, make, and model to register the car.")
+        // OBD VIN attribution (2026-11-15): with the dongle in a car nobody has named yet (or only
+        // assumed), "this car" has no row to correct, and writing onto the picked car would
+        // overwrite a different car.
+        val refusal = when {
+            year < 1900 || make.isBlank() || model.isBlank() ->
+                "I need a valid year, make, and model to register the car."
+            DongleCarController.hasLiveQuestion() ->
+                "I don't know for sure which car the OBD dongle is in, so nothing was saved. If it's a car " +
+                    "on file, tell me which one (switch to it); if it's a new car, ask me to add it, then " +
+                    "switch to it; to fix a saved car's details, correct that car by name."
+            else -> null
+        }
+        if (refusal != null) return WriteOutcome(false, refusal)
         val vehicleId = ActiveVehicle.current(context)
         val existing = FleetEngineStore.getByMac(context, vehicleId)
         val now = System.currentTimeMillis()
@@ -1300,12 +1311,80 @@ object VehicleController {
     }
 
     /** Makes [vehicleId] the car every stored-data tool answers about. */
-    suspend fun switchTo(context: Context, vehicleId: String): String {
+    suspend fun switchTo(context: Context, vehicleId: String): String = switchToOutcome(context, vehicleId).message
+
+    /**
+     * [switchTo] with an honest success flag. **With the OBD dongle connected, a switch is also the
+     * answer to "which car is the dongle in"** (OBD VIN attribution, 2026-11-15): "this is the
+     * F-150" lands here through the `manage_vehicle` switch action, and goes to the same
+     * [DongleCarController.answer] the notification's buttons and the Cars screen call. The pick is
+     * still stored for questions about stored data; when the dongle read another car's VIN, live
+     * readings stay on that car and the reply says so.
+     */
+    suspend fun switchToOutcome(context: Context, vehicleId: String): WriteOutcome {
         val vehicle = FleetEngineStore.getByMac(context, vehicleId)
-            ?: return "I couldn't find that car on file."
-        if (vehicle.archived) return "The ${label(vehicle)} is archived - want me to bring it back first?"
-        ActiveVehicle.select(context, vehicleId)
-        return "You're on the ${label(vehicle)} now."
+        val refusal = when {
+            vehicle == null -> "I couldn't find that car on file."
+            vehicle.archived -> "The ${label(vehicle)} is archived - want me to bring it back first?"
+            else -> null
+        }
+        if (vehicle == null || refusal != null) return WriteOutcome(false, refusal.orEmpty())
+        return dongleSwitch(context, vehicle) ?: run {
+            ActiveVehicle.select(context, vehicleId)
+            // With no dongle connected a switch is only a pick. Readings an earlier connection left
+            // without a car are NOT moved by it (a pick made later is not an answer about that
+            // drive), so the reply says they still wait and where to file them.
+            val held = DongleCarController.state.value == null &&
+                DongleCarController.openQuestions(context).isNotEmpty()
+            val waiting = if (held) {
+                " Readings from an earlier dongle connection still have no car, and this did not " +
+                    "file them: that is under Cars, OBD dongle."
+            } else {
+                ""
+            }
+            WriteOutcome(true, "You're on the ${label(vehicle)} now.$waiting")
+        }
+    }
+
+    /** [switchToOutcome] while the OBD dongle is connected, or null when it is a plain pick. */
+    private suspend fun dongleSwitch(context: Context, vehicle: Vehicle): WriteOutcome? {
+        val before = (DongleCarController.state.value as? DongleCar.OnCar)?.takeIf { it.carId != vehicle.obdMac }
+        return when {
+            // He already said which car the dongle is in on this drive: a later switch is a pick for
+            // stored-data questions, not a silent move of the drive. Correcting the answer is the
+            // Cars screen's OBD dongle card.
+            before != null && before.basis == DongleCar.Basis.ANSWER -> keepAnswered(context, vehicle, before.carId)
+            DongleCarController.hasLiveQuestion() -> answerSwitch(context, vehicle)
+            before != null && before.basis == DongleCar.Basis.VIN -> answerSwitch(context, vehicle)
+            else -> null
+        }
+    }
+
+    private suspend fun keepAnswered(context: Context, vehicle: Vehicle, inCarId: String): WriteOutcome {
+        ActiveVehicle.select(context, vehicle.obdMac)
+        val inCar = FleetEngineStore.getByMac(context, inCarId)?.let { label(it) } ?: "car you named"
+        return WriteOutcome(
+            true,
+            "You're on the ${label(vehicle)} for questions about stored data. Live readings stay on the " +
+                "$inCar, the car you said the dongle is in; if that was wrong, change it under Cars, OBD dongle.",
+        )
+    }
+
+    private suspend fun answerSwitch(context: Context, vehicle: Vehicle): WriteOutcome {
+        val outcome = DongleCarController.answer(context, vehicle.obdMac)
+        val live = DongleCarController.state.value
+        val vinProvedOther = live is DongleCar.OnCar && live.basis == DongleCar.Basis.VIN &&
+            live.carId != vehicle.obdMac
+        if (outcome.ok || vinProvedOther) ActiveVehicle.select(context, vehicle.obdMac)
+        return if (vinProvedOther) {
+            WriteOutcome(
+                true,
+                "${outcome.message} Questions about stored data go to the ${label(vehicle)} when nothing " +
+                    "is connected.",
+            )
+        } else {
+            WriteOutcome(outcome.ok, outcome.message)
+        }
     }
 
     /**

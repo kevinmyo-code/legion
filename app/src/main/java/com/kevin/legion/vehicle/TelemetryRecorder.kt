@@ -140,6 +140,35 @@ object TelemetryRecorder {
      * reset by [finalizeDrive] into [Drive.startedAt]. `0L` means no drive is in progress. */
     @Volatile private var driveStartedAt = 0L
 
+    /** The id the drive in progress is recorded under, set at engine-on (2026-11-15). */
+    @Volatile private var driveVehicleId: String? = null
+
+    /**
+     * Kevin said the dongle is in another car (or named the car for a held connection): the drive
+     * in progress follows, so its Drive row and trip summary land on the right car.
+     */
+    fun reattributeDriveInProgress(fromId: String, toId: String) {
+        if (driveVehicleId == fromId) driveVehicleId = toId
+    }
+
+    /**
+     * Moves lifetime MPG totals between ids after a re-attribution. [moveAll] (a pending id, whose
+     * totals are all this connection's) moves everything; otherwise only [tally], what this process
+     * added under [fromId] (gallons, miles).
+     */
+    fun moveLifetime(context: Context, fromId: String, toId: String, tally: Pair<Double, Double>?, moveAll: Boolean) {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val gal = if (moveAll) p.getFloat("${fromId}_gal", 0f) else tally?.first?.toFloat() ?: 0f
+        val mi = if (moveAll) p.getFloat("${fromId}_mi", 0f) else tally?.second?.toFloat() ?: 0f
+        if (gal == 0f && mi == 0f) return
+        p.edit()
+            .putFloat("${fromId}_gal", (p.getFloat("${fromId}_gal", 0f) - gal).coerceAtLeast(0f))
+            .putFloat("${fromId}_mi", (p.getFloat("${fromId}_mi", 0f) - mi).coerceAtLeast(0f))
+            .putFloat("${toId}_gal", p.getFloat("${toId}_gal", 0f) + gal)
+            .putFloat("${toId}_mi", p.getFloat("${toId}_mi", 0f) + mi)
+            .apply()
+    }
+
     /** MPG of the drive in progress, or null until it has accumulated a real mile. */
     fun currentDriveMpg(): Double? =
         if (driveMiles > MIN_TRIP_MILES && driveGallons > MIN_TRIP_GALLONS) driveMiles / driveGallons else null
@@ -196,11 +225,18 @@ object TelemetryRecorder {
      * Room, Android, Bluetooth, or a running sampling loop - same posture as [pidWanted]/
      * [gpsTickMilesAccepted].
      */
-    internal enum class TickGuard { PROCESS, SKIP_BUSY, SKIP_LINK_LOST }
+    internal enum class TickGuard { PROCESS, SKIP_BUSY, SKIP_LINK_LOST, SKIP_UNATTRIBUTED }
 
-    internal fun tickGuardFor(isBusy: Boolean, isConnected: Boolean): TickGuard = when {
+    /**
+     * [carDecided] (OBD VIN attribution, 2026-11-15): the link is up but the connection's car is not
+     * decided yet (the ELM handshake and the VIN read run with the socket already open). Nothing is
+     * recorded until it is, so no sample is filed under the previous car or the dongle's MAC; no
+     * drive state is touched either, the same as [TickGuard.SKIP_BUSY].
+     */
+    internal fun tickGuardFor(isBusy: Boolean, isConnected: Boolean, carDecided: Boolean = true): TickGuard = when {
         isBusy -> TickGuard.SKIP_BUSY
         !isConnected -> TickGuard.SKIP_LINK_LOST
+        !carDecided -> TickGuard.SKIP_UNATTRIBUTED
         else -> TickGuard.PROCESS
     }
 
@@ -243,8 +279,9 @@ object TelemetryRecorder {
             delay(TICK_MS)
             // tickGuardFor's own doc explains why isBusy always wins and touches no drive state -
             // the split this ticket needed (see the class doc's link-loss defect).
-            when (tickGuardFor(ConversationState.isBusy, ObdBluetoothManager.isConnected)) {
-                TickGuard.SKIP_BUSY -> continue
+            val carDecided = DongleCarController.state.value != null
+            when (tickGuardFor(ConversationState.isBusy, ObdBluetoothManager.isConnected, carDecided)) {
+                TickGuard.SKIP_BUSY, TickGuard.SKIP_UNATTRIBUTED -> continue
                 TickGuard.SKIP_LINK_LOST -> {
                     if (engineWasOn) {
                         linkLostTicks++
@@ -288,6 +325,12 @@ object TelemetryRecorder {
                 engineWasOn = true
                 isEngineRunning = true
                 driveStartedAt = System.currentTimeMillis()
+                // A connect read made with the engine off often gets no VIN; try once more now the
+                // ECU is awake, BEFORE the drive takes its car (2026-11-15, DongleCarController).
+                runCatching {
+                    DongleCarController.retryVinIfMissing(context) { ObdBluetoothManager.readVinForAttribution() }
+                }.onFailure { Log.w(TAG, "VIN retry failed: ${it.message}") }
+                driveVehicleId = vehicleId(context)
                 val coolant = ObdBluetoothManager.getCoolantTemp()
                 if (coolant != null && coolant < COLD_START_C) {
                     coldStartBurst(context, coolant)
@@ -414,8 +457,11 @@ object TelemetryRecorder {
                 // mirror (ticket 14's co-owned-row sidecar) never drifts behind the legacy row on a
                 // configured install - see that function's own doc comment. The legacy write itself
                 // is byte-identical to before.
+                val milesId = vehicleId(context)
                 runCatching {
-                    FleetEngineStore.addTripMiles(context, vehicleId(context), tickMiles, now)
+                    FleetEngineStore.addTripMiles(context, milesId, tickMiles, now)
+                    // So a later "this is the other car" can move these miles to the right odometer.
+                    DongleCarController.noteTripMiles(milesId, tickMiles)
                 }.onFailure { Log.w(TAG, "trip-mile update failed: ${it.message}") }
             }
             lastTickAt = now
@@ -493,6 +539,11 @@ object TelemetryRecorder {
         val startedAt = driveStartedAt
         val miles = driveMiles
         val gallons = driveGallons
+        // The car the drive was recorded under (2026-11-15). A link-loss finalize runs after the
+        // dongle is gone, when the resolved id has already fallen back to the pick or "default";
+        // the drive belongs to the car it was driven in, kept current by reattributeDriveInProgress.
+        val driveId = driveVehicleId ?: vehicleId(context)
+        driveVehicleId = null
         driveStartedAt = 0L
         driveMiles = 0.0
         driveGallons = 0.0
@@ -510,7 +561,7 @@ object TelemetryRecorder {
             if (decision == TripWrite.MILES_AND_MPG) {
                 dao.insert(
                     OdbSample(
-                        vehicleId = vehicleId(context),
+                        vehicleId = driveId,
                         pid = "MPG_TRIP", value = miles / gallons, unit = "mpg",
                         timestamp = now, lat = lat, lng = lng,
                     )
@@ -524,7 +575,7 @@ object TelemetryRecorder {
             // MILES_ONLY drive still gets its distance recorded.
             dao.insert(
                 OdbSample(
-                    vehicleId = vehicleId(context),
+                    vehicleId = driveId,
                     pid = "TRIP_MILES", value = miles, unit = "mi",
                     timestamp = now, lat = lat, lng = lng,
                 )
@@ -540,7 +591,7 @@ object TelemetryRecorder {
             // blocking this tick).
             FleetEngineStore.recordDrive(
                 context = context,
-                mac = vehicleId(context),
+                mac = driveId,
                 startedAt = if (startedAt != 0L) startedAt else now,
                 endedAt = now,
                 miles = miles,
@@ -554,7 +605,8 @@ object TelemetryRecorder {
         // silently deflate the lifetime mpg denominator's partner.
         if (decision == TripWrite.MILES_AND_MPG) {
             val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val id = vehicleId(context)
+            val id = driveId
+            DongleCarController.noteLifetime(id, gallons, miles)
             p.edit()
                 .putFloat("${id}_gal", p.getFloat("${id}_gal", 0f) + gallons.toFloat())
                 .putFloat("${id}_mi", p.getFloat("${id}_mi", 0f) + miles.toFloat())
@@ -602,5 +654,8 @@ object TelemetryRecorder {
     // Car profiles (2026-07-16): the driver's picked car, falling back to the
     // connected dongle. NOT the dongle MAC directly any more - one dongle moved
     // between two cars used to make them the same vehicle. See ActiveVehicle.
-    private fun vehicleId(context: Context): String = ActiveVehicle.current(context)
+    //
+    // 2026-11-15: the connection's recording id - the car its VIN (or Kevin) named, or a pending
+    // id while the car is unknown. Never a guess; see DongleCar.
+    private fun vehicleId(context: Context): String = ActiveVehicle.recordingId(context)
 }

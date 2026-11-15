@@ -161,6 +161,7 @@ fun VehicleSpecsScreen(onBack: () -> Unit, onOpenPopulate: () -> Unit = {}) {
                     // Three different failures land here and the driver cannot
                     // act on "it didn't work": say which one it was.
                     failure = when {
+                        result is VinRefreshResult.NotThisCar -> result.message
                         !ObdBluetoothManager.isConnected ->
                             "The adapter dropped before the read finished. Reconnect and try again."
                         else ->
@@ -771,6 +772,7 @@ internal fun reconcileOutcomeText(result: VinRefreshResult): String = when (resu
     VinRefreshResult.DecodeFailed ->
         "Couldn't re-decode the VIN. Check you're online - NHTSA vPIC needs a network " +
             "connection - and try again."
+    is VinRefreshResult.NotThisCar -> result.message
     is VinRefreshResult.Decoded -> when (val identity = result.identity) {
         is IdentityWriteResult.Applied ->
             "Filled in ${identity.changedFields.joinToString(", ")} from the VIN."

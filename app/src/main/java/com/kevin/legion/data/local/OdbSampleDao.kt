@@ -119,4 +119,31 @@ interface OdbSampleDao {
      *  table's own count, for [com.kevin.legion.backend.ObdSampleReconcile]'s report. */
     @Query("SELECT COUNT(*) FROM obd_samples")
     suspend fun totalCountAll(): Int
+
+    /**
+     * Moves every sample held under a pending id onto the car Kevin named (OBD VIN attribution,
+     * [com.kevin.legion.vehicle.DongleCar]). A plain re-key is right here, unlike a correction
+     * between two cars: a pending id never leaves the phone (the upload halts at it), so there is no
+     * server copy under the old id to clone back. Returns the rows moved.
+     */
+    @Query("UPDATE obd_samples SET vehicleId = :toVehicleId WHERE vehicleId = :fromVehicleId")
+    suspend fun rekeyAll(fromVehicleId: String, toVehicleId: String): Int
+
+    /** [rekeyAll] for one window: an assumed car's held window moving to a pending id. */
+    @Query(
+        "UPDATE obd_samples SET vehicleId = :toVehicleId WHERE vehicleId = :fromVehicleId " +
+            "AND timestamp >= :fromMs AND timestamp <= :toMs"
+    )
+    suspend fun rekeyRange(fromVehicleId: String, toVehicleId: String, fromMs: Long, toMs: Long): Int
+
+    /** Pending ids that still hold samples: connections nobody has said the car for yet. */
+    @Query("SELECT DISTINCT vehicleId FROM obd_samples WHERE vehicleId LIKE 'pending:%'")
+    suspend fun pendingVehicleIds(): List<String>
+
+    /** How many samples [vehicleId] has in a window, for the words after a correction. */
+    @Query(
+        "SELECT COUNT(*) FROM obd_samples WHERE vehicleId = :vehicleId " +
+            "AND timestamp >= :fromMs AND timestamp <= :toMs"
+    )
+    suspend fun countInRange(vehicleId: String, fromMs: Long, toMs: Long): Int
 }

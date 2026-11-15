@@ -47,6 +47,14 @@ interface DriveDao {
     @Query("UPDATE drives SET serverId = :serverId WHERE id = :id")
     suspend fun setServerId(id: Long, serverId: String)
 
+    /** Drives of [vehicleId] overlapping a window - what an OBD car correction moves. */
+    @Query("SELECT * FROM drives WHERE vehicleId = :vehicleId AND endedAt >= :fromMs AND startedAt <= :toMs")
+    suspend fun getOverlapping(vehicleId: String, fromMs: Long, toMs: Long): List<Drive>
+
+    /** Re-files one drive under another car (OBD VIN attribution); the caller re-pushes it by syncId. */
+    @Query("UPDATE drives SET vehicleId = :toVehicleId WHERE id = :id")
+    suspend fun setVehicle(id: Long, toVehicleId: String)
+
     /** `FleetSync`'s pull-side tombstone handling (live-sync map, ticket "fleet pull"): a drive has
      * no local `deleted` column to flip (this table's own class doc: "no update, no delete"), so
      * honouring a server tombstone means removing the local row outright rather than soft-deleting

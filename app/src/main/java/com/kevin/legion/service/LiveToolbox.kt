@@ -1562,7 +1562,10 @@ object LiveToolbox {
                 else result(true, VehicleController.correctVehicle(context, it.obdMac, name = name))
             }
             "switch" -> withResolvedVehicle(context, args) {
-                result(true, VehicleController.switchTo(context, it.obdMac))
+                // With the dongle connected this also answers "which car is it in" (2026-11-15), and
+                // can refuse (a VIN conflict), so the flag is the outcome's, never a hardcoded true.
+                val outcome = VehicleController.switchToOutcome(context, it.obdMac)
+                result(outcome.success, outcome.message)
             }
             "archive" -> withResolvedVehicle(context, args) {
                 VehicleController.archive(context, it.obdMac)
@@ -2223,7 +2226,9 @@ object LiveToolbox {
                 "this car may not report one (common on older or non-US cars). You can just tell me the year, make, and model.")
         // Populate the build-details encyclopedia (specs) from the same VIN; the
         // identity facts below still need driver confirmation before register_vehicle.
-        VehicleSpecController.refreshFromVin(context, decoded.vin)
+        // 2026-11-15: never onto a car the VIN does not belong to (one dongle, several cars).
+        val refusal = VehicleSpecController.obdVinRefusal(context, decoded.vin)
+        if (refusal == null) VehicleSpecController.refreshFromVin(context, decoded.vin)
         return JSONObject()
             .put("success", true)
             .put("vin", decoded.vin)
@@ -2231,7 +2236,15 @@ object LiveToolbox {
             .put("make", decoded.make)
             .put("model", decoded.model)
             .put("trim", decoded.trim)
-            .put("note", "These are read-only. Read them back and ask the user to confirm, then call register_vehicle to save. The full specs were saved to the build-details encyclopedia.")
+            .put(
+                "note",
+                if (refusal == null) {
+                    "These are read-only. Read them back and ask the user to confirm, then call " +
+                        "register_vehicle to save. The full specs were saved to the build-details encyclopedia."
+                } else {
+                    "These are read-only. Nothing was saved: $refusal"
+                },
+            )
     }
 
     /**
