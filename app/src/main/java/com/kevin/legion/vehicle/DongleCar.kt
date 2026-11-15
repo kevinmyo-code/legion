@@ -223,5 +223,5 @@ sealed interface DongleCar {
     }
 }
 
-private fun otherOwners(cars: List<CarVin>, chosenCarId: String, vin: String): List<String> =
+private fun otherOwners(cars: List<DongleCar.CarVin>, chosenCarId: String, vin: String): List<String> =
     cars.filter { it.carId != chosenCarId && DongleCar.normalizeVin(it.vin) == vin }.map { it.carId }

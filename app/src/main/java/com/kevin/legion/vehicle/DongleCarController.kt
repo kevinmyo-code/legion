@@ -413,6 +413,11 @@ object DongleCarController {
             ?: return Outcome(false, NOTHING_WAITING)
         val live = _state.value
         val isLive = live != null && subject.recordingId == live.recordingId
+        // A pending id with nothing left under it was already answered (a second tap, a stale
+        // card). Answering it again must not write or clear a VIN on the strength of zero rows.
+        if (!isLive && subject is Held && subject.recordingId !in openQuestions(context)) {
+            return Outcome(false, "Those readings were already filed under a car, so nothing changed.")
+        }
         val window = heldWindow(context)
         val settlesWindow = subject is OnCar && window?.first == subject.carId
         val cars = carVins(context)

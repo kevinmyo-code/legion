@@ -1331,7 +1331,18 @@ object VehicleController {
         if (vehicle == null || refusal != null) return WriteOutcome(false, refusal.orEmpty())
         return dongleSwitch(context, vehicle) ?: run {
             ActiveVehicle.select(context, vehicleId)
-            WriteOutcome(true, "You're on the ${label(vehicle)} now.")
+            // With no dongle connected a switch is only a pick. Readings an earlier connection left
+            // without a car are NOT moved by it (a pick made later is not an answer about that
+            // drive), so the reply says they still wait and where to file them.
+            val held = DongleCarController.state.value == null &&
+                DongleCarController.openQuestions(context).isNotEmpty()
+            val waiting = if (held) {
+                " Readings from an earlier dongle connection still have no car, and this did not " +
+                    "file them: that is under Cars, OBD dongle."
+            } else {
+                ""
+            }
+            WriteOutcome(true, "You're on the ${label(vehicle)} now.$waiting")
         }
     }
 

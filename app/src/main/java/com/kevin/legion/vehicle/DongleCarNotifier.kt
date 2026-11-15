@@ -210,6 +210,19 @@ class DongleCarActionReceiver : BroadcastReceiver() {
                     else -> return@launch
                 }
                 DongleCarNotifier.result(app, outcome)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Nothing here may take the process down: say it did not finish, and where to retry.
+                android.util.Log.w("DongleCar", "answer from the notification failed", e)
+                DongleCarNotifier.result(
+                    app,
+                    DongleCarController.Outcome(
+                        false,
+                        "That did not finish, so the readings may still be waiting for a car. " +
+                            "Check Cars, OBD dongle.",
+                    ),
+                )
             } finally {
                 pending.finish()
             }

@@ -301,6 +301,47 @@ class DongleCarControllerTest {
         assertEquals(newVin, specVin("car:hybrid"))
     }
 
+    @Test
+    fun `a second answer to readings already filed changes nothing, the VIN included`() = runBlocking {
+        seed()
+        sample("pending:vin:$newVin", 1_000L)
+        assertTrue(DongleCarController.answer(context, "car:hybrid", subjectId = "pending:vin:$newVin").ok)
+
+        // A stale card or a second tap names another car for the same, now empty, pending id.
+        val out = DongleCarController.answer(context, "car:truck", subjectId = "pending:vin:$newVin", replaceVin = true)
+
+        assertFalse(out.message, out.ok)
+        assertTrue(out.message, out.message.contains("nothing changed"))
+        assertEquals(newVin, specVin("car:hybrid"))
+        assertEquals(truckVin, specVin("car:truck"))
+        assertEquals(1, db.odbSampleDao().totalCount("car:hybrid"))
+    }
+
+    @Test
+    fun `a switch with the dongle gone does not file held readings, and says they still wait`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.Vin(newVin))
+        val held = ActiveVehicle.recordingId(context)
+        sample(held, 1_000L)
+        DongleCarController.onDisconnected(context)
+
+        val out = VehicleController.switchToOutcome(context, "car:truck")
+
+        assertTrue(out.success)
+        assertEquals("car:truck", ActiveVehicle.selected(context))
+        assertTrue(out.message, out.message.contains("did not file them"))
+        assertEquals(listOf(held), DongleCarController.openQuestions(context))
+        assertEquals(0, db.odbSampleDao().totalCount("car:truck"))
+    }
+
+    @Test
+    fun `a switch with nothing held says only the pick`() = runBlocking {
+        seed()
+        val out = VehicleController.switchToOutcome(context, "car:truck")
+        assertTrue(out.message, out.message.endsWith(" now."))
+        assertFalse(out.message, out.message.contains("did not file them"))
+    }
+
     // ---- answers after the dongle is gone, and the VIN read late ----------------------------
 
     @Test

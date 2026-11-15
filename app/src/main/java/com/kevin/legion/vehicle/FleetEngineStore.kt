@@ -1209,6 +1209,19 @@ object FleetEngineStore {
     ): Long? {
         if (fromVehicleId == toVehicleId) return null
         val db = CarDatabase.getDatabase(context)
+        val id = db.withTransaction { insertDriveReassignment(db, fromVehicleId, toVehicleId, fromMs, toMs) }
+        syncDriveReassignmentToServer(context, id)
+        return id
+    }
+
+    /** The local half of [recordDriveReassignment]: the rule row and the re-key. Call inside a transaction. */
+    private suspend fun insertDriveReassignment(
+        db: CarDatabase,
+        fromVehicleId: String,
+        toVehicleId: String,
+        fromMs: Long,
+        toMs: Long,
+    ): Long {
         val id = db.driveReassignmentDao().insert(
             DriveReassignment(
                 syncId = java.util.UUID.randomUUID().toString(),
@@ -1223,7 +1236,6 @@ object FleetEngineStore {
             "UPDATE `obd_samples` SET `vehicleId` = ? WHERE `vehicleId` = ? AND `timestamp` BETWEEN ? AND ?",
             arrayOf(toVehicleId, fromVehicleId, fromMs, toMs),
         )
-        syncDriveReassignmentToServer(context, id)
         return id
     }
 
@@ -1267,33 +1279,39 @@ object FleetEngineStore {
         val windowed = move.windowed
         if (fromId == toId) return Reattributed(0, 0, 0)
         val db = CarDatabase.getDatabase(context)
-        val samples = when {
-            windowed && move.rule -> {
-                val n = db.odbSampleDao().countInRange(fromId, fromMs, toMs)
-                recordDriveReassignment(context, fromId, toId, fromMs, toMs)
-                n
-            }
-            windowed -> db.odbSampleDao().rekeyRange(fromId, toId, fromMs, toMs)
-            else -> db.odbSampleDao().rekeyAll(fromId, toId)
-        }
         val lo = if (windowed) fromMs else Long.MIN_VALUE
         val hi = if (windowed) toMs else Long.MAX_VALUE
-        val drives = db.driveDao().getOverlapping(fromId, lo, hi)
-        for (d in drives) {
-            db.driveDao().setVehicle(d.id, toId)
-            syncDriveToServer(context, toId, d.id)
+        // Every local row moves in ONE transaction: a process death part-way can no longer leave
+        // drives or code events under an id whose samples already moved (nothing would list them
+        // again). The pushes to the engine come after, and a failed push is retried by reconcile.
+        var ruleId: Long? = null
+        var drives = emptyList<Drive>()
+        var events = emptyList<CodeEvent>()
+        val samples = db.withTransaction {
+            val n = when {
+                windowed && move.rule -> {
+                    val count = db.odbSampleDao().countInRange(fromId, fromMs, toMs)
+                    ruleId = insertDriveReassignment(db, fromId, toId, fromMs, toMs)
+                    count
+                }
+                windowed -> db.odbSampleDao().rekeyRange(fromId, toId, fromMs, toMs)
+                else -> db.odbSampleDao().rekeyAll(fromId, toId)
+            }
+            drives = db.driveDao().getOverlapping(fromId, lo, hi)
+            for (d in drives) db.driveDao().setVehicle(d.id, toId)
+            events = db.codeEventDao().getInRange(fromId, lo, hi)
+            for (e in events) db.codeEventDao().setVehicle(e.id, toId)
+            if (!windowed) {
+                val capabilities = db.vehicleCapabilityDao()
+                val pids = capabilities.pidsForVehicle(fromId).toSet()
+                if (pids.isNotEmpty()) capabilities.replaceForVehicle(toId, pids, System.currentTimeMillis())
+                capabilities.clearForVehicle(fromId)
+            }
+            n
         }
-        val events = db.codeEventDao().getInRange(fromId, lo, hi)
-        for (e in events) {
-            db.codeEventDao().setVehicle(e.id, toId)
-            syncCodeEventToServer(context, toId, e.id)
-        }
-        if (!windowed) {
-            val capabilities = db.vehicleCapabilityDao()
-            val pids = capabilities.pidsForVehicle(fromId).toSet()
-            if (pids.isNotEmpty()) capabilities.replaceForVehicle(toId, pids, System.currentTimeMillis())
-            capabilities.clearForVehicle(fromId)
-        }
+        ruleId?.let { syncDriveReassignmentToServer(context, it) }
+        for (d in drives) syncDriveToServer(context, toId, d.id)
+        for (e in events) syncCodeEventToServer(context, toId, e.id)
         return Reattributed(samples, drives.size, events.size)
     }
 
