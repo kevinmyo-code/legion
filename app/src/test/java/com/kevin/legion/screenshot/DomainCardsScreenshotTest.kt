@@ -186,7 +186,7 @@ class DomainCardsScreenshotTest {
 
     @Test @Config(qualifiers = A25) fun `grades day`() = render("grades", false, grades, "No total shown")
     @Test @Config(qualifiers = NIGHT) fun `grades night`() = render("grades", true, grades, "91.5%")
-    @Test @Config(qualifiers = A25) fun `pace day`() = render("budget-pace", false, pace, "Needs attention")
+    @Test @Config(qualifiers = A25) fun `pace day`() = render("budget-pace", false, pace, "Altogether")
     @Test @Config(qualifiers = NIGHT) fun `pace night`() = render("budget-pace", true, pace, "On track")
     @Test @Config(qualifiers = A25) fun `alerts day`() = render("weather-alerts", false, alerts, "Flood Watch")
     @Test @Config(qualifiers = NIGHT) fun `alerts night`() = render("weather-alerts", true, alerts, "Flood Watch")
