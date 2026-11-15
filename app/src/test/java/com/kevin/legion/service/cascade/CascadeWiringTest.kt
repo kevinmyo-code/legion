@@ -73,7 +73,7 @@ class CascadeWiringTest {
         val open = bodyOf(session(), "openBackend")
         val routed = open.indexOf("CascadeRules.nextAfter(SpeechBackend.Kind.LAPTOP")
         assertTrue(routed >= 0)
-        assertTrue("the cloud voice is built after the laptop refusal", open.indexOf("cloudSpeech(scope)") > routed)
+        assertTrue("the cloud voice is built after the laptop refusal", open.indexOf("cloudSpeech(scope") > routed)
         assertTrue(open.contains("handOver("))
         // Turn models missing: Live, before any backend is tried (the cloud voice needs them too).
         val openNow = bodyOf(session(), "openNow")
