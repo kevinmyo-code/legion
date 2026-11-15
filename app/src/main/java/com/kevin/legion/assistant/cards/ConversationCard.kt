@@ -110,14 +110,115 @@ sealed class ConversationCard {
         override val kind: String get() = "checklist"
     }
 
+    /**
+     * Labelled values with units, a snapshot of measurements (the shared format's `readings`,
+     * 2026-11-15). [at] is the "as of" time when the source states one, `yyyy-MM-dd` or
+     * `yyyy-MM-ddTHH:mm` on the household's clock. [open] is the screen behind the card, phone
+     * only and not on the wire, null for none.
+     */
+    data class Readings(
+        override val title: String,
+        val items: List<Reading>,
+        val at: String? = null,
+        val more: Int = 0,
+        override val scope: String? = null,
+        override val period: String? = null,
+        override val note: String? = null,
+        override val provenance: CardProvenance? = null,
+        val open: CardDestination? = null,
+    ) : ConversationCard() {
+        override val kind: String get() = "readings"
+    }
+
+    /** Rows with a status said in words (`status_list`). Shape as [Readings]. */
+    data class StatusList(
+        override val title: String,
+        val items: List<StatusRow>,
+        val at: String? = null,
+        val more: Int = 0,
+        override val scope: String? = null,
+        override val period: String? = null,
+        override val note: String? = null,
+        override val provenance: CardProvenance? = null,
+        val open: CardDestination? = null,
+    ) : ConversationCard() {
+        override val kind: String get() = "status_list"
+    }
+
+    /** One or two [series] over time sharing one [unit] (`trend`). */
+    data class Trend(
+        override val title: String,
+        val unit: String,
+        val series: List<TrendSeries>,
+        override val scope: String? = null,
+        override val period: String? = null,
+        override val note: String? = null,
+        override val provenance: CardProvenance? = null,
+        val open: CardDestination? = null,
+    ) : ConversationCard() {
+        override val kind: String get() = "trend"
+    }
+
     companion object {
         /** Bars and checklist lines shown before the rest become `more`. */
         const val MAX_POINTS = 8
 
         /** Timeline items shown, the engine's own `TIMELINE_MAX`, so a week fits. */
         const val MAX_TIMELINE = 12
+
+        /** Readings and status rows shown, the engine's `READINGS_MAX` / `STATUS_MAX`. */
+        const val MAX_ROWS = 12
+
+        /** Points kept per trend series (the newest), the engine's `TREND_MAX`. */
+        const val MAX_TREND = 120
+
+        /** Series on one trend card, the engine's `TREND_SERIES_MAX`. */
+        const val MAX_SERIES = 2
     }
 }
+
+/** The full screen behind a card: what its "Open" link leads to, in words. */
+enum class CardDestination(val words: String) {
+    TODAY("Open Today"),
+    MONEY("Open Money"),
+    CAR("Open Car"),
+    LISTS("Open Lists"),
+}
+
+/**
+ * One reading. [value] is null when it could not be read ("not read", never zero). With [unit]
+ * "usd" every value is integer cents (CLAUDE.md section 4: never a Double for money); BigDecimal
+ * keeps every other value exactly as the source gave it. [was] is an earlier value (before/after).
+ */
+data class Reading(
+    val label: String,
+    val value: java.math.BigDecimal?,
+    val unit: String,
+    val flag: CardFlag? = null,
+    val was: java.math.BigDecimal? = null,
+    val note: String? = null,
+)
+
+/** A status, always drawn in [words]; colour may only repeat the word. */
+enum class RowStatus(val wire: String, val words: String) {
+    OK("ok", "OK"),
+    ATTENTION("attention", "Needs attention"),
+    FAILED("failed", "Failed"),
+    UNKNOWN("unknown", "Unknown"),
+    NOT_REACHED("not_reached", "Not reached"),
+    ;
+
+    companion object {
+        fun of(wire: String?): RowStatus? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+data class StatusRow(val name: String, val status: RowStatus, val note: String? = null)
+
+/** [at] is `yyyy-MM-dd` or `yyyy-MM-ddTHH:mm`; points oldest first. */
+data class TrendPoint(val at: String, val value: java.math.BigDecimal)
+
+data class TrendSeries(val name: String, val points: List<TrendPoint>, val flag: CardFlag? = null)
 
 /**
  * A card's provenance, each part only when the data carries it: [source] names where it was read

@@ -378,7 +378,8 @@ ToolResponse = inline_serializer(
             help_text=(
                 "What the screen draws beside the transcript, built by the engine from the "
                 "tool's own rows (`engine_mcp/cards.py`): `card` is bars, timeline, car, steps, "
-                "checklist or diagram. Absent when the tool has none. Never sent to Gemini: "
+                "checklist, diagram, resume, readings, status_list or trend. Absent when the "
+                "tool has none. Never sent to Gemini: "
                 "`response` is the whole of what the browser forwards."
             ),
         ),
