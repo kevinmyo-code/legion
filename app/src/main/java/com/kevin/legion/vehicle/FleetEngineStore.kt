@@ -1288,15 +1288,7 @@ object FleetEngineStore {
         var drives = emptyList<Drive>()
         var events = emptyList<CodeEvent>()
         val samples = db.withTransaction {
-            val n = when {
-                windowed && move.rule -> {
-                    val count = db.odbSampleDao().countInRange(fromId, fromMs, toMs)
-                    ruleId = insertDriveReassignment(db, fromId, toId, fromMs, toMs)
-                    count
-                }
-                windowed -> db.odbSampleDao().rekeyRange(fromId, toId, fromMs, toMs)
-                else -> db.odbSampleDao().rekeyAll(fromId, toId)
-            }
+            val n = rekeySamples(db, move) { ruleId = it }
             drives = db.driveDao().getOverlapping(fromId, lo, hi)
             for (d in drives) db.driveDao().setVehicle(d.id, toId)
             events = db.codeEventDao().getInRange(fromId, lo, hi)
@@ -1313,6 +1305,17 @@ object FleetEngineStore {
         for (d in drives) syncDriveToServer(context, toId, d.id)
         for (e in events) syncCodeEventToServer(context, toId, e.id)
         return Reattributed(samples, drives.size, events.size)
+    }
+
+    /** The sample half of [reattributeObdData], inside its transaction. [onRule] gets a new rule's id. */
+    private suspend fun rekeySamples(db: CarDatabase, move: ObdDataMove, onRule: (Long) -> Unit): Int = when {
+        move.windowed && move.rule -> {
+            val count = db.odbSampleDao().countInRange(move.fromId, move.fromMs, move.toMs)
+            onRule(insertDriveReassignment(db, move.fromId, move.toId, move.fromMs, move.toMs))
+            count
+        }
+        move.windowed -> db.odbSampleDao().rekeyRange(move.fromId, move.toId, move.fromMs, move.toMs)
+        else -> db.odbSampleDao().rekeyAll(move.fromId, move.toId)
     }
 
     /**

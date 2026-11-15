@@ -191,6 +191,7 @@ object DongleCarNotifier {
 
 /** The notification's buttons: the same [DongleCarController] calls the voice path makes. */
 class DongleCarActionReceiver : BroadcastReceiver() {
+    @Suppress("TooGenericExceptionCaught") // a receiver must never take the process down
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         val pending = goAsync()
