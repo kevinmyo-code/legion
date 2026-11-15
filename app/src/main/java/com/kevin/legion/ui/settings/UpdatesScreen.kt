@@ -112,7 +112,7 @@ fun UpdatesContent(
                 Spacer(Modifier.height(16.dp))
                 VoiceTurnRow(
                     title = "Allow mobile data",
-                    explanation = "an update is about 200 MB, so it downloads on Wi-Fi only unless this is on.",
+                    explanation = "an update is about 200 MB. On, it downloads on mobile data too; off, on Wi-Fi only.",
                     enabled = state.allowMobileData,
                     onToggle = onAllowMobileData,
                 )

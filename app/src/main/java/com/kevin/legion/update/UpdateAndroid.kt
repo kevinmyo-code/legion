@@ -239,7 +239,8 @@ class SharedUpdatePrefs(private val prefs: SharedPreferences) : UpdatePrefs {
     constructor(context: Context) : this(context.getSharedPreferences(FILE, Context.MODE_PRIVATE))
 
     override var allowMobileData: Boolean
-        get() = prefs.getBoolean(KEY_MOBILE, false)
+        // On unless he switched it off (Kevin, 2026-11-15: "download able over data pls").
+        get() = prefs.getBoolean(KEY_MOBILE, UpdateRules.ALLOW_MOBILE_DATA_DEFAULT)
         set(value) { prefs.edit().putBoolean(KEY_MOBILE, value).apply() }
     override var notifiedCode: Long
         get() = prefs.getLong(KEY_NOTIFIED, 0L)

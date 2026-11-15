@@ -29,7 +29,7 @@ data class UpdatesUiState(
     val notes: String? = null,
     val working: Boolean = false,
     val canInstall: Boolean = false,
-    val allowMobileData: Boolean = false,
+    val allowMobileData: Boolean = UpdateRules.ALLOW_MOBILE_DATA_DEFAULT,
     val mayInstallPackages: Boolean = true,
     val packLine: String = "",
     val note: String? = null,

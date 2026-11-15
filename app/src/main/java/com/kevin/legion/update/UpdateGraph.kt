@@ -276,7 +276,10 @@ class PackageReplacedReceiver : BroadcastReceiver() {
     }
 }
 
-/** Once a day: check, download on Wi-Fi, verify, ask. All the logic is [UpdateController]'s. */
+/**
+ * Every [UpdateRules.CHECK_EVERY_HOURS] hours: check, download, verify, ask. All the logic is
+ * [UpdateController]'s.
+ */
 class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val controller = UpdateGraph.controller(applicationContext)
@@ -289,11 +292,12 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
         private const val WORK_NAME = "legion-update-check"
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<UpdateCheckWorker>(1, TimeUnit.DAYS)
+            val request = PeriodicWorkRequestBuilder<UpdateCheckWorker>(UpdateRules.CHECK_EVERY_HOURS, TimeUnit.HOURS)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             WorkManager.getInstance(context.applicationContext)
-                .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+                // UPDATE, not KEEP: an install that already holds the old daily request takes the new interval.
+                .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
     }
 }
