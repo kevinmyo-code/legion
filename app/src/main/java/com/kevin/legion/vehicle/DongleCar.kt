@@ -46,7 +46,7 @@ sealed interface DongleCar {
         val since: Long = 0L,
     ) : DongleCar {
         override val recordingId: String
-            get() = if (vin != null) pendingIdForVin(vin) else pendingIdForDongle(mac, since)
+            get() = if (vin != null) VIN_PREFIX + vin.uppercase() else pendingIdForDongle(mac, since)
     }
 
     enum class Basis {
@@ -107,8 +107,6 @@ sealed interface DongleCar {
         const val PENDING_PREFIX = "pending:"
         private const val VIN_PREFIX = "pending:vin:"
         private const val DONGLE_PREFIX = "pending:obd:"
-
-        fun pendingIdForVin(vin: String): String = VIN_PREFIX + vin.uppercase()
 
         fun pendingIdForDongle(mac: String, since: Long = 0L): String =
             DONGLE_PREFIX + mac + if (since > 0L) "@$since" else ""
@@ -218,12 +216,12 @@ sealed interface DongleCar {
             )
         }
 
-        private fun otherOwners(cars: List<CarVin>, chosenCarId: String, vin: String): List<String> =
-            cars.filter { it.carId != chosenCarId && normalizeVin(it.vin) == vin }.map { it.carId }
-
         /** "VIN ending 8H9" - enough to tell cars apart in words without reading out all 17. */
         fun vinTail(vin: String): String = "VIN ending ${vin.takeLast(VIN_TAIL)}"
 
         private const val VIN_TAIL = 6
     }
 }
+
+private fun otherOwners(cars: List<CarVin>, chosenCarId: String, vin: String): List<String> =
+    cars.filter { it.carId != chosenCarId && DongleCar.normalizeVin(it.vin) == vin }.map { it.carId }

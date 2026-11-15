@@ -41,7 +41,8 @@ class DongleCarResolutionTest {
         assertNull(ActiveVehicle.connectedCarId(null, "car:suv", onTruckByVin))
     }
 
-    private fun car(id: String) = Vehicle(obdMac = id, name = id, make = "Make", model = id, year = 2020, personaPrompt = "")
+    private fun car(id: String) =
+        Vehicle(obdMac = id, name = id, make = "Make", model = id, year = 2020, personaPrompt = "")
 
     @Test
     fun `a question naming no car skips a dongle whose car is unknown`() {
@@ -52,10 +53,19 @@ class DongleCarResolutionTest {
 
     @Test
     fun `nothing is recorded until the connection's car is decided`() {
-        assertEquals(TelemetryRecorder.TickGuard.SKIP_UNATTRIBUTED, TelemetryRecorder.tickGuardFor(false, true, carDecided = false))
-        assertEquals(TelemetryRecorder.TickGuard.PROCESS, TelemetryRecorder.tickGuardFor(false, true, carDecided = true))
+        assertEquals(
+            TelemetryRecorder.TickGuard.SKIP_UNATTRIBUTED,
+            TelemetryRecorder.tickGuardFor(false, true, carDecided = false),
+        )
+        assertEquals(
+            TelemetryRecorder.TickGuard.PROCESS,
+            TelemetryRecorder.tickGuardFor(false, true, carDecided = true),
+        )
         // A lost link still wins, so a drive can still end on link loss.
-        assertEquals(TelemetryRecorder.TickGuard.SKIP_LINK_LOST, TelemetryRecorder.tickGuardFor(false, false, carDecided = false))
+        assertEquals(
+            TelemetryRecorder.TickGuard.SKIP_LINK_LOST,
+            TelemetryRecorder.tickGuardFor(false, false, carDecided = false),
+        )
     }
 
     private val cars = listOf(

@@ -63,7 +63,9 @@ class DongleCarControllerTest {
         DongleCarController.onConnected(context, mac) { read }
 
     private suspend fun sample(vehicleId: String, ts: Long) =
-        db.odbSampleDao().insert(OdbSample(vehicleId = vehicleId, pid = "010C", value = 800.0, unit = "rpm", timestamp = ts))
+        db.odbSampleDao().insert(
+            OdbSample(vehicleId = vehicleId, pid = "010C", value = 800.0, unit = "rpm", timestamp = ts),
+        )
 
     /** A disconnect long enough ago that the next connect is a new drive, not a Bluetooth blip. */
     private fun longAgo() = System.currentTimeMillis() - 2 * DongleCarController.SESSION_CONTINUES_MS
@@ -114,14 +116,19 @@ class DongleCarControllerTest {
     }
 
     @Test
-    fun `unknown - the answer moves readings, drives and codes and saves the VIN, so next time matches`() = runBlocking {
+    fun `unknown - the answer moves readings, drives and codes and saves the VIN, so next time matches`() =
+        runBlocking {
         seed()
         connect(VinResponse.Result.Vin(newVin))
         val pending = ActiveVehicle.recordingId(context)
         sample(pending, 1_000L)
         sample(pending, 2_000L)
-        db.driveDao().insert(Drive(vehicleId = pending, startedAt = 1_000L, endedAt = 2_000L, miles = 3.0, endReason = "ENGINE_OFF"))
-        db.codeEventDao().insert(CodeEvent(vehicleId = pending, timestamp = 1_500L, mileage = null, codesJson = "[]", freezeFrameJson = ""))
+        db.driveDao().insert(
+            Drive(vehicleId = pending, startedAt = 1_000L, endedAt = 2_000L, miles = 3.0, endReason = "ENGINE_OFF"),
+        )
+        db.codeEventDao().insert(
+            CodeEvent(vehicleId = pending, timestamp = 1_500L, mileage = null, codesJson = "[]", freezeFrameJson = ""),
+        )
 
         val out = DongleCarController.answer(context, "car:hybrid")
 
@@ -262,7 +269,9 @@ class DongleCarControllerTest {
 
     @Test
     fun `a reconnect blip after an answer is not a fresh assumption`() {
-        assertTrue(DongleCarController.sessionContinues("car:truck", "car:truck", disconnectedAt = 1_000L, now = 61_000L))
+        assertTrue(
+            DongleCarController.sessionContinues("car:truck", "car:truck", disconnectedAt = 1_000L, now = 61_000L),
+        )
         assertFalse(DongleCarController.sessionContinues("car:truck", "car:suv", 1_000L, 61_000L))
         assertFalse(
             DongleCarController.sessionContinues(

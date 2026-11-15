@@ -90,7 +90,9 @@ class DongleCarTest {
 
     @Test
     fun `an earlier answer naming a car no longer on file is not assumed`() {
-        val d = DongleCar.decide(mac, VinResponse.Result.NoData, cars, lastConfirmedForDongle = "car:sold", selectedId = null)
+        val d = DongleCar.decide(
+            mac, VinResponse.Result.NoData, cars, lastConfirmedForDongle = "car:sold", selectedId = null,
+        )
         assertEquals(Held(mac, null, HeldReason.NO_VIN), d)
     }
 
@@ -107,7 +109,8 @@ class DongleCarTest {
     fun `answering an unknown VIN moves the held data and writes the VIN to the car`() {
         val held = Held(mac, newVin, HeldReason.UNKNOWN_VIN)
         val plan = DongleCar.planAnswer(held, "car:hybrid", cars, replaceVin = false)
-        assertEquals(AnswerPlan.Move("pending:vin:$newVin", "car:hybrid", asCorrection = false, writeVin = newVin), plan)
+        val expected = AnswerPlan.Move("pending:vin:$newVin", "car:hybrid", asCorrection = false, writeVin = newVin)
+        assertEquals(expected, plan)
     }
 
     @Test
@@ -140,7 +143,8 @@ class DongleCarTest {
     @Test
     fun `confirming an assumption settles it and moves nothing`() {
         val assumed = OnCar(mac, "car:truck", null, Basis.ASSUMED)
-        assertEquals(AnswerPlan.Keep("car:truck", settles = true), DongleCar.planAnswer(assumed, "car:truck", cars, false))
+        val plan = DongleCar.planAnswer(assumed, "car:truck", cars, false)
+        assertEquals(AnswerPlan.Keep("car:truck", settles = true), plan)
     }
 
     @Test

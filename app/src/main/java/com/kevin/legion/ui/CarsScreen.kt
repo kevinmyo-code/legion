@@ -287,27 +287,7 @@ fun CarsContent(
         val sem = LocalLegionSemantics.current
         Column(Modifier.fillMaxSize()) {
             DeckScreenHeader(title = "Cars", onBack = onBack, accent = AreaAccent.FLEET)
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { showAddDialog = true }) {
-                        Text("Add car", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    }
-                    // Disabled rather than hidden when nothing is archived: a
-                    // toggle that appears only once you have archived something is
-                    // a toggle nobody discovers before they need it.
-                    TextButton(onClick = onToggleArchived, enabled = state.archivedCount > 0) {
-                        Text(
-                            if (state.showArchived) "Hide archived" else "Show archived",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (state.archivedCount > 0) MaterialTheme.colorScheme.primary else sem.ghost,
-                        )
-                    }
-                }
-            }
+            CarsToolbar(state, onAdd = { showAddDialog = true }, onToggleArchived = onToggleArchived)
             Hairline()
 
             if (state.loading) {
@@ -322,39 +302,74 @@ fun CarsContent(
                     AutoCarRow(isAuto = state.isAuto, resolvesTo = state.autoResolvesTo, onSelect = onFollowAdapter)
                     Hairline()
                 }
-
-                item(key = "cars-header") {
-                    SectionHeader(
-                        "Cars",
-                        if (state.archivedCount > 0 && !state.showArchived) {
-                            "${state.rows.size} - ${state.archivedCount} archived"
-                        } else {
-                            state.rows.size.toString()
-                        },
-                    )
-                }
-                if (state.rows.isEmpty()) {
-                    item(key = "cars-empty") {
-                        Text(
-                            "No cars yet. One appears the first time an OBD adapter connects.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = sem.faint,
-                            modifier = Modifier.padding(12.dp),
-                        )
-                    }
-                } else {
-                    items(state.rows, key = { it.vehicleId }) { row ->
-                        CarRow(
-                            row = row,
-                            onActivate = { onActivate(row.vehicleId) },
-                            onRename = { renamingVehicleId = row.vehicleId },
-                            onArchive = { onArchive(row.vehicleId) },
-                            onUnarchive = { onUnarchive(row.vehicleId) },
-                        )
-                        Hairline()
-                    }
-                }
+                carItems(state, onActivate, { renamingVehicleId = it }, onArchive, onUnarchive)
             }
+        }
+    }
+}
+
+/** "Add car" and the archived toggle, right-aligned under the header. */
+@Composable
+private fun CarsToolbar(state: CarsUiState, onAdd: () -> Unit, onToggleArchived: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onAdd) {
+            Text("Add car", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        // Disabled rather than hidden when nothing is archived: a
+        // toggle that appears only once you have archived something is
+        // a toggle nobody discovers before they need it.
+        TextButton(onClick = onToggleArchived, enabled = state.archivedCount > 0) {
+            Text(
+                if (state.showArchived) "Hide archived" else "Show archived",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (state.archivedCount > 0) MaterialTheme.colorScheme.primary else sem.ghost,
+            )
+        }
+    }
+}
+
+/** The "Cars" section: its header with the count, then a row per car or the empty line. */
+private fun LazyListScope.carItems(
+    state: CarsUiState,
+    onActivate: (vehicleId: String) -> Unit,
+    onRename: (vehicleId: String) -> Unit,
+    onArchive: (vehicleId: String) -> Unit,
+    onUnarchive: (vehicleId: String) -> Unit,
+) {
+    item(key = "cars-header") {
+        SectionHeader(
+            "Cars",
+            if (state.archivedCount > 0 && !state.showArchived) {
+                "${state.rows.size} - ${state.archivedCount} archived"
+            } else {
+                state.rows.size.toString()
+            },
+        )
+    }
+    if (state.rows.isEmpty()) {
+        item(key = "cars-empty") {
+            Text(
+                "No cars yet. One appears the first time an OBD adapter connects.",
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalLegionSemantics.current.faint,
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+    } else {
+        items(state.rows, key = { it.vehicleId }) { row ->
+            CarRow(
+                row = row,
+                onActivate = { onActivate(row.vehicleId) },
+                onRename = { onRename(row.vehicleId) },
+                onArchive = { onArchive(row.vehicleId) },
+                onUnarchive = { onUnarchive(row.vehicleId) },
+            )
+            Hairline()
         }
     }
 }

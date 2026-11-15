@@ -44,25 +44,6 @@ object VinResponse {
     }
 
     private val VIN_ALPHABET = Regex("^[A-HJ-NPR-Z0-9]{17}$")
-    private val INDEXED_LINE = Regex("^([0-9A-F]):\\s*(.*)$")
-    private val COUNT_LINE = Regex("^[0-9A-F]{3}$")
-    private val HEX_ONLY = Regex("^[0-9A-F]+$")
-    private const val VIN_LENGTH = 17
-    private const val MODE_09_REPLY = 0x49
-    private const val PID_VIN = 0x02
-    private const val LEGACY_MESSAGES = 5
-    private const val LEGACY_DATA_BYTES = 4
-    private const val LEGACY_DATA_OFFSET = 3
-    private const val HEX_RADIX = 16
-    private const val CAN_11BIT_HEADER = 3
-    private const val CAN_29BIT_HEADER = 8
-    private const val NIBBLE = 4
-    private const val LOW_NIBBLE = 0x0F
-    private const val BYTE_BITS = 8
-    private const val PCI_SINGLE = 0
-    private const val PCI_FIRST = 1
-    private const val PCI_CONSECUTIVE = 2
-    private val PRINTABLE = 0x20..0x7E
 
     /** ELM327 error words that mean the bus or the adapter failed, not that the car answered. */
     private val ERROR_WORDS = listOf(
@@ -96,10 +77,10 @@ object VinResponse {
     }
 
     private fun candidates(lines: List<String>): List<String> = when {
-        lines.any { INDEXED_LINE.matches(it) } -> fromIndexed(lines)
-        lines.any { isHeaderedCan(it) } -> fromHeadered(lines)
-        lines.count { legacyMessage(bytesOf(it)) != null } >= 2 -> fromLegacy(lines)
-        else -> listOfNotNull(vinAfterMarker(lines.flatMap { bytesOf(it).orEmpty() }))
+        lines.any { VinFrames.INDEXED_LINE.matches(it) } -> VinFrames.fromIndexed(lines)
+        lines.any { VinFrames.isHeaderedCan(it) } -> VinFrames.fromHeadered(lines)
+        lines.count { VinFrames.legacyMessage(VinBytes.bytesOf(it)) != null } >= 2 -> VinFrames.fromLegacy(lines)
+        else -> listOfNotNull(VinBytes.vinAfterMarker(lines.flatMap { VinBytes.bytesOf(it).orEmpty() }))
     }
 
     private fun verdict(candidates: List<String>): Result {
@@ -111,9 +92,26 @@ object VinResponse {
             else -> Result.Unreadable("the reply was not a valid VIN")
         }
     }
+}
+
+/** Each reply shape (indexed CAN, headered CAN, legacy) to its candidate VIN strings, for [VinResponse]. */
+private object VinFrames {
+    val INDEXED_LINE = Regex("^([0-9A-F]):\\s*(.*)$")
+    private val COUNT_LINE = Regex("^[0-9A-F]{3}$")
+    private const val LEGACY_MESSAGES = 5
+    private const val LEGACY_DATA_BYTES = 4
+    private const val LEGACY_DATA_OFFSET = 3
+    private const val CAN_11BIT_HEADER = 3
+    private const val CAN_29BIT_HEADER = 8
+    private const val NIBBLE = 4
+    private const val LOW_NIBBLE = 0x0F
+    private const val BYTE_BITS = 8
+    private const val PCI_SINGLE = 0
+    private const val PCI_FIRST = 1
+    private const val PCI_CONSECUTIVE = 2
 
     /** CAN with headers off: optional count line, then `N:` lines; a new `0:` starts a new ECU. */
-    private fun fromIndexed(lines: List<String>): List<String> {
+    fun fromIndexed(lines: List<String>): List<String> {
         val groups = mutableListOf<MutableMap<Int, List<Int>>>()
         var current = mutableMapOf<Int, List<Int>>()
         for (line in lines) {
@@ -126,34 +124,34 @@ object VinResponse {
             if (frame != null) current[frame.first] = frame.second
         }
         if (current.isNotEmpty()) groups += current
-        return groups.mapNotNull { g -> vinAfterMarker(g.toSortedMap().values.flatten()) }
+        return groups.mapNotNull { g -> VinBytes.vinAfterMarker(g.toSortedMap().values.flatten()) }
     }
 
     private fun indexedFrame(line: String): Pair<Int, List<Int>>? {
         val m = INDEXED_LINE.matchEntire(line) ?: return null
-        return bytesOf(m.groupValues[2])?.let { m.groupValues[1].toInt(HEX_RADIX) to it }
+        return VinBytes.bytesOf(m.groupValues[2])?.let { m.groupValues[1].toInt(VinBytes.HEX_RADIX) to it }
     }
 
-    private fun isHeaderedCan(line: String): Boolean {
+    fun isHeaderedCan(line: String): Boolean {
         val compact = line.replace(" ", "")
         val firstToken = line.split(' ').first()
         val elevenBit = (firstToken.length == CAN_11BIT_HEADER || compact.length % 2 == 1) && compact.startsWith("7E")
-        return HEX_ONLY.matches(compact) && (elevenBit || compact.startsWith("18DA"))
+        return VinBytes.HEX_ONLY.matches(compact) && (elevenBit || compact.startsWith("18DA"))
     }
 
     /** CAN with headers on: reassemble each sender's ISO-TP frames separately. */
-    private fun fromHeadered(lines: List<String>): List<String> =
+    fun fromHeadered(lines: List<String>): List<String> =
         lines.mapNotNull { headeredFrame(it) }
             .groupBy({ it.first }, { it.second })
             .values
-            .mapNotNull { vinAfterMarker(reassemble(it)) }
+            .mapNotNull { VinBytes.vinAfterMarker(reassemble(it)) }
 
     /** One headered line as (sender, payload), or null. */
     private fun headeredFrame(line: String): Pair<String, List<Int>>? {
         val compact = line.replace(" ", "")
         val headerLength = if (compact.startsWith("18DA")) CAN_29BIT_HEADER else CAN_11BIT_HEADER
-        if (!HEX_ONLY.matches(compact) || compact.length <= headerLength) return null
-        return bytesOf(compact.substring(headerLength))?.let { compact.substring(0, headerLength) to it }
+        if (!VinBytes.HEX_ONLY.matches(compact) || compact.length <= headerLength) return null
+        return VinBytes.bytesOf(compact.substring(headerLength))?.let { compact.substring(0, headerLength) to it }
     }
 
     /** ISO 15765-2: a first frame (or single frame) then consecutive frames, cut to the stated length. */
@@ -180,18 +178,18 @@ object VinResponse {
     }
 
     /** One legacy line: (message number 1-5, its 4 data bytes), or null. */
-    private fun legacyMessage(bytes: List<Int>?): Pair<Int, List<Int>>? {
-        val at = bytes?.let { markerAt(it) } ?: return null
+    fun legacyMessage(bytes: List<Int>?): Pair<Int, List<Int>>? {
+        val at = bytes?.let { VinBytes.markerAt(it) } ?: return null
         val number = bytes.getOrNull(at + 2)?.takeIf { it in 1..LEGACY_MESSAGES }
         val data = bytes.drop(at + LEGACY_DATA_OFFSET).take(LEGACY_DATA_BYTES)
         return if (number != null && data.size == LEGACY_DATA_BYTES) number to data else null
     }
 
     /** Legacy protocols: messages 1-5 in order; a repeated message number starts another ECU. */
-    private fun fromLegacy(lines: List<String>): List<String> {
+    fun fromLegacy(lines: List<String>): List<String> {
         val groups = mutableListOf<MutableMap<Int, List<Int>>>()
         var current = mutableMapOf<Int, List<Int>>()
-        for ((number, data) in lines.mapNotNull { legacyMessage(bytesOf(it)) }) {
+        for ((number, data) in lines.mapNotNull { legacyMessage(VinBytes.bytesOf(it)) }) {
             if (number in current) {
                 groups += current
                 current = mutableMapOf()
@@ -200,14 +198,26 @@ object VinResponse {
         }
         if (current.isNotEmpty()) groups += current
         return groups.filter { it.size == LEGACY_MESSAGES }
-            .mapNotNull { g -> ascii(g.toSortedMap().values.flatten().dropWhile { it == 0 }) }
+            .mapNotNull { g -> VinBytes.ascii(g.toSortedMap().values.flatten().dropWhile { it == 0 }) }
     }
+}
 
-    private fun markerAt(bytes: List<Int>): Int? =
+/** Hex text to bytes, and the bytes after the `49 02` marker to text, for [VinResponse]. */
+private object VinBytes {
+    val HEX_ONLY = Regex("^[0-9A-F]+$")
+    const val VIN_LENGTH = 17
+    const val MODE_09_REPLY = 0x49
+    const val PID_VIN = 0x02
+    const val HEX_RADIX = 16
+    private const val ASCII_SPACE = 0x20
+    private const val ASCII_TILDE = 0x7E
+    private val PRINTABLE = ASCII_SPACE..ASCII_TILDE
+
+    fun markerAt(bytes: List<Int>): Int? =
         (0 until bytes.size - 1).firstOrNull { bytes[it] == MODE_09_REPLY && bytes[it + 1] == PID_VIN }
 
     /** The VIN bytes after `49 02` (and the `01` item count when present), as text, or null. */
-    private fun vinAfterMarker(bytes: List<Int>): String? {
+    fun vinAfterMarker(bytes: List<Int>): String? {
         val at = markerAt(bytes) ?: return null
         var rest = bytes.drop(at + 2)
         if (rest.size > VIN_LENGTH && rest.first() == 1) rest = rest.drop(1)
@@ -215,16 +225,17 @@ object VinResponse {
         return if (rest.size < VIN_LENGTH) null else ascii(rest.take(VIN_LENGTH))
     }
 
-    private fun ascii(bytes: List<Int>): String? =
+    fun ascii(bytes: List<Int>): String? =
         if (bytes.all { it in PRINTABLE }) bytes.joinToString("") { it.toChar().toString() } else null
 
     /** Hex text (spaces optional) to bytes, or null when it is not whole hex bytes. */
-    private fun bytesOf(text: String): List<Int>? {
+    fun bytesOf(text: String): List<Int>? {
         val compact = text.replace(" ", "")
         if (compact.isEmpty() || compact.length % 2 != 0 || !HEX_ONLY.matches(compact)) return null
         return compact.chunked(2).map { it.toInt(HEX_RADIX) }
     }
 }
+
 
 /**
  * One VIN read per connect: up to [attempts] tries of [send], stopping at the first VIN. Bounded
