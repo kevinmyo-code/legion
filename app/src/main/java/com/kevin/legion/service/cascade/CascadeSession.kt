@@ -1469,6 +1469,8 @@ internal class CascadeSession(
         !speculate -> "off"
         closing.get() -> "closing"
         prefix == null || cacheStore == null -> "prompt_not_ready"
+        // The first answer waits for the live context (clock, place); a draft must not skip it.
+        preambleReady?.isCompleted == false -> "context_not_ready"
         speaking || turnJob?.isActive == true -> "turn_busy"
         else -> null
     }
