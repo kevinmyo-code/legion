@@ -20,6 +20,9 @@ object ServerCards {
             "car" -> car(card)
             "steps" -> steps(card)
             "checklist" -> checklist(card)
+            "readings" -> GeneralCards.readings(card)
+            "status_list" -> GeneralCards.statusList(card)
+            "trend" -> GeneralCards.trend(card)
             else -> null
         }
     }.getOrNull()

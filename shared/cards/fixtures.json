@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "source": "server/engine_mcp/cards.py (the general kinds: readings, status_list, trend)",
+  "about": "One made-up card of each general kind, in the engine's wire shape, with the words every screen must say for it. The engine's tests check each card against cards.check(), the web's and the phone's parse it and draw these exact words. Edit all three sides together.",
+  "cards": [
+    {
+      "card": {
+        "card": "readings",
+        "title": "Laptop",
+        "period": "Sun Nov 15",
+        "at": "2026-11-15T14:20",
+        "items": [
+          {"label": "CPU", "value": 72.5, "unit": "°C", "was": 90},
+          {"label": "Memory used", "value": 11.2, "unit": "GB"},
+          {"label": "Battery", "value": 45, "unit": "%"},
+          {"label": "Fan", "value": null, "unit": "rpm"},
+          {"label": "Protein", "value": 32, "unit": "g", "flag": "estimate"},
+          {"label": "Spent", "value": 123456, "unit": "usd", "flag": "unverified"},
+          {"label": "Odometer", "value": 203000, "unit": "mi", "note": "Last reading on file."},
+          {"label": "Sessions", "value": 3, "unit": ""}
+        ],
+        "more": 2,
+        "note": "Read from the laptop's own report."
+      },
+      "words": {
+        "values": [
+          "72.5 °C (was 90 °C)",
+          "11.2 GB",
+          "45%",
+          "not read",
+          "32 g (estimate)",
+          "$1,234.56 (unverified)",
+          "203,000 mi",
+          "3"
+        ],
+        "asOfStartsWith": "As of Sun Nov 15, 2026",
+        "more": "2 more not shown."
+      }
+    },
+    {
+      "card": {
+        "card": "status_list",
+        "title": "Services",
+        "at": "2026-11-15",
+        "items": [
+          {"name": "Voice service", "status": "ok", "note": "Answering on port 8000."},
+          {"name": "Disk", "status": "attention", "note": "9% free."},
+          {"name": "Backup", "status": "failed"},
+          {"name": "Printer", "status": "unknown", "note": "Not reported."},
+          {"name": "Body control module", "status": "not_reached"}
+        ],
+        "more": 0
+      },
+      "words": {
+        "statuses": ["OK", "Needs attention", "Failed", "Unknown", "Not reached"],
+        "asOfStartsWith": "As of Sun Nov 15, 2026",
+        "more": ""
+      }
+    },
+    {
+      "card": {
+        "card": "trend",
+        "title": "Weight",
+        "period": "Last 4 weeks",
+        "unit": "lb",
+        "series": [
+          {
+            "name": "Morning weight",
+            "points": [
+              {"at": "2026-10-19", "value": 186.2},
+              {"at": "2026-10-26", "value": 184},
+              {"at": "2026-11-02", "value": 181},
+              {"at": "2026-11-14", "value": 182.4}
+            ]
+          },
+          {
+            "name": "Trend",
+            "flag": "estimate",
+            "points": [
+              {"at": "2026-10-19", "value": 186},
+              {"at": "2026-11-14", "value": 182.1}
+            ]
+          }
+        ]
+      },
+      "words": {
+        "series": [
+          "Morning weight: latest 182.4 lb on Nov 14, low 181 lb, high 186.2 lb.",
+          "Trend (estimate): latest 182.1 lb on Nov 14, low 182.1 lb, high 186 lb."
+        ]
+      }
+    },
+    {
+      "card": {
+        "card": "trend",
+        "title": "Spending",
+        "unit": "usd",
+        "series": [
+          {"name": "Groceries", "points": []}
+        ],
+        "note": "No spending in this window."
+      },
+      "words": {
+        "series": ["Groceries: nothing recorded in this window."]
+      }
+    }
+  ]
+}
