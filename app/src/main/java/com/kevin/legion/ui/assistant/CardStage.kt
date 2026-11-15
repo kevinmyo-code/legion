@@ -52,13 +52,8 @@ internal const val CARD_PAGE_TAG = "card-page"
 /** Test tag on the stage: the slot the cards fill. */
 internal const val CARD_STAGE_TAG = "card-stage"
 
-/** The full screen behind a card: what its "Open" link leads to, in words. */
-enum class CardDestination(val words: String) {
-    TODAY("Open Today"),
-    MONEY("Open Money"),
-    CAR("Open Car"),
-    LISTS("Open Lists"),
-}
+/** The full screen behind a card (moved beside the model so a card can name its own screen). */
+typealias CardDestination = com.kevin.legion.assistant.cards.CardDestination
 
 /**
  * The screen a card opens. A spend figure in dollars opens Money, a day or a week opens Today, a
@@ -72,6 +67,9 @@ fun cardDestination(card: ConversationCard): CardDestination? = when (card) {
     is ConversationCard.Checklist ->
         if (card.listName == PhoneCards.TODO_LIST_NAME) CardDestination.TODAY else CardDestination.LISTS
     is ConversationCard.Steps -> null
+    is ConversationCard.Readings -> card.open
+    is ConversationCard.StatusList -> card.open
+    is ConversationCard.Trend -> card.open
 }
 
 /**
@@ -253,6 +251,9 @@ private fun CardBody(card: ConversationCard) {
             card.items.forEach { RuledLine(CardWords.check(it), done = it.done) }
             MoreLine(card.more)
         }
+        is ConversationCard.Readings -> ReadingsBody(card)
+        is ConversationCard.StatusList -> StatusBody(card)
+        is ConversationCard.Trend -> TrendBody(card)
     }
 }
 
@@ -268,7 +269,7 @@ private fun DayHeading(text: String) {
 
 /** A ruled row of words; a done item is set in the meta ink, its "Done:" still in words. */
 @Composable
-private fun RuledLine(text: String, done: Boolean = false) {
+internal fun RuledLine(text: String, done: Boolean = false) {
     Text(
         text,
         style = TypesetType.body,
@@ -289,7 +290,7 @@ private fun TimeRow(time: String, words: String) {
 }
 
 @Composable
-private fun MoreLine(count: Int) {
+internal fun MoreLine(count: Int) {
     if (count > 0) {
         Text(
             "And $count more.",
@@ -337,7 +338,7 @@ private fun BarsBody(card: ConversationCard.Bars) {
     MoreLine(card.more)
 }
 
-private val TARGET = 48.dp
+internal val TARGET = 48.dp
 private val BAR = 6.dp
 private val RISE = 12.dp
 private const val ARRIVE_MS = 220

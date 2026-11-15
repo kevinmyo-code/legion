@@ -22,6 +22,25 @@ transcript. The format is shared with the phone, so its field names are fixed:
   (`/api/demo/asset/resume`), `alt`. Links, never bytes; built by `demo.tools.resume_card` for
   `show_resume`, recruiters only. The phone draws none, like `diagram`.
 
+Three general kinds (2026-11-15), drawn by the web and the phone alike. Their field names are
+single words, so the engine's snake_case and the phone's camelCase spell them the same, and
+`shared/cards/fixtures.json` holds one example of each that all three test suites read:
+
+- readings: labelled values with units, for a snapshot of measurements. `at` (optional, the "as
+  of" time, "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" on the household's clock), `items: [{label,
+  value, unit, flag?, was?, note?}]` at most 12, `more`. `value` is a number, or null when it
+  could not be read (said "not read", never drawn as zero); `unit` "usd" means integer cents,
+  "" a bare number, "%" sits on the number, anything else follows it after a space. `was` is an
+  earlier value of the same reading (a before and after). `flag` as on bars.
+- status_list: `at` (optional), `items: [{name, status, note?}]` at most 12, `more`. `status`
+  is one of ok, attention, failed, unknown, not_reached, always drawn in WORDS ("OK", "Needs
+  attention", "Failed", "Unknown", "Not reached"), never by colour or a glyph alone.
+- trend: `unit` (as on readings), `series: [{name, points: [{at, value}], flag?}]`, one or two
+  series sharing the unit, each at most 120 points, oldest first. The screen draws a line and
+  says each series' latest value, its low and its high in words, computed from the points.
+
+`check()` holds these three to their shape; `safe()` drops one that does not fit.
+
 Rules every builder keeps:
 
 - **Built from rows, never from model text.** The model never sees a card: the tool door puts
@@ -53,14 +72,200 @@ CODES_MAX = 8
 
 KIND_WORDS = {"event": "event", "reminder": "event", "task": "todo", "suggestion": "suggestion"}
 
+READINGS_MAX = 12
+STATUS_MAX = 12
+TREND_MAX = 120
+TREND_SERIES_MAX = 2
+FLAGS = ("unverified", "estimate")
+STATUSES = ("ok", "attention", "failed", "unknown", "not_reached")
+STATUS_WORDS = {
+    "ok": "OK",
+    "attention": "Needs attention",
+    "failed": "Failed",
+    "unknown": "Unknown",
+    "not_reached": "Not reached",
+}
+_AT = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$")
+
 
 def safe(builder, *args, **kwargs) -> dict | None:
-    """`builder(*args, **kwargs)`, or None when it raises. Logged, never re-raised."""
+    """`builder(*args, **kwargs)`, or None when it raises or makes a card of a general kind
+    (readings, status_list, trend) that does not fit its shape. Logged, never re-raised."""
     try:
-        return builder(*args, **kwargs)
+        card = builder(*args, **kwargs)
     except Exception:  # noqa: BLE001 - a card must never fail the tool it decorates
         log.exception("card builder %s failed; the result goes out without a card", builder)
         return None
+    if card is not None and card.get("card") in GENERAL_KINDS and not check(card):
+        log.error("card builder %s made a %s card that does not fit", builder, card.get("card"))
+        return None
+    return card
+
+
+# =============================================================================
+# The general kinds: readings, status_list, trend
+# =============================================================================
+
+
+def _number(value) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _at_ok(value) -> bool:
+    return value is None or (isinstance(value, str) and bool(_AT.match(value)))
+
+
+def _common_ok(card: dict) -> bool:
+    if not isinstance(card.get("title"), str) or not card["title"]:
+        return False
+    return all(card.get(k) is None or isinstance(card[k], str) for k in ("scope", "period", "note"))
+
+
+def _value_ok(value, unit: str) -> bool:
+    """A number, integer cents for usd. None is allowed by the caller where it means unread."""
+    return _number(value) and (unit != "usd" or isinstance(value, int))
+
+
+def _reading_ok(item) -> bool:
+    if not isinstance(item, dict) or not isinstance(item.get("label"), str):
+        return False
+    unit = item.get("unit")
+    if not isinstance(unit, str):
+        return False
+    if item.get("value") is not None and not _value_ok(item["value"], unit):
+        return False
+    if item.get("was") is not None and not _value_ok(item["was"], unit):
+        return False
+    if item.get("flag") is not None and item["flag"] not in FLAGS:
+        return False
+    return item.get("note") is None or isinstance(item["note"], str)
+
+
+def _status_ok(item) -> bool:
+    return (
+        isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and item.get("status") in STATUSES
+        and (item.get("note") is None or isinstance(item["note"], str))
+    )
+
+
+def _series_ok(series, unit: str) -> bool:
+    if not isinstance(series, dict) or not isinstance(series.get("name"), str):
+        return False
+    points = series.get("points")
+    if not isinstance(points, list) or len(points) > TREND_MAX:
+        return False
+    if series.get("flag") is not None and series["flag"] not in FLAGS:
+        return False
+    return all(
+        isinstance(p, dict)
+        and bool(p.get("at"))
+        and _at_ok(p.get("at"))
+        and _value_ok(p.get("value"), unit)
+        for p in points
+    )
+
+
+def check(card: dict) -> bool:
+    """Whether a readings, status_list or trend card fits its shape (the module docstring)."""
+    if not isinstance(card, dict) or not _common_ok(card):
+        return False
+    kind = card.get("card")
+    if kind == "readings":
+        items = card.get("items")
+        return (
+            _at_ok(card.get("at"))
+            and isinstance(items, list)
+            and len(items) <= READINGS_MAX
+            and all(_reading_ok(i) for i in items)
+            and isinstance(card.get("more"), int)
+        )
+    if kind == "status_list":
+        items = card.get("items")
+        return (
+            _at_ok(card.get("at"))
+            and isinstance(items, list)
+            and len(items) <= STATUS_MAX
+            and all(_status_ok(i) for i in items)
+            and isinstance(card.get("more"), int)
+        )
+    if kind == "trend":
+        series = card.get("series")
+        unit = card.get("unit")
+        return (
+            isinstance(unit, str)
+            and isinstance(series, list)
+            and 1 <= len(series) <= TREND_SERIES_MAX
+            and all(_series_ok(s, unit) for s in series)
+        )
+    return False
+
+
+GENERAL_KINDS = ("readings", "status_list", "trend")
+
+
+def _common(kind: str, title: str, scope, period, note) -> dict:
+    card = {"card": kind, "title": title}
+    for key, value in (("scope", scope), ("period", period), ("note", note)):
+        if value:
+            card[key] = value
+    return card
+
+
+def reading(label: str, value, unit: str, *, flag=None, was=None, note=None) -> dict:
+    """One readings item. `value` None means it could not be read; money is integer cents."""
+    item = {"label": label, "value": value, "unit": unit}
+    if flag:
+        item["flag"] = flag
+    if was is not None:
+        item["was"] = was
+    if note:
+        item["note"] = note
+    return item
+
+
+def readings_card(title: str, items: list[dict], *, at=None, scope=None, period=None, note=None):
+    """A readings card, the first READINGS_MAX items shown and the rest counted in `more`."""
+    card = _common("readings", title, scope, period, note)
+    if at:
+        card["at"] = at
+    card["items"] = items[:READINGS_MAX]
+    card["more"] = max(len(items) - READINGS_MAX, 0)
+    return card
+
+
+def status(name: str, state: str, note=None) -> dict:
+    item = {"name": name, "status": state}
+    if note:
+        item["note"] = note
+    return item
+
+
+def status_list_card(title: str, items: list[dict], *, at=None, scope=None, period=None, note=None):
+    """A status_list card, the first STATUS_MAX rows shown and the rest counted in `more`."""
+    card = _common("status_list", title, scope, period, note)
+    if at:
+        card["at"] = at
+    card["items"] = items[:STATUS_MAX]
+    card["more"] = max(len(items) - STATUS_MAX, 0)
+    return card
+
+
+def series(name: str, points: list[tuple[str, float]], *, flag=None) -> dict:
+    """One trend series from (at, value) pairs, oldest first; only the newest TREND_MAX kept."""
+    ordered = sorted(points, key=lambda p: p[0])[-TREND_MAX:]
+    out = {"name": name, "points": [{"at": at, "value": value} for at, value in ordered]}
+    if flag:
+        out["flag"] = flag
+    return out
+
+
+def trend_card(title: str, unit: str, lines: list[dict], *, scope=None, period=None, note=None):
+    card = _common("trend", title, scope, period, note)
+    card["unit"] = unit
+    card["series"] = lines[:TREND_SERIES_MAX]
+    return card
 
 
 def money_words(cents: int) -> str:
