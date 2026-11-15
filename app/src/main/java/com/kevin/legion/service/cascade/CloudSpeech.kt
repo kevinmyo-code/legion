@@ -346,8 +346,9 @@ internal class GeminiStt(
 }
 
 /**
- * Text-to-speech on Gemini TTS in [voice] (the companion's voice; Puck by default). Sentence by sentence ([streamsText] is
- * false, so [ReplySpeaker] splits with [SentenceSplitter]): each [speak] starts its own streamed
+ * Text-to-speech on Gemini TTS in [voice] (the companion's voice; Puck by default). Sentence by
+ * sentence ([streamsText] is false, so [ReplySpeaker] splits with [SentenceSplitter]): each [speak]
+ * starts its own streamed
  * request at once (at most [maxParallel] at a time), so the first sentence plays while the model is
  * still writing the rest and the next one is already on its way.
  *
@@ -450,9 +451,11 @@ internal class GeminiTts(
             }
             if (o == StreamOutcome.Ok) {
                 meter(CloudSpeechWire.TTS_MODEL, usage)
+                val prompt = usage?.optInt("promptTokenCount") ?: -1
+                val out = usage?.optInt("candidatesTokenCount") ?: -1
                 log(
                     "tts_cloud first_ms=${firstAudioMs ?: -1} audio_ms=${bytes / BYTES_PER_MS} chars=${text.length} " +
-                        "prompt=${usage?.optInt("promptTokenCount") ?: -1} out=${usage?.optInt("candidatesTokenCount") ?: -1}",
+                        "prompt=$prompt out=$out",
                 )
             }
             return o

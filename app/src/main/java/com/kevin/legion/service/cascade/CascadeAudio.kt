@@ -33,6 +33,7 @@ internal class CascadeAudio(private val ctx: Context, private val audio: AudioMa
      * Puts the hands-free link up when [BluetoothMic.wanted] says so (barge-in is off on Bluetooth,
      * so this never meets the barge-in call mode). Returns the call mode it entered, or null.
      */
+    @Suppress("ReturnCount") // not wanted, did not take, or entered
     fun enterBluetoothMic(backend: String): CallAudioMode? {
         val route = CallAudioMode.route(audio)
         val wanted = BluetoothMic.wanted(

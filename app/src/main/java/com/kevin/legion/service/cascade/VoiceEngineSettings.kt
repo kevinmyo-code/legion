@@ -193,6 +193,7 @@ object VoiceEngineSettings {
      * 2026-11-15: he must see which path ran). A laptop fault goes to the cloud voice ([usedCloud]
      * true, the default); [usedCloud] false says Live took it instead. Pure.
      */
+    @Suppress("ReturnCount") // one wording per kind of token
     fun statusWords(token: String, usedCloud: Boolean = true): String {
         if (token == "ok") return "connected"
         // The cloud voice needs the phone's turn detection too: nothing can take this one over.

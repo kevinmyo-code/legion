@@ -317,7 +317,8 @@ internal class CascadeSession(
         LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, b.tts.streamsText, b.kind.token))
         if (listens) startMic()
         prefix = prefixJob.await()
-        prefix?.let { cache.warm(it) }
+        // A speak-only line makes one round: a cache it would create costs more than it saves.
+        if (listens) prefix?.let { cache.warm(it) }
         if (closing.get()) return
         if (opener != null) {
             speakOpener(opener)
@@ -340,50 +341,13 @@ internal class CascadeSession(
      * 2026-11-15). Null when neither can start: Live has the conversation by then. The second value
      * is the probe's time, for the open line.
      */
-    @Suppress("ReturnCount") // one worded exit per open step
+    @Suppress("ReturnCount") // the laptop, nothing (Live retired), or the cloud voice
     private suspend fun openBackend(config: LaptopVoiceConfig, started: Long): Pair<SpeechBackend, Long>? {
-        var probeMs = -1L
-        val refusal: String = run {
-            // Engine CLOUD: no laptop is asked at all.
-            if (!laptopFirst) return@run CLOUD_ENGINE
-            // A laptop that just failed to answer is not asked again for a little while: the wake
-            // word must not wait out the probe on every conversation while Tailscale is off.
-            if (config.isComplete && started - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS) {
-                return@run "unreachable_recent"
-            }
-            val probe = if (config.isComplete) LaptopProbe.probe(config, CascadeTimings.PROBE_TIMEOUT_MS) else null
-            lastUnreachableAtMs = if (probe is LaptopProbe.Result.Unreachable) System.currentTimeMillis() else 0L
-            probeMs = when (probe) {
-                is LaptopProbe.Result.Ready -> probe.ms
-                is LaptopProbe.Result.Busy -> probe.ms
-                is LaptopProbe.Result.Unreachable -> probe.ms
-                else -> -1L
-            }
-            CascadeRules.openRefusal(config.isComplete, turnModelsReady = true, probe)?.let {
-                LiveLatency.log(LiveLatency.TAG, "cascade_probe_ms=$probeMs probe=${probe?.token ?: "none"}")
-                return@run it
-            }
-            var laptop: LaptopSpeech? = null
-            val c = LaptopVoiceConnection(
-                connector = OkHttpWire(),
-                config = config,
-                clientName = "legion-phone/${BuildConfig.VERSION_CODE}",
-                scope = scope,
-                onDrop = { reason -> laptop?.let { b -> scope.launch(loop) { onBackendDropped(b, reason) } } },
-            )
-            val speech = LaptopSpeech(c)
-            laptop = speech
-            when (val r = c.open(CascadeTimings.OPEN_TIMEOUT_MS)) {
-                is LaptopVoiceConnection.OpenResult.Failed -> {
-                    lastUnreachableAtMs = System.currentTimeMillis()
-                    "connect_${r.reason}"
-                }
-                LaptopVoiceConnection.OpenResult.Ready -> {
-                    VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
-                    return speech to probeMs
-                }
-            }
-        }
+        // Engine CLOUD: no laptop is asked at all.
+        val laptop = if (laptopFirst) tryLaptop(config, started) else LaptopTry(null, CLOUD_ENGINE, -1L)
+        val probeMs = laptop.probeMs
+        laptop.speech?.let { return it to probeMs }
+        val refusal = laptop.refusal
         val next = CascadeRules.nextAfter(SpeechBackend.Kind.LAPTOP, cloudCanStart())
         if (refusal != CLOUD_ENGINE) {
             LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback("laptop", next.name.lowercase(), "open", refusal))
@@ -394,7 +358,7 @@ internal class CascadeSession(
                 "open",
                 refusal,
                 from = SpeechBackend.Kind.CLOUD,
-                words = VoiceEngineSettings.cloudFailedWords("no_key", laptopToken = refusal.takeIf { it != CLOUD_ENGINE }),
+                words = VoiceEngineSettings.cloudFailedWords("no_key", refusal.takeIf { it != CLOUD_ENGINE }),
             )
             return null
         }
@@ -404,6 +368,51 @@ internal class CascadeSession(
             if (!quiet) host.notice("Laptop voice: $words")
         }
         return cloudSpeech(scope) to probeMs
+    }
+
+    /** What asking the laptop gave: its backend, or why not (a [statusWords] token); the probe's time. */
+    private class LaptopTry(val speech: SpeechBackend?, val refusal: String, val probeMs: Long)
+
+    /** Probe and connect the laptop voice service, each step's refusal as a worded token. */
+    @Suppress("ReturnCount") // one worded exit per open step
+    private suspend fun tryLaptop(config: LaptopVoiceConfig, started: Long): LaptopTry {
+        // A laptop that just failed to answer is not asked again for a little while: the wake word
+        // must not wait out the probe on every conversation while Tailscale is off.
+        if (config.isComplete && started - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS) {
+            return LaptopTry(null, "unreachable_recent", -1L)
+        }
+        val probe = if (config.isComplete) LaptopProbe.probe(config, CascadeTimings.PROBE_TIMEOUT_MS) else null
+        lastUnreachableAtMs = if (probe is LaptopProbe.Result.Unreachable) System.currentTimeMillis() else 0L
+        val probeMs = when (probe) {
+            is LaptopProbe.Result.Ready -> probe.ms
+            is LaptopProbe.Result.Busy -> probe.ms
+            is LaptopProbe.Result.Unreachable -> probe.ms
+            else -> -1L
+        }
+        CascadeRules.openRefusal(config.isComplete, turnModelsReady = true, probe)?.let {
+            LiveLatency.log(LiveLatency.TAG, "cascade_probe_ms=$probeMs probe=${probe?.token ?: "none"}")
+            return LaptopTry(null, it, probeMs)
+        }
+        var laptop: LaptopSpeech? = null
+        val c = LaptopVoiceConnection(
+            connector = OkHttpWire(),
+            config = config,
+            clientName = "legion-phone/${BuildConfig.VERSION_CODE}",
+            scope = scope,
+            onDrop = { reason -> laptop?.let { b -> scope.launch(loop) { onBackendDropped(b, reason) } } },
+        )
+        val speech = LaptopSpeech(c)
+        laptop = speech
+        return when (val r = c.open(CascadeTimings.OPEN_TIMEOUT_MS)) {
+            is LaptopVoiceConnection.OpenResult.Failed -> {
+                lastUnreachableAtMs = System.currentTimeMillis()
+                LaptopTry(null, "connect_${r.reason}", probeMs)
+            }
+            LaptopVoiceConnection.OpenResult.Ready -> {
+                VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
+                LaptopTry(speech, "ok", probeMs)
+            }
+        }
     }
 
     // --- the door from the controller ------------------------------------------------------------
@@ -560,9 +569,9 @@ internal class CascadeSession(
         if (!speaking) host.phase(Phase.LISTENING, "Listening...")
         // He started again before the last answer began playing: that answer is dropped and his
         // words carry into this turn, so a mid-thought pause never splits one request in two.
-        val pending = turn
+        val pending = turn?.takeIf { it.fromUser && it.toolsRan.isEmpty() }
         val answering = turnJob?.isActive == true && !speaking
-        if (pending != null && pending.fromUser && answering && pending.toolsRan.isEmpty()) {
+        if (pending != null && answering) {
             carry = (carry + " " + pending.heard).trim()
             turnJob?.cancel()
             speaker?.interrupt()
@@ -653,8 +662,13 @@ internal class CascadeSession(
                 listenerFor(record, reply),
             )
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
-            val text = if (result.failure != null && !reply.anyText) result.failureWords ?: result.failure.lead else null
-            if (text != null) reply.say(text) else reply.finishText()
+            val text = if (result.failure != null && !reply.anyText) {
+                result.failureWords ?: result.failure.lead
+            } else {
+                null
+            }
+            // A background line nobody asked for does not announce a fault (Settings says why).
+            if (text != null && !quiet) reply.say(text) else reply.finishText()
             outcome = reply.await()
             val failed = outcome as? ReplySpeaker.Outcome.Failed
             if (failed != null) {
@@ -1202,6 +1216,7 @@ internal class CascadeSession(
      * same laptop failure (the socket drop and the turn's own failed wait both arrive) finds the swap
      * done and changes nothing. Runs on [loop].
      */
+    @Suppress("ReturnCount") // closing, already swapped, cannot swap, swapped: each its own answer
     private fun swapToCloud(failed: SpeechBackend, stage: String, reason: String): Boolean {
         if (closing.get()) return false
         val current = backend
@@ -1227,6 +1242,7 @@ internal class CascadeSession(
      * the phone's detector and Smart Turn take over from the laptop's). A turn he is in the middle of
      * keeps the plan it started with; the new one starts when it ends ([replanPending]).
      */
+    @Suppress("ReturnCount") // no models, no backend, or a turn in progress: nothing to rebuild yet
     private fun replan() {
         val m = models ?: return
         val b = backend ?: return
@@ -1322,20 +1338,10 @@ internal class CascadeSession(
             val source = if (phoneFault) "phone" else from?.token ?: "phone"
             val to = if (VoiceEngineSettings.LIVE_RETIRED) "none" else "live"
             LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback(source, to, stage, reason))
-            val token = if (stage == "open") reason else "${stage}_$reason"
-            val said = words ?: when {
-                phoneFault -> VoiceEngineSettings.phoneFailedWords(token)
-                from == SpeechBackend.Kind.CLOUD -> VoiceEngineSettings.cloudFailedWords(token)
-                else -> VoiceEngineSettings.statusWords(token, usedCloud = false)
-            }
+            val said = words ?: failedWords(if (stage == "open") reason else "${stage}_$reason", from, phoneFault)
             VoiceEngineSettings.noteStatus(ctx, said)
-            val notice = when {
-                moment == Handover.Moment.AtOpen -> "Voice: $said"
-                from == SpeechBackend.Kind.CLOUD && !phoneFault -> CLOUD_FAILED_NOTICE
-                else -> LIVE_NOTICE
-            }
             // A background line nobody asked for fails quietly on screen; Settings still says why.
-            if (!quiet) host.notice(notice)
+            if (!quiet) host.notice(failedNotice(moment, said, from, phoneFault))
             release(reason)
         } finally {
             if (VoiceEngineSettings.LIVE_RETIRED) {
@@ -1349,6 +1355,21 @@ internal class CascadeSession(
             }
         }
     }
+
+    /** What Settings says after a failure nothing could take over. */
+    private fun failedWords(token: String, from: SpeechBackend.Kind?, phoneFault: Boolean): String = when {
+        phoneFault -> VoiceEngineSettings.phoneFailedWords(token)
+        from == SpeechBackend.Kind.CLOUD -> VoiceEngineSettings.cloudFailedWords(token)
+        else -> VoiceEngineSettings.statusWords(token, usedCloud = false)
+    }
+
+    /** What the strip says after a failure nothing could take over. */
+    private fun failedNotice(moment: Handover.Moment, said: String, from: SpeechBackend.Kind?, phoneFault: Boolean) =
+        when {
+            moment == Handover.Moment.AtOpen -> "Voice: $said"
+            from == SpeechBackend.Kind.CLOUD && !phoneFault -> CLOUD_FAILED_NOTICE
+            else -> LIVE_NOTICE
+        }
 
     /** Anything thrown anywhere in this session: hand the conversation to Live (or just close). */
     private fun onCrash(t: Throwable) {
@@ -1431,7 +1452,9 @@ internal class CascadeSession(
                     close("no_mic_permission")
                 },
                 // A mic that cannot open or keeps failing is a deaf conversation, on any voice: Live.
-                onFailure = { reason -> scope.launch(loop) { handOver(currentMoment(), "mic", reason, phoneFault = true) } },
+                onFailure = { reason ->
+                    scope.launch(loop) { handOver(currentMoment(), "mic", reason, phoneFault = true) }
+                },
             )
         }
     }
