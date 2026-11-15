@@ -153,7 +153,7 @@ internal class CascadeSession(
     /** The open's start, for `open_first_audio_ms` (once). */
     private var openStartedAtMs = 0L
     private var firstAudioLogged = false
-    private var preamble = ""
+    @Volatile private var preamble = ""
     private var plan: CascadeRules.TurnPlan? = null
     @Volatile private var turnTaker: TurnTaker? = null
 
@@ -386,12 +386,31 @@ internal class CascadeSession(
         }
     }
 
-    /** The prompt for a model call: waits for the build started at open; null if it never came. */
-    private suspend fun awaitPrompt(): CascadePrefix? {
-        prefix?.let { return it }
-        val p = runCatching { prefixReady?.await() }.getOrNull()
-        // The live context gets a short wait; past it the first turn goes with the date alone.
-        withTimeoutOrNull(CascadeTimings.LIVE_CONTEXT_WAIT_MS) { runCatching { preambleReady?.await() } }
+    /**
+     * The prompt for a model call: waits for the build started at open (null if it failed), then up
+     * to [liveContextWaitMs] for the live context (clock, place, car notes) so the call carries it;
+     * past that it goes with the date paragraph alone. A cancel (tap, barge-in, merge) propagates.
+     */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // a failed build is a null prompt
+    private suspend fun awaitPrompt(liveContextWaitMs: Long = CascadeTimings.LIVE_CONTEXT_WAIT_MS): CascadePrefix? {
+        val p = prefix ?: try {
+            prefixReady?.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (liveContextWaitMs > 0 && preambleReady?.isCompleted == false) {
+            withTimeoutOrNull(liveContextWaitMs) {
+                try {
+                    preambleReady?.await()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Unit
+                }
+            }
+        }
         return p
     }
 
@@ -706,7 +725,18 @@ internal class CascadeSession(
     private suspend fun answerTurn(heard: String, eotAtMs: Long?, record: TurnRecord) {
         turn = record
         val seq = turnSeq.getAndIncrement()
-        val pfx = awaitPrompt() ?: run {
+        val pfx = try {
+            awaitPrompt()
+        } catch (e: CancellationException) {
+            // Interrupted or merged while the prompt was still building: no stale turn, and his
+            // words reach the record unless they carry into the next turn.
+            withContext(NonCancellable) {
+                if (turn === record) turn = null
+                if (carry.isBlank()) recordTurn(heard, "", record.readThrough, seq, record.fromUser)
+            }
+            throw e
+        } ?: run {
+            if (turn === record) turn = null
             handOver(heardMoment(heard), "prompt", "prefix_missing")
             return
         }
@@ -1091,7 +1121,8 @@ internal class CascadeSession(
         turnJob = scope.launch(loop) {
             // One budget for the whole greeting, prompt build included: past it, the scripted line.
             val deadline = System.currentTimeMillis() + GreetingBudget.FIRST_OUTPUT_MS
-            val pfx = withTimeoutOrNull(GreetingBudget.FIRST_OUTPUT_MS) { awaitPrompt() }
+            // The greeting's facts come from its own pack: it does not wait on the live context.
+            val pfx = withTimeoutOrNull(GreetingBudget.FIRST_OUTPUT_MS) { awaitPrompt(liveContextWaitMs = 0) }
             if (pfx == null) {
                 LiveLatency.log(LiveLatency.TAG, "greeting prompt_slow scripted")
                 speakScripted(ackLines.next())
@@ -1273,7 +1304,8 @@ internal class CascadeSession(
     /** The text loop for [kind] (`llm` for turns, `greeting` for the greeting): same model, cache, tools. */
     private fun newTextLoop(cache: ContextCacheStore, kind: String) = GeminiTextLoop(
         transport = OkHttpGemini(),
-        cache = cache,
+        // A speak-only line makes one round: no cache (a peek would start a create it never uses).
+        cache = cache.takeIf { listens },
         isMutating = LiveToolbox::isMutatingCall,
         isReadThrough = { GeminiLiveSession.isEpisodicExcludedTool(it) },
         toolTimeoutMs = { TOOL_BACKSTOP_MS },

@@ -25,6 +25,8 @@ What it reads (counts and model ids only; no conversation text is used):
 - `LIVE_AUDIT: usage prompt= prompt_text= prompt_audio= reply= reply_audio= thoughts=` (Live): each
   line priced as one billed generation (the 2026-11-10 audit's model; how Live bills is not stated
   by Google), the prompt's unattributed remainder at the text rate.
+- A cache create that finishes after its conversation's `session_end` falls outside every
+  conversation and is not priced (rare: the create starts at the open).
 - `cache_create ... ttl_s=`: the cache's own creation (at the input rate: ASSUMED, unverified) and its
   storage for the whole TTL (tokens x hours x the storage rate).
 
@@ -146,6 +148,7 @@ class Conversation:
     turn_lines: list[Call] = field(default_factory=list)  # old llm_usage, per turn
     summary: str | None = None
     turns: int | None = None
+    live_open: bool = False  # a Live generation is open for folding
 
 
 def _ints(fields: dict[str, str]) -> dict[str, int]:
@@ -185,7 +188,19 @@ def parse(lines: list[str], year: int) -> list[Conversation]:
             current = None
             continue
         if tag == "LIVE_AUDIT" and msg.startswith("usage "):
-            current.calls.append(Call("live", current.model, _ints(fields)))
+            # Folded as the phone's own meter folds them (ai/LiveUsage.kt LiveUsageFold): reports
+            # with the same prompt count inside one generation are max-merged, never added twice;
+            # a tool_call or turn_complete ends a generation.
+            counts = _ints(fields)
+            last = current.calls[-1] if current.calls and current.live_open else None
+            if last is not None and last.kind == "live" and last.counts.get("prompt") == counts.get("prompt"):
+                for k, v in counts.items():
+                    last.counts[k] = max(last.counts.get(k, 0), v)
+            else:
+                current.calls.append(Call("live", current.model, counts))
+            current.live_open = True
+        elif tag == "LIVE_AUDIT" and (msg.startswith("tool_call ") or msg.startswith("turn_complete")):
+            current.live_open = False
         elif tag == "LIVE_LATENCY" and msg.startswith("gemini_usage "):
             current.calls.append(
                 Call(

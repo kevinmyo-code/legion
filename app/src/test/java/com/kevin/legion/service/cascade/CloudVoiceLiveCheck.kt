@@ -33,8 +33,9 @@ class CloudVoiceLiveCheck {
         val key = File(keyFile).readText().trim()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val transport = OkHttpGemini(key = { key })
-        val tts = GeminiTts(transport, scope, log = { println("LIVECHECK $it") })
-        val stt = GeminiStt(transport, scope, log = { println("LIVECHECK $it") })
+        // The cost-audit lines too, so G1 confirms the usageMetadata field names (counts only).
+        val tts = GeminiTts(transport, scope, log = { println("LIVECHECK $it") }, usage = { println("LIVECHECK ${it.line()}") })
+        val stt = GeminiStt(transport, scope, log = { println("LIVECHECK $it") }, usage = { println("LIVECHECK ${it.line()}") })
         try {
             for (line in SENTENCES) {
                 val t0 = System.currentTimeMillis()

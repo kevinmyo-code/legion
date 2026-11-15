@@ -178,7 +178,13 @@ class CascadeWiringTest {
         assertFalse(prefixPart.contains("buildLiveContext("))
         // The first turn and the greeting wait for it instead.
         assertTrue(bodyOf(s, "answerTurn").contains("awaitPrompt()"))
-        assertTrue(bodyOf(s, "speakGreeting").contains("awaitPrompt()"))
+        assertTrue(bodyOf(s, "speakGreeting").contains("awaitPrompt(liveContextWaitMs = 0)"))
+        // A cancel while the prompt builds clears the turn and keeps his words.
+        val answer = bodyOf(s, "answerTurn")
+        val wait = answer.substring(0, answer.indexOf("?: run {"))
+        assertTrue(wait.contains("catch (e: CancellationException)"))
+        assertTrue(wait.contains("turn = null"))
+        assertTrue(Regex("catch \\(e: CancellationException\\) \\{\\s+throw e").containsMatchIn(bodyOf(s, "awaitPrompt")))
     }
 
     @Test

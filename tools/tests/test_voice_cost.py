@@ -103,6 +103,20 @@ def test_live_usage_lines_are_priced_like_for_like():
     assert bill.conv.engine == "live"
 
 
+def test_live_repeat_reports_in_one_generation_are_folded_not_added():
+    live = [
+        line("09:00:00", "LIVE_AUDIT", "session_start model=gemini-3.8-live"),
+        line("09:00:05", "LIVE_AUDIT", "usage prompt=1000 prompt_text=1000 reply=10 reply_audio=10"),
+        line("09:00:05", "LIVE_AUDIT", "usage prompt=1000 prompt_text=1000 reply=20 reply_audio=20"),
+        line("09:00:06", "LIVE_AUDIT", "turn_complete"),
+        line("09:00:09", "LIVE_AUDIT", "usage prompt=1000 prompt_text=1000 reply=5 reply_audio=5"),
+        line("09:00:10", "LIVE_AUDIT", 'session_end reason="stopped"'),
+    ]
+    calls = vc.parse(live, 2026)[0].calls
+    assert len(calls) == 2  # one folded generation, then a new one after turn_complete
+    assert calls[0].counts["reply_audio"] == 20
+
+
 def test_an_unknown_model_is_said_not_guessed():
     lines = [
         line("11:00:00", "LIVE_AUDIT", "session_start model=cloud+gemini-9-unknown"),
