@@ -219,6 +219,9 @@ class KyutaiStt:
 VOICES = {
     "dev": "unmute-prod-website/developer-1.mp3",                       # CC0 (Kyutai's own recording)
     "vctk_p226": "vctk/p226_023.wav",                                   # CC BY 4.0, English male
+    # Kevin's picks by ear, 2026-11-15 (butler shortlist #13, #5); p279 is Alfred's default voice
+    "vctk_p279": "vctk/p279_023.wav",                                   # CC BY 4.0, English male
+    "vctk_p254": "vctk/p254_023.wav",                                   # CC BY 4.0, English male
     "ex03_calm": "expresso/ex03-ex01_calm_001_channel1_1143s.wav",     # CC BY-NC 4.0
     "ex01_calm": "expresso/ex03-ex01_calm_001_channel2_1081s.wav",     # CC BY-NC 4.0
     # style variants of the same speakers (emotion comes from the reference clip, not from tags)
@@ -233,7 +236,7 @@ class KyutaiTts:
     name = "kyutai-tts-1.6b-en_fr"
     sample_rate = 24000
 
-    def __init__(self, n_q: int = 32, temp: float = 0.6, cfg_coef: float = 2.0, default_voice: str = "dev",
+    def __init__(self, n_q: int = 32, temp: float = 0.6, cfg_coef: float = 2.0, default_voice: str = "vctk_p279",
                  persistent: bool = True):
         """n_q: codebooks generated per 80 ms frame (32 = best audio; 16-24 = faster, see results).
         persistent: keep one LMGen in streaming mode and reset it between utterances, so CUDA graphs
