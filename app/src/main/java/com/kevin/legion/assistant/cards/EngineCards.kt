@@ -23,7 +23,34 @@ object EngineCards {
      * `_meta.card`). A run that stopped part way is still a card, error flag or not.
      */
     fun fromAnswer(answer: EngineToolAnswer): ConversationCard? =
-        answer.card?.let(ServerCards::parse) ?: fromTool(answer.tool, answer.structured, answer.roundTripMs)
+        (answer.card?.let(ServerCards::parse) ?: fromTool(answer.tool, answer.structured, answer.roundTripMs))
+            ?.let { withScreen(it, screenTool(answer)) }
+
+    /** The phone screen that shows an engine tool's data by hand (ADR 0035), for the Open link. */
+    internal val SCREENS = mapOf(
+        "canvas_grades" to CardDestination.GRADES,
+        "budgets" to CardDestination.MONEY,
+        "check_conditions" to CardDestination.CONDITIONS,
+        "get_weight_trend" to CardDestination.BODY,
+        "get_todays_workout" to CardDestination.BODY,
+        "list_memories" to CardDestination.MEMORY,
+        "drives" to CardDestination.CAR,
+    )
+
+    /** `read_records` of the drives table opens Car; any other table has no one screen. */
+    private fun screenTool(answer: EngineToolAnswer): String =
+        if (answer.tool == "read_records" && answer.structured?.optString("table") == "drives") "drives" else answer.tool
+
+    /** A general card names its screen by the tool that made it; the wire never carries one. */
+    internal fun withScreen(card: ConversationCard, tool: String): ConversationCard {
+        val open = SCREENS[tool] ?: return card
+        return when (card) {
+            is ConversationCard.Readings -> card.copy(open = open)
+            is ConversationCard.StatusList -> card.copy(open = open)
+            is ConversationCard.Trend -> card.copy(open = open)
+            else -> card
+        }
+    }
 
     fun fromTool(name: String, structured: JSONObject?, roundTripMs: Long): ConversationCard? =
         when (name) {

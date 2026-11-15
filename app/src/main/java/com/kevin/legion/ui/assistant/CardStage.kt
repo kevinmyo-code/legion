@@ -55,6 +55,21 @@ internal const val CARD_STAGE_TAG = "card-stage"
 /** The full screen behind a card (moved beside the model so a card can name its own screen). */
 typealias CardDestination = com.kevin.legion.assistant.cards.CardDestination
 
+/** The route an Open link navigates to: every card's hands path (ADR 0035) is a screen here. */
+fun cardRoute(where: CardDestination): String = when (where) {
+    CardDestination.TODAY -> com.kevin.legion.ui.LegionRoute.CALENDAR
+    CardDestination.MONEY -> com.kevin.legion.ui.LegionRoute.MONEY
+    CardDestination.CAR -> com.kevin.legion.ui.LegionRoute.FLEET
+    CardDestination.LISTS -> com.kevin.legion.ui.LegionRoute.CHECKLISTS
+    CardDestination.GRADES -> com.kevin.legion.ui.LegionRoute.GRADES
+    CardDestination.BODY -> com.kevin.legion.ui.LegionRoute.BODY
+    CardDestination.PANTRY -> com.kevin.legion.ui.LegionRoute.MONEY_PANTRY
+    CardDestination.CONDITIONS -> com.kevin.legion.ui.LegionRoute.CONDITIONS
+    CardDestination.MEMORY -> com.kevin.legion.ui.LegionRoute.SETTINGS_MEMORY
+    CardDestination.LAPTOP -> com.kevin.legion.ui.LegionRoute.CLAUDE_SESSION
+    CardDestination.NAVIGATION -> com.kevin.legion.ui.LegionRoute.NAVIGATE
+}
+
 /**
  * The screen a card opens. A spend figure in dollars opens Money, a day or a week opens Today, a
  * car opens Car, the to-do list opens Today and any other list opens Lists. A run of steps and a

@@ -147,6 +147,8 @@ export interface Reading {
   flag?: Flag
   /** An earlier value of the same reading: a before and after. */
   was?: number | null
+  /** A value that is words, not a number ("Closed loop", a VIN); `value` is then null. */
+  text?: string
   note?: string
 }
 
@@ -282,6 +284,7 @@ const atOk = (value: unknown) => value === undefined || value === null || (typeo
 
 function isReading(item: Record<string, unknown>): boolean {
   if (typeof item.label !== 'string' || typeof item.unit !== 'string') return false
+  if (item.text !== undefined && item.text !== null && (typeof item.text !== 'string' || item.value !== null)) return false
   const fits = (v: unknown) => v === undefined || v === null || (isNumber(v) && (item.unit !== 'usd' || Number.isInteger(v)))
   return fits(item.value) && fits(item.was)
 }
@@ -313,7 +316,7 @@ export function unitWords(value: number, unit: string): string {
  * its flag ("32 g (estimate)"). The phone's `CardWords.reading`.
  */
 export function readingWords(item: Reading): string {
-  if (item.value === null) return 'not read'
+  if (item.value === null) return item.text ?? 'not read'
   const was = item.was != null ? ` (was ${unitWords(item.was, item.unit)})` : ''
   const flag = item.flag ? ` (${FLAG_WORDS[item.flag]})` : ''
   return unitWords(item.value, item.unit) + was + flag

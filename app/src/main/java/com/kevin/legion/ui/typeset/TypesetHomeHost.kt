@@ -113,6 +113,7 @@ fun TypesetHomeHost(
                 CardDestination.MONEY -> nav.onOpenMoney()
                 CardDestination.CAR -> nav.onOpenCar()
                 CardDestination.LISTS -> nav.onOpenLists()
+                else -> nav.onOpenRoute(com.kevin.legion.ui.assistant.cardRoute(where))
             }
         },
         onOpenApp = { tile -> slotOf(tile)?.let(onLaunchSlot) },

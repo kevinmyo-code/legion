@@ -126,6 +126,11 @@ sealed class ConversationCard {
         override val note: String? = null,
         override val provenance: CardProvenance? = null,
         val open: CardDestination? = null,
+        /**
+         * Phone only, not on the wire: one id per shown item when each row may be forgotten (the
+         * memory list). The card then offers Forget, a hard delete; null draws none.
+         */
+        val forgetIds: List<String>? = null,
     ) : ConversationCard() {
         override val kind: String get() = "readings"
     }
@@ -183,6 +188,13 @@ enum class CardDestination(val words: String) {
     MONEY("Open Money"),
     CAR("Open Car"),
     LISTS("Open Lists"),
+    GRADES("Open Grades"),
+    BODY("Open Body"),
+    PANTRY("Open Pantry"),
+    CONDITIONS("Open Conditions"),
+    MEMORY("Open Memory"),
+    LAPTOP("Open Claude"),
+    NAVIGATION("Open Navigation"),
 }
 
 /**
@@ -197,6 +209,8 @@ data class Reading(
     val flag: CardFlag? = null,
     val was: java.math.BigDecimal? = null,
     val note: String? = null,
+    /** A value that is words, not a number ("Closed loop", a VIN); [value] is then null. */
+    val text: String? = null,
 )
 
 /** A status, always drawn in [words]; colour may only repeat the word. */

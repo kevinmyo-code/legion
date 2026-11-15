@@ -108,11 +108,13 @@ object PhoneCards {
             if (dated.isEmpty()) add("Nothing on the calendar and nothing due in that window.")
             if (more > 0) add("$more more not shown.")
         }.joinToString(" ").ifBlank { null }
+        val items = shown.map { (e, day) -> timelineItem(e, zone).copy(date = day.toString().takeIf { several }) }
         return ConversationCard.Timeline(
-            title = "Calendar",
+            // To-dos and coursework alone (a "what is due" read) say so in the title.
+            title = if (items.isNotEmpty() && items.all { it.kind == TimelineKind.TODO }) "Due" else "Calendar",
             date = first.toString(),
             zone = zoneLabel(zone.rules.getOffset(first.atStartOfDay(zone).toInstant())),
-            items = shown.map { (e, day) -> timelineItem(e, zone).copy(date = day.toString().takeIf { several }) },
+            items = items,
             more = more,
             period = if (several) {
                 "${first.format(SHORT_DAY)} to ${days.last().format(SHORT_DAY)}"
