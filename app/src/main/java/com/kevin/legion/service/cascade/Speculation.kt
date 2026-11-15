@@ -158,11 +158,19 @@ internal class SpeculativeAnswer(
         private set
 
     val isDone: Boolean get() = job?.isCompleted == true
+
+    /**
+     * The draft's model call already ended in a failure (or threw). Such a draft is not adopted:
+     * the caller drops it and makes the normal call, so the user is never told a failure that a
+     * fresh call might not repeat.
+     */
+    @Volatile var failed = false
+        private set
     val current: State get() = state.get()
 
     fun start(prefix: CascadePrefix, contents: JSONArray) {
         job = scope.async {
-            loop.answer(
+            val r = loop.answer(
                 prefix,
                 contents,
                 TextToolExecutor { name, args, readThrough ->
@@ -176,6 +184,10 @@ internal class SpeculativeAnswer(
                     gate.await()
                 },
             )
+            if (r.failure != null) failed = true
+            r
+        }.also { j ->
+            j.invokeOnCompletion { if (it != null && it !is CancellationException) failed = true }
         }
     }
 

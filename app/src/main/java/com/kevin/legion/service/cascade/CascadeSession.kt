@@ -1593,6 +1593,7 @@ internal class CascadeSession(
             !SpeculationRules.sameText(d.heard.orEmpty(), heard) -> "text_changed"
             d.historySize != history.size || d.preamble != preamble -> "context_changed"
             answer.current != SpeculativeAnswer.State.DRAFTING -> "stale"
+            answer.failed -> "draft_failed"
             else -> null
         }
         val age = System.currentTimeMillis() - d.startedAtMs

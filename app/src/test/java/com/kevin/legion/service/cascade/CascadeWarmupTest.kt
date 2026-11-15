@@ -120,6 +120,12 @@ class CascadeWarmupTest {
         CascadeWarmup.lastMissAtMs = 0L
     }
 
+    @Test
+    fun `the session drops a failed draft at confirmation`() {
+        val s = source("service/cascade/CascadeSession.kt")
+        assertTrue(s.contains("answer.failed -> \"draft_failed\""))
+    }
+
     // --- wiring, read from source --------------------------------------------------------------
 
     @Test

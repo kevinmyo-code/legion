@@ -202,4 +202,25 @@ class SpeculationTest {
             CascadeLines.specKept("eot", 280, null, 0, heldAtTool = false, done = false),
         )
     }
+
+    @Test
+    fun `a draft whose model call failed says so, so it is dropped and not adopted`() = runBlocking<Unit> {
+        val failing = object : GeminiStreamTransport {
+            override suspend fun stream(model: String, body: JSONObject, onEvent: (JSONObject) -> Unit): StreamOutcome =
+                StreamOutcome.HttpError(503, "unavailable")
+        }
+        val d = draft(failing)
+        d.start(prefix, contents)
+        until { d.isDone }
+        until { d.failed }
+        assertTrue(d.failed)
+        assertTrue("it is still live until the session drops it", d.discard())
+        assertEquals(SpeculativeAnswer.State.DISCARDED, d.current)
+
+        val good = draft(Scripted(listOf(text("Fine."), usage(10, 1))))
+        good.start(prefix, contents)
+        until { good.isDone }
+        assertFalse("a draft that answered is not marked failed", good.failed)
+        good.discard()
+    }
 }
