@@ -71,13 +71,16 @@ object UpdateRules {
     }
 
     /**
-     * The install gate (map decision 3). Never in Matrix mode or with the car connected: those
-     * refuse. Mid-conversation is not a refusal, it is a wait: the caller holds the yes and
-     * installs when the conversation ends. Null when it may install now.
+     * The install gate (map decision 3). Never in Matrix mode: that refuses. The car being
+     * connected no longer refuses (Kevin, 2026-11-15: "make it so i can install while its
+     * connected"); it still keeps the unsolicited spoken ask quiet ([mayAskNow]), so an install
+     * in the car happens only when he asks or taps. Mid-conversation is not a refusal, it is a
+     * wait: the caller holds the yes and installs when the conversation ends. Null when it may
+     * install now.
      */
+    @Suppress("UNUSED_PARAMETER") // carConnected kept so the call sites and the rule stay visible together
     fun installRefusal(matrixOn: Boolean, carConnected: Boolean, mayInstallPackages: Boolean): String? = when {
         matrixOn -> "Not installed: Matrix mode is on. Install it after you leave Matrix mode."
-        carConnected -> "Not installed: the car is connected. Install it when you are out of the car."
         !mayInstallPackages ->
             "Not installed: LEGION is not allowed to install apps yet. In Settings, Updates, tap " +
                 "Allow installs and switch it on, then ask again."

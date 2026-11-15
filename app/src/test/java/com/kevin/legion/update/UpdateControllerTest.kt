@@ -161,17 +161,23 @@ class UpdateControllerTest {
     }
 
     @Test
-    fun `Matrix, the car and a missing grant refuse the install in words`() = runBlocking {
+    fun `Matrix and a missing grant refuse the install in words`() = runBlocking {
         controller.check()
         platform.matrix = true
         assertTrue(controller.install(Consent.TAP).sentence.contains("Matrix"))
         platform.matrix = false
-        platform.car = true
-        assertTrue(controller.install(Consent.TAP).sentence.contains("car"))
-        platform.car = false
         platform.mayInstall = false
         assertTrue(controller.install(Consent.TAP).sentence.contains("not allowed to install"))
         assertTrue(installer.installed.isEmpty())
+    }
+
+    @Test
+    fun `the car being connected does not stop a tap install`() = runBlocking {
+        // Kevin, 2026-11-15: "make it so i can install while its connected".
+        controller.check()
+        platform.car = true
+        assertTrue(controller.install(Consent.TAP).started)
+        assertEquals(1, installer.installed.size)
     }
 
     @Test
