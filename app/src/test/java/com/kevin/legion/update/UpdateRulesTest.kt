@@ -72,6 +72,8 @@ class UpdateRulesTest {
         assertNull(UpdateRules.installRefusal(matrixOn = false, carConnected = false, mayInstallPackages = true))
         assertTrue(UpdateRules.installRefusal(true, false, true)!!.contains("Matrix"))
         // Kevin, 2026-11-15: installing with the car connected is allowed.
+        assertTrue("mobile data is on unless switched off", UpdateRules.ALLOW_MOBILE_DATA_DEFAULT)
+        assertEquals(3L, UpdateRules.CHECK_EVERY_HOURS)
         assertNull(UpdateRules.installRefusal(matrixOn = false, carConnected = true, mayInstallPackages = true))
         assertTrue(UpdateRules.installRefusal(false, false, false)!!.contains("not allowed to install"))
     }

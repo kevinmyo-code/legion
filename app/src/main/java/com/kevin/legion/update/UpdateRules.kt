@@ -24,8 +24,18 @@ object UpdateRules {
     }
 
     /**
-     * The download gate. The APK is 180-220 MB, so Wi-Fi (an unmetered network) only, unless the
-     * user switched "Allow mobile data" on. Null when the download may start.
+     * "Allow mobile data" when he never touched the switch. On since 2026-11-15 (Kevin, away from
+     * Wi-Fi: "download able over data pls"); it was off before. Switching it off in Settings holds.
+     */
+    const val ALLOW_MOBILE_DATA_DEFAULT = true
+
+    /** How often the background check runs. Was once a day until 2026-11-15 (Kevin: "Yes"). */
+    const val CHECK_EVERY_HOURS = 3L
+
+    /**
+     * The download gate. The APK is 180-220 MB: mobile data is allowed unless the user switched
+     * "Allow mobile data" off, and then it is Wi-Fi (an unmetered network) only. Null when the
+     * download may start.
      */
     fun downloadRefusal(online: Boolean, unmetered: Boolean, allowMobileData: Boolean): String? = when {
         !online -> "Not downloaded: the phone is offline."

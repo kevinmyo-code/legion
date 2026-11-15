@@ -49,6 +49,11 @@ connected no longer refuses an install: a yes by voice or tap installs. It still
 unprompted mention quiet, so an update in the car happens only when Kevin asks. Matrix mode still
 refuses in words.
 
+**AMENDED 2026-11-15 (Kevin, away from Wi-Fi: "Yes and download able over data pls").** The
+background check runs every 3 hours, not once a day, and "Allow mobile data" is on unless he
+switched it off, so an update can arrive while he is out. Asking by voice or opening Settings,
+Updates still checks at once.
+
 **versionCode is `yyDDDHHmm` UTC** for `fast` and `release` (year, day of year, hour, minute;
 monotonic, under Android's 2,100,000,000 cap until 2099), `debug` stays 1 and never self-updates.
 The map first said `yyMMddHHmm`, which is already past both the Int and Android caps.
