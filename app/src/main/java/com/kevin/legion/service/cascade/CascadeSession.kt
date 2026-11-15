@@ -220,6 +220,7 @@ internal class CascadeSession(
         val toolsRan = mutableListOf<String>()
         val writesDone = mutableListOf<String>()
         @Volatile var readThrough = false
+        @Volatile var fillerPlayed = false
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -1055,6 +1056,15 @@ internal class CascadeSession(
 
         override fun onToolCalls(names: List<String>) {
             synchronized(record) { record.toolsRan.addAll(names) }
+            // A confirmed turn going to a slow tool says so at once, unless the model already spoke
+            // (its own "let me check" is enough). Never an outcome. A draft only gets here after
+            // confirmation ([SpeculativeAnswer] holds this call until then).
+            if (record.fromUser && ScriptedLines.fillerDue(names, reply.anyText, record.fillerPlayed)) {
+                record.fillerPlayed = true
+                if (reply.filler(ScriptedLines.FILLERS.random())) {
+                    LiveLatency.log(LiveLatency.TAG, "filler tools=${names.filter { it in ScriptedLines.SLOW_TOOLS }.joinToString(",")}")
+                }
+            }
         }
 
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {
@@ -1077,16 +1087,25 @@ internal class CascadeSession(
         val p = player!!
         val gen = p.generation()
         var ttsAskedAtMs = System.currentTimeMillis()
+        var audible = false
         return ReplySpeaker(
             tts = b.tts,
             scope = scope,
             play = { pcm -> p.write(pcm, gen) },
             firstFrameTimeoutMs = b.ttsFirstAudioTimeoutMs,
-            onFirstAudio = {
+            onFirstAudio = { _, filler ->
                 val now = System.currentTimeMillis()
-                eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
-                LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
-                scope.launch(loop) { onReplyAudible() }
+                if (filler) {
+                    // Its own line: eot_reply_ms stays the answer's first audio, not the filler's.
+                    eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
+                } else {
+                    eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
+                    LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
+                }
+                if (!audible) {
+                    audible = true
+                    scope.launch(loop) { onReplyAudible() }
+                }
             },
             onClipStarted = { text ->
                 ttsAskedAtMs = System.currentTimeMillis()

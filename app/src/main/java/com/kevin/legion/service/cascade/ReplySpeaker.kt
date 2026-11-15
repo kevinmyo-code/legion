@@ -44,7 +44,8 @@ internal class ReplySpeaker(
     private val scope: CoroutineScope,
     private val play: suspend (pcm: ByteArray) -> Boolean,
     private val firstFrameTimeoutMs: Long,
-    private val onFirstAudio: (clipText: String) -> Unit,
+    /** First audio of the reply ([filler] false), and of a scripted filler before it ([filler] true). */
+    private val onFirstAudio: (clipText: String, filler: Boolean) -> Unit,
     private val onClipStarted: (clipText: String) -> Unit,
     private val normalise: (String) -> String = { SpokenText.forSpeech(it) },
 ) {
@@ -64,6 +65,10 @@ internal class ReplySpeaker(
     @Volatile private var interrupted = false
     private val started = mutableListOf<SpeechClip>()
     private var anyAudio = false
+    private var anyFillerAudio = false
+
+    /** Scripted fillers ([filler]): heard, never part of what the reply said. */
+    private val fillers = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<SpeechClip, Boolean>())
     @Volatile var anyText = false
         private set
 
@@ -93,6 +98,18 @@ internal class ReplySpeaker(
             splitter.flush()?.let { enqueue(it) }
         }
         queue.close()
+    }
+
+    /**
+     * A short scripted line ("One moment.") played before the reply, while a slow tool runs. Never
+     * part of [spoken] (it claims nothing and is not the answer). Only before any reply text.
+     */
+    fun filler(line: String): Boolean {
+        if (interrupted || anyText) return false
+        val clip = tts.speak(normalise(line))
+        fillers.add(clip)
+        queue.trySend(clip)
+        return true
     }
 
     /**
@@ -130,7 +147,8 @@ internal class ReplySpeaker(
     }
 
     /** What was heard: whole clips whose audio started. */
-    fun spoken(): String = synchronized(started) { started.joinToString(" ") { it.text.trim() } }.trim()
+    fun spoken(): String =
+        synchronized(started) { started.filterNot { it in fillers }.joinToString(" ") { it.text.trim() } }.trim()
 
     /**
      * Into the current streamed clip; a clip that would pass [STREAM_CHAR_CAP] is finished and the
@@ -200,10 +218,14 @@ internal class ReplySpeaker(
                 continue
             }
             synchronized(started) { started.add(clip) }
-            onClipStarted(clip.text)
-            if (!anyAudio) {
+            val isFiller = clip in fillers
+            if (!isFiller) onClipStarted(clip.text)
+            if (isFiller && !anyFillerAudio && !anyAudio) {
+                anyFillerAudio = true
+                onFirstAudio(clip.text, true)
+            } else if (!isFiller && !anyAudio) {
                 anyAudio = true
-                onFirstAudio(clip.text)
+                onFirstAudio(clip.text, false)
             }
             if (!play(firstPcm)) return Outcome.Interrupted
             for (pcm in clip.frames) {
@@ -237,7 +259,7 @@ internal class ReplySpeaker(
             synchronized(started) { started.add(clip) }
             if (!anyAudio) {
                 anyAudio = true
-                onFirstAudio(clip.text)
+                onFirstAudio(clip.text, false)
             }
             if (!play(first)) return
             for (pcm in clip.frames) if (interrupted || !play(pcm)) return

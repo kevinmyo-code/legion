@@ -228,7 +228,24 @@ class AckLines(private val lines: List<String> = DEFAULT, private val pick: (Int
  * same short line is neither paid for nor waited for twice.
  */
 internal object ScriptedLines {
-    val KEEP: Set<String> = AckLines.DEFAULT.toSet()
+    /**
+     * What is said the moment a confirmed turn goes to a slow tool, so the wait is not silent
+     * (voice-fast step 3, 2026-11-15; Live's NON_BLOCKING lookups had a "still checking" line, the
+     * cascade had none). Claims nothing: no outcome, no promise of one.
+     */
+    val FILLERS = listOf("One moment.", "Just a moment.")
+
+    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS).toSet()
+
+    /**
+     * Tools that take seconds: the specialist dispatchers, each its own model call (Live ran the four
+     * reads NON_BLOCKING for that reason), the engine's assistant and mail.
+     */
+    val SLOW_TOOLS: Set<String> = setOf("ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_engine", "ask_mail")
+
+    /** A filler is due: a slow tool was asked for and nothing of the answer has been written yet. */
+    fun fillerDue(toolNames: List<String>, anyText: Boolean, fillerPlayed: Boolean): Boolean =
+        !anyText && !fillerPlayed && toolNames.any { it in SLOW_TOOLS }
 }
 
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */

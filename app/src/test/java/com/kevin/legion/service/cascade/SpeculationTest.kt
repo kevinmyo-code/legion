@@ -189,6 +189,11 @@ class SpeculationTest {
     }
 
     @Test
+    fun `every lookup Live ran non-blocking is a slow tool here too`() {
+        assertTrue(ScriptedLines.SLOW_TOOLS.containsAll(com.kevin.legion.service.LiveToolbox.NON_BLOCKING_READ_TOOLS))
+    }
+
+    @Test
     fun `the log lines carry counts only`() {
         assertEquals("spec_start trigger=eot backend=laptop chars=12", CascadeLines.specStart("eot", "laptop", 12))
         assertEquals("spec_discard trigger=silence reason=speech_resumed age_ms=40", CascadeLines.specDiscard("silence", "speech_resumed", 40))

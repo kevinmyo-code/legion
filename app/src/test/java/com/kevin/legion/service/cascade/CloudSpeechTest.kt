@@ -371,7 +371,7 @@ class CloudSpeechTest {
             scope = scope,
             play = { pcm -> played.add(String(pcm)); true },
             firstFrameTimeoutMs = CascadeTimings.CLOUD_TTS_FIRST_AUDIO_TIMEOUT_MS,
-            onFirstAudio = {},
+            onFirstAudio = { _, _ -> },
             onClipStarted = {},
             normalise = { it },
         )
