@@ -239,34 +239,13 @@ object ObdResponseParser {
     }
 
     /**
-     * VIN from a mode-09 PID 02 response. This is a multi-frame ISO-TP reply, so
-     * ELM327 output varies: it may carry line-number prefixes ("0:", "1:"), a
-     * leading byte-count line, and the "49 02 01" mode/PID/count echo before the
-     * 17 ASCII VIN bytes. We strip everything that isn't a hex byte, find the
-     * "49 02" marker, skip the count byte, then read the remaining bytes as ASCII
-     * and keep the 17 alphanumeric VIN characters. Returns null if no valid
-     * 17-char VIN is present.
+     * VIN from a mode-09 PID 02 response, or null when there is no valid one. Delegates to
+     * [VinResponse.parse] (2026-11-15), which handles the ISO-TP, headered, legacy K-line and
+     * spaces-off shapes and refuses anything outside the VIN alphabet; the old body here read a
+     * K-line reply's repeated `49` bytes as the letter I.
      */
-    fun vin(response: String): String? {
-        val cleaned = response.uppercase().replace("\r", " ").replace("\n", " ")
-        if ("NO DATA" in cleaned || "UNABLE" in cleaned || "CAN ERROR" in cleaned) return null
-
-        // Keep only 2-char hex tokens (drops "0:" line prefixes, count lines, echoes).
-        val tokens = cleaned.split(Regex("[\\s:]+"))
-            .filter { it.length == 2 && it.toIntOrNull(16) != null }
-
-        val marker = (0 until tokens.size - 1).firstOrNull { tokens[it] == "49" && tokens[it + 1] == "02" }
-            ?: return null
-        var i = marker + 2
-        if (i < tokens.size && tokens[i] == "01") i++ // skip the data-item-count byte
-
-        val vin = tokens.drop(i)
-            .mapNotNull { it.toIntOrNull(16)?.toChar() }
-            .filter { it.isLetterOrDigit() }
-            .joinToString("")
-            .take(17)
-        return vin.takeIf { it.length == 17 }
-    }
+    fun vin(response: String): String? =
+        (VinResponse.parse(response) as? VinResponse.Result.Vin)?.vin
 
     /**
      * Extracts the data bytes from a response, skipping past the expected

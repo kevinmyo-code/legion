@@ -197,6 +197,13 @@ object ObdSampleReconcile {
         val namedPermanentlyUnexportableObdMacs = mutableSetOf<String>()
         var skippedPermanentlyUnexportableSampleCount = 0
 
+        // OBD VIN attribution (2026-11-15): samples whose car is not settled yet - held under a
+        // `pending:` id, or inside an assumed car's window - halt the run exactly like a temporarily
+        // unresolved vehicle, so the cursor never passes them before Kevin says which car. The
+        // answer re-keys them in place (same local ids), and the next run uploads them under the
+        // right car. The cost, said plainly: every LATER sample waits behind them too.
+        val heldWindow = com.kevin.legion.vehicle.DongleCarController.heldWindow(context)
+
         run@ while (true) {
             val batch = db.odbSampleDao().getAfterId(cursor, BATCH_SIZE)
             if (batch.isEmpty()) break@run
@@ -204,8 +211,15 @@ object ObdSampleReconcile {
             val uploads = mutableListOf<ObdSampleUpload>()
             var batchCursor = cursor
             var stuckVehicle: String? = null
+            var heldVehicle: String? = null
 
             for (sample in batch) {
+                val held = com.kevin.legion.vehicle.DongleCarController
+                    .uploadHeld(sample.vehicleId, sample.timestamp, heldWindow)
+                if (held) {
+                    heldVehicle = sample.vehicleId
+                    break
+                }
                 val guid = guidByObdMac[sample.vehicleId]
                 val vehicleServerId = guid?.let { serverIdByOriginGuid[it] }
                 if (vehicleServerId != null) {
@@ -257,6 +271,12 @@ object ObdSampleReconcile {
                 ObdSampleUploadCursor.advance(context, cursor)
             }
 
+            if (heldVehicle != null) {
+                skippedUnresolvedVehicle.add(
+                    "$heldVehicle: held until you say which car the OBD dongle was in",
+                )
+                break@run
+            }
             if (stuckVehicle != null) {
                 skippedUnresolvedVehicle.add("$stuckVehicle: vehicle not yet migrated - run Fleet's vehicle upload first")
                 break@run

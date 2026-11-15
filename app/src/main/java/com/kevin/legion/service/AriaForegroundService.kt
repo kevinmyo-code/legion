@@ -758,7 +758,12 @@ class AriaForegroundService : Service() {
         serviceScope.launch {
             try {
                 val ff = ObdBluetoothManager.getFreezeFrame()
-                val vehicle = VehicleController.currentVehicle(this@AriaForegroundService)
+                // The car the dongle is in (OBD VIN attribution, 2026-11-15), or the connection's
+                // pending id while that is unknown - never the hand-picked car by default.
+                val vehicle = VehicleController.vehicleFor(
+                    this@AriaForegroundService,
+                    com.kevin.legion.vehicle.ActiveVehicle.recordingId(this@AriaForegroundService),
+                )
                 com.kevin.legion.vehicle.FleetEngineStore.recordCodeEvent(
                     context = this@AriaForegroundService,
                     mac = vehicle.obdMac,

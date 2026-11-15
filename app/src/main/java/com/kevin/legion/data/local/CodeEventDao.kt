@@ -59,6 +59,10 @@ interface CodeEventDao {
     @Query("UPDATE code_events SET serverId = :serverId WHERE id = :id")
     suspend fun setServerId(id: Long, serverId: String)
 
+    /** Re-files one code event under another car (OBD VIN attribution); the caller re-pushes it. */
+    @Query("UPDATE code_events SET vehicleId = :toVehicleId WHERE id = :id")
+    suspend fun setVehicle(id: Long, toVehicleId: String)
+
     /** `FleetSync`'s pull-side tombstone handling - same "no local `deleted` column, so a server
      * tombstone means a real local delete" reasoning as [DriveDao.deleteBySyncId]. */
     @Query("DELETE FROM code_events WHERE syncId = :syncId")

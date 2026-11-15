@@ -49,7 +49,16 @@ object MidnightEvents {
     fun sessionEnd(reason: String) = safe { Log.d(TAG, "session_end: $reason") }
 
     /** ELM327 OBD adapter connected at this Bluetooth MAC. */
-    fun obdConnected(mac: String) = safe { Log.d(TAG, "obd_connected: $mac") }
+    fun obdConnected(mac: String, car: String? = null) =
+        safe { Log.d(TAG, "obd_connected: $mac" + (car?.let { " car=$it" } ?: "")) }
+
+    /**
+     * Which car this OBD connection's data is filed under, and how that was decided (OBD VIN
+     * attribution, 2026-11-15): [recordingId] is a car id or a `pending:` id, [how] names the VIN
+     * read (by its tail only) and the basis.
+     */
+    fun obdAttributed(mac: String, recordingId: String, how: String) =
+        safe { Log.d(TAG, "obd_attributed: $mac -> $recordingId ($how)") }
 
     /** OBD adapter disconnected (annotates any crash that follows a disconnect). */
     fun obdDisconnected(reason: String) = safe { Log.d(TAG, "obd_disconnected: $reason") }

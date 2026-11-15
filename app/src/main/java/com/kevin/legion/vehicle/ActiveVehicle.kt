@@ -57,17 +57,32 @@ object ActiveVehicle {
      * said "not connected" while `get_vehicle_data` read live RPM from the same car.
      */
     fun connectedCarId(context: Context): String? =
-        connectedCarId(ObdBluetoothManager.connectedDeviceAddress, selected(context))
+        connectedCarId(ObdBluetoothManager.connectedDeviceAddress, selected(context), DongleCarController.state.value)
 
-    /** Pure half of [connectedCarId]: [selectedId] wins over [connectedAddress], null when unplugged. */
-    internal fun connectedCarId(connectedAddress: String?, selectedId: String?): String? =
-        connectedAddress?.let { selectedId ?: it }
+    /**
+     * Pure half of [connectedCarId]. Null when unplugged. Once the connection's car is decided
+     * ([DongleCar], OBD VIN attribution 2026-11-15) it is that decision's recording id: the car the
+     * VIN or Kevin named, or a `pending:` id no car on file matches while the car is unknown. Before
+     * the decision (the few seconds of the ELM handshake), the old rule: [selectedId] over
+     * [connectedAddress].
+     */
+    internal fun connectedCarId(connectedAddress: String?, selectedId: String?, dongleCar: DongleCar? = null): String? =
+        connectedAddress?.let { dongleCar?.recordingId ?: selectedId ?: it }
 
-    /** Records [address] as the last car the dongle connected to. */
-    fun rememberConnected(context: Context, address: String) {
+    /** Records [carId] as the last car the dongle connected to (a car id, not the dongle's MAC). */
+    fun rememberConnected(context: Context, carId: String) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_LAST_CONNECTED, address).apply()
+            .edit().putString(KEY_LAST_CONNECTED, carId).apply()
     }
+
+    /**
+     * The id this connection's OBD data is written under: samples, drives, code events, the
+     * capability scan ([TelemetryRecorder], [ObdBluetoothManager], the code-event writer). The
+     * decided car, or a `pending:` id while the car is unknown, so nothing is filed under a guess.
+     * Falls back to [current] when no decision exists (nothing connected).
+     */
+    fun recordingId(context: Context): String =
+        DongleCarController.state.value?.recordingId ?: current(context)
 
     /** Sets the active car, or null to go back to auto (dongle-derived). */
     fun select(context: Context, vehicleId: String?) {
@@ -85,9 +100,11 @@ object ActiveVehicle {
      * [newVehicleId] for why that is safe).
      */
     fun current(context: Context): String =
-        selected(context)
-            ?: ObdBluetoothManager.connectedDeviceAddress
-            ?: VehicleController.DEFAULT_VEHICLE_ID
+        DongleCar.activeCarId(
+            selected(context),
+            ObdBluetoothManager.connectedDeviceAddress,
+            DongleCarController.state.value,
+        )
 
     /**
      * Mints an id for a car the driver added by hand rather than by plugging in a
