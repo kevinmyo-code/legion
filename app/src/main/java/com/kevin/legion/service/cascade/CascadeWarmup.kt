@@ -32,6 +32,20 @@ internal object CascadeWarmup {
     /** Not on the app's first second: the prompt build reads the database and the engine. */
     private const val START_DELAY_MS = 8_000L
 
+    /**
+     * After a wake onset that did not become a wake, no new onset opens a laptop connection for this
+     * long. Without it a voice hovering near the threshold (a TV, a similar word) connects and
+     * closes back to back, each one taking the laptop's single conversation slot for a moment.
+     * The prompt preparation is not held back: it opens nothing.
+     */
+    const val MISS_COOLDOWN_MS = 30_000L
+
+    /** When the last onset ended without a wake (0: none yet). */
+    @Volatile internal var lastMissAtMs = 0L
+
+    /** True while [now] is inside the cooldown that follows a near miss. */
+    internal fun missCooling(now: Long): Boolean = lastMissAtMs != 0L && now - lastMissAtMs < MISS_COOLDOWN_MS
+
     /** Called once by the controller at start. */
     fun install(context: Context) {
         val ctx = context.applicationContext
@@ -48,11 +62,16 @@ internal object CascadeWarmup {
         if (conversationOpen) return
         LiveLatency.log(LiveLatency.TAG, "wake_onset")
         CascadePrep.prepare(ctx, "onset")
+        if (missCooling(System.currentTimeMillis())) {
+            LiveLatency.log(LiveLatency.TAG, "prewarm_skip reason=miss_cooldown")
+            return
+        }
         if (VoiceEngineSettings.engine(ctx) == VoiceEngine.LAPTOP) LaptopPrewarm.start(ctx, "onset")
     }
 
     /** The onset's run ended without a wake: let the laptop go. */
     fun onWakeMissed() {
+        lastMissAtMs = System.currentTimeMillis()
         LaptopPrewarm.cancel("wake_missed")
     }
 }

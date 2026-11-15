@@ -108,6 +108,18 @@ class CascadeWarmupTest {
         assertTrue(kept.keys.single().contains("voice-x|v1"))
     }
 
+    @Test
+    fun `a wake near miss cools the laptop connection for a fixed time`() {
+        CascadeWarmup.lastMissAtMs = 0L
+        assertFalse("no miss yet", CascadeWarmup.missCooling(1_000_000))
+        CascadeWarmup.onWakeMissed()
+        val at = CascadeWarmup.lastMissAtMs
+        assertTrue(CascadeWarmup.missCooling(at + 1))
+        assertTrue(CascadeWarmup.missCooling(at + CascadeWarmup.MISS_COOLDOWN_MS - 1))
+        assertFalse(CascadeWarmup.missCooling(at + CascadeWarmup.MISS_COOLDOWN_MS))
+        CascadeWarmup.lastMissAtMs = 0L
+    }
+
     // --- wiring, read from source --------------------------------------------------------------
 
     @Test
