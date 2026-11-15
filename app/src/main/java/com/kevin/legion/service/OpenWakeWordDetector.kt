@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
+import com.kevin.legion.service.cascade.CascadeWarmup
 import java.io.File
 import java.nio.FloatBuffer
 
@@ -37,17 +38,31 @@ class OpenWakeWordDetector internal constructor(
     fun process(buf: ShortArray, n: Int, nowMs: Long = System.currentTimeMillis()): Boolean {
         var open = false
         for (score in stream.feed(buf, n)) {
-            when (val d = decider.onScore(score, nowMs)) {
+            val d = decider.onScore(score, nowMs)
+            // voice-fast (2026-11-15): a run's first frame past the near-miss floor is the wake's
+            // onset; the conversation's prompt and laptop connection start warming there.
+            if (score >= decider.nearMissFloor && !inOnset) {
+                inOnset = true
+                if (d !is OwwDecider.Decision.Open) CascadeWarmup.onWakeOnset()
+            } else if (score < decider.nearMissFloor) {
+                inOnset = false
+            }
+            when (d) {
                 is OwwDecider.Decision.Open -> {
                     log(decisionLine("open", d.score, threshold))
                     open = true
                 }
-                is OwwDecider.Decision.NearMiss -> log(decisionLine("below", d.score, threshold))
+                is OwwDecider.Decision.NearMiss -> {
+                    log(decisionLine("below", d.score, threshold))
+                    CascadeWarmup.onWakeMissed()
+                }
                 null -> Unit
             }
         }
         return open
     }
+
+    private var inOnset = false
 
     fun release() {
         runCatching { models.close() }

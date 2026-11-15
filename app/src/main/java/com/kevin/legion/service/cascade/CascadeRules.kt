@@ -223,6 +223,14 @@ class AckLines(private val lines: List<String> = DEFAULT, private val pick: (Int
     }
 }
 
+/**
+ * Every scripted line a voice may keep in memory once it has said it (voice-fast, 2026-11-15): the
+ * same short line is neither paid for nor waited for twice.
+ */
+internal object ScriptedLines {
+    val KEEP: Set<String> = AckLines.DEFAULT.toSet()
+}
+
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */
 internal object CascadeLines {
     fun open(ms: Long, probeMs: Long, plan: CascadeRules.TurnPlan, ttsStreams: Boolean, backend: String): String =

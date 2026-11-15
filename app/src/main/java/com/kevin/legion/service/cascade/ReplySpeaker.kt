@@ -95,8 +95,19 @@ internal class ReplySpeaker(
         queue.close()
     }
 
-    /** Speaks [line] as its own clip (a scripted line, a failure in words), then ends. */
+    /**
+     * Speaks [line] as its own clip (a scripted line, a failure in words), then ends. A short line
+     * is one whole clip even on a voice that streams text (2026-11-15): the whole text is known, a
+     * whole clip starts sooner on Kyutai (~0.75 s against ~1.0 s streamed, 11-10), and a kept
+     * scripted line plays from memory ([LaptopVoiceConnection]'s keepLines).
+     */
     fun say(line: String) {
+        if (!interrupted && line.isNotBlank() && line.length <= SAY_WHOLE_CHARS) {
+            anyText = true
+            enqueue(line)
+            queue.close()
+            return
+        }
         text(line)
         finishText()
     }
@@ -236,6 +247,9 @@ internal class ReplySpeaker(
     companion object {
         /** Under the service's 1,000 chars per streamed id, with room for a last word. */
         const val STREAM_CHAR_CAP = 900
+
+        /** A [say] line up to this long is one whole clip; longer (a re-voiced reply) goes as usual. */
+        const val SAY_WHOLE_CHARS = 300
     }
 }
 

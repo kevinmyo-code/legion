@@ -52,6 +52,12 @@ class LaptopVoiceConnection(
     private val voice: String? = null,
     private val pingEveryMs: Long = PING_EVERY_MS,
     private val onDrop: (String) -> Unit = {},
+    /**
+     * Scripted lines (the opening acknowledgements, the tool filler) whose audio is kept for the
+     * process once spoken, per laptop voice: the next time it plays at once, with no request.
+     */
+    private val keepLines: Set<String> = ScriptedLines.KEEP,
+    private val kept: MutableMap<String, ByteArray> = KEPT,
 ) : SpeechToText, TextToSpeech {
 
     sealed interface OpenResult {
@@ -90,6 +96,11 @@ class LaptopVoiceConnection(
         private set
 
     val isDropped: Boolean get() = dropped.get()
+
+    /** The service's voice model and voice, from `ready` (kept lines are per voice). */
+    @Volatile private var voiceKey: String = ""
+
+    private fun keyOf(text: String) = "laptop|$voiceKey|$text"
 
     /**
      * The service sends `stt.maybe_end` (contract 4b, 2026-11-15): `ready.capabilities.maybe_end`.
@@ -241,6 +252,14 @@ class LaptopVoiceConnection(
         val id = nextTts.addAndGet(2)
         val clip = Clip(id, streamed = false)
         clip.sent.append(text)
+        val cached = if (text in keepLines) kept[keyOf(text)] else null
+        if (cached != null && !dropped.get()) {
+            // Played from memory: nothing goes to the laptop.
+            clip.push(cached)
+            clip.finish(TtsOutcome.Done(cached.size.toLong() / TTS_BYTES_PER_MS, 0))
+            return clip
+        }
+        if (text in keepLines) clip.keepAs = keyOf(text)
         clips[id] = clip
         when {
             dropped.get() -> clip.finish(TtsOutcome.Failed(dropReason ?: "dropped"))
@@ -275,6 +294,10 @@ class LaptopVoiceConnection(
         private val finished = AtomicBoolean(false)
         val sent = StringBuffer()
 
+        /** Set for a scripted line: its audio is kept under this key once it has played whole. */
+        @Volatile var keepAs: String? = null
+        private val whole = java.io.ByteArrayOutputStream()
+
         override val text: String get() = sent.toString()
 
         override fun append(text: String) {
@@ -296,10 +319,16 @@ class LaptopVoiceConnection(
         }
 
         fun push(pcm: ByteArray) {
-            if (!cancelled.get() && !outcome.isCompleted) frames.trySend(pcm)
+            if (cancelled.get() || outcome.isCompleted) return
+            if (keepAs != null) synchronized(whole) { whole.write(pcm) }
+            frames.trySend(pcm)
         }
 
         fun finish(o: TtsOutcome) {
+            val key = keepAs
+            if (key != null && o is TtsOutcome.Done && !outcome.isCompleted) {
+                synchronized(whole) { if (whole.size() > 0) kept[key] = whole.toByteArray() }
+            }
             if (outcome.complete(o)) frames.close()
             clips.remove(id)
         }
@@ -347,6 +376,8 @@ class LaptopVoiceConnection(
                         return
                     }
                     val tts = m.optJSONObject("tts")
+                    // What the kept lines are keyed by: the service's voice model and voice.
+                    voiceKey = "${tts?.optString("model").orEmpty()}|${voice ?: tts?.optString("default_voice").orEmpty()}"
                     tts?.optInt("sample_rate", DEFAULT_TTS_RATE)?.takeIf { it > 0 }?.let { sampleRate = it }
                     val caps = m.optJSONObject("capabilities")
                     streamsText = tts?.optBoolean("text_streaming", false) == true ||
@@ -433,6 +464,12 @@ class LaptopVoiceConnection(
 
     companion object {
         const val PROTOCOL = 1
+
+        /** 24 kHz PCM16 mono. */
+        private const val TTS_BYTES_PER_MS = 48
+
+        /** The scripted lines' audio for the process: a few short lines, a few hundred KB at most. */
+        private val KEPT: MutableMap<String, ByteArray> = ConcurrentHashMap()
         const val DEFAULT_TTS_RATE = 24_000
         const val HEADER_BYTES = 8
         const val KIND_MIC: Byte = 0x01

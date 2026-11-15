@@ -153,6 +153,7 @@ class AriaBrain private constructor(context: Context) {
      */
     fun invalidateBase() {
         dropBaseCaches()
+        com.kevin.legion.service.cascade.CascadePrep.invalidate() // the voice prompt prepared ahead
         // alfred-ota ticket 02: re-ask the engine for the Alfred pack. Drops the caches again only
         // when the wording changed, never by calling back into here, so it cannot loop.
         AlfredPack.refreshAsync(onChanged = ::dropBaseCaches)

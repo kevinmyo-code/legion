@@ -179,6 +179,17 @@ class ReplySpeakerTest {
     }
 
     @Test
+    fun `a short scripted line is one whole clip even on a voice that streams`() = runBlocking<Unit> {
+        val voice = FakeVoice(streamsText = true)
+        val ear = Ear()
+        val s = speaker(voice, ear)
+        s.say("I'm here.")
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("I'm here."), voice.asked)
+        assertEquals("I'm here.", s.spoken())
+    }
+
+    @Test
     fun `a refused stream replays the reply sentence by sentence`() = runBlocking<Unit> {
         val voice = FakeVoice(streamsText = true, refuseStream = true)
         val ear = Ear()

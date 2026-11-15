@@ -54,7 +54,7 @@ internal class CloudSpeech(
             transport: GeminiStreamTransport,
             meter: (model: String, usage: JSONObject?) -> Unit = { _, _ -> },
             log: (String) -> Unit = {},
-            keepLines: Set<String> = AckLines.DEFAULT.toSet(),
+            keepLines: Set<String> = ScriptedLines.KEEP,
             voice: String = CloudSpeechWire.VOICE,
             usage: (CallUsage) -> Unit = {},
         ): CloudSpeech {

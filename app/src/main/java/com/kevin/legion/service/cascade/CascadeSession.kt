@@ -250,10 +250,15 @@ internal class CascadeSession(
             null
         }
         val config = VoiceEngineSettings.laptop(ctx)
+        CascadeWarmup.conversationOpen = true
+        // The laptop is probed and connected while the mic and the turn models get ready (a wake
+        // word's onset may have started it already); [tryLaptop] takes it.
+        if (laptopFirst) LaptopPrewarm.start(ctx, "open")
         if (listens) {
             // The mic first, as Live claimed it before it connected: the wake capture lets go while
             // the backend opens, so the first capture is not refused.
             if (!MicArbiter.request(micClaimant) { scope.launch(loop) { onMicPreempted() } }) {
+                LaptopPrewarm.cancel("open_aborted")
                 host.notice("Didn't start - the microphone is in use")
                 shutdown("mic_held")
                 host.closed("mic_held")
@@ -261,18 +266,22 @@ internal class CascadeSession(
             }
             micClaimed = true
         }
+        LiveLatency.log(LiveLatency.TAG, "open_mic_ms=${System.currentTimeMillis() - started}")
         // Either voice needs the phone's turn detection to listen: without it, nothing can.
         val models = if (listens) {
             withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
         } else {
             null
         }
+        LiveLatency.log(LiveLatency.TAG, "open_models_ms=${System.currentTimeMillis() - started}")
         if (listens && models == null) {
+            LaptopPrewarm.cancel("open_aborted")
             handOver(Handover.Moment.AtOpen, "open", "turn_models_unavailable")
             return
         }
         this.models = models
         val opened = openBackend(config, started) ?: return
+        LiveLatency.log(LiveLatency.TAG, "open_backend_ms=${System.currentTimeMillis() - started}")
         val b = opened.first
         val probeMs = opened.second
         backend = b
@@ -284,8 +293,12 @@ internal class CascadeSession(
         // prompt building and the cache create). See [buildPrompt].
         val brain = AriaBrain.get(ctx)
         val cache = CACHE
-            ?: ContextCacheStore(OkHttpGemini(), CACHE_SCOPE, log = { LiveLatency.log(LiveLatency.TAG, it) })
-                .also { CACHE = it }
+            ?: ContextCacheStore(
+                OkHttpGemini(),
+                CACHE_SCOPE,
+                memo = PrefsCacheMemo(ctx),
+                log = { LiveLatency.log(LiveLatency.TAG, it) },
+            ).also { CACHE = it }
         // The cache this conversation creates is priced with it (storage runs for its TTL).
         cache.onCreated = { model, tokens, ttlS -> usageLedger.cacheCreated(model, tokens ?: 0, ttlS) }
         buildPrompt(brain, cache, started)
@@ -366,9 +379,16 @@ internal class CascadeSession(
      * The opening line needs none of it; the greeting and the first turn await [prefixReady].
      */
     private fun buildPrompt(brain: AriaBrain, cache: ContextCacheStore, started: Long) {
+        // Prepared ahead (app start, a wake word's onset, the last conversation): no build at all.
+        val prepared = CascadePrep.fresh()
+        LiveLatency.log(
+            LiveLatency.TAG,
+            "open_prompt prepared=${prepared != null}" +
+                (prepared?.let { " age_s=${(System.currentTimeMillis() - it.builtAtMs) / MS_PER_S}" } ?: ""),
+        )
         val base = scope.async(Dispatchers.IO) {
             val t = System.currentTimeMillis()
-            CascadePrompt.split(brain.buildBaseInstruction()).also {
+            (prepared?.split ?: CascadePrompt.split(brain.buildBaseInstruction())).also {
                 LiveLatency.log(LiveLatency.TAG, "open_base_ms=${System.currentTimeMillis() - t}")
                 // The date paragraph alone until the live context lands.
                 preamble = CascadePrompt.preamble(it.volatile, "")
@@ -377,11 +397,17 @@ internal class CascadeSession(
         prefixReady = scope.async(Dispatchers.IO) {
             val split = base.await()
             val t = System.currentTimeMillis()
-            val declarations = CascadeRules.declarations(LiveToolbox.declarations())
+            val built = prepared?.prefix ?: CascadePrefix(
+                MODEL,
+                split.cacheable,
+                CascadeRules.declarations(LiveToolbox.declarations()),
+            ).also { CascadePrep.offer(split, it) }
             LiveLatency.log(LiveLatency.TAG, "open_declarations_ms=${System.currentTimeMillis() - t}")
-            CascadePrefix(MODEL, split.cacheable, declarations).also {
+            built.also {
                 prefix = it
                 LiveLatency.log(LiveLatency.TAG, "open_prefix_ready_ms=${System.currentTimeMillis() - started}")
+                // Reused across conversations while it lives (same prompt, same key): the line says which.
+                LiveLatency.log(LiveLatency.TAG, "open_cache state=${cache.state(it)}")
                 // A speak-only line makes one round: a cache it would create costs more than it saves.
                 if (listens) cache.warm(it)
             }
@@ -463,6 +489,7 @@ internal class CascadeSession(
     /** Probe and connect the laptop voice service, each step's refusal as a worded token. */
     @Suppress("ReturnCount") // one worded exit per open step
     private suspend fun tryLaptop(config: LaptopVoiceConfig, started: Long): LaptopTry {
+        takePrewarmed()?.let { return it }
         // A laptop that just failed to answer is not asked again for a little while: the wake word
         // must not wait out the probe on every conversation while Tailscale is off.
         if (config.isComplete && started - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS) {
@@ -498,6 +525,41 @@ internal class CascadeSession(
             LaptopVoiceConnection.OpenResult.Ready -> {
                 VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
                 LaptopTry(speech, "ok", probeMs)
+            }
+        }
+    }
+
+    /**
+     * The laptop connection started at the wake word's onset or at the top of [openNow]
+     * ([LaptopPrewarm]): its probe and hello/ready already ran (or are running) while the mic and the
+     * turn models got ready. Null: nothing in hand, or it dropped; the usual probe and connect follow.
+     */
+    @Suppress("ReturnCount")
+    private suspend fun takePrewarmed(): LaptopTry? {
+        val a = LaptopPrewarm.take() ?: return null
+        val waitMs = CascadeTimings.PROBE_TIMEOUT_MS + CascadeTimings.OPEN_TIMEOUT_MS
+        val r = withTimeoutOrNull(waitMs) { runCatching { a.result.await() }.getOrNull() }
+        when (r) {
+            is LaptopPrewarm.Opened.Ready -> {
+                if (r.connection.isDropped) {
+                    LaptopPrewarm.release(a, "dropped")
+                    return null
+                }
+                val speech = LaptopSpeech(r.connection)
+                a.onDrop = { reason -> scope.launch(loop) { onBackendDropped(speech, reason) } }
+                VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
+                return LaptopTry(speech, "ok", r.probeMs)
+            }
+            is LaptopPrewarm.Opened.Refused -> {
+                if (r.token.startsWith("unreachable") || r.token.startsWith("connect_")) {
+                    lastUnreachableAtMs = System.currentTimeMillis()
+                }
+                LiveLatency.log(LiveLatency.TAG, "cascade_probe_ms=${r.probeMs} probe=${r.token} prewarmed=true")
+                return LaptopTry(null, r.token, r.probeMs)
+            }
+            null -> {
+                LaptopPrewarm.release(a, "slow")
+                return null
             }
         }
     }
@@ -1788,6 +1850,11 @@ internal class CascadeSession(
             CACHE?.onCreated = null
         }
         step("audit") { if (auditStarted) audit.sessionEnd(reason) }
+        step("warmup") {
+            CascadeWarmup.conversationOpen = false
+            // The next conversation finds its prompt ready ([CascadePrep]).
+            CascadePrep.prepare(ctx, "close")
+        }
         LiveLatency.log("LIVE_TURN", "cascade closed reason=$reason backend=${engineToken()}")
         scope.launch {
             delay(SCOPE_GRACE_MS)
@@ -1879,6 +1946,11 @@ internal class CascadeSession(
         private const val OPENED_NOTE = "(He opened the conversation and you greeted him.)"
 
         @Volatile private var lastUnreachableAtMs = 0L
+
+        private const val MS_PER_S = 1_000L
+
+        /** The laptop failed to answer moments ago: not asked again yet ([CascadeTimings.RECENT_UNREACHABLE_MS]). */
+        fun recentlyUnreachable(now: Long): Boolean = now - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS
 
         /** A successful Test connection in Settings: try the laptop again at once. */
         fun clearRecentFailure() {
