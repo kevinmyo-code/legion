@@ -22,9 +22,22 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-11-15 ~12:15 (laptop going OFF; a phone/cloud session picks this up)
+## Where we stopped - 2026-11-15 22:15 UTC (cloud session handed back to the laptop)
 
-**Live now (2026-11-15):** `dev` = `main` = `6315ebd3`. Engine deployed at 702aa88b's code (grades,
+**Do first, laptop session (2026-11-15 22:15 UTC):**
+1. Read the Release phone DRY RUN, GitHub Actions run 43764387638 (dev `772160f2`, stage 2 OBD VIN).
+   Kevin approved its gate; it was `in_progress` at handoff, result NOT read. If it failed, fix that first.
+2. If it passed: publish stage 2 from dev (Release phone with dry run off, same notes, Kevin approves
+   the gate again; or `tools/release_apk.py`). No real publish from GitHub has ever been exercised.
+3. Then the laptop-only work below (stage 1 phone logs and cost, voice service restart, real-Gemini
+   check, card renders), which is what stages 3 and 4 wait on.
+4. Kevin owes two answers: the voice-fast opening line (a / b / c in its row; the cloud session
+   recommended c, disk) and the four open OBD rulings in the `feat/obd-vin` row.
+
+**Stage 1 state below is as of 12:15 the same day and was not re-checked by the cloud session.**
+`dev` is now ahead of `main` (stage 2 merged, not released, `main` untouched).
+
+**Live now (2026-11-15 12:15):** `main` = `6315ebd3` (dev has moved on, see above). Engine deployed at 702aa88b's code (grades,
 greeting, budget pace migrations applied). Phone OTA **263191730** (stage 1) published 11:48:
 - the **cloud cascade replaces Gemini Live on the phone** (Gemini speech-to-text -> Flash-Lite with
   tools and the context cache -> Gemini TTS). Settings, Voice engine: Cloud (default) or Laptop
