@@ -97,7 +97,9 @@ def engine_args(since: str, until: str, reasons: list[str], device: str | None) 
     """The `manage.py device_logs` argument list the Job runs."""
     args = ["manage.py", "device_logs", "--since", since, "--until", until, "--raw", "--b64"]
     for reason in reasons:
-        args += ["--reason", reason]
+        # One item per reason: gcloud's --args list refuses the same item twice ("--reason"
+        # cannot be specified multiple times), found 2026-11-15.
+        args += [f"--reason={reason}"]
     if device:
         args += ["--device", device]
     for arg in args:

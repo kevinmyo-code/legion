@@ -74,10 +74,8 @@ def test_the_job_arguments():
         "B",
         "--raw",
         "--b64",
-        "--reason",
-        "logcat",
-        "--reason",
-        "crash",
+        "--reason=logcat",
+        "--reason=crash",
         "--device",
         "samsung SM-A256E",
     ]
