@@ -1,24 +1,16 @@
 package com.kevin.legion.service.cascade
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
-import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioRecord
-import android.media.MediaRecorder
-import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.AudioEffect
-import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.util.Log
-import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CrisisDetector
+import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiUsageMeter
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.data.local.CarDatabase
@@ -35,10 +27,9 @@ import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
 import com.kevin.legion.service.LiveSessionController
+import com.kevin.legion.service.ListenCue
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.MicArbiter
-import com.kevin.legion.service.MicLevel
-import com.kevin.legion.service.MicSignal
 import com.kevin.legion.service.Phase
 import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.TextChatEngine
@@ -66,7 +57,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -86,11 +76,20 @@ import java.util.concurrent.atomic.AtomicLong
  * shared by design: [TurnTaker] (Silero, Smart Turn, [BargeInGate]), [FollowUpWindow],
  * [CallAudioMode], [MicArbiter], [LiveAudit], [LiveLatency], and the controller's tool runner.
  *
- * Lifecycle: [open] (probe, connect, ack line, listen) -> turns -> [close] or a hand-over to Live.
- * **Any failure ends in Live, never in silence**: at open (laptop off, busy, not configured, turn
- * models missing) the conversation simply opens on Live; mid-way (laptop dropped, STT or TTS failed,
- * Silero threw) this session releases everything first and Live is told what was said and done
- * ([Handover]) so Kevin never repeats himself and no write runs twice.
+ * Lifecycle: [open] (probe, connect, ack line, listen) -> turns -> [close] or a hand-over.
+ *
+ * **Laptop, then the cloud voice, then Live; never silence** (Kevin, 2026-11-15: "lets change the
+ * fallback to the text+gemini voice, so that we save costs from the sts"). The speech half is a
+ * [SpeechBackend]; everything else here is the same on either:
+ * - At open, a laptop that is not set up, busy, unreachable or refuses the socket: the conversation
+ *   opens on [CloudSpeech] (Gemini speech-to-text, the same text loop and tools, Gemini TTS in Puck).
+ * - Mid-way, a laptop that drops or whose STT or TTS fails: the SAME conversation carries on, on the
+ *   cloud voice ([swapToCloud]). The turn is never run again: the model and the tools ran on the
+ *   phone, so a lost reply is voiced again from its text and lost words are transcribed again from
+ *   the audio the phone kept ([TurnUtterance]). No write runs twice by construction.
+ * - Live only when the cloud voice cannot start or fails, or the phone itself fails (turn models
+ *   missing, mic, Silero, a crash): this session releases everything first and Live is told what was
+ *   said and done ([Handover]) so Kevin never repeats himself.
  *
  * Threading: session state changes run on [loop] (one thread at a time). The mic runs on IO and
  * talks to [TurnTaker]; its sink posts back to [loop].
@@ -103,6 +102,18 @@ internal class CascadeSession(
     private val oneShot: Boolean,
     /** ADR 0091: the personal greeting's pack and topic memory; null keeps the scripted ack alone. */
     private val greeting: GreetingOpening? = null,
+    /** Engine LAPTOP: try the laptop first. Engine CLOUD: straight to the cloud voice. */
+    private val laptopFirst: Boolean = true,
+    /** A line the model is asked for first (Brief me, a proactive line), instead of a greeting. */
+    private val opener: CascadeOpener? = null,
+    /** Who holds the mic: a tapped conversation, or a ring window a real conversation may take. */
+    private val micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
+    /** The cloud voice, in the companion's own voice (a fake in a test). */
+    private val cloudSpeech: (CoroutineScope) -> SpeechBackend = {
+        defaultCloudSpeech(it, CompanionProfile.voice(context))
+    },
+    /** Whether the cloud voice can start at all: it runs on the key Kevin pasted in Settings. */
+    private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -122,12 +133,32 @@ internal class CascadeSession(
     private val audit = LiveAudit()
     private val ackLines = ACK
 
-    private var conn: LaptopVoiceConnection? = null
+    /** Where speech goes now: the laptop, or the cloud voice after a fallback. Changed only on [loop]. */
+    @Volatile private var backend: SpeechBackend? = null
+    private var models: TurnModels.State.Ready? = null
     private var textLoop: GeminiTextLoop? = null
-    private var prefix: CascadePrefix? = null
+    @Volatile private var prefix: CascadePrefix? = null
     private var preamble = ""
     private var plan: CascadeRules.TurnPlan? = null
     @Volatile private var turnTaker: TurnTaker? = null
+
+    /** The mic feeds [turnTaker] under this lock, so a swap never lands inside a feed. */
+    private val turnLock = Any()
+
+    /** A backend swap came while he was speaking: the new turn plan waits for that turn to end. */
+    private var replanPending = false
+
+    /** False for a speak-only line (a proactive line nobody answers): no mic, closes once said. */
+    private val listens = opener?.listen != false
+
+    /** Whether this session has a mic to go back to after a reply (the controller's tap reads it). */
+    val listensForReply: Boolean get() = listens
+
+    /** A background line nobody asked for: its failure is not put on screen. */
+    private val quiet = opener != null && !opener.listen && !opener.userInitiated
+
+    /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
+    private val audioRoute = CascadeAudio(ctx, audioManager)
     private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
@@ -143,7 +174,7 @@ internal class CascadeSession(
 
     /** True while a reply is audible (or its tail is still settling): what [TurnTaker.feed] calls `playing`. */
     @Volatile private var playbackActive = false
-    @Volatile private var currentUtt: SttUtterance? = null
+    @Volatile private var currentUtt: TurnUtterance? = null
     @Volatile private var lastLocalSpeechAtMs = 0L
 
     private var turnJob: Job? = null
@@ -163,7 +194,7 @@ internal class CascadeSession(
     private var followUpArmedAtMs = 0L
 
     /** What one turn has done so far: what [Handover] needs if the laptop drops mid-turn. */
-    private class TurnRecord(val heard: String) {
+    private class TurnRecord(val heard: String, val fromUser: Boolean = true) {
         val reply = StringBuffer()
         val toolsRan = mutableListOf<String>()
         val writesDone = mutableListOf<String>()
@@ -191,55 +222,38 @@ internal class CascadeSession(
         val started = System.currentTimeMillis()
         // The greeting's pack is fetched from the tap, overlapping the probe, connect and prompt
         // build, so it is long since answered (or timed out) by the time the line is due.
-        val greetingPlan = greeting?.let { g -> scope.async(Dispatchers.IO) { g.prepare(LocalTime.now()) } }
+        val greetingPlan = if (opener == null) {
+            greeting?.let { g -> scope.async(Dispatchers.IO) { g.prepare(LocalTime.now()) } }
+        } else {
+            null
+        }
         val config = VoiceEngineSettings.laptop(ctx)
-        // A laptop that just failed to answer is not asked again for a little while: the wake word
-        // must not wait out the probe on every conversation while Tailscale is off.
-        if (config.isComplete && started - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS) {
-            handOver(Handover.Moment.AtOpen, "open", "unreachable_recent")
-            return
-        }
-        // The mic first, as Live claims it before it connects: the wake capture lets go while the
-        // laptop is probed, so the first capture is not refused. A fallback releases it before Live.
-        if (!MicArbiter.request(MicArbiter.Claimant.LIVE_TURN) { scope.launch(loop) { onMicPreempted() } }) {
-            host.notice("Didn't start - the microphone is in use")
-            shutdown("mic_held")
-            host.closed("mic_held")
-            return
-        }
-        micClaimed = true
-        val models = withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
-        val probe = if (config.isComplete) LaptopProbe.probe(config, CascadeTimings.PROBE_TIMEOUT_MS) else null
-        lastUnreachableAtMs = if (probe is LaptopProbe.Result.Unreachable) System.currentTimeMillis() else 0L
-        val probeMs = when (probe) {
-            is LaptopProbe.Result.Ready -> probe.ms
-            is LaptopProbe.Result.Busy -> probe.ms
-            is LaptopProbe.Result.Unreachable -> probe.ms
-            else -> -1L
-        }
-        CascadeRules.openRefusal(config.isComplete, models != null, probe)?.let {
-            LiveLatency.log(LiveLatency.TAG, "cascade_probe_ms=$probeMs probe=${probe?.token ?: "none"}")
-            handOver(Handover.Moment.AtOpen, "open", it)
-            return
-        }
-        models!!
-        val c = LaptopVoiceConnection(
-            connector = OkHttpWire(),
-            config = config,
-            clientName = "legion-phone/${BuildConfig.VERSION_CODE}",
-            scope = scope,
-            onDrop = { reason -> scope.launch(loop) { onLaptopDropped(reason) } },
-        )
-        conn = c
-        when (val r = c.open(CascadeTimings.OPEN_TIMEOUT_MS)) {
-            is LaptopVoiceConnection.OpenResult.Failed -> {
-                lastUnreachableAtMs = System.currentTimeMillis()
-                handOver(Handover.Moment.AtOpen, "open", "connect_${r.reason}")
+        if (listens) {
+            // The mic first, as Live claimed it before it connected: the wake capture lets go while
+            // the backend opens, so the first capture is not refused.
+            if (!MicArbiter.request(micClaimant) { scope.launch(loop) { onMicPreempted() } }) {
+                host.notice("Didn't start - the microphone is in use")
+                shutdown("mic_held")
+                host.closed("mic_held")
                 return
             }
-            LaptopVoiceConnection.OpenResult.Ready ->
-                VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
+            micClaimed = true
         }
+        // Either voice needs the phone's turn detection to listen: without it, nothing can.
+        val models = if (listens) {
+            withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
+        } else {
+            null
+        }
+        if (listens && models == null) {
+            handOver(Handover.Moment.AtOpen, "open", "turn_models_unavailable")
+            return
+        }
+        this.models = models
+        val opened = openBackend(config, started) ?: return
+        val b = opened.first
+        val probeMs = opened.second
+        backend = b
         if (closing.get()) return
         requestFocus()
 
@@ -260,20 +274,12 @@ internal class CascadeSession(
             isMutating = LiveToolbox::isMutatingCall,
             isReadThrough = { GeminiLiveSession.isEpisodicExcludedTool(it) },
             toolTimeoutMs = { TOOL_BACKSTOP_MS },
-            meter = { model, usage ->
-                KeyHealth.noteOk()
-                GeminiUsageMeter.recordRestCall(
-                    model,
-                    usage?.takeIf { it.has("promptTokenCount") }?.optInt("promptTokenCount"),
-                    usage?.takeIf { it.has("candidatesTokenCount") }?.optInt("candidatesTokenCount"),
-                    usage?.takeIf { it.has("totalTokenCount") }?.optInt("totalTokenCount"),
-                )
-            },
+            meter = { model, usage -> meter(model, usage) },
         )
 
-        val smartReady = models.smartTurn != null && TurnModels.smartTurnBroken == null
+        val smartReady = models?.smartTurn != null && TurnModels.smartTurnBroken == null
         val p = CascadeRules.turnPlan(
-            serviceEndsTurns = c.endsTurns,
+            serviceEndsTurns = b.stt.endsTurns,
             smartSetting = VoiceTurnSettings.smartEndOfTurn(ctx),
             smartTurnReady = smartReady,
             bargeSetting = VoiceTurnSettings.bargeIn(ctx),
@@ -281,32 +287,42 @@ internal class CascadeSession(
             inCall = TelephonyController.isInCall,
         )
         plan = p
-        turnTaker = TurnTaker(
-            p.config,
-            models.silero.stream(),
-            models.smartTurn.takeIf { p.config.smartTurn },
-            sink,
-            p.endBaseMs,
-        )
-        if (p.config.bargeIn) {
-            val mode = CallAudioMode(audioManager)
-            LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter()} (laptop pipeline)")
-            callAudio = mode
+        if (models != null) {
+            turnTaker = TurnTaker(
+                p.config,
+                models.silero.stream(),
+                models.smartTurn.takeIf { p.config.smartTurn },
+                sink,
+                p.endBaseMs,
+            )
+            if (p.config.bargeIn) {
+                val mode = CallAudioMode(audioManager)
+                LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter()} (cascade, ${b.kind.token})")
+                callAudio = mode
+                audioRoute.watchForBluetooth { onBluetoothConnected() }
+            } else {
+                // In the car: the car's own hands-free mic, as Live did (Kevin, 2026-11-10).
+                callAudio = audioRoute.enterBluetoothMic(b.kind.token)
+            }
         }
-        player = ReplyPlayer(c.sampleRate) { callAudio?.isActive == true }
+        player = ReplyPlayer(b.tts.sampleRate) { callAudio?.isActive == true }
         audit.enabled = ConversationLog.auditWantedAfterReading(ctx)
-        audit.sessionStart("$ENGINE_TOKEN+$MODEL", emptySet(), brain.basePackToken)
+        audit.sessionStart("${b.kind.token}+$MODEL", emptySet(), brain.basePackToken)
         auditStarted = true
         LiveLatency.log(
             "LIVE_TURN",
             "config manual=true bargeIn=${p.config.bargeIn} smartTurn=${p.config.smartTurn} (${p.config.note})",
         )
         val openMs = System.currentTimeMillis() - started
-        LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, c.streamsText))
-        startMic()
+        LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, b.tts.streamsText, b.kind.token))
+        if (listens) startMic()
         prefix = prefixJob.await()
         prefix?.let { cache.warm(it) }
         if (closing.get()) return
+        if (opener != null) {
+            speakOpener(opener)
+            return
+        }
         val plan = greetingPlan?.await()
         if (closing.get()) return
         if (plan is GreetingPlan.Personal) {
@@ -317,6 +333,77 @@ internal class CascadeSession(
             }
             speakScripted(ackLines.next())
         }
+    }
+
+    /**
+     * The laptop first; anything that keeps it from opening opens the cloud voice instead (Kevin,
+     * 2026-11-15). Null when neither can start: Live has the conversation by then. The second value
+     * is the probe's time, for the open line.
+     */
+    @Suppress("ReturnCount") // one worded exit per open step
+    private suspend fun openBackend(config: LaptopVoiceConfig, started: Long): Pair<SpeechBackend, Long>? {
+        var probeMs = -1L
+        val refusal: String = run {
+            // Engine CLOUD: no laptop is asked at all.
+            if (!laptopFirst) return@run CLOUD_ENGINE
+            // A laptop that just failed to answer is not asked again for a little while: the wake
+            // word must not wait out the probe on every conversation while Tailscale is off.
+            if (config.isComplete && started - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS) {
+                return@run "unreachable_recent"
+            }
+            val probe = if (config.isComplete) LaptopProbe.probe(config, CascadeTimings.PROBE_TIMEOUT_MS) else null
+            lastUnreachableAtMs = if (probe is LaptopProbe.Result.Unreachable) System.currentTimeMillis() else 0L
+            probeMs = when (probe) {
+                is LaptopProbe.Result.Ready -> probe.ms
+                is LaptopProbe.Result.Busy -> probe.ms
+                is LaptopProbe.Result.Unreachable -> probe.ms
+                else -> -1L
+            }
+            CascadeRules.openRefusal(config.isComplete, turnModelsReady = true, probe)?.let {
+                LiveLatency.log(LiveLatency.TAG, "cascade_probe_ms=$probeMs probe=${probe?.token ?: "none"}")
+                return@run it
+            }
+            var laptop: LaptopSpeech? = null
+            val c = LaptopVoiceConnection(
+                connector = OkHttpWire(),
+                config = config,
+                clientName = "legion-phone/${BuildConfig.VERSION_CODE}",
+                scope = scope,
+                onDrop = { reason -> laptop?.let { b -> scope.launch(loop) { onBackendDropped(b, reason) } } },
+            )
+            val speech = LaptopSpeech(c)
+            laptop = speech
+            when (val r = c.open(CascadeTimings.OPEN_TIMEOUT_MS)) {
+                is LaptopVoiceConnection.OpenResult.Failed -> {
+                    lastUnreachableAtMs = System.currentTimeMillis()
+                    "connect_${r.reason}"
+                }
+                LaptopVoiceConnection.OpenResult.Ready -> {
+                    VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
+                    return speech to probeMs
+                }
+            }
+        }
+        val next = CascadeRules.nextAfter(SpeechBackend.Kind.LAPTOP, cloudCanStart())
+        if (refusal != CLOUD_ENGINE) {
+            LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback("laptop", next.name.lowercase(), "open", refusal))
+        }
+        if (next == CascadeRules.Next.LIVE) {
+            handOver(
+                Handover.Moment.AtOpen,
+                "open",
+                refusal,
+                from = SpeechBackend.Kind.CLOUD,
+                words = VoiceEngineSettings.cloudFailedWords("no_key", laptopToken = refusal.takeIf { it != CLOUD_ENGINE }),
+            )
+            return null
+        }
+        if (refusal != CLOUD_ENGINE) {
+            val words = VoiceEngineSettings.statusWords(refusal)
+            VoiceEngineSettings.noteStatus(ctx, words)
+            if (!quiet) host.notice("Laptop voice: $words")
+        }
+        return cloudSpeech(scope) to probeMs
     }
 
     // --- the door from the controller ------------------------------------------------------------
@@ -333,6 +420,33 @@ internal class CascadeSession(
         }
         close("stopped", userEnded = true)
         return false
+    }
+
+    /**
+     * A line the model is asked for while this conversation is open (a proactive line, Brief me): it
+     * runs after the turn in flight, as Live folded such a line into the open conversation. False
+     * when this session cannot take it (closing, or a speak-only line still playing).
+     */
+    fun say(line: CascadeOpener): Boolean {
+        // Still opening (no prompt yet): the line would end the conversation he just opened.
+        if (closing.get() || !listens || prefix == null) return false
+        scope.launch(loop) {
+            val previous = turnJob
+            turnJob = scope.launch(loop) {
+                previous?.join()
+                if (!closing.get()) answerTurn(line.prompt, null, promptRecord(line))
+            }
+        }
+        return true
+    }
+
+    private fun promptRecord(o: CascadeOpener) = TurnRecord(o.prompt, fromUser = false).also {
+        it.readThrough = o.readThrough
+    }
+
+    /** The opener's prompt as the first turn (no greeting, no ack line). */
+    private fun speakOpener(o: CascadeOpener) {
+        turnJob = scope.launch(loop) { answerTurn(o.prompt, null, promptRecord(o)) }
     }
 
     /** The side key while open: end after the next answer. */
@@ -360,12 +474,14 @@ internal class CascadeSession(
 
     private val sink = object : TurnTaker.Sink {
         override fun sendActivityStart() {
-            val c = conn ?: return
-            var self: SttUtterance? = null
-            val u = c.begin {
+            val b = backend ?: return
+            var self: TurnUtterance? = null
+            val inner = b.stt.begin {
                 val utt = self ?: return@begin
                 scope.launch(loop) { onServiceEnd(utt) }
             }
+            // The laptop's words are also kept on the phone: if it fails, the cloud hears them.
+            val u = TurnUtterance(inner, b, keepAudio = b.kind == SpeechBackend.Kind.LAPTOP)
             self = u
             currentUtt = u
             scope.launch(loop) {
@@ -427,7 +543,8 @@ internal class CascadeSession(
 
         override fun onSileroFailed(reason: String) {
             TurnModels.markBroken("Silero threw: $reason")
-            scope.launch(loop) { handOver(currentMoment(), "turn", "silero_failed") }
+            // The cloud voice needs Silero too: a phone fault goes to Live.
+            scope.launch(loop) { handOver(currentMoment(), "turn", "silero_failed", phoneFault = true) }
         }
 
         override fun onSmartTurnFailed(reason: String) {
@@ -445,7 +562,7 @@ internal class CascadeSession(
         // words carry into this turn, so a mid-thought pause never splits one request in two.
         val pending = turn
         val answering = turnJob?.isActive == true && !speaking
-        if (pending != null && answering && pending.toolsRan.isEmpty()) {
+        if (pending != null && pending.fromUser && answering && pending.toolsRan.isEmpty()) {
             carry = (carry + " " + pending.heard).trim()
             turnJob?.cancel()
             speaker?.interrupt()
@@ -457,7 +574,7 @@ internal class CascadeSession(
      * The laptop ended the turn itself (contract 4b, Kyutai's pause head): its final text is already
      * waiting in the utterance. Stop streaming to that id.
      */
-    private fun onServiceEnd(u: SttUtterance) {
+    private fun onServiceEnd(u: TurnUtterance) {
         if (currentUtt !== u) return
         currentUtt = null
         // The phone's own turn is over too: forget it, so its silence cap does not end a second one.
@@ -465,7 +582,9 @@ internal class CascadeSession(
         onTurnEnd(u, System.currentTimeMillis(), CascadeRules.EotSource.SERVICE, null)
     }
 
-    private fun onTurnEnd(u: SttUtterance, eotAtMs: Long, source: CascadeRules.EotSource, prob: Float?) {
+    private fun onTurnEnd(u: TurnUtterance, eotAtMs: Long, source: CascadeRules.EotSource, prob: Float?) {
+        // A swap that came while he was speaking: the new backend's turn plan starts now.
+        if (replanPending) replan()
         val silence = lastLocalSpeechAtMs.takeIf { it > 0 }?.let { eotAtMs - it }
         LiveLatency.log(LiveLatency.TAG, CascadeLines.eot(source, silence, prob))
         audit.activityEnd()
@@ -478,15 +597,15 @@ internal class CascadeSession(
     }
 
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
-    private suspend fun runTurn(u: SttUtterance, eotAtMs: Long) {
-        val stt = u.result(CascadeTimings.STT_FINAL_TIMEOUT_MS)
+    private suspend fun runTurn(u: TurnUtterance, eotAtMs: Long) {
+        val stt = u.result(u.backend.sttFinalTimeoutMs)
         LiveLatency.log(LiveLatency.TAG, "stt_final_ms=${System.currentTimeMillis() - eotAtMs}" +
-            ((stt as? SttResult.Text)?.decodeMs?.let { " stt_decode_ms=$it" } ?: ""))
+            ((stt as? SttResult.Text)?.decodeMs?.let { " stt_decode_ms=$it" } ?: "") +
+            " stt_backend=${u.backend.kind.token}")
         val words = when (stt) {
             is SttResult.Failed -> {
                 if (stt.reason == "cancelled") return
-                handOver(if (carry.isBlank()) Handover.Moment.LostWords else heardMoment(carry), "stt", stt.reason)
-                return
+                recoverWords(u, stt.reason) ?: return
             }
             is SttResult.Text -> stt.text
         }
@@ -507,14 +626,24 @@ internal class CascadeSession(
             endByVoice()
             return
         }
-        val record = TurnRecord(heard)
+        answerTurn(heard, eotAtMs, TurnRecord(heard))
+    }
+
+    /**
+     * The model half of a turn: [record]'s words (his, or an opener's prompt) through the text loop
+     * with tools, the reply spoken as it streams, history and records kept. Shared by a spoken turn
+     * and a prompt turn ([speakOpener]) so both answer the same way.
+     */
+    @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
+    private suspend fun answerTurn(heard: String, eotAtMs: Long?, record: TurnRecord) {
         turn = record
         val seq = turnSeq.getAndIncrement()
         val pfx = prefix ?: run {
             handOver(heardMoment(heard), "prompt", "prefix_missing")
             return
         }
-        val reply = newSpeaker(eotAtMs)
+        val voice = backend!!
+        var reply = newSpeaker(eotAtMs)
         var outcome: ReplySpeaker.Outcome = ReplySpeaker.Outcome.Interrupted
         try {
             val result = textLoop!!.answer(
@@ -524,29 +653,36 @@ internal class CascadeSession(
                 listenerFor(record, reply),
             )
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
-            if (result.failure != null && !reply.anyText) {
-                reply.say(result.failureWords ?: result.failure.lead)
-            } else {
-                reply.finishText()
-            }
+            val text = if (result.failure != null && !reply.anyText) result.failureWords ?: result.failure.lead else null
+            if (text != null) reply.say(text) else reply.finishText()
             outcome = reply.await()
-            val said = reply.spoken().ifBlank { result.text }
-            when (outcome) {
-                is ReplySpeaker.Outcome.Failed -> {
+            val failed = outcome as? ReplySpeaker.Outcome.Failed
+            if (failed != null) {
+                // The model and the tools already ran on the phone: only the voice was lost. The
+                // reply goes again, whole, on the next voice; nothing is asked of the model twice.
+                // If no voice can say it, the answer and what was done still reach the panel and
+                // the record before the conversation ends.
+                val words = text ?: result.text
+                val unsaid = { recordTurn(heard, withWrites(words, record), record.readThrough, seq, record.fromUser) }
+                val again = revoice(voice, failed.reason, heardMoment(heard, record), words, unsaid) ?: return
+                reply = again
+                outcome = again.await()
+                if (outcome is ReplySpeaker.Outcome.Failed) {
+                    unsaid()
                     handOver(heardMoment(heard, record), "tts", outcome.reason)
                     return
                 }
-                else -> Unit
             }
+            val said = reply.spoken().ifBlank { result.text }
             val kept = if (outcome == ReplySpeaker.Outcome.Interrupted) withWrites(reply.spoken(), record) else said
-            recordTurn(heard, kept, record.readThrough, seq)
+            recordTurn(heard, kept, record.readThrough, seq, record.fromUser)
             answeredOnce = true
         } catch (e: CancellationException) {
             // Interrupted (tap, barge-in) or merged into the next turn: keep only what was heard.
             withContext(NonCancellable) {
                 reply.interrupt()
                 if (carry.isBlank() || record.toolsRan.isNotEmpty()) {
-                    recordTurn(heard, withWrites(reply.spoken(), record), record.readThrough, seq)
+                    recordTurn(heard, withWrites(reply.spoken(), record), record.readThrough, seq, record.fromUser)
                 }
             }
             throw e
@@ -554,6 +690,85 @@ internal class CascadeSession(
             if (turn === record) turn = null
         }
         if (outcome == ReplySpeaker.Outcome.Played) afterReply()
+    }
+
+    /**
+     * The words of [u] did not come back. From the laptop: the conversation moves to the cloud voice
+     * and the cloud transcribes the same words from the audio the phone kept, so nothing he said is
+     * lost. From the cloud (or nothing kept): Live, told the words were lost. Null when the turn ends
+     * here.
+     */
+    @Suppress("ReturnCount") // one exit per way the words are lost
+    private suspend fun recoverWords(u: TurnUtterance, reason: String): String? {
+        val moment = if (carry.isBlank()) Handover.Moment.LostWords else heardMoment(carry)
+        if (!swapToCloud(u.backend, "stt", reason)) {
+            if (u.backend.kind == SpeechBackend.Kind.CLOUD) {
+                missedWords(moment, reason, u.backend.kind)
+            } else {
+                handOver(moment, "stt", reason, from = u.backend.kind)
+            }
+            return null
+        }
+        val audio = u.keptAudio()
+        val b = backend ?: return null
+        if (audio == null || audio.isEmpty()) {
+            missedWords(moment, reason, b.kind)
+            return null
+        }
+        val started = System.currentTimeMillis()
+        val again = b.stt.begin()
+        again.audio(audio, 0, audio.size)
+        again.end()
+        return when (val r = again.result(b.sttFinalTimeoutMs)) {
+            is SttResult.Text -> {
+                LiveLatency.log(
+                    LiveLatency.TAG,
+                    "stt_recovered backend=${b.kind.token} ms=${System.currentTimeMillis() - started} from=$reason",
+                )
+                r.text
+            }
+            is SttResult.Failed -> {
+                if (r.reason != "cancelled") missedWords(moment, r.reason, b.kind)
+                null
+            }
+        }
+    }
+
+    /**
+     * The cloud voice did not catch his words (after its one retry). With Live retired nothing can
+     * take the conversation over, and ending it for one missed sentence would be worse than asking
+     * again: it is said on screen and the floor is his. The follow-up window still closes a
+     * conversation nobody speaks in. Before 2026-11-15 (or after a rollback) this went to Live.
+     */
+    private suspend fun missedWords(moment: Handover.Moment, reason: String, from: SpeechBackend.Kind) {
+        if (!VoiceEngineSettings.LIVE_RETIRED) {
+            handOver(moment, "stt", reason, from = from)
+            return
+        }
+        LiveLatency.log(LiveLatency.TAG, "stt_missed backend=${from.token} reason=$reason")
+        VoiceEngineSettings.noteStatus(ctx, "${VoiceEngineSettings.CLOUD_WORDS} missed a sentence (stt_$reason)")
+        host.notice(MISSED_NOTICE)
+        backToListening()
+    }
+
+    /**
+     * A reply's voice failed on [failed] after the model had written it: move to the cloud voice and
+     * speak [words] there. Null (after a hand-over to Live) when the cloud voice cannot take it.
+     */
+    private suspend fun revoice(
+        failed: SpeechBackend,
+        reason: String,
+        moment: Handover.Moment,
+        words: String,
+        beforeGivingUp: () -> Unit,
+    ): ReplySpeaker? {
+        if (!swapToCloud(failed, "tts", reason)) {
+            beforeGivingUp()
+            handOver(moment, "tts", reason, from = failed.kind)
+            return null
+        }
+        LiveLatency.log(LiveLatency.TAG, "reply_revoiced backend=${backend?.kind?.token} chars=${words.length}")
+        return newSpeaker(null).also { it.say(words) }
     }
 
     /**
@@ -596,7 +811,14 @@ internal class CascadeSession(
                 }
                 in CascadeRules.LIVE_ONLY_TOOLS ->
                     JSONObject().put("success", false).put("message", "That only works on the Live voice engine.")
-                else -> host.runTool(name, args, readThrough, record.heard, seq)
+                // A read-through opener (ADR 0090) marks the turn before the loop's own flag can.
+                else -> host.runTool(
+                    name,
+                    args,
+                    readThrough || record.readThrough,
+                    if (record.fromUser) record.heard else "",
+                    seq,
+                )
             }
         } finally {
             toolsInFlight.decrementAndGet()
@@ -641,15 +863,15 @@ internal class CascadeSession(
     }
 
     private fun newSpeaker(eotAtMs: Long?): ReplySpeaker {
-        val c = conn!!
+        val b = backend!!
         val p = player!!
         val gen = p.generation()
         var ttsAskedAtMs = System.currentTimeMillis()
         return ReplySpeaker(
-            tts = c,
+            tts = b.tts,
             scope = scope,
             play = { pcm -> p.write(pcm, gen) },
-            firstFrameTimeoutMs = CascadeTimings.TTS_FIRST_AUDIO_TIMEOUT_MS,
+            firstFrameTimeoutMs = b.ttsFirstAudioTimeoutMs,
             onFirstAudio = {
                 val now = System.currentTimeMillis()
                 eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
@@ -682,6 +904,11 @@ internal class CascadeSession(
         playbackActive = false
         turnTaker?.onReplyEnd()
         audit.turnComplete()
+        if (!listens) {
+            shutdown("spoken")
+            host.closed("spoken")
+            return
+        }
         val oneShotDone = (oneShot || oneShotRequested) && answeredOnce
         if (dismissAfterReply || oneShotDone) {
             host.closingTone()
@@ -715,16 +942,51 @@ internal class CascadeSession(
         if (source == "tap") backToListening()
     }
 
-    /** A scripted line (the opening acknowledgement): no model call. */
+    /**
+     * A scripted line (the opening acknowledgement): no model call. On a laptop whose voice fails it
+     * is said again on the cloud voice. If the cloud voice cannot say even this, it cannot start, and
+     * the conversation opens on Live as if nothing had happened (nothing has been said yet).
+     */
     private fun speakScripted(line: String) {
+        val voice = backend!!
+        if (voice.kind == SpeechBackend.Kind.CLOUD) {
+            playCue()
+            return
+        }
         val reply = newSpeaker(null)
         reply.say(line)
         turnJob = scope.launch(loop) {
             when (val o = reply.await()) {
                 ReplySpeaker.Outcome.Played -> afterReply()
-                is ReplySpeaker.Outcome.Failed -> handOver(Handover.Moment.Idle, "tts", o.reason)
+                is ReplySpeaker.Outcome.Failed -> onScriptedFailed(voice, line, o.reason)
                 ReplySpeaker.Outcome.Interrupted -> Unit
             }
+        }
+    }
+
+    /**
+     * The cloud voice's opening line: the same bundled clip in the companion's voice Live played
+     * ([ListenCue]; an earcon when no clip matches the voice). No model and no TTS call: nothing is
+     * paid for and nothing can fail before he speaks.
+     */
+    private fun playCue() {
+        val cue = ListenCue.next(ctx, CompanionProfile.voice(ctx))
+        val p = player ?: return
+        LiveLatency.log(LiveLatency.TAG, "listen_cue ${cue.label} (cascade)")
+        turnJob = scope.launch(loop) {
+            onReplyAudible()
+            val gen = p.generation()
+            withContext(Dispatchers.IO) { p.write(cue.pcm, gen) }
+            afterReply()
+        }
+    }
+
+    private suspend fun onScriptedFailed(voice: SpeechBackend, line: String, reason: String) {
+        val moment = if (history.isEmpty()) Handover.Moment.AtOpen else Handover.Moment.Idle
+        if (swapToCloud(voice, "tts", reason)) {
+            speakScripted(line)
+        } else {
+            handOver(moment, "tts", reason, from = voice.kind)
         }
     }
 
@@ -748,6 +1010,7 @@ internal class CascadeSession(
             speakScripted(ackLines.next())
             return
         }
+        val voice = backend!!
         val reply = newSpeaker(null)
         turnJob = scope.launch(loop) {
             val firstText = CompletableDeferred<Unit>()
@@ -794,7 +1057,8 @@ internal class CascadeSession(
                         history.add(ChatTurn(fromUser = false, text = reply.spoken()))
                         afterReply()
                     }
-                    is ReplySpeaker.Outcome.Failed -> handOver(Handover.Moment.Idle, "tts", o.reason)
+                    // The greeting is not said twice: the next voice opens with the scripted line.
+                    is ReplySpeaker.Outcome.Failed -> onScriptedFailed(voice, ackLines.next(), o.reason)
                     ReplySpeaker.Outcome.Interrupted -> Unit
                 }
             } catch (e: CancellationException) {
@@ -818,18 +1082,19 @@ internal class CascadeSession(
         said: String,
         readThrough: Boolean = false,
         seq: Long = turnSeq.getAndIncrement(),
+        fromUser: Boolean = true,
     ) {
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
         // A read-through reply (mail, web) is never kept as history or in the record in clear.
         val kept = if (readThrough) LiveAudit.REDACTED else said
         if (said.isNotBlank()) history.add(ChatTurn(fromUser = false, text = kept))
-        host.turnTranscript(heard, said)
+        host.turnTranscript(if (fromUser) heard else "", said)
         val vehicle = ActiveVehicle.current(ctx)
         scope.launch(Dispatchers.IO) {
             runCatching {
                 val dao = CarDatabase.getDatabase(ctx).conversationAuditDao()
                 val uploaded = com.kevin.legion.backend.conversationAuditUploadedThroughId(ctx)
-                if (heard.isNotBlank()) {
+                if (fromUser && heard.isNotBlank()) {
                     dao.record(
                         turnSeq = seq,
                         kind = ConversationAudit.Kind.USER,
@@ -873,7 +1138,7 @@ internal class CascadeSession(
     private fun armFollowUp() {
         followUpJob?.cancel()
         followUpArmedAtMs = System.currentTimeMillis()
-        LiveLatency.log("LIVE_FOLLOWUP", "armed ms=${FollowUpWindow.WINDOW_MS} engine=$ENGINE_TOKEN")
+        LiveLatency.log("LIVE_FOLLOWUP", "armed ms=${FollowUpWindow.WINDOW_MS} engine=${engineToken()}")
         followUpJob = scope.launch(loop) {
             delay(FollowUpWindow.WINDOW_MS)
             val now = System.currentTimeMillis()
@@ -889,7 +1154,7 @@ internal class CascadeSession(
     private fun onFollowUpExpired() {
         if (closing.get()) return
         scope.launch(loop) {
-            LiveLatency.log("LIVE_FOLLOWUP", "expired engine=$ENGINE_TOKEN")
+            LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}")
             host.closingTone()
             shutdown("follow_up")
             host.notice("Conversation closed")
@@ -899,16 +1164,120 @@ internal class CascadeSession(
 
     // --- failure ---------------------------------------------------------------------------------
 
-    private fun onLaptopDropped(reason: String) {
-        if (closing.get()) return
-        scope.launch(loop) { handOver(currentMoment(), "socket", reason) }
+    /**
+     * A Bluetooth device connected while barge-in was on: off for the rest of this conversation and
+     * out of call audio, as Live did (ADR 0064's half-duplex rule for the car).
+     */
+    private fun onBluetoothConnected() {
+        scope.launch(loop) {
+            val tt = turnTaker?.takeIf { it.bargeIn } ?: return@launch
+            tt.disableBargeIn()
+            LiveLatency.log(TurnTaker.BARGE_TAG, "off for this session: Bluetooth connected (cascade)")
+            audioRoute.stopWatching()
+            callAudio?.let { if (it.isActive) it.exit("bluetooth connected") }
+            player?.rebuild()
+        }
+    }
+
+    /** What the follow-up lines carry: the backend speaking now. */
+    private fun engineToken(): String = backend?.kind?.token ?: SpeechBackend.Kind.LAPTOP.token
+
+    /**
+     * The laptop's socket dropped. A turn in flight sees its own failed wait and recovers on the cloud
+     * voice; between turns the swap is all there is to do. While the session is still opening the
+     * open path sees the failure itself.
+     */
+    private fun onBackendDropped(failed: SpeechBackend, reason: String) {
+        if (closing.get() || backend == null) return
+        if (!swapToCloud(failed, "socket", reason)) {
+            scope.launch(loop) { handOver(currentMoment(), "socket", reason, from = failed.kind) }
+        }
+    }
+
+    /**
+     * The laptop failed ([failed] is the backend that reported it): this conversation carries on, on
+     * the cloud voice (Kevin, 2026-11-15). Mic, history, text loop, cache, tools and player stay; the
+     * backend and the turn plan change. True when the cloud voice is (now, or already) the one
+     * speaking; false when it cannot take over and the caller goes to Live. A second report of the
+     * same laptop failure (the socket drop and the turn's own failed wait both arrive) finds the swap
+     * done and changes nothing. Runs on [loop].
+     */
+    private fun swapToCloud(failed: SpeechBackend, stage: String, reason: String): Boolean {
+        if (closing.get()) return false
+        val current = backend
+        if (current !== failed) return current?.kind == SpeechBackend.Kind.CLOUD
+        if (CascadeRules.nextAfter(failed.kind, cloudCanStart()) != CascadeRules.Next.CLOUD) return false
+        LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback(failed.kind.token, "cloud", stage, reason))
+        VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("${stage}_$reason"))
+        host.notice(DROPPED_NOTICE)
+        step("laptop_close") { failed.close(reason) }
+        val next = cloudSpeech(scope)
+        backend = next
+        val p = player
+        if (p != null && p.sampleRate != next.tts.sampleRate) {
+            p.release()
+            player = ReplyPlayer(next.tts.sampleRate) { callAudio?.isActive == true }
+        }
+        replan()
+        return true
+    }
+
+    /**
+     * The turn plan for the backend speaking now (the cloud has no end-of-turn signal of its own, so
+     * the phone's detector and Smart Turn take over from the laptop's). A turn he is in the middle of
+     * keeps the plan it started with; the new one starts when it ends ([replanPending]).
+     */
+    private fun replan() {
+        val m = models ?: return
+        val b = backend ?: return
+        val p = synchronized(turnLock) {
+            if (currentUtt != null) {
+                replanPending = true
+                return
+            }
+            replanPending = false
+            val old = turnTaker
+            val next = CascadeRules.turnPlan(
+                serviceEndsTurns = b.stt.endsTurns,
+                smartSetting = VoiceTurnSettings.smartEndOfTurn(ctx),
+                smartTurnReady = m.smartTurn != null && TurnModels.smartTurnBroken == null,
+                // Interrupting stays as it was (it may have been turned off for this conversation).
+                bargeSetting = old?.bargeIn == true,
+                route = CallAudioMode.route(audioManager),
+                inCall = TelephonyController.isInCall,
+            )
+            turnTaker = TurnTaker(
+                next.config,
+                m.silero.stream(),
+                m.smartTurn.takeIf { next.config.smartTurn },
+                sink,
+                next.endBaseMs,
+            )
+            plan = next
+            old?.reset()
+            next
+        }
+        if (!p.config.bargeIn) {
+            // The barge-in call mode goes; the car's hands-free link (no barge-in) stays.
+            callAudio?.takeUnless { it.onBluetoothMic }?.let {
+                if (it.isActive) {
+                    it.exit("swap to ${b.kind.token}")
+                    player?.rebuild()
+                }
+            }
+        }
+        LiveLatency.log(
+            "LIVE_TURN",
+            "config manual=true bargeIn=${p.config.bargeIn} smartTurn=${p.config.smartTurn} (${p.config.note}) " +
+                "backend=${b.kind.token}",
+        )
     }
 
     private fun onMicPreempted() {
         if (closing.get()) return
         micClaimed = false
         scope.launch(loop) {
-            LiveLatency.log("LIVE_TURN", "laptop pipeline preempted by a higher-priority mic claimant")
+            LiveLatency.log("LIVE_TURN", "cascade preempted by a higher-priority mic claimant")
             shutdown("preempted")
             host.closed("preempted")
         }
@@ -935,19 +1304,49 @@ internal class CascadeSession(
     /**
      * Releases everything, then opens Live for this conversation. Strictly in that order: a mic or
      * call-audio mode still held when Live starts would break his phone audio for the trip.
+     *
+     * Live is the last resort: the cloud voice failed or could not start ([from] CLOUD), or the
+     * phone itself failed ([phoneFault]: mic, Silero, a crash). [words] overrides what Settings shows.
      */
-    private suspend fun handOver(moment: Handover.Moment, stage: String, reason: String) {
+    @Suppress("LongParameterList")
+    private suspend fun handOver(
+        moment: Handover.Moment,
+        stage: String,
+        reason: String,
+        from: SpeechBackend.Kind? = backend?.kind,
+        phoneFault: Boolean = false,
+        words: String? = null,
+    ) {
         if (!closing.compareAndSet(false, true)) return
         try {
-            LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback(stage, reason))
-            val words = VoiceEngineSettings.statusWords(if (stage == "open") reason else "${stage}_$reason")
-            VoiceEngineSettings.noteStatus(ctx, words)
-            val notice = if (moment == Handover.Moment.AtOpen) "Laptop voice: $words" else DROPPED_NOTICE
-            host.notice(notice)
+            val source = if (phoneFault) "phone" else from?.token ?: "phone"
+            val to = if (VoiceEngineSettings.LIVE_RETIRED) "none" else "live"
+            LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback(source, to, stage, reason))
+            val token = if (stage == "open") reason else "${stage}_$reason"
+            val said = words ?: when {
+                phoneFault -> VoiceEngineSettings.phoneFailedWords(token)
+                from == SpeechBackend.Kind.CLOUD -> VoiceEngineSettings.cloudFailedWords(token)
+                else -> VoiceEngineSettings.statusWords(token, usedCloud = false)
+            }
+            VoiceEngineSettings.noteStatus(ctx, said)
+            val notice = when {
+                moment == Handover.Moment.AtOpen -> "Voice: $said"
+                from == SpeechBackend.Kind.CLOUD && !phoneFault -> CLOUD_FAILED_NOTICE
+                else -> LIVE_NOTICE
+            }
+            // A background line nobody asked for fails quietly on screen; Settings still says why.
+            if (!quiet) host.notice(notice)
             release(reason)
         } finally {
-            // Whatever happened above, Live is opened: never a dead assistant.
-            host.handOverToLive(fromWakeWord, Handover.opener(moment))
+            if (VoiceEngineSettings.LIVE_RETIRED) {
+                // Live is retired (Kevin, 2026-11-15): never opened behind his back. The failure is
+                // said in words above and the conversation ends with the closing tone.
+                if (!quiet) host.closingTone()
+                host.closed("voice_failed_$reason")
+            } else {
+                // Whatever happened above, Live is opened: never a dead assistant.
+                host.handOverToLive(fromWakeWord, Handover.opener(moment))
+            }
         }
     }
 
@@ -958,7 +1357,7 @@ internal class CascadeSession(
         // is not open any more is dropped by the controller's next tap in any case.
         if (closing.get()) return
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-            handOver(currentMoment(), "crash", label)
+            handOver(currentMoment(), "crash", label, phoneFault = true)
         }
     }
 
@@ -1003,99 +1402,37 @@ internal class CascadeSession(
         }
         step("turn") { turnTaker?.reset() }
         step("player") { player?.release() }
-        step("call_audio") { callAudio?.let { if (it.isActive) it.exit("laptop pipeline $reason") } }
+        step("route_watch") { audioRoute.stopWatching() }
+        step("call_audio") { callAudio?.let { if (it.isActive) it.exit("cascade $reason") } }
         step("focus") { abandonFocus() }
         step("caption") { CompanionPhase.setCaption("") }
         step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
         micClaimed = false
-        step("socket") { conn?.close(reason) }
+        step("socket") { backend?.close(reason) }
         step("audit") { if (auditStarted) audit.sessionEnd(reason) }
-        LiveLatency.log("LIVE_TURN", "laptop pipeline closed reason=$reason")
+        LiveLatency.log("LIVE_TURN", "cascade closed reason=$reason backend=${engineToken()}")
         scope.launch {
             delay(SCOPE_GRACE_MS)
             scope.cancel()
         }
     }
 
-    // --- microphone (a trimmed copy of Live's micLoop) -----------------------------------------------
+    // --- microphone ([CascadeMic], a trimmed copy of Live's micLoop) ---------------------------------
 
     private fun startMic() {
-        micJob = scope.launch(Dispatchers.IO) { micLoop() }
-    }
-
-    @SuppressLint("MissingPermission") // checked first, below
-    @Suppress(
-        "LongMethod",
-        "NestedBlockDepth",
-        "ReturnCount",
-        "CyclomaticComplexMethod",
-        "LoopWithTooManyJumpStatements",
-    ) // a copy of Live's capture loop, trimmed; its shape is Live's
-    private suspend fun micLoop() {
-        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO)
-        if (granted != PackageManager.PERMISSION_GRANTED) {
-            host.notice("Didn't start - microphone permission is off")
-            close("no_mic_permission")
-            return
-        }
-        delay(MIC_HANDOFF_MS)
-        val minBuf = AudioRecord.getMinBufferSize(
-            INPUT_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-        )
-        val builder = AudioRecord.Builder()
-            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-            .setAudioFormat(
-                AudioFormat.Builder().setSampleRate(INPUT_RATE).setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build(),
+        micJob = scope.launch(Dispatchers.IO) {
+            // The car's hands-free link, when it was asked for, carries the route before capture.
+            audioRoute.awaitBluetoothMic()
+            CascadeMic(ctx).run(
+                // Under [turnLock]: a backend swap never lands inside a feed.
+                onBuffer = { buf, n -> synchronized(turnLock) { turnTaker?.feed(buf, n, playbackActive) } },
+                onNoPermission = {
+                    host.notice("Didn't start - microphone permission is off")
+                    close("no_mic_permission")
+                },
+                // A mic that cannot open or keeps failing is a deaf conversation, on any voice: Live.
+                onFailure = { reason -> scope.launch(loop) { handOver(currentMoment(), "mic", reason, phoneFault = true) } },
             )
-            .setBufferSizeInBytes(maxOf(minBuf, INPUT_RATE))
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) builder.setPrivacySensitive(true)
-        val record = try {
-            builder.build()
-        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-            Log.w(TAG, "AudioRecord build failed: ${e.message}")
-            null
-        }
-        if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
-            record?.release()
-            scope.launch(loop) { handOver(currentMoment(), "mic", "audio_record_init") }
-            return
-        }
-        val effects = attachEffects(record.audioSessionId)
-        val buffer = ByteArray(CHUNK_BYTES)
-        var readErrors = 0
-        try {
-            record.startRecording()
-            Log.d(TAG, "AudioRecord opened (laptop pipeline) sessionId=${record.audioSessionId}")
-            while (kotlin.coroutines.coroutineContext.isActive) {
-                val n = record.read(buffer, 0, buffer.size)
-                if (n < 0) {
-                    Log.w(TAG, "record.read failed: $n")
-                    // A mic that keeps failing is a deaf conversation: hand it to Live.
-                    if (++readErrors >= MAX_READ_ERRORS) {
-                        scope.launch(loop) { handOver(currentMoment(), "mic", "read_error_$n") }
-                        return
-                    }
-                    delay(READ_ERROR_BACKOFF_MS)
-                    continue
-                }
-                readErrors = 0
-                if (n == 0) continue
-                MicLevel.publish(MicSignal.peakAmplitude(buffer, n))
-                turnTaker?.feed(buffer, n, playbackActive)
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-            Log.w(TAG, "mic loop error: ${e.message}")
-            scope.launch(loop) { handOver(currentMoment(), "mic", "loop_${e.javaClass.simpleName}") }
-        } finally {
-            runCatching { record.stop() }
-            record.release()
-            effects.forEach { runCatching { it.release() } }
-            Log.d(TAG, "AudioRecord released (laptop pipeline)")
         }
     }
 
@@ -1124,40 +1461,34 @@ internal class CascadeSession(
         focus = null
     }
 
-    private fun attachEffects(sessionId: Int): List<AudioEffect> {
-        val out = mutableListOf<AudioEffect>()
-        runCatching {
-            if (AcousticEchoCanceler.isAvailable()) {
-                AcousticEchoCanceler.create(sessionId)?.also { it.enabled = true; out.add(it) }
-            }
-            if (NoiseSuppressor.isAvailable()) {
-                NoiseSuppressor.create(sessionId)?.also { it.enabled = true; out.add(it) }
-            }
-        }
-        return out
-    }
-
     companion object {
         private const val TAG = "CascadeSession"
 
         /** The text model (design doc: fastest measured, cheapest, no scheduled price change). */
         const val MODEL = "gemini-3.5-flash-lite"
 
-        /** `session_start model=` carries the engine, so Live and laptop sessions part in the log. */
-        const val ENGINE_TOKEN = "laptop"
 
         /** The loop's own backstop; the controller's runner already applies each tool's real ceiling. */
         const val TOOL_BACKSTOP_MS = 47_000L
 
-        private const val INPUT_RATE = 16_000
-        private const val CHUNK_BYTES = 3_200
-        /** Live's own first-capture hand-off (`GeminiLiveSession.MIC_HANDOFF_MS`). */
-        private const val MIC_HANDOFF_MS = 250L
-        private const val MAX_READ_ERRORS = 20
 
         private const val CAPTION_CHARS = 160
-        private const val DROPPED_NOTICE = "Laptop voice dropped - switched to Live"
-        private const val READ_ERROR_BACKOFF_MS = 50L
+        private const val DROPPED_NOTICE = "Laptop voice dropped - switched to cloud voice"
+        private val CLOUD_FAILED_NOTICE = if (VoiceEngineSettings.LIVE_RETIRED) {
+            "Cloud voice failed - conversation ended, tap to try again"
+        } else {
+            "Cloud voice failed - switched to Live"
+        }
+        private val LIVE_NOTICE = if (VoiceEngineSettings.LIVE_RETIRED) {
+            "Voice failed - conversation ended, tap to try again"
+        } else {
+            "Voice failed - switched to Live"
+        }
+
+        private const val MISSED_NOTICE = "Didn't catch that - say it again"
+
+        /** The open's "refusal" token when the engine is Cloud: no laptop was asked. */
+        private const val CLOUD_ENGINE = "cloud_engine"
         private const val SCOPE_GRACE_MS = 2_000L
 
         private val ACK = AckLines()
@@ -1170,6 +1501,26 @@ internal class CascadeSession(
         fun clearRecentFailure() {
             lastUnreachableAtMs = 0L
         }
+
+        /** Every Gemini call a cascade makes is metered the same way (text loop, STT, TTS). */
+        fun meter(model: String, usage: JSONObject?) {
+            KeyHealth.noteOk()
+            GeminiUsageMeter.recordRestCall(
+                model,
+                usage?.takeIf { it.has("promptTokenCount") }?.optInt("promptTokenCount"),
+                usage?.takeIf { it.has("candidatesTokenCount") }?.optInt("candidatesTokenCount"),
+                usage?.takeIf { it.has("totalTokenCount") }?.optInt("totalTokenCount"),
+            )
+        }
+
+        /** The production cloud voice: Gemini on the user's own key, metered and logged like the text loop. */
+        fun defaultCloudSpeech(parent: CoroutineScope, voice: String): SpeechBackend = CloudSpeech.create(
+            parent = parent,
+            transport = OkHttpGemini(),
+            meter = { model, usage -> meter(model, usage) },
+            log = { LiveLatency.log(LiveLatency.TAG, it) },
+            voice = voice,
+        )
 
         /** One cache store for the process: the cache outlives any one conversation. */
         @Volatile private var CACHE: ContextCacheStore? = null

@@ -194,13 +194,17 @@ object CascadeRequests {
  * travels in the `x-goog-api-key` header, never in the URL, so no log line or error can carry it.
  * Cancelling the caller cancels the HTTP call at once.
  */
-class OkHttpGemini(private val client: OkHttpClient = CLIENT) : GeminiStreamTransport, CacheApi {
+class OkHttpGemini(
+    private val client: OkHttpClient = CLIENT,
+    /** The user's key; a by-hand live check passes its own, read from a file and never printed. */
+    private val key: () -> String = GeminiKeyProvider::key,
+) : GeminiStreamTransport, CacheApi {
 
     override suspend fun stream(model: String, body: JSONObject, onEvent: (JSONObject) -> Unit): StreamOutcome =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url("$API/models/$model:streamGenerateContent?alt=sse")
-                .header("x-goog-api-key", GeminiKeyProvider.key())
+                .header("x-goog-api-key", key())
                 .post(body.toString().toRequestBody(JSON))
                 .build()
             val call = client.newCall(request)
@@ -228,7 +232,7 @@ class OkHttpGemini(private val client: OkHttpClient = CLIENT) : GeminiStreamTran
     override suspend fun create(body: JSONObject): CacheCreateOutcome = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$API/cachedContents")
-            .header("x-goog-api-key", GeminiKeyProvider.key())
+            .header("x-goog-api-key", key())
             .post(body.toString().toRequestBody(JSON))
             .build()
         try {

@@ -208,7 +208,7 @@ class LiveSessionControllerRefusalTest {
         // when nothing parsed is not a check. If BARE_RETURN stops matching - a reformat, a Kotlin
         // idiom this regex does not know - every assertion in the loop above is skipped and the
         // test goes green having examined nothing at all.
-        // 2 since 2026-11-10: a proactive line refused while a laptop-pipeline conversation is open.
+        // 2 since 2026-11-10; since 2026-11-15 the second is a proactive line handed to the cascade.
         assertEquals("the return scanner matched nothing, so it proved nothing", 2, examined)
     }
 
@@ -350,6 +350,9 @@ class LiveSessionControllerRefusalTest {
             // "Ended the chat"), its open falls back to Live in words, and a proactive line refused
             // under it is logged and, when asked for, shown.
             "onTapCascade(", "openCascade(", "refuseUnderCascade(",
+            // The cascade replaced Live (2026-11-15): a proactive line goes to it, which folds the
+            // line into an open conversation or opens one, and says any refusal.
+            "speakOnCascade(",
         )
     }
 }

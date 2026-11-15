@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * usage. [flush] stops a reply at once (barge-in, tap) and makes every write still in flight for
  * the old reply a no-op.
  */
-internal class ReplyPlayer(private val sampleRate: Int, private val callAudio: () -> Boolean) {
+internal class ReplyPlayer(val sampleRate: Int, private val callAudio: () -> Boolean) {
     private val lock = Any()
     private var track: AudioTrack? = null
     @Volatile private var framesWritten = 0L

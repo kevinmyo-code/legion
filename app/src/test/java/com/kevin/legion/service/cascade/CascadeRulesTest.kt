@@ -164,11 +164,16 @@ class CascadeRulesTest {
     }
 
     @Test
-    fun `the engine defaults to Live and unknown values read as Live`() {
-        assertEquals(VoiceEngine.LIVE, VoiceEngineSettings.DEFAULT_ENGINE)
-        assertEquals(VoiceEngine.LIVE, VoiceEngineSettings.parseEngine(null))
-        assertEquals(VoiceEngine.LIVE, VoiceEngineSettings.parseEngine("CASCADE"))
+    fun `the engine defaults to Cloud, and a stored Live reads as Cloud while Live is retired`() {
+        assertTrue(VoiceEngineSettings.LIVE_RETIRED)
+        assertEquals(VoiceEngine.CLOUD, VoiceEngineSettings.DEFAULT_ENGINE)
+        assertEquals(VoiceEngine.CLOUD, VoiceEngineSettings.parseEngine(null))
+        assertEquals(VoiceEngine.CLOUD, VoiceEngineSettings.parseEngine("CASCADE"))
+        // Every install from before 2026-11-15 stored LIVE: migrated on read.
+        assertEquals(VoiceEngine.CLOUD, VoiceEngineSettings.parseEngine("LIVE"))
         assertEquals(VoiceEngine.LAPTOP, VoiceEngineSettings.parseEngine("LAPTOP"))
+        assertEquals(VoiceEngine.CLOUD, VoiceEngineSettings.parseEngine("CLOUD"))
+        assertEquals("Settings offers Cloud and Laptop only", listOf(VoiceEngine.CLOUD, VoiceEngine.LAPTOP), VoiceEngineSettings.OFFERED)
     }
 
     @Test
@@ -179,6 +184,59 @@ class CascadeRulesTest {
         assertTrue(VoiceEngineSettings.statusWords("busy_loading").contains("busy"))
         assertTrue(VoiceEngineSettings.statusWords("unauthorized").contains("token"))
         assertEquals("connected", VoiceEngineSettings.statusWords("ok"))
+    }
+
+    // --- the cloud fallback (Kevin, 2026-11-15): laptop, then cloud voice, then Live ------------
+
+    @Test
+    fun `a laptop fault goes to the cloud voice, a cloud or phone fault past it`() {
+        assertEquals(CascadeRules.Next.CLOUD, CascadeRules.nextAfter(SpeechBackend.Kind.LAPTOP, cloudCanStart = true))
+        assertEquals(CascadeRules.Next.LIVE, CascadeRules.nextAfter(SpeechBackend.Kind.LAPTOP, cloudCanStart = false))
+        assertEquals(CascadeRules.Next.LIVE, CascadeRules.nextAfter(SpeechBackend.Kind.CLOUD, cloudCanStart = true))
+        assertEquals(CascadeRules.Next.LIVE, CascadeRules.nextAfter(null, cloudCanStart = true))
+    }
+
+    @Test
+    fun `settings say which path ran`() {
+        assertEquals("laptop busy, used cloud voice", VoiceEngineSettings.statusWords("busy_loading"))
+        assertEquals(
+            "laptop not reachable (is Tailscale on, and the laptop awake?), used cloud voice",
+            VoiceEngineSettings.statusWords("unreachable_timeout"),
+        )
+        assertEquals("laptop dropped (socket_dropped_1006), switched to cloud voice", VoiceEngineSettings.statusWords("socket_dropped_1006"))
+        // Live is retired: nothing says "used Live" any more; the failure is said as what it is.
+        assertEquals("laptop busy, voice not started", VoiceEngineSettings.statusWords("busy_loading", usedCloud = false))
+        assertEquals("phone turn detection unavailable, voice not started", VoiceEngineSettings.statusWords("turn_models_unavailable"))
+        assertEquals("cloud voice failed (tts_http_503), conversation ended", VoiceEngineSettings.cloudFailedWords("tts_http_503"))
+        assertEquals(
+            "laptop busy; cloud voice unavailable (no Gemini key), voice not started",
+            VoiceEngineSettings.cloudFailedWords("no_key", laptopToken = "busy_busy"),
+        )
+        assertEquals("phone voice failed (mic_read_error_-3), conversation ended", VoiceEngineSettings.phoneFailedWords("mic_read_error_-3"))
+        // Settings > Test connection: the reason only, no destination.
+        assertEquals("laptop busy", VoiceEngineSettings.laptopWords("busy_busy"))
+        assertFalse(VoiceEngineSettings.laptopWords("unreachable_timeout").contains("used"))
+    }
+
+    @Test
+    fun `the fallback and open lines name both ends`() {
+        assertEquals(
+            "engine_fallback from=laptop to=cloud stage=socket reason=dropped_1006",
+            CascadeLines.fallback("laptop", "cloud", "socket", "dropped_1006"),
+        )
+        val p = CascadeRules.turnPlan(
+            serviceEndsTurns = false, smartSetting = true, smartTurnReady = true,
+            bargeSetting = false, route = AudioRoute.PHONE_SPEAKER, inCall = false,
+        )
+        val line = CascadeLines.open(900, -1, p, ttsStreams = false, backend = "cloud")
+        assertTrue(line, line.startsWith("cascade_open_ms=900 probe_ms=-1 backend=cloud eot_mode=phone"))
+    }
+
+    @Test
+    fun `the hand-over to Live no longer says it came from the laptop`() {
+        val o = Handover.opener(Handover.Moment.Idle)!!
+        assertFalse(o.contains("laptop"))
+        assertTrue(o.contains("different voice engine"))
     }
 
     @Test

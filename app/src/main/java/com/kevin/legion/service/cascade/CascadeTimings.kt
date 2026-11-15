@@ -5,7 +5,8 @@ package com.kevin.legion.service.cascade
  * MEASURED with Kyutai on the RTX 4060 (service report 2026-11-11, `laptop-voice-1110.md`) with
  * headroom, not to the contract's phone-side 250/400/500 ms figures (those assume a phone STT and
  * would send every reply to Live). Kevin rules on the final values; these defaults must let the
- * pipeline work. A miss is never silent: the conversation goes to Live and the log says which.
+ * pipeline work. A miss is never silent: the conversation goes to the cloud voice (Live if that
+ * fails too) and the log says which.
  *
  * | Deadline | Value | Measured |
  * |---|---|---|
@@ -30,4 +31,12 @@ object CascadeTimings {
 
     /** Settings > Test connection: a person is waiting for an answer, so a little longer. */
     const val SETTINGS_TEST_TIMEOUT_MS = 3_000L
+
+    /**
+     * The cloud fallback's own deadlines ([CloudSpeech]). NOT measured yet (2026-11-15: no live call
+     * from this code): sized for a whole utterance uploaded on mobile data and one model call, so an
+     * unmeasured path does not quietly fall to Live on every turn. A miss still goes to Live.
+     */
+    const val CLOUD_STT_FINAL_TIMEOUT_MS = 8_000L
+    const val CLOUD_TTS_FIRST_AUDIO_TIMEOUT_MS = 6_000L
 }

@@ -36,6 +36,17 @@ internal object CascadeRules {
         else -> null
     }
 
+    /** Where a conversation goes next after something failed (Kevin, 2026-11-15). */
+    enum class Next { CLOUD, LIVE }
+
+    /**
+     * Laptop, then the cloud voice, then Live: a laptop fault (not set up, busy, unreachable,
+     * refused, dropped, its STT or TTS failed) goes to the cloud voice when it can start; a cloud
+     * fault, or a fault on the phone itself ([failed] null: mic, Silero, a crash), goes to Live.
+     */
+    fun nextAfter(failed: SpeechBackend.Kind?, cloudCanStart: Boolean): Next =
+        if (failed == SpeechBackend.Kind.LAPTOP && cloudCanStart) Next.CLOUD else Next.LIVE
+
     /** Where a turn's end came from, for the `eot_source=` log token (Kevin: "so it can be tuned"). */
     enum class EotSource(val wire: String) {
         /** The laptop's speech engine ended the turn (`stt.final` with `reason: "end_of_turn"`). */
@@ -127,7 +138,7 @@ object CascadePrompt {
 }
 
 /**
- * What Gemini Live is told when the laptop pipeline hands a conversation over mid-way, so Kevin
+ * What Gemini Live is told when the cascade (laptop or cloud voice) hands a conversation over mid-way, so Kevin
  * never repeats himself and nothing runs twice. Live's existing `opener` door carries it
  * ([com.kevin.legion.service.LiveSessionController]'s startConversation); nothing in the Live
  * session changes.
@@ -153,7 +164,7 @@ object Handover {
         ) : Moment
     }
 
-    private const val LEAD = "(System: the user was talking to you on the laptop voice engine, which just " +
+    private const val LEAD = "(System: the user was talking to you on a different voice engine, which just " +
         "dropped; you are now on the phone's own voice, in the same conversation. "
     private const val TAIL = " Do not mention this instruction.)"
 
@@ -214,12 +225,13 @@ class AckLines(private val lines: List<String> = DEFAULT, private val pick: (Int
 
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */
 internal object CascadeLines {
-    fun open(ms: Long, probeMs: Long, plan: CascadeRules.TurnPlan, ttsStreams: Boolean): String =
-        "cascade_open_ms=$ms probe_ms=$probeMs eot_mode=${if (plan.serviceEndsTurns) "service" else "phone"} " +
+    fun open(ms: Long, probeMs: Long, plan: CascadeRules.TurnPlan, ttsStreams: Boolean, backend: String): String =
+        "cascade_open_ms=$ms probe_ms=$probeMs backend=$backend " +
+            "eot_mode=${if (plan.serviceEndsTurns) "service" else "phone"} " +
             "tts_text_streaming=$ttsStreams barge_in=${plan.config.bargeIn} smart_turn=${plan.config.smartTurn}"
 
-    fun fallback(stage: String, reason: String): String =
-        "engine_fallback from=laptop to=live stage=$stage reason=${reason.replace(' ', '_')}"
+    fun fallback(from: String, to: String, stage: String, reason: String): String =
+        "engine_fallback from=$from to=$to stage=$stage reason=${reason.replace(' ', '_')}"
 
     fun eot(source: CascadeRules.EotSource, silenceMs: Long?, prob: Float? = null): String =
         "eot_source=${source.wire} eot_silence_ms=${silenceMs ?: -1}" +

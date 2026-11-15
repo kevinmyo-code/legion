@@ -5,11 +5,18 @@ import com.kevin.legion.ai.KeyVault
 
 /**
  * Which voice pipeline a conversation runs on (Kevin, 2026-11-10: "i want to be able to switch
- * between the two to compare, a settings in the UI on the phone perhaps"). [LIVE] is Gemini Live,
- * the proven path and the default. [LAPTOP] is the cascade: speech-to-text and text-to-speech on
- * the home laptop's voice service, Gemini text with tools on the phone in between.
+ * between the two to compare, a settings in the UI on the phone perhaps").
+ *
+ * - [CLOUD], the default since 2026-11-15 (Kevin: "replace the sts live pipeline with it"): the
+ *   cascade on Gemini's speech-to-text, Gemini text with tools on the phone, and Gemini TTS in the
+ *   companion's voice ([CloudSpeech]).
+ * - [LAPTOP]: the same cascade with speech on the home laptop's voice service; when the laptop
+ *   cannot be used it opens (or carries on) on [CLOUD].
+ * - [LIVE]: Gemini Live speech-to-speech. **Retired** ([VoiceEngineSettings.LIVE_RETIRED]): not
+ *   offered, not a fallback, and a stored LIVE reads as [CLOUD]. Its code stays in the tree so a
+ *   rollback is that one flag.
  */
-enum class VoiceEngine { LIVE, LAPTOP }
+enum class VoiceEngine { LIVE, LAPTOP, CLOUD }
 
 /**
  * How the phone reaches the laptop voice service (wire contract protocol 1,
@@ -95,8 +102,19 @@ object VoiceEngineSettings {
     private const val KEY_STATUS = "last_status"
     private const val KEY_STATUS_AT = "last_status_at"
 
-    /** Live stays the default (Kevin, 2026-11-10: the laptop pipeline is the one to compare). */
-    val DEFAULT_ENGINE = VoiceEngine.LIVE
+    /**
+     * Gemini Live is retired on the phone (Kevin, 2026-11-15: "replace the sts live pipeline with
+     * it"): no conversation, proactive line or Brief me opens it, and nothing falls back to it. The
+     * Live code is left in place, unreachable; flipping this (and [DEFAULT_ENGINE]) is the rollback.
+     */
+    const val LIVE_RETIRED = true
+
+    /** The cloud voice (Kevin, 2026-11-15); was Live until then. */
+    val DEFAULT_ENGINE = if (LIVE_RETIRED) VoiceEngine.CLOUD else VoiceEngine.LIVE
+
+    /** The engines Settings offers, in order. */
+    val OFFERED: List<VoiceEngine> =
+        if (LIVE_RETIRED) listOf(VoiceEngine.CLOUD, VoiceEngine.LAPTOP) else VoiceEngine.entries.toList()
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -170,22 +188,64 @@ object VoiceEngineSettings {
         return words to p.getLong(KEY_STATUS_AT, 0L)
     }
 
-    /** A log token from the open or a hand-over, as Kevin reads it in Settings. Pure. */
-    fun statusWords(token: String): String = when {
+    /**
+     * A log token from the open or a mid-conversation failure, as Kevin reads it in Settings (Kevin,
+     * 2026-11-15: he must see which path ran). A laptop fault goes to the cloud voice ([usedCloud]
+     * true, the default); [usedCloud] false says Live took it instead. Pure.
+     */
+    fun statusWords(token: String, usedCloud: Boolean = true): String {
+        if (token == "ok") return "connected"
+        // The cloud voice needs the phone's turn detection too: nothing can take this one over.
+        if (token == "turn_models_unavailable") return "${laptopWords(token)}, $NO_VOICE"
+        val dropped = laptopWords(token).startsWith("laptop dropped")
+        if (!usedCloud && LIVE_RETIRED) return "${laptopWords(token)}, $NO_VOICE"
+        val to = if (usedCloud) CLOUD_WORDS else "Live"
+        return laptopWords(token) + if (dropped) ", switched to $to" else ", used $to"
+    }
+
+    /** Where a conversation goes when no cascade voice can take it: nowhere since Live retired. */
+    private val NO_VOICE = if (LIVE_RETIRED) "voice not started" else "used Live"
+
+    /** Why the laptop was not used, without where the conversation went (Settings > Test connection). */
+    fun laptopWords(token: String): String = when {
         token == "ok" -> "connected"
         token == "not_configured" -> "not set up: add the laptop address and token"
         token == "unauthorized" -> "token rejected by the laptop"
-        token.startsWith("busy") -> "laptop busy, used Live"
+        token.startsWith("busy") -> "laptop busy"
         token.startsWith("protocol") -> "laptop service is a different version"
-        token == "turn_models_unavailable" -> "phone turn detection unavailable, used Live"
+        token == "turn_models_unavailable" -> "phone turn detection unavailable"
         token.endsWith("http_429") -> "laptop locked out after bad tokens, try again in 30 seconds"
         token.startsWith("unreachable") || token.startsWith("connect_") ->
-            "laptop not reachable (is Tailscale on, and the laptop awake?), used Live"
-        else -> "laptop dropped ($token), switched to Live"
+            "laptop not reachable (is Tailscale on, and the laptop awake?)"
+        else -> "laptop dropped ($token)"
     }
 
-    internal fun parseEngine(raw: String?): VoiceEngine =
-        VoiceEngine.entries.firstOrNull { it.name == raw } ?: DEFAULT_ENGINE
+    /**
+     * The cloud voice failed too, or could not start: Live took the conversation. [laptopToken] is
+     * why the laptop was not used (null when the failure was mid-conversation on the cloud voice).
+     */
+    fun cloudFailedWords(cloudToken: String, laptopToken: String? = null): String {
+        val cloud = if (cloudToken == "no_key") {
+            "$CLOUD_WORDS unavailable (no Gemini key)"
+        } else {
+            "$CLOUD_WORDS failed ($cloudToken)"
+        }
+        val end = if (LIVE_RETIRED) "conversation ended" else "switched to Live"
+        return if (laptopToken == null) "$cloud, $end" else "${laptopWords(laptopToken)}; $cloud, $NO_VOICE"
+    }
+
+    /** Something on the phone itself failed (mic, turn detection, a crash), whatever voice ran. */
+    fun phoneFailedWords(token: String): String =
+        "phone voice failed ($token), " + if (LIVE_RETIRED) "conversation ended" else "switched to Live"
+
+    /** How the cloud fallback is named wherever Kevin reads it. */
+    const val CLOUD_WORDS = "cloud voice"
+
+    /** A stored LIVE (every install from before 2026-11-15) reads as CLOUD while Live is retired. */
+    internal fun parseEngine(raw: String?): VoiceEngine {
+        val stored = VoiceEngine.entries.firstOrNull { it.name == raw } ?: DEFAULT_ENGINE
+        return if (stored == VoiceEngine.LIVE && LIVE_RETIRED) VoiceEngine.CLOUD else stored
+    }
 
     private fun header(name: String?, value: String): Pair<String, String>? =
         if (name.isNullOrBlank() || value.isBlank()) null else name to value

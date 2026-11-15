@@ -39,8 +39,9 @@ import java.util.Date
 
 /**
  * Settings > Assistant > "Voice engine" (Kevin, 2026-11-10: "i want to be able to switch between
- * the two to compare"). Gemini Live (default) or the laptop pipeline, the laptop's Tailscale
- * address and token, a connection test, and why the last laptop attempt fell back to Live.
+ * the two to compare"). Cloud (default since 2026-11-15, when it replaced Gemini Live) or the laptop
+ * pipeline, the laptop's Tailscale address and token, a connection test, and what the last
+ * conversation's voice did and why.
  *
  * The token is never shown back: the field starts empty and a blank save keeps the stored one.
  * Applies from the next conversation.
@@ -68,29 +69,23 @@ fun VoiceEngineRow() {
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                "Gemini Live, or the laptop pipeline: speech on your laptop, Gemini text with tools on " +
-                    "the phone. If the laptop cannot be reached the conversation uses Live. Applies from " +
-                    "the next conversation.",
+                "Cloud: Gemini hears you, Gemini with tools answers on the phone, and Gemini speaks " +
+                    "in your companion's voice. Laptop pipeline: the same, with speech on your laptop; " +
+                    "when the laptop cannot be used it runs on Cloud. Applies from the next conversation.",
                 style = LegionType.stamp,
                 color = sem.faint,
             )
             Spacer(Modifier.height(4.dp))
-            DeckRadio(
-                selected = engine == VoiceEngine.LIVE,
-                onClick = {
-                    VoiceEngineSettings.setEngine(context, VoiceEngine.LIVE)
-                    engine = VoiceEngine.LIVE
-                },
-                label = "Gemini Live",
-            )
-            DeckRadio(
-                selected = engine == VoiceEngine.LAPTOP,
-                onClick = {
-                    VoiceEngineSettings.setEngine(context, VoiceEngine.LAPTOP)
-                    engine = VoiceEngine.LAPTOP
-                },
-                label = "Laptop pipeline",
-            )
+            for (option in VoiceEngineSettings.OFFERED) {
+                DeckRadio(
+                    selected = engine == option,
+                    onClick = {
+                        VoiceEngineSettings.setEngine(context, option)
+                        engine = option
+                    },
+                    label = engineLabel(option),
+                )
+            }
             if (engine == VoiceEngine.LAPTOP) {
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
@@ -134,7 +129,7 @@ fun VoiceEngineRow() {
                                 if (r is LaptopProbe.Result.Ready) CascadeSession.clearRecentFailure()
                                 result = when (r) {
                                     is LaptopProbe.Result.Ready -> "Laptop ready (${r.ms} ms)"
-                                    else -> VoiceEngineSettings.statusWords(r.token).replace(", used Live", "")
+                                    else -> VoiceEngineSettings.laptopWords(r.token)
                                 }
                                 VoiceEngineSettings.noteStatus(context, result.orEmpty())
                                 last = VoiceEngineSettings.lastStatus(context)
@@ -144,15 +139,22 @@ fun VoiceEngineRow() {
                     )
                 }
                 result?.let { Text(it, style = LegionType.stamp, color = sem.faint) }
-                last?.let { (words, at) ->
-                    Text(
-                        "Last laptop attempt, ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(at))}: $words",
-                        style = LegionType.stamp,
-                        color = sem.faint,
-                    )
-                }
+            }
+            // Shown for either engine: a cloud voice that failed says so here too.
+            last?.let { (words, at) ->
+                Text(
+                    "Last voice status, ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(at))}: $words",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
             }
         }
     }
 }
 
+/** What Settings calls each engine. */
+internal fun engineLabel(engine: VoiceEngine): String = when (engine) {
+    VoiceEngine.CLOUD -> "Cloud"
+    VoiceEngine.LAPTOP -> "Laptop pipeline"
+    VoiceEngine.LIVE -> "Gemini Live"
+}
