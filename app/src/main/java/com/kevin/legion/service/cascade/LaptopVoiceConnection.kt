@@ -44,6 +44,7 @@ fun interface WireConnector {
  * and clip with a `dropped` failure at once, so the session above can hand the conversation to
  * Live instead of waiting out a timeout. [onDrop] fires once, with the reason.
  */
+@Suppress("LongParameterList") // the wire, its config and its fakes' seams (scope, ping, kept lines)
 class LaptopVoiceConnection(
     private val connector: WireConnector,
     private val config: LaptopVoiceConfig,
@@ -377,7 +378,8 @@ class LaptopVoiceConnection(
                     }
                     val tts = m.optJSONObject("tts")
                     // What the kept lines are keyed by: the service's voice model and voice.
-                    voiceKey = "${tts?.optString("model").orEmpty()}|${voice ?: tts?.optString("default_voice").orEmpty()}"
+                    val voiceName = voice ?: tts?.optString("default_voice").orEmpty()
+                    voiceKey = "${tts?.optString("model").orEmpty()}|$voiceName"
                     tts?.optInt("sample_rate", DEFAULT_TTS_RATE)?.takeIf { it > 0 }?.let { sampleRate = it }
                     val caps = m.optJSONObject("capabilities")
                     streamsText = tts?.optBoolean("text_streaming", false) == true ||

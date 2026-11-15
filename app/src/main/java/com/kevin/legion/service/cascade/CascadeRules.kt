@@ -268,7 +268,14 @@ internal object CascadeLines {
 
     /** The turn was confirmed with the draft's words: how far ahead it started and how far it got. */
     @Suppress("LongParameterList")
-    fun specKept(trigger: String, leadMs: Long, firstPartAheadMs: Long?, draftChars: Int, heldAtTool: Boolean, done: Boolean): String =
+    fun specKept(
+        trigger: String,
+        leadMs: Long,
+        firstPartAheadMs: Long?,
+        draftChars: Int,
+        heldAtTool: Boolean,
+        done: Boolean,
+    ): String =
         "spec_kept trigger=$trigger lead_ms=$leadMs first_part_ahead_ms=${firstPartAheadMs ?: -1} " +
             "draft_chars=$draftChars held_at_tool=$heldAtTool done=$done"
 

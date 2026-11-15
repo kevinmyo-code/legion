@@ -24,7 +24,12 @@ import java.time.LocalDate
  * (that stays with a conversation that listens, see [ContextCacheStore]).
  */
 internal object CascadePrep {
-    data class Prepared(val split: CascadePrompt.Split, val prefix: CascadePrefix, val builtAtMs: Long, val day: LocalDate)
+    data class Prepared(
+        val split: CascadePrompt.Split,
+        val prefix: CascadePrefix,
+        val builtAtMs: Long,
+        val day: LocalDate,
+    )
 
     /** A prepared prompt older than this is rebuilt before use (the base instruction's own TTL is 2 min). */
     const val FRESH_MS = 5 * 60_000L
@@ -66,7 +71,8 @@ internal object CascadePrep {
             val t = System.currentTimeMillis()
             runCatching {
                 val split = CascadePrompt.split(AriaBrain.get(ctx).buildBaseInstruction())
-                val prefix = CascadePrefix(CascadeSession.MODEL, split.cacheable, CascadeRules.declarations(LiveToolbox.declarations()))
+                val declarations = CascadeRules.declarations(LiveToolbox.declarations())
+                val prefix = CascadePrefix(CascadeSession.MODEL, split.cacheable, declarations)
                 val before = ready?.prefix?.key
                 Prepared(split, prefix, System.currentTimeMillis(), LocalDate.now()).also {
                     ready = it

@@ -84,6 +84,7 @@ internal object LaptopPrewarm {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Starts probing and connecting unless an attempt is already in hand. Never throws. */
+    @Suppress("ReturnCount") // already in hand, not set up, recently unreachable
     fun start(context: Context, reason: String) {
         val now = System.currentTimeMillis()
         if (pending?.let { now - it.startedAtMs < HOLD_MS } == true) return
@@ -117,7 +118,8 @@ internal object LaptopPrewarm {
             is LaptopProbe.Result.Unreachable -> probe.ms
             else -> -1L
         }
-        CascadeRules.openRefusal(config.isComplete, turnModelsReady = true, probe)?.let { return Opened.Refused(it, probeMs) }
+        val refusal = CascadeRules.openRefusal(config.isComplete, turnModelsReady = true, probe)
+        if (refusal != null) return Opened.Refused(refusal, probeMs)
         val c = LaptopVoiceConnection(
             connector = OkHttpWire(),
             config = config,
@@ -139,7 +141,8 @@ internal object LaptopPrewarm {
             release(a, "stale")
             return null
         }
-        LiveLatency.log(LiveLatency.TAG, "prewarm_taken age_ms=${System.currentTimeMillis() - a.startedAtMs} reason=${a.reason}")
+        val age = System.currentTimeMillis() - a.startedAtMs
+        LiveLatency.log(LiveLatency.TAG, "prewarm_taken age_ms=$age reason=${a.reason}")
         return a
     }
 
@@ -147,7 +150,8 @@ internal object LaptopPrewarm {
     fun cancel(reason: String) {
         val a = pending ?: return
         pending = null
-        LiveLatency.log(LiveLatency.TAG, "prewarm_cancel reason=$reason age_ms=${System.currentTimeMillis() - a.startedAtMs}")
+        val age = System.currentTimeMillis() - a.startedAtMs
+        LiveLatency.log(LiveLatency.TAG, "prewarm_cancel reason=$reason age_ms=$age")
         release(a, reason)
     }
 

@@ -184,6 +184,7 @@ internal class UsageLedger {
         } else {
             ""
         }
-        return "cascade_usage_summary engine=$engine turns=$turns$cache$spec" + if (buckets.isEmpty()) "" else " | $buckets"
+        val tail = if (buckets.isEmpty()) "" else " | $buckets"
+        return "cascade_usage_summary engine=$engine turns=$turns$cache$spec$tail"
     }
 }

@@ -1062,7 +1062,8 @@ internal class CascadeSession(
             if (record.fromUser && ScriptedLines.fillerDue(names, reply.anyText, record.fillerPlayed)) {
                 record.fillerPlayed = true
                 if (reply.filler(ScriptedLines.FILLERS.random())) {
-                    LiveLatency.log(LiveLatency.TAG, "filler tools=${names.filter { it in ScriptedLines.SLOW_TOOLS }.joinToString(",")}")
+                    val slow = names.filter { it in ScriptedLines.SLOW_TOOLS }.joinToString(",")
+                    LiveLatency.log(LiveLatency.TAG, "filler tools=$slow")
                 }
             }
         }
@@ -1476,6 +1477,7 @@ internal class CascadeSession(
     }
 
     /** The laptop says the turn may be over (or is, and is flushing): draft on its words. */
+    @Suppress("ReturnCount") // one exit per reason not to draft
     private fun onMaybeEnd(id: Int, text: String, atEnd: Boolean) {
         val u = currentUtt?.takeIf { it.id == id } ?: return
         val heard = (carry + " " + text).trim()
@@ -1503,6 +1505,7 @@ internal class CascadeSession(
         SpeculationRules.longEnough(heard) && !CrisisDetector.detect(heard) && !WakePhrases.isSleepPhrase(heard)
 
     /** The model is asked on [heard]; its text and tool calls are held ([SpeculativeAnswer]). */
+    @Suppress("ReturnCount")
     private fun startDraftAnswer(d: TurnDraft, heard: String) {
         val pfx = prefix ?: return
         val cache = cacheStore ?: return
@@ -1539,6 +1542,7 @@ internal class CascadeSession(
         }
     }
 
+    @Suppress("ReturnCount") // one exit per reason not to draft
     private fun startCloudDraft(u: TurnUtterance, speechAt: Long) {
         val gemini = (u.backend as? CloudSpeech)?.stt ?: return
         val audio = u.keptAudio() ?: return
@@ -1574,6 +1578,7 @@ internal class CascadeSession(
      * The turn is confirmed as [heard]: the draft's answer when it was made from the same words, the
      * same history and the same context; otherwise it is thrown away (and costed as such).
      */
+    @Suppress("ReturnCount") // nothing to take, dropped, or kept
     private fun takeDraft(u: TurnUtterance, heard: String): SpeculativeAnswer? {
         val d = draft ?: return null
         draft = null
@@ -1619,7 +1624,8 @@ internal class CascadeSession(
         draft = null
         d.drop()
         usageLedger.spec(discarded = 1)
-        LiveLatency.log(LiveLatency.TAG, CascadeLines.specDiscard(d.trigger, reason, System.currentTimeMillis() - d.startedAtMs))
+        val age = System.currentTimeMillis() - d.startedAtMs
+        LiveLatency.log(LiveLatency.TAG, CascadeLines.specDiscard(d.trigger, reason, age))
     }
 
     /** What the follow-up lines carry: the backend speaking now. */

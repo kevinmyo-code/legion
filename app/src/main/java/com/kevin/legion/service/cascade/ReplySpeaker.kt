@@ -68,7 +68,8 @@ internal class ReplySpeaker(
     private var anyFillerAudio = false
 
     /** Scripted fillers ([filler]): heard, never part of what the reply said. */
-    private val fillers = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<SpeechClip, Boolean>())
+    private val fillers: MutableSet<SpeechClip> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<SpeechClip, Boolean>())
     @Volatile var anyText = false
         private set
 
