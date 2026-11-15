@@ -1541,7 +1541,7 @@ internal class CascadeSession(
                 val last = lastLocalSpeechAtMs
                 val quiet = last > 0 && System.currentTimeMillis() - last >= SpeculationRules.CLOUD_SILENCE_MS
                 val drafting = draft?.utt === u
-                if (quiet && !drafting && draftRefusal() == null) startCloudDraft(u, last)
+                if (quiet && !drafting && u.cloudDraftBudgetLeft && draftRefusal() == null) startCloudDraft(u, last)
             }
         }
     }
@@ -1551,6 +1551,7 @@ internal class CascadeSession(
         val gemini = (u.backend as? CloudSpeech)?.stt ?: return
         val audio = u.keptAudio() ?: return
         if (audio.size < SpeculationRules.CLOUD_MIN_AUDIO_BYTES) return
+        if (!u.spendCloudDraft()) return
         discardDraft("superseded")
         val hold = UsageHold(::noteUsage)
         val d = TurnDraft(u, "silence", System.currentTimeMillis(), speechAtSnapshotMs = speechAt)

@@ -38,6 +38,12 @@ internal object SpeculationRules {
      */
     const val CLOUD_SILENCE_MS = 300L
 
+    /**
+     * Most cloud drafts one utterance may start. Each likely end of turn that he then talks past
+     * is a paid transcription and model call thrown away; past this the normal call still happens.
+     */
+    const val MAX_CLOUD_DRAFTS = 3
+
     /** How often the cloud silence check runs while he is speaking. */
     const val CLOUD_POLL_MS = 60L
 

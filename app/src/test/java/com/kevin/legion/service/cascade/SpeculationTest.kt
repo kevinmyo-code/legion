@@ -223,4 +223,31 @@ class SpeculationTest {
         assertFalse("a draft that answered is not marked failed", good.failed)
         good.discard()
     }
+
+    @Test
+    fun `an utterance gets a small fixed number of cloud drafts, then none`() {
+        val inner = object : SttUtterance {
+            override val id = 1
+            override fun audio(pcm: ByteArray, offset: Int, length: Int) {}
+            override fun end() {}
+            override fun cancel() {}
+            override suspend fun result(timeoutMs: Long): SttResult = SttResult.Failed("unused")
+        }
+        val backend = object : SpeechBackend {
+            override val kind = SpeechBackend.Kind.CLOUD
+            override val stt get() = error("unused")
+            override val tts get() = error("unused")
+            override val sttFinalTimeoutMs = 1L
+            override val ttsFirstAudioTimeoutMs = 1L
+            override fun close(reason: String) {}
+        }
+        val u = TurnUtterance(inner, backend, keepAudio = true)
+        repeat(SpeculationRules.MAX_CLOUD_DRAFTS) {
+            assertTrue(u.cloudDraftBudgetLeft)
+            assertTrue(u.spendCloudDraft())
+        }
+        assertFalse(u.cloudDraftBudgetLeft)
+        assertFalse(u.spendCloudDraft())
+        assertTrue("the next utterance has its own budget", TurnUtterance(inner, backend, keepAudio = true).spendCloudDraft())
+    }
 }
