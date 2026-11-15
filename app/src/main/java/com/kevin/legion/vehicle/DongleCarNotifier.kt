@@ -48,7 +48,11 @@ object DongleCarNotifier {
         val subject = decision.recordingId
         cars.take(2).forEach { (id, label) -> buttons += label to answerIntent(context, id, subject, false) }
         val canLookUp = decision.reason == DongleCar.HeldReason.UNKNOWN_VIN
-        buttons += if (canLookUp && cars.size <= 2) "New car" to newCarIntent(context, subject) else "Other" to openCars(context)
+        buttons += if (canLookUp && cars.size <= 2) {
+            "New car" to newCarIntent(context, subject)
+        } else {
+            "Other" to openCars(context)
+        }
         post(
             context,
             title = "Which car is the OBD dongle in?",

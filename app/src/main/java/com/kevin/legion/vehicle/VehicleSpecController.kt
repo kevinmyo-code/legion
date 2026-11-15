@@ -88,8 +88,7 @@ object VehicleSpecController {
     /** Reads the VIN off the OBD adapter and refreshes specs + identity from it. */
     suspend fun refreshFromObd(context: Context): VinRefreshResult {
         val vin = ObdBluetoothManager.takeIf { it.isConnected }?.getVin() ?: return VinRefreshResult.DecodeFailed
-        obdVinRefusal(context, vin)?.let { return VinRefreshResult.NotThisCar(it) }
-        return refreshFromVin(context, vin)
+        return obdVinRefusal(context, vin)?.let { VinRefreshResult.NotThisCar(it) } ?: refreshFromVin(context, vin)
     }
 
     /**
@@ -120,7 +119,8 @@ object VehicleSpecController {
         val onTarget = DongleCar.normalizeVin(cars.firstOrNull { it.carId == targetId }?.vin)
         return when {
             owner != null ->
-                "${DongleCar.vinTail(read)} is the ${labels[owner.carId] ?: "other car"}'s on file, not this car's. Nothing was saved."
+                "${DongleCar.vinTail(read)} is the ${labels[owner.carId] ?: "other car"}'s on file, " +
+                    "not this car's. Nothing was saved."
             onTarget.isNotEmpty() && onTarget != read ->
                 "This car already has ${DongleCar.vinTail(onTarget)} on file and the dongle read " +
                     "${DongleCar.vinTail(read)}. Nothing was saved; the dongle may be in another car."

@@ -2239,7 +2239,8 @@ object LiveToolbox {
             .put(
                 "note",
                 if (refusal == null) {
-                    "These are read-only. Read them back and ask the user to confirm, then call register_vehicle to save. The full specs were saved to the build-details encyclopedia."
+                    "These are read-only. Read them back and ask the user to confirm, then call " +
+                        "register_vehicle to save. The full specs were saved to the build-details encyclopedia."
                 } else {
                     "These are read-only. Nothing was saved: $refusal"
                 },

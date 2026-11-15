@@ -147,7 +147,7 @@ object DongleCarController {
 
     private suspend fun decideAndApply(context: Context, mac: String, vinResult: VinResponse.Result): DongleCar {
         val cars = carVins(context)
-        var decision = DongleCar.decide(mac, vinResult, cars, lastConfirmed(context, mac), ActiveVehicle.selected(context))
+        var decision = decideFor(context, mac, vinResult, cars)
         val now = System.currentTimeMillis()
         val p = prefs(context)
         val previousId = p.getString(KEY_SESSION_ID, null)
@@ -155,16 +155,12 @@ object DongleCarController {
         val continues = blip && previousId != null &&
             DongleCar.sessionKey(previousId) == DongleCar.sessionKey(decision.recordingId)
         // A Bluetooth blip after Kevin answered is the same answer, not a fresh assumption.
-        if (continues && p.getBoolean(KEY_SESSION_ANSWERED, false) && decision is OnCar && decision.basis == Basis.ASSUMED) {
-            decision = decision.copy(basis = Basis.ANSWER)
-        }
+        val answeredThisSession = continues && p.getBoolean(KEY_SESSION_ANSWERED, false)
+        if (answeredThisSession && decision.isAssumed()) decision = (decision as OnCar).copy(basis = Basis.ANSWER)
         // A blip inside one drive whose first connect read no VIN and whose reconnect reads one:
         // the drive's data so far goes where the VIN says.
-        val carry = if (blip && !continues && vinResult is VinResponse.Result.Vin && previousId != null) {
-            carryFrom(context, previousId)
-        } else {
-            null
-        }
+        val readVin = vinResult is VinResponse.Result.Vin
+        val carry = if (blip && !continues && readVin) previousId?.let { carryFrom(context, it) } else null
         sessionFrom = when {
             continues || carry != null -> p.getLong(KEY_SESSION_FROM, now)
             else -> now
@@ -204,7 +200,8 @@ object DongleCarController {
             // A VIN proves the car: nothing is assumed any more.
             edit.remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC)
         }
-        if (decision is OnCar && decision.basis == Basis.ASSUMED && (newSession || p.getString(KEY_HELD_CAR, null) == null)) {
+        val opensWindow = newSession || p.getString(KEY_HELD_CAR, null) == null
+        if (decision is OnCar && decision.basis == Basis.ASSUMED && opensWindow) {
             edit.putString(KEY_HELD_CAR, decision.carId).putLong(KEY_HELD_FROM, sessionFrom)
                 .putString(KEY_HELD_MAC, decision.mac)
         }
@@ -233,6 +230,7 @@ object DongleCarController {
      * (key on, engine off, the ECU not yet answering Mode 09) reads it once more; a VIN replaces the
      * assumption and carries this session's data to the car it names. Once per connection.
      */
+    @Suppress("ReturnCount") // guard clauses: nothing connected, already tried, a VIN already read
     suspend fun retryVinIfMissing(context: Context, readVin: suspend () -> VinResponse.Result) {
         val before = _state.value ?: return
         if (vinRetried) return
@@ -244,8 +242,7 @@ object DongleCarController {
         val decision = mutex.withLock {
             val current = _state.value
             if (current == null || current.recordingId != before.recordingId) return@withLock null
-            val cars = carVins(context)
-            val fresh = DongleCar.decide(current.mac, vinResult, cars, lastConfirmed(context, current.mac), ActiveVehicle.selected(context))
+            val fresh = decideFor(context, current.mac, vinResult, carVins(context))
             val carry = if (fresh.recordingId != current.recordingId) {
                 Carry(current.recordingId, (current as? OnCar)?.let { heldFrom(context, it.carId) ?: sessionFrom })
             } else {
@@ -323,7 +320,8 @@ object DongleCarController {
             HeldReason.UNKNOWN_VIN ->
                 "The OBD dongle read ${DongleCar.vinTail(decision.vin.orEmpty())}, which no car on file has. $held"
             HeldReason.SHARED_VIN ->
-                "The OBD dongle read ${DongleCar.vinTail(decision.vin.orEmpty())}, which is on file for more than one car. $held"
+                "The OBD dongle read ${DongleCar.vinTail(decision.vin.orEmpty())}, which is on file for more " +
+                    "than one car. $held"
             HeldReason.NO_VIN ->
                 "The OBD dongle could not read this car's VIN, and you have not said which car it is in before. $held"
         } + if (labels.isEmpty()) "" else " Cars on file: ${labels.values.joinToString(", ")}."
@@ -380,8 +378,12 @@ object DongleCarController {
      * car's id (both work after the dongle disconnects, which is when a tap usually comes).
      * [replaceVin] is his explicit yes to replacing a different VIN on file.
      */
-    suspend fun answer(context: Context, carId: String, subjectId: String? = null, replaceVin: Boolean = false): Outcome =
-        mutex.withLock { answerLocked(context, carId, subjectId, replaceVin) }
+    suspend fun answer(
+        context: Context,
+        carId: String,
+        subjectId: String? = null,
+        replaceVin: Boolean = false,
+    ): Outcome = mutex.withLock { answerLocked(context, carId, subjectId, replaceVin) }
 
     private fun resolveSubject(context: Context, subjectId: String?): DongleCar? {
         val live = _state.value
@@ -401,9 +403,14 @@ object DongleCarController {
     }
 
     @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one branch per plan
-    private suspend fun answerLocked(context: Context, carId: String, subjectId: String?, replaceVinArg: Boolean): Outcome {
+    private suspend fun answerLocked(
+        context: Context,
+        carId: String,
+        subjectId: String?,
+        replaceVinArg: Boolean,
+    ): Outcome {
         val subject = resolveSubject(context, subjectId)
-            ?: return Outcome(false, "Nothing is waiting for a car: the dongle isn't connected and no readings are held.")
+            ?: return Outcome(false, NOTHING_WAITING)
         val live = _state.value
         val isLive = live != null && subject.recordingId == live.recordingId
         val window = heldWindow(context)
@@ -435,12 +442,15 @@ object DongleCarController {
                 }
                 val message = "The $name already has ${DongleCar.vinTail(plan.onFile)} on file, and this car " +
                     "reads ${DongleCar.vinTail(plan.read)}. Nothing changed. If the $name's VIN on file is " +
-                    "wrong, tap Replace (Cars, OBD dongle), or say it is the $name again in a moment, and I'll replace it."
+                    "wrong, tap Replace (Cars, OBD dongle), or say it is the $name again in a moment, and " +
+                    "I'll replace it."
                 _conflict.value = Conflict(subject.recordingId, carId, message)
                 Outcome(false, message)
             }
             is AnswerPlan.Keep -> {
-                if (isLive && plan.settles) _state.value = OnCar(subject.mac, carId, (subject as? OnCar)?.vin, Basis.ANSWER)
+                if (isLive && plan.settles) {
+                    _state.value = OnCar(subject.mac, carId, (subject as? OnCar)?.vin, Basis.ANSWER)
+                }
                 if (isLive || settlesWindow) {
                     rememberCar(context, subject.mac, carId)
                     prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC)
@@ -456,11 +466,13 @@ object DongleCarController {
                     // nothing lands under the old id after the move below.
                     val vin = (subject as? Held)?.vin ?: (subject as? OnCar)?.vin
                     _state.value = OnCar(subject.mac, carId, vin, Basis.ANSWER)
-                    prefs(context).edit().putString(KEY_SESSION_ID, carId).putBoolean(KEY_SESSION_ANSWERED, true).apply()
+                    prefs(context).edit().putString(KEY_SESSION_ID, carId)
+                        .putBoolean(KEY_SESSION_ANSWERED, true).apply()
                 }
                 plan.writeVin?.let { FleetEngineStore.setVin(context, carId, it) }
                 plan.clearVinFrom.forEach { FleetEngineStore.setVin(context, it, "") }
-                val fromMs = if (plan.asCorrection) (if (settlesWindow) window?.second else null) ?: sessionFrom else null
+                val windowStart = if (settlesWindow) window?.second else null
+                val fromMs = if (plan.asCorrection) windowStart ?: sessionFrom else null
                 val moved = moveData(context, plan.fromId, carId, fromMs, System.currentTimeMillis())
                 rememberCar(context, subject.mac, carId)
                 if (isLive || settlesWindow) {
@@ -484,7 +496,13 @@ object DongleCarController {
      * [fromMs] (a car's window). A correction rule is recorded only between two cars; a pending id
      * never left the phone.
      */
-    private suspend fun moveData(context: Context, fromId: String, toId: String, fromMs: Long?, toMs: Long): FleetEngineStore.Reattributed {
+    private suspend fun moveData(
+        context: Context,
+        fromId: String,
+        toId: String,
+        fromMs: Long?,
+        toMs: Long,
+    ): FleetEngineStore.Reattributed {
         val windowed = fromMs != null
         val moved = FleetEngineStore.reattributeObdData(
             context,
@@ -501,13 +519,13 @@ object DongleCarController {
 
     private fun movedWords(name: String, moved: FleetEngineStore.Reattributed, plan: AnswerPlan.Move): String {
         val parts = buildList {
-            add("${moved.samples} reading${if (moved.samples == 1) "" else "s"}")
-            if (moved.drives > 0) add("${moved.drives} drive${if (moved.drives == 1) "" else "s"}")
-            if (moved.codeEvents > 0) add("${moved.codeEvents} trouble-code record${if (moved.codeEvents == 1) "" else "s"}")
+            add(count(moved.samples, "reading"))
+            if (moved.drives > 0) add(count(moved.drives, "drive"))
+            if (moved.codeEvents > 0) add(count(moved.codeEvents, "trouble-code record"))
         }
         val vin = plan.writeVin?.let { " Saved its ${DongleCar.vinTail(it)} so I'll know it next time." }.orEmpty()
         val cleared = if (plan.clearVinFrom.isNotEmpty()) {
-            " Cleared that VIN from ${plan.clearVinFrom.size} other car${if (plan.clearVinFrom.size == 1) "" else "s"} that had it."
+            " Cleared that VIN from ${count(plan.clearVinFrom.size, "other car")} that had it."
         } else {
             ""
         }
@@ -519,6 +537,7 @@ object DongleCarController {
      * VIN, or when the lookup fails, says what to do instead and changes nothing. A decode that
      * names a car already on file is not added twice: it asks whether it is that one.
      */
+    @Suppress("ReturnCount") // guard clauses: no VIN, no lookup, already on file
     suspend fun answerNewCar(context: Context, subjectId: String? = null): Outcome {
         val held = mutex.withLock { resolveSubject(context, subjectId) } as? Held
         val vin = held?.vin
@@ -530,7 +549,7 @@ object DongleCarController {
             )
         }
         val decoded = VinDecoder.decode(vin)
-        if (decoded == null || decoded.year < MIN_YEAR || decoded.make.isBlank() || decoded.model.isBlank()) {
+        if (decoded == null || !usable(decoded)) {
             return Outcome(
                 false,
                 "I couldn't look up ${DongleCar.vinTail(vin)}. Add the car with its year, make and model, " +
@@ -623,6 +642,22 @@ object DongleCarController {
         FleetEngineStore.getAll(context).associate { it.obdMac to VehicleController.label(it) }
 
     private const val MIN_YEAR = 1900
+    private const val NOTHING_WAITING =
+        "Nothing is waiting for a car: the dongle isn't connected and no readings are held."
+
+    private suspend fun decideFor(
+        context: Context,
+        mac: String,
+        vinResult: VinResponse.Result,
+        cars: List<DongleCar.CarVin>,
+    ): DongleCar = DongleCar.decide(mac, vinResult, cars, lastConfirmed(context, mac), ActiveVehicle.selected(context))
+
+    private fun DongleCar.isAssumed(): Boolean = this is OnCar && basis == Basis.ASSUMED
+
+    private fun usable(decoded: VinDecoder.DecodedVin): Boolean =
+        decoded.year >= MIN_YEAR && decoded.make.isNotBlank() && decoded.model.isNotBlank()
+
+    private fun count(n: Int, noun: String): String = "$n $noun${if (n == 1) "" else "s"}"
 
     /** Test seam: forget this process's state. */
     internal fun resetForTest() {

@@ -18,20 +18,20 @@ class DongleCarResolutionTest {
 
     @Test
     fun `a decided car is the active car, even over a pick`() {
-        assertEquals("car:truck", ActiveVehicle.current("car:suv", mac, onTruckByVin))
+        assertEquals("car:truck", DongleCar.activeCarId("car:suv", mac, onTruckByVin))
     }
 
     @Test
     fun `a held connection is never the active car - the pick or the default is`() {
-        assertEquals("car:suv", ActiveVehicle.current("car:suv", mac, heldUnknown))
-        assertEquals(VehicleController.DEFAULT_VEHICLE_ID, ActiveVehicle.current(null, mac, heldUnknown))
+        assertEquals("car:suv", DongleCar.activeCarId("car:suv", mac, heldUnknown))
+        assertEquals(VehicleController.DEFAULT_VEHICLE_ID, DongleCar.activeCarId(null, mac, heldUnknown))
     }
 
     @Test
     fun `undecided or unplugged keeps the old rule`() {
-        assertEquals("car:suv", ActiveVehicle.current("car:suv", mac, null))
-        assertEquals(mac, ActiveVehicle.current(null, mac, null))
-        assertEquals(VehicleController.DEFAULT_VEHICLE_ID, ActiveVehicle.current(null, null, null))
+        assertEquals("car:suv", DongleCar.activeCarId("car:suv", mac, null))
+        assertEquals(mac, DongleCar.activeCarId(null, mac, null))
+        assertEquals(VehicleController.DEFAULT_VEHICLE_ID, DongleCar.activeCarId(null, null, null))
     }
 
     @Test

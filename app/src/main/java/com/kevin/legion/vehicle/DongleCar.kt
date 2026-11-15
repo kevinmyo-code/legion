@@ -129,6 +129,20 @@ sealed interface DongleCar {
         /** The VIN a pending id was keyed by, or null for a dongle-keyed one. */
         fun vinOfPending(id: String): String? = id.takeIf { it.startsWith(VIN_PREFIX) }?.removePrefix(VIN_PREFIX)
 
+        /**
+         * The pure half of [ActiveVehicle.current] (OBD VIN attribution, 2026-11-15). A connection
+         * whose car is decided wins: the VIN is a fact read from the car, so it beats a stale hand
+         * pick. A connection whose car is NOT known (held under a `pending:` id) is never "the
+         * active car": questions go to the pick, else the default, and nothing is written onto a
+         * guessed car. Undecided or unplugged keeps the old rule (pick, else the dongle's address).
+         */
+        fun activeCarId(selectedId: String?, connectedAddress: String?, dongleCar: DongleCar?): String =
+            when (dongleCar) {
+                is OnCar -> dongleCar.carId
+                is Held -> selectedId ?: VehicleController.DEFAULT_VEHICLE_ID
+                null -> selectedId ?: connectedAddress ?: VehicleController.DEFAULT_VEHICLE_ID
+            }
+
         /** VINs compare upper case and trimmed; "" means none on file. */
         fun normalizeVin(vin: String?): String = vin?.trim()?.uppercase().orEmpty()
 
@@ -170,7 +184,7 @@ sealed interface DongleCar {
          * live connection's state or a leftover pending id (a connection he never answered for).
          * [replaceVin] is his explicit "yes, replace the VIN on file".
          */
-        @Suppress("ReturnCount", "CyclomaticComplexMethod") // one plan per case, in order
+        @Suppress("ReturnCount") // one plan per case, in order
         fun planAnswer(
             subject: DongleCar,
             chosenCarId: String,
@@ -178,45 +192,34 @@ sealed interface DongleCar {
             replaceVin: Boolean,
         ): AnswerPlan {
             val chosen = cars.firstOrNull { it.carId == chosenCarId } ?: return AnswerPlan.NotOnFile(chosenCarId)
-            val chosenVin = normalizeVin(chosen.vin)
-            when (subject) {
-                is OnCar -> {
-                    if (subject.carId == chosenCarId) {
-                        return AnswerPlan.Keep(chosenCarId, settles = subject.basis == Basis.ASSUMED)
-                    }
-                    // The VIN on file says another car. Only his explicit "replace" moves it (the VIN
-                    // on file may sit on the wrong car: a 2026-08 Jeep row held an Outlander's VIN).
-                    if (subject.basis == Basis.VIN && !replaceVin) return AnswerPlan.VinSaysOtherCar(subject.carId)
-                    // ASSUMED, an earlier ANSWER this connection, or a replaced VIN: a correction.
-                    val vin = subject.vin
-                    if (vin != null && chosenVin.isNotEmpty() && chosenVin != vin && !replaceVin) {
-                        return AnswerPlan.VinConflict(chosenCarId, chosenVin, vin)
-                    }
-                    return AnswerPlan.Move(
-                        fromId = subject.carId,
-                        toCarId = chosenCarId,
-                        asCorrection = true,
-                        writeVin = vin?.takeIf { it != chosenVin },
-                        clearVinFrom = vin?.let { v -> cars.filter { it.carId != chosenCarId && normalizeVin(it.vin) == v }.map { it.carId } }
-                            .orEmpty(),
-                    )
-                }
-                is Held -> {
-                    val vin = subject.vin
-                    if (vin != null && chosenVin.isNotEmpty() && chosenVin != vin && !replaceVin) {
-                        return AnswerPlan.VinConflict(chosenCarId, chosenVin, vin)
-                    }
-                    return AnswerPlan.Move(
-                        fromId = subject.recordingId,
-                        toCarId = chosenCarId,
-                        asCorrection = false,
-                        writeVin = vin?.takeIf { it != chosenVin },
-                        clearVinFrom = vin?.let { v -> cars.filter { it.carId != chosenCarId && normalizeVin(it.vin) == v }.map { it.carId } }
-                            .orEmpty(),
-                    )
-                }
+            if (subject is OnCar && subject.carId == chosenCarId) {
+                return AnswerPlan.Keep(chosenCarId, settles = subject.basis == Basis.ASSUMED)
             }
+            // The VIN on file says another car. Only his explicit "replace" moves it (the VIN on
+            // file may sit on the wrong car: a 2026-08 Jeep row held an Outlander's VIN).
+            if (subject is OnCar && subject.basis == Basis.VIN && !replaceVin) {
+                return AnswerPlan.VinSaysOtherCar(subject.carId)
+            }
+            val vin = when (subject) {
+                is OnCar -> subject.vin
+                is Held -> subject.vin
+            }
+            val chosenVin = normalizeVin(chosen.vin)
+            val differentVinOnFile = vin != null && chosenVin.isNotEmpty() && chosenVin != vin
+            if (differentVinOnFile && !replaceVin) return AnswerPlan.VinConflict(chosenCarId, chosenVin, vin.orEmpty())
+            // A held connection's data never left the phone; a car's (ASSUMED, an earlier ANSWER, a
+            // replaced VIN) is a correction.
+            return AnswerPlan.Move(
+                fromId = subject.recordingId,
+                toCarId = chosenCarId,
+                asCorrection = subject is OnCar,
+                writeVin = vin?.takeIf { it != chosenVin },
+                clearVinFrom = vin?.let { v -> otherOwners(cars, chosenCarId, v) }.orEmpty(),
+            )
         }
+
+        private fun otherOwners(cars: List<CarVin>, chosenCarId: String, vin: String): List<String> =
+            cars.filter { it.carId != chosenCarId && normalizeVin(it.vin) == vin }.map { it.carId }
 
         /** "VIN ending 8H9" - enough to tell cars apart in words without reading out all 17. */
         fun vinTail(vin: String): String = "VIN ending ${vin.takeLast(VIN_TAIL)}"

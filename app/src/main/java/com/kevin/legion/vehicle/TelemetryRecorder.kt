@@ -279,7 +279,8 @@ object TelemetryRecorder {
             delay(TICK_MS)
             // tickGuardFor's own doc explains why isBusy always wins and touches no drive state -
             // the split this ticket needed (see the class doc's link-loss defect).
-            when (tickGuardFor(ConversationState.isBusy, ObdBluetoothManager.isConnected, DongleCarController.state.value != null)) {
+            val carDecided = DongleCarController.state.value != null
+            when (tickGuardFor(ConversationState.isBusy, ObdBluetoothManager.isConnected, carDecided)) {
                 TickGuard.SKIP_BUSY, TickGuard.SKIP_UNATTRIBUTED -> continue
                 TickGuard.SKIP_LINK_LOST -> {
                     if (engineWasOn) {

@@ -1260,11 +1260,15 @@ object FleetEngineStore {
      * a pending id moves with it.
      */
     suspend fun reattributeObdData(context: Context, move: ObdDataMove): Reattributed {
-        val (fromId, toId, fromMs, toMs, windowed, rule) = move
+        val fromId = move.fromId
+        val toId = move.toId
+        val fromMs = move.fromMs
+        val toMs = move.toMs
+        val windowed = move.windowed
         if (fromId == toId) return Reattributed(0, 0, 0)
         val db = CarDatabase.getDatabase(context)
         val samples = when {
-            windowed && rule -> {
+            windowed && move.rule -> {
                 val n = db.odbSampleDao().countInRange(fromId, fromMs, toMs)
                 recordDriveReassignment(context, fromId, toId, fromMs, toMs)
                 n

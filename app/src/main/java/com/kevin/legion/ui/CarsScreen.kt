@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -141,7 +142,7 @@ fun CarsScreen(onBack: () -> Unit) {
         // return the driver's own selection and make the auto row describe
         // itself.
         // 2026-11-15: the car the dongle's VIN (or Kevin's answer) named, when there is one.
-        val autoId = ActiveVehicle.current(null, ObdBluetoothManager.connectedDeviceAddress, dongleCar)
+        val autoId = DongleCar.activeCarId(null, ObdBluetoothManager.connectedDeviceAddress, dongleCar)
 
         state = CarsUiState(
             loading = false,
@@ -315,26 +316,7 @@ fun CarsContent(
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
-                if (state.dongleQuestions.isNotEmpty() || state.dongleMessage != null) {
-                    item(key = "dongle-header") { SectionHeader("OBD dongle", "Which car") }
-                }
-                state.dongleMessage?.let { message ->
-                    item(key = "dongle-message") {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                            Text(message, style = MaterialTheme.typography.bodyMedium)
-                            state.replaceOffer?.let { (subject, car) ->
-                                TextButton(onClick = { onDongleReplace(subject, car) }) {
-                                    Text("Replace the VIN on file", style = MaterialTheme.typography.labelLarge)
-                                }
-                            }
-                        }
-                        Hairline()
-                    }
-                }
-                items(state.dongleQuestions, key = { "dongle-q-${it.subjectId ?: "live"}" }) { q ->
-                    DongleQuestionCard(q, onDongleAnswer, onDongleNewCar)
-                    Hairline()
-                }
+                dongleItems(state, onDongleAnswer, onDongleNewCar, onDongleReplace)
                 item(key = "auto-header") { SectionHeader("Selection", if (state.isAuto) "Auto" else "Pinned") }
                 item(key = "auto-row") {
                     AutoCarRow(isAuto = state.isAuto, resolvesTo = state.autoResolvesTo, onSelect = onFollowAdapter)
@@ -377,6 +359,34 @@ fun CarsContent(
     }
 }
 
+/** The OBD dongle section: what the last answer did (with Replace when one is owed), then each open question. */
+private fun LazyListScope.dongleItems(
+    state: CarsUiState,
+    onAnswer: (subjectId: String?, carId: String) -> Unit,
+    onNewCar: (subjectId: String?) -> Unit,
+    onReplace: (subjectId: String, carId: String) -> Unit,
+) {
+    if (state.dongleQuestions.isEmpty() && state.dongleMessage == null) return
+    item(key = "dongle-header") { SectionHeader("OBD dongle", "Which car") }
+    state.dongleMessage?.let { message ->
+        item(key = "dongle-message") {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(message, style = MaterialTheme.typography.bodyMedium)
+                state.replaceOffer?.let { (subject, car) ->
+                    TextButton(onClick = { onReplace(subject, car) }) {
+                        Text("Replace the VIN on file", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+            Hairline()
+        }
+    }
+    items(state.dongleQuestions, key = { "dongle-q-${it.subjectId ?: "live"}" }) { q ->
+        DongleQuestionCard(q, onAnswer, onNewCar)
+        Hairline()
+    }
+}
+
 /** One "which car" question: the sentence, a button per car, and "A new car" when a VIN can be looked up. */
 @Composable
 private fun DongleQuestionCard(
@@ -414,7 +424,8 @@ private suspend fun dongleQuestions(context: android.content.Context, live: Dong
     val cars = labels.entries.map { it.key to it.value }
     val out = mutableListOf<DongleQuestion>()
     when (live) {
-        is DongleCar.Held -> out += DongleQuestion(null, DongleCarController.question(live, labels), live.vin != null, cars)
+        is DongleCar.Held ->
+            out += DongleQuestion(null, DongleCarController.question(live, labels), live.vin != null, cars)
         is DongleCar.OnCar -> {
             val name = labels[live.carId] ?: "car on file"
             when (live.basis) {
@@ -437,7 +448,8 @@ private suspend fun dongleQuestions(context: android.content.Context, live: Dong
             // Parked, assumed car not yet confirmed: still answerable by hand.
             out += DongleQuestion(
                 car,
-                "The last drive was recorded as the ${labels[car] ?: "car you last confirmed"} (assumed, no VIN). Which car was it?",
+                "The last drive was recorded as the ${labels[car] ?: "car you last confirmed"} " +
+                    "(assumed, no VIN). Which car was it?",
                 canLookUpNewCar = false,
                 cars = cars,
             )

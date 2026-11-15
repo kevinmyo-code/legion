@@ -780,7 +780,11 @@ object ObdBluetoothManager {
     }
 
     /** Writes the live supported-PID scan against [vehicleId]; a no-op on an empty scan. */
-    suspend fun persistCapabilitiesFor(context: Context, vehicleId: String, supported: Set<Int> = _supportedPids.value) {
+    suspend fun persistCapabilitiesFor(
+        context: Context,
+        vehicleId: String,
+        supported: Set<Int> = _supportedPids.value,
+    ) {
         if (supported.isEmpty()) return
         runCatching {
             CarDatabase.getDatabase(context).vehicleCapabilityDao()

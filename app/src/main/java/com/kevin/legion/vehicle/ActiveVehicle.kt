@@ -84,9 +84,6 @@ object ActiveVehicle {
     fun recordingId(context: Context): String =
         DongleCarController.state.value?.recordingId ?: current(context)
 
-    /** True for an id that holds data waiting for "which car" ([DongleCar.isPending]). */
-    fun isPending(vehicleId: String?): Boolean = DongleCar.isPending(vehicleId)
-
     /** Sets the active car, or null to go back to auto (dongle-derived). */
     fun select(context: Context, vehicleId: String?) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -103,21 +100,11 @@ object ActiveVehicle {
      * [newVehicleId] for why that is safe).
      */
     fun current(context: Context): String =
-        current(selected(context), ObdBluetoothManager.connectedDeviceAddress, DongleCarController.state.value)
-
-    /**
-     * Pure half of [current] (OBD VIN attribution, 2026-11-15). A connection whose car is decided
-     * wins: the VIN is a fact read from the car, so it beats a stale hand pick for live data. A
-     * connection whose car is NOT known (held under a `pending:` id) is never "the active car":
-     * questions go to the pick, else the default, and nothing is written onto a guessed car.
-     * Undecided or unplugged keeps the old rule.
-     */
-    internal fun current(selectedId: String?, connectedAddress: String?, dongleCar: DongleCar?): String =
-        when (dongleCar) {
-            is DongleCar.OnCar -> dongleCar.carId
-            is DongleCar.Held -> selectedId ?: VehicleController.DEFAULT_VEHICLE_ID
-            null -> selectedId ?: connectedAddress ?: VehicleController.DEFAULT_VEHICLE_ID
-        }
+        DongleCar.activeCarId(
+            selected(context),
+            ObdBluetoothManager.connectedDeviceAddress,
+            DongleCarController.state.value,
+        )
 
     /**
      * Mints an id for a car the driver added by hand rather than by plugging in a

@@ -214,7 +214,9 @@ object ObdSampleReconcile {
             var heldVehicle: String? = null
 
             for (sample in batch) {
-                if (com.kevin.legion.vehicle.DongleCarController.uploadHeld(sample.vehicleId, sample.timestamp, heldWindow)) {
+                val held = com.kevin.legion.vehicle.DongleCarController
+                    .uploadHeld(sample.vehicleId, sample.timestamp, heldWindow)
+                if (held) {
                     heldVehicle = sample.vehicleId
                     break
                 }
