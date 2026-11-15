@@ -155,6 +155,7 @@ object MemoryToolbox {
                         },
                     )
                 if (read.fromCache) out.put("note", MemoryWording.cachedNote(read))
+                com.kevin.legion.assistant.cards.DomainToolCards.memories(read.memories.take(LIST_SPOKEN), total, read.fromCache)
                 out
             }
             else -> result(false, MemoryWording.readFailed(outcome))

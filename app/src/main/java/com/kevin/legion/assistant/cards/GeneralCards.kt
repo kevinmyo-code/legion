@@ -20,6 +20,8 @@ object GeneralCards {
     fun readings(c: JSONObject): ConversationCard.Readings? {
         val items = c.list("items").map { i ->
             val unit = i.getString("unit")
+            val text = i.text("text")
+            require(text == null || i.isNull("value")) { "a reading is a number or words, not both" }
             Reading(
                 label = i.getString("label"),
                 value = i.number("value", unit),
@@ -27,6 +29,7 @@ object GeneralCards {
                 flag = flag(i),
                 was = i.number("was", unit),
                 note = i.text("note"),
+                text = text,
             )
         }
         return ConversationCard.Readings(
@@ -88,6 +91,7 @@ object GeneralCards {
             JSONObject().put("label", r.label).put("value", r.value ?: JSONObject.NULL).put("unit", r.unit).apply {
                 r.flag?.let { put("flag", it.wire) }
                 r.was?.let { put("was", it) }
+                r.text?.let { put("text", it) }
                 r.note?.let { put("note", it) }
             }
         }))

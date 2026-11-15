@@ -52,8 +52,10 @@ from assistant.session import token_request_for
 from assistant.surface import recruiter_only_tool, refusal_for
 from demo import budget as demo_budget
 from devicelogs import web_conversation
+from engine_mcp import cards
 from engine_mcp.models import Outcome
 from engine_mcp.tools import run_engine_tool, run_tool
+from household.models import is_recruiter
 from household.permissions import IsHouseholdMember
 from household.tenancy import household_of
 from ingest.statements import gemini_key
@@ -494,9 +496,11 @@ class AssistantToolView(_AssistantView):
             "text": result.text,
             "response": _forward(not result.is_error, result.text),
         }
-        # Beside `response`, never inside it: the card is for the screen, not the model.
-        if result.card is not None:
-            payload["card"] = result.card
+        # Beside `response`, never inside it: the card is for the screen, not the model. A
+        # recruiter gets only the kinds /try always had (`cards.for_viewer`).
+        card = cards.for_viewer(result.card, is_recruiter(request.user))
+        if card is not None:
+            payload["card"] = card
         return Response(
             payload,
             headers={"Cache-Control": "no-store"},

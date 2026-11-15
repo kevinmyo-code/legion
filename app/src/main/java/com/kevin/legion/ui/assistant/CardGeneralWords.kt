@@ -41,7 +41,7 @@ internal object CardGeneralWords {
 
     /** "not read", or the value, its earlier value, and its flag: "32 g (estimate)". */
     fun reading(r: Reading): String {
-        val value = r.value ?: return "not read"
+        val value = r.value ?: return r.text ?: "not read"
         val was = r.was?.let { " (was ${withUnit(it, r.unit)})" } ?: ""
         val flag = r.flag?.let { " (${it.words})" } ?: ""
         return withUnit(value, r.unit) + was + flag

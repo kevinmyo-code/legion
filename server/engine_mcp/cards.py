@@ -28,10 +28,11 @@ single words, so the engine's snake_case and the phone's camelCase spell them th
 
 - readings: labelled values with units, for a snapshot of measurements. `at` (optional, the "as
   of" time, "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" on the household's clock), `items: [{label,
-  value, unit, flag?, was?, note?}]` at most 12, `more`. `value` is a number, or null when it
-  could not be read (said "not read", never drawn as zero); `unit` "usd" means integer cents,
-  "" a bare number, "%" sits on the number, anything else follows it after a space. `was` is an
-  earlier value of the same reading (a before and after). `flag` as on bars.
+  value, unit, flag?, was?, text?, note?}]` at most 12, `more`. `value` is a number, or null when
+  it could not be read (said "not read", never drawn as zero); `text` is a value that is words,
+  not a number (a VIN, "Closed loop", "No total shown"), with `value` null; `unit` "usd" means
+  integer cents, "" a bare number, "%" sits on the number, anything else follows it after a
+  space. `was` is an earlier value of the same reading (a before and after). `flag` as on bars.
 - status_list: `at` (optional), `items: [{name, status, note?}]` at most 12, `more`. `status`
   is one of ok, attention, failed, unknown, not_reached, always drawn in WORDS ("OK", "Needs
   attention", "Failed", "Unknown", "Not reached"), never by colour or a glyph alone.
@@ -138,6 +139,9 @@ def _reading_ok(item) -> bool:
         return False
     if item.get("flag") is not None and item["flag"] not in FLAGS:
         return False
+    text = item.get("text")
+    if text is not None and (not isinstance(text, str) or item.get("value") is not None):
+        return False
     return item.get("note") is None or isinstance(item["note"], str)
 
 
@@ -204,6 +208,19 @@ def check(card: dict) -> bool:
 
 GENERAL_KINDS = ("readings", "status_list", "trend")
 
+# The kinds a recruiter's visit was shown before the general kinds existed (ADR 0068: a
+# recruiter's surface only ever narrows). A card of any other kind is dropped for a recruiter
+# at the tool door (`assistant/views.py`), whatever tool made it, so wiring a general card to
+# a tool on `RECRUITER_TOOLS` never widens what /try shows.
+RECRUITER_KINDS = frozenset({"bars", "timeline", "car", "steps", "checklist", "diagram", "resume"})
+
+
+def for_viewer(card: dict | None, recruiter: bool) -> dict | None:
+    """`card`, or None when the viewer is a recruiter and the kind is not one /try had."""
+    if card is None or not recruiter:
+        return card
+    return card if card.get("card") in RECRUITER_KINDS else None
+
 
 def _common(kind: str, title: str, scope, period, note) -> dict:
     card = {"card": kind, "title": title}
@@ -213,9 +230,12 @@ def _common(kind: str, title: str, scope, period, note) -> dict:
     return card
 
 
-def reading(label: str, value, unit: str, *, flag=None, was=None, note=None) -> dict:
-    """One readings item. `value` None means it could not be read; money is integer cents."""
+def reading(label: str, value, unit: str, *, flag=None, was=None, note=None, text=None) -> dict:
+    """One readings item. `value` None means it could not be read, unless `text` says the value
+    in words; money is integer cents."""
     item = {"label": label, "value": value, "unit": unit}
+    if text:
+        item["text"] = text
     if flag:
         item["flag"] = flag
     if was is not None:
@@ -462,9 +482,11 @@ def events_timeline(
     shown = found[:TIMELINE_MAX]
     for item in shown:
         del item["_sort"]
+    # Coursework and to-dos alone (a "what is due this week" read) say so in the title.
+    due_only = bool(shown) and all(i["kind"] == "todo" for i in shown)
     card = {
         "card": "timeline",
-        "title": "What's on",
+        "title": "Due" if due_only else "What's on",
         "date": day.isoformat(),
         "zone": zone_words(range_start.utcoffset()),
         "items": shown,
@@ -708,3 +730,252 @@ def steps_card(procedure: str, done: list[dict], not_run: list[str], status: str
     if status in words:
         card["note"] = words[status]
     return card
+
+
+# =============================================================================
+# School: canvas_grades (readings)
+# =============================================================================
+
+
+def local_at(moment, zone) -> str | None:
+    """"YYYY-MM-DDTHH:MM" on the household's clock, for a card's `at`; None for no time."""
+    if moment is None:
+        return None
+    if isinstance(moment, str):
+        from django.utils.dateparse import parse_datetime
+
+        moment = parse_datetime(moment)
+        if moment is None:
+            return None
+    return moment.astimezone(zone).strftime("%Y-%m-%dT%H:%M")
+
+
+def _grade_note(course: dict) -> str | None:
+    """The letter Canvas gives beside the percent, or why no percent is shown."""
+    if course.get("canvas_current_score") is None:
+        return None
+    letter = course.get("canvas_current_grade")
+    return f"Canvas says {letter}." if letter else None
+
+
+def _assignment_reading(a: dict) -> dict:
+    if a.get("excused"):
+        return reading(a["name"], None, "", text="Excused")
+    if a.get("missing"):
+        return reading(a["name"], None, "", text="Missing")
+    if a.get("score") is None:
+        return reading(a["name"], None, "", text="Not graded")
+    possible = a.get("points_possible")
+    unit = f"of {possible:g}" if possible is not None else "points"
+    return reading(a["name"], a["score"], unit, note="Late." if a.get("late") else None)
+
+
+def grades_card(results: list[dict], zone) -> dict | None:
+    """`canvas_grades`: Canvas's current percent per course, as Canvas states it, and for one
+    course asked by name its assignments' scores. A course whose total Canvas hides says so in
+    words, never a figure; nothing here is worked out (that is `what_i_need`'s, an estimate)."""
+    if not results:
+        return None
+    items = []
+    for course in results:
+        if course.get("canvas_current_score") is None:
+            items.append(reading(course["course"], None, "", text="No total shown"))
+        else:
+            score = course["canvas_current_score"]
+            items.append(reading(course["course"], score, "%", note=_grade_note(course)))
+    detail = len(results) == 1 and "assignments" in results[0]
+    if detail:
+        items += [_assignment_reading(a) for a in results[0]["assignments"]]
+    reads = [c.get("read_at") for c in results if c.get("read_at")]
+    return readings_card(
+        results[0]["course"] if detail else "Grades",
+        items,
+        at=local_at(min(reads), zone) if reads else None,
+        note="Canvas's own current grades: work not yet graded does not count.",
+    )
+
+
+# =============================================================================
+# Money: budgets (status_list, budget pace)
+# =============================================================================
+
+
+def _pace_row(line: dict) -> dict:
+    """One capped category: its state in words ("On track", "Over") in the note, since the
+    five status words have none for money; the projection is said to be an estimate."""
+    spent, cap = line["spent_cents"], line["cap_cents"]
+    of = f"{money_words(spent)} of {money_words(cap)}"
+    projected = line.get("projection_cents")
+    heading_over = projected is not None and projected > cap
+    if line["status"] == "over":
+        state, words = "attention", f"Over: {of}."
+    elif line["status"] == "near":
+        state, words = "attention", f"Past 80%: {of}."
+    elif heading_over:
+        state, words = "attention", f"On pace to go over: {of}."
+    else:
+        state, words = "ok", f"On track: {of}."
+    extra = []
+    if projected is not None:
+        extra.append(f"About {money_words(projected)} by month end (estimate).")
+    if line.get("pending_count"):
+        extra.append(f"{money_words(line['pending_cents'])} of it pending.")
+    if line.get("unverified"):
+        extra.append("Includes unverified rows.")
+    return status(line["category"], state, " ".join([words, *extra]))
+
+
+def budget_pace_card(body: dict) -> dict | None:
+    """`budgets`: each capped category's pace, the ones that need attention first. USD only
+    (`finance.budgets` is), and a month with no caps is no card: the words say so."""
+    if body.get("currency", "USD").upper() != "USD":
+        return None
+    capped = [c for c in body.get("categories") or [] if c.get("cap_cents")]
+    if not capped:
+        return None
+    rows = [_pace_row(c) for c in capped]
+    rows.sort(key=lambda r: (r["status"] != "attention", r["name"]))
+    total = body.get("total") or {}
+    notes = []
+    if total.get("cap_cents"):
+        notes.append(
+            f"Altogether {money_words(total['spent_cents'])} of {money_words(total['cap_cents'])}."
+        )
+    if body.get("days_elapsed", 0) < body.get("projection_from_day", 0):
+        notes.append("Too early in the month to project a month end.")
+    return status_list_card(
+        "Budget pace",
+        rows,
+        period=f"{_month_words(body.get('month'))}, day {body.get('days_elapsed')} of "
+        f"{body.get('days_in_month')}",
+        note=" ".join(notes) or None,
+    )
+
+
+# =============================================================================
+# Weather: check_conditions alerts (status_list)
+# =============================================================================
+
+
+def _alert_row(alert: dict) -> dict:
+    from conditions.report import _clock
+
+    until = _clock(alert.get("ends") or alert.get("expires") or "")
+    bits = [alert.get("severity") or "Severity not given"]
+    if until:
+        bits.append(f"until {until}")
+    if alert.get("sender"):
+        bits.append(f"from {alert['sender']}")
+    return status(alert.get("event") or "Alert", "attention", ", ".join(bits) + ".")
+
+
+def conditions_card(structured: dict) -> dict | None:
+    """`check_conditions`' weather alerts for the point, as the National Weather Service lists
+    them. None listed is one OK row; a read that failed is Unknown, never all clear. No card
+    when the call did not ask for alerts. There is no forecast: no tool reads one."""
+    section = next(
+        (s for s in (structured or {}).get("sections") or [] if s.get("kind") == "alerts"), None
+    )
+    if section is None:
+        return None
+    state = section.get("status")
+    if state == "found":
+        rows = [_alert_row(a) for a in section.get("rows") or []]
+    elif state == "empty":
+        rows = [status("NWS alerts", "ok", "None active for this point right now.")]
+    elif state == "not_configured":
+        rows = [status("NWS alerts", "unknown", "Not set up, so nothing was read.")]
+    else:
+        rows = [
+            status(
+                "NWS alerts",
+                "unknown",
+                "Could not be read, so whether any alert is active here is not known.",
+            )
+        ]
+    return status_list_card(
+        "Weather alerts",
+        rows,
+        scope=structured.get("where") or None,
+        note="Read just now from the National Weather Service.",
+    )
+
+
+# =============================================================================
+# Body: get_weight_trend (trend)
+# =============================================================================
+
+
+def weight_trend_card(data: dict) -> dict | None:
+    """`get_weight_trend`'s points, built BEFORE the tool drops them from `structured`: the
+    weighed line, and the trend line flagged an estimate. Days with no weigh-in are absent."""
+    points = data.get("points") or []
+    weighed = [(p["day"], p["weight_lbs"]) for p in points if p.get("weight_lbs") is not None]
+    smoothed = [(p["day"], p["trend_lbs"]) for p in points if p.get("trend_lbs") is not None]
+    if not weighed and not smoothed:
+        return None
+    notes = []
+    rate = data.get("rate_lbs_per_week")
+    if rate is not None:
+        way = "Losing" if rate < 0 else "Gaining"
+        notes.append(f"{way} {abs(rate):g} lb a week (estimate).")
+    notes.append("Days with no weigh-in are left out.")
+    return trend_card(
+        "Weight",
+        "lb",
+        [series("Weighed", weighed), series("Trend", smoothed, flag="estimate")],
+        period=f"Last {len(points)} days",
+        note=" ".join(notes),
+    )
+
+
+# =============================================================================
+# Memory: list_memories (readings, read only on the web)
+# =============================================================================
+
+
+def memories_card(rows: list[dict]) -> dict:
+    """`list_memories`: each memory's text in words under its day and whether it is shared. The
+    web draws no Forget: forgetting stays `forget_memory` and the phone's Memory screen."""
+    from engine_mcp.tools import provenance
+
+    items = []
+    for row in rows:
+        day = (row.get("created_at") or "")[:10]
+        who = "shared" if row.get("shared") else "private"
+        items.append(reading(f"{day}, {who}, {provenance(row)}", None, "", text=row["text"]))
+    return readings_card(
+        "Memories",
+        items,
+        note=None if rows else "Nothing is remembered yet.",
+    )
+
+
+# =============================================================================
+# Car: stored drives, read_records("drives") (readings)
+# =============================================================================
+
+
+def drives_card(rows: list[dict], zone) -> dict | None:
+    """The drives `read_records` read, newest first: miles and how long, from the stored rows.
+    No fuel economy: the phone withholds mpg on purpose, so the card never works one out."""
+    from django.utils.dateparse import parse_datetime
+
+    if not rows:
+        return None
+    items = []
+    for row in rows:
+        started = parse_datetime(str(row.get("started_at") or ""))
+        ended = parse_datetime(str(row.get("ended_at") or ""))
+        if started is None:
+            continue
+        local = started.astimezone(zone)
+        label = f"{local:%a} {local:%b} {local.day}, {local:%H:%M}"
+        minutes = int((ended - started).total_seconds() // 60) if ended else None
+        note = f"{minutes} min." if minutes is not None and minutes >= 0 else "End time not stored."
+        miles = row.get("miles")
+        value = round(float(miles), 1) if miles is not None else None
+        items.append(reading(label, value, "mi", note=note))
+    if not items:
+        return None
+    return readings_card("Drives", items, note="Miles as the phone logged them; no fuel economy.")

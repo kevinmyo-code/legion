@@ -105,6 +105,8 @@ data class TypesetHomeNav(
     val onOpenIdeas: () -> Unit = {},
     val onOpenTodos: () -> Unit = {},
     val onBrief: () -> Unit = {},
+    /** An answer card's Open link to a screen the page has no button for, by route. */
+    val onOpenRoute: (String) -> Unit = {},
 )
 
 /** The three figures, pure, from the view models HOME already has. Pinned by `TypesetHomeDeriveTest`. */

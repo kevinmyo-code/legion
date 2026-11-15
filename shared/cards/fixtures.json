@@ -17,7 +17,8 @@
           {"label": "Protein", "value": 32, "unit": "g", "flag": "estimate"},
           {"label": "Spent", "value": 123456, "unit": "usd", "flag": "unverified"},
           {"label": "Odometer", "value": 203000, "unit": "mi", "note": "Last reading on file."},
-          {"label": "Sessions", "value": 3, "unit": ""}
+          {"label": "Sessions", "value": 3, "unit": ""},
+          {"label": "Fuel system", "value": null, "unit": "", "text": "Closed loop"}
         ],
         "more": 2,
         "note": "Read from the laptop's own report."
@@ -31,7 +32,8 @@
           "32 g (estimate)",
           "$1,234.56 (unverified)",
           "203,000 mi",
-          "3"
+          "3",
+          "Closed loop"
         ],
         "asOfStartsWith": "As of Sun Nov 15, 2026",
         "more": "2 more not shown."
