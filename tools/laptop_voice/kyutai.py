@@ -162,6 +162,14 @@ class KyutaiTts(core.KyutaiTts):
     max_sessions = 1
 
     def __init__(self, *a, **kw):
+        # Codebooks per 80 ms frame (launcher --tts-nq, 2026-11-15). Unset: the model's full 32. Fewer
+        # means less depformer work per step, so first audio and every frame after it come sooner, at
+        # lower audio quality for the WHOLE utterance: moshi's LMGen fixes the count for its captured
+        # CUDA graphs, so "fewer for the first frames only" would need a second generator (VRAM: the
+        # card has ~250 MB left). Not measured on the 4060 yet; off by default.
+        nq = os.environ.get("LEGION_VOICE_KYUTAI_TTS_NQ")
+        if nq:
+            kw.setdefault("n_q", int(nq))
         super().__init__(*a, **kw)
         self.allowlist = list(core.VOICES)   # fixed ids; the engine maps each to one file in kyutai/tts-voices
         self.voices = self.allowlist

@@ -26,3 +26,11 @@ def test_flags_become_numbers_in_the_environment():
 def test_out_of_range_values_stop_the_launcher(eot, maybe):
     with pytest.raises(SystemExit):
         R.tuning_env(eot, maybe)
+
+
+def test_tts_codebooks_flag_is_off_by_default_and_bounded():
+    assert "LEGION_VOICE_KYUTAI_TTS_NQ" not in R.tuning_env(None, None)
+    assert R.tuning_env(None, None, 16) == {"LEGION_VOICE_KYUTAI_TTS_NQ": "16"}
+    for bad in (4, 33):
+        with pytest.raises(SystemExit):
+            R.tuning_env(None, None, bad)

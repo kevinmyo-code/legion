@@ -93,3 +93,15 @@ def test_no_maybe_before_any_words():
     ev = feed_all(s)
     assert [v for k, v in ev if k == "maybe_end"] == []
     assert ("eot_pending", "hi") in ev
+
+
+def test_tts_codebooks_come_from_the_launcher_flag_only_when_set(monkeypatch):
+    from laptop_voice import kyutai as K
+    seen = {}
+    monkeypatch.setattr(core.KyutaiTts, "__init__", lambda self, *a, **kw: seen.update(kw))
+    monkeypatch.delenv("LEGION_VOICE_KYUTAI_TTS_NQ", raising=False)
+    K.KyutaiTts()
+    assert "n_q" not in seen, "unset: the model's own default (32)"
+    monkeypatch.setenv("LEGION_VOICE_KYUTAI_TTS_NQ", "16")
+    K.KyutaiTts()
+    assert seen["n_q"] == 16
