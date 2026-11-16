@@ -129,3 +129,6 @@ wake-samples/
 # from Kevin's real phone. They hold his messages, money, memories and contacts. The repo is
 # public; these never get committed. tools/tests/test_phone_cli.py asserts this line exists.
 .phone-artifacts/
+
+# Voice eval: Kevin's own cases (never committed; the repo is public).
+tools/voice_eval/private/

@@ -21,7 +21,15 @@ class CascadeWiringTest {
     @Test
     fun `the engine setting is read once per conversation, at the one door a tap and the wake word share`() {
         val controller = controller()
-        assertEquals("read exactly once in the controller", 1, Regex("VoiceEngineSettings\\.engine\\(").findAll(controller).count())
+        // Two doors open a conversation: a tap or wake word (onTap), and the adb test door
+        // (openTestCascade, service/testturn/), which follows the same setting after its own guards.
+        assertEquals("read once per door in the controller", 2, Regex("VoiceEngineSettings\\.engine\\(").findAll(controller).count())
+        val testDoor = bodyOf(controller, "openTestCascade")
+        val testReadAt = testDoor.indexOf("VoiceEngineSettings.engine(")
+        assertTrue("the test door reads it", testReadAt >= 0)
+        for (guard in listOf("isOnline()", "hasKey()", "isInCall")) {
+            assertTrue("$guard must come before the test door's engine choice", testDoor.indexOf(guard) in 0 until testReadAt)
+        }
         val onTap = bodyOf(controller, "onTap")
         val readAt = onTap.indexOf("VoiceEngineSettings.engine(")
         assertTrue("the setting is read in onTap", readAt >= 0)

@@ -37,6 +37,10 @@ import com.kevin.legion.service.cascade.VoiceEngineSettings
 import com.kevin.legion.ui.LegionRoute
 import com.kevin.legion.ui.MainActivity
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.service.testturn.TestSession
+import com.kevin.legion.service.testturn.TestTurnDriver
+import com.kevin.legion.service.testturn.TestTurnPolicy
+import com.kevin.legion.service.testturn.TestTurns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -798,6 +802,7 @@ class LiveSessionController(context: Context) {
         LookController.unregister(lookSink)
         LookController.close()
         destroyed = true
+        if (TestTurns.host === testDriver) TestTurns.host = null
         cascadeBridge?.attached = false
         cascade?.destroy()
         cascade = null
@@ -827,8 +832,11 @@ class LiveSessionController(context: Context) {
      */
     private fun onTapCascade(fromWakeWord: Boolean, oneShot: Boolean) {
         val c = cascade ?: return
-        if (!c.listensForReply) {
-            endCascadeThen("tap over a proactive line") { onTap(fromWakeWord, oneShot) }
+        // A test conversation (adb) gives way at once to real use, as a speak-only line does: it
+        // ends, then this tap runs.
+        val test = testDriver.owns(c)
+        if (test || !c.listensForReply) {
+            endCascadeThen(if (test) "test_real_tap" else "tap over a proactive line") { onTap(fromWakeWord, oneShot) }
             return
         }
         // The session says which it did ("Listening", or "Ended the chat").
@@ -843,6 +851,10 @@ class LiveSessionController(context: Context) {
     private fun briefOnCascade() {
         val line = CascadeOpener(BRIEF_PROMPT, listen = true)
         cascade?.let { open ->
+            if (testDriver.owns(open)) {
+                endCascadeThen("test_real_brief") { briefOnCascade() }
+                return
+            }
             if (!open.say(line)) refuse(VoiceRefusal.CONNECT_IN_FLIGHT)
             return
         }
@@ -864,6 +876,10 @@ class LiveSessionController(context: Context) {
         val listen = listensForReply && hasMicPermission()
         val line = CascadeOpener(prompt, listen = listen, readThrough = readThrough, userInitiated = userInitiated)
         cascade?.let { open ->
+            if (testDriver.owns(open)) {
+                endCascadeThen("test_real_line") { speakOnCascade(prompt, listensForReply, readThrough, userInitiated) }
+                return
+            }
             if (!open.say(line)) refuse(VoiceRefusal.CONNECT_IN_FLIGHT, userInitiated)
             return
         }
@@ -890,6 +906,7 @@ class LiveSessionController(context: Context) {
         laptopFirst: Boolean = true,
         opener: CascadeOpener? = null,
         micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
+        test: TestSession? = null,
     ) {
         supersede("cascade")
         if (opener?.listen != false) ConversationCards.begin()
@@ -898,19 +915,16 @@ class LiveSessionController(context: Context) {
             setPhase = { p, status -> set(p, status) },
             showNotice = { CompanionPhase.showNotice(it) },
             tool = { name, args, readThrough, userText, turnSeq ->
-                withContext(Dispatchers.Main.immediate) {
-                    val response = runToolBounded(name, args, readThrough, userText)
-                    if (response.has("success")) {
-                        val ok = response.optBoolean("success", false)
-                        val detail = if (ok) null else response.optString("message").takeIf { it.isNotBlank() }
-                        AssistantChatStore.update { it.tool(name, ok, detail) }
-                    }
-                    auditToolCall(name, args, response, turnSeq)
-                    response
-                }
+                // A test conversation (adb): every tool through TestTurnPolicy first, deny by default.
+                test?.let { t -> TestTurnPolicy.refusal(name, args, t.allowWrites) }
+                    ?.also { TestTurns.log("refused tool=$name id=${test?.id}") }
+                    ?: cascadeTool(name, args, readThrough, userText, turnSeq, keepRecord = test == null)
             },
             transcript = { heard, said ->
-                AssistantChatStore.update { it.withSpeaker(speakerName()).turnComplete(heard, said, false) }
+                // The panel is typed chat's history too: a test conversation stays out of it.
+                if (test == null) {
+                    AssistantChatStore.update { it.withSpeaker(speakerName()).turnComplete(heard, said, false) }
+                }
             },
             onCrisis = {
                 cascade = null
@@ -923,6 +937,7 @@ class LiveSessionController(context: Context) {
                 if (!destroyed) startConversation(fromWakeWord = wake, opener = opener)
             },
             onClosed = {
+                testDriver.closed(cascade)
                 cascade = null
                 ringListening = false
                 closeOutTypedChat()
@@ -943,10 +958,55 @@ class LiveSessionController(context: Context) {
             laptopFirst = laptopFirst,
             opener = opener,
             micClaimant = micClaimant,
+            test = test,
         )
         cascadeBridge = bridge
         cascade = c
+        testDriver.opened(c)
         c.open()
+    }
+
+    /** One cascade tool call on the main thread: the one runner, the panel line and the audit row. */
+    @Suppress("LongParameterList")
+    private suspend fun cascadeTool(
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        userText: String,
+        turnSeq: Long,
+        keepRecord: Boolean,
+    ): JSONObject = withContext(Dispatchers.Main.immediate) {
+        val response = runToolBounded(name, args, readThrough, userText)
+        if (keepRecord && response.has("success")) {
+            val ok = response.optBoolean("success", false)
+            val detail = if (ok) null else response.optString("message").takeIf { it.isNotBlank() }
+            AssistantChatStore.update { it.tool(name, ok, detail) }
+        }
+        // A test conversation keeps no record: no panel line, no audit row, nothing uploads.
+        if (keepRecord) auditToolCall(name, args, response, turnSeq)
+        response
+    }
+
+    // --- test turns from a computer (service/testturn/: adb only, off by default) ------------------
+
+    private val testDriver = TestTurnDriver(
+        scope = scope,
+        openTest = ::openTestCascade,
+        current = { cascade },
+        close = { c, why -> c.close(why) },
+        phase = { _phase.value.name },
+    ).also { TestTurns.host = it }
+
+    /** Opens a test conversation for [t], or says why not (the same guards a tap has). */
+    @Suppress("ReturnCount") // one worded refusal per guard
+    private fun openTestCascade(t: TestSession): String? {
+        if (destroyed) return "service_not_running"
+        if (TelephonyController.isInCall) return "on_a_call"
+        if (!GeminiKeyProvider.hasKey()) return "no_key"
+        if (!isOnline()) return "offline"
+        val engine = VoiceEngineSettings.engine(appContext)
+        openCascade(fromWakeWord = false, oneShot = false, laptopFirst = engine == VoiceEngine.LAPTOP, test = t)
+        return null
     }
 
     /**

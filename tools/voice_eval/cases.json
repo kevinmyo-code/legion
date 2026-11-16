@@ -1,0 +1,138 @@
+{
+  "about": "Voice eval cases (FAKE utterances only; this file is public). Read by app/src/test/.../voiceeval/VoiceEvalRun.kt (laptop, fake fixture) and tools/phone_voice_test.py (the phone, real data). Scored by tools/voice_eval.py. Kevin's own cases go in a git-ignored file (default tools/voice_eval/private/*.json), never here. Format: tools/voice_eval/README.md.",
+  "cases": [
+    {
+      "id": "due_open",
+      "say": "what do I have due?",
+      "audio": true,
+      "why": "2026-11-15: this went to the reminders list instead of the calendar",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "no_empty_claim": true
+      },
+      "fixture": {"answer_has": ["quiz"]}
+    },
+    {
+      "id": "due_today",
+      "say": "what's due today",
+      "why": "2026-11-15: answered that the day was quiet over two open tasks",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "args": {"day/read_calendar": {"from": {"lte": "{today}"}, "to": {"gte": "{today}"}}},
+        "no_empty_claim": true
+      },
+      "fixture": {"answer_has": ["quiz", "discussion"]},
+      "grade": "The reply names every open task due today (a reading quiz and a discussion post) and does not say the day is free, quiet or empty."
+    },
+    {
+      "id": "overdue",
+      "say": "is anything overdue?",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "args": {"day/read_calendar": {"from": {"lte": "{today-1}"}}},
+        "no_empty_claim": true
+      },
+      "fixture": {"answer_has": ["homework|math"]}
+    },
+    {
+      "id": "due_week",
+      "say": "what's due for school this week",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "args": {"day/read_calendar": {"from": {"lte": "{today}"}, "to": {"gte": "{today+3}"}}},
+        "no_empty_claim": true
+      },
+      "fixture": {"answer_has": ["lab report|chem"]}
+    },
+    {
+      "id": "calendar_tomorrow",
+      "say": "what's on my calendar tomorrow",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+      },
+      "fixture": {"answer_has": ["lecture|physics", "career fair"]}
+    },
+    {
+      "id": "reminders",
+      "say": "what reminders do I have",
+      "expect": {"calls": ["manage_item/read_list"]},
+      "fixture": {"answer_has": ["registration"]}
+    },
+    {
+      "id": "todo_read",
+      "say": "what's on my to-do list",
+      "expect": {
+        "calls": ["manage_checklist/read|manage_checklist/lists"]
+      },
+      "fixture": {"answer_has": ["printer ink"]}
+    },
+    {
+      "id": "cars",
+      "say": "which cars do I have on file",
+      "expect": {"calls": ["ask/ask_fleet|car|list_vehicles"]},
+      "fixture": {"answer_has": ["ranger|fit"]}
+    },
+    {
+      "id": "time_now",
+      "say": "what time is it",
+      "expect": {"answer_has": ["\\d|noon|midnight|o'clock|\\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b"]}
+    },
+    {
+      "id": "then_tomorrow",
+      "turns": [
+        {"say": "what's due today", "expect": {"calls": ["day/read_calendar"], "no_empty_claim": true}},
+        {
+          "say": "and tomorrow?",
+          "expect": {
+            "calls": ["day/read_calendar"],
+            "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+          }
+        }
+      ]
+    },
+    {
+      "id": "barge_in",
+      "audio": true,
+      "why": "with --audio on the phone, the second turn is spoken over the first reply (barge-in)",
+      "turns": [
+        {"say": "read me everything on my calendar this week", "expect": {"calls": ["day/read_calendar"]}},
+        {
+          "say": "stop, just tomorrow",
+          "barge": true,
+          "expect": {
+            "calls": ["day/read_calendar"],
+            "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+          }
+        }
+      ]
+    },
+    {
+      "id": "write_todo",
+      "say": "add buy stamps to my to-do list",
+      "write": true,
+      "expect": {
+        "calls": ["manage_checklist/add"],
+        "args": {"manage_checklist/add": {"list": {"re": "(?i)^to-?do$"}}}
+      },
+      "fixture": {"answer_has": ["stamps"]}
+    },
+    {
+      "id": "write_reminder",
+      "say": "remind me to call the dentist tomorrow at 9am",
+      "write": true,
+      "audio": true,
+      "expect": {
+        "calls": ["manage_item/add"],
+        "args": {"manage_item/add": {"date": "{today+1}", "time": "09:00"}}
+      }
+    },
+    {
+      "id": "write_complete",
+      "say": "I finished the history reading quiz, mark it done",
+      "write": true,
+      "expect": {"calls": ["day/complete_task"]},
+      "fixture": {"answer_has": ["quiz"]}
+    }
+  ]
+}

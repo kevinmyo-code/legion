@@ -32,7 +32,6 @@ import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.MicArbiter
 import com.kevin.legion.service.Phase
 import com.kevin.legion.service.TelephonyController
-import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.WakePhrases
 import com.kevin.legion.service.conversationlog.ConversationLog
@@ -43,6 +42,8 @@ import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.TurnModels
 import com.kevin.legion.service.turn.TurnTaker
 import com.kevin.legion.service.turn.VoiceTurnSettings
+import com.kevin.legion.service.testturn.TestSession
+import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.vehicle.ActiveVehicle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -115,6 +116,8 @@ internal class CascadeSession(
     },
     /** Whether the cloud voice can start at all: it runs on the key Kevin pasted in Settings. */
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
+    /** A test conversation from a computer ([TestSession]): test mic, logcat audit, no records kept. */
+    private val test: TestSession? = null,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -131,7 +134,12 @@ internal class CascadeSession(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val loop = Dispatchers.Default.limitedParallelism(1)
 
-    private val audit = LiveAudit()
+    // A test conversation's audit goes to logcat only: never the engine spool, which memory reads.
+    private val audit = if (test != null) {
+        LiveAudit(sink = { TestTurns.auditSink(LiveAudit.TAG, it) }, onSession = {})
+    } else {
+        LiveAudit()
+    }
     private val ackLines = ACK
 
     /** Where speech goes now: the laptop, or the cloud voice after a fallback. Changed only on [loop]. */
@@ -148,6 +156,10 @@ internal class CascadeSession(
     private val usageLedger = UsageLedger()
     private val enginesUsed = java.util.concurrent.CopyOnWriteArrayList<String>()
     private val turnsAnswered = AtomicInteger(0)
+    private val userTurns = AtomicInteger(0)
+
+    /** Test clips waiting for the open or a reply to finish before they are queued ([testAudio]). */
+    private val testClipsWaiting = AtomicInteger(0)
     private var greetingLoop: GeminiTextLoop? = null
 
     /** Speculative answers (the setting, read once at open) and the one draft in flight ([TurnDraft]). */
@@ -339,7 +351,7 @@ internal class CascadeSession(
             }
         }
         player = ReplyPlayer(b.tts.sampleRate) { callAudio?.isActive == true }
-        audit.enabled = ConversationLog.auditWantedAfterReading(ctx)
+        audit.enabled = ConversationLog.auditWantedAfterReading(ctx) || test != null
         audit.sessionStart("${b.kind.token}+$MODEL", emptySet(), brain.basePackToken)
         auditStarted = true
         LiveLatency.log(
@@ -590,6 +602,67 @@ internal class CascadeSession(
      * runs after the turn in flight, as Live folded such a line into the open conversation. False
      * when this session cannot take it (closing, or a speak-only line still playing).
      */
+    /**
+     * A test turn (adb, [TestTurns]): [text] taken as his own words, as if speech-to-text had just
+     * returned it. Waits for the open (and its greeting) to finish, then runs like a spoken turn.
+     * False when this is not a test conversation or it is closing.
+     */
+    fun testTurn(text: String): Boolean {
+        if (test == null || closing.get() || !listens) return false
+        scope.launch(loop) {
+            awaitTestOpen()
+            if (closing.get()) return@launch
+            val previous = turnJob
+            turnJob = scope.launch(loop) {
+                previous?.join()
+                if (closing.get()) return@launch
+                followUpEvent(FollowUpWindow.Event.UserSpeech)
+                host.phase(Phase.THINKING, "...")
+                userTurns.incrementAndGet()
+                audit.user(text, final = true, typed = true)
+                answerTurn(text, System.currentTimeMillis(), TurnRecord(text))
+            }
+        }
+        return true
+    }
+
+    /**
+     * A test clip ([TestSession.mic]) in place of his voice: queued once the open and any reply
+     * have finished, as he would wait to speak, or at once with [barge] to talk over a reply.
+     */
+    fun testAudio(pcm: ByteArray, barge: Boolean): Boolean {
+        val mic = test?.mic?.takeIf { !closing.get() && listens } ?: return false
+        if (!barge) {
+            testClipsWaiting.incrementAndGet()
+            scope.launch(loop) {
+                try {
+                    awaitTestOpen()
+                    turnJob?.join()
+                    if (!closing.get()) mic.queue(pcm)
+                } finally {
+                    testClipsWaiting.decrementAndGet()
+                }
+            }
+        }
+        return !barge || mic.queue(pcm)
+    }
+
+    /** Still opening: the greeting (or its scripted line) becomes the first turnJob. */
+    private suspend fun awaitTestOpen() {
+        var waited = 0L
+        while (turnJob == null && !closing.get() && waited < CascadeTimings.MODEL_WAIT_MS + OPEN_WAIT_MS) {
+            delay(TEST_POLL_MS)
+            waited += TEST_POLL_MS
+        }
+    }
+
+    /** For the test door's status: a reply audible, a turn in flight, turns answered. */
+    val testSpeaking: Boolean get() = speaking
+    val testBusy: Boolean get() = turnJob?.isActive == true
+    val answeredTurns: Int get() = turnsAnswered.get()
+    val heardTurns: Int get() = userTurns.get()
+    val testAudioPending: Boolean get() = testClipsWaiting.get() > 0 || test?.mic?.pending == true
+
     fun say(line: CascadeOpener): Boolean {
         // Still opening (no prompt yet): the line would end the conversation he just opened.
         if (closing.get() || !listens || prefixReady == null) return false
@@ -801,6 +874,7 @@ internal class CascadeSession(
             return
         }
         carry = ""
+        userTurns.incrementAndGet()
         audit.user(heard, final = true)
         if (CrisisDetector.detect(heard)) {
             discardDraftOf(u, "not_answered")
@@ -996,18 +1070,8 @@ internal class CascadeSession(
         return (spoken + " (Interrupted. Already done and confirmed: ${writes.joinToString(", ")}.)").trim()
     }
 
-    private fun contentsFor(heard: String) = run {
-        val capped = TextChatEngine.capHistory(history + ChatTurn(fromUser = true, text = heard))
-        val contents = TextChatEngine.historyContents(capped)
-        // The date, the place and this conversation's context ride in the first user turn (never
-        // in the cached instruction).
-        if (preamble.isNotEmpty() && contents.length() > 0) {
-            val first = contents.getJSONObject(0)
-            val part = first.getJSONArray("parts").getJSONObject(0)
-            part.put("text", preamble + part.optString("text"))
-        }
-        contents
-    }
+    // The date, the place and this conversation's context ride in the first user turn.
+    private fun contentsFor(heard: String) = CascadePrompt.contents(history, heard, preamble)
 
     private fun executorFor(record: TurnRecord, seq: Long) = TextToolExecutor { name, args, readThrough ->
         val id = "c${toolSeq.incrementAndGet()}"
@@ -1295,7 +1359,8 @@ internal class CascadeSession(
                 }
                 call.join()
                 reply.finishText()
-                greeting?.noteRaised(plan.topic)
+                // A test open (adb) does not use up the topic for his real greetings.
+                if (test == null) greeting?.noteRaised(plan.topic)
                 when (val o = reply.await()) {
                     ReplySpeaker.Outcome.Played -> {
                         // So his answer is understood: the greeting is the first exchange.
@@ -1335,6 +1400,8 @@ internal class CascadeSession(
         val kept = if (readThrough) LiveAudit.REDACTED else said
         if (said.isNotBlank()) history.add(ChatTurn(fromUser = false, text = kept))
         host.turnTranscript(if (fromUser) heard else "", said)
+        // A test conversation keeps no record: nothing uploads, nothing becomes a memory.
+        if (test != null) return
         val vehicle = ActiveVehicle.current(ctx)
         scope.launch(Dispatchers.IO) {
             runCatching {
@@ -1908,7 +1975,9 @@ internal class CascadeSession(
         micJob = scope.launch(Dispatchers.IO) {
             // The car's hands-free link, when it was asked for, carries the route before capture.
             audioRoute.awaitBluetoothMic()
-            CascadeMic(ctx).run(
+            // A test conversation never opens the real mic ([TestMic]).
+            test?.mic?.play { buf, n -> synchronized(turnLock) { turnTaker?.feed(buf, n, playbackActive) } }
+                ?: CascadeMic(ctx).run(
                 // Under [turnLock]: a backend swap never lands inside a feed.
                 onBuffer = { buf, n -> synchronized(turnLock) { turnTaker?.feed(buf, n, playbackActive) } },
                 onNoPermission = {
@@ -1957,6 +2026,10 @@ internal class CascadeSession(
 
         /** The loop's own backstop; the controller's runner already applies each tool's real ceiling. */
         const val TOOL_BACKSTOP_MS = 47_000L
+
+        /** A test turn waits this long (beyond the turn models) for the open to start its first line. */
+        private const val OPEN_WAIT_MS = 20_000L
+        private const val TEST_POLL_MS = 50L
 
 
         private const val CAPTION_CHARS = 160

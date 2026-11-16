@@ -205,6 +205,24 @@ example, the async-lookups map has tickets for the third run's follow-ups and fo
 sixth runs' follow-ups, covering holding lines that went dead, a "still checking" nudge, sign-off
 behaviour and spoken figures. The audit tool itself was fixed in the same loop.
 
+## Testing the voice without speaking to it
+
+Kevin asked (2026-11-15) for a way to test the voice assistant and its tool calls without talking to
+the phone. There are two layers, sharing one case file and one scorer (`tools/voice_eval.py`), and
+`tools/voice_eval/README.md` has the commands:
+
+- **Laptop, every change:** `python tools/voice_eval.py laptop` runs the real cascade text loop and
+  the real tool code under Robolectric against a made-up household, on real Gemini, and prints a
+  scorecard per case (tool chosen, answer, checks, latency, tokens, estimated cost); `--model`
+  runs the same set on another model.
+- **Phone, before a ship:** `python tools/phone_voice_test.py run` drives a test conversation over
+  adb (typed words, or a recorded clip fed in place of the microphone), on his real data with every
+  write refused, and scores it the same way plus open time. It needs Settings, Assistant, Testing,
+  "Allow test turns from a computer", which is off by default.
+
+The committed cases are invented; Kevin's own go in a git-ignored folder, and phone runs are saved
+outside the repo.
+
 ## Honest limits
 
 - **Agents' claims are re-verified, not trusted.** That is the point of the ledger and the relay

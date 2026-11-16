@@ -37,6 +37,7 @@ import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.WakeWordPreferences
 import com.kevin.legion.service.cascade.VoiceEngineSettings
 import com.kevin.legion.service.conversationlog.ConversationLog
+import com.kevin.legion.service.testturn.TestTurnSettings
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.ui.ActiveCompanionRow
 import com.kevin.legion.ui.IgnitionRow
@@ -47,6 +48,7 @@ import com.kevin.legion.ui.VoiceTurnRow
 import com.kevin.legion.ui.WakeEngineRow
 import com.kevin.legion.ui.WakeWordRow
 import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.help.VoiceGuideData
 import com.kevin.legion.util.Temp
 import kotlinx.coroutines.Dispatchers
@@ -107,6 +109,7 @@ fun AssistantSettingsScreen(
     var conversationSending by remember { mutableStateOf(false) }
     var conversationResult by remember { mutableStateOf(ConversationLog.lastResult) }
     var editedPlaybookCount by remember { mutableStateOf(0) }
+    var testTurns by remember { mutableStateOf(TestTurnSettings.allowed(context)) }
 
     suspend fun reloadActiveProfile() {
         val profile = CompanionProfileStore.activeProfile(context)
@@ -395,6 +398,23 @@ fun AssistantSettingsScreen(
                     onSelect = { unit ->
                         Temp.setUnit(context, unit)
                         temperatureUnit = unit
+                    },
+                )
+
+                // 2026-11-15: test turns from a computer over adb (service/testturn/). Off by default.
+                Spacer(Modifier.height(16.dp))
+                SectionHeader("Testing")
+                VoiceTurnRow(
+                    title = "Allow test turns from a computer",
+                    explanation = "a computer connected by USB or wireless debugging may hold short test " +
+                        "conversations with ${activeName ?: "the assistant"}: typed or recorded words taken " +
+                        "as yours. Lookups use your real data; anything that would change something or " +
+                        "act is refused and not done. A test ends itself when idle, and a tap ends it at " +
+                        "once (the wake word waits, as in any open conversation).",
+                    enabled = testTurns,
+                    onToggle = { on ->
+                        TestTurnSettings.setAllowed(context, on)
+                        testTurns = on
                     },
                 )
 
