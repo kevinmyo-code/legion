@@ -1,0 +1,66 @@
+{
+  "note": "Per-make extra readings. Every row stays unverified until verified_on names the car and date it was checked against a known-good value. scale null = no public equation found; the raw bytes are shown instead. Sources are community lists, not the maker's documents; each row's 'applies' says which car the source was written for.",
+  "readings": [
+    {
+      "make": "ford",
+      "key": "ford_tft_1674",
+      "label": "Transmission fluid temperature (candidate A)",
+      "module": "7E0",
+      "service": "22",
+      "identifier": "1674",
+      "byte_offset": 0,
+      "byte_count": 2,
+      "scale": 0.125,
+      "offset": 0.0,
+      "unit": "F (unit as the source states it)",
+      "applies": "Source list was written for the 6.7L Super Duty; whether a 2017 F-150 answers this id is unknown",
+      "source_url": "https://www.ford-trucks.com/forums/1322804-torque-pro-ford-6-7l-extended-pids.html",
+      "verified_on": ""
+    },
+    {
+      "make": "ford",
+      "key": "ford_tft_1e1c",
+      "label": "Transmission fluid temperature (candidate B)",
+      "module": "7E1",
+      "service": "22",
+      "identifier": "1E1C",
+      "byte_offset": 0,
+      "byte_count": 2,
+      "signed": true,
+      "scale": 0.0625,
+      "offset": 0.0,
+      "unit": "C",
+      "applies": "Source list was written for a 2022 Mazda 3; Ford and Mazda share some identifiers, but no source ties this one to a 2017 F-150",
+      "source_url": "https://gist.github.com/agronick/4d01cfe7f94dd41eeeb46f5e5dd204b8",
+      "verified_on": ""
+    },
+    {
+      "make": "mitsubishi",
+      "key": "mitsubishi_cvt_temp_2103",
+      "label": "CVT temperature block (raw)",
+      "module": "7E1",
+      "service": "21",
+      "identifier": "03",
+      "byte_offset": 0,
+      "byte_count": 4,
+      "unit": "",
+      "applies": "Source table was written for a 2007 Outlander (older JF011E CVT); the 2020 has the newer CVT8. No equation was found, so the raw bytes are shown",
+      "source_url": "https://torque-bhp.com/community/main-forum/07-mitsubishi-outlander/",
+      "verified_on": ""
+    },
+    {
+      "make": "mitsubishi",
+      "key": "mitsubishi_cvt_degradation_2110",
+      "label": "CVT oil degradation counter (raw)",
+      "module": "7E1",
+      "service": "21",
+      "identifier": "10",
+      "byte_offset": 0,
+      "byte_count": 4,
+      "unit": "",
+      "applies": "Same 2007 Outlander table (max listed 220000); scaling and byte position are not public, so the raw bytes are shown",
+      "source_url": "https://torque-bhp.com/community/main-forum/07-mitsubishi-outlander/",
+      "verified_on": ""
+    }
+  ]
+}
