@@ -179,7 +179,8 @@ specifically so the earlier loss cannot repeat. Commit map and ticket changes li
 
 ## 3. Tech Stack
 
-Kotlin + Compose, single `app` module, Room as the phone's replica, Gemini Live over a WebSocket,
+Kotlin + Compose, single `app` module, Room as the phone's replica, a cascade voice (speech-to-text,
+a Gemini text model with tools, text-to-speech; Gemini Live retired on the phone, ADR 0092),
 and the household's Django engine over Postgres as the system of record (§7, ADR 0044). **Read
 `build.gradle.kts` and `gradle/libs.versions.toml` for what is actually in the build** - a list
 here would be wrong within a month, and has been.

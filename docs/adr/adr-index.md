@@ -96,6 +96,7 @@ Format and the test for whether something deserves an ADR:
 | 0089 | [[0089-receipts-retired\|Receipt photos are retired]] | accepted | 2026-11-12 | - |
 | 0090 | [[0090-no-write-after-third-party-text\|No write tool runs in a turn that read third-party text]] | accepted | 2026-11-13 | - |
 | 0091 | [[0091-alfred-greets-from-your-real-day\|Alfred greets like a person, from facts about your real day]] | accepted | 2026-11-13 | - |
+| 0092 | [[0092-phone-voice-is-a-cascade-live-retired\|The phone's voice is a cascade; Gemini Live is retired]] | accepted | 2026-11-15 | - |
 
 ## Superseded
 

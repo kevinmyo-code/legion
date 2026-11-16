@@ -8019,3 +8019,23 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
     before something due. **No daily cap; quiet hours only** (default 10pm to 8am, a setting).
     Never the same question twice: a topic he answered is done.
 - Map `.scratch/alfred-greets/`.
+
+## 2026-11-15 - Gemini Live retired on the phone; the cascade is the voice (Kevin)
+
+- **Kevin's words:** *"lets change the fallback to the text+gemini voice, so tht we save costs from
+  the sts"*, then *"ship it once done. replace the sts live pipeline with it"*. Speech-to-speech was
+  too expensive. With it: *"make sure we can audit the costs of each convo too"*.
+- Ruled: every phone voice door (tap, wake word, Brief me, proactive lines) opens the cascade:
+  Gemini speech-to-text, a Gemini text model with tools and an explicit context cache, Gemini TTS
+  in the companion's voice. Settings > Assistant > Voice engine offers **Cloud** (the default) and
+  **Laptop pipeline** (speech on his own laptop's voice service, falling back to Cloud). Nothing
+  falls back to Live; a stored Live setting reads as Cloud. ADR 0092.
+- Reverses the 2026-10-02 "voice stays on `gemini-3.8-live`" and 2026-10-27 "voice stays on Gemini
+  Live native audio" entries, and the 2026-11-10 Voice engine switch that kept Live the default
+  (merge `2b11d511`, never filed here).
+- Live's code stays in the tree behind one flag, `VoiceEngineSettings.LIVE_RETIRED`, for a
+  rollback. Built in `7a7e7f74`, cost audit in `e697f9c9`; shipped as stage 1, phone 263191730.
+  Stage 3 (merged 2026-11-15, phone 263200608) added the greeting pack ahead of the tap,
+  speculative answers and a filler line on slow tools.
+- Known gaps on Cloud at ship: the camera look refuses in words, a navigation turn cue can overlap
+  a reply, a finished Claude task is not offered into an open conversation, no resume-music nudge.

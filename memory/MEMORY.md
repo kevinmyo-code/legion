@@ -24,17 +24,12 @@ believed.
 
 ## Where we stopped - 2026-11-16 (stage 4 integration, laptop)
 
-**Live now (2026-11-16):** stage 3 shipped. `dev` == `main` == `0742a48a`. Engine revision
-`legion-00084-mss` built from `0742a48a` (no migration). Phone OTA **263200608** (greeting pack ahead
-of the tap, "what's due" from calendar + to-dos, home due-today count, voice-fast speedups). Stages 1
-and 2 (Cloud voice cascade, OBD VIN) are in it. None of stages 1 to 3 has been audited on the phone
-yet: Kevin's own use is the test.
-
-**Stage 4 (2026-11-16):** branch `ship/stage4-1116` = `0742a48a` + merge of `feat/cards-viz`
-(cards at a glance: bars, meters, charts; kinds readings, status_list, trend; engine, web and phone;
-`shared/cards/fixtures.json` v2). No migration, no Room change. Engine + web deploy, then the phone
-OTA, by the stage 4 ship script. Kevin approved the phone card screens (2026-11-16); the web card
-pictures had only DOM tests on the branch, and the integration report says whether a browser
+**Live now (2026-11-16):** stage 4 shipped. `dev` == `main` == `d31ba333`. Engine revision
+`legion-00085-mp4` built from `d31ba333` (no migration). Phone OTA **263200900** (visual cards: bars,
+meters, charts; kinds readings, status_list, trend; engine, web and phone). Stages 1 to 3 (Cloud
+voice cascade, OBD VIN, greeting pack ahead of the tap and voice-fast, 263200608) are in it. Nothing
+from stages 3 and 4 has been audited on the phone yet: Kevin's own use is the test. The web card
+pictures had only DOM tests before the ship; the stage 4 integration report says whether a browser
 render was done.
 
 **Owed by Kevin (carried, 2026-11-15, still true 2026-11-16):** use the phone after stages 1 to 3: tap
@@ -62,12 +57,9 @@ ticks need a grading scheme source; due-today strip needs a done flag).
 
 **Kevin's standing word (2026-11-15):** build the queue and ship it in stages at Claude's judgment,
 each stage only when its gates are green. A phone stage can also ship from GitHub (Actions, Release
-phone, on `dev`, dry run first, Kevin approves the `production` gate); a real publish from GitHub has
-not been exercised. Cloud containers: Android SDK at `$HOME/android-sdk`, Maven via Google's mirror,
+phone, on `dev`, dry run first, Kevin approves the `production` gate); exercised for real 2026-11-15:
+stage 2 was published from GitHub Actions as phone 263192323. Cloud containers: Android SDK at `$HOME/android-sdk`, Maven via Google's mirror,
 clone is shallow (`git fetch --unshallow` before a commit or the hook writes a truncated devlog).
-
-**Owed docs:** an ADR for retiring Live on the phone, a `library/decisions.md` entry, and CLAUDE.md
-section 3's "Gemini Live over a WebSocket" line.
 
 ## Proactive voice - 2026-11-10
 
