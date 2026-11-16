@@ -57,12 +57,18 @@ object WakeSampleRecorder {
     /**
      * Called when capture opens: where to write, whether live saving is on, and what to stamp.
      * [twoStage] false means the Vosk-only fallback is listening, which emits no stage signals, so
-     * the eval can tell an empty event list from a miss.
+     * the eval can tell an empty event list from a miss. [engine] names which engine listened
+     * ([WakeSampleCapture.ENGINE_OWW] and the others), so a take's verdict reads that engine's signals.
      */
-    fun configure(context: Context, source: String, effects: Int, twoStage: Boolean) {
+    fun configure(context: Context, source: String, effects: Int, twoStage: Boolean, engine: String) {
         root = context.getExternalFilesDir(WakeSampleFiles.DIR)
         capture.liveOn = WakeWordPreferences.saveLiveSamples(context)
-        meta = mapOf("source" to source, "effects" to effects.toString(), "twoStage" to twoStage.toString())
+        meta = mapOf(
+            "source" to source,
+            "effects" to effects.toString(),
+            "twoStage" to twoStage.toString(),
+            WakeSampleCapture.META_ENGINE to engine,
+        )
     }
 
     fun setLiveOn(on: Boolean) {

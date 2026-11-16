@@ -303,6 +303,8 @@ private fun verdictWords(verdict: String): String = when (verdict) {
     "opened" -> "the wake word heard it and would have opened."
     "confirm_rejected" -> "the spotter heard it, the double-check rejected it."
     "kws_hit" -> "the spotter heard it."
+    "oww_hit" -> "openWakeWord heard it and would have opened."
+    "oww_miss" -> "openWakeWord did not hear it."
     else -> "the wake word did not hear it."
 }
 

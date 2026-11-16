@@ -186,12 +186,14 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
     private fun sidecar(kind: String, o: Open, pcm: ShortArray, reason: String): JSONObject {
         val events = o.events
         var kwsHit = false
+        var fired = false
         var confirmText: String? = null
         var accepted: Boolean? = null
         for (i in 0 until events.length()) {
             val e = events.getJSONObject(i)
             when (e.getString("stage")) {
                 "kws_hit" -> kwsHit = true
+                "open_suppressed", "opened" -> fired = true
                 "confirm" -> {
                     confirmText = e.getString("text")
                     accepted = e.getBoolean("accepted")
@@ -209,7 +211,7 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
             put("kwsHit", kwsHit)
             put("confirmText", confirmText ?: JSONObject.NULL)
             put("confirmAccepted", accepted ?: JSONObject.NULL)
-            put("verdict", verdict(kwsHit, accepted))
+            put("verdict", verdict(kwsHit, accepted, fired, o.meta[META_ENGINE]))
             o.meta.forEach { (k, v) -> put(k, v) }
             put("events", events)
         }
@@ -227,11 +229,25 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
         const val MAX_SEGMENT_SECONDS = 20
         private const val MS_PER_SECOND = 1000L
 
-        /** One word for what the pipeline did with this audio. */
-        fun verdict(kwsHit: Boolean, accepted: Boolean?): String = when {
+        /** The sidecar key naming the engine that listened ([ENGINE_OWW], [ENGINE_TWO_STAGE], [ENGINE_VOSK]). */
+        const val META_ENGINE = "engine"
+        const val ENGINE_OWW = "oww"
+        const val ENGINE_TWO_STAGE = "two_stage"
+        const val ENGINE_VOSK = "vosk"
+
+        /**
+         * One word for what the pipeline did with this audio, from the signals of the engine that
+         * listened. openWakeWord emits no spotter or double-check signals, only whether it would
+         * have opened ([fired]: `open_suppressed` while enrolling, `opened` otherwise), so its
+         * verdict is `oww_hit` or `oww_miss` (2026-11-16: it said "did not hear it" on every take).
+         */
+        fun verdict(kwsHit: Boolean, accepted: Boolean?, fired: Boolean = false, engine: String? = null): String = when {
+            engine == ENGINE_OWW -> if (fired) "oww_hit" else "oww_miss"
             accepted == true -> "opened"
             kwsHit && accepted == false -> "confirm_rejected"
             kwsHit -> "kws_hit"
+            // The Vosk-only fallback emits no stage signals either: an open is its only hit.
+            fired -> "opened"
             else -> "kws_miss"
         }
     }

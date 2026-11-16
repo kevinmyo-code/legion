@@ -417,7 +417,12 @@ object WakeWordEngine {
         }
         record = r
         effects = if (raw) emptyList() else attachVoiceEffects(r.audioSessionId)
-        WakeSampleRecorder.configure(context, sourceName, effects.size, twoStage = detector != null)
+        val engineKey = when {
+            oww != null -> WakeSampleCapture.ENGINE_OWW
+            detector != null -> WakeSampleCapture.ENGINE_TWO_STAGE
+            else -> WakeSampleCapture.ENGINE_VOSK
+        }
+        WakeSampleRecorder.configure(context, sourceName, effects.size, twoStage = detector != null, engine = engineKey)
         registerSilenceWatch(context, r)
 
         // Mirrors GeminiLiveSession's own capture line on purpose: ticket 12 was diagnosed by
