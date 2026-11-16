@@ -6,6 +6,7 @@ import com.kevin.legion.backend.engine.EngineConfig
 import com.kevin.legion.backend.engine.EngineHttp
 import com.kevin.legion.greeting.AndroidPlaceSignals
 import com.kevin.legion.backend.engine.DjangoGreetingBackend
+import com.kevin.legion.greeting.FactsPack
 import com.kevin.legion.greeting.GreetingBlock
 import com.kevin.legion.greeting.GreetingFactory
 import com.kevin.legion.greeting.GreetingOpening
@@ -31,6 +32,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 /**
  * The Android half of listening check-ins ([CheckInRules] holds the rules): when to look, what the
@@ -104,7 +106,7 @@ object CheckIns {
         val pack = usable.pack
         val place = readPlace(app, pack.said, pack.closed)
         var ledger = load(app).pruned(System.currentTimeMillis())
-        val pick = CheckInMoments.pick(pack, place, now, trigger, ledger)
+        val pick = CheckInMoments.pick(pack, place, now, trigger, ledger, history = cache.history())
         if (trigger == CheckInMoments.Trigger.UNLOCK && now.hour in
             CheckInRules.QUIET_END_HOUR until CheckInRules.MORNING_END_HOUR
         ) {
@@ -115,22 +117,32 @@ object CheckIns {
             log("none trigger=${trigger.name.lowercase()} reason=no_moment")
             return
         }
-        val block = GreetingBlock.render(pack, place, now.toLocalTime())
-        val raise = ProactiveRaise(
-            ruleId = CheckInRules.ruleId(pick.sourceName),
-            category = ProactiveCategory.CHECK_INS,
-            reason = "Check-in, because ${pick.moment.words}: ${pick.item.says}",
-            facts = block,
-            prompt = CheckInPrompt.build(block, pick.item, pick.moment),
-            listensForReply = true,
-            checkIn = CheckInMark(pick.item.topic, pick.moment),
-        )
-        val outcome = ProactiveBus.speakIfAllowed(app, raise)
+        val outcome = ProactiveBus.speakIfAllowed(app, raiseFor(pack, place, now.toLocalTime(), pick))
         if (outcome is ProactiveBus.RaiseOutcome.Raised) {
             ledger = ledger.raised(pick.item.topic, pick.sourceName, pick.moment, System.currentTimeMillis())
         }
         save(app, ledger)
         log("raise moment=${pick.moment.name.lowercase()} outcome=${outcome.javaClass.simpleName}")
+    }
+
+    /**
+     * The raise for [pick]. A money topic is said as the greeting says it (stage 5): the category
+     * and that it is over its cap, never the figures; the block shows that line in place of the
+     * amounts, and the reason (logged) carries no figure either.
+     */
+    private fun raiseFor(pack: FactsPack, place: GreetingSource, time: LocalTime, pick: CheckInPick): ProactiveRaise {
+        val money = pick.sourceName == MONEY
+        val block = GreetingBlock.render(pack, place, time, lead = pick.item.takeIf { money })
+        val topic = if (money) pick.item.copy(says = GreetingBlock.moneyLeadLine(pick.item)) else pick.item
+        return ProactiveRaise(
+            ruleId = CheckInRules.ruleId(pick.sourceName),
+            category = ProactiveCategory.CHECK_INS,
+            reason = "Check-in, because ${pick.moment.words}: ${topic.says}",
+            facts = block,
+            prompt = CheckInPrompt.build(block, topic, pick.moment),
+            listensForReply = true,
+            checkIn = CheckInMark(pick.item.topic, pick.moment),
+        )
     }
 
     private suspend fun readPlace(app: Context, said: Set<String>, closed: Set<String>): GreetingSource {
@@ -162,6 +174,7 @@ object CheckIns {
     }
 
     private const val STATE_ANSWERED = "answered"
+    private const val MONEY = "money"
 
     private fun load(app: Context): CheckInLedger = runCatching {
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LEDGER, null)

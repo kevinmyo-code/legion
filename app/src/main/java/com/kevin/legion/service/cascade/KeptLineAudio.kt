@@ -73,8 +73,8 @@ internal class KeptLineAudio(
 
     companion object {
         /**
-         * Sixteen lines (acks, fillers, check-in closers) in two or three voices, with room for a
-         * voice change, so a closer never evicts an ack.
+         * Nineteen lines per voice since stage 6 (8 acks, 5 fillers, 6 check-in closers): 57 in three
+         * voices, so a closer never evicts an ack.
          */
         const val MAX_FILES = 64
 

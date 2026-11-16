@@ -2,6 +2,7 @@ package com.kevin.legion.service.checkin
 
 import com.kevin.legion.greeting.FactsPack
 import com.kevin.legion.greeting.FactsParser
+import com.kevin.legion.greeting.GreetingBlock
 import com.kevin.legion.greeting.GreetingItem
 import com.kevin.legion.greeting.GreetingPlace
 import com.kevin.legion.greeting.GreetingSource
@@ -162,6 +163,22 @@ class CheckInRulesTest {
     }
 
     @Test
+    fun `the morning moment keeps the greeting's caps`() {
+        val body = GreetingItem("body:2030-03-04", "Invented: leg day planned.", kind = "workout")
+        val p = pack(source("body", body))
+        val morning = LocalDateTime.of(2030, 3, 4, 9, 0)
+        val unlock = CheckInMoments.Trigger.UNLOCK
+        val ledger = CheckInLedger()
+        // Body leads at most once a day: a greeting already led with it today, so no morning ask.
+        val ledToday = GreetingBlock.History(today = listOf("body"), last = "body")
+        assertNull(CheckInMoments.pick(p, home, morning, unlock, ledger, zone, ledToday))
+        assertEquals(
+            CheckInMoment.MORNING,
+            CheckInMoments.pick(p, home, morning, unlock, ledger, zone, GreetingBlock.History.NONE)!!.moment,
+        )
+    }
+
+    @Test
     fun `a topic raised, answered or silenced on the engine is never asked`() {
         val e = ended("event:a", noon.minusMinutes(45))
         assertNull(pick(pack(source("ended_events", e), said = setOf("event:a"))))
@@ -234,6 +251,7 @@ class CheckInRulesTest {
         assertTrue(prompt.contains("Never mention his absence"))
         assertTrue(prompt.contains("Do not call any tool"))
         assertTrue(prompt.contains("FACTS PACK. invented"))
+        assertTrue(prompt.contains("Say no amount of money"))
     }
 
     @Test

@@ -173,7 +173,13 @@ data class CheckInPick(val item: GreetingItem, val sourceName: String, val momen
 object CheckInMoments {
     enum class Trigger { UNLOCK, TICK }
 
-    /** One look: a retry first, then the morning, an ended event, away from home, something due. */
+    /**
+     * One look: a retry first, then the morning, an ended event, away from home, something due.
+     * [history] is the greeting's ([com.kevin.legion.greeting.GreetingPackCache.history]): the
+     * morning one leads with what the greeting would, under the same caps (stage 6, 2026-11-16:
+     * money over its cap at most once a day, no kind twice running, place only on arrival).
+     */
+    @Suppress("LongParameterList") // the pack, the moment and the two memories it is judged against
     fun pick(
         pack: FactsPack,
         place: GreetingSource,
@@ -181,13 +187,14 @@ object CheckInMoments {
         trigger: Trigger,
         ledger: CheckInLedger,
         zone: ZoneId = ZoneId.systemDefault(),
+        history: GreetingBlock.History = GreetingBlock.History.NONE,
     ): CheckInPick? {
         val nowMs = now.atZone(zone).toInstant().toEpochMilli()
         if (nowMs - ledger.lastRaisedAtMs < CheckInRules.MIN_GAP_MS) return null
         val sources = GreetingBlock.allSources(pack, place).filter { it.state == SourceState.FACTS }
         val look = Look(pack, sources, ledger, nowMs)
         return look.retry()
-            ?: (if (trigger == Trigger.UNLOCK) look.morning(place, now) else null)
+            ?: (if (trigger == Trigger.UNLOCK) look.morning(place, now, history) else null)
             ?: look.eventEnded()
             ?: look.away()
             ?: look.due()
@@ -219,10 +226,10 @@ object CheckInMoments {
         private fun retryDue(e: CheckInLedger.Entry): Boolean =
             !e.done && e.asks < CheckInRules.MAX_ASKS && nowMs - e.lastAtMs >= CheckInRules.RETRY_GAP_MS
 
-        fun morning(place: GreetingSource, now: LocalDateTime): CheckInPick? {
+        fun morning(place: GreetingSource, now: LocalDateTime, history: GreetingBlock.History): CheckInPick? {
             val inWindow = now.hour in CheckInRules.QUIET_END_HOUR until CheckInRules.MORNING_END_HOUR
             if (!inWindow || ledger.morningDay == now.toLocalDate().toString()) return null
-            val lead = GreetingBlock.pick(pack.copy(said = pack.said + ledger.topics.keys), place, now.hour)
+            val lead = GreetingBlock.pick(pack.copy(said = pack.said + ledger.topics.keys), place, now.hour, history)
             val src = lead?.let { l -> sources.firstOrNull { s -> s.items.any { it.topic == l.topic } } }
             return if (lead != null && src != null) CheckInPick(lead, src.name, CheckInMoment.MORNING) else null
         }
@@ -267,6 +274,7 @@ object CheckInPrompt {
         - Mention nothing that is not in the facts below. If something is not there you do not know it.
         - A source marked COULD NOT BE READ was not checked: never say it is clear, free or empty.
         - Times are clock times and days by name, as written below.
+        - Say no amount of money and no budget figure (stage 5's greeting rule): a budget is only over its cap.
         - Never mention his absence, how long it has been, a streak, his use of this app, or that you
           asked before. No guilt, no pressure, no lecture: a question he may answer or ignore.
         - Do not call any tool for this line and do not say you did anything.
