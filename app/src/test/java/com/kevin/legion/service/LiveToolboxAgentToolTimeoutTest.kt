@@ -23,7 +23,9 @@ class LiveToolboxAgentToolTimeoutTest {
         for (name in listOf("diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start", "ask_advisor")) {
             assertEquals(name, LiveToolbox.SPECIALIST_TOOL_TIMEOUT_MS, LiveToolbox.agentToolTimeoutMs(name))
         }
-        assertEquals(8_000L, LiveToolbox.agentToolTimeoutMs("get_codes"))
+        assertEquals(8_000L, LiveToolbox.agentToolTimeoutMs("get_mpg"))
+        // 2026-11-15: get_codes can wait for a module scan, so it has the long leash too.
+        assertEquals(LiveToolbox.SPECIALIST_TOOL_TIMEOUT_MS, LiveToolbox.agentToolTimeoutMs("get_codes"))
         assertEquals(8_000L, LiveToolbox.agentToolTimeoutMs("list_goals"))
     }
 
@@ -45,7 +47,7 @@ class LiveToolboxAgentToolTimeoutTest {
                     JSONObject().put("role", "model").put(
                         "parts",
                         JSONArray()
-                            .put(JSONObject().put("functionCall", JSONObject().put("name", "get_codes")))
+                            .put(JSONObject().put("functionCall", JSONObject().put("name", "get_mpg")))
                             .put(JSONObject().put("functionCall", JSONObject().put("name", "diagnose_codes"))),
                     ),
                 ),
@@ -61,7 +63,7 @@ class LiveToolboxAgentToolTimeoutTest {
 
         val r = sub.route(
             "q",
-            listOf(slow("get_codes"), slow("diagnose_codes")),
+            listOf(slow("get_mpg"), slow("diagnose_codes")),
             budgetMs = LiveToolbox.DISPATCH_ROUTE_BUDGET_MS,
         )
 

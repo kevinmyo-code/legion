@@ -66,6 +66,7 @@ import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.FaultRow
 import com.kevin.legion.ui.fleet.FaultRowView
 import com.kevin.legion.ui.fleet.FaultsDrilldownScreen
+import com.kevin.legion.ui.fleet.ModuleScanScreen
 import com.kevin.legion.ui.fleet.FleetSpendView
 import com.kevin.legion.ui.fleet.FullScheduleScreen
 import com.kevin.legion.ui.fleet.ItemDetailScreen
@@ -341,7 +342,7 @@ data class FleetUiState(
  * [FleetScreen] below, so returning from ITEM DETAIL to FULL SCHEDULE preserves the filter without
  * threading it back through the enum itself.
  */
-private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL, POPULATE, FAULTS, BUILD_SHEET }
+private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL, POPULATE, FAULTS, BUILD_SHEET, MODULES }
 
 @Composable
 fun FleetScreen(
@@ -714,7 +715,11 @@ fun FleetScreen(
                 clearEvents = fullState.clearEventsAll,
                 descriptions = fullState.dtcDescriptions,
                 onBack = { reloadKey++; drilldown = null },
+                onOpenModules = { drilldown = FleetDrilldown.MODULES },
             )
+            // Every module's codes (brand-neutral diagnostics, 2026-11-15): the hands path for
+            // "scan the truck" and the module clear, through DiagScanController like voice.
+            FleetDrilldown.MODULES -> ModuleScanScreen(onBack = { reloadKey++; drilldown = FleetDrilldown.FAULTS })
             // Closing ADAPTER re-keys the load above: selecting a dongle in
             // there writes the registry, which this screen only reads on load.
             FleetDrilldown.ADAPTER -> ObdDeviceScreen(

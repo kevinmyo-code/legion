@@ -618,7 +618,14 @@ object LiveToolbox {
      * LiveToolboxAgentToolTimeoutTest pins the order.
      */
     internal fun agentToolTimeoutMs(name: String): Long =
-        if (name in SPECIALIST_TOOLS) SPECIALIST_TOOL_TIMEOUT_MS else AGENT_TOOL_TIMEOUT_MS
+        if (name in SPECIALIST_TOOLS || name in SLOW_READ_TOOLS) SPECIALIST_TOOL_TIMEOUT_MS else AGENT_TOOL_TIMEOUT_MS
+
+    /**
+     * Reads that talk to the car for longer than a plain PID (2026-11-15): `get_codes` with
+     * `all_modules` waits up to [com.kevin.legion.vehicle.diag.DiagVoice.SCAN_WAIT_MS] for a module
+     * scan. The engine-only read still answers in about a second, so the longer leash costs it nothing.
+     */
+    internal val SLOW_READ_TOOLS = setOf("get_codes")
 
     internal const val AGENT_TOOL_TIMEOUT_MS = 8_000L
     internal const val SPECIALIST_TOOL_TIMEOUT_MS = 32_000L
@@ -885,7 +892,13 @@ object LiveToolbox {
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
-            "get_codes" -> getCodes(context)
+            // 2026-11-15: all_modules reads every module the dongle can reach (DiagVoice), not just
+            // the engine's generic codes; the engine-only read is unchanged.
+            "get_codes" -> if (args.optBoolean("all_modules", false)) {
+                com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
+            } else {
+                getCodes(context)
+            }
             "get_current_time" -> getCurrentTime()
             "diagnose_codes" -> diagnoseCodes(context, args)
             "read_vehicle_sensor" -> readVehicleSensor(context, args)
@@ -3854,6 +3867,13 @@ object LiveToolbox {
     private suspend fun clearCodes(context: Context, args: JSONObject, userText: String?): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
         val connected = ObdBluetoothManager.isConnected
+        // 2026-11-15: `modules` clears named modules from the last module scan, behind the same
+        // kind of yes-check (DiagVoice's own gate); without it this is the engine's Mode 04 below.
+        val modules = args.optString("modules").trim()
+        if (modules.isNotEmpty()) {
+            if (!connected) return result(false, com.kevin.legion.vehicle.diag.DiagScanController.NOT_CONNECTED)
+            return com.kevin.legion.vehicle.diag.DiagVoice.clear(context, modules, confirmed, userText)
+        }
         // 2026-11-05: confirmed=true is the model's word, so the user's own words this turn must be
         // a yes to the question the unconfirmed call put (ClearCodesVoiceGate). Refused before
         // anything is read from or sent to the car.

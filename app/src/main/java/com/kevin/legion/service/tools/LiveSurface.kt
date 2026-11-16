@@ -98,8 +98,8 @@ internal object LiveSurface {
                 Action("unarchive_vehicle", "manage_vehicle", "bring one back", mapOf("action" to "unarchive")),
                 Action(
                     "clear_codes", "clear_codes",
-                    "erase trouble codes, only when asked to clear; first call returns the warning to " +
-                        "recite, $YES",
+                    "erase trouble codes, only when asked to clear; modules = scanned modules or all, " +
+                        "omit for the engine; first call returns the warning to recite, $YES",
                 ),
                 Action(
                     "activate_garage", "activate_garage",
