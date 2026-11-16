@@ -1,6 +1,10 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
 
+// The engine's Docker build context is `server/`, so the repo-root `shared/` folder is absent
+// when `tsc -b` runs inside the image build (same caveat as games/tetris/rules.test.ts). The
+// import is unresolvable there and only there; vitest always resolves it.
+// @ts-ignore TS2307 inside the Docker build only
 import rawFixtures from '../../../../../../shared/cards/fixtures.json'
 
 import { ToolCard } from './card'
