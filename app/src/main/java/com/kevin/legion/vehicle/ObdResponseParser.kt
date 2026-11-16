@@ -36,9 +36,23 @@ object ObdResponseParser {
      */
     fun isFailureResponse(response: String): Boolean {
         if (response.isBlank()) return true
-        val upper = response.uppercase()
+        // "BUS INIT: ...OK" is a K-line init that SUCCEEDED, printed before the answer on an ISO
+        // 9141 / KWP car (2026-11-15, diagnostics step 3). Matching it as "BUS INIT" called a good
+        // XJ reply a failure, so the re-init said "not recovered" and a clear said "refused". Only a
+        // bus-init line without OK (a hung or ERROR init) still counts.
+        val upper = response.uppercase().split('\r', '\n')
+            .filterNot { it.trim().startsWith("BUS INIT") && "OK" in it && "ERR" !in it }
+            .joinToString("\n")
+        if (upper.isBlank()) return true
         return FAILURE_MARKERS.any { it in upper }
     }
+
+    /**
+     * Set by [ObdBluetoothManager] on connect from `ATDPN`: true on a CAN (ISO 15765-4) car, whose
+     * Mode 03 answer starts with a COUNT byte the legacy buses do not send (2026-11-15). Read as
+     * [dtcCodes]' default so every existing caller decodes the connected car's format.
+     */
+    @Volatile var canLink: Boolean = false
 
     /**
      * True only when [response] is a genuine Mode 03 answer: not a failure, and it carries a "43"
@@ -49,7 +63,9 @@ object ObdResponseParser {
     fun isValidDtcReply(response: String): Boolean {
         if (isFailureResponse(response)) return false
         return response.split('\r', '\n').any { line ->
-            line.trim().split(Regex("\\s+")).firstOrNull()?.equals("43", ignoreCase = true) == true
+            // A CAN multi-frame answer prints its first frame as "0: 43 04 ...": the index is not data.
+            line.trim().replace(INDEX_PREFIX, "").split(Regex("\\s+")).firstOrNull()
+                ?.equals("43", ignoreCase = true) == true
         }
     }
 
@@ -202,11 +218,12 @@ object ObdResponseParser {
      * not just the first line, or the second "43" gets decoded as a bogus code.
      * Each line's leading "43" is dropped, then all data bytes are paired.
      */
-    fun dtcCodes(response: String): List<String> {
+    fun dtcCodes(response: String, can: Boolean = canLink): List<String> {
         val upper = response.uppercase()
         if (response.isBlank() || "NO DATA" in upper || "UNABLE" in upper) {
             return emptyList()
         }
+        if (can) return dtcCodesCan(response)
 
         val data = mutableListOf<String>()
         var sawFrame = false
@@ -237,6 +254,33 @@ object ObdResponseParser {
         }
         return codes
     }
+
+    /**
+     * Mode 03 on CAN, headers off: each ECU's answer is `43 <count> <code pairs>`, as one line or
+     * as an indexed multi-frame (`00A`, `0: 43 04 ...`, `1: ...`). The count decides how many pairs
+     * are codes; reading the count as a code half was the bug (`43 01 01 33` is P0133, not P0101).
+     */
+    private fun dtcCodesCan(response: String): List<String> {
+        val messages = mutableListOf<MutableList<Int>>()
+        for (line in response.split('\r', '\n')) {
+            val t = line.trim()
+            val bytes = t.split(Regex("\\s+")).filter { it.length == 2 && it.toIntOrNull(HEX_RADIX) != null }
+                .map { it.toInt(HEX_RADIX) }
+            if (bytes.isEmpty()) continue
+            val continuation = CONTINUATION_LINE.containsMatchIn(t)
+            if (!continuation && bytes[0] == MODE_03_REPLY) {
+                messages += bytes.drop(1).toMutableList()
+            } else if (messages.isNotEmpty()) {
+                messages.last() += bytes
+            }
+        }
+        return messages.flatMap { com.kevin.legion.vehicle.diag.DtcBytes.obdCodes(it, can = true) }.distinct()
+    }
+
+    private const val HEX_RADIX = 16
+    private const val MODE_03_REPLY = 0x43
+    private val CONTINUATION_LINE = Regex("^[1-9A-F]:")
+    private val INDEX_PREFIX = Regex("^[0-9A-F]:\\s*")
 
     /**
      * VIN from a mode-09 PID 02 response, or null when there is no valid one. Delegates to

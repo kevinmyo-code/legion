@@ -637,6 +637,10 @@ object ObdBluetoothManager {
         val supported0100 = sendCommand("0100")
         val protocolCode = sendCommand("ATDPN").trim()
         val protocolName = describeProtocol(protocolCode)
+        // 2026-11-15: CAN cars send a count byte before their Mode 03 codes; every code read decodes
+        // by the connected car's bus from here on (ObdResponseParser.dtcCodes' default).
+        busKind = com.kevin.legion.vehicle.diag.BusKind.fromDpn(protocolCode)
+        ObdResponseParser.canLink = busKind.isCan
         // A command failing mid-handshake calls disconnect() (nulling transport),
         // so re-check before declaring success - otherwise we'd report CONNECTED
         // with a dead socket and every read would silently return null.
@@ -852,8 +856,31 @@ object ObdBluetoothManager {
         // ActiveVehicle.current() back to the default vehicle id too.
         if (wasConnected) appContext?.let { ActiveVehicle.notifyResolutionChanged(it) }
         _supportedPids.value = emptySet()
+        busKind = com.kevin.legion.vehicle.diag.BusKind.UNKNOWN
+        ObdResponseParser.canLink = false
         _connectionState.value = ConnectionState.DISCONNECTED
     }
+
+    /** The bus `ATDPN` reported at connect; UNKNOWN while disconnected. */
+    @Volatile var busKind: com.kevin.legion.vehicle.diag.BusKind = com.kevin.legion.vehicle.diag.BusKind.UNKNOWN
+        private set
+
+    /**
+     * Runs a module scan or clear ([com.kevin.legion.vehicle.diag]) holding the OBD link for the
+     * whole of it (2026-11-15). The scan changes adapter state (headers, receive filter, flow
+     * control) that the telemetry poller's next command would trip over, so the poller waits on
+     * [commandMutex] until [block] returns; the scanner puts the adapter state back in its own
+     * `finally`. These commands never count toward [consecutivePidSilence]: a silent address is
+     * the normal answer while probing, and a protocol re-init mid-scan would undo its setup.
+     * Null when no dongle is connected.
+     */
+    suspend fun <T> withDiagnosticLink(block: suspend (com.kevin.legion.vehicle.diag.DiagLink) -> T): T? =
+        withContext(Dispatchers.IO) {
+            commandMutex.withLock {
+                if (transport == null) return@withLock null
+                block(com.kevin.legion.vehicle.diag.DiagLink { cmd, timeoutMs -> exchangeLocked(cmd, timeoutMs) })
+            }
+        }
 
     /**
      * Sends an AT/PID command and returns the raw response, or "" on failure.
