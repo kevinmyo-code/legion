@@ -111,6 +111,67 @@ class CascadeRulesTest {
         assertEquals("", CascadePrompt.preamble("", " "))
     }
 
+    @Test
+    fun `the agenda rides after the preamble, for his turns, and an empty one adds nothing`() {
+        val pre = CascadePrompt.preamble("Today's date is an invented day.", "")
+        assertEquals(pre, CascadePrompt.withAgenda(pre, ""))
+        assertEquals(pre, CascadePrompt.withAgenda(pre, "  "))
+        val withIt = CascadePrompt.withAgenda(pre, "TODAY'S AGENDA, invented.\n- one line")
+        assertTrue(withIt.startsWith(pre))
+        assertTrue(withIt.endsWith("(TODAY'S AGENDA, invented.\n- one line)\n\n"))
+        // Never in the cached half: the split's cacheable part is untouched by it.
+        val split = CascadePrompt.split("Rules.\n\nToday's date is an invented day.")
+        assertFalse(split.cacheable.contains("AGENDA"))
+    }
+
+    // --- his speech while a turn is still being answered (voice quick wins D) --------------------
+
+    @Test
+    fun `new speech before any reply is audible merges a no-tool or read-only turn`() {
+        val noTool = CascadeRules.newSpeech(true, false, true, toolsCalled = false, writeCalled = false, bargeIn = false)
+        assertEquals(CascadeRules.NewSpeech.MERGE, noTool)
+        val reads = CascadeRules.newSpeech(true, false, true, toolsCalled = true, writeCalled = false, bargeIn = false)
+        assertEquals("a lookup no longer holds his words behind its reply", CascadeRules.NewSpeech.MERGE, reads)
+        assertEquals(
+            CascadeRules.NewSpeech.MERGE,
+            CascadeRules.newSpeech(true, false, true, toolsCalled = true, writeCalled = false, bargeIn = true),
+        )
+    }
+
+    @Test
+    fun `a turn that called a write is interrupted like a barge-in, never merged`() {
+        assertEquals(
+            CascadeRules.NewSpeech.INTERRUPT,
+            CascadeRules.newSpeech(true, false, true, toolsCalled = true, writeCalled = true, bargeIn = true),
+        )
+        // Half-duplex (Bluetooth, a call): no barge-in, so a write's turn keeps today's rule.
+        assertEquals(
+            CascadeRules.NewSpeech.NONE,
+            CascadeRules.newSpeech(true, false, true, toolsCalled = true, writeCalled = true, bargeIn = false),
+        )
+    }
+
+    @Test
+    fun `nothing happens with no turn running, a reply already audible, or an opener's turn`() {
+        for (tools in listOf(false, true)) {
+            for (write in listOf(false, true)) {
+                assertEquals(
+                    CascadeRules.NewSpeech.NONE,
+                    CascadeRules.newSpeech(false, false, true, tools, write, bargeIn = true),
+                )
+                assertEquals(
+                    "an audible reply is the barge-in gate's to stop",
+                    CascadeRules.NewSpeech.NONE,
+                    CascadeRules.newSpeech(true, true, true, tools, write, bargeIn = true),
+                )
+                assertEquals(
+                    CascadeRules.NewSpeech.NONE,
+                    CascadeRules.newSpeech(true, false, false, tools, write, bargeIn = true),
+                )
+            }
+        }
+    }
+
     // --- hand-over to Live: never lose his words, never run a tool twice ------------------------
 
     @Test

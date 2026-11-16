@@ -357,6 +357,25 @@ class CloudSpeechTest {
     }
 
     @Test
+    fun `warming fetches a kept line once, so its first use is already in hand`() = runBlocking<Unit> {
+        val kept = ConcurrentHashMap<String, ByteArray>()
+        val fake = FakeGemini { _, _, on ->
+            on(audioEv(byteArrayOf(7, 8)))
+            StreamOutcome.Ok
+        }
+        val tts = GeminiTts(fake, scope, keepLines = setOf("Hold on."), kept = kept)
+        assertFalse(tts.inHand("Hold on."))
+        // Only kept lines are warmed; a line outside the set and a blank one cost nothing.
+        assertEquals(1, tts.warm(listOf("Hold on.", "Hold on.", "Invented reply.", " ")))
+        withTimeout(2_000) { while (!tts.inHand("Hold on.")) delay(5) }
+        assertEquals(1, fake.calls.size)
+        assertEquals("already kept: nothing more to fetch", 0, tts.warm(listOf("Hold on.")))
+        assertArrayEquals(byteArrayOf(7, 8), collect(tts.speak("Hold on.")))
+        assertEquals(1, fake.calls.size)
+        assertFalse("a reply sentence is never in hand", tts.inHand("Invented reply."))
+    }
+
+    @Test
     fun `a reply speaks sentence by sentence through the cloud voice, in order`() = runBlocking<Unit> {
         val fake = FakeGemini { _, body, on ->
             val text = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text")

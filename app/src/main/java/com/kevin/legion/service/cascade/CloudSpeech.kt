@@ -416,6 +416,25 @@ internal class GeminiTts(
         return clip
     }
 
+    /** A kept line: its audio is in memory, or on disk and now loaded into memory ([KeptLineAudio]). */
+    override fun inHand(text: String): Boolean = text in keepLines && kept[keyOf(text)] != null
+
+    /**
+     * Renders each kept line in [lines] that has no audio yet, so its first use plays from memory
+     * (2026-11-16: the first filler cost a TTS round trip, 805 ms measured). Nobody listens to these
+     * clips; a finished one stores its audio in [kept] as a spoken one would.
+     */
+    override fun warm(lines: Collection<String>): Int {
+        var asked = 0
+        for (text in lines.distinct()) {
+            if (text.isBlank() || text !in keepLines || kept[keyOf(text)] != null) continue
+            Clip(ids.addAndGet(2), text).start(keyOf(text))
+            asked++
+        }
+        if (asked > 0) log("tts_warm lines=$asked")
+        return asked
+    }
+
     /** Never called ([streamsText] is false); a refused stream makes [ReplySpeaker] use sentences. */
     override fun openStream(): StreamingSpeechClip = Clip(ids.addAndGet(2), "").also {
         it.finish(TtsOutcome.Failed("bad_request"))

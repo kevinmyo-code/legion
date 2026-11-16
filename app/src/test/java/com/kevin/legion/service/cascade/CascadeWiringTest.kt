@@ -219,6 +219,42 @@ class CascadeWiringTest {
         assertTrue(bodyOf(s, "swapToCloud").contains("discardDraft("))
     }
 
+    // --- voice quick wins (2026-11-16) -------------------------------------------------------------
+
+    @Test
+    fun `his turns carry the agenda, the greeting does not, and a write withdraws it`() {
+        val s = session()
+        assertTrue(bodyOf(s, "answerTurn").contains("turnContentsFor(heard)"))
+        assertTrue(bodyOf(s, "startDraftAnswer").contains("turnContentsFor(heard)"))
+        assertFalse(bodyOf(s, "speakGreeting").contains("turnContentsFor("))
+        assertTrue(bodyOf(s, "loadAgenda").contains("if (test != null || opener != null) return \"\""))
+        // Fetched beside the live context, never on the open path or in the cached prefix.
+        assertFalse(bodyOf(s, "openNow").contains("loadAgenda("))
+        val prompt = bodyOf(s, "buildPrompt")
+        assertTrue(prompt.substring(prompt.indexOf("preambleReady =")).contains("loadAgenda()"))
+        assertFalse(prompt.substring(prompt.indexOf("prefixReady ="), prompt.indexOf("preambleReady =")).contains("agenda"))
+        assertTrue(s.contains("if (CascadeRules.isWrite(name, args)) noteChange(response)"))
+    }
+
+    @Test
+    fun `writes are judged on the tool a call stands for, and marked before they run`() {
+        val s = session()
+        assertTrue(bodyOf(s, "newTextLoop").contains("isMutating = CascadeRules::isWrite"))
+        val exec = bodyOf(s, "executorFor")
+        assertTrue(exec.indexOf("record.writeCalled = true") in 0 until exec.indexOf("host.runTool("))
+    }
+
+    @Test
+    fun `speech before a tool turn's reply is merged or interrupted, never queued behind it`() {
+        val s = session()
+        assertTrue(s.contains("CascadeRules.newSpeech("))
+        assertTrue(s.contains("CascadeRules.NewSpeech.INTERRUPT -> interrupt(\"speech_during_tools\")"))
+        // A merged turn's words carry; it is not also recorded on its own.
+        assertTrue(bodyOf(s, "answerTurn").contains("if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty()))"))
+        // The end of turn itself is unchanged: a new turn still waits for the one before it.
+        assertTrue(bodyOf(s, "onTurnEnd").contains("previous?.join()"))
+    }
+
     @Test
     fun `the car's hands-free mic and the Bluetooth watch carry over from Live`() {
         val s = session()

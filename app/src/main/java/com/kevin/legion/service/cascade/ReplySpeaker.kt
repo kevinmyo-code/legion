@@ -104,7 +104,8 @@ internal class ReplySpeaker(
 
     /**
      * A short scripted line ("One moment.") played before the reply, while a slow tool runs. Never
-     * part of [spoken] (it claims nothing and is not the answer). Only before any reply text.
+     * part of [spoken] (it claims nothing and is not the answer). Only before any reply text, and
+     * dropped unheard if reply text arrives before its first audio does.
      */
     fun filler(line: String): Boolean {
         if (interrupted || anyText) return false
@@ -219,8 +220,14 @@ internal class ReplySpeaker(
                 }
                 continue
             }
-            synchronized(started) { started.add(clip) }
             val isFiller = clip in fillers
+            // The answer's text arrived before the filler's first audio: the filler would only hold
+            // the answer up behind it, so it is dropped unheard (2026-11-16).
+            if (isFiller && anyText) {
+                clip.cancel()
+                continue
+            }
+            synchronized(started) { started.add(clip) }
             if (!isFiller) onClipStarted(clip.text)
             if (isFiller && !anyFillerAudio && !anyAudio) {
                 anyFillerAudio = true
