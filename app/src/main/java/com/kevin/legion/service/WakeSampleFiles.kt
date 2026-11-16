@@ -17,7 +17,8 @@ import java.util.Locale
 internal object WakeSampleFiles {
     const val DIR = "wake-samples"
     private const val LIVE_DIR = "live"
-    // About 20 MB of utterances at 16 kHz mono 16-bit: old ones go first.
+    // Old ones go first. At 16 kHz mono 16-bit a wake-hit sample (3 s) is about 96 KB, so 300 is
+    // about 29 MB; a VAD utterance (two-stage engine) is longer, up to 20 s.
     private const val LIVE_KEEP = 300
 
     /** Writes [s] under [base]; a take goes to [sessionDir]. Returns the two files written. */

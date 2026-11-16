@@ -70,7 +70,11 @@ object WavEncoder {
  * Two kinds of sample:
  *  - **Live segments** (only while [liveOn]): one per VAD utterance, from [PREROLL_SECONDS] before
  *    the VAD flipped on to when it flipped off, capped at [MAX_SEGMENT_SECONDS]. What the phone
- *    heard and decided on an ordinary day.
+ *    heard and decided on an ordinary day. Only the two-stage engine has a VAD: with openWakeWord or
+ *    Vosk alone no segment ever opened, so from 11-10 "save every wake attempt" kept nothing
+ *    (2026-11-16). There each wake hit ([isHit]) is a live sample of its own instead: the
+ *    [HIT_PREROLL_SECONDS] before the hit, closed at once (`closedBy` `wake_hit`), since a hit that
+ *    opens a conversation releases the mic straight after.
  *  - **Takes** (enrollment): continuous audio for a labelled window, whatever the VAD did. A take
  *    keeps the VAD out of the recording so the offline eval can sweep the VAD too; a segment-only
  *    recording would bake today's VAD threshold into every result.
@@ -100,7 +104,7 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
 
     @Volatile var liveOn: Boolean = false
 
-    private val preroll = ShortArray((sampleRate * PREROLL_SECONDS).toInt())
+    private val preroll = ShortArray((sampleRate * HIT_PREROLL_SECONDS).toInt())
     private var written = 0L
     private var segment: Open? = null
     private var take: Open? = null
@@ -126,15 +130,23 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
     fun onSignal(signal: WakeSignal, meta: Map<String, String> = emptyMap()): List<Sample> {
         val out = mutableListOf<Sample>()
         if (signal == WakeSignal.VadOn && liveOn && segment == null) {
-            val lead = prerollTail()
-            segment = Open("live", written - lead.size, sampleRate * MAX_SEGMENT_SECONDS, meta).also {
-                it.append(lead, lead.size)
-            }
+            segment = openLive(PREROLL_SECONDS, meta)
         }
+        // No VAD segment around this hit (openWakeWord, Vosk alone): the hit is its own sample.
+        val hitOnly = isHit(signal) && liveOn && segment == null
+        if (hitOnly) segment = openLive(HIT_PREROLL_SECONDS, meta)
         segment?.let { record(it, signal) }
         take?.let { record(it, signal) }
         if (signal == WakeSignal.VadOff) closeSegment(reason = "vad_off")?.let(out::add)
+        if (hitOnly) closeSegment(reason = "wake_hit")?.let(out::add)
         return out
+    }
+
+    private fun openLive(seconds: Double, meta: Map<String, String>): Open {
+        val lead = prerollTail(seconds)
+        return Open("live", written - lead.size, sampleRate * MAX_SEGMENT_SECONDS, meta).also {
+            it.append(lead, lead.size)
+        }
     }
 
     /** Opens a labelled take of at most [maxMs]; an open take is closed and returned first. */
@@ -222,8 +234,9 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
         }
     }
 
-    private fun prerollTail(): ShortArray {
-        val have = minOf(written, preroll.size.toLong()).toInt()
+    private fun prerollTail(seconds: Double): ShortArray {
+        val want = minOf((sampleRate * seconds).toLong(), preroll.size.toLong())
+        val have = minOf(written, want).toInt()
         val start = written - have
         return ShortArray(have) { preroll[((start + it) % preroll.size).toInt()] }
     }
@@ -231,6 +244,9 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
     companion object {
         const val SAMPLE_RATE = 16_000
         const val PREROLL_SECONDS = 1.0
+
+        /** A hit-only sample's lead: the phrase, which ends at the hit, and the second before it. */
+        const val HIT_PREROLL_SECONDS = 3.0
         const val MAX_SEGMENT_SECONDS = 20
         private const val MS_PER_SECOND = 1000L
 
@@ -239,6 +255,9 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
         const val ENGINE_OWW = "oww"
         const val ENGINE_TWO_STAGE = "two_stage"
         const val ENGINE_VOSK = "vosk"
+
+        /** A wake that fired: opened, or held back by "only my voice" (enrolment's Suppressed is a take's). */
+        fun isHit(signal: WakeSignal): Boolean = signal == WakeSignal.Opened || signal is WakeSignal.SpeakerHeld
 
         /**
          * One word for what the pipeline did with this audio, from the signals of the engine that

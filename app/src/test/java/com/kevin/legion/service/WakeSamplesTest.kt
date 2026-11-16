@@ -143,6 +143,54 @@ class WakeSamplesTest {
     }
 
     @Test
+    fun `with no vad each live wake hit is its own sample of the lead-in and a verdict`() {
+        val oww = mapOf(WakeSampleCapture.META_ENGINE to WakeSampleCapture.ENGINE_OWW)
+        val c = WakeSampleCapture().apply { liveOn = true }
+        repeat(20) { c.onAudio(chunkOf(2), chunk) } // 4 s heard, no VAD signal at all
+        val out = c.onSignal(WakeSignal.Opened, oww)
+        val s = out.single()
+        assertEquals("live", s.kind)
+        assertEquals((rate * WakeSampleCapture.HIT_PREROLL_SECONDS).toInt(), s.pcm.size)
+        assertEquals("wake_hit", s.sidecar.getString("closedBy"))
+        assertEquals("oww_hit", s.sidecar.getString("verdict"))
+        val e = s.sidecar.getJSONArray("events").getJSONObject(0)
+        assertEquals("opened", e.getString("stage"))
+        assertEquals(s.pcm.size.toLong(), e.getLong("atSample")) // the hit is at the end
+        assertTrue(c.flush().isEmpty()) // closed at once: nothing left open
+    }
+
+    @Test
+    fun `a held wake is kept too, with its decision`() {
+        val c = WakeSampleCapture().apply { liveOn = true }
+        repeat(2) { c.onAudio(chunkOf(2), chunk) } // less lead-in than the cap: all of it
+        val s = c.onSignal(WakeSignal.SpeakerHeld("ignore")).single()
+        assertEquals(2 * chunk, s.pcm.size)
+        val e = s.sidecar.getJSONArray("events").getJSONObject(0)
+        assertEquals("speaker_held", e.getString("stage"))
+        assertEquals("ignore", e.getString("decision"))
+    }
+
+    @Test
+    fun `no hit sample while live saving is off`() {
+        val c = WakeSampleCapture()
+        repeat(5) { c.onAudio(chunkOf(2), chunk) }
+        assertTrue(c.onSignal(WakeSignal.Opened).isEmpty())
+        assertTrue(c.flush().isEmpty())
+    }
+
+    @Test
+    fun `a hit inside a vad segment stays in that segment`() {
+        val c = WakeSampleCapture().apply { liveOn = true }
+        repeat(10) { c.onAudio(chunkOf(1), chunk) }
+        c.onSignal(WakeSignal.VadOn)
+        repeat(2) { c.onAudio(chunkOf(9), chunk) }
+        assertTrue(c.onSignal(WakeSignal.Opened).isEmpty())
+        val s = c.flush().single()
+        assertEquals(rate + 2 * chunk, s.pcm.size) // still one second of pre-roll
+        assertEquals("capture_released", s.sidecar.getString("closedBy"))
+    }
+
+    @Test
     fun `the enrollment script is twenty positives then one negative`() {
         val steps = WakeEnrollPlan.steps("hey alfred")
         assertEquals(20, WakeEnrollPlan.POSITIVE_COUNT)
