@@ -222,9 +222,7 @@ object ObdResponseParser {
     /** The legacy-bus body of [dtcCodes], unchanged from before the CAN split (2026-11-15). */
     private fun dtcCodesLegacy(response: String): List<String> {
         val upper = response.uppercase()
-        if (response.isBlank() || "NO DATA" in upper || "UNABLE" in upper) {
-            return emptyList()
-        }
+        val failed = response.isBlank() || "NO DATA" in upper || "UNABLE" in upper
 
         val data = mutableListOf<String>()
         var sawFrame = false
@@ -240,7 +238,7 @@ object ObdResponseParser {
                 data.addAll(tokens)
             }
         }
-        if (!sawFrame) return emptyList()
+        if (failed || !sawFrame) return emptyList()
 
         val codes = mutableListOf<String>()
         var i = 0

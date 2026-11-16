@@ -52,6 +52,7 @@ class SimElm327(var car: SimCar, val personality: Personality = Personality()) {
     private val bus = SimBus(this)
 
     /** One command line in, the reply out (without the trailing prompt). */
+    @Suppress("CyclomaticComplexMethod") // a scripted fake adapter: one flat dispatch reads clearest
     fun handle(line: String): String {
         val cmd = line.trim().uppercase().replace(" ", "")
         log += cmd

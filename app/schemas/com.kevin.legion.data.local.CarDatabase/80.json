@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 80,
-    "identityHash": "8a6b6dd05361e8b4e5980936b8ef7016",
+    "identityHash": "ed3ff26c1cf2a2eeaecc0e9ef382c046",
     "entities": [
       {
         "tableName": "service_records",
@@ -3933,7 +3933,7 @@
       },
       {
         "tableName": "diag_scans",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vehicleId` TEXT NOT NULL, `startedAtMs` INTEGER NOT NULL, `finishedAtMs` INTEGER NOT NULL, `bus` TEXT NOT NULL, `moduleCount` INTEGER NOT NULL, `faultCount` INTEGER NOT NULL, `complete` INTEGER NOT NULL, `reportJson` TEXT NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vehicleId` TEXT NOT NULL, `startedAtMs` INTEGER NOT NULL, `finishedAtMs` INTEGER NOT NULL, `bus` TEXT NOT NULL, `moduleCount` INTEGER NOT NULL, `faultCount` INTEGER NOT NULL, `complete` INTEGER NOT NULL, `reportJson` TEXT NOT NULL, `clearJson` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -3988,6 +3988,11 @@
             "columnName": "reportJson",
             "affinity": "TEXT",
             "notNull": true
+          },
+          {
+            "fieldPath": "clearJson",
+            "columnName": "clearJson",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -6340,7 +6345,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8a6b6dd05361e8b4e5980936b8ef7016')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ed3ff26c1cf2a2eeaecc0e9ef382c046')"
     ]
   }
 }

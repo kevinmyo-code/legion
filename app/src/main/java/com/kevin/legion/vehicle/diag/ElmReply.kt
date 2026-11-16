@@ -66,7 +66,7 @@ sealed interface ElmReply {
             val shaped = tokens.size > idTokens && (bus == BusKind.CAN_29 || idText.length == ID_11_CHARS)
             val id = idText.toLongOrNull(HEX)
             val bytes = tokens.drop(idTokens).map { t -> t.toIntOrNull(HEX)?.takeIf { it in 0..Hex.BYTE_MAX } }
-            val whole = shaped && id != null && bytes.none { it == null }
+            val whole = shaped && bytes.none { it == null }
             return if (whole && id != null) IsoTp.Frame(id, bytes.filterNotNull()) else null
         }
 
