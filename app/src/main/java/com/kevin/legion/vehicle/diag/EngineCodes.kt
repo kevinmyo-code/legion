@@ -44,14 +44,17 @@ class EngineCodes(private val link: DiagLink, private val bus: BusKind) {
         }
 
     private fun legacy(raw: String, mode: Int, name: String): Pair<CodeRead, List<String>> {
-        ElmReply.failure(ElmReply.lines(raw))?.let { return failed(it, mode, name, raw) to emptyList() }
+        val failure = ElmReply.failure(ElmReply.lines(raw))
         val lines = ElmReply.dataLines(raw).filter { it.first() == mode + Uds.POSITIVE_OFFSET }
-        if (lines.isEmpty()) {
-            return CodeRead(Outcome.NO_ANSWER, name, detail = "unreadable reply", raw = raw) to emptyList()
-        }
         val codes = lines.flatMap { DtcBytes.obdCodes(it.drop(1), can = false) }.distinct()
-        return CodeRead(Outcome.READ, name, codes.map { ModuleDtc(it, words = listOf(wordFor(mode))) }, raw = raw) to
-            listOf("engine (generic)")
+        return when {
+            failure != null -> failed(failure, mode, name, raw) to emptyList()
+            lines.isEmpty() -> CodeRead(Outcome.NO_ANSWER, name, detail = "unreadable reply", raw = raw) to emptyList()
+            else -> {
+                val dtcs = codes.map { ModuleDtc(it, words = listOf(wordFor(mode))) }
+                CodeRead(Outcome.READ, name, dtcs, raw = raw) to listOf("engine (generic)")
+            }
+        }
     }
 
     private fun failed(reply: ElmReply, mode: Int, name: String, raw: String): CodeRead = when (reply) {

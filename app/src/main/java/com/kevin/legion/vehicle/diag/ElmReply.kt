@@ -61,17 +61,13 @@ sealed interface ElmReply {
 
         private fun frame(line: String, bus: BusKind): IsoTp.Frame? {
             val tokens = line.split(Regex("\\s+"))
-            val (idText, rest) = if (bus == BusKind.CAN_29) {
-                if (tokens.size <= ID_29_TOKENS) return null
-                tokens.take(ID_29_TOKENS).joinToString("") to tokens.drop(ID_29_TOKENS)
-            } else {
-                if (tokens.size < 2 || tokens[0].length != ID_11_CHARS) return null
-                tokens[0] to tokens.drop(1)
-            }
-            val id = idText.toLongOrNull(HEX) ?: return null
-            val bytes = rest.map { it.toIntOrNull(HEX) ?: return null }
-            if (bytes.any { it !in 0..Hex.BYTE_MAX }) return null
-            return IsoTp.Frame(id, bytes)
+            val idTokens = if (bus == BusKind.CAN_29) ID_29_TOKENS else 1
+            val idText = tokens.take(idTokens).joinToString("")
+            val shaped = tokens.size > idTokens && (bus == BusKind.CAN_29 || idText.length == ID_11_CHARS)
+            val id = idText.toLongOrNull(HEX)
+            val bytes = tokens.drop(idTokens).map { t -> t.toIntOrNull(HEX)?.takeIf { it in 0..Hex.BYTE_MAX } }
+            val whole = shaped && id != null && bytes.none { it == null }
+            return if (whole && id != null) IsoTp.Frame(id, bytes.filterNotNull()) else null
         }
 
         /** The data bytes of a reply sent with headers OFF (legacy and generic reads): every 2-hex token. */

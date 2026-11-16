@@ -48,7 +48,7 @@ class SimCar(
 
 /** Codes as bytes, the SAE J2012 packing in reverse. */
 object SimCodes {
-    private val LETTERS = "PCBU"
+    private const val LETTERS = "PCBU"
 
     fun bytes(code: String): List<Int> {
         val hi = (LETTERS.indexOf(code[0]) shl 6) or (code[1].digitToInt() shl 4) or code[2].digitToInt(16)

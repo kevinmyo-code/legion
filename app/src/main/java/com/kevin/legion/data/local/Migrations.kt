@@ -3138,7 +3138,7 @@ val MIGRATION_79_80 = object : Migration(SCHEMA_V79, SCHEMA_V80) {
             "CREATE TABLE IF NOT EXISTS `diag_scans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
                 "`vehicleId` TEXT NOT NULL, `startedAtMs` INTEGER NOT NULL, `finishedAtMs` INTEGER NOT NULL, " +
                 "`bus` TEXT NOT NULL, `moduleCount` INTEGER NOT NULL, `faultCount` INTEGER NOT NULL, " +
-                "`complete` INTEGER NOT NULL, `reportJson` TEXT NOT NULL)",
+                "`complete` INTEGER NOT NULL, `reportJson` TEXT NOT NULL, `clearJson` TEXT)",
         )
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS `index_diag_scans_vehicleId_startedAtMs` ON `diag_scans` " +

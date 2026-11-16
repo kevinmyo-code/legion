@@ -105,6 +105,22 @@ class ModuleScannerTest {
     }
 
     @Test
+    fun `a clone that refuses the receive filter stops the scan in words, not as empty addresses`() {
+        val (r, _) = scan(SimCars.canTruck(), Personality(rejects = setOf("ATCRA7")))
+        assertEquals(ModuleScanner.ADDRESS_REFUSED, r.coverage.interrupted)
+        assertFalse(r.complete)
+        assertTrue(ScanWords.summary(r), ModuleScanner.ADDRESS_REFUSED in ScanWords.summary(r))
+    }
+
+    @Test
+    fun `a link that dies mid-scan stops it in words`() {
+        val (r, _) = scan(SimCars.canTruck(), Personality(dieAfter = 60))
+        assertEquals(ModuleScanner.LINK_TROUBLE, r.coverage.interrupted)
+        assertFalse(r.complete)
+        assertTrue(r.coverage.probed < r.coverage.planned)
+    }
+
+    @Test
     fun `adapter that refuses headers stops with words`() {
         val (r, _) = scan(SimCars.canTruck(), Personality(rejects = setOf("ATH1")))
         assertEquals(ModuleScanner.HEADERS_REFUSED, r.stopped)

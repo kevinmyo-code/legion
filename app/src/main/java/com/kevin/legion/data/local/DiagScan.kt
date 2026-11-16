@@ -35,6 +35,8 @@ data class DiagScan(
     /** False when the scan stopped early, ran out of time, or was refused. */
     val complete: Boolean,
     val reportJson: String,
+    /** The last clear sent from this scan (ClearRun JSON, raw replies included); null = none. */
+    val clearJson: String? = null,
 )
 
 @Dao
@@ -47,6 +49,9 @@ interface DiagScanDao {
 
     @Query("SELECT * FROM diag_scans WHERE id = :id")
     suspend fun get(id: Long): DiagScan?
+
+    @Query("UPDATE diag_scans SET clearJson = :json WHERE id = :id")
+    suspend fun setClear(id: Long, json: String)
 
     @Query("UPDATE diag_scans SET vehicleId = :toId WHERE vehicleId = :fromId")
     suspend fun rekeyAll(fromId: String, toId: String): Int

@@ -5,6 +5,7 @@ import com.kevin.legion.vehicle.diag.BusKind
 /** The bus side of [SimElm327]: protocol search, routing a request, and printing the frames. */
 internal class SimBus(private val elm: SimElm327) {
 
+    @Suppress("ReturnCount") // a scripted fake: early outs read clearest
     fun request(bytes: List<Int>): String {
         val car = elm.car
         val prefix = StringBuilder()
@@ -30,6 +31,7 @@ internal class SimBus(private val elm: SimElm327) {
 
     // ---------------------------------------------------------------- legacy (J1850, ISO 9141)
 
+    @Suppress("ReturnCount")
     private fun legacy(bytes: List<Int>): String {
         val obd = elm.car.legacyObd ?: return noData()
         val lines: List<List<Int>> = when (bytes.first()) {
@@ -134,6 +136,7 @@ internal class SimBus(private val elm: SimElm327) {
         else -> (responseId and 0xFFFF0000L) or ((responseId and 0xFF) shl 8) or ((responseId shr 8) and 0xFF)
     }
 
+    @Suppress("ReturnCount")
     private fun frames(m: SimModule, data: List<Int>): List<String> {
         val id = m.responseId
         if (data.size <= SF_MAX) {

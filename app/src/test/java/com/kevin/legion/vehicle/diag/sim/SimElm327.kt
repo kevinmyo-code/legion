@@ -13,6 +13,8 @@ data class Personality(
     val sti: String? = null,
     val rejects: Set<String> = emptySet(),
     val autoFlowControlBroken: Boolean = false,
+    /** After this many commands the adapter returns nothing at all (a dropped link); null = never. */
+    val dieAfter: Int? = null,
 )
 
 /**
@@ -53,7 +55,7 @@ class SimElm327(var car: SimCar, val personality: Personality = Personality()) {
     fun handle(line: String): String {
         val cmd = line.trim().uppercase().replace(" ", "")
         log += cmd
-        if (cmd.isEmpty()) return ""
+        if (cmd.isEmpty() || personality.dieAfter?.let { log.size > it } == true) return ""
         val body = when {
             personality.rejects.any { cmd.startsWith(it) } -> "?"
             cmd.startsWith("AT") -> at(cmd.removePrefix("AT"))

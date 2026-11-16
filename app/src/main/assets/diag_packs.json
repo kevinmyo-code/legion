@@ -13,7 +13,7 @@
       "scale": 0.125,
       "offset": 0.0,
       "unit": "F (unit as the source states it)",
-      "applies": "Source list was written for the 6.7L Super Duty; whether a 2017 F-150 answers this id is unknown",
+      "applies": "Source list was written for the 6.7L Super Duty. The page was NOT opened for this build (it refused the fetch); the id and the /8 come from LEGION's earlier research notes and a search summary, and the unit is uncertain. Whether a 2017 F-150 answers this id is unknown",
       "source_url": "https://www.ford-trucks.com/forums/1322804-torque-pro-ford-6-7l-extended-pids.html",
       "verified_on": ""
     },
@@ -30,7 +30,7 @@
       "scale": 0.0625,
       "offset": 0.0,
       "unit": "C",
-      "applies": "Source list was written for a 2022 Mazda 3; Ford and Mazda share some identifiers, but no source ties this one to a 2017 F-150",
+      "applies": "Read at the source URL this build: a list written for a 2022 Mazda 3 (header 7E1, (signed A*256+B)/16 C). Ford and Mazda share some identifiers, but no source ties this one to a 2017 F-150",
       "source_url": "https://gist.github.com/agronick/4d01cfe7f94dd41eeeb46f5e5dd204b8",
       "verified_on": ""
     },
@@ -44,7 +44,7 @@
       "byte_offset": 0,
       "byte_count": 4,
       "unit": "",
-      "applies": "Source table was written for a 2007 Outlander (older JF011E CVT); the 2020 has the newer CVT8. No equation was found, so the raw bytes are shown",
+      "applies": "Source table was written for a 2007 Outlander (older JF011E CVT); the 2020 has the newer CVT8. The page was NOT opened for this build (server error); header 7E1 and id 21 03 come from a search summary of it. No equation, so the raw bytes are shown",
       "source_url": "https://torque-bhp.com/community/main-forum/07-mitsubishi-outlander/",
       "verified_on": ""
     },
@@ -58,7 +58,7 @@
       "byte_offset": 0,
       "byte_count": 4,
       "unit": "",
-      "applies": "Same 2007 Outlander table (max listed 220000); scaling and byte position are not public, so the raw bytes are shown",
+      "applies": "Same 2007 Outlander table, seen only through a search summary (id 21 10, max listed 220000); scaling and byte position are not public, so the raw bytes are shown",
       "source_url": "https://torque-bhp.com/community/main-forum/07-mitsubishi-outlander/",
       "verified_on": ""
     }

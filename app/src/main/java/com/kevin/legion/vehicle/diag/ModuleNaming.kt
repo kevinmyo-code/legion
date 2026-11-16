@@ -11,6 +11,7 @@ object ModuleNaming {
     private const val OBD_FIRST = 0x7E0L
     private const val OBD_LAST = 0x7E7L
     private const val HEX = 16
+    private const val ID_11_DIGITS = 3
 
     fun report(c: Candidate, codes: CodeRead, ids: List<IdRead>, known: KnownModule?, make: String?): ModuleReport {
         val systemName = ids.firstOrNull { it.did == "F197" && it.outcome == Outcome.READ }?.value
@@ -43,5 +44,5 @@ object ModuleNaming {
 
     /** True for the request ids ISO 15765-4 reserves for emissions-related ECUs. */
     fun isEmissionsAddress(address: String): Boolean =
-        address.length == 3 && address.toLongOrNull(HEX)?.let { it in OBD_FIRST..OBD_LAST } == true
+        address.length == ID_11_DIGITS && address.toLongOrNull(HEX)?.let { it in OBD_FIRST..OBD_LAST } == true
 }

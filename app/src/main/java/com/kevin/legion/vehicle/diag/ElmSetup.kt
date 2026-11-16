@@ -14,6 +14,10 @@ class ElmSetup(private val link: DiagLink, private val bus: BusKind) {
     var manualFlowControl: Boolean = false
         private set
 
+    /** True once an AT command got nothing at all back: the link, not the adapter, failed. */
+    var linkSilent: Boolean = false
+        private set
+
     private var stretchedTimeout = false
 
     /** Headers on, spaces on, CAN auto-formatting on; then the flow-control data. False = cannot scan. */
@@ -75,7 +79,11 @@ class ElmSetup(private val link: DiagLink, private val bus: BusKind) {
         for (cmd in commands) runCatching { link.send(cmd, AT_TIMEOUT_MS) }
     }
 
-    private suspend fun ok(cmd: String): Boolean = "OK" in link.send(cmd, AT_TIMEOUT_MS).uppercase()
+    private suspend fun ok(cmd: String): Boolean {
+        val reply = link.send(cmd, AT_TIMEOUT_MS)
+        if (reply.isBlank()) linkSilent = true
+        return "OK" in reply.uppercase()
+    }
 
     companion object {
         const val AT_TIMEOUT_MS = 2_000L

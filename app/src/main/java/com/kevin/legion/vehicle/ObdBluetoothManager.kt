@@ -467,7 +467,13 @@ object ObdBluetoothManager {
      * empty - many clones and pre-2001 cars don't support mode 02 at all).
      * Keys are human labels, ready to JSON-encode onto a code_events row.
      */
-    suspend fun getFreezeFrame(): Map<String, Double> {
+    suspend fun getFreezeFrame(): Map<String, Double> = readFreezeFrame { sendCommand(it) }
+
+    /**
+     * The Mode 02 read itself over [send], shared with the module clear's engine step, which holds
+     * the link through [withDiagnosticLink] and so cannot go through [sendCommand] (2026-11-15).
+     */
+    internal suspend fun readFreezeFrame(send: suspend (String) -> String): Map<String, Double> {
         data class FfPid(val pid: String, val len: Int, val label: String, val decode: (List<Int>) -> Double)
         val pids = listOf(
             FfPid("0C", 2, "rpm") { b -> ((b[0] * 256) + b[1]) / 4.0 },
@@ -485,7 +491,7 @@ object ObdBluetoothManager {
         )
         val out = mutableMapOf<String, Double>()
         for (p in pids) {
-            val bytes = ObdResponseParser.freezeFrameBytes(sendCommand("02${p.pid}00"), p.pid, p.len)
+            val bytes = ObdResponseParser.freezeFrameBytes(send("02${p.pid}00"), p.pid, p.len)
                 ?: continue
             out[p.label] = p.decode(bytes)
         }
@@ -493,7 +499,20 @@ object ObdBluetoothManager {
     }
 
     /** Stored diagnostic trouble codes (e.g. "P0301"), empty if none/unavailable. */
-    suspend fun getDtcCodes(): List<String> = ObdResponseParser.dtcCodes(sendCommand("03"))
+    suspend fun getDtcCodes(): List<String> {
+        refreshBusIfUnknown()
+        return ObdResponseParser.dtcCodes(sendCommand("03"))
+    }
+
+    /**
+     * A connect with the key off leaves `ATDPN` at "A0" (no protocol yet), so the bus, and with it
+     * the CAN count-byte decoding, is asked again before a code read until it is known (2026-11-15).
+     */
+    private suspend fun refreshBusIfUnknown() {
+        if (busKind != com.kevin.legion.vehicle.diag.BusKind.UNKNOWN || transport == null) return
+        busKind = com.kevin.legion.vehicle.diag.BusKind.fromDpn(sendCommand("ATDPN"))
+        ObdResponseParser.canLink = busKind.isCan
+    }
 
     /**
      * The RAW Mode 03 response, undigested - [com.kevin.legion.vehicle.DtcClearController] needs
@@ -505,7 +524,10 @@ object ObdBluetoothManager {
      * Counts toward [consecutivePidSilence] like any other PID read - only the Mode 04 send itself
      * ([clearDtcCodes]) is excluded from that counter.
      */
-    suspend fun getDtcCodesRaw(): String = sendCommand("03")
+    suspend fun getDtcCodesRaw(): String {
+        refreshBusIfUnknown()
+        return sendCommand("03")
+    }
 
     /**
      * Sends Mode 04 - erases stored codes, freeze frame, and readiness monitors. The caller

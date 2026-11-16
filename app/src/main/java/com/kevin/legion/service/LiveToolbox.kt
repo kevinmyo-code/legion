@@ -1063,7 +1063,17 @@ object LiveToolbox {
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
             "check_readiness" -> checkReadiness()
-            "clear_codes" -> clearCodes(context, args, userText)
+            // 2026-11-15: a module clear (modules named, or the yes to a module question) goes to
+            // DiagVoice and its own yes-check; everything else is the engine's Mode 04 below.
+            "clear_codes" -> if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
+                    args.optString("modules"),
+                    args.optBoolean("confirmed", false),
+                )
+            ) {
+                moduleClear(context, args, userText)
+            } else {
+                clearCodes(context, args, userText)
+            }
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
@@ -3864,16 +3874,22 @@ object LiveToolbox {
         return out
     }
 
+    /** `clear_codes` for named modules (DiagVoice): refused in words with no dongle, nothing sent. */
+    private suspend fun moduleClear(context: Context, args: JSONObject, userText: String?): JSONObject =
+        if (!ObdBluetoothManager.isConnected) {
+            result(false, com.kevin.legion.vehicle.diag.DiagScanController.NOT_CONNECTED)
+        } else {
+            com.kevin.legion.vehicle.diag.DiagVoice.clear(
+                context,
+                args.optString("modules").trim(),
+                args.optBoolean("confirmed", false),
+                userText,
+            )
+        }
+
     private suspend fun clearCodes(context: Context, args: JSONObject, userText: String?): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
         val connected = ObdBluetoothManager.isConnected
-        // 2026-11-15: `modules` clears named modules from the last module scan, behind the same
-        // kind of yes-check (DiagVoice's own gate); without it this is the engine's Mode 04 below.
-        val modules = args.optString("modules").trim()
-        if (modules.isNotEmpty()) {
-            if (!connected) return result(false, com.kevin.legion.vehicle.diag.DiagScanController.NOT_CONNECTED)
-            return com.kevin.legion.vehicle.diag.DiagVoice.clear(context, modules, confirmed, userText)
-        }
         // 2026-11-05: confirmed=true is the model's word, so the user's own words this turn must be
         // a yes to the question the unconfirmed call put (ClearCodesVoiceGate). Refused before
         // anything is read from or sent to the car.
@@ -3891,6 +3907,8 @@ object LiveToolbox {
         val out = result(success = r.outcome == DtcClearController.ClearOutcome.CLEARED, message = r.message)
         if (r.outcome == null) {
             // The confirm question: remember it was asked, and tell the model to ask and wait.
+            // A module-clear question left waiting is void now (one question at a time).
+            com.kevin.legion.vehicle.diag.DiagVoice.forget()
             gate.asked(userText)
             out.put("needsConfirmation", true)
                 .put("instruction", com.kevin.legion.vehicle.ClearCodesVoiceGate.ASK_AND_WAIT)

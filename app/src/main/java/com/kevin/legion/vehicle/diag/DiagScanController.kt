@@ -4,7 +4,10 @@ import android.content.Context
 import android.util.Log
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.DongleCar
+import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,14 +55,16 @@ object DiagScanController {
         "The OBD dongle is not connected, so no module can be read. Plug it in, key at ON, and try again."
 
     /** Starts a scan of the car the dongle is in, unless one is running. Never blocks. */
-    fun start(context: Context, full: Boolean): Start {
-        if (!ObdBluetoothManager.isConnected) return Start.NOT_CONNECTED
-        if (_state.value is State.Running) return Start.ALREADY_RUNNING
-        val app = context.applicationContext
-        val carId = ActiveVehicle.recordingId(app)
-        _state.value = State.Running(carId, full, null)
-        scope.launch { run(app, carId, full) }
-        return Start.STARTED
+    fun start(context: Context, full: Boolean): Start = when {
+        !ObdBluetoothManager.isConnected -> Start.NOT_CONNECTED
+        _state.value is State.Running -> Start.ALREADY_RUNNING
+        else -> {
+            val app = context.applicationContext
+            val carId = ActiveVehicle.recordingId(app)
+            _state.value = State.Running(carId, full, null)
+            scope.launch { run(app, carId, full) }
+            Start.STARTED
+        }
     }
 
     private suspend fun run(context: Context, carId: String, full: Boolean) {
@@ -97,27 +102,53 @@ object DiagScanController {
 
     /**
      * Sends the clears for [addresses] (null = every target the plan offers) from stored scan
-     * [scanId], then rescans nothing: each target is re-read inside the clear. Null when the dongle
-     * is gone. The plan is recomputed here, so a caller can never clear something the planner
-     * excluded (the airbag module, an unnamed module).
+     * [scanId]; each target is re-read inside the clear. Null when the dongle is gone. The plan is
+     * recomputed here, so no caller can clear what the planner excluded (the airbag module, any
+     * module outside 7E0-7E7). Refused in words for a scan of another car, a scan older than
+     * [MAX_SCAN_AGE_MS], or while the dongle's car is not answered yet. The engine step is recorded
+     * as a code-clear event exactly like the engine-only clear; the whole run is kept on the scan row.
      */
     suspend fun clear(context: Context, scanId: Long, addresses: Set<String>?): ClearRun? {
         val stored = DiagScanStore.get(context, scanId)
-            ?: return ClearRun(emptyList(), "That scan is no longer on file.")
-        if (stored.row.vehicleId != ActiveVehicle.recordingId(context)) {
-            return ClearRun(emptyList(), OTHER_CAR)
+        val carId = ActiveVehicle.recordingId(context)
+        val refusal = when {
+            stored == null -> "That scan is no longer on file."
+            DongleCar.isPending(carId) -> PENDING_CAR
+            stored.row.vehicleId != carId -> OTHER_CAR
+            System.currentTimeMillis() - stored.report.finishedAtMs > MAX_SCAN_AGE_MS -> TOO_OLD
+            else -> null
         }
-        val plan = ClearPlanner.plan(stored.report)
-        val chosen = plan.targets.filter { addresses == null || it.address in addresses }
+        return if (stored == null || refusal != null) {
+            ClearRun(emptyList(), refusal)
+        } else {
+            send(context, stored, addresses)
+        }
+    }
+
+    private suspend fun send(context: Context, stored: StoredScan, addresses: Set<String>?): ClearRun? {
+        val chosen = ClearPlanner.plan(stored.report).targets.filter { addresses == null || it.address in addresses }
         val run = gate.withLock {
             ObdBluetoothManager.withDiagnosticLink { link ->
                 ModuleClearer(link, stored.report.bus).clear(chosen, stored.report)
             }
         }
         run?.let { r ->
+            r.engineTransaction?.let { tx ->
+                val car = VehicleController.vehicleFor(context, stored.row.vehicleId)
+                DtcClearController.recordOutcome(context, car, tx)
+            }
+            DiagScanStore.saveClear(context, stored.row.id, r)
             val outcomes = r.results.joinToString { "${it.target.address}=${it.outcome}" }
             CarProbeLog.log(TAG, "clear car=${stored.row.vehicleId} $outcomes")
+            // A scan from before the clear no longer says what is stored; voice must not reuse it.
+            if (_state.value is State.Done) _state.value = State.Idle
         }
         return run
     }
+
+    /** Longest a scan may be old and still drive a clear. */
+    const val MAX_SCAN_AGE_MS = 30 * 60_000L
+    private const val TOO_OLD = "That scan is more than 30 minutes old. Scan again first, then clear."
+    private const val PENDING_CAR = "Which car the dongle is in has not been answered yet. Answer that first, " +
+        "then scan and clear."
 }

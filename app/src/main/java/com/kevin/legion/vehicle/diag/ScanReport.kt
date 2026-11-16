@@ -63,6 +63,8 @@ data class Coverage(
     val probed: Int,
     val ranges: String,
     val timeBudgetHit: Boolean = false,
+    /** Why the walk stopped before the plan ended (the adapter failed), or null. */
+    val interrupted: String? = null,
 )
 
 @Serializable
@@ -100,7 +102,9 @@ data class ScanReport(
     /** Why the scan stopped before reading anything, in words; null when it ran. */
     val stopped: String? = null,
 ) {
-    val complete: Boolean get() = stopped == null && !coverage.timeBudgetHit && coverage.probed >= coverage.planned
+    val complete: Boolean
+        get() = stopped == null && !coverage.timeBudgetHit && coverage.interrupted == null &&
+            coverage.probed >= coverage.planned
 
     fun toJson(): String = JSON.encodeToString(serializer(), this)
 

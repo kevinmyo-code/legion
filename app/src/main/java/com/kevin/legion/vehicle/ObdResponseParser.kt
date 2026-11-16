@@ -35,7 +35,6 @@ object ObdResponseParser {
      * failure) and "SEARCHING..." alone (a handshake in progress, not a failure).
      */
     fun isFailureResponse(response: String): Boolean {
-        if (response.isBlank()) return true
         // "BUS INIT: ...OK" is a K-line init that SUCCEEDED, printed before the answer on an ISO
         // 9141 / KWP car (2026-11-15, diagnostics step 3). Matching it as "BUS INIT" called a good
         // XJ reply a failure, so the re-init said "not recovered" and a clear said "refused". Only a
@@ -43,8 +42,7 @@ object ObdResponseParser {
         val upper = response.uppercase().split('\r', '\n')
             .filterNot { it.trim().startsWith("BUS INIT") && "OK" in it && "ERR" !in it }
             .joinToString("\n")
-        if (upper.isBlank()) return true
-        return FAILURE_MARKERS.any { it in upper }
+        return response.isBlank() || upper.isBlank() || FAILURE_MARKERS.any { it in upper }
     }
 
     /**
@@ -218,12 +216,15 @@ object ObdResponseParser {
      * not just the first line, or the second "43" gets decoded as a bogus code.
      * Each line's leading "43" is dropped, then all data bytes are paired.
      */
-    fun dtcCodes(response: String, can: Boolean = canLink): List<String> {
+    fun dtcCodes(response: String, can: Boolean = canLink): List<String> =
+        if (can) dtcCodesCan(response) else dtcCodesLegacy(response)
+
+    /** The legacy-bus body of [dtcCodes], unchanged from before the CAN split (2026-11-15). */
+    private fun dtcCodesLegacy(response: String): List<String> {
         val upper = response.uppercase()
         if (response.isBlank() || "NO DATA" in upper || "UNABLE" in upper) {
             return emptyList()
         }
-        if (can) return dtcCodesCan(response)
 
         val data = mutableListOf<String>()
         var sawFrame = false
@@ -261,6 +262,8 @@ object ObdResponseParser {
      * are codes; reading the count as a code half was the bug (`43 01 01 33` is P0133, not P0101).
      */
     private fun dtcCodesCan(response: String): List<String> {
+        val upper = response.uppercase()
+        if (response.isBlank() || "NO DATA" in upper || "UNABLE" in upper) return emptyList()
         val messages = mutableListOf<MutableList<Int>>()
         for (line in response.split('\r', '\n')) {
             val t = line.trim()

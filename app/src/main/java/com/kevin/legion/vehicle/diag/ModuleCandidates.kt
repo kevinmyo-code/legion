@@ -11,11 +11,10 @@ data class KnownModule(val requestId: Long, val name: String, val restraint: Boo
 /**
  * Which addresses a scan probes, and the names a make's table gives some of them.
  *
- * **Names are labels, never permission.** A name here comes from public community lists or a
- * published bulletin, not from the car; [ModuleScanner] says so in each module's `nameSource`. The
- * one place a name matters is clearing: a module may be cleared only when it is positively named
- * and not a restraint module ([ModuleClearer]). Every address not in a table stays unidentified,
- * so an airbag module at an address nobody listed is never cleared.
+ * **Names are labels, never permission.** A name here comes from a bulletin or common community
+ * naming, not from the car; [ModuleScanner] says so in each module's `nameSource`. Clearing does not
+ * use these names at all ([ClearPlanner]: only 7E0-7E7). A table's restraint flag only ever makes a
+ * module MORE protected.
  */
 object ModuleCandidates {
     private const val REPLY_OFFSET_11 = 0x8L
@@ -31,11 +30,12 @@ object ModuleCandidates {
     private const val LAST_29_TARGET = 0xFEL
 
     const val SOURCE_FORD =
-        "Community naming (FORScan as-built ids <addr>-<block>-<line>, forum.forscan.org/viewtopic.php?p=13410) " +
-            "and NHTSA bulletin MC-10251477 (PCM 7E0, ABS 760); not verified on this car"
+        "Label only. PCM 7E0 and ABS 760 are named in NHTSA bulletin MC-10251477 (a 2023 F-150); the other " +
+            "Ford names are common community naming that no source opened for this build confirms. Not verified " +
+            "on this car"
     const val SOURCE_MITSUBISHI =
-        "Community Torque PID table using header 7E1 for the CVT " +
-            "(torque-bhp.com/community/main-forum/07-mitsubishi-outlander/); not verified on this car"
+        "Label only. A community Torque table (torque-bhp.com 07-mitsubishi-outlander, seen only through a " +
+            "search summary) uses header 7E1 for the CVT. Not verified on this car"
     const val SOURCE_STANDARD = "ISO 15765-4 reserves 7E0-7E7 for emissions-related ECUs"
 
     /** Ford HS-CAN addresses as the community and Ford's own bulletin name them. */

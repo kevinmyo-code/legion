@@ -45,6 +45,12 @@ object DiagScanStore {
         )
     }
 
+    /** Keeps the clear sent from scan [scanId], raw replies included (section 4 rule 8). */
+    suspend fun saveClear(context: Context, scanId: Long, run: ClearRun) = withContext(Dispatchers.IO) {
+        val json = ScanReport.JSON.encodeToString(ClearRun.serializer(), run)
+        CarDatabase.getDatabase(context).diagScanDao().setClear(scanId, json)
+    }
+
     /** Newest first; rows whose JSON no longer parses are skipped, never shown as empty scans. */
     suspend fun latest(context: Context, carId: String, limit: Int = 2): List<StoredScan> =
         withContext(Dispatchers.IO) {

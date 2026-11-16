@@ -5,6 +5,7 @@ import com.kevin.legion.assistant.cards.ToolCards
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.ClearCodesVoiceGate
 import com.kevin.legion.vehicle.DongleCar
+import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.VehicleController
 import org.json.JSONArray
 import org.json.JSONObject
@@ -38,8 +39,10 @@ object DiagVoice {
     suspend fun scan(context: Context): JSONObject {
         val carId = ActiveVehicle.recordingId(context)
         val recent = DiagScanController.state.value as? DiagScanController.State.Done
+        // A scan that stopped (key off, moving) is never reused: it would repeat the stop for minutes.
         val reuse = recent?.takeIf {
-            it.carId == carId && System.currentTimeMillis() - it.report.finishedAtMs < REUSE_MS
+            it.carId == carId && it.report.stopped == null &&
+                System.currentTimeMillis() - it.report.finishedAtMs < REUSE_MS
         }
         if (reuse == null) {
             val started = DiagScanController.start(context, full = false)
@@ -88,55 +91,77 @@ object DiagVoice {
     }
 
     /**
+     * True when a `clear_codes` call is a module clear: it names modules, or it is the confirmed
+     * answer to a module-clear question still waiting. The engine-only clear handles the rest.
+     */
+    fun handles(modules: String, confirmed: Boolean): Boolean = modules.isNotBlank() || (confirmed && pending != null)
+
+    /** The engine-only clear just asked its own question: a module question left waiting is void. */
+    fun forget() {
+        pending = null
+        gate.reset()
+    }
+
+    /**
      * `clear_codes` with `modules`: the first call names the car, the modules and what is left out,
      * and records what a yes would clear; the confirmed call clears exactly that, never the model's
      * new arguments, and only after the user's own words were a plain yes.
      */
-    suspend fun clear(context: Context, modules: String, confirmed: Boolean, userText: String?): JSONObject {
-        val carId = ActiveVehicle.recordingId(context)
-        val label = carLabel(context, carId)
-        if (confirmed) {
-            gate.checkConfirmed(userText)?.let { return fail(it).put("needsConfirmation", true) }
-            val p = pending ?: return fail(ClearCodesVoiceGate.NO_QUESTION)
-            pending = null
-            val run = DiagScanController.clear(context, p.scanId, p.addresses)
-                ?: return fail(DiagScanController.NOT_CONNECTED)
-            return JSONObject()
+    suspend fun clear(context: Context, modules: String, confirmed: Boolean, userText: String?): JSONObject =
+        if (confirmed) confirm(context, userText) else ask(context, modules, userText)
+
+    private suspend fun confirm(context: Context, userText: String?): JSONObject {
+        val refusal = gate.checkConfirmed(userText)
+        val p = pending
+        if (refusal != null || p == null) {
+            return fail(refusal ?: ClearCodesVoiceGate.NO_QUESTION).put("needsConfirmation", refusal != null)
+        }
+        pending = null
+        val label = carLabel(context, ActiveVehicle.recordingId(context))
+        return DiagScanController.clear(context, p.scanId, p.addresses)?.let { run ->
+            JSONObject()
                 .put("success", run.results.any { it.outcome == ClearOutcome.CONFIRMED })
                 .put("message", ScanWords.clearSummary(label, run))
-                .put("results", JSONArray(run.results.map(::resultJson)))
-        }
-        val last = DiagScanStore.latest(context, carId, 1).firstOrNull()
-            ?: return fail("There is no module scan of the $label yet. Scan it first, then ask to clear.")
-        val plan = ClearPlanner.plan(last.report)
-        val chosen = pick(plan, modules)
-        if (chosen.isEmpty()) {
-            gate.reset()
-            return fail(ScanWords.clearQuestion(label, plan.copy(targets = emptyList())))
-        }
-        pending = PendingClear(last.row.id, chosen.map { it.address }.toSet())
-        gate.asked(userText)
-        return JSONObject()
-            .put("success", false)
-            .put("needsConfirmation", true)
-            .put("message", ScanWords.clearQuestion(label, plan.copy(targets = chosen)))
-            .put("instruction", ClearCodesVoiceGate.ASK_AND_WAIT)
+                .put("results", JSONArray(run.results.map(DiagShape::clearResult)))
+        } ?: fail(DiagScanController.NOT_CONNECTED)
     }
 
-    private fun resultJson(r: ClearResult): JSONObject = JSONObject()
-        .put("module", r.target.label)
-        .put("outcome", r.outcome.name)
-        .put("words", r.outcome.words)
-        .put("codes_before", JSONArray(r.before))
-        .put("codes_after", r.after?.let { JSONArray(it) } ?: JSONObject.NULL)
+    private suspend fun ask(context: Context, modules: String, userText: String?): JSONObject {
+        val carId = ActiveVehicle.recordingId(context)
+        val label = carLabel(context, carId)
+        val last = DiagScanStore.latest(context, carId, 1).firstOrNull()
+        val plan = last?.let { ClearPlanner.plan(it.report) }
+        val chosen = plan?.let { pick(it, modules) }.orEmpty()
+        return when {
+            last == null || plan == null ->
+                fail("There is no module scan of the $label yet. Scan it first, then ask to clear.")
+            chosen.isEmpty() -> {
+                gate.reset()
+                fail(ScanWords.clearQuestion(label, plan.copy(targets = emptyList())))
+            }
+            else -> {
+                pending = PendingClear(last.row.id, chosen.map { it.address }.toSet())
+                // One question waits at a time: the engine-only clear's question is void now.
+                DtcClearController.voiceGate.reset()
+                gate.asked(userText)
+                JSONObject()
+                    .put("success", false)
+                    .put("needsConfirmation", true)
+                    .put("message", ScanWords.clearQuestion(label, plan.copy(targets = chosen)))
+                    .put("instruction", ClearCodesVoiceGate.ASK_AND_WAIT)
+            }
+        }
+    }
 
     /** "all" (or blank) = every target; otherwise targets whose label or address the words name. */
     internal fun pick(plan: ClearPlan, words: String): List<ClearTarget> {
         val w = words.trim().lowercase()
-        if (w.isEmpty() || w == "all" || w == "every module" || w == "everything") return plan.targets
+        if (w.isEmpty() || w in ALL_WORDS) return plan.targets
         val parts = w.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }
         return plan.targets.filter { t -> parts.any { p -> p in t.label.lowercase() || p == t.address.lowercase() } }
     }
+
+    private val ALL_WORDS = setOf("all", "every module", "everything", "all modules")
 
     private fun fail(message: String) = JSONObject().put("success", false).put("message", message)
 }

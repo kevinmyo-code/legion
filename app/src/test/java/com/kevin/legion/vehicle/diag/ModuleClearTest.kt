@@ -1,11 +1,13 @@
 package com.kevin.legion.vehicle.diag
 
+import com.kevin.legion.vehicle.ObdResponseParser
 import com.kevin.legion.vehicle.diag.sim.SimCar
 import com.kevin.legion.vehicle.diag.sim.SimCars
 import com.kevin.legion.vehicle.diag.sim.SimElm327
 import com.kevin.legion.vehicle.diag.sim.SimModule
 import com.kevin.legion.vehicle.diag.sim.SimTransport
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,35 +23,37 @@ class ModuleClearTest {
                 .scan(ModuleScanner.Options(make = make))
         }
 
+        init {
+            // What ObdBluetoothManager sets on connect from ATDPN; the engine clear reads by it.
+            ObdResponseParser.canLink = report.bus.isCan
+        }
+
         fun clear(targets: List<ClearTarget>): ClearRun =
             runBlocking { ModuleClearer(t.link, report.bus).clear(targets, report) }
+    }
+
+    @After
+    fun tearDown() {
+        ObdResponseParser.canLink = false
     }
 
     private fun SimCar.module(id: Long): SimModule = modules.first { it.requestId == id }
 
     @Test
-    fun `plan offers emissions and table-named modules, never the airbag, never the unread`() {
+    fun `plan offers only the engine and emissions addresses, never the airbag, never the unread`() {
         val plan = ClearPlanner.plan(Rig(SimCars.canTruck(), "Ford").report)
-        assertEquals(listOf("720", "760", "7D0", "7E0", "engine"), plan.targets.map { it.address }.sorted())
-        assertEquals(ClearPlanner.SERVICE_KWP, plan.targets.first { it.address == "720" }.service)
+        assertEquals(listOf("7E0", "engine"), plan.targets.map { it.address }.sorted())
         val excluded = plan.excluded.associate { it.label to it.reason }
         assertEquals(ClearPlanner.RESTRAINT_RULE, excluded.entries.first { "737" in it.key }.value)
         assertEquals(ClearPlanner.UNREAD_RULE, excluded.entries.first { "726" in it.key }.value)
         assertEquals(ClearPlanner.UNREAD_RULE, excluded.entries.first { "733" in it.key }.value)
+        val abs = excluded.entries.first { "760" in it.key }.value
+        assertEquals("a table name is a label, not permission", ClearPlanner.UNNAMED_RULE, abs)
     }
 
     @Test
-    fun `with no make table only the emissions addresses may be cleared`() {
+    fun `no make table gives the same plan`() {
         val plan = ClearPlanner.plan(Rig(SimCars.canTruck(), null).report)
-        assertEquals(listOf("7E0", "engine"), plan.targets.map { it.address }.sorted())
-        assertTrue(plan.excluded.any { "760" in it.label && it.reason == ClearPlanner.UNNAMED_RULE })
-    }
-
-    @Test
-    fun `when the table's airbag address did not answer, the table is not trusted for clearing`() {
-        val car = SimCars.canTruck()
-        val noRcm = SimCar(car.bus, car.modules.filter { it.requestId != 0x737L })
-        val plan = ClearPlanner.plan(Rig(noRcm, "Ford").report)
         assertEquals(listOf("7E0", "engine"), plan.targets.map { it.address }.sorted())
     }
 
@@ -61,13 +65,22 @@ class ModuleClearTest {
         val by = run.results.associate { it.target.address to it.outcome }
         assertEquals(ClearOutcome.CONFIRMED, by["engine"])
         assertEquals(ClearOutcome.CONFIRMED, by["7E0"])
-        assertEquals(ClearOutcome.CONFIRMED, by["760"])
-        assertEquals("KWP module refused the clear", ClearOutcome.REFUSED, by["720"])
-        assertTrue(car.module(0x737).received.none { it.first() == Uds.CLEAR_DTC })
+        assertEquals("the engine step is the DtcClearController transaction", listOf("P0420"),
+            run.engineTransaction!!.codesBefore)
+        listOf(0x737L, 0x760L, 0x726L).forEach { id ->
+            assertTrue(car.module(id).received.none { it.first() == Uds.CLEAR_DTC })
+        }
         val words = ScanWords.clearSummary("truck", run)
         assertTrue(words, words.startsWith("Confirmed clear on the truck: "))
-        assertTrue(words, "the module refused the clear" in words)
         assertTrue(words, "not that the fault is fixed" in words)
+    }
+
+    @Test
+    fun `a module that refuses the clear is said to have refused`() {
+        val rig = Rig(SimCars.canTruck(), "Ford")
+        val run = rig.clear(listOf(ClearTarget("720", "cluster (720)", ClearPlanner.SERVICE_KWP)))
+        assertEquals(ClearOutcome.REFUSED, run.results.single().outcome)
+        assertTrue(ScanWords.clearSummary("truck", run).contains("the module refused the clear"))
     }
 
     @Test
@@ -99,7 +112,7 @@ class ModuleClearTest {
         val plan = ClearPlanner.plan(Rig(SimCars.canTruck(), "Ford").report)
         val q = ScanWords.clearQuestion("2017 F-150", plan)
         assertTrue(q, q.startsWith("On the 2017 F-150, clear codes in: "))
-        assertTrue(q, "ABS (brakes) (760)" in q)
+        assertTrue(q, "PCM (engine and transmission) (7E0)" in q)
         assertTrue(q, ClearPlanner.RESTRAINT_RULE in q)
         assertTrue(q, q.endsWith("Do you want me to clear?"))
     }

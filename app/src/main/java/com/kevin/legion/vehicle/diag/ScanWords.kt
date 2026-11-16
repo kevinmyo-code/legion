@@ -26,6 +26,7 @@ object ScanWords {
                     val why = unread.joinToString { "${label(it)} (${it.codes.detail ?: it.codes.outcome.words})" }
                     add("Codes not read from $why.")
                 }
+                r.coverage.interrupted?.let { add(it) }
                 if (!r.complete) add("Partial scan: ${r.coverage.probed} of ${r.coverage.planned} addresses probed.")
             }
             addAll(r.notes.filterNot { it == ModuleScanner.SECOND_NETWORK_NOTE })
@@ -81,6 +82,7 @@ object ScanWords {
                         } + ".")
                 }
             }
+            run.note?.let { add(it) }
             if (confirmed.isNotEmpty()) add("A confirmed clear means the erase took, not that the fault is fixed.")
         }.joinToString(" ")
     }

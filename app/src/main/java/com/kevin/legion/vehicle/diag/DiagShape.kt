@@ -60,6 +60,13 @@ object DiagShape {
                 .put("meaning", meaning.words).put("meaning_source", meaning.source)
         }))
 
+    fun clearResult(r: ClearResult): JSONObject = JSONObject()
+        .put("module", r.target.label)
+        .put("outcome", r.outcome.name)
+        .put("words", r.outcome.words)
+        .put("codes_before", JSONArray(r.before))
+        .put("codes_after", r.after?.let { JSONArray(it) } ?: JSONObject.NULL)
+
     private fun reading(p: PackReadingResult) = JSONObject()
         .put("label", p.label)
         .put("value", p.value ?: p.outcome.words)

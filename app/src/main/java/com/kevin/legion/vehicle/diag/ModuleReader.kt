@@ -7,10 +7,21 @@ package com.kevin.legion.vehicle.diag
  */
 class ModuleReader(private val request: ModuleRequest) {
 
-    /** True when anything answered at [c], even a refusal: a refusal proves a module is there. */
-    suspend fun present(c: Candidate): Boolean {
+    /** Whether anything is at an address, or whether the adapter itself stopped answering. */
+    enum class Presence { PRESENT, ABSENT, LINK_TROUBLE }
+
+    /**
+     * PRESENT when anything answered at [c], even a refusal (a refusal proves a module is there);
+     * ABSENT only on the adapter's own `NO DATA`; LINK_TROUBLE when nothing at all came back or the
+     * adapter reported a bus error, which must stop a scan rather than read as an empty address.
+     */
+    suspend fun presence(c: Candidate): Presence {
         val r = request.send(listOf(Uds.TESTER_PRESENT, 0x00), c.responseId)
-        return r.outcome == Outcome.READ || r.outcome == Outcome.REFUSED || r.outcome == Outcome.PARTIAL
+        return when {
+            r.outcome in ANSWERED -> Presence.PRESENT
+            r.linkTrouble -> Presence.LINK_TROUBLE
+            else -> Presence.ABSENT
+        }
     }
 
     /**
@@ -19,24 +30,31 @@ class ModuleReader(private val request: ModuleRequest) {
      */
     suspend fun codes(c: Candidate): CodeRead {
         val uds = request.send(listOf(Uds.READ_DTC, Uds.REPORT_BY_STATUS, Uds.STATUS_MASK_ALL), c.responseId)
-        positive(uds)?.let { return CodeRead(uds.outcome, UDS_NAME, DtcBytes.udsByStatus(it), uds.detail, uds.raw) }
-        if (!worthFallback(uds)) return CodeRead(uds.outcome, UDS_NAME, detail = uds.detail, raw = uds.raw)
+        val payload = positive(uds)
+        return when {
+            payload != null -> CodeRead(uds.outcome, UDS_NAME, DtcBytes.udsByStatus(payload), uds.detail, uds.raw)
+            !worthFallback(uds) -> CodeRead(uds.outcome, UDS_NAME, detail = uds.detail, raw = uds.raw)
+            else -> kwpCodes(c, uds)
+        }
+    }
 
+    private suspend fun kwpCodes(c: Candidate, uds: ModuleRequest.Result): CodeRead {
         val kwp = request.send(listOf(Uds.KWP_READ_DTC_BY_STATUS, 0x00, KWP_GROUP_ALL, 0x00), c.responseId)
-        positive(kwp)?.let {
-            return CodeRead(kwp.outcome, KWP_STATUS_NAME, DtcBytes.kwpByStatus(it), kwp.detail, kwp.raw)
+        val byStatus = positive(kwp)
+        if (byStatus != null) {
+            return CodeRead(kwp.outcome, KWP_STATUS_NAME, DtcBytes.kwpByStatus(byStatus), kwp.detail, kwp.raw)
         }
         val plain = request.send(listOf(Uds.KWP_READ_DTC), c.responseId)
-        positive(plain)?.let {
-            return CodeRead(plain.outcome, KWP_PLAIN_NAME, DtcBytes.kwpPlain(it), plain.detail, plain.raw)
-        }
-        return CodeRead(
-            outcome = uds.outcome,
-            service = UDS_NAME,
-            detail = uds.detail + "; KWP reads: " + (kwp.detail ?: kwp.outcome.words) + ", " +
-                (plain.detail ?: plain.outcome.words),
-            raw = listOf(uds.raw, kwp.raw, plain.raw).joinToString("\n"),
-        )
+        val plainPayload = positive(plain)
+        return plainPayload
+            ?.let { CodeRead(plain.outcome, KWP_PLAIN_NAME, DtcBytes.kwpPlain(it), plain.detail, plain.raw) }
+            ?: CodeRead(
+                outcome = uds.outcome,
+                service = UDS_NAME,
+                detail = uds.detail + "; KWP reads: " + (kwp.detail ?: kwp.outcome.words) + ", " +
+                    (plain.detail ?: plain.outcome.words),
+                raw = listOf(uds.raw, kwp.raw, plain.raw).joinToString("\n"),
+            )
     }
 
     /** The identity DIDs, in order, while [hasTime] says yes. Unread ones are listed as not read. */
@@ -57,6 +75,7 @@ class ModuleReader(private val request: ModuleRequest) {
 
     companion object {
         const val UDS_NAME = "UDS 19 02 FF"
+        private val ANSWERED = setOf(Outcome.READ, Outcome.REFUSED, Outcome.PARTIAL)
         const val KWP_STATUS_NAME = "KWP2000 18"
         const val KWP_PLAIN_NAME = "KWP2000 13"
         private const val KWP_GROUP_ALL = 0xFF

@@ -45,9 +45,11 @@ class ModuleScanner(
             (GenericPid.speedKmh(link.send("010D", LEGACY_TIMEOUT_MS)) ?: 0) > 0 -> MOVING_WORDS
             else -> null
         }
-        if (stop != null) return base.copy(finishedAtMs = clock(), stopped = stop)
-        if (!bus.isCan) return legacy(base, bus)
-        return canScan(base, bus, o, started + o.budgetMs)
+        return when {
+            stop != null -> base.copy(finishedAtMs = clock(), stopped = stop)
+            !bus.isCan -> legacy(base, bus)
+            else -> canScan(base, bus, o, started + o.budgetMs)
+        }
     }
 
     private suspend fun legacy(base: ScanReport, bus: BusKind): ScanReport {
@@ -73,11 +75,12 @@ class ModuleScanner(
             return base.copy(
                 finishedAtMs = clock(),
                 engine = engine,
-                modules = walk.first,
+                modules = walk.found,
                 coverage = base.coverage.copy(
                     planned = plan.size,
-                    probed = walk.second,
-                    timeBudgetHit = walk.second < plan.size,
+                    probed = walk.probed,
+                    timeBudgetHit = walk.interrupted == null && walk.probed < plan.size,
+                    interrupted = walk.interrupted,
                 ),
                 readings = readings,
                 notes = notes,
@@ -87,29 +90,43 @@ class ModuleScanner(
         }
     }
 
-    /** Probes [plan] in order until [deadline]; returns the modules found and how many were probed. */
+    /** What a walk over the plan found, how far it got, and why it stopped early (null = it did not). */
+    private data class Walk(val found: List<ModuleReport>, val probed: Int, val interrupted: String?)
+
+    /**
+     * Probes [plan] in order until [deadline]. An address the adapter refuses to point at, or a
+     * probe that gets nothing at all back, STOPS the walk with words: that is the adapter failing,
+     * and an empty address must never be inferred from it.
+     */
     private suspend fun walk(
         plan: List<Candidate>,
         setup: ElmSetup,
         reader: ModuleReader,
         o: Options,
         deadline: Long,
-    ): Pair<List<ModuleReport>, Int> {
+    ): Walk {
         val known = ModuleCandidates.known(o.make).associateBy { it.requestId }
         val found = mutableListOf<ModuleReport>()
         var probed = 0
-        for (c in plan) {
-            if (clock() >= deadline) break
+        var interrupted: String? = null
+        while (probed < plan.size && clock() < deadline && interrupted == null) {
+            val c = plan[probed]
             probed++
-            if (setup.address(c) && reader.present(c)) {
-                val codes = reader.codes(c)
-                val ids = reader.ids(c) { clock() < deadline }
-                found += ModuleNaming.report(c, codes, ids, known[c.requestId], o.make)
+            val presence = if (setup.address(c)) reader.presence(c) else null
+            when (presence) {
+                null -> interrupted = if (setup.linkSilent) LINK_TROUBLE else ADDRESS_REFUSED
+                ModuleReader.Presence.LINK_TROUBLE -> interrupted = LINK_TROUBLE
+                ModuleReader.Presence.PRESENT -> {
+                    val codes = reader.codes(c)
+                    val ids = reader.ids(c) { clock() < deadline }
+                    found += ModuleNaming.report(c, codes, ids, known[c.requestId], o.make)
+                }
+                ModuleReader.Presence.ABSENT -> Unit
             }
             onProgress(Progress(probed, plan.size, found.size))
             pause(o.pauseMs)
         }
-        return found to probed
+        return Walk(found, probed, interrupted)
     }
 
     companion object {
@@ -126,6 +143,10 @@ class ModuleScanner(
             "the engine's generic codes can be read with it."
         const val FLOW_CONTROL_NOTE = "The adapter refused manual flow control, so long replies relied on its " +
             "automatic flow control; a reply marked cut off may be the adapter, not the module."
+        const val ADDRESS_REFUSED = "The adapter refused to point at a module address, so the scan stopped there; " +
+            "addresses after it were not probed and are not known to be empty."
+        const val LINK_TROUBLE = "The adapter stopped answering in the middle of the scan, so it stopped there; " +
+            "addresses after it were not probed and are not known to be empty."
         const val NO_BROADCAST = "The adapter refused the broadcast header, so generic engine codes were not read."
         const val SECOND_NETWORK_NOTE = "Only the main CAN network (pins 6 and 14) was read. Modules that live only " +
             "on a second network (on many Fords, the medium-speed one) are not reachable this way."

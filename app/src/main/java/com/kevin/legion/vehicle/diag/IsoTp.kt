@@ -23,8 +23,7 @@ object IsoTp {
     fun assemble(frames: List<Frame>): List<CanMessage> {
         val out = mutableListOf<CanMessage>()
         val open = linkedMapOf<Long, Pending>()
-        for (f in frames) {
-            if (f.bytes.isEmpty()) continue
+        for (f in frames.filter { it.bytes.isNotEmpty() }) {
             val pci = f.bytes[0]
             when (pci shr NIBBLE) {
                 PCI_SINGLE -> {
@@ -34,9 +33,10 @@ object IsoTp {
                 }
                 PCI_FIRST -> {
                     open.remove(f.id)?.let { out += cut(it) }
-                    if (f.bytes.size < FIRST_FRAME_HEADER) continue
-                    val len = ((pci and LOW_NIBBLE) shl Byte.SIZE_BITS) or f.bytes[1]
-                    open[f.id] = Pending(f.id, len, f.bytes.drop(FIRST_FRAME_HEADER).toMutableList(), 1)
+                    if (f.bytes.size >= FIRST_FRAME_HEADER) {
+                        val len = ((pci and LOW_NIBBLE) shl Byte.SIZE_BITS) or f.bytes[1]
+                        open[f.id] = Pending(f.id, len, f.bytes.drop(FIRST_FRAME_HEADER).toMutableList(), 1)
+                    }
                 }
                 PCI_CONSECUTIVE -> consecutive(open, f, out)
                 PCI_FLOW -> Unit

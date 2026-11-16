@@ -51,11 +51,12 @@ data class PackReading(
     fun decode(data: List<Int>): String? {
         if (data.size < byteOffset + byteCount) return null
         val bytes = data.subList(byteOffset, byteOffset + byteCount)
-        val s = scale ?: return "raw ${Hex.bytes(bytes)}"
-        var n = bytes.fold(0L) { acc, b -> (acc shl BYTE) or b.toLong() }
-        val bits = byteCount * BYTE
-        if (signed && n >= (1L shl (bits - 1))) n -= (1L shl bits)
-        return String.format(java.util.Locale.US, "%.1f", n * s + offset)
+        return scale?.let { s ->
+            var n = bytes.fold(0L) { acc, b -> (acc shl BYTE) or b.toLong() }
+            val bits = byteCount * BYTE
+            if (signed && n >= (1L shl (bits - 1))) n -= (1L shl bits)
+            String.format(java.util.Locale.US, "%.1f", n * s + offset)
+        } ?: "raw ${Hex.bytes(bytes)}"
     }
 
     companion object {
