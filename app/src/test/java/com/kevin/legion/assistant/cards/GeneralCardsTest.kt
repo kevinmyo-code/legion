@@ -1,6 +1,7 @@
 package com.kevin.legion.assistant.cards
 
 import com.kevin.legion.ui.assistant.CardGeneralWords
+import com.kevin.legion.ui.assistant.CardPictureWords
 import java.math.BigDecimal
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,7 +29,10 @@ class GeneralCardsTest {
 
     @Test
     fun `every fixture parses, and every kind is there`() {
-        val kinds = fixtures.map { f -> assertNotNull(ServerCards.parse(f.getJSONObject("card"))); f.getJSONObject("card").getString("card") }
+        val kinds = fixtures.map { f ->
+            assertNotNull(ServerCards.parse(f.getJSONObject("card")))
+            f.getJSONObject("card").getString("card")
+        }
         assertEquals(setOf("readings", "status_list", "trend"), kinds.toSet())
     }
 
@@ -63,6 +67,55 @@ class GeneralCardsTest {
     }
 
     @Test
+    fun `each card says the fixture headline, and the words beside its pictures`() {
+        fun pair(h: CardPictureWords.Headline?) = h?.let { listOf(it.label, it.value) }
+        fun want(words: JSONObject) = words.optJSONObject("headline")?.let {
+            listOf(it.optString("label").ifBlank { null }, it.getString("value"))
+        }
+        val r = of("readings").single()
+        val readings = ServerCards.parse(r.getJSONObject("card")) as ConversationCard.Readings
+        assertEquals(want(r.getJSONObject("words")), pair(CardPictureWords.headline(readings)))
+        val splits = readings.items.mapNotNull(CardPictureWords::split)
+        assertEquals(strings(r.getJSONObject("words").getJSONArray("split")), splits)
+        val st = of("status_list").single()
+        val list = ServerCards.parse(st.getJSONObject("card")) as ConversationCard.StatusList
+        val w = st.getJSONObject("words")
+        assertEquals(want(w), pair(CardPictureWords.headline(list)))
+        val meters = list.items.mapNotNull { it.meter?.let(CardPictureWords::meter) }
+        val levels = list.items.mapNotNull { it.level?.let(CardPictureWords::level) }
+        assertEquals(strings(w.getJSONArray("meters")), meters)
+        assertEquals(strings(w.getJSONArray("levels")), levels)
+        for (f in of("trend")) {
+            val card = ServerCards.parse(f.getJSONObject("card")) as ConversationCard.Trend
+            val words = f.getJSONObject("words")
+            assertEquals(want(words), pair(CardPictureWords.headline(card)))
+            assertEquals(words.optString("guide").ifBlank { null }, card.guide?.label)
+        }
+    }
+
+    @Test
+    fun `a picture field that does not fit is no card`() {
+        fun readings(item: String, extra: String = ""): JSONObject {
+            val one = """{"label":"a","value":1,"unit":""$item}"""
+            return JSONObject("""{"card":"readings","title":"x","items":[$one],"more":0$extra}""")
+        }
+        assertNull(ServerCards.parse(readings(""","scale":{"min":5,"max":5}""")))
+        assertNull(ServerCards.parse(readings(""","mark":{"value":1,"label":"x"}""")))
+        assertNull(ServerCards.parse(readings(""","split":{"unit":"g","parts":[{"label":"P","value":1}]}""")))
+        assertNull(ServerCards.parse(readings(""","attention":"yes"""")))
+        assertNull(ServerCards.parse(readings("", ""","lead":1""")))
+        assertNotNull(ServerCards.parse(readings("", ""","lead":0""")))
+        fun row(extra: String) =
+            JSONObject("""{"card":"status_list","title":"x","items":[{"name":"a","status":"ok"$extra}],"more":0}""")
+        assertNull(ServerCards.parse(row(""","meter":{"value":1,"max":0,"unit":""}""")))
+        assertNull(ServerCards.parse(row(""","level":{"value":5,"of":4}""")))
+        val trend = """{"card":"trend","title":"x","unit":"h","series":[{"name":"a","points":[]}]"""
+        assertNull(ServerCards.parse(JSONObject("""$trend,"style":"pie"}""")))
+        assertNull(ServerCards.parse(JSONObject("""$trend,"guide":{"value":"8","label":"x"}}""")))
+        assertEquals(TrendStyle.LINE, (ServerCards.parse(JSONObject("$trend}")) as ConversationCard.Trend).style)
+    }
+
+    @Test
     fun `the phone writes back the engine's shape, field for field`() {
         for (f in fixtures) {
             val wire = f.getJSONObject("card")
@@ -82,12 +135,14 @@ class GeneralCardsTest {
 
     @Test
     fun `a shape that does not fit is no card`() {
-        val fractionOfACent = """{"card":"readings","title":"x","items":[{"label":"a","value":1.5,"unit":"usd"}],"more":0}"""
+        val fractionOfACent =
+            """{"card":"readings","title":"x","items":[{"label":"a","value":1.5,"unit":"usd"}],"more":0}"""
         assertNull(ServerCards.parse(JSONObject(fractionOfACent)))
         val colour = """{"card":"status_list","title":"x","items":[{"name":"a","status":"green"}],"more":0}"""
         assertNull(ServerCards.parse(JSONObject(colour)))
         assertNull(ServerCards.parse(JSONObject("""{"card":"trend","title":"x","unit":"lb","series":[]}""")))
-        val badDate = """{"card":"trend","title":"x","unit":"lb","series":[{"name":"a","points":[{"at":"Nov 4","value":1}]}]}"""
+        val badDate =
+            """{"card":"trend","title":"x","unit":"lb","series":[{"name":"a","points":[{"at":"Nov 4","value":1}]}]}"""
         assertNull(ServerCards.parse(JSONObject(badDate)))
     }
 
@@ -103,7 +158,8 @@ class GeneralCardsTest {
         a is JSONObject && b is JSONObject ->
             a.keys().asSequence().toSet() == b.keys().asSequence().toSet() &&
                 a.keys().asSequence().all { same(a.get(it), b.get(it)) }
-        a is JSONArray && b is JSONArray -> a.length() == b.length() && (0 until a.length()).all { same(a.get(it), b.get(it)) }
+        a is JSONArray && b is JSONArray ->
+            a.length() == b.length() && (0 until a.length()).all { same(a.get(it), b.get(it)) }
         a is Number && b is Number -> BigDecimal(a.toString()).compareTo(BigDecimal(b.toString())) == 0
         else -> a == b
     }

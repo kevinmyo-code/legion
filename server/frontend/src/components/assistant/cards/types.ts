@@ -150,6 +150,20 @@ export interface Reading {
   /** A value that is words, not a number ("Closed loop", a VIN); `value` is then null. */
   text?: string
   note?: string
+  /** The span the value is drawn on as a bar (same unit). Optional picture field, 2026-11-15. */
+  scale?: { min: number; max: number }
+  /** One reference on `scale`: "Alert at 95%". */
+  mark?: Mark
+  /** One whole in 2 to 4 parts (macros in grams), one stacked bar; `flag` covers every part. */
+  split?: { unit: string; parts: { label: string; value: number }[] }
+  /** The source says this value needs attention: said in words, drawn in the accent. */
+  attention?: boolean
+}
+
+/** A reference value with its label: a mark on a scale, or a trend's guide line. */
+export interface Mark {
+  value: number
+  label: string
 }
 
 export interface ReadingsCard extends Common {
@@ -158,14 +172,26 @@ export interface ReadingsCard extends Common {
   at?: string
   items: Reading[]
   more: number
+  /** The item drawn as the card's headline. */
+  lead?: number
 }
 
 export type Status = 'ok' | 'attention' | 'failed' | 'unknown' | 'not_reached'
 
+export interface StatusRow {
+  name: string
+  status: Status
+  note?: string
+  /** An amount against its limit: spent against the cap, the mark an even pace today. */
+  meter?: { value: number; max: number; unit: string; mark?: Mark }
+  /** A rank on a named scale: an NWS alert's severity, 1 (Minor) to 4 (Extreme). */
+  level?: { value: number; of: number }
+}
+
 export interface StatusListCard extends Common {
   card: 'status_list'
   at?: string
-  items: { name: string; status: Status; note?: string }[]
+  items: StatusRow[]
   more: number
 }
 
@@ -180,6 +206,10 @@ export interface TrendCard extends Common {
   card: 'trend'
   unit: string
   series: TrendSeries[]
+  /** One reference line the source states: a target, a goal, an alert threshold. */
+  guide?: Mark
+  /** "line" (the default) or "bars": a column a point from zero. */
+  style?: 'line' | 'bars'
 }
 
 export type Card =
@@ -248,13 +278,15 @@ export function asCard(value: unknown): Card | undefined {
         ? (value as unknown as ResumeCard)
         : undefined
     case 'readings':
-      return isList(value.items) && value.items.every(isReading) && atOk(value.at)
+      return isList(value.items) &&
+        value.items.every(isReading) &&
+        atOk(value.at) &&
+        (value.lead === undefined ||
+          (Number.isInteger(value.lead) && (value.lead as number) >= 0 && (value.lead as number) < value.items.length))
         ? (value as unknown as ReadingsCard)
         : undefined
     case 'status_list':
-      return isList(value.items) &&
-        value.items.every((i) => typeof i.name === 'string' && STATUSES.includes(i.status as Status)) &&
-        atOk(value.at)
+      return isList(value.items) && value.items.every(isStatusRow) && atOk(value.at)
         ? (value as unknown as StatusListCard)
         : undefined
     case 'trend':
@@ -267,7 +299,9 @@ export function asCard(value: unknown): Card | undefined {
             typeof s.name === 'string' &&
             isList(s.points) &&
             s.points.every((p) => typeof p.at === 'string' && AT.test(p.at) && isNumber(p.value)),
-        )
+        ) &&
+        markOk(value.guide, value.unit) &&
+        (value.style === undefined || value.style === 'line' || value.style === 'bars')
         ? (value as unknown as TrendCard)
         : undefined
     default:
@@ -282,11 +316,63 @@ const isNumber = (value: unknown): value is number => typeof value === 'number' 
 
 const atOk = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && AT.test(value))
 
+/** A number in `unit`: integer cents for usd. */
+const valueOk = (v: unknown, unit: unknown) => isNumber(v) && (unit !== 'usd' || Number.isInteger(v))
+
+const markOk = (mark: unknown, unit: unknown) =>
+  mark === undefined ||
+  (isObject(mark) && valueOk(mark.value, unit) && typeof mark.label === 'string' && mark.label !== '')
+
+function scaleOk(scale: unknown, unit: unknown): boolean {
+  return scale === undefined || (isObject(scale) && valueOk(scale.min, unit) && valueOk(scale.max, unit) && (scale.min as number) < (scale.max as number))
+}
+
+function splitOk(split: unknown): boolean {
+  if (split === undefined) return true
+  if (!isObject(split) || typeof split.unit !== 'string' || !isList(split.parts)) return false
+  return (
+    split.parts.length >= 2 &&
+    split.parts.length <= 4 &&
+    split.parts.every((p) => typeof p.label === 'string' && isNumber(p.value) && p.value >= 0)
+  )
+}
+
 function isReading(item: Record<string, unknown>): boolean {
   if (typeof item.label !== 'string' || typeof item.unit !== 'string') return false
   if (item.text !== undefined && item.text !== null && (typeof item.text !== 'string' || item.value !== null)) return false
-  const fits = (v: unknown) => v === undefined || v === null || (isNumber(v) && (item.unit !== 'usd' || Number.isInteger(v)))
-  return fits(item.value) && fits(item.was)
+  const fits = (v: unknown) => v === undefined || v === null || valueOk(v, item.unit)
+  if (!fits(item.value) || !fits(item.was)) return false
+  if (!scaleOk(item.scale, item.unit) || !splitOk(item.split)) return false
+  if (item.mark !== undefined && (item.scale === undefined || !markOk(item.mark, item.unit))) return false
+  return item.attention === undefined || typeof item.attention === 'boolean'
+}
+
+function isStatusRow(item: Record<string, unknown>): boolean {
+  if (typeof item.name !== 'string' || !STATUSES.includes(item.status as Status)) return false
+  const meter = item.meter
+  if (
+    meter !== undefined &&
+    !(
+      isObject(meter) &&
+      typeof meter.unit === 'string' &&
+      valueOk(meter.value, meter.unit) &&
+      (meter.value as number) >= 0 &&
+      valueOk(meter.max, meter.unit) &&
+      (meter.max as number) > 0 &&
+      markOk(meter.mark, meter.unit)
+    )
+  )
+    return false
+  const level = item.level
+  return (
+    level === undefined ||
+    (isObject(level) &&
+      Number.isInteger(level.value) &&
+      Number.isInteger(level.of) &&
+      (level.value as number) >= 1 &&
+      (level.value as number) <= (level.of as number) &&
+      (level.of as number) <= 5)
+  )
 }
 
 /** Status in words, never a colour or a glyph alone. The engine's `cards.STATUS_WORDS`. */
@@ -319,7 +405,80 @@ export function readingWords(item: Reading): string {
   if (item.value === null) return item.text ?? 'not read'
   const was = item.was != null ? ` (was ${unitWords(item.was, item.unit)})` : ''
   const flag = item.flag ? ` (${FLAG_WORDS[item.flag]})` : ''
-  return unitWords(item.value, item.unit) + was + flag
+  const attention = item.attention ? ' (needs attention)' : ''
+  return unitWords(item.value, item.unit) + was + flag + attention
+}
+
+/** A card's big line: what it answers at a glance. The phone's `CardGeneralWords.Headline`. */
+export interface Headline {
+  label?: string
+  value: string
+  attention?: boolean
+}
+
+/** The lead item's label and words. */
+export function readingsHeadline(card: ReadingsCard): Headline | null {
+  const item = card.lead === undefined ? undefined : card.items[card.lead]
+  if (!item) return null
+  return { label: item.label, value: readingWords(item), attention: item.attention === true }
+}
+
+/** "4 need attention" (a failure counted too), "All OK", or how many are not known. */
+export function statusHeadline(card: StatusListCard): Headline | null {
+  const rows = card.items
+  if (rows.length === 0) return null
+  const flagged = rows.filter((r) => r.status === 'attention' || r.status === 'failed').length
+  const unknown = rows.filter((r) => r.status === 'unknown' || r.status === 'not_reached').length
+  const value =
+    rows.length === 1
+      ? STATUS_WORDS[rows[0].status]
+      : flagged === 1
+        ? '1 needs attention'
+        : flagged > 1
+          ? `${flagged} need attention`
+          : unknown === 0
+            ? 'All OK'
+            : `${unknown} of ${rows.length} not known`
+  return { value, attention: flagged > 0 }
+}
+
+/** The first series' latest point: "Morning weight, Nov 14" over "182.4 lb". */
+export function trendHeadline(card: TrendCard): Headline | null {
+  const series = card.series.find((s) => s.points.length > 0)
+  if (!series) return null
+  const last = series.points[series.points.length - 1]
+  const flag = series.flag ? ` (${FLAG_WORDS[series.flag]})` : ''
+  return { label: `${series.name}, ${pointWords(last.at)}`, value: unitWords(last.value, card.unit) + flag }
+}
+
+/** "Protein 13 g, Carbs 68 g, Fat 7 g (estimate)". */
+export function splitWords(item: Reading): string | null {
+  if (!item.split) return null
+  const flag = item.flag ? ` (${FLAG_WORDS[item.flag]})` : ''
+  return item.split.parts.map((p) => `${p.label} ${unitWords(p.value, item.split!.unit)}`).join(', ') + flag
+}
+
+/** "$520.00 of $500.00". */
+export function meterWords(meter: NonNullable<StatusRow['meter']>): string {
+  return `${unitWords(meter.value, meter.unit)} of ${unitWords(meter.max, meter.unit)}`
+}
+
+/** "Level 2 of 4". */
+export function levelWords(level: NonNullable<StatusRow['level']>): string {
+  return `Level ${level.value} of ${level.of}`
+}
+
+/** "Nov 14", or "Nov 14, 2:20 pm" for a point with a time. */
+function pointWords(at: string): string {
+  const m = AT.exec(at)
+  return m && m[4] ? `${shortDayWords(at)}, ${clockWords(`${m[4]}:${m[5]}`)}` : shortDayWords(at)
+}
+
+/** An end of a trend's time axis: its clock time, with its day when the axis spans days, else "Nov 14". */
+export function axisWords(at: string, withDay = false): string {
+  const m = AT.exec(at)
+  if (!m || !m[4]) return shortDayWords(at)
+  return withDay ? pointWords(at) : clockWords(`${m[4]}:${m[5]}`)
 }
 
 /** "As of Sun Nov 15, 2026" from a card's `at`; its clock time in words when it carries one. */

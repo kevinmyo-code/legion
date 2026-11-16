@@ -726,7 +726,9 @@ class MapboxNavController(
         val s = _state.value
         val dest = s.destination
         val g = s.guidance
-        if (guard.phase == NavPhase.GUIDING && dest != null && g != null) return TripStatus.Navigating(dest, s.stops, g)
+        if (guard.phase == NavPhase.GUIDING && dest != null && g != null) {
+            return TripStatus.Navigating(dest, s.stops, g, s.routes.firstOrNull()?.distanceM)
+        }
         val where = dest?.name
         return TripStatus.NotNavigating(
             when (s.phase) {

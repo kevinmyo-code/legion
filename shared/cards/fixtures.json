@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "source": "server/engine_mcp/cards.py (the general kinds: readings, status_list, trend)",
-  "about": "One made-up card of each general kind, in the engine's wire shape, with the words every screen must say for it. The engine's tests check each card against cards.check(), the web's and the phone's parse it and draw these exact words. Edit all three sides together.",
+  "version": 2,
+  "source": "server/engine_mcp/cards.py (the general kinds: readings, status_list, trend, and their optional picture fields)",
+  "about": "One made-up card of each general kind, in the engine's wire shape, with the words every screen must say for it. The engine's tests check each card against cards.check(), the web's and the phone's parse it and draw these exact words. `headline` is the big line at the top of the card (null: the card draws none). Edit all three sides together.",
   "cards": [
     {
       "card": {
@@ -9,6 +9,7 @@
         "title": "Laptop",
         "period": "Sun Nov 15",
         "at": "2026-11-15T14:20",
+        "lead": 9,
         "items": [
           {"label": "CPU", "value": 72.5, "unit": "°C", "was": 90},
           {"label": "Memory used", "value": 11.2, "unit": "GB"},
@@ -18,7 +19,16 @@
           {"label": "Spent", "value": 123456, "unit": "usd", "flag": "unverified"},
           {"label": "Odometer", "value": 203000, "unit": "mi", "note": "Last reading on file."},
           {"label": "Sessions", "value": 3, "unit": ""},
-          {"label": "Fuel system", "value": null, "unit": "", "text": "Closed loop"}
+          {"label": "Fuel system", "value": null, "unit": "", "text": "Closed loop"},
+          {"label": "RAM", "value": 62, "unit": "%", "scale": {"min": 0, "max": 100}, "mark": {"value": 95, "label": "Alert at 95%"}},
+          {"label": "GPU", "value": 96, "unit": "°C", "attention": true},
+          {
+            "label": "Oats",
+            "value": 380,
+            "unit": "kcal",
+            "flag": "estimate",
+            "split": {"unit": "g", "parts": [{"label": "Protein", "value": 13}, {"label": "Carbs", "value": 68}, {"label": "Fat", "value": 7}]}
+          }
         ],
         "more": 2,
         "note": "Read from the laptop's own report."
@@ -33,8 +43,13 @@
           "$1,234.56 (unverified)",
           "203,000 mi",
           "3",
-          "Closed loop"
+          "Closed loop",
+          "62%",
+          "96 °C (needs attention)",
+          "380 kcal (estimate)"
         ],
+        "split": ["Protein 13 g, Carbs 68 g, Fat 7 g (estimate)"],
+        "headline": {"label": "RAM", "value": "62%"},
         "asOfStartsWith": "As of Sun Nov 15, 2026",
         "more": "2 more not shown."
       }
@@ -49,12 +64,22 @@
           {"name": "Disk", "status": "attention", "note": "9% free."},
           {"name": "Backup", "status": "failed"},
           {"name": "Printer", "status": "unknown", "note": "Not reported."},
-          {"name": "Body control module", "status": "not_reached"}
+          {"name": "Body control module", "status": "not_reached"},
+          {
+            "name": "Groceries",
+            "status": "attention",
+            "note": "Over: $520.00 of $500.00.",
+            "meter": {"value": 52000, "max": 50000, "unit": "usd", "mark": {"value": 25000, "label": "Even pace, day 15"}}
+          },
+          {"name": "Flood Watch", "status": "attention", "note": "Moderate, until 18:00.", "level": {"value": 2, "of": 4}}
         ],
         "more": 0
       },
       "words": {
-        "statuses": ["OK", "Needs attention", "Failed", "Unknown", "Not reached"],
+        "statuses": ["OK", "Needs attention", "Failed", "Unknown", "Not reached", "Needs attention", "Needs attention"],
+        "meters": ["$520.00 of $500.00"],
+        "levels": ["Level 2 of 4"],
+        "headline": {"value": "4 need attention"},
         "asOfStartsWith": "As of Sun Nov 15, 2026",
         "more": ""
       }
@@ -65,6 +90,7 @@
         "title": "Weight",
         "period": "Last 4 weeks",
         "unit": "lb",
+        "guide": {"value": 180, "label": "Goal 180 lb"},
         "series": [
           {
             "name": "Morning weight",
@@ -89,7 +115,9 @@
         "series": [
           "Morning weight: latest 182.4 lb on Nov 14, low 181 lb, high 186.2 lb.",
           "Trend (estimate): latest 182.1 lb on Nov 14, low 182.1 lb, high 186 lb."
-        ]
+        ],
+        "guide": "Goal 180 lb",
+        "headline": {"label": "Morning weight, Nov 14", "value": "182.4 lb"}
       }
     },
     {
@@ -103,7 +131,35 @@
         "note": "No spending in this window."
       },
       "words": {
-        "series": ["Groceries: nothing recorded in this window."]
+        "series": ["Groceries: nothing recorded in this window."],
+        "headline": null
+      }
+    },
+    {
+      "card": {
+        "card": "trend",
+        "title": "Sleep",
+        "period": "Last 4 nights logged",
+        "unit": "h",
+        "style": "bars",
+        "guide": {"value": 8, "label": "Target 8 h"},
+        "series": [
+          {
+            "name": "Asleep",
+            "points": [
+              {"at": "2026-11-10", "value": 7.5},
+              {"at": "2026-11-11", "value": 6.2},
+              {"at": "2026-11-13", "value": 8.1},
+              {"at": "2026-11-14", "value": 5.9}
+            ]
+          }
+        ],
+        "note": "Nights with nothing logged are left out, not counted as zero."
+      },
+      "words": {
+        "series": ["Asleep: latest 5.9 h on Nov 14, low 5.9 h, high 8.1 h."],
+        "guide": "Target 8 h",
+        "headline": {"label": "Asleep, Nov 14", "value": "5.9 h"}
       }
     }
   ]

@@ -3802,7 +3802,10 @@ object LiveToolbox {
             l.notes?.let { o.put("notes", it) }
             arr.put(o)
         }
-        com.kevin.legion.assistant.cards.DomainToolCards.sleep(logs.map { it.sleepDate to it.durationMinutes })
+        com.kevin.legion.assistant.cards.DomainToolCards.sleep(
+            logs.map { it.sleepDate to it.durationMinutes },
+            runCatching { com.kevin.legion.sleep.SleepController.currentTargetMinutes(context) }.getOrNull(),
+        )
         return JSONObject().put("success", true).put("count", logs.size).put("nights", arr)
     }
 

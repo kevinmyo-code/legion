@@ -17,7 +17,9 @@ object DomainToolCards {
 
     /** `trip_status`: the snapshot it worded; never a card when not navigating. */
     fun trip(t: com.kevin.legion.navigation.TripStatus.Navigating) {
-        ConversationCards.publish(DomainCards.trip(t.destination.name, t.stops.size, t.guidance, ZoneId.systemDefault()))
+        ConversationCards.publish(
+            DomainCards.trip(t.destination.name, t.stops.size, t.guidance, ZoneId.systemDefault(), t.routeDistanceM),
+        )
     }
 
     fun weightTrend(result: org.json.JSONObject) {
@@ -28,9 +30,9 @@ object DomainToolCards {
         BodyCards.workout(result)?.let(ConversationCards::publish)
     }
 
-    /** `list_recent_sleep`: each log's date and minutes. */
-    fun sleep(nights: List<Pair<Long, Int>>) {
-        BodyCards.sleep(nights)?.let(ConversationCards::publish)
+    /** `list_recent_sleep`: each log's date and minutes, and the sleep target on file. */
+    fun sleep(nights: List<Pair<Long, Int>>, targetMinutes: Int? = null) {
+        BodyCards.sleep(nights, targetMinutes)?.let(ConversationCards::publish)
     }
 
     fun groceries(rows: List<com.kevin.legion.data.local.PantryLineItemWithCurrency>) {

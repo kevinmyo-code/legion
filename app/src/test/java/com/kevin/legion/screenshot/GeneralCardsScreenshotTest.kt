@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -15,6 +16,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.assistant.cards.SharedCardFixtures
 import com.kevin.legion.ui.assistant.CardStageSurface
+import com.kevin.legion.ui.assistant.CARD_HEADLINE_TAG
 import com.kevin.legion.ui.assistant.TREND_CHART_TAG
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.typeset.TypesetPage
@@ -59,6 +61,7 @@ class GeneralCardsScreenshotTest {
     private val readings get() = SharedCardFixtures.card("readings")
     private val statuses get() = SharedCardFixtures.card("status_list")
     private val trend get() = SharedCardFixtures.card("trend")
+    private val sleep get() = SharedCardFixtures.card("trend", 2)
 
     @Test @Config(qualifiers = A25)
     fun `readings, day`() = render("cards-readings-412x915-day.png", readings, "72.5 °C (was 90 °C)")
@@ -67,7 +70,11 @@ class GeneralCardsScreenshotTest {
     fun `readings, night`() = render("cards-readings-412x915-night.png", readings, "not read")
 
     @Test @Config(qualifiers = A25)
-    fun `status list, day`() = render("cards-status-412x915-day.png", statuses, "Needs attention")
+    fun `status list, day`() {
+        render("cards-status-412x915-day.png", statuses, "Answering on port")
+        rule.onNodeWithTag(CARD_HEADLINE_TAG).assertIsDisplayed()
+        rule.onNodeWithContentDescription("Level 2 of 4").assertIsDisplayed()
+    }
 
     @Test @Config(qualifiers = "$A25-night")
     fun `status list, night`() = render("cards-status-412x915-night.png", statuses, "Not reached")
@@ -80,6 +87,15 @@ class GeneralCardsScreenshotTest {
 
     @Test @Config(qualifiers = "$A25-night")
     fun `trend, night`() = render("cards-trend-412x915-night.png", trend, "Trend (estimate): latest 182.1 lb")
+
+    @Test @Config(qualifiers = A25)
+    fun `trend as bars, day`() {
+        render("cards-trend-bars-412x915-day.png", sleep, "Target 8 h")
+        rule.onNodeWithTag(TREND_CHART_TAG).assertIsDisplayed()
+    }
+
+    @Test @Config(qualifiers = "$A25-night")
+    fun `trend as bars, night`() = render("cards-trend-bars-412x915-night.png", sleep, "Asleep: latest 5.9 h")
 
     private companion object {
         const val FRAME_MS = 800L

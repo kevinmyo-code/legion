@@ -1,6 +1,5 @@
 package com.kevin.legion.ui.assistant
 
-import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.assistant.cards.Reading
 import com.kevin.legion.assistant.cards.TrendSeries
@@ -39,20 +38,24 @@ internal object CardGeneralWords {
         else -> number(value) + " " + unit
     }
 
-    /** "not read", or the value, its earlier value, and its flag: "32 g (estimate)". */
+    /**
+     * "not read", or the value, its earlier value, its flag and whether it needs attention:
+     * "32 g (estimate)", "96 °C (needs attention)".
+     */
     fun reading(r: Reading): String {
         val value = r.value ?: return r.text ?: "not read"
         val was = r.was?.let { " (was ${withUnit(it, r.unit)})" } ?: ""
         val flag = r.flag?.let { " (${it.words})" } ?: ""
-        return withUnit(value, r.unit) + was + flag
+        val attention = if (r.attention) " (needs attention)" else ""
+        return withUnit(value, r.unit) + was + flag + attention
     }
 
     /** "As of Sun Nov 15, 2026, 14:20", or the day alone; null when the card states no time. */
     fun asOf(at: String?): String? {
-        val m = at?.let { AT.matchEntire(it) } ?: return null
-        val day = runCatching { LocalDate.parse(m.groupValues[1]).format(DAY) }.getOrNull() ?: return null
-        val clock = m.groupValues[2]
-        return if (clock.isBlank()) "As of $day" else "As of $day, $clock"
+        val m = at?.let { AT.matchEntire(it) }
+        val day = m?.let { runCatching { LocalDate.parse(it.groupValues[1]).format(DAY) }.getOrNull() }
+        val clock = m?.groupValues?.get(2).orEmpty()
+        return day?.let { if (clock.isBlank()) "As of $it" else "As of $it, $clock" }
     }
 
     /** "Weight: latest 182.4 lb on Nov 14, low 181 lb, high 186.2 lb." */
@@ -65,7 +68,8 @@ internal object CardGeneralWords {
             "low ${withUnit(low, unit)}, high ${withUnit(high, unit)}."
     }
 
-    private fun shortDay(at: String): String =
+    /** "Nov 14" from an `at`. */
+    fun shortDay(at: String): String =
         AT.matchEntire(at)?.let { runCatching { LocalDate.parse(it.groupValues[1]).format(SHORT) }.getOrNull() } ?: at
 
     /** Minutes since 1970 for an `at`, read as a clock time with no zone: for placing points only. */
@@ -75,25 +79,6 @@ internal object CardGeneralWords {
         return runCatching {
             LocalDateTime.parse("${m.groupValues[1]}T$time").toEpochSecond(ZoneOffset.UTC) / SECONDS_PER_MINUTE
         }.getOrDefault(0L)
-    }
-
-    /**
-     * Each series' points as (x, y) in 0..1 over every series' shared span, for drawing only (the
-     * floats never reach a word). A flat line sits at the bottom.
-     */
-    fun plot(card: ConversationCard.Trend): List<List<Pair<Float, Float>>> {
-        val all = card.series.flatMap { it.points }
-        if (all.isEmpty()) return card.series.map { emptyList() }
-        val xs = all.map { minutes(it.at) }
-        val x0 = xs.min()
-        val xSpan = (xs.max() - x0).coerceAtLeast(1L).toFloat()
-        val y0 = all.minOf { it.value }
-        val ySpan = (all.maxOf { it.value } - y0).takeIf { it.signum() > 0 } ?: BigDecimal.ONE
-        return card.series.map { s ->
-            s.points.map { p ->
-                (minutes(p.at) - x0) / xSpan to (p.value - y0).toFloat() / ySpan.toFloat()
-            }
-        }
     }
 
     private const val SECONDS_PER_MINUTE = 60L

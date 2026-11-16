@@ -19,12 +19,14 @@ import com.kevin.legion.assistant.cards.BodyCards
 import com.kevin.legion.assistant.cards.DomainCards
 import com.kevin.legion.assistant.cards.ServerCards
 import com.kevin.legion.claude.LaptopHealth
+import com.kevin.legion.claude.LaptopLimits
 import com.kevin.legion.claude.TempPoint
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryLineItemWithCurrency
 import com.kevin.legion.memory.MemberMemory
 import com.kevin.legion.navigation.GuidanceSnapshot
+import com.kevin.legion.navigation.UnitSystem
 import com.kevin.legion.ui.assistant.CARD_CONFIRM_FORGET_TAG
 import com.kevin.legion.ui.assistant.CARD_FORGET_TAG
 import com.kevin.legion.ui.assistant.CardForget
@@ -58,7 +60,13 @@ class DomainCardsScreenshotTest {
 
     private val zone = ZoneId.of("America/Chicago")
 
-    private fun render(name: String, night: Boolean, card: ConversationCard, mustSay: String, forget: CardForget? = null) {
+    private fun render(
+        name: String,
+        night: Boolean,
+        card: ConversationCard,
+        mustSay: String,
+        forget: CardForget? = null,
+    ) {
         rule.mainClock.autoAdvance = false
         rule.setContent {
             CompositionLocalProvider(LocalCardForget provides (forget ?: CardForget { ForgetResult(false, "") })) {
@@ -82,41 +90,52 @@ class DomainCardsScreenshotTest {
     private fun engine(json: String) = ServerCards.parse(JSONObject(json))!!
 
     private val grades get() = engine(
-        """{"card":"readings","title":"Grades","at":"2026-11-15T14:20","items":[
-        {"label":"Chemistry 101","value":91.5,"unit":"%","note":"Canvas says A-."},
+        """{"card":"readings","title":"Grades","at":"2026-11-15T14:20","lead":2,"items":[
+        {"label":"Chemistry 101","value":91.5,"unit":"%","note":"Canvas says A-.","scale":{"min":0,"max":100}},
         {"label":"History 210","value":null,"unit":"","text":"No total shown"},
-        {"label":"Calculus II","value":84.25,"unit":"%","note":"Canvas says B."}],"more":0,
+        {"label":"Calculus II","value":84.25,"unit":"%","note":"Canvas says B.","scale":{"min":0,"max":100}}],"more":0,
         "note":"Canvas's own current grades: work not yet graded does not count."}""",
     )
 
     private val pace get() = engine(
         """{"card":"status_list","title":"Budget pace","period":"November 2026, day 15 of 30","items":[
-        {"name":"Groceries","status":"attention","note":"Over: ${'$'}520.00 of ${'$'}500.00. About ${'$'}1,040.00 by month end (estimate). Includes unverified rows."},
-        {"name":"Fuel","status":"attention","note":"On pace to go over: ${'$'}60.00 of ${'$'}100.00. About ${'$'}120.00 by month end (estimate)."},
-        {"name":"Dining","status":"ok","note":"On track: ${'$'}90.00 of ${'$'}200.00. About ${'$'}180.00 by month end (estimate)."}],
+        {"name":"Fuel","status":"attention","meter":$FUEL,
+        "note":"On pace to go over: ${'$'}60.00 of ${'$'}100.00. About ${'$'}120.00 by month end (estimate)."},
+        {"name":"Groceries","status":"attention","meter":$GROCERIES,
+        "note":"Over: ${'$'}520.00 of ${'$'}500.00. About ${'$'}1,040.00 by month end (estimate). Includes unverified rows."},
+        {"name":"Dining","status":"ok","meter":$DINING,
+        "note":"On track: ${'$'}90.00 of ${'$'}200.00. About ${'$'}180.00 by month end (estimate)."}],
         "more":0,"note":"Altogether ${'$'}670.00 of ${'$'}800.00."}""",
     )
 
     private val alerts get() = engine(
         """{"card":"status_list","title":"Weather alerts","scope":"Home","items":[
-        {"name":"Flood Watch","status":"attention","note":"Moderate, until Nov 15 6:00 PM, UTC-6, from NWS Sample Office."},
-        {"name":"Wind Advisory","status":"attention","note":"Minor, until Nov 15 9:00 PM, UTC-6, from NWS Sample Office."}],
+        {"name":"Flood Watch","status":"attention","level":{"value":2,"of":4},
+        "note":"Moderate, until Nov 15 6:00 PM, UTC-6, from NWS Sample Office."},
+        {"name":"Wind Advisory","status":"attention","level":{"value":1,"of":4},
+        "note":"Minor, until Nov 15 9:00 PM, UTC-6, from NWS Sample Office."}],
         "more":0,"note":"Read just now from the National Weather Service."}""",
     )
 
     private val drives get() = engine(
-        """{"card":"readings","title":"Drives","items":[
-        {"label":"Sat Nov 14, 07:05","value":12.3,"unit":"mi","note":"32 min."},
-        {"label":"Fri Nov 13, 16:00","value":null,"unit":"mi","note":"End time not stored."}],"more":0,
+        """{"card":"readings","title":"Drives","period":"5 days with drives","lead":0,"items":[
+        {"label":"Total","value":63.4,"unit":"mi","note":"7 drives, 128 min (1 with no end time). 1 with no miles stored, not counted."},
+        {"label":"Sat Nov 14","value":15.3,"unit":"mi","note":"2 drives, 42 min.","scale":{"min":0,"max":22.6}},
+        {"label":"Fri Nov 13","value":22.6,"unit":"mi","note":"2 drives, 51 min.","scale":{"min":0,"max":22.6}},
+        {"label":"Thu Nov 12","value":null,"unit":"mi","note":"1 drive, no end time stored. 1 with no miles stored, not counted."},
+        {"label":"Wed Nov 11","value":8.2,"unit":"mi","note":"1 drive, 14 min.","scale":{"min":0,"max":22.6}},
+        {"label":"Tue Nov 10","value":17.3,"unit":"mi","note":"1 drive, 21 min.","scale":{"min":0,"max":22.6}}],"more":0,
         "note":"Miles as the phone logged them; no fuel economy."}""",
     )
 
     private val health = LaptopHealth(
         at = Instant.parse("2026-11-15T20:20:00Z"),
         cpuC = 61.5, gpuC = 44.0, fansRpm = mapOf("CPU" to 2400, "GPU" to 2100), cpuLoadPct = 12.0,
-        ramUsedPct = 71.0, diskFreeGb = 180.3, onMains = true, alerts = listOf("ram_high"),
+        ramUsedPct = 96.0, diskFreeGb = 180.3, onMains = true, alerts = listOf("ram_high"),
+        limits = LaptopLimits(hotC = 90.0, ramHighPct = 95.0, diskLowGb = 15.0),
         temps24h = (0 until 24).map { h ->
-            TempPoint(Instant.parse("2026-11-14T21:00:00Z").plusSeconds(h * 3_600L), 50.0 + (h % 6) * 3, 38.0 + (h % 4) * 2)
+            val at = Instant.parse("2026-11-14T21:00:00Z").plusSeconds(h * 3_600L)
+            TempPoint(at, 50.0 + (h % 6) * 3, 38.0 + (h % 4) * 2)
         },
     )
 
@@ -125,13 +144,17 @@ class DomainCardsScreenshotTest {
 
     private val trip get() = DomainCards.trip(
         "Library", 1,
-        GuidanceSnapshot(1_380.0, 9_500.0, Instant.parse("2026-11-15T20:52:00Z").toEpochMilli(), null, null, "Main St", null, null),
+        GuidanceSnapshot(
+            1_380.0, 9_500.0, Instant.parse("2026-11-15T20:52:00Z").toEpochMilli(), null, null, "Main St", null, null,
+        ),
         zone,
+        routeDistanceM = 24_000.0,
+        units = UnitSystem.IMPERIAL,
     )
 
     private val weight get() = BodyCards.weightTrend(
         JSONObject(
-            """{"success":true,"rate_lbs_per_week":-0.8,"recent_days":[
+            """{"success":true,"rate_lbs_per_week":-0.8,"milestone":{"target_lbs":182.0},"recent_days":[
             {"day":"2026-11-01","weight_lbs":186.2,"trend_lbs":186.0},{"day":"2026-11-03","weight_lbs":185.1,"trend_lbs":185.6},
             {"day":"2026-11-05","weight_lbs":185.6,"trend_lbs":185.3},{"day":"2026-11-08","weight_lbs":184.0,"trend_lbs":184.8},
             {"day":"2026-11-10","weight_lbs":null,"trend_lbs":184.5},{"day":"2026-11-12","weight_lbs":183.6,"trend_lbs":184.1},
@@ -143,6 +166,7 @@ class DomainCardsScreenshotTest {
         listOf(1 to 455, 2 to 410, 3 to 480, 5 to 390, 6 to 445, 7 to 470).map { (d, min) ->
             java.time.LocalDate.of(2026, 11, d).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() to min
         },
+        targetMinutes = 450,
     )!!
 
     private val workout get() = BodyCards.workout(
@@ -158,14 +182,22 @@ class DomainCardsScreenshotTest {
     private val groceries get() = BodyCards.groceries(
         listOf(
             PantryLineItemWithCurrency(
-                PantryLineItem(receiptId = 1, name = "Rolled oats", totalPriceCents = 499, caloriesKcal = 1_500, proteinG = 50.0, carbsG = 270.0, fatG = 25.0),
+                PantryLineItem(
+                    receiptId = 1, name = "Rolled oats", totalPriceCents = 499, caloriesKcal = 1_500,
+                    proteinG = 50.0, carbsG = 270.0, fatG = 25.0,
+                ),
                 LedgerCurrency.USD,
             ),
             PantryLineItemWithCurrency(
-                PantryLineItem(receiptId = 1, name = "Greek yogurt", totalPriceCents = 629, caloriesKcal = 520, proteinG = 90.0),
+                PantryLineItem(
+                    receiptId = 1, name = "Greek yogurt", totalPriceCents = 629, caloriesKcal = 520, proteinG = 90.0,
+                ),
                 LedgerCurrency.USD,
             ),
-            PantryLineItemWithCurrency(PantryLineItem(receiptId = 1, name = "Paper towels", totalPriceCents = 899), LedgerCurrency.USD),
+            PantryLineItemWithCurrency(
+                PantryLineItem(receiptId = 1, name = "Paper towels", totalPriceCents = 899),
+                LedgerCurrency.USD,
+            ),
         ),
     )!!
 
@@ -190,23 +222,24 @@ class DomainCardsScreenshotTest {
     @Test @Config(qualifiers = NIGHT) fun `pace night`() = render("budget-pace", true, pace, "On track")
     @Test @Config(qualifiers = A25) fun `alerts day`() = render("weather-alerts", false, alerts, "Flood Watch")
     @Test @Config(qualifiers = NIGHT) fun `alerts night`() = render("weather-alerts", true, alerts, "Flood Watch")
-    @Test @Config(qualifiers = A25) fun `drives day`() = render("drives", false, drives, "12.3 mi")
+    @Test @Config(qualifiers = A25) fun `drives day`() = render("drives", false, drives, "22.6 mi")
     @Test @Config(qualifiers = NIGHT) fun `drives night`() = render("drives", true, drives, "not read")
-    @Test @Config(qualifiers = A25) fun `laptop day`() = render("laptop", false, laptop, "71%")
+    @Test @Config(qualifiers = A25) fun `laptop day`() = render("laptop", false, laptop, "96% (needs attention)")
     @Test @Config(qualifiers = NIGHT) fun `laptop night`() = render("laptop", true, laptop, "61.5 °C")
     @Test @Config(qualifiers = A25) fun `laptop temps day`() = render("laptop-temps", false, temps, "CPU: latest")
     @Test @Config(qualifiers = NIGHT) fun `laptop temps night`() = render("laptop-temps", true, temps, "GPU: latest")
-    @Test @Config(qualifiers = A25) fun `voice day`() = render("voice-service", false, voice, "Needs attention")
-    @Test @Config(qualifiers = NIGHT) fun `voice night`() = render("voice-service", true, voice, "Needs attention")
-    @Test @Config(qualifiers = A25) fun `trip day`() = render("trip", false, trip, "14:52")
+    @Test @Config(qualifiers = A25) fun `voice day`() = render("voice-service", false, voice, "Busy with another")
+    @Test @Config(qualifiers = NIGHT) fun `voice night`() = render("voice-service", true, voice, "Busy with another")
+    @Test @Config(qualifiers = A25) fun `trip day`() = render("trip", false, trip, "5.9 mi")
     @Test @Config(qualifiers = NIGHT) fun `trip night`() = render("trip", true, trip, "23 min")
-    @Test @Config(qualifiers = A25) fun `weight day`() = render("weight", false, weight, "Trend (estimate)")
+    @Test @Config(qualifiers = A25) fun `weight day`() = render("weight", false, weight, "Trend (estimate): latest")
     @Test @Config(qualifiers = NIGHT) fun `weight night`() = render("weight", true, weight, "Weighed: latest")
     @Test @Config(qualifiers = A25) fun `sleep day`() = render("sleep", false, sleep, "Asleep: latest")
     @Test @Config(qualifiers = NIGHT) fun `sleep night`() = render("sleep", true, sleep, "Asleep: latest")
     @Test @Config(qualifiers = A25) fun `workout day`() = render("workout", false, workout, "Done: 185 x 5")
     @Test @Config(qualifiers = NIGHT) fun `workout night`() = render("workout", true, workout, "3 x 8 at 95 lb")
-    @Test @Config(qualifiers = A25) fun `groceries day`() = render("groceries", false, groceries, "1,500 kcal (estimate)")
+    @Test @Config(qualifiers = A25)
+    fun `groceries day`() = render("groceries", false, groceries, "1,500 kcal (estimate)")
     @Test @Config(qualifiers = NIGHT) fun `groceries night`() = render("groceries", true, groceries, "No estimate")
     @Test @Config(qualifiers = A25) fun `draft day`() = render("email-draft", false, draft, "Not sent.")
     @Test @Config(qualifiers = NIGHT) fun `draft night`() = render("email-draft", true, draft, "sam@example.com")
@@ -218,7 +251,11 @@ class DomainCardsScreenshotTest {
         val asked = mutableListOf<String>()
         val forget = CardForget { id ->
             asked += id
-            if (id == "m-1") ForgetResult(true, "Deleted for good.") else ForgetResult(false, "The engine's reply could not be read.")
+            if (id == "m-1") {
+                ForgetResult(true, "Deleted for good.")
+            } else {
+                ForgetResult(false, "The engine's reply could not be read.")
+            }
         }
         render("memories-forgotten", false, memories, "Prefers a window seat", forget)
         rule.mainClock.autoAdvance = true
@@ -237,6 +274,11 @@ class DomainCardsScreenshotTest {
     }
 
     private companion object {
+        const val FUEL = """{"value":6000,"max":10000,"unit":"usd","mark":{"value":5000,"label":"Even pace, day 15"}}"""
+        const val GROCERIES =
+            """{"value":52000,"max":50000,"unit":"usd","mark":{"value":25000,"label":"Even pace, day 15"}}"""
+        const val DINING =
+            """{"value":9000,"max":20000,"unit":"usd","mark":{"value":10000,"label":"Even pace, day 15"}}"""
         const val FRAME_MS = 800L
         const val A25 = "w412dp-h915dp"
         const val NIGHT = "w412dp-h915dp-night"

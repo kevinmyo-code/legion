@@ -795,6 +795,7 @@ def _health_row(m: ClaudeMachine, now) -> dict | None:
         "at": m.health_at,
         "alerts": hl.open_kinds(m.health_alerts),
         "temps_24h": hl.shown_history(m.health_history, now),
+        "limits": hl.limits(),
     }
 
 

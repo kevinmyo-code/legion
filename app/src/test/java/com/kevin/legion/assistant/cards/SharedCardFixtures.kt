@@ -29,5 +29,7 @@ internal object SharedCardFixtures {
 
     /** The parsed card of the first fixture of [kind]. */
     fun card(kind: String, index: Int = 0): ConversationCard =
-        ServerCards.parse(all.filter { it.getJSONObject("card").getString("card") == kind }[index].getJSONObject("card"))!!
+        ServerCards.parse(
+            all.filter { it.getJSONObject("card").getString("card") == kind }[index].getJSONObject("card"),
+        )!!
 }

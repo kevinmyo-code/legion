@@ -131,6 +131,8 @@ sealed class ConversationCard {
          * memory list). The card then offers Forget, a hard delete; null draws none.
          */
         val forgetIds: List<String>? = null,
+        /** The item drawn as the card's headline (the shared format's `lead`); null draws none. */
+        val lead: Int? = null,
     ) : ConversationCard() {
         override val kind: String get() = "readings"
     }
@@ -150,7 +152,10 @@ sealed class ConversationCard {
         override val kind: String get() = "status_list"
     }
 
-    /** One or two [series] over time sharing one [unit] (`trend`). */
+    /**
+     * One or two [series] over time sharing one [unit] (`trend`). [guide] is one reference line the
+     * source states (a target, a goal, an alert threshold); [style] draws a line or a column a point.
+     */
     data class Trend(
         override val title: String,
         val unit: String,
@@ -160,6 +165,8 @@ sealed class ConversationCard {
         override val note: String? = null,
         override val provenance: CardProvenance? = null,
         val open: CardDestination? = null,
+        val guide: CardMark? = null,
+        val style: TrendStyle = TrendStyle.LINE,
     ) : ConversationCard() {
         override val kind: String get() = "trend"
     }
@@ -211,7 +218,52 @@ data class Reading(
     val note: String? = null,
     /** A value that is words, not a number ("Closed loop", a VIN); [value] is then null. */
     val text: String? = null,
+    /** The span the value is drawn on as a bar; null draws none. */
+    val scale: CardScale? = null,
+    /** One reference on [scale] ("Alert at 95%"); only with a scale. */
+    val mark: CardMark? = null,
+    /** The value split into parts (macros in grams), drawn as one stacked bar; [flag] covers them. */
+    val split: CardSplit? = null,
+    /** The source says this value needs attention: said in words, drawn in the accent. */
+    val attention: Boolean = false,
 )
+
+/**
+ * The optional picture fields of the shared format (2026-11-15). Each carries a figure the source
+ * states, in the reading's own unit; a screen never works one out. [CardScale] is the span a value
+ * is drawn on, [CardMark] one reference on it (or a trend's guide line), [CardSplit] one whole in
+ * 2 to 4 parts, [StatusMeter] an amount against its limit, [StatusLevel] a rank on a named scale.
+ */
+data class CardScale(val min: java.math.BigDecimal, val max: java.math.BigDecimal)
+
+data class CardMark(val value: java.math.BigDecimal, val label: String)
+
+data class SplitPart(val label: String, val value: java.math.BigDecimal)
+
+data class CardSplit(val unit: String, val parts: List<SplitPart>)
+
+data class StatusMeter(
+    val value: java.math.BigDecimal,
+    val max: java.math.BigDecimal,
+    val unit: String,
+    val mark: CardMark? = null,
+)
+
+data class StatusLevel(val value: Int, val of: Int)
+
+/** A trend drawn as a line (the default) or as a column a point from zero (`bars`). */
+enum class TrendStyle(val wire: String) {
+    LINE("line"),
+    BARS("bars"),
+    ;
+
+    companion object {
+        fun of(wire: String?): TrendStyle? = when (wire) {
+            null -> LINE
+            else -> entries.firstOrNull { it.wire == wire }
+        }
+    }
+}
 
 /** A status, always drawn in [words]; colour may only repeat the word. */
 enum class RowStatus(val wire: String, val words: String) {
@@ -227,7 +279,13 @@ enum class RowStatus(val wire: String, val words: String) {
     }
 }
 
-data class StatusRow(val name: String, val status: RowStatus, val note: String? = null)
+data class StatusRow(
+    val name: String,
+    val status: RowStatus,
+    val note: String? = null,
+    val meter: StatusMeter? = null,
+    val level: StatusLevel? = null,
+)
 
 /** [at] is `yyyy-MM-dd` or `yyyy-MM-ddTHH:mm`; points oldest first. */
 data class TrendPoint(val at: String, val value: java.math.BigDecimal)

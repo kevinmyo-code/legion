@@ -266,9 +266,7 @@ private fun CardBody(card: ConversationCard) {
             card.items.forEach { RuledLine(CardWords.check(it), done = it.done) }
             MoreLine(card.more)
         }
-        is ConversationCard.Readings -> ReadingsBody(card)
-        is ConversationCard.StatusList -> StatusBody(card)
-        is ConversationCard.Trend -> TrendBody(card)
+        else -> GeneralBody(card)
     }
 }
 
@@ -302,18 +300,6 @@ private fun TimeRow(time: String, words: String) {
         Text(words, style = TypesetType.body, color = SoftColors.text, modifier = Modifier.weight(1f - TIME_COLUMN))
     }
     HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
-}
-
-@Composable
-internal fun MoreLine(count: Int) {
-    if (count > 0) {
-        Text(
-            "And $count more.",
-            style = TypesetType.smallItalic,
-            color = SoftColors.text2,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-    }
 }
 
 /**

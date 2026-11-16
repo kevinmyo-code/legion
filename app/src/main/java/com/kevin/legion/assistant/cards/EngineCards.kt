@@ -39,7 +39,11 @@ object EngineCards {
 
     /** `read_records` of the drives table opens Car; any other table has no one screen. */
     private fun screenTool(answer: EngineToolAnswer): String =
-        if (answer.tool == "read_records" && answer.structured?.optString("table") == "drives") "drives" else answer.tool
+        if (answer.tool == "read_records" && answer.structured?.optString("table") == "drives") {
+            "drives"
+        } else {
+            answer.tool
+        }
 
     /** A general card names its screen by the tool that made it; the wire never carries one. */
     internal fun withScreen(card: ConversationCard, tool: String): ConversationCard {

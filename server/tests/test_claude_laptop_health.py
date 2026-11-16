@@ -162,6 +162,9 @@ def test_heartbeat_stores_snapshot_and_status_shows_it(token_a):
     assert row["health"]["fans_rpm"] == {"cpu": 3100, "gpu": 2900}
     assert row["health"]["alerts"] == []
     assert len(row["health"]["temps_24h"]) == 1
+    # The alert thresholds ride along, so a card draws the engine's own lines (2026-11-15).
+    assert row["health"]["limits"] == {
+        "hot_c": hl.HOT_C, "ram_high_pct": hl.RAM_HIGH_PCT, "disk_low_gb": hl.DISK_LOW_GB}
 
 
 def test_a_beat_without_health_keeps_the_snapshot_and_a_machine_without_one_shows_null(token_a):

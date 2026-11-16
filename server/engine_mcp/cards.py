@@ -40,6 +40,24 @@ single words, so the engine's snake_case and the phone's camelCase spell them th
   series sharing the unit, each at most 120 points, oldest first. The screen draws a line and
   says each series' latest value, its low and its high in words, computed from the points.
 
+Optional picture fields (2026-11-15, "tell me things at a quick glance"). Every one is optional
+and absent means the card draws exactly as before; each carries a figure the source already has,
+so a screen never works out a target, a range or a goal of its own:
+
+- readings: `lead` (index of the item that answers the card's question, drawn as its headline).
+  On an item: `scale: {min, max}` (the value drawn as a bar on that span, same unit; a percent's
+  0 to 100, a budget's 0 to its cap), `mark: {value, label}` (one reference on the scale, an
+  alert threshold, "Alert at 95%"), `split: {unit, parts: [{label, value}]}` (2 to 4 parts of
+  one whole drawn as one stacked bar, e.g. macros in grams; the item's `flag` covers every part)
+  and `attention: true` (the source says this value needs attention: said "needs attention" in
+  words, drawn in the accent).
+- status_list item: `meter: {value, max, unit, mark?}` (an amount against its limit: spent
+  against the cap, the mark where an even pace would be today) and `level: {value, of}` (a rank
+  on a fixed scale the source names, 1 to 5: an NWS alert's severity, Minor 1 to Extreme 4).
+- trend: `guide: {value, label}` (one reference line: a sleep target, a goal weight, an alert
+  threshold) and `style` ("line", the default, or "bars": one column per point from zero, for
+  per-night or per-day totals).
+
 `check()` holds these three to their shape; `safe()` drops one that does not fit.
 
 Rules every builder keeps:
@@ -78,6 +96,10 @@ STATUS_MAX = 12
 TREND_MAX = 120
 TREND_SERIES_MAX = 2
 FLAGS = ("unverified", "estimate")
+SPLIT_MIN = 2
+SPLIT_MAX = 4
+LEVEL_MAX = 5
+TREND_STYLES = ("line", "bars")
 STATUSES = ("ok", "attention", "failed", "unknown", "not_reached")
 STATUS_WORDS = {
     "ok": "OK",
@@ -127,6 +149,45 @@ def _value_ok(value, unit: str) -> bool:
     return _number(value) and (unit != "usd" or isinstance(value, int))
 
 
+def _mark_ok(mark, unit: str) -> bool:
+    return (
+        mark is None
+        or isinstance(mark, dict)
+        and _value_ok(mark.get("value"), unit)
+        and isinstance(mark.get("label"), str)
+        and bool(mark["label"])
+    )
+
+
+def _scale_ok(scale, unit: str) -> bool:
+    return (
+        scale is None
+        or isinstance(scale, dict)
+        and _value_ok(scale.get("min"), unit)
+        and _value_ok(scale.get("max"), unit)
+        and scale["min"] < scale["max"]
+    )
+
+
+def _split_ok(split) -> bool:
+    if split is None:
+        return True
+    if not isinstance(split, dict) or not isinstance(split.get("unit"), str):
+        return False
+    parts = split.get("parts")
+    return (
+        isinstance(parts, list)
+        and SPLIT_MIN <= len(parts) <= SPLIT_MAX
+        and all(
+            isinstance(p, dict)
+            and isinstance(p.get("label"), str)
+            and _number(p.get("value"))
+            and p["value"] >= 0
+            for p in parts
+        )
+    )
+
+
 def _reading_ok(item) -> bool:
     if not isinstance(item, dict) or not isinstance(item.get("label"), str):
         return False
@@ -142,7 +203,45 @@ def _reading_ok(item) -> bool:
     text = item.get("text")
     if text is not None and (not isinstance(text, str) or item.get("value") is not None):
         return False
+    if not (_scale_ok(item.get("scale"), unit) and _split_ok(item.get("split"))):
+        return False
+    # A mark sits on a scale; without one there is nothing to place it on.
+    mark = item.get("mark")
+    if mark is not None and (item.get("scale") is None or not _mark_ok(mark, unit)):
+        return False
+    if item.get("attention") is not None and not isinstance(item["attention"], bool):
+        return False
     return item.get("note") is None or isinstance(item["note"], str)
+
+
+def _meter_ok(meter) -> bool:
+    if meter is None:
+        return True
+    if not isinstance(meter, dict) or not isinstance(meter.get("unit"), str):
+        return False
+    unit = meter["unit"]
+    return (
+        _value_ok(meter.get("value"), unit)
+        and meter["value"] >= 0
+        and _value_ok(meter.get("max"), unit)
+        and meter["max"] > 0
+        and _mark_ok(meter.get("mark"), unit)
+    )
+
+
+def _level_ok(level) -> bool:
+    if level is None:
+        return True
+    if not isinstance(level, dict):
+        return False
+    value, of = level.get("value"), level.get("of")
+    return (
+        isinstance(value, int)
+        and isinstance(of, int)
+        and not isinstance(value, bool)
+        and not isinstance(of, bool)
+        and 1 <= value <= of <= LEVEL_MAX
+    )
 
 
 def _status_ok(item) -> bool:
@@ -151,6 +250,8 @@ def _status_ok(item) -> bool:
         and isinstance(item.get("name"), str)
         and item.get("status") in STATUSES
         and (item.get("note") is None or isinstance(item["note"], str))
+        and _meter_ok(item.get("meter"))
+        and _level_ok(item.get("level"))
     )
 
 
@@ -178,12 +279,17 @@ def check(card: dict) -> bool:
     kind = card.get("card")
     if kind == "readings":
         items = card.get("items")
+        lead = card.get("lead")
         return (
             _at_ok(card.get("at"))
             and isinstance(items, list)
             and len(items) <= READINGS_MAX
             and all(_reading_ok(i) for i in items)
             and isinstance(card.get("more"), int)
+            and (
+                lead is None
+                or isinstance(lead, int) and not isinstance(lead, bool) and 0 <= lead < len(items)
+            )
         )
     if kind == "status_list":
         items = card.get("items")
@@ -202,6 +308,8 @@ def check(card: dict) -> bool:
             and isinstance(series, list)
             and 1 <= len(series) <= TREND_SERIES_MAX
             and all(_series_ok(s, unit) for s in series)
+            and _mark_ok(card.get("guide"), unit)
+            and card.get("style") in (None, *TREND_STYLES)
         )
     return False
 
@@ -230,9 +338,23 @@ def _common(kind: str, title: str, scope, period, note) -> dict:
     return card
 
 
-def reading(label: str, value, unit: str, *, flag=None, was=None, note=None, text=None) -> dict:
+def reading(
+    label: str,
+    value,
+    unit: str,
+    *,
+    flag=None,
+    was=None,
+    note=None,
+    text=None,
+    scale=None,
+    mark=None,
+    split=None,
+    attention=False,
+) -> dict:
     """One readings item. `value` None means it could not be read, unless `text` says the value
-    in words; money is integer cents."""
+    in words; money is integer cents. `scale` is a (min, max) pair, `mark` a (value, label) pair
+    on it, `split` a (unit, [(label, value)]) pair: the optional picture fields."""
     item = {"label": label, "value": value, "unit": unit}
     if text:
         item["text"] = text
@@ -242,23 +364,48 @@ def reading(label: str, value, unit: str, *, flag=None, was=None, note=None, tex
         item["was"] = was
     if note:
         item["note"] = note
+    if scale is not None:
+        item["scale"] = {"min": scale[0], "max": scale[1]}
+        if mark is not None:
+            item["mark"] = {"value": mark[0], "label": mark[1]}
+    if split is not None:
+        item["split"] = {
+            "unit": split[0],
+            "parts": [{"label": name, "value": amount} for name, amount in split[1]],
+        }
+    if attention:
+        item["attention"] = True
     return item
 
 
-def readings_card(title: str, items: list[dict], *, at=None, scope=None, period=None, note=None):
-    """A readings card, the first READINGS_MAX items shown and the rest counted in `more`."""
+def readings_card(
+    title: str, items: list[dict], *, at=None, scope=None, period=None, note=None, lead=None
+):
+    """A readings card, the first READINGS_MAX items shown and the rest counted in `more`.
+    `lead` is the index of the item drawn as the headline; dropped when it is not shown."""
     card = _common("readings", title, scope, period, note)
     if at:
         card["at"] = at
     card["items"] = items[:READINGS_MAX]
     card["more"] = max(len(items) - READINGS_MAX, 0)
+    if lead is not None and 0 <= lead < len(card["items"]):
+        card["lead"] = lead
     return card
 
 
-def status(name: str, state: str, note=None) -> dict:
+def status(name: str, state: str, note=None, *, meter=None, level=None) -> dict:
+    """One status row. `meter` is (value, max, unit, mark or None), mark a (value, label) pair;
+    `level` is (value, of)."""
     item = {"name": name, "status": state}
     if note:
         item["note"] = note
+    if meter is not None:
+        value, top, unit, mark = meter
+        item["meter"] = {"value": value, "max": top, "unit": unit}
+        if mark is not None:
+            item["meter"]["mark"] = {"value": mark[0], "label": mark[1]}
+    if level is not None:
+        item["level"] = {"value": level[0], "of": level[1]}
     return item
 
 
@@ -281,10 +428,25 @@ def series(name: str, points: list[tuple[str, float]], *, flag=None) -> dict:
     return out
 
 
-def trend_card(title: str, unit: str, lines: list[dict], *, scope=None, period=None, note=None):
+def trend_card(
+    title: str,
+    unit: str,
+    lines: list[dict],
+    *,
+    scope=None,
+    period=None,
+    note=None,
+    guide=None,
+    style=None,
+):
+    """`guide` is a (value, label) pair: one reference line the source states."""
     card = _common("trend", title, scope, period, note)
     card["unit"] = unit
     card["series"] = lines[:TREND_SERIES_MAX]
+    if guide is not None:
+        card["guide"] = {"value": guide[0], "label": guide[1]}
+    if style:
+        card["style"] = style
     return card
 
 
@@ -767,7 +929,10 @@ def _assignment_reading(a: dict) -> dict:
         return reading(a["name"], None, "", text="Not graded")
     possible = a.get("points_possible")
     unit = f"of {possible:g}" if possible is not None else "points"
-    return reading(a["name"], a["score"], unit, note="Late." if a.get("late") else None)
+    scale = (0, max(possible, a["score"])) if possible else None
+    return reading(
+        a["name"], a["score"], unit, note="Late." if a.get("late") else None, scale=scale
+    )
 
 
 def grades_card(results: list[dict], zone) -> dict | None:
@@ -782,7 +947,19 @@ def grades_card(results: list[dict], zone) -> dict | None:
             items.append(reading(course["course"], None, "", text="No total shown"))
         else:
             score = course["canvas_current_score"]
-            items.append(reading(course["course"], score, "%", note=_grade_note(course)))
+            # A percent on 0 to 100, stretched only for extra credit past 100.
+            items.append(
+                reading(
+                    course["course"],
+                    score,
+                    "%",
+                    note=_grade_note(course),
+                    scale=(0, max(100, score)),
+                )
+            )
+    # The headline is the lowest course Canvas gives a percent for: the one to look at.
+    scored = [i for i, item in enumerate(items) if item["value"] is not None]
+    lead = min(scored, key=lambda i: items[i]["value"]) if scored else None
     detail = len(results) == 1 and "assignments" in results[0]
     if detail:
         items += [_assignment_reading(a) for a in results[0]["assignments"]]
@@ -792,6 +969,7 @@ def grades_card(results: list[dict], zone) -> dict | None:
         items,
         at=local_at(min(reads), zone) if reads else None,
         note="Canvas's own current grades: work not yet graded does not count.",
+        lead=lead,
     )
 
 
@@ -800,7 +978,16 @@ def grades_card(results: list[dict], zone) -> dict | None:
 # =============================================================================
 
 
-def _pace_row(line: dict) -> dict:
+def _pace_mark(cap: int, body: dict):
+    """Where an even pace through the month would be today: the cap times the share of the
+    month gone, in whole cents. None when the month's days are not in the body."""
+    elapsed, days = body.get("days_elapsed"), body.get("days_in_month")
+    if not isinstance(elapsed, int) or not isinstance(days, int) or days <= 0:
+        return None
+    return (cap * min(elapsed, days) + days // 2) // days, f"Even pace, day {elapsed}"
+
+
+def _pace_row(line: dict, body: dict | None = None) -> dict:
     """One capped category: its state in words ("On track", "Over") in the note, since the
     five status words have none for money; the projection is said to be an estimate."""
     spent, cap = line["spent_cents"], line["cap_cents"]
@@ -822,7 +1009,9 @@ def _pace_row(line: dict) -> dict:
         extra.append(f"{money_words(line['pending_cents'])} of it pending.")
     if line.get("unverified"):
         extra.append("Includes unverified rows.")
-    return status(line["category"], state, " ".join([words, *extra]))
+    # A net refund (spent below zero) has no bar to draw: the words carry it alone.
+    meter = (int(spent), int(cap), "usd", _pace_mark(int(cap), body or {})) if spent >= 0 else None
+    return status(line["category"], state, " ".join([words, *extra]), meter=meter)
 
 
 def budget_pace_card(body: dict) -> dict | None:
@@ -833,7 +1022,7 @@ def budget_pace_card(body: dict) -> dict | None:
     capped = [c for c in body.get("categories") or [] if c.get("cap_cents")]
     if not capped:
         return None
-    rows = [_pace_row(c) for c in capped]
+    rows = [_pace_row(c, body) for c in capped]
     rows.sort(key=lambda r: (r["status"] != "attention", r["name"]))
     total = body.get("total") or {}
     notes = []
@@ -857,6 +1046,10 @@ def budget_pace_card(body: dict) -> dict | None:
 # =============================================================================
 
 
+# The National Weather Service's own severity scale, lowest first. "Unknown" has no rank.
+NWS_SEVERITY = ("Minor", "Moderate", "Severe", "Extreme")
+
+
 def _alert_row(alert: dict) -> dict:
     from conditions.report import _clock
 
@@ -866,7 +1059,13 @@ def _alert_row(alert: dict) -> dict:
         bits.append(f"until {until}")
     if alert.get("sender"):
         bits.append(f"from {alert['sender']}")
-    return status(alert.get("event") or "Alert", "attention", ", ".join(bits) + ".")
+    severity = alert.get("severity")
+    level = (
+        (NWS_SEVERITY.index(severity) + 1, len(NWS_SEVERITY))
+        if severity in NWS_SEVERITY
+        else None
+    )
+    return status(alert.get("event") or "Alert", "attention", ", ".join(bits) + ".", level=level)
 
 
 def conditions_card(structured: dict) -> dict | None:
@@ -880,7 +1079,15 @@ def conditions_card(structured: dict) -> dict | None:
         return None
     state = section.get("status")
     if state == "found":
-        rows = [_alert_row(a) for a in section.get("rows") or []]
+        found = section.get("rows") or []
+        # Most severe first, so the top of the card is the one that matters.
+        ranked = sorted(
+            found,
+            key=lambda a: -(NWS_SEVERITY.index(a["severity"]) + 1)
+            if a.get("severity") in NWS_SEVERITY
+            else 0,
+        )
+        rows = [_alert_row(a) for a in ranked]
     elif state == "empty":
         rows = [status("NWS alerts", "ok", "None active for this point right now.")]
     elif state == "not_configured":
@@ -920,12 +1127,14 @@ def weight_trend_card(data: dict) -> dict | None:
         way = "Losing" if rate < 0 else "Gaining"
         notes.append(f"{way} {abs(rate):g} lb a week (estimate).")
     notes.append("Days with no weigh-in are left out.")
+    goal = (data.get("milestone") or {}).get("target_lbs")
     return trend_card(
         "Weight",
         "lb",
         [series("Weighed", weighed), series("Trend", smoothed, flag="estimate")],
         period=f"Last {len(points)} days",
         note=" ".join(notes),
+        guide=(goal, f"Goal {goal:g} lb") if _number(goal) else None,
     )
 
 
@@ -957,25 +1166,76 @@ def memories_card(rows: list[dict]) -> dict:
 
 
 def drives_card(rows: list[dict], zone) -> dict | None:
-    """The drives `read_records` read, newest first: miles and how long, from the stored rows.
-    No fuel economy: the phone withholds mpg on purpose, so the card never works one out."""
+    """The drives `read_records` read, as miles per day, newest day first, with the total as the
+    headline: sums of the stored rows' own miles. A drive with no miles stored is counted in
+    words and never as zero. No fuel economy: the phone withholds mpg on purpose, so the card
+    never works one out."""
     from django.utils.dateparse import parse_datetime
 
-    if not rows:
-        return None
-    items = []
-    for row in rows:
+    days: dict[date, dict] = {}
+    for row in rows or []:
         started = parse_datetime(str(row.get("started_at") or ""))
-        ended = parse_datetime(str(row.get("ended_at") or ""))
         if started is None:
             continue
-        local = started.astimezone(zone)
-        label = f"{local:%a} {local:%b} {local.day}, {local:%H:%M}"
-        minutes = int((ended - started).total_seconds() // 60) if ended else None
-        note = f"{minutes} min." if minutes is not None and minutes >= 0 else "End time not stored."
-        miles = row.get("miles")
-        value = round(float(miles), 1) if miles is not None else None
-        items.append(reading(label, value, "mi", note=note))
-    if not items:
+        ended = parse_datetime(str(row.get("ended_at") or ""))
+        day = days.setdefault(
+            started.astimezone(zone).date(),
+            {"miles": 0.0, "drives": 0, "unread": 0, "min": 0, "unended": 0},
+        )
+        day["drives"] += 1
+        if row.get("miles") is None:
+            day["unread"] += 1
+        else:
+            day["miles"] += float(row["miles"])
+        if ended is not None and ended >= started:
+            day["min"] += int((ended - started).total_seconds() // 60)
+        else:
+            day["unended"] += 1
+    if not days:
         return None
-    return readings_card("Drives", items, note="Miles as the phone logged them; no fuel economy.")
+    ordered = sorted(days.items(), reverse=True)
+    shown = ordered[:READINGS_MAX - 1]
+    top = max((round(d["miles"], 1) for _, d in shown), default=0.0)
+
+    def counted(d: dict) -> str:
+        words = f"{d['drives']} drive{'s' if d['drives'] != 1 else ''}"
+        if d["unended"] == d["drives"]:
+            words += ", no end time stored."
+        elif d["unended"]:
+            words += f", {d['min']} min ({d['unended']} with no end time)."
+        else:
+            words += f", {d['min']} min."
+        if d["unread"]:
+            words += f" {d['unread']} with no miles stored, not counted."
+        return words
+
+    items = []
+    for day, d in shown:
+        miles = round(d["miles"], 1) if d["drives"] > d["unread"] else None
+        items.append(
+            reading(
+                f"{day:%a} {day:%b} {day.day}",
+                miles,
+                "mi",
+                note=counted(d),
+                scale=(0, top) if miles is not None and top > 0 else None,
+            )
+        )
+    total = {
+        "miles": sum(d["miles"] for _, d in ordered),
+        "drives": sum(d["drives"] for _, d in ordered),
+        "unread": sum(d["unread"] for _, d in ordered),
+        "min": sum(d["min"] for _, d in ordered),
+        "unended": sum(d["unended"] for _, d in ordered),
+    }
+    total_miles = round(total["miles"], 1) if total["drives"] > total["unread"] else None
+    items.insert(0, reading("Total", total_miles, "mi", note=counted(total)))
+    card = readings_card(
+        "Drives",
+        items,
+        period=f"{len(ordered)} day{'s' if len(ordered) != 1 else ''} with drives",
+        note="Miles as the phone logged them; no fuel economy.",
+        lead=0,
+    )
+    card["more"] = max(len(ordered) - len(shown), 0)
+    return card

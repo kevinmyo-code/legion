@@ -14328,6 +14328,11 @@ components:
             items: {}
           description: '[time, cpu_c, gpu_c] every 10 minutes over the last 24 h,
             oldest first.'
+        limits:
+          allOf:
+          - $ref: '#/components/schemas/ClaudeMachineHealthLimits'
+          description: The engine's alert thresholds, for drawing; absent from an
+            older engine.
       required:
       - alerts
       - at
@@ -14343,6 +14348,25 @@ components:
       - reboot_pending
       - temps_24h
       - uptime_s
+    ClaudeMachineHealthLimits:
+      type: object
+      properties:
+        hot_c:
+          type: number
+          format: double
+          description: CPU or GPU at or above this, sustained, is `hot`.
+        ram_high_pct:
+          type: number
+          format: double
+          description: RAM at or above this, sustained, is `ram_high`.
+        disk_low_gb:
+          type: number
+          format: double
+          description: 'C: free below this is `disk_low`.'
+      required:
+      - disk_low_gb
+      - hot_c
+      - ram_high_pct
     ClaudeMachineRef:
       type: object
       properties:

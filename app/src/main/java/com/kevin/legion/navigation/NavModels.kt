@@ -129,5 +129,7 @@ sealed interface TripStatus {
         val destination: NavDestination,
         val stops: List<NavDestination>,
         val guidance: GuidanceSnapshot,
+        /** The primary route's whole length as planned (or as last rerouted); null unknown. */
+        val routeDistanceM: Double? = null,
     ) : TripStatus
 }
