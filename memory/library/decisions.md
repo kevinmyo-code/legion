@@ -8059,3 +8059,23 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   answered from the block alone dropped overdue work. Narrowed: only calendar-only questions skip
   the lookup; today, due, to-do and work questions read `day read_calendar` first. Overdue in the
   block from the phone's own due list is the planned follow-up. ADR 0093 records the runs.
+
+## 2026-11-16 - Net cash at a glance: checking minus every card, pending counted as spent (Kevin)
+
+- **Kevin's words:** *"i want to know how much net cash i have. so as if the credit card is not
+  credit but instantly deducted like a debit."* Interview answers: checking minus the balance owed
+  on every linked card, no other accounts; charges pending at the bank count as spent; net cash
+  right now, not safe to spend; the normal sync with its as-of time, no extra bank call, no refresh
+  button; Home shows one big number near the top with the as-of under it, net only; Money shows the
+  working and a 30-day line; low cash marked on screen only (accent plus words), below a floor he
+  sets or below zero, never raised by Alfred unprompted.
+- Picks where he did not rule (his to change): no floor until he sets one, so only below zero is
+  marked; asked by voice, the answer leads with net cash and its as-of time; the older as-of of the
+  parts is shown; a missing balance gives no net figure and names the account; a pending credit on
+  the card (a payment in flight) counts; two checking accounts would be summed; the floor is
+  phone-local.
+- Formula from Plaid's own field definitions: checking is the bank's `available` (pending netted by
+  the bank) or `current` plus pending rows; a card is minus `current` plus its pending rows. Not
+  provable per bank without `balances.limit`, which is not stored. ADR 0094.
+- Built on `feat/net-cash`: `server/finance/net_cash.py`, `/api/finance/net-cash`, the
+  `account_balances` lead, the phone's Home line, Money section and `get_balance` lead.
