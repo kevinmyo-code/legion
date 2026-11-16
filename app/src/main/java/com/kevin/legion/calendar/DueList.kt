@@ -146,14 +146,9 @@ object DueList {
         val parts = mutableListOf<String>()
         val overdue = s.open.filter { it.overdue }
         val notYet = s.open.filter { !it.overdue }
-        if (overdue.isNotEmpty()) {
-            parts += "${overdue.size} OVERDUE (past due, not done): " +
-                overdue.joinToString("; ") { line(it, s.today) } + "."
-        }
+        if (overdue.isNotEmpty()) parts += overdueSays(overdue, s.today)
         parts += when {
-            notYet.isNotEmpty() ->
-                "${notYet.size} open and due, not done, not overdue yet: " +
-                    notYet.joinToString("; ") { line(it, s.today) } + "."
+            notYet.isNotEmpty() -> dueSays(notYet, s.today)
             overdue.isEmpty() -> "Nothing open is due in this window."
             else -> "Nothing else open is due in this window."
         }
@@ -163,10 +158,35 @@ object DueList {
             parts += "Nothing is overdue."
         }
         if (s.doneCount > 0) parts += "${s.doneCount} already done."
-        if (s.unreadable.isNotEmpty()) {
-            parts += "Could not read ${s.unreadable.joinToString(" or ")}, so this may be missing items: say so."
-        }
+        unreadableSays(s)?.let { parts += it }
         return parts.joinToString(" ")
+    }
+
+    /**
+     * The overdue sentence, shared by [says] (`read_calendar`) and the voice agenda block (ADR 0093)
+     * so both say it in the same words. Past [maxListed] the rest are counted, never dropped silently.
+     */
+    fun overdueSays(entries: List<DueEntry>, today: LocalDate?, maxListed: Int = Int.MAX_VALUE): String =
+        "${entries.size} OVERDUE (past due, not done): " + listed(entries, today, maxListed) + "."
+
+    /** The not-yet-overdue sentence, shared like [overdueSays]. */
+    fun dueSays(entries: List<DueEntry>, today: LocalDate?, maxListed: Int = Int.MAX_VALUE): String =
+        "${entries.size} open and due, not done, not overdue yet: " + listed(entries, today, maxListed) + "."
+
+    /** What could not be read, as [says] puts it; null when everything was read. */
+    fun unreadableSays(s: DueSummary): String? = s.unreadable.takeIf { it.isNotEmpty() }?.let {
+        "Could not read ${it.joinToString(" or ")}, so this may be missing items: say so."
+    }
+
+    /** The "and N more" tail a capped list ends with (2026-11-16): the count is always said. */
+    fun moreLine(more: Int): String =
+        "and $more more not listed here (ask day read_calendar for the full list)"
+
+    private fun listed(entries: List<DueEntry>, today: LocalDate?, maxListed: Int): String {
+        val cap = maxListed.coerceAtLeast(1)
+        val shown = entries.take(cap).joinToString("; ") { line(it, today) }
+        val more = entries.size - cap
+        return if (more > 0) "$shown; ${moreLine(more)}" else shown
     }
 
     private fun line(e: DueEntry, today: LocalDate?): String =
