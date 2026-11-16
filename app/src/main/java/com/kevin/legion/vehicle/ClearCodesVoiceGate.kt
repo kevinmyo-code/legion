@@ -96,6 +96,9 @@ class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMil
             else -> NOT_ASKED
         }
 
+        /** True when [text] asks for a clear or an erase (the same words [notAskedToClear] accepts). */
+        fun asksToClear(text: String?): Boolean = !text.isNullOrBlank() && CLEAR_ASK.containsMatchIn(text)
+
         const val NOT_ASKED =
             "Nothing was cleared and nothing was asked: his words did not ask to clear or erase codes. " +
                 "Reading codes and scanning every module go through ask with domain ask_fleet (all modules " +

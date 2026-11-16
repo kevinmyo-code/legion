@@ -945,7 +945,7 @@ object LiveToolbox {
             // made from the question prose - see agentResult's requireMutation doc comment for
             // why this file refused to guess it. Absent or unrecognised reads as a plain read,
             // which is exactly the pre-2026-08-18 behaviour.
-            "ask_fleet" -> fleetNotOnFile(context, args) ?: agentResult(
+            "ask_fleet" -> fleetByCode(context, args) ?: fleetNotOnFile(context, args) ?: agentResult(
                 "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
                 lookupName = "fleet lookup",
@@ -5206,6 +5206,40 @@ object LiveToolbox {
      * codes. A question that names only a make no car on file has no answer in these records: say
      * so, name the cars there are, and point the answer at general knowledge or a search.
      */
+    /**
+     * The two fleet questions answered by code, never by the fleet helper model (2026-11-16, stage 7
+     * fleet eval):
+     * - a request to clear or erase codes: ask_fleet only reads (its tool list holds no write), so it
+     *   is refused in words that name the car tool's clear_codes, whatever `intent` the model set;
+     * - a module scan ("scan every module", "codes in all modules"): run here through
+     *   [com.kevin.legion.vehicle.diag.DiagVoice.scan], whose `say` is built by code. A scan only
+     *   reads, so a `record` intent the model set on it is ignored rather than refused (the eval saw
+     *   "can't write" spoken for a scan).
+     * Null for every other question, which goes to the helper as before.
+     */
+    private suspend fun fleetByCode(context: Context, args: JSONObject): JSONObject? {
+        val question = args.optString("question")
+        return when {
+            isFleetClearRequest(question) -> result(false, FLEET_NO_CLEAR)
+            com.kevin.legion.vehicle.diag.DiagVoice.isModuleScanQuestion(question) ->
+                com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
+            else -> null
+        }
+    }
+
+    /**
+     * A request to clear, not a question about past clears: "clear the codes" is one, "when did I last
+     * clear the codes" and "did the clear take" are code-history reads and stay with the helper.
+     */
+    internal fun isFleetClearRequest(question: String): Boolean =
+        com.kevin.legion.vehicle.ClearCodesVoiceGate.asksToClear(question) && !CLEAR_HISTORY.containsMatchIn(question)
+
+    private val CLEAR_HISTORY =
+        Regex("\\b(when|last|history|ever|did|was|were|been|cleared|how long)\\b", RegexOption.IGNORE_CASE)
+
+    internal const val FLEET_NO_CLEAR = "Nothing was cleared: ask_fleet only reads. Clearing trouble codes is the " +
+        "car tool's clear_codes, which asks him first and clears only after his plain yes."
+
     private suspend fun fleetNotOnFile(context: Context, args: JSONObject): JSONObject? {
         val roster = com.kevin.legion.vehicle.FleetEngineStore.getAll(context)
         val make = VehicleResolver.makeNotOnFile(args.optString("question"), roster) ?: return null

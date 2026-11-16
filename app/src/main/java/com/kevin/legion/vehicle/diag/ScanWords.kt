@@ -12,6 +12,21 @@ object ScanWords {
     const val UNREACHED = "Modules that did not answer, or sit on a second network this dongle does not read, " +
         "were not reached and are not known to be clear."
 
+    /** Leads the line naming every module that answered but whose codes were not read (refused, no answer, cut off). */
+    const val NOT_READ_LEAD = "Not reached or not read, so not known to be clear:"
+
+    /**
+     * What any spoken answer about [r] must contain (2026-11-16, stage 7 fleet eval: the main model
+     * dropped the unanswered module twice): the not-reached line on every CAN scan, and the not-read
+     * line naming each module whose codes were not read. DiagVoice checks its own text against
+     * this, and DiagVoiceSayTest fails if a scan with such modules ever produces text without them.
+     */
+    fun mustSay(r: ScanReport): List<String> {
+        if (r.stopped != null || !r.bus.isCan) return emptyList()
+        val unread = r.modules.filter { it.codes.outcome != Outcome.READ }
+        return listOf(UNREACHED) + if (unread.isEmpty()) emptyList() else listOf(NOT_READ_LEAD) + unread.map(::label)
+    }
+
     fun summary(r: ScanReport): String {
         r.stopped?.let { return it }
         val faulty = r.modules.filter { m -> m.codes.dtcs.any { it.fault } }
@@ -30,7 +45,7 @@ object ScanWords {
                 add(UNREACHED)
                 if (unread.isNotEmpty()) {
                     val why = unread.joinToString { "${label(it)} (${it.codes.detail ?: it.codes.outcome.words})" }
-                    add("Codes not read from $why.")
+                    add("$NOT_READ_LEAD $why.")
                 }
                 r.coverage.interrupted?.let { add(it) }
                 if (!r.complete) add("Partial scan: ${r.coverage.probed} of ${r.coverage.planned} addresses probed.")
