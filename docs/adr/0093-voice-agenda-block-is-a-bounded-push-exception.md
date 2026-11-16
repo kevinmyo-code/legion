@@ -11,9 +11,11 @@ tags: [adr]
 
 ## Standing
 
-ACCEPTED, BUILT (stage 5, 2026-11-16), not yet verified on a phone. **The phone's voice cascade
-puts today's remaining calendar events and the work due in the next 24 hours into his turns, so
-"what do I have today" and "what's due" are answered in one model round with no tool call.** This is
+ACCEPTED, BUILT (stage 5, 2026-11-16), NARROWED the same day by the agenda gate (below), not yet
+verified on a phone. **The phone's voice cascade puts today's remaining calendar events and the work
+due in the next 24 hours into his turns. Only a question about today's calendar alone is answered
+from it with no tool call; "what do I have today", "what's due" and anything about to-dos or work
+still call `day read_calendar` first, because overdue work is not in the block.** This is
 the one standing exception to CLAUDE.md section 7's "Pull-based tools always". Everything else in
 that rule still holds, and no other domain may cite this ADR to pre-inject its own data.
 
@@ -50,7 +52,8 @@ The 2026-11-16 voice latency plan measured the cloud voice at about 4.9 s from h
 first sound on a tool turn. 6 of the 12 measured cloud tool turns were `day` calls, and each paid a
 model round (about 1,017 ms median to the function call) plus the tool (about 80 ms) before the
 answering round. Answering those from context drops both: about 1 s per agenda question (about
-4.9 s to about 3.8 s, arithmetic from the measured medians, not yet measured on a phone). The cost
+4.9 s to about 3.8 s, arithmetic from the measured medians, not yet measured on a phone). After the
+gate below, that saving applies to calendar-only questions only. The cost
 is the block in the uncached half of each request, estimated at about $0.0003 per round.
 
 ## Decision
@@ -59,6 +62,25 @@ Kevin approved it on 2026-11-16 knowing it skips the lookup step ("yes i agree",
 items and calendar kept in the prompt, skipping the lookup step for common questions"). It is
 bounded to the two sources above, read from data the phone already fetches, stated honestly per
 source, withdrawn on the first write.
+
+## The agenda gate (2026-11-16, before ship)
+
+The block's first wording told the model to answer "what he has on today, or what is due" from it
+without a tool call. A gate on the real model (flash-lite, invented household, the block in the
+first user turn as the phone builds it, an overdue item that only the `day` tool returns) ran 27
+times: three packs (both sources empty; one event and one item due today; the due source could not
+be read) by three questions ("what do I have today", "what's due", "anything overdue?").
+
+- With items in the block, "what do I have today" was answered in one round from the block alone
+  and dropped the overdue item: 3 of 3 runs with an event and a due item, 1 of 3 with the due source
+  unread (that answer also left the unread source unmentioned).
+- "What's due" and "anything overdue?" called the tool every time, so the block saved no round there.
+- No answer said nothing was due, and none called the unread source clear.
+
+So the block now says overdue work is not in it and that today, due, to-do and work questions read
+the tool first; only calendar-only questions skip the lookup. **Planned follow-up:** carry overdue
+work in the block from the phone's own due list (no network), which would let today and due
+questions skip the lookup safely.
 
 ## Consequences
 

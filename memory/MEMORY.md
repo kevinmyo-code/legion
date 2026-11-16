@@ -32,7 +32,8 @@ script): `fix/voice-routing` (to-do list vs reminders by any door, local dates a
 words for the calendar, overdue said plainly, no car switch on a read), `feat/greeting-casual` (one
 casual line; money only over cap, once a day, no figures; place on arrival; a model hello on laptop
 and cloud when nothing is due), `feat/voice-quick-wins` (filler on slow tools, five lines; today's
-agenda in his turns, ADR 0093; no queue behind a lookup), `docs/retire-live` (ADR 0092). Phone only
+agenda in his turns, ADR 0093, narrowed by a model gate so only calendar-only questions skip the
+lookup; no queue behind a lookup), `docs/retire-live` (ADR 0092). Phone only
 unless the stage 5 report says otherwise. None of it has run on the phone.
 
 **Owed by Kevin (carried, 2026-11-15, still true 2026-11-16):** use the phone after stages 1 to 3: tap

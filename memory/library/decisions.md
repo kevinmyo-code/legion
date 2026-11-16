@@ -8055,3 +8055,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - A bounded exception to CLAUDE.md section 7 "Pull-based tools always"; no other domain inherits it.
   Revisited when on-phone speech-to-text lands. Built on `feat/voice-quick-wins` (`58172d38`),
   merged in stage 5.
+- Same day, before ship: a model gate (27 runs, invented data) showed "what do I have today"
+  answered from the block alone dropped overdue work. Narrowed: only calendar-only questions skip
+  the lookup; today, due, to-do and work questions read `day read_calendar` first. Overdue in the
+  block from the phone's own due list is the planned follow-up. ADR 0093 records the runs.
