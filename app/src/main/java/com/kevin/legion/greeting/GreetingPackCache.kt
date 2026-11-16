@@ -89,10 +89,9 @@ class GreetingPackCache(
 
     /** The pack a tap may use now without waiting, or null. Already [FactsPack.asOf] now. */
     fun usable(): CachedPack? {
-        val c = latest() ?: return null
         val now = clock()
-        if (now - c.fetchedAtMs > MAX_AGE_MS || c.pack.today != today().toString()) return null
-        return c.copy(pack = adjusted(c.pack, now))
+        val c = latest()?.takeIf { now - it.fetchedAtMs <= MAX_AGE_MS && it.pack.today == today().toString() }
+        return c?.copy(pack = adjusted(c.pack, now))
     }
 
     /** The last good pack whatever its age, for the log. */
@@ -112,6 +111,7 @@ class GreetingPackCache(
      * Starts a fetch unless one is running (that one is returned) or one finished within
      * [MIN_GAP_MS] (the pack in hand is returned as is). Never throws; the outcome is the engine's.
      */
+    @Suppress("ReturnCount") // the fetch in flight, the pack just fetched, or a new fetch
     fun refresh(reason: String): Deferred<GreetingOutcome<FactsPack>> {
         inFlight?.takeIf { it.isActive }?.let { return it }
         val now = clock()
@@ -162,10 +162,11 @@ class GreetingPackCache(
         synchronized(this) {
             if (loaded) return
             loaded = true
-            if (held != null) return
-            val (body, at) = store.load() ?: return
-            val pack = runCatching { FactsParser.parse(body) }.getOrNull() ?: return
-            held = CachedPack(pack, at)
+            if (held == null) {
+                held = store.load()?.let { (body, at) ->
+                    runCatching { FactsParser.parse(body) }.getOrNull()?.let { CachedPack(it, at) }
+                }
+            }
         }
     }
 
