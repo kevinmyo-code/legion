@@ -8,6 +8,10 @@ object ScanWords {
     const val ESTIMATE_RULE = "Any explanation of a manufacturer-specific code that is not in this result is an " +
         "estimate and must be said as one. Unverified readings must be called unverified."
 
+    /** The spoken half of [ModuleScanner.SECOND_NETWORK_NOTE], short enough to say on every CAN scan. */
+    const val UNREACHED = "Modules that did not answer, or sit on a second network this dongle does not read, " +
+        "were not reached and are not known to be clear."
+
     fun summary(r: ScanReport): String {
         r.stopped?.let { return it }
         val faulty = r.modules.filter { m -> m.codes.dtcs.any { it.fault } }
@@ -22,6 +26,8 @@ object ScanWords {
                     label(it) + " " + codes(it)
                 }
                 add("${r.modules.size} module(s) answered; ${faulty.size} with fault codes$list.")
+                // Said on every CAN scan: what was never reached is never "clear" (CLAUDE.md sections 1, 7).
+                add(UNREACHED)
                 if (unread.isNotEmpty()) {
                     val why = unread.joinToString { "${label(it)} (${it.codes.detail ?: it.codes.outcome.words})" }
                     add("Codes not read from $why.")

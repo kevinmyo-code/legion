@@ -145,8 +145,27 @@ class DiagPartsTest {
         val pendingLost = words(CodeRead(Outcome.READ, "03"), CodeRead(Outcome.NO_ANSWER, "07", detail = "no answer"))
         assertTrue(pendingLost, pendingLost.contains("no stored codes; pending codes not read (no answer)"))
         assertFalse(pendingLost.contains("no stored or pending codes"))
-        val storedLost = words(CodeRead(Outcome.REFUSED, "03"), CodeRead(Outcome.READ, "07", listOf(ModuleDtc("P0133"))))
+        val storedLost =
+            words(CodeRead(Outcome.REFUSED, "03"), CodeRead(Outcome.READ, "07", listOf(ModuleDtc("P0133"))))
         assertTrue(storedLost, storedLost.contains("P0133; stored codes not read (refused)"))
+    }
+
+    @Test
+    fun `a CAN scan with no faults still says what was not reached`() {
+        val r = ScanReport(
+            startedAtMs = 0, finishedAtMs = 0,
+            adapter = AdapterSummary("ELM327", "ELM327 v1.5", words = ""),
+            bus = BusKind.CAN_11,
+            engine = EngineReport(
+                CodeRead(Outcome.READ, "03"), CodeRead(Outcome.READ, "07"), CodeRead(Outcome.READ, "0A"),
+            ),
+            modules = listOf("7E0", "7E1", "760").map { ModuleReport(it, "", codes = CodeRead(Outcome.READ, "19")) },
+            coverage = Coverage("quick", 3, 3, ""),
+        )
+        val words = ScanWords.summary(r)
+        assertTrue(words, words.contains("3 module(s) answered; 0 with fault codes."))
+        assertTrue(words, words.contains(ScanWords.UNREACHED))
+        assertTrue(ScanWords.UNREACHED.contains("not known to be clear"))
     }
 
     @Test
