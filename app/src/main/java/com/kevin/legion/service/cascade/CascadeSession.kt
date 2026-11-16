@@ -23,6 +23,7 @@ import com.kevin.legion.greeting.GreetingBudget
 import com.kevin.legion.greeting.GreetingOpening
 import com.kevin.legion.greeting.GreetingPlan
 import com.kevin.legion.service.FollowUpWindow
+import com.kevin.legion.service.VoiceTurnRecorder
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
@@ -209,6 +210,13 @@ internal class CascadeSession(
     private val turnSeq = AtomicLong(0)
     private val toolSeq = AtomicInteger(0)
     private val toolsInFlight = AtomicInteger(0)
+
+    /** "Save my turns" (Settings, off by default): his turns' audio kept on the phone ([VoiceTurnRecorder]). */
+    private val saveTurns = VoiceTurnRecorder.enabled(ctx)
+
+    private fun keepTurnAudio(u: TurnUtterance) {
+        if (saveTurns) u.keptAudio()?.let { VoiceTurnRecorder.keep(ctx, it) }
+    }
 
     private var followUp = FollowUpWindow.State()
     private var followUpJob: Job? = null
@@ -645,7 +653,7 @@ internal class CascadeSession(
             }
             // The laptop's words are also kept on the phone: if it fails, the cloud hears them. On
             // the cloud voice they are kept for a speculative draft's transcription.
-            val keep = b.kind == SpeechBackend.Kind.LAPTOP || speculate
+            val keep = b.kind == SpeechBackend.Kind.LAPTOP || speculate || saveTurns
             val u = TurnUtterance(inner, b, keepAudio = keep)
             self = u
             currentUtt = u
@@ -659,6 +667,7 @@ internal class CascadeSession(
                     delay(CascadeTimings.UTTERANCE_CAP_MS)
                     if (currentUtt === u) {
                         currentUtt = null
+                        keepTurnAudio(u)
                         u.end()
                         turnTaker?.reset()
                         onTurnEnd(u, System.currentTimeMillis(), CascadeRules.EotSource.PHONE_CAP, null)
@@ -674,6 +683,7 @@ internal class CascadeSession(
         override fun sendActivityEnd() {
             val u = currentUtt ?: return
             currentUtt = null
+            keepTurnAudio(u)
             // A cloud draft transcribed this audio and he said nothing since: that transcript is the
             // turn's, so the same words are not paid for twice.
             val d = draft?.takeIf { confirmsAudio(it, u) }

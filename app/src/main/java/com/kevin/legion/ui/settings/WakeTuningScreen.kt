@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.service.VoiceTurnRecorder
 import com.kevin.legion.service.WakeEnrollPlan
 import com.kevin.legion.service.WakePhrases
 import com.kevin.legion.service.WakeSampleRecorder
@@ -89,9 +90,57 @@ fun WakeTuningScreen(onBack: () -> Unit) {
                     onDeleted = { savedCount = withContext(Dispatchers.IO) { WakeSampleRecorder.savedCount(context) } },
                 )
                 Spacer(Modifier.height(24.dp))
+                SaveMyTurns(context)
+                Spacer(Modifier.height(24.dp))
             }
         }
     }
+}
+
+/**
+ * "Save my turns" ([VoiceTurnRecorder]): his own voice turns kept on this phone for speaker
+ * recognition training on the laptop. Off by default; its own count and its own delete.
+ */
+@Composable
+private fun SaveMyTurns(context: Context) {
+    val sem = LocalLegionSemantics.current
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(VoiceTurnRecorder.enabled(context)) }
+    var count by remember { mutableIntStateOf(0) }
+    var deleteArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(on) { count = withContext(Dispatchers.IO) { VoiceTurnRecorder.count(context) } }
+    TuningSwitch(
+        title = "Save my turns",
+        explanation = "keeps the audio of what you say to the assistant on this phone, for training " +
+            "it to know your voice on your laptop. Never uploaded, never backed up. Keeps the newest " +
+            "500, nothing older than 30 days. Off unless you turn it on.",
+        checked = on,
+        onToggle = { v ->
+            VoiceTurnRecorder.setEnabled(context, v)
+            on = v
+        },
+    )
+    Spacer(Modifier.height(8.dp))
+    Text("$count turns saved on this phone.", style = LegionType.stamp, color = sem.faint)
+    Spacer(Modifier.height(8.dp))
+    DeckButton(
+        text = if (deleteArmed) "Confirm: delete all saved turns" else "Delete all saved turns",
+        destructive = true,
+        confirming = deleteArmed,
+        enabled = count > 0,
+        onClick = {
+            if (deleteArmed) {
+                VoiceTurnRecorder.deleteAll(context)
+                deleteArmed = false
+                scope.launch {
+                    delay(TICK_MS)
+                    count = withContext(Dispatchers.IO) { VoiceTurnRecorder.count(context) }
+                }
+            } else {
+                deleteArmed = true
+            }
+        },
+    )
 }
 
 @Composable
