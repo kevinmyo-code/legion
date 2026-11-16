@@ -72,7 +72,8 @@ data class FactsPack(
     }
 
     /** [topics] marked as already raised (the phone raised them since this pack was fetched). */
-    fun withSaid(topics: Set<String>): FactsPack = if (topics.isEmpty() || said.containsAll(topics)) this else copy(said = said + topics)
+    fun withSaid(topics: Set<String>): FactsPack =
+        if (topics.isEmpty() || said.containsAll(topics)) this else copy(said = said + topics)
 
     companion object {
         const val PASSED_SAYS = "Everything on file here has already passed today; nothing is still ahead."

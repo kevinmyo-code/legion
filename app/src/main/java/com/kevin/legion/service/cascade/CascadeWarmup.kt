@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 /**
  * What runs BEFORE a conversation opens (voice-fast step 2, 2026-11-15): the prompt is prepared at
  * app start ([CascadePrep]), the greeting's facts pack is fetched then and every
- * [GreetingPackCache.TIMER_MS] while the screen is on ([GreetingFactory.prefetch]), and a wake word's onset (a score past the detector's near-miss floor,
+ * [GreetingPackCache.TIMER_MS] while the screen is on ([GreetingFactory.prefetch]), and a wake
+ * word's onset (a score past the detector's near-miss floor,
  * under the wake threshold) starts preparing it again and connecting to the laptop
  * ([LaptopPrewarm]); a wake that does not confirm closes that connection.
  *

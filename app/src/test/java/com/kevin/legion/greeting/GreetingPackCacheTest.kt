@@ -53,7 +53,9 @@ class GreetingPackCacheTest {
 
     @Test fun `a failed fetch keeps the last good pack`() = runBlocking {
         var fail = false
-        val c = cache(FakeGreetingBackend { if (fail) GreetingOutcome.Unreachable("down") else GreetingOutcome.Ok(good) })
+        val c = cache(
+            FakeGreetingBackend { if (fail) GreetingOutcome.Unreachable("down") else GreetingOutcome.Ok(good) },
+        )
         c.refresh("start").await()
         fail = true
         now += GreetingPackCache.MIN_GAP_MS + 1
