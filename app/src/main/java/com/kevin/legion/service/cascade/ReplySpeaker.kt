@@ -49,6 +49,8 @@ internal class ReplySpeaker(
     private val onFirstAudio: (clipText: String, filler: Boolean) -> Unit,
     private val onClipStarted: (clipText: String) -> Unit,
     private val normalise: (String) -> String = { SpokenText.forSpeech(it) },
+    /** The reply's own leading filler sentence was dropped ([LeadingFiller]); logged as a count. */
+    private val onFillerDropped: () -> Unit = {},
 ) {
     sealed interface Outcome {
         data object Played : Outcome
@@ -59,6 +61,9 @@ internal class ReplySpeaker(
     private val queue = Channel<SpeechClip>(Channel.UNLIMITED)
     private val splitter = SentenceSplitter()
     private val chunker = WordChunker()
+
+    /** Drops a leading "Checking." the model wrote itself, before anything is spoken or logged. */
+    private val lead = LeadingFiller()
     private var stream: StreamingSpeechClip? = null
     private var streamChars = 0
     private var streaming = tts.streamsText
@@ -79,20 +84,33 @@ internal class ReplySpeaker(
     // Last: the drain reads every field above.
     private val player: Job = scope.launch { result = drain() }
 
-    /** Model text as it streams. */
+    /**
+     * Model text as it streams. A leading filler sentence ([LeadingFiller]) is held, then dropped,
+     * so it is never spoken, never an `assistant text` line and never in [spoken]. Held text is not
+     * yet [anyText]: the scripted filler may still play for it.
+     */
     fun text(delta: String) {
         if (interrupted || delta.isEmpty()) return
+        val wasDropped = lead.dropped
+        val pass = lead.feed(delta)
+        if (lead.dropped && !wasDropped) onFillerDropped()
+        speakText(pass)
+    }
+
+    private fun speakText(text: String) {
+        if (text.isEmpty()) return
         anyText = true
         if (streaming) {
-            chunker.feed(delta)?.let { appendStreamed(speakable(it)) }
+            chunker.feed(text)?.let { appendStreamed(speakable(it)) }
         } else {
-            splitter.feed(delta).forEach { enqueue(it) }
+            splitter.feed(text).forEach { enqueue(it) }
         }
     }
 
-    /** The model is done writing. */
+    /** The model is done writing. A reply that is only a filler line is spoken as it is. */
     fun finishText() {
         if (interrupted) return
+        speakText(lead.flush())
         if (streaming) {
             chunker.flush()?.let { appendStreamed(speakable(it)) }
             stream?.finish()

@@ -237,6 +237,15 @@ class CascadeWiringTest {
     }
 
     @Test
+    fun `the model's own leading filler is dropped where speech and the transcript meet`() {
+        val s = session()
+        assertTrue(bodyOf(s, "newSpeaker").contains("onFillerDropped = { LiveLatency.log(LiveLatency.TAG, \"reply_filler_dropped n=1\") }"))
+        val answer = bodyOf(s, "answerTurn")
+        assertTrue(answer.contains("reply.spoken().ifBlank { LeadingFiller.strip(result.text) }"))
+        assertTrue(answer.contains("text ?: LeadingFiller.strip(result.text)"))
+    }
+
+    @Test
     fun `the agenda is the tool's own read of today, bounded, and ages out at turn time`() {
         val s = session()
         // One source of truth (2026-11-16): the block reads what day read_calendar reads, no pack.

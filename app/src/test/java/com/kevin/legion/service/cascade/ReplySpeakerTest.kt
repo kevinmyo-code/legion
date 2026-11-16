@@ -288,4 +288,109 @@ class ReplySpeakerTest {
         assertEquals(listOf("<stream>", "Short one.", "Another."), voice.asked)
         assertEquals(listOf("Short", "one.", "Another."), ear.heard)
     }
+
+    // --- the model's own leading filler sentence (2026-11-16, LeadingFiller) ---------------------
+
+    private fun dropSpeaker(voice: FakeVoice, ear: Ear, drops: MutableList<Unit>, clips: MutableList<String>) =
+        ReplySpeaker(
+            tts = voice,
+            scope = scope,
+            play = { ear.play(it) },
+            firstFrameTimeoutMs = 500,
+            onFirstAudio = { _, filler -> if (filler) ear.fillerAudio++ else ear.firstAudio++ },
+            onClipStarted = { clips.add(it) },
+            normalise = { it },
+            onFillerDropped = { drops.add(Unit) },
+        )
+
+    @Test
+    fun `a leading scripted filler sentence is dropped from what is spoken, logged and kept`() = runBlocking<Unit> {
+        val voice = FakeVoice()
+        val ear = Ear()
+        val drops = mutableListOf<Unit>()
+        val clips = Collections.synchronizedList(mutableListOf<String>())
+        val s = dropSpeaker(voice, ear, drops, clips)
+        // Streamed in pieces, and joined to the answer with no space, as the agenda gate saw it.
+        listOf("Chec", "king.", "Math 110 homework 7 ", "is overdue.").forEach { s.text(it) }
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("Math 110 homework 7 is overdue."), voice.asked)
+        assertEquals(listOf("Math 110 homework 7 is overdue."), clips)
+        assertEquals("Math 110 homework 7 is overdue.", s.spoken())
+        assertEquals(1, drops.size)
+    }
+
+    @Test
+    fun `case, spacing and the final punctuation do not matter, a streaming voice is stripped too`() = runBlocking<Unit> {
+        val voice = FakeVoice(streamsText = true)
+        val ear = Ear()
+        val drops = mutableListOf<Unit>()
+        val s = dropSpeaker(voice, ear, drops, Collections.synchronizedList(mutableListOf()))
+        listOf("  one MOMENT! ", " Invented answer ", "here.").forEach { s.text(it) }
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("Invented", "answer", "here."), ear.heard)
+        assertEquals(1, drops.size)
+    }
+
+    @Test
+    fun `a sentence that only starts like a filler line is kept`() = runBlocking<Unit> {
+        val voice = FakeVoice()
+        val ear = Ear()
+        val drops = mutableListOf<Unit>()
+        val s = dropSpeaker(voice, ear, drops, Collections.synchronizedList(mutableListOf()))
+        s.text("Checking the calendar now. Invented answer.")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("Checking the calendar now.", "Invented answer."), voice.asked)
+        assertEquals(0, drops.size)
+    }
+
+    @Test
+    fun `a reply that is only a filler line is spoken as it is`() = runBlocking<Unit> {
+        val voice = FakeVoice()
+        val ear = Ear()
+        val drops = mutableListOf<Unit>()
+        val s = dropSpeaker(voice, ear, drops, Collections.synchronizedList(mutableListOf()))
+        s.text("On it.")
+        s.text("  ")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("On it."), voice.asked.map { it.trim() })
+        assertEquals("On it.", s.spoken())
+        assertEquals(0, drops.size)
+    }
+
+    @Test
+    fun `with no scripted filler played, a leading Checking is still dropped`() = runBlocking<Unit> {
+        val voice = FakeVoice()
+        val ear = Ear()
+        val drops = mutableListOf<Unit>()
+        val s = dropSpeaker(voice, ear, drops, Collections.synchronizedList(mutableListOf()))
+        s.text("Checking. ")
+        // Held, not yet reply text: the scripted filler could still play for it.
+        assertFalse(s.anyText)
+        s.text("Invented answer.")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("Invented answer."), voice.asked)
+        assertEquals(0, ear.fillerAudio)
+        assertEquals(1, drops.size)
+    }
+
+    @Test
+    fun `only the leading sentence, and only an exact scripted line, is ever dropped`() {
+        assertEquals("Math 110 is due.", LeadingFiller.strip("Checking.Math 110 is due."))
+        assertEquals("Invented answer.", LeadingFiller.strip("Let me look...  Invented answer."))
+        assertEquals("Invented answer. Checking.", LeadingFiller.strip("Invented answer. Checking."))
+        assertEquals("Checking. Checking. Done.".substringAfter(" "), LeadingFiller.strip("Checking. Checking. Done."))
+        assertEquals("Just a moment, I will look.", LeadingFiller.strip("Just a moment, I will look."))
+        assertEquals("Online it says yes.", LeadingFiller.strip("Online it says yes."))
+        assertEquals("One thing first.", LeadingFiller.strip("One thing first."))
+        assertEquals("Checking.", LeadingFiller.strip("Checking."))
+        // Every scripted line is covered, by its own words.
+        for (line in ScriptedLines.FILLERS) {
+            assertEquals("Invented.", LeadingFiller.strip("$line Invented."))
+        }
+    }
 }

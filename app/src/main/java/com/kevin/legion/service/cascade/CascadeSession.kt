@@ -1048,7 +1048,7 @@ internal class CascadeSession(
                 // reply goes again, whole, on the next voice; nothing is asked of the model twice.
                 // If no voice can say it, the answer and what was done still reach the panel and
                 // the record before the conversation ends.
-                val words = text ?: result.text
+                val words = text ?: LeadingFiller.strip(result.text)
                 val unsaid = { recordTurn(heard, withWrites(words, record), record.readThrough, seq, record.fromUser) }
                 val again = revoice(voice, failed.reason, heardMoment(heard, record), words, unsaid) ?: return
                 reply = again
@@ -1059,7 +1059,8 @@ internal class CascadeSession(
                     return
                 }
             }
-            val said = reply.spoken().ifBlank { result.text }
+            // Without the model's own leading "Checking.", as the speaker dropped it ([LeadingFiller]).
+            val said = reply.spoken().ifBlank { LeadingFiller.strip(result.text) }
             val kept = if (outcome == ReplySpeaker.Outcome.Interrupted) withWrites(reply.spoken(), record) else said
             recordTurn(heard, kept, record.readThrough, seq, record.fromUser)
             answeredOnce = true
@@ -1295,6 +1296,8 @@ internal class CascadeSession(
                 // The voice sheet and the talk strip read the caption, as for Live's subtitles.
                 CompanionPhase.setCaption(text.takeLast(CAPTION_CHARS))
             },
+            // Count only, never the words.
+            onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
         ).also { speaker = it }
     }
 
