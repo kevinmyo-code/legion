@@ -1293,6 +1293,8 @@ object FleetEngineStore {
             for (d in drives) db.driveDao().setVehicle(d.id, toId)
             events = db.codeEventDao().getInRange(fromId, lo, hi)
             for (e in events) db.codeEventDao().setVehicle(e.id, toId)
+            // Module scans (2026-11-15) belong to the car the dongle was in, like every other OBD row.
+            if (windowed) db.diagScanDao().rekeyRange(fromId, toId, lo, hi) else db.diagScanDao().rekeyAll(fromId, toId)
             if (!windowed) {
                 val capabilities = db.vehicleCapabilityDao()
                 val pids = capabilities.pidsForVehicle(fromId).toSet()
