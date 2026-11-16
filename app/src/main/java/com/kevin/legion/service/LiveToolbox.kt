@@ -2170,8 +2170,8 @@ object LiveToolbox {
         // The window said back as local days, so a reply about "tomorrow" stands on a date it was given.
         val fromDay = java.time.Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate()
         val toDay = java.time.Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate()
-        val window = RelativeDay.label(fromDay) + if (fromDay == toDay) "" else " to ${RelativeDay.label(toDay)}"
-        o.put("window", window)
+        val saidWindow = RelativeDay.label(fromDay) + if (fromDay == toDay) "" else " to ${RelativeDay.label(toDay)}"
+        o.put("window", saidWindow)
         // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
         // user could do, not plans, and `count` and the empty-window sentence stay about plans.
         com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone,
