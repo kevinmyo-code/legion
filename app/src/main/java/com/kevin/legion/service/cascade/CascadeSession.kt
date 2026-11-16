@@ -20,6 +20,7 @@ import com.kevin.legion.data.local.record
 import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.greeting.GreetingBudget
+import com.kevin.legion.greeting.GreetingFactory
 import com.kevin.legion.greeting.GreetingOpening
 import com.kevin.legion.greeting.GreetingPlan
 import com.kevin.legion.service.FollowUpWindow
@@ -64,6 +65,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.time.LocalTime
+import java.time.ZoneId
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -172,6 +174,15 @@ internal class CascadeSession(
     private var openStartedAtMs = 0L
     private var firstAudioLogged = false
     @Volatile private var preamble = ""
+
+    /** Today's agenda as read at open ([AgendaBlock]), for his turns only; "" when none is given. */
+    @Volatile private var agendaRead = ""
+
+    /** When this conversation first called a write: the agenda read before it is withdrawn. */
+    @Volatile private var agendaChangedAt: LocalTime? = null
+
+    /** The voice the filler lines were last warmed on ([warmFillers]). */
+    private var fillersWarmedFor: SpeechBackend? = null
     private var plan: CascadeRules.TurnPlan? = null
     @Volatile private var turnTaker: TurnTaker? = null
 
@@ -233,6 +244,12 @@ internal class CascadeSession(
         val writesDone = mutableListOf<String>()
         @Volatile var readThrough = false
         @Volatile var fillerPlayed = false
+
+        /** A write tool was called this turn (set as it starts, before it can run). */
+        @Volatile var writeCalled = false
+
+        /** Dropped for his next words, which carry these: not recorded on its own. */
+        @Volatile var merged = false
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -426,12 +443,56 @@ internal class CascadeSession(
             }
         }
         preambleReady = scope.async(Dispatchers.IO) {
+            // Today's agenda, beside the live context (it waits for the pack at most AGENDA_WAIT_MS).
+            val agenda = async { loadAgenda() }
             val split = base.await()
             val t = System.currentTimeMillis()
             val live = runCatching { brain.buildLiveContext() }.getOrDefault("")
             LiveLatency.log(LiveLatency.TAG, "open_live_context_ms=${System.currentTimeMillis() - t}")
             preamble = CascadePrompt.preamble(split.volatile, live)
+            agendaRead = agenda.await()
         }
+    }
+
+    /**
+     * Today's agenda for his turns (voice quick wins C, 2026-11-16), from the greeting pack the phone
+     * keeps; a fetch already running is waited for up to [AGENDA_WAIT_MS]. "" for a test
+     * conversation or one with an opener (a proactive line states only its own facts).
+     */
+    @Suppress("TooGenericExceptionCaught") // no pack is said in words, never a failed open
+    private suspend fun loadAgenda(): String {
+        if (test != null || opener != null) return ""
+        val t = System.currentTimeMillis()
+        val block = try {
+            val cache = GreetingFactory.cache(ctx)
+            val cached = cache.usable() ?: run {
+                withTimeoutOrNull(AGENDA_WAIT_MS) { cache.refresh("agenda").await() }
+                cache.usable()
+            }
+            cached?.let { AgendaBlock.render(it, ZoneId.systemDefault()) } ?: AgendaBlock.unavailable()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AgendaBlock.unavailable()
+        }
+        LiveLatency.log(LiveLatency.TAG, "open_agenda_ms=${System.currentTimeMillis() - t} chars=${block.length}")
+        return block
+    }
+
+    /** The agenda as his next turn sees it: as read, or withdrawn once something was changed. */
+    private fun agendaNow(): String {
+        val read = agendaRead
+        if (read.isEmpty()) return ""
+        return agendaChangedAt?.let { AgendaBlock.withdrawn(it) } ?: read
+    }
+
+    /** His turns' preamble: the shared one plus the agenda ([CascadePrompt.withAgenda]). */
+    private fun turnPreamble(): String = CascadePrompt.withAgenda(preamble, agendaNow())
+
+    /** A write was called: the agenda read at open is withdrawn, and this turn's result says so. */
+    private fun noteChange(response: JSONObject) {
+        if (agendaChangedAt == null) agendaChangedAt = LocalTime.now()
+        if (agendaRead.isNotEmpty()) response.put("agenda_note", AgendaBlock.TOOL_NOTE)
     }
 
     /**
@@ -812,15 +873,31 @@ internal class CascadeSession(
         followUpEvent(FollowUpWindow.Event.UserSpeech)
         audit.activityStart()
         if (!speaking) host.phase(Phase.LISTENING, "Listening...")
-        // He started again before the last answer began playing: that answer is dropped and his
-        // words carry into this turn, so a mid-thought pause never splits one request in two.
-        val pending = turn?.takeIf { it.fromUser && it.toolsRan.isEmpty() }
-        val answering = turnJob?.isActive == true && !speaking
-        if (pending != null && answering) {
-            carry = (carry + " " + pending.heard).trim()
-            turnJob?.cancel()
-            speaker?.interrupt()
-            LiveLatency.log("LIVE_TURN", "turn_merged reason=speech_resumed")
+        // He started again before the last answer began playing ([CascadeRules.newSpeech]): a turn
+        // with no tool or only reads is dropped and his words carry into this one, so a pause never
+        // splits one request in two; a turn that called a write is stopped as a barge-in stops it.
+        val pending = turn?.takeIf { it.fromUser }
+        val tools = pending?.let { synchronized(it) { it.toolsRan.size } } ?: 0
+        val action = CascadeRules.newSpeech(
+            turnRunning = turnJob?.isActive == true,
+            replyAudible = speaking,
+            pendingFromUser = pending != null,
+            toolsCalled = tools > 0,
+            writeCalled = pending?.writeCalled == true,
+            bargeIn = turnTaker?.bargeIn == true,
+        )
+        when (action) {
+            CascadeRules.NewSpeech.MERGE -> {
+                val p = pending ?: return
+                p.merged = true
+                carry = (carry + " " + p.heard).trim()
+                turnJob?.cancel()
+                speaker?.interrupt()
+                val reason = if (tools > 0) "speech_during_lookup" else "speech_resumed"
+                LiveLatency.log("LIVE_TURN", "turn_merged reason=$reason")
+            }
+            CascadeRules.NewSpeech.INTERRUPT -> interrupt("speech_during_tools")
+            CascadeRules.NewSpeech.NONE -> Unit
         }
     }
 
@@ -931,7 +1008,7 @@ internal class CascadeSession(
             val result = drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))
                 ?: textLoop!!.answer(
                     pfx,
-                    contentsFor(heard),
+                    turnContentsFor(heard),
                     executorFor(record, seq),
                     listenerFor(record, reply),
                 )
@@ -970,7 +1047,7 @@ internal class CascadeSession(
             // Interrupted (tap, barge-in) or merged into the next turn: keep only what was heard.
             withContext(NonCancellable) {
                 reply.interrupt()
-                if (carry.isBlank() || record.toolsRan.isNotEmpty()) {
+                if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty())) {
                     recordTurn(heard, withWrites(reply.spoken(), record), record.readThrough, seq, record.fromUser)
                 }
             }
@@ -1073,7 +1150,12 @@ internal class CascadeSession(
     // The date, the place and this conversation's context ride in the first user turn.
     private fun contentsFor(heard: String) = CascadePrompt.contents(history, heard, preamble)
 
+    // His turns (and their drafts) also carry today's agenda; the greeting does not.
+    private fun turnContentsFor(heard: String) = CascadePrompt.contents(history, heard, turnPreamble())
+
     private fun executorFor(record: TurnRecord, seq: Long) = TextToolExecutor { name, args, readThrough ->
+        // Before anything can run: his next words must never carry a write into a second run.
+        if (CascadeRules.isWrite(name, args)) record.writeCalled = true
         val id = "c${toolSeq.incrementAndGet()}"
         audit.toolCall(id, name, false, args.toString())
         toolsInFlight.incrementAndGet()
@@ -1127,16 +1209,26 @@ internal class CascadeSession(
             // A confirmed turn going to a slow tool says so at once, unless the model already spoke
             // (its own "let me check" is enough). Never an outcome. A draft only gets here after
             // confirmation ([SpeculativeAnswer] holds this call until then).
+            // Only from memory ([ScriptedLines.fillerNow]); never the same line twice running.
             if (record.fromUser && ScriptedLines.fillerDue(names, reply.anyText, record.fillerPlayed)) {
                 record.fillerPlayed = true
-                if (reply.filler(ScriptedLines.FILLERS.random())) {
-                    val slow = names.filter { it in ScriptedLines.SLOW_TOOLS }.joinToString(",")
-                    LiveLatency.log(LiveLatency.TAG, "filler tools=$slow")
+                val line = FILLER_LINES.next()
+                val tts = backend?.tts
+                val slow = names.filter { it in ScriptedLines.SLOW_TOOLS }.joinToString(",")
+                val inHand = tts?.inHand(SpokenText.forSpeech(line)) == true
+                val barge = turnTaker?.bargeIn == true
+                if (ScriptedLines.fillerNow(due = true, inHand = inHand, bargeIn = barge)) {
+                    if (reply.filler(line)) LiveLatency.log(LiveLatency.TAG, "filler tools=$slow")
+                } else {
+                    if (!inHand) tts?.warm(FILLERS_SPOKEN)
+                    val why = if (inHand) "half_duplex" else "not_in_memory"
+                    LiveLatency.log(LiveLatency.TAG, "filler_skip reason=$why tools=$slow")
                 }
             }
         }
 
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {
+            if (CascadeRules.isWrite(name, args)) noteChange(response)
             if (writeDone) synchronized(record) { record.writesDone.add(name) }
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$name sent=true async=false")
         }
@@ -1223,9 +1315,21 @@ internal class CascadeSession(
 
     private fun backToListening() {
         if (closing.get()) return
+        warmFillers()
         host.phase(Phase.LISTENING, "Listening...")
         followUpEvent(FollowUpWindow.Event.TurnComplete)
         followUpEvent(FollowUpWindow.Event.PlaybackDrained)
+    }
+
+    /**
+     * The filler lines' audio, fetched once per voice while the floor is his (no reply is being
+     * voiced then), so the first filler plays from memory (2026-11-16).
+     */
+    private fun warmFillers() {
+        val b = backend ?: return
+        if (fillersWarmedFor === b) return
+        fillersWarmedFor = b
+        b.tts.warm(FILLERS_SPOKEN)
     }
 
     /** Tap or barge-in: stop the reply now. A tool already running finishes and is reported. */
@@ -1511,7 +1615,7 @@ internal class CascadeSession(
         transport = OkHttpGemini(),
         // A speak-only line makes one round: no cache (a peek would start a create it never uses).
         cache = cache.takeIf { listens },
-        isMutating = LiveToolbox::isMutatingCall,
+        isMutating = CascadeRules::isWrite,
         isReadThrough = { GeminiLiveSession.isEpisodicExcludedTool(it) },
         toolTimeoutMs = { TOOL_BACKSTOP_MS },
         meter = { model, usage ->
@@ -1585,14 +1689,14 @@ internal class CascadeSession(
         val answer = SpeculativeAnswer(scope, newTextLoop(cache, CallUsage.LLM, hold::add), hold)
         d.heard = heard
         d.historySize = history.size
-        d.preamble = preamble
+        d.preamble = turnPreamble()
         d.answer = answer
         if (d.stt == null) usageLedger.spec(started = 1)
         LiveLatency.log(
             LiveLatency.TAG,
             CascadeLines.specStart(d.trigger, d.utt.backend.kind.token, heard.length),
         )
-        answer.start(pfx, contentsFor(heard))
+        answer.start(pfx, turnContentsFor(heard))
     }
 
     /**
@@ -1663,7 +1767,7 @@ internal class CascadeSession(
             d.utt !== u -> "other_utterance"
             answer == null -> if (d.audioConfirmed) null else "no_answer"
             !SpeculationRules.sameText(d.heard.orEmpty(), heard) -> "text_changed"
-            d.historySize != history.size || d.preamble != preamble -> "context_changed"
+            d.historySize != history.size || d.preamble != turnPreamble() -> "context_changed"
             answer.unusableReason != null -> answer.unusableReason
             else -> null
         }
@@ -2056,6 +2160,15 @@ internal class CascadeSession(
         private const val SCOPE_GRACE_MS = 2_000L
 
         private val ACK = AckLines()
+
+        /** The tool filler, never the same line twice running (voice quick wins A, 2026-11-16). */
+        private val FILLER_LINES = AckLines(ScriptedLines.FILLERS)
+
+        /** The filler lines as the voice is handed them ([ReplySpeaker] normalises the same way). */
+        private val FILLERS_SPOKEN = ScriptedLines.FILLERS.map { SpokenText.forSpeech(it) }
+
+        /** How long the agenda waits for a pack fetch already running, beside the live context. */
+        private const val AGENDA_WAIT_MS = 1_500L
 
         private const val OPENED_NOTE = "(He opened the conversation and you greeted him.)"
 

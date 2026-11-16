@@ -58,6 +58,15 @@ interface TextToSpeech {
 
     /** One utterance fed as it is written ([StreamingSpeechClip.append]); only when [streamsText]. */
     fun openStream(): StreamingSpeechClip
+
+    /**
+     * True when [speak] would play [text] at once from audio already in hand (a kept scripted line).
+     * A voice that cannot tell says true; the cloud voice answers from its kept lines.
+     */
+    fun inHand(text: String): Boolean = true
+
+    /** Fetches the audio of those [lines] not yet kept, for next time; the number asked for. */
+    fun warm(lines: Collection<String>): Int = 0
 }
 
 interface StreamingSpeechClip : SpeechClip {

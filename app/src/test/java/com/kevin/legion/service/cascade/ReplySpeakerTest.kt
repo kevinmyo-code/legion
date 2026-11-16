@@ -197,6 +197,8 @@ class ReplySpeakerTest {
         val ear = Ear()
         val s = speaker(voice, ear)
         assertTrue(s.filler("One moment."))
+        // The filler's audio is out before the answer's text arrives (from memory, it always is).
+        withTimeout(2_000) { while (ear.fillerAudio == 0) delay(5) }
         s.text("Your balance is four dollars. ")
         assertFalse("no second filler once the answer has text", s.filler("One moment."))
         s.finishText()
@@ -206,6 +208,47 @@ class ReplySpeakerTest {
         assertEquals("Your balance is four dollars.", s.spoken())
         assertEquals(1, ear.fillerAudio)
         assertEquals(1, ear.firstAudio)
+    }
+
+    @Test
+    fun `a filler whose audio comes after the answer's text is dropped unheard`() = runBlocking<Unit> {
+        // Every frame is late: the answer's text is in before the filler's first audio.
+        val voice = FakeVoice(frameDelayMs = 150)
+        val ear = Ear()
+        val s = speaker(voice, ear, timeoutMs = 2_000)
+        assertTrue(s.filler("One moment."))
+        s.text("Invented answer. ")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(3_000) { s.await() })
+        assertEquals(listOf("Invented", "answer."), ear.heard)
+        assertEquals(0, ear.fillerAudio)
+        assertEquals(1, ear.firstAudio)
+        assertEquals("Invented answer.", s.spoken())
+    }
+
+    @Test
+    fun `the filler fires on the tool names the model calls now, and only from memory`() {
+        for (name in listOf("look_up", "ask", "day", "ask_engine", "ask_mail")) {
+            assertTrue(name, ScriptedLines.fillerDue(listOf(name), anyText = false, fillerPlayed = false))
+        }
+        // Writes and instant local tools: the answer is the first sound.
+        for (name in listOf("phone", "car", "manage_item", "end_conversation", "money", "goal")) {
+            assertFalse(name, ScriptedLines.fillerDue(listOf(name), anyText = false, fillerPlayed = false))
+        }
+        assertTrue(ScriptedLines.fillerDue(listOf("phone", "look_up"), anyText = false, fillerPlayed = false))
+        assertTrue(ScriptedLines.fillerNow(due = true, inHand = true, bargeIn = true))
+        assertFalse("a line not in memory is skipped and warmed", ScriptedLines.fillerNow(due = true, inHand = false, bargeIn = true))
+        assertFalse(ScriptedLines.fillerNow(due = false, inHand = true, bargeIn = true))
+        // Half-duplex does not listen while a filler counts as playing: his words would be lost.
+        assertFalse(ScriptedLines.fillerNow(due = true, inHand = true, bargeIn = false))
+    }
+
+    @Test
+    fun `the filler never says the same line twice running`() {
+        val lines = AckLines(ScriptedLines.FILLERS)
+        val said = List(12) { lines.next() }
+        for (k in 1 until said.size) assertTrue(said[k] != said[k - 1])
+        assertTrue(said.all { it in ScriptedLines.FILLERS })
     }
 
     @Test

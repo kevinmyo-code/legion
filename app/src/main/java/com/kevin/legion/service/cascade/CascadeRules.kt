@@ -1,11 +1,14 @@
 package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.ChatTurn
+import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.TextChatEngine
+import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.TurnConfig
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * The cascade's decisions as pure functions, so a JVM test pins each one without a phone, a socket
@@ -76,6 +79,55 @@ internal object CascadeRules {
         val phoneEnd: EotSource get() = if (serviceEndsTurns) EotSource.PHONE_CAP else EotSource.PHONE_DETECTOR
     }
 
+    /**
+     * A call that asks for a write, judged on the tool it stands for: the model calls action tools
+     * (`day` with `complete_task`, `ask` with `intent: record`), and [LiveToolbox.isMutatingCall]
+     * knows only the real names. Before 2026-11-16 the cascade passed it the called name, so an
+     * action tool's write never reached `writesDone` (nor the "already done" note after an interrupt).
+     */
+    fun isWrite(name: String, args: JSONObject): Boolean =
+        LiveSurface.resolve(name, args).let { LiveToolbox.isMutatingCall(it.name, it.args) }
+
+    /** What his new speech does to a turn still being answered ([newSpeech]). */
+    enum class NewSpeech {
+        /** Nothing: no turn in hand, or its reply is audible (that is the barge-in gate's call). */
+        NONE,
+
+        /** The pending turn is dropped and its words carry into his new turn. */
+        MERGE,
+
+        /** The pending turn is stopped as a barge-in would stop it; its words do not carry. */
+        INTERRUPT,
+    }
+
+    /**
+     * He started speaking while a turn of his was still being answered and nothing of its reply was
+     * audible yet (2026-11-16: words said during a lookup waited 6 to 8 s, until the whole previous
+     * reply had played, measured):
+     * - no tool called yet: [NewSpeech.MERGE], the rule since before (a pause mid-thought);
+     * - only reads called: [NewSpeech.MERGE] too. The reads run again in the merged turn, which costs
+     *   a lookup, never a repeated write; and a cough that turns out to be no words still gets the
+     *   first question answered;
+     * - a write called: [NewSpeech.INTERRUPT] when barge-in is on, as ADR 0064's detector would stop
+     *   the reply: the write is never carried (it would run twice), the turn's record keeps it as
+     *   "already done", and a write still running finishes first (it runs NonCancellable). With
+     *   barge-in off (Bluetooth, a call) a write's turn keeps today's rule and finishes.
+     */
+    @Suppress("LongParameterList")
+    fun newSpeech(
+        turnRunning: Boolean,
+        replyAudible: Boolean,
+        pendingFromUser: Boolean,
+        toolsCalled: Boolean,
+        writeCalled: Boolean,
+        bargeIn: Boolean,
+    ): NewSpeech = when {
+        !turnRunning || replyAudible || !pendingFromUser -> NewSpeech.NONE
+        !toolsCalled || !writeCalled -> NewSpeech.MERGE
+        bargeIn -> NewSpeech.INTERRUPT
+        else -> NewSpeech.NONE
+    }
+
     @Suppress("LongParameterList")
     fun turnPlan(
         serviceEndsTurns: Boolean,
@@ -137,6 +189,14 @@ object CascadePrompt {
         if (parts.isEmpty()) return ""
         return "(Current context, use naturally if relevant:\n" + parts.joinToString("\n") + ")\n\n"
     }
+
+    /**
+     * [preamble] with the agenda block after it ([AgendaBlock]), for his turns only: the greeting
+     * and an opener's prompt keep the preamble alone. Rides in the first user turn like the rest,
+     * never in the cached instruction or the tool declarations.
+     */
+    fun withAgenda(preamble: String, agenda: String): String =
+        if (agenda.isBlank()) preamble else "$preamble(${agenda.trim()})\n\n"
 
     /**
      * A turn's contents: [history] plus [heard], capped as typed chat caps it, with [preamble] in
@@ -256,14 +316,38 @@ internal object ScriptedLines {
     val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS).toSet()
 
     /**
-     * Tools that take seconds: the specialist dispatchers, each its own model call (Live ran the four
-     * reads NON_BLOCKING for that reason), the engine's assistant and mail.
+     * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename
+     * left this list on the old names, and the filler fired once in 15 tool turns). Every one is
+     * followed by a second model round, so the answer is at least that round (~0.7 s) plus the first
+     * TTS audio (~0.66 s) away when it is said:
+     * - `look_up` and `ask`: the specialist routers, each its own model call (~1 s measured);
+     * - `day`: the calendar, the brief (7.5 s with news, measured), parcel and flight mail;
+     * - `ask_engine`, `ask_mail`: the engine's assistant and mail, when called directly;
+     * - the old specialist names, which `ask` still carries as its domain values (Live ran the four
+     *   reads NON_BLOCKING for that reason).
+     * Not here: `phone`, `car`, `manage_item` and the other action tools (writes and instant local
+     * reads, a filler there is noise), `end_conversation`. Only names reach this check, not the
+     * action, so a `day` write (complete_task) gets the filler too; it claims nothing either way.
      */
-    val SLOW_TOOLS: Set<String> = setOf("ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_engine", "ask_mail")
+    val SLOW_TOOLS: Set<String> = setOf(
+        "look_up", "ask", "day", "ask_engine", "ask_mail",
+        "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_money", "ask_area",
+    )
 
     /** A filler is due: a slow tool was asked for and nothing of the answer has been written yet. */
     fun fillerDue(toolNames: List<String>, anyText: Boolean, fillerPlayed: Boolean): Boolean =
         !anyText && !fillerPlayed && toolNames.any { it in SLOW_TOOLS }
+
+    /**
+     * Whether the filler is said now (2026-11-16):
+     * - only from memory: a line whose audio is not in hand would cost a TTS round trip (805 ms
+     *   measured) and could hold the answer up behind it, so it is skipped and its audio fetched
+     *   for next time instead;
+     * - only with barge-in on: once a filler is audible the phone counts the reply as playing, and
+     *   half-duplex (Bluetooth, a call) does not listen then, so words said during the lookup would
+     *   be lost instead of merged into his turn.
+     */
+    fun fillerNow(due: Boolean, inHand: Boolean, bargeIn: Boolean): Boolean = due && inHand && bargeIn
 }
 
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */
