@@ -1,7 +1,7 @@
 package com.kevin.legion.service.speaker
 
 import android.content.Context
-import com.kevin.legion.service.LiveLatency
+import android.util.Log
 import com.kevin.legion.service.WakeSampleFiles
 import com.kevin.legion.service.WakeSampleRecorder
 import com.kevin.legion.service.WakeSignal
@@ -19,8 +19,8 @@ import java.util.concurrent.Executors
  * [SpeakerPolicy]; the scoring is [SpeakerChecker].
  *
  * Privacy, binding: audio and the voiceprint stay on the phone. The voiceprint is one small file in
- * the app's private files dir ([VOICEPRINT_DIR], excluded from backup and device transfer); the
- * log carries scores, decisions and timings only.
+ * the app's private files dir ([VOICEPRINT_DIR], excluded from backup and device transfer). Scores,
+ * decisions and timings go to logcat only under [SpeakerPolicy.LOG_TAG], which nothing uploads.
  */
 @Suppress("TooManyFunctions") // engine hooks and screen hooks, each one small
 object SpeakerVerifier {
@@ -79,7 +79,7 @@ object SpeakerVerifier {
     fun allowOpen(context: Context): Boolean = try {
         decide(context)
     } catch (t: Throwable) {
-        LiveLatency.log(LiveLatency.TAG, "speaker_check result=failed_${t.javaClass.simpleName} acted=open")
+        logLocal("speaker_check result=failed_${t.javaClass.simpleName} acted=open")
         true
     }
 
@@ -100,9 +100,14 @@ object SpeakerVerifier {
         return false
     }
 
+    /** Logcat only, under [SpeakerPolicy.LOG_TAG]: never the engine spool, never the uploaded phone log. */
+    internal fun logLocal(message: String) {
+        Log.i(SpeakerPolicy.LOG_TAG, message)
+    }
+
     private fun log(mode: SpeakerPolicy.Mode, result: SpeakerResult): SpeakerPolicy.Band {
         val acted = SpeakerPolicy.act(mode, result)
-        LiveLatency.log(LiveLatency.TAG, SpeakerPolicy.line(mode, result, acted))
+        logLocal(SpeakerPolicy.line(mode, result, acted))
         return acted
     }
 
@@ -155,11 +160,11 @@ object SpeakerVerifier {
         embedderState = try {
             SherpaSpeakerEmbedder.load(app)?.let { EmbedderState.Ready(it) } ?: EmbedderState.Missing
         } catch (t: Throwable) {
-            LiveLatency.log(LiveLatency.TAG, "speaker_model result=failed_${t.javaClass.simpleName}")
+            logLocal("speaker_model result=failed_${t.javaClass.simpleName}")
             EmbedderState.Missing
         }
         val word = if (embedderState is EmbedderState.Ready) "ready" else "missing"
-        LiveLatency.log(LiveLatency.TAG, "speaker_model result=$word load=${System.currentTimeMillis() - t0}")
+        logLocal("speaker_model result=$word load=${System.currentTimeMillis() - t0}")
     }
 
     private fun readVoiceprint(app: Context) {
@@ -199,7 +204,7 @@ object SpeakerVerifier {
                 file.writeBytes(VoiceprintCodec.encode(vp))
                 voiceprint = vp.vector
                 _info.value = Info(vp.takes, vp.builtAtMs)
-                LiveLatency.log(LiveLatency.TAG, "speaker_enrol result=built takes=${vp.takes}")
+                logLocal("speaker_enrol result=built takes=${vp.takes}")
                 "Voiceprint built from ${vp.takes} takes."
             }
         }

@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.kevin.legion.service.AriaForegroundService
-import com.kevin.legion.service.LiveLatency
 
 /**
  * The unsure band's listening prompt: the wake phrase was heard but the voice scored between
@@ -28,7 +27,7 @@ object SpeakerAskNotifier {
     fun post(context: Context) {
         val app = context.applicationContext
         if (!mayPost(app)) {
-            LiveLatency.log(LiveLatency.TAG, "speaker_ask shown=false reason=notifications_off")
+            SpeakerVerifier.logLocal("speaker_ask shown=false reason=notifications_off")
             return
         }
         ensureChannel(app)
@@ -52,7 +51,7 @@ object SpeakerAskNotifier {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, n)
-        LiveLatency.log(LiveLatency.TAG, "speaker_ask shown=true")
+        SpeakerVerifier.logLocal("speaker_ask shown=true")
     }
 
     private fun mayPost(app: Context): Boolean =

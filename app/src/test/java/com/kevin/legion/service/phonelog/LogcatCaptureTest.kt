@@ -81,6 +81,16 @@ class LogcatCaptureTest {
         )
     }
 
+    @Test fun `a local-only speaker line never reaches the spool`() {
+        val kept = line(4242, "14:00:00.000", "LIVE_LATENCY", "reply_ms=1200")
+        val text = listOf(
+            kept,
+            line(4242, "14:00:00.001", "SPEAKER_LOCAL", "speaker_check_ms=40 mode=shadow result=scored score=0.500"),
+        ).joinToString("\n")
+        capture(ArrayDeque(listOf(text))).run()
+        assertEquals(listOf(kept), delivered)
+    }
+
     @Test fun `a restart resumes at the last stamp and skips what it already had`() {
         val a = line(4242, "14:00:00.000", "A", "one")
         val b = line(4242, "14:00:01.000", "B", "two")

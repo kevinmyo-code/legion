@@ -1,5 +1,6 @@
 package com.kevin.legion.service.phonelog
 
+import com.kevin.legion.service.speaker.SpeakerPolicy
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -30,6 +31,16 @@ object LogcatLines {
      */
     val NOISE: List<Pair<String, String>> = emptyList()
 
+    /**
+     * Tags that stay in logcat on the phone and never reach the spool or the engine, whatever the
+     * capture switch says. The speaker check's per-wake score is derived from Kevin's voice
+     * (2026-11-16: nothing derived from his voice is uploaded), so ADB can read it and nothing else.
+     */
+    val LOCAL_ONLY_TAGS: Set<String> = setOf(SpeakerPolicy.LOG_TAG)
+
+    /** True for a line under one of [LOCAL_ONLY_TAGS]. */
+    fun isLocalOnly(line: String): Boolean = tagOf(line) in LOCAL_ONLY_TAGS
+
     /** The pid column of a threadtime line, or null for anything else. */
     fun pidOf(line: String): String? = header.find(line)?.groups?.get("pid")?.value
 
@@ -48,8 +59,9 @@ object LogcatLines {
         return if (at >= 0) lines.drop(at + 1) else lines
     }
 
-    /** True for a line [noise] says to drop. */
+    /** True for a line [noise] says to drop, and always for a [LOCAL_ONLY_TAGS] line. */
     fun isNoise(line: String, noise: List<Pair<String, String>> = NOISE): Boolean {
+        if (isLocalOnly(line)) return true
         val m = if (noise.isEmpty()) null else header.find(line)
         val tag = m?.groups?.get("tag")?.value
         val message = m?.let { line.substring(it.range.last + 1) }

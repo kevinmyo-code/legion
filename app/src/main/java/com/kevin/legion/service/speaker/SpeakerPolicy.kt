@@ -42,6 +42,14 @@ object SpeakerPolicy {
     /** How long the "was that you?" tap stays up before it goes away by itself. */
     const val ASK_TIMEOUT_MS = 8_000L
 
+    /**
+     * The logcat tag every speaker line goes under. Local only: a per-wake match score is derived
+     * from his voice, so it is never uploaded. It is not a [com.kevin.legion.service.LiveLatency]
+     * tag (those reach the engine spool), and the phone's logcat capture drops it before its spool
+     * ([com.kevin.legion.service.phonelog.LogcatLines.LOCAL_ONLY_TAGS]). `adb logcat -s SPEAKER_LOCAL`.
+     */
+    const val LOG_TAG = "SPEAKER_LOCAL"
+
     /** What a wake hit does. */
     enum class Band(val word: String) { OPEN("open"), ASK("ask"), IGNORE("ignore") }
 
@@ -68,9 +76,8 @@ object SpeakerPolicy {
     }
 
     /**
-     * One `LIVE_LATENCY` line. Scores and timings only, never audio or the voiceprint. Only a
-     * scored check carries a `_ms` key, so `tools/voice_latency.py` sums real check times and
-     * nothing else.
+     * One [LOG_TAG] line, logcat only. Scores and timings only, never audio or the voiceprint. Only a
+     * scored check carries a `_ms` key, so a timing summary over the lines counts real checks only.
      */
     fun line(mode: Mode, result: SpeakerResult, acted: Band): String = when (result) {
         is SpeakerResult.Scored ->
