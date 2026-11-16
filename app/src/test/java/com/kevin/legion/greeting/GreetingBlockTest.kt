@@ -225,7 +225,7 @@ class GreetingBlockTest {
         assertFalse(prompt.contains("This one is about money"))
     }
 
-    @Test fun `a money lead carries no figure: the lead line is the category and the cap, nothing else`() {
+    @Test fun `a money lead carries no figure, the lead line is the category and the cap, nothing else`() {
         val p = parsed(pack(money = facts(onPace, over)))
         val lead = GreetingBlock.lead(p, noPlace, 13)!!
         val block = GreetingBlock.render(p, noPlace, morning, lead.item)
