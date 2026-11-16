@@ -8039,3 +8039,19 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   speculative answers and a filler line on slow tools.
 - Known gaps on Cloud at ship: the camera look refuses in words, a navigation turn cue can overlap
   a reply, a finished Claude task is not offered into an open conversation, no resume-music nudge.
+
+## 2026-11-16 - Today's agenda rides in the voice turn: a bounded exception to pull-based tools (Kevin)
+
+- **Kevin's words:** *"yes i agree"*, to "today's due items and calendar kept in the prompt,
+  skipping the lookup step for common questions". He approved it knowing it skips the tool round.
+- Ruled: the cascade voice puts a `TODAY'S AGENDA` block (today's remaining events, work due in the
+  next 24 hours, each source as facts, EMPTY or COULD NOT BE READ) into his turns, after the cached
+  prefix, read from the greeting facts pack the phone already keeps. The first write in a
+  conversation withdraws it. Everything else (other days, overdue, weather, every change) still
+  goes through tools. ADR 0093.
+- Why: the 2026-11-16 voice latency plan measured `day` as 6 of 12 cloud tool turns, each paying a
+  model round (about 1,017 ms median) plus the tool (about 80 ms); dropping them is about 1 s per
+  agenda question (arithmetic, not yet measured on a phone).
+- A bounded exception to CLAUDE.md section 7 "Pull-based tools always"; no other domain inherits it.
+  Revisited when on-phone speech-to-text lands. Built on `feat/voice-quick-wins` (`58172d38`),
+  merged in stage 5.

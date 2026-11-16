@@ -371,6 +371,9 @@ here.
 - **The reconciliation gate (§4) applies to every new ingestion path.** No exceptions per-feature.
 - **Estimates are labelled as estimates**, in the tool description and in any user-facing string.
 - **Pull-based tools always.** New domains default to tools/sub-agents, not pre-injected context.
+  **One bounded exception (Kevin, 2026-11-16, ADR 0093):** the voice cascade carries today's
+  remaining events and the next 24 h of due work in his turns, withdrawn on the first write. No
+  other domain may cite it.
 - **Lean Room migrations.** Copy generated SQL verbatim, additive only, no destructive fallback.
 - **The household hosts its own server; nothing Kevin-hosted for strangers.** AMENDED 2026-09-08
   (Kevin, ADR 0045): one engine may hold more than one household, and Kevin's engine holding
