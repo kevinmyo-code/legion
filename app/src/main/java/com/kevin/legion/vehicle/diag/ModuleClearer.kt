@@ -51,9 +51,12 @@ data class ClearRun(
 class ModuleClearer(private val link: DiagLink, private val bus: BusKind) {
 
     suspend fun clear(targets: List<ClearTarget>, before: ScanReport): ClearRun {
+        // Fails closed on speed: a clear is a write, so a speed the car did not give is not "parked".
+        val speed = if (targets.isEmpty()) null else GenericPid.speedKmh(link.send("010D", TIMEOUT_MS))
         val refusal = when {
             targets.isEmpty() -> "Nothing was chosen to clear."
-            (GenericPid.speedKmh(link.send("010D", TIMEOUT_MS)) ?: 0) > 0 -> MOVING
+            speed == null -> SPEED_UNKNOWN
+            speed > 0 -> MOVING
             (rpm(link.send("010C", TIMEOUT_MS)) ?: 0) > 0 -> RUNNING
             else -> null
         }
@@ -166,6 +169,8 @@ class ModuleClearer(private val link: DiagLink, private val bus: BusKind) {
         private val UDS_CLEAR = listOf(Uds.CLEAR_DTC, Hex.BYTE_MAX, Hex.BYTE_MAX, Hex.BYTE_MAX)
         private val KWP_CLEAR = listOf(Uds.CLEAR_DTC, Hex.BYTE_MAX, 0x00)
         const val MOVING = "The car is moving. Nothing was sent; clear codes only when parked."
+        const val SPEED_UNKNOWN = "The car did not give its speed, so it is not known to be parked. Nothing was " +
+            "sent; key at ON, engine off, and ask again."
         const val RUNNING = "The engine is running. Nothing was sent: turn the engine off, leave the key at ON, " +
             "and ask again."
         const val HEADERS_REFUSED = "The adapter refused headers on, so no module beyond the engine was cleared."

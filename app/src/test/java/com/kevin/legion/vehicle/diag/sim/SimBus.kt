@@ -64,7 +64,8 @@ internal class SimBus(private val elm: SimElm327) {
         return when (bytes.getOrNull(1)) {
             0x00 -> listOf(0x41, 0x00, 0xBE, 0x3F, 0xA8, 0x13)
             0x0C -> (car.rpm * 4).let { listOf(0x41, 0x0C, it shr 8, it and 0xFF) }
-            0x0D -> listOf(0x41, 0x0D, car.speedKmh)
+            // A negative speed scripts a car that does not answer PID 0D (NO DATA).
+            0x0D -> car.speedKmh.takeIf { it >= 0 }?.let { listOf(0x41, 0x0D, it) }
             else -> null
         }
     }
