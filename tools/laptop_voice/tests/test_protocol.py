@@ -74,7 +74,8 @@ async def test_speech_in_text_out():
         ev = await c.next_event("stt.final")
         assert ev["id"] == 7 and ev["text"] == "set a timer for twelve minutes"
         assert ev["audio_ms"] == 2000 and ev["lang"] == "en" and ev["reason"] == "client_end"
-        assert ready["capabilities"] == {"end_of_turn": False, "partials": False, "text_streaming": False}
+        assert ready["capabilities"] == {"end_of_turn": False, "partials": False, "text_streaming": False,
+                                         "maybe_end": False}
         assert ready["stt"]["end_of_turn"] is False
     finally:
         await c.close(); await server.close()
@@ -299,6 +300,77 @@ async def test_laptop_end_of_turn_streams_partials_pause_and_final():
         await c.ws.send_bytes(S.HEADER.pack(S.KIND_MIC, 4) + b"\x00\x00")
         err = await c.next_event("error")
         assert err["code"] == "bad_request" and err["id"] == 4
+    finally:
+        await c.close(); await server.close()
+
+
+async def _events_until_final(c: VoiceClient) -> list[dict]:
+    seen = []
+    while True:
+        ev = await c.next_event()
+        seen.append(ev)
+        if ev["type"] in ("stt.final", "error", "_closed"):
+            return seen
+
+
+@pytest.mark.asyncio
+async def test_maybe_end_goes_out_before_the_flush_and_the_final_is_unchanged():
+    # 2026-11-15: the text the model has at its end-of-turn crossing goes out before the flush, so the
+    # phone can start its answer; the final (with the words only the flush wrote) follows as always.
+    stt = E.FakeStreamingStt(text="what is on my calendar thursday the fourteenth", maybe=True,
+                             flush_words="the fourteenth")
+    svc, server, url = await start(stt=stt)
+    c = VoiceClient(url, TOKEN)
+    try:
+        ready = await c.connect()
+        assert ready["capabilities"]["maybe_end"] is True
+        speech = np.concatenate([tone(1.2), np.zeros(int(16000 * 0.8), dtype=np.int16)])
+        await c.stream_utterance(4, speech, end=False)
+        seen = await _events_until_final(c)
+        types = [e["type"] for e in seen]
+        assert types.count("stt.maybe_end") == 1
+        maybe = seen[types.index("stt.maybe_end")]
+        final = seen[-1]
+        assert types.index("stt.maybe_end") < len(seen) - 1 and final["type"] == "stt.final"
+        assert maybe["id"] == 4 and maybe["end_of_turn"] is True and 0.0 <= maybe["prob"] <= 1.0
+        assert maybe["text"] == "what is on my calendar thursday"
+        assert final["reason"] == "end_of_turn" and final["text"] == "what is on my calendar thursday the fourteenth"
+    finally:
+        await c.close(); await server.close()
+
+
+@pytest.mark.asyncio
+async def test_maybe_threshold_sends_one_earlier_maybe_end():
+    stt = E.FakeStreamingStt(maybe=True, maybe_threshold=0.3)
+    svc, server, url = await start(stt=stt)
+    c = VoiceClient(url, TOKEN)
+    try:
+        await c.connect()
+        speech = np.concatenate([tone(1.2), np.zeros(int(16000 * 0.8), dtype=np.int16)])
+        await c.stream_utterance(2, speech, end=False)
+        seen = await _events_until_final(c)
+        maybes = [e for e in seen if e["type"] == "stt.maybe_end"]
+        assert len(maybes) == 2
+        assert "end_of_turn" not in maybes[0] and maybes[0]["prob"] > 0.3
+        assert maybes[1]["end_of_turn"] is True
+        assert seen[-1]["type"] == "stt.final" and seen[-1]["text"] == "set a timer for twelve minutes"
+    finally:
+        await c.close(); await server.close()
+
+
+@pytest.mark.asyncio
+async def test_no_maybe_end_from_an_engine_without_it():
+    # Old engines (and an old service) never send it; a phone must not depend on it.
+    svc, server, url = await start(stt=E.FakeStreamingStt())
+    c = VoiceClient(url, TOKEN)
+    try:
+        ready = await c.connect()
+        assert ready["capabilities"]["maybe_end"] is False
+        speech = np.concatenate([tone(1.2), np.zeros(int(16000 * 0.8), dtype=np.int16)])
+        await c.stream_utterance(3, speech, end=False)
+        seen = await _events_until_final(c)
+        assert "stt.maybe_end" not in [e["type"] for e in seen]
+        assert seen[-1]["reason"] == "end_of_turn"
     finally:
         await c.close(); await server.close()
 

@@ -79,9 +79,17 @@ class KyutaiSttSession:
         ("pause", prob)               every 80 ms step, semantic-VAD pause probability (head 2, class 0)
         ("end_of_turn", final_text)   once per turn, after pause prob > threshold and a fast flush
     finish() flushes and returns the final text of the current turn.
+
+    Two opt-in behaviours (2026-11-15, the phone's speculative answer; protocol 1 stays):
+    - defer_flush: at the end-of-turn crossing feed() stops and returns ("eot_pending", text_so_far)
+      INSTEAD of flushing, so the caller can send that text out first; complete_turn() then runs the
+      flush and returns the final text. Unconsumed audio stays buffered.
+    - maybe_threshold: a pause probability under the end-of-turn one; the first step of a stretch of
+      words that crosses it returns ("maybe_end", text_so_far) once (new words re-arm it).
+    Neither changes WHEN the turn ends or its final text.
     """
 
-    def __init__(self, eng: "KyutaiStt"):
+    def __init__(self, eng: "KyutaiStt", defer_flush: bool = False, maybe_threshold: float | None = None):
         self.e = eng
         self.rs = _Resampler16to24()
         self.pcm24 = np.zeros(0, np.float32)
@@ -89,6 +97,10 @@ class KyutaiSttSession:
         self.steps = 0
         self.turn_has_words = False
         self.pause = 0.0
+        self.defer_flush = defer_flush
+        self.maybe_threshold = maybe_threshold
+        self.maybe_sent = False
+        self.pending_eot = False
         with GPU_LOCK:
             eng.mimi.reset_streaming()
             eng.lm_gen.reset_streaming()
@@ -146,21 +158,42 @@ class KyutaiSttSession:
         x = pcm_int16_16k.astype(np.float32) / 32768.0
         self.pcm24 = np.concatenate([self.pcm24, self.rs.push(x)])
         with torch.no_grad():
-            while len(self.pcm24) >= 1920:
+            while len(self.pcm24) >= 1920 and not self.pending_eot:
                 fr, self.pcm24 = self.pcm24[:1920], self.pcm24[1920:]
                 piece, pr = self._step(fr)
                 if piece:
                     self.pieces.append(piece)
                     self.turn_has_words = True
+                    if piece.strip():
+                        self.maybe_sent = False  # he is still talking: a later pause may be the end
                     ev.append(("partial", self._text()))
                 if pr is not None and self.steps > self.e.ignore_steps:
                     self.pause = pr
                     ev.append(("pause", pr))
-                    if self.turn_has_words and pr > self.e.pause_threshold:
+                    ends = self.turn_has_words and pr > self.e.pause_threshold
+                    if (self.turn_has_words and not ends and self.maybe_threshold is not None
+                            and pr > self.maybe_threshold and not self.maybe_sent):
+                        self.maybe_sent = True
+                        ev.append(("maybe_end", self._text()))
+                    if ends and self.defer_flush:
+                        self.pending_eot = True
+                        ev.append(("eot_pending", self._text()))
+                        break
+                    if ends:
                         self._flush()
                         ev.append(("end_of_turn", self._text()))
                         self.pieces, self.turn_has_words = [], False
         return ev
+
+    def complete_turn(self) -> str:
+        """After ("eot_pending", ...): the flush that writes out the last words, then the final text.
+        The turn is closed exactly as the non-deferred path closes it."""
+        with torch.no_grad():
+            self._flush()
+        text = self._text()
+        self.pieces, self.turn_has_words = [], False
+        self.pending_eot, self.maybe_sent = False, False
+        return text
 
     def finish(self) -> str:
         with torch.no_grad():

@@ -34,10 +34,12 @@ the phone can also leave out the facts it composes itself (place).
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from django.db import transaction
+from django.db import connection, transaction
 
 from brief.compose import (
     UNVERIFIED_SUFFIX,
@@ -153,6 +155,76 @@ def _when(moment: dt.datetime, zone) -> str:
 # =============================================================================
 
 
+PAD = dt.timedelta(days=1)
+ALL_EVENT_KINDS = ("event", "reminder", "task")
+
+
+class EventSnapshot:
+    """The member's event rows for the whole pack, read ONCE (2026-11-15).
+
+    The three event sources used to run their own two or three queries each. The engine reaches
+    its database in another region, so every query is a round trip of tens of milliseconds, and
+    the pack took 1.6 to 2.0 s server side
+    (Cloud Run request logs, 2026-11-15). One read of every kind over the widest window any source
+    needs, filtered here per source, gives the same rows in two queries plus the skips."""
+
+    def __init__(self, request, now: dt.datetime):
+        self.request = request
+        self.start = now - dt.timedelta(hours=ENDED_HOURS, days=LONGEST_EVENT_DAYS)
+        # today_events ends at local midnight and due_soon DUE_HOURS out: both inside this.
+        self.end = now + dt.timedelta(hours=max(DUE_HOURS, 24) + 24)
+        self._rows = None
+        self._skips = None
+
+    def rows(self) -> list:
+        if self._rows is None:
+            from legacy.models.dates import Event
+
+            live = visible(Event, self.request).filter(
+                deleted_at__isnull=True, kind__in=ALL_EVENT_KINDS
+            )
+            one_off = live.filter(
+                repeat_kind__isnull=True,
+                starts_at__gte=self.start - PAD,
+                starts_at__lte=self.end + PAD,
+            )
+            repeating = live.filter(repeat_kind__isnull=False, starts_at__lte=self.end)
+            self._rows = [*one_off, *repeating]
+        return self._rows
+
+    def skips(self) -> dict:
+        if self._skips is None:
+            from engine_mcp.tools import _event_skips
+
+            self._skips = _event_skips([row.pk for row in self.rows() if row.repeat_kind])
+        return self._skips
+
+    def covers(self, window_start, window_end) -> bool:
+        return self.start <= window_start and window_end <= self.end
+
+    def select(self, kinds, window_start, window_end, *, open_only: bool) -> dict:
+        """The rows `_occurrences`' own two queries would return for these arguments."""
+        out = {}
+        for row in self.rows():
+            if row.kind not in kinds or (open_only and row.done):
+                continue
+            if row.starts_at is None:
+                continue
+            if row.repeat_kind:
+                if row.starts_at > window_end:
+                    continue
+            elif not window_start - PAD <= row.starts_at <= window_end + PAD:
+                continue
+            out[row.pk] = row
+        return out
+
+
+# Set by `pack` around its own sources; a reader called on its own reads for itself.
+_SNAPSHOT: contextvars.ContextVar[EventSnapshot | None] = contextvars.ContextVar(
+    "greeting_event_snapshot", default=None
+)
+
+
 def _occurrences(request, kinds, window_start, window_end, zone, *, open_only: bool) -> list:
     """(row, start, end, all_day, local_date) for every occurrence of the member's visible rows
     of `kinds` starting in the window, repeating series expanded and skipped dates removed."""
@@ -160,18 +232,23 @@ def _occurrences(request, kinds, window_start, window_end, zone, *, open_only: b
     from engine_mcp.tools import _event_skips
     from legacy.models.dates import Event
 
-    live = visible(Event, request).filter(deleted_at__isnull=True, kind__in=kinds)
-    if open_only:
-        live = live.filter(done=False)
-    pad = dt.timedelta(days=1)
-    one_off = live.filter(
-        repeat_kind__isnull=True,
-        starts_at__gte=window_start - pad,
-        starts_at__lte=window_end + pad,
-    )
-    repeating = live.filter(repeat_kind__isnull=False, starts_at__lte=window_end)
-    rows = {row.pk: row for row in [*one_off, *repeating]}
-    skips = _event_skips([pk for pk, row in rows.items() if row.repeat_kind])
+    snapshot = _SNAPSHOT.get()
+    if snapshot is not None and snapshot.covers(window_start, window_end):
+        rows = snapshot.select(kinds, window_start, window_end, open_only=open_only)
+        every_skip = snapshot.skips()
+        skips = {pk: every_skip[pk] for pk, row in rows.items() if pk in every_skip}
+    else:
+        live = visible(Event, request).filter(deleted_at__isnull=True, kind__in=kinds)
+        if open_only:
+            live = live.filter(done=False)
+        one_off = live.filter(
+            repeat_kind__isnull=True,
+            starts_at__gte=window_start - PAD,
+            starts_at__lte=window_end + PAD,
+        )
+        repeating = live.filter(repeat_kind__isnull=False, starts_at__lte=window_end)
+        rows = {row.pk: row for row in [*one_off, *repeating]}
+        skips = _event_skips([pk for pk, row in rows.items() if row.repeat_kind])
     out = []
     for occ in occurrences(list(rows.values()), skips, window_start, window_end, zone):
         row = rows[_uuid(occ["event_id"])]
@@ -442,7 +519,7 @@ def money_source(request, now: dt.datetime, zone) -> dict:
 
     today = now.astimezone(zone).date()
     month = Month.of(today)
-    body_ = budgets(request, household_of(request), month, today)
+    body_ = budgets(request, household_of(request), month, today, subscriptions=False)
     items = []
     for line in body_["categories"]:
         cap = line["cap_cents"]
@@ -561,6 +638,17 @@ def _now() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
 
 
+def _isolated():
+    """So one source's failed query never poisons the next one's read. Inside a transaction (a
+    test, a caller's atomic block) that is a savepoint. In autocommit, the engine's normal request,
+    every statement is its own transaction and a failed one poisons nothing, so no block is opened:
+    `atomic()` there costs a BEGIN and a COMMIT, two cross-region round trips per source
+    (2026-11-15)."""
+    if connection.in_atomic_block:
+        return transaction.atomic()
+    return contextlib.nullcontext()
+
+
 def pack(request, now: dt.datetime | None = None) -> dict:
     """The whole pack for the signed-in member."""
     now = now or _now()
@@ -568,19 +656,22 @@ def pack(request, now: dt.datetime | None = None) -> dict:
     local_now = now.astimezone(zone)
 
     sources = {}
-    for name in SOURCE_NAMES:
-        try:
-            # A savepoint each, so one source's failed query never poisons the next one's read.
-            with transaction.atomic():
-                sources[name] = READERS[name](request, now, zone)
-        except Exception as exc:  # noqa: BLE001 - every failure is reported, in words
-            sources[name] = unreadable(name, exc)
+    token = _SNAPSHOT.set(EventSnapshot(request, now))
+    try:
+        for name in SOURCE_NAMES:
+            try:
+                with _isolated():
+                    sources[name] = READERS[name](request, now, zone)
+            except Exception as exc:  # noqa: BLE001 - every failure is reported, in words
+                sources[name] = unreadable(name, exc)
+    finally:
+        _SNAPSHOT.reset(token)
 
     topics_block = {"state": TOPICS_READ, "reason": None}
     raised: set[str] = set()
     closed: set[str] = set()
     try:
-        with transaction.atomic():
+        with _isolated():
             raised, closed = topics(request, now)
     except Exception as exc:  # noqa: BLE001
         topics_block = {

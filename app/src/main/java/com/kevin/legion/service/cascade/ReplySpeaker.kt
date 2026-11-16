@@ -39,12 +39,14 @@ class WordChunker {
  * speaking mid-reply; the session then hands over to Live). [spoken] is what was actually heard
  * (clips whose audio started), which is what history keeps after an interruption.
  */
+@Suppress("TooManyFunctions") // text in, filler, scripted line, interrupt, drain: one reply's speech
 internal class ReplySpeaker(
     private val tts: TextToSpeech,
     private val scope: CoroutineScope,
     private val play: suspend (pcm: ByteArray) -> Boolean,
     private val firstFrameTimeoutMs: Long,
-    private val onFirstAudio: (clipText: String) -> Unit,
+    /** First audio of the reply ([filler] false), and of a scripted filler before it ([filler] true). */
+    private val onFirstAudio: (clipText: String, filler: Boolean) -> Unit,
     private val onClipStarted: (clipText: String) -> Unit,
     private val normalise: (String) -> String = { SpokenText.forSpeech(it) },
 ) {
@@ -64,6 +66,11 @@ internal class ReplySpeaker(
     @Volatile private var interrupted = false
     private val started = mutableListOf<SpeechClip>()
     private var anyAudio = false
+    private var anyFillerAudio = false
+
+    /** Scripted fillers ([filler]): heard, never part of what the reply said. */
+    private val fillers: MutableSet<SpeechClip> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<SpeechClip, Boolean>())
     @Volatile var anyText = false
         private set
 
@@ -95,8 +102,31 @@ internal class ReplySpeaker(
         queue.close()
     }
 
-    /** Speaks [line] as its own clip (a scripted line, a failure in words), then ends. */
+    /**
+     * A short scripted line ("One moment.") played before the reply, while a slow tool runs. Never
+     * part of [spoken] (it claims nothing and is not the answer). Only before any reply text.
+     */
+    fun filler(line: String): Boolean {
+        if (interrupted || anyText) return false
+        val clip = tts.speak(normalise(line))
+        fillers.add(clip)
+        queue.trySend(clip)
+        return true
+    }
+
+    /**
+     * Speaks [line] as its own clip (a scripted line, a failure in words), then ends. A short line
+     * is one whole clip even on a voice that streams text (2026-11-15): the whole text is known, a
+     * whole clip starts sooner on Kyutai (~0.75 s against ~1.0 s streamed, 11-10), and a kept
+     * scripted line plays from memory ([LaptopVoiceConnection]'s keepLines).
+     */
     fun say(line: String) {
+        if (!interrupted && line.isNotBlank() && line.length <= SAY_WHOLE_CHARS) {
+            anyText = true
+            enqueue(line)
+            queue.close()
+            return
+        }
         text(line)
         finishText()
     }
@@ -119,7 +149,8 @@ internal class ReplySpeaker(
     }
 
     /** What was heard: whole clips whose audio started. */
-    fun spoken(): String = synchronized(started) { started.joinToString(" ") { it.text.trim() } }.trim()
+    fun spoken(): String =
+        synchronized(started) { started.filterNot { it in fillers }.joinToString(" ") { it.text.trim() } }.trim()
 
     /**
      * Into the current streamed clip; a clip that would pass [STREAM_CHAR_CAP] is finished and the
@@ -189,10 +220,14 @@ internal class ReplySpeaker(
                 continue
             }
             synchronized(started) { started.add(clip) }
-            onClipStarted(clip.text)
-            if (!anyAudio) {
+            val isFiller = clip in fillers
+            if (!isFiller) onClipStarted(clip.text)
+            if (isFiller && !anyFillerAudio && !anyAudio) {
+                anyFillerAudio = true
+                onFirstAudio(clip.text, true)
+            } else if (!isFiller && !anyAudio) {
                 anyAudio = true
-                onFirstAudio(clip.text)
+                onFirstAudio(clip.text, false)
             }
             if (!play(firstPcm)) return Outcome.Interrupted
             for (pcm in clip.frames) {
@@ -226,7 +261,7 @@ internal class ReplySpeaker(
             synchronized(started) { started.add(clip) }
             if (!anyAudio) {
                 anyAudio = true
-                onFirstAudio(clip.text)
+                onFirstAudio(clip.text, false)
             }
             if (!play(first)) return
             for (pcm in clip.frames) if (interrupted || !play(pcm)) return
@@ -236,6 +271,9 @@ internal class ReplySpeaker(
     companion object {
         /** Under the service's 1,000 chars per streamed id, with room for a last word. */
         const val STREAM_CHAR_CAP = 900
+
+        /** A [say] line up to this long is one whole clip; longer (a re-voiced reply) goes as usual. */
+        const val SAY_WHOLE_CHARS = 300
     }
 }
 

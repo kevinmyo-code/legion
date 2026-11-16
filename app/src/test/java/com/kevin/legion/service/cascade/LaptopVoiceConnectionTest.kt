@@ -91,6 +91,37 @@ class LaptopVoiceConnectionTest {
     private fun connection(fake: FakeLaptop, onDrop: (String) -> Unit = {}) =
         LaptopVoiceConnection(fake, config, "legion-phone/test", scope, voice = null, onDrop = onDrop)
 
+    // --- early signals for a speculative answer (contract 4b, 2026-11-15) ----------------------------
+
+    @Test
+    fun `maybe_end and partials reach the session for a live utterance only, and an old service sends none`() = runBlocking<Unit> {
+        val fake = FakeLaptop(sendReady = false) { m ->
+            if (m.getString("type") == "hello") {
+                text(JSONObject().put("type", "ready").put("protocol", 1).put("capabilities", JSONObject().put("end_of_turn", true).put("maybe_end", true)))
+            }
+        }
+        val c = connection(fake)
+        assertEquals(LaptopVoiceConnection.OpenResult.Ready, c.open(1_000))
+        assertTrue(c.sendsMaybeEnd)
+        val maybes = Collections.synchronizedList(mutableListOf<Triple<Int, String, Boolean>>())
+        val partials = Collections.synchronizedList(mutableListOf<Pair<Int, String>>())
+        c.onMaybeEnd = { id, t, atEnd -> maybes.add(Triple(id, t, atEnd)) }
+        c.onPartial = { id, t -> partials.add(id to t) }
+        val u = c.begin()
+        fake.text(JSONObject().put("type", "stt.partial").put("id", u.id).put("text", "add milk"))
+        fake.text(JSONObject().put("type", "stt.maybe_end").put("id", u.id).put("text", " add milk ").put("prob", 0.7).put("end_of_turn", true))
+        fake.text(JSONObject().put("type", "stt.maybe_end").put("id", 999).put("text", "not ours"))
+        assertEquals(listOf(Triple(u.id, "add milk", true)), maybes.toList())
+        assertEquals(listOf(u.id to "add milk"), partials.toList())
+        fake.text(JSONObject().put("type", "stt.final").put("id", u.id).put("text", "add milk.").put("reason", "end_of_turn"))
+        assertTrue(u.result(1_000) is SttResult.Text)
+
+        val old = FakeLaptop()
+        val c2 = connection(old)
+        c2.open(1_000)
+        assertFalse(c2.sendsMaybeEnd)
+    }
+
     // --- open ---------------------------------------------------------------------------------
 
     @Test

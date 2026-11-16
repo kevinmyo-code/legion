@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Collections
@@ -90,6 +91,7 @@ class ReplySpeakerTest {
     private class Ear {
         val heard = Collections.synchronizedList(mutableListOf<String>())
         var firstAudio = 0
+        var fillerAudio = 0
         suspend fun play(pcm: ByteArray): Boolean {
             heard.add(String(pcm))
             return true
@@ -101,7 +103,7 @@ class ReplySpeakerTest {
         scope = scope,
         play = { ear.play(it) },
         firstFrameTimeoutMs = timeoutMs,
-        onFirstAudio = { ear.firstAudio++ },
+        onFirstAudio = { _, filler -> if (filler) ear.fillerAudio++ else ear.firstAudio++ },
         onClipStarted = {},
         normalise = { it },
     )
@@ -176,6 +178,49 @@ class ReplySpeakerTest {
         assertEquals(ReplySpeaker.Outcome.Interrupted, withTimeout(2_000) { s.await() })
         assertTrue(ear.heard.size < 6)
         assertEquals("One two three four five six.", s.spoken())
+    }
+
+    @Test
+    fun `a short scripted line is one whole clip even on a voice that streams`() = runBlocking<Unit> {
+        val voice = FakeVoice(streamsText = true)
+        val ear = Ear()
+        val s = speaker(voice, ear)
+        s.say("I'm here.")
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("I'm here."), voice.asked)
+        assertEquals("I'm here.", s.spoken())
+    }
+
+    @Test
+    fun `a filler plays first, is not part of what the reply said, and has its own first-audio report`() = runBlocking<Unit> {
+        val voice = FakeVoice(streamsText = true)
+        val ear = Ear()
+        val s = speaker(voice, ear)
+        assertTrue(s.filler("One moment."))
+        s.text("Your balance is four dollars. ")
+        assertFalse("no second filler once the answer has text", s.filler("One moment."))
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("One moment.", "<stream>"), voice.asked)
+        assertEquals(listOf("One", "moment.", "Your", "balance", "is", "four", "dollars."), ear.heard)
+        assertEquals("Your balance is four dollars.", s.spoken())
+        assertEquals(1, ear.fillerAudio)
+        assertEquals(1, ear.firstAudio)
+    }
+
+    @Test
+    fun `a filler is due only for a slow tool, before any text, once`() {
+        assertTrue(ScriptedLines.fillerDue(listOf("ask_body"), anyText = false, fillerPlayed = false))
+        assertFalse(ScriptedLines.fillerDue(listOf("get_current_time"), anyText = false, fillerPlayed = false))
+        assertFalse(ScriptedLines.fillerDue(listOf("ask_engine"), anyText = true, fillerPlayed = false))
+        assertFalse(ScriptedLines.fillerDue(listOf("ask_mail"), anyText = false, fillerPlayed = true))
+        // Scripted, short, kept in memory by both voices, and never an outcome.
+        for (line in ScriptedLines.FILLERS) {
+            assertTrue(line in ScriptedLines.KEEP)
+            for (verb in listOf("done", "sent", "set", "added", "booked", "found", "checked")) {
+                assertFalse("$line must not claim $verb", line.lowercase().contains(verb))
+            }
+        }
     }
 
     @Test

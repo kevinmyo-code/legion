@@ -59,7 +59,13 @@ def _status(spent: int, cap: int | None) -> str:
     return "ok"
 
 
-def budgets(request, household, month: Month, today: dt.date) -> dict:
+def budgets(
+    request, household, month: Month, today: dt.date, *, subscriptions: bool = True
+) -> dict:
+    """The figures above. `subscriptions=False` skips the recurring-merchant scan, which reads the
+    whole ledger history twice in Python; the greeting pack (`greeting/facts.py`) reads only the
+    category lines and runs on every tap (2026-11-15). Its two keys are then None, never an empty
+    list: not looked at is not none found."""
     ledger = Ledger(request)
     body = ledger.month(month, CURRENCY)
     days = month.last.day
@@ -111,6 +117,40 @@ def budgets(request, household, month: Month, today: dt.date) -> dict:
              "cap_cents": caps.get(name)}
         )
 
+    found, new = _subscriptions(ledger, rows, month) if subscriptions else (None, None)
+    return {
+        "month": str(month),
+        "currency": CURRENCY,
+        "days_in_month": days,
+        "days_elapsed": elapsed,
+        "projection_from_day": PACE_FROM_DAY,
+        "categories": lines,
+        "total": {
+            "spent_cents": total_spent,
+            "cap_cents": total_cap,
+            "percent": total_spent * 100 // total_cap if total_cap else None,
+            "pace_cents": div_half_even(total_cap * elapsed, days) if total_cap else None,
+        },
+        "uncategorised_cents": body["uncategorised_cents"],
+        "fixed": fixed_lines,
+        "subscriptions": None if found is None else [
+            {
+                "merchant": r.merchant,
+                "category": r.category,
+                "typical_cents": r.typical_cents,
+                "months": r.months,
+                "last_on": r.last_on,
+                "next_on": r.next_on,
+                "is_estimate": True,
+            }
+            for r in found
+        ],
+        "new_subscriptions": new,
+    }
+
+
+def _subscriptions(ledger, rows, month: Month):
+    """(recurring merchants of the last SUBSCRIPTION_MONTHS months, merchants new this month)."""
     history_start = month.plus(-(SUBSCRIPTION_MONTHS - 1)).first
     history = ledger.rows_between(history_start, month.last, CURRENCY)
     found = recurring(history)
@@ -129,32 +169,4 @@ def budgets(request, household, month: Month, today: dt.date) -> dict:
         }
         - {""}
     )
-    return {
-        "month": str(month),
-        "currency": CURRENCY,
-        "days_in_month": days,
-        "days_elapsed": elapsed,
-        "projection_from_day": PACE_FROM_DAY,
-        "categories": lines,
-        "total": {
-            "spent_cents": total_spent,
-            "cap_cents": total_cap,
-            "percent": total_spent * 100 // total_cap if total_cap else None,
-            "pace_cents": div_half_even(total_cap * elapsed, days) if total_cap else None,
-        },
-        "uncategorised_cents": body["uncategorised_cents"],
-        "fixed": fixed_lines,
-        "subscriptions": [
-            {
-                "merchant": r.merchant,
-                "category": r.category,
-                "typical_cents": r.typical_cents,
-                "months": r.months,
-                "last_on": r.last_on,
-                "next_on": r.next_on,
-                "is_estimate": True,
-            }
-            for r in found
-        ],
-        "new_subscriptions": new,
-    }
+    return found, new

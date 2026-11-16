@@ -158,7 +158,15 @@ object CascadeRequests {
 
     private fun instruction(prefix: CascadePrefix): JSONObject =
         JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prefix.systemInstruction)))
-    const val CACHE_TTL_S = 3_600L
+
+    /**
+     * 20 minutes (voice-fast, 2026-11-15; was the API's default hour). Storage is billed per hour a
+     * cache lives (~12.2k tokens at $1.00/M/h = ~$0.012/h, ~$9/month if kept alive around the clock);
+     * a re-create costs about 18 minutes of storage (at the input rate, assumed). So a cache that
+     * outlives a conversation by ~20 minutes is reused by the next one when they come close together,
+     * and no idle hour is paid for. The prompt itself is prepared ahead for free ([CascadePrep]).
+     */
+    const val CACHE_TTL_S = 1_200L
 
     fun generationConfig(): JSONObject = JSONObject().put("maxOutputTokens", MAX_OUTPUT_TOKENS)
 

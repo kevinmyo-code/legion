@@ -68,7 +68,8 @@ fun HomePanelSheetContent(sheet: PanelSheet, state: HomeCalendarUiState, callbac
         ) {
             Text(
                 when (sheet) {
-                    PanelSheet.TODOS -> "To-dos"
+                    // Every open to-do, any date: not "due today" (2026-11-15, the home figure's own count).
+                    PanelSheet.TODOS -> "All open to-dos"
                     PanelSheet.LISTS -> "Lists"
                     PanelSheet.IDEAS -> "Ideas this weekend"
                 },

@@ -58,7 +58,7 @@ internal object Declarations {
             // none of those redirects to manage_checklist instead.
             // Live cost diet 2026-11-10 (Kevin: "yes trim tools"): every routing rule kept, the
             // restatements cut. The old text is in git history at this line.
-            description = "A REMINDER with a trigger: a due date/time, a place, or a repeat. add, " +
+            description = "A REMINDER with a trigger: a date/time, a place, or a repeat. add, " +
                 "tick, untick, remove, schedule (a date or a repeat), skip one occurrence. A plain " +
                 "to-do with no trigger is manage_checklist list=Todo (create it if missing). " +
                 "A grocery or shopping item is manage_checklist list=Groceries, never here. " +
@@ -226,9 +226,11 @@ internal object Declarations {
                 "and carries `done` saying whether it is finished. **School and coursework " +
                 "deadlines are tasks, so use this tool for 'what's due', 'what do I have due " +
                 "Sunday', 'what's due for school this week', not only for 'what's on my " +
-                "calendar'.** Each row gives title, start, end, all_day, kind, and done for a " +
-                "task. This does not return reminders or checklist items - those are " +
-                "`read_list` and `manage_checklist`. Read-only: use manage_item to change " +
+                "calendar'.** A `due` block comes first: everything due in the window from " +
+                "both places a due date lives (calendar tasks and dated to-dos), overdue ones " +
+                "marked, done ones only counted. Each row gives title, start, end, all_day, kind, " +
+                "and done for a task. Undated reminders and checklist lines are `read_list` and " +
+                "`manage_checklist`. Read-only: use manage_item to change " +
                 "anything. A separate `suggestions` list is ideas, not plans.",
             params = obj(
                 "from" to schema("string", "First day of the window, yyyy-MM-dd. Call " +

@@ -255,6 +255,7 @@ class HomeCalendarViewModel(
                 guarded { source.ideas(from, to, zone) },
             )
         }
+        val due = withContext(io) { guarded { source.dueToday(zone) } }
         _state.update { s ->
             // A row ticked inside the open sheet stays listed (done) until the sheet closes.
             val keptDone = if (s.sheet == PanelSheet.TODOS) {
@@ -267,6 +268,8 @@ class HomeCalendarViewModel(
                 todos = merged,
                 openTodoCount = merged.count { !it.done },
                 todosNote = if (todos == null) "Couldn't read your to-dos." else null,
+                dueToday = due,
+                dueNote = if (due == null) "Couldn't read what is due." else null,
                 lists = lists.orEmpty(),
                 listsNote = if (lists == null) "Couldn't read your lists." else null,
                 ideas = ideas.orEmpty(),

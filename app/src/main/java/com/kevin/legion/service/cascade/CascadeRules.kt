@@ -223,6 +223,31 @@ class AckLines(private val lines: List<String> = DEFAULT, private val pick: (Int
     }
 }
 
+/**
+ * Every scripted line a voice may keep in memory once it has said it (voice-fast, 2026-11-15): the
+ * same short line is neither paid for nor waited for twice.
+ */
+internal object ScriptedLines {
+    /**
+     * What is said the moment a confirmed turn goes to a slow tool, so the wait is not silent
+     * (voice-fast step 3, 2026-11-15; Live's NON_BLOCKING lookups had a "still checking" line, the
+     * cascade had none). Claims nothing: no outcome, no promise of one.
+     */
+    val FILLERS = listOf("One moment.", "Just a moment.")
+
+    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS).toSet()
+
+    /**
+     * Tools that take seconds: the specialist dispatchers, each its own model call (Live ran the four
+     * reads NON_BLOCKING for that reason), the engine's assistant and mail.
+     */
+    val SLOW_TOOLS: Set<String> = setOf("ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_engine", "ask_mail")
+
+    /** A filler is due: a slow tool was asked for and nothing of the answer has been written yet. */
+    fun fillerDue(toolNames: List<String>, anyText: Boolean, fillerPlayed: Boolean): Boolean =
+        !anyText && !fillerPlayed && toolNames.any { it in SLOW_TOOLS }
+}
+
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */
 internal object CascadeLines {
     fun open(ms: Long, probeMs: Long, plan: CascadeRules.TurnPlan, ttsStreams: Boolean, backend: String): String =
@@ -236,6 +261,26 @@ internal object CascadeLines {
     fun eot(source: CascadeRules.EotSource, silenceMs: Long?, prob: Float? = null): String =
         "eot_source=${source.wire} eot_silence_ms=${silenceMs ?: -1}" +
             (prob?.let { " eot_prob=${"%.2f".format(java.util.Locale.US, it)}" } ?: "")
+
+    /** A speculative draft began ([TurnDraft]); counts only, never the words. */
+    fun specStart(trigger: String, backend: String, chars: Int): String =
+        "spec_start trigger=$trigger backend=$backend chars=$chars"
+
+    /** The turn was confirmed with the draft's words: how far ahead it started and how far it got. */
+    @Suppress("LongParameterList")
+    fun specKept(
+        trigger: String,
+        leadMs: Long,
+        firstPartAheadMs: Long?,
+        draftChars: Int,
+        heldAtTool: Boolean,
+        done: Boolean,
+    ): String =
+        "spec_kept trigger=$trigger lead_ms=$leadMs first_part_ahead_ms=${firstPartAheadMs ?: -1} " +
+            "draft_chars=$draftChars held_at_tool=$heldAtTool done=$done"
+
+    fun specDiscard(trigger: String, reason: String, ageMs: Long): String =
+        "spec_discard trigger=$trigger reason=$reason age_ms=$ageMs"
 
     fun usage(model: String, u: GeminiTextLoop.Usage): String =
         "llm_usage model=$model prompt=${u.prompt} cached=${u.cached} out=${u.output} thoughts=${u.thoughts} " +

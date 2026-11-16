@@ -73,6 +73,20 @@ class SentenceSplitterTest {
     }
 
     @Test
+    fun `the first clause goes at six words, a short lead-in stays with its sentence`() {
+        assertEquals(
+            listOf("The forecast for tomorrow looks dry,", "with a high near seventy."),
+            splitAll("The forecast for tomorrow looks dry, with a high near seventy."),
+        )
+        assertEquals(listOf("Sure, I can add that to the list."), splitAll("Sure, I can add that to the list."))
+        // Only the first sentence is cut early.
+        assertEquals(
+            listOf("Done.", "The forecast for tomorrow looks dry, with a high near seventy."),
+            splitAll("Done. The forecast for tomorrow looks dry, with a high near seventy."),
+        )
+    }
+
+    @Test
     fun `a line break ends a sentence and flush returns the tail`() {
         val s = SentenceSplitter()
         assertEquals(listOf("First line"), s.feed("First line\nsecond"))

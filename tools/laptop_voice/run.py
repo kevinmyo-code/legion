@@ -68,6 +68,25 @@ def child_env(allow_download: bool, hf_home: str | None = None) -> dict:
     return env
 
 
+def tuning_env(eot_threshold: float | None, maybe_threshold: float | None, tts_nq: int | None = None) -> dict:
+    """Kyutai tuning flags as the child's environment (numbers only); refuses values out of range."""
+    env = {}
+    if eot_threshold is not None:
+        if not 0.3 <= eot_threshold <= 0.99:
+            raise SystemExit("--eot-threshold must be 0.3 to 0.99")
+        env["LEGION_VOICE_KYUTAI_PAUSE"] = repr(float(eot_threshold))
+    if maybe_threshold is not None:
+        eot = eot_threshold if eot_threshold is not None else 0.6
+        if not 0.1 <= maybe_threshold < eot:
+            raise SystemExit("--maybe-threshold must be at least 0.1 and below the end-of-turn threshold")
+        env["LEGION_VOICE_KYUTAI_MAYBE"] = repr(float(maybe_threshold))
+    if tts_nq is not None:
+        if not 8 <= tts_nq <= 32:
+            raise SystemExit("--tts-nq must be 8 to 32")
+        env["LEGION_VOICE_KYUTAI_TTS_NQ"] = str(int(tts_nq))
+    return env
+
+
 # ---- Windows Job Object (memory cap, kill on close) ----
 class IO_COUNTERS(ctypes.Structure):
     _fields_ = [(n, ctypes.c_ulonglong) for n in ("ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
@@ -126,6 +145,12 @@ def main() -> None:
     p.add_argument("--eot-threshold", type=float, default=None,
                    help="Kyutai: pause probability that ends a turn (default 0.6; higher = fewer mid-sentence "
                         "splits, later end of turn)")
+    p.add_argument("--tts-nq", type=int, default=None,
+                   help="Kyutai TTS: codebooks per frame, 8 to 32 (default 32, full quality). Fewer is faster "
+                        "to first audio and lower quality for the whole line; off unless measured worthwhile")
+    p.add_argument("--maybe-threshold", type=float, default=None,
+                   help="Kyutai: also send stt.maybe_end at this lower pause probability, so the phone can "
+                        "start drafting earlier (default: only at the end-of-turn crossing, before the flush)")
     a = p.parse_args()
     if a.command == "token-path":
         print(ensure_token())
@@ -141,10 +166,7 @@ def main() -> None:
            "import sys; sys.path.insert(0, sys.argv[1]); from laptop_voice import server; sys.argv = sys.argv[1:]; server.main()",
            str(HERE.parent), "--host", a.host, "--port", a.port, "--stt", a.stt, "--tts", a.tts]
     env = child_env(a.allow_download, a.hf_home)
-    if a.eot_threshold is not None:
-        if not 0.3 <= a.eot_threshold <= 0.99:
-            raise SystemExit("--eot-threshold must be 0.3 to 0.99")
-        env["LEGION_VOICE_KYUTAI_PAUSE"] = repr(float(a.eot_threshold))
+    env.update(tuning_env(a.eot_threshold, a.maybe_threshold, a.tts_nq))
     if os.name == "nt":
         # Put THIS launcher in the job before starting the service, so every process it starts is born
         # inside the job. (A venv's python.exe is a shim that starts the real interpreter as a child;

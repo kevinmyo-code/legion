@@ -16,7 +16,6 @@ import okio.ByteString.Companion.toByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -54,7 +53,7 @@ internal class CloudSpeech(
             transport: GeminiStreamTransport,
             meter: (model: String, usage: JSONObject?) -> Unit = { _, _ -> },
             log: (String) -> Unit = {},
-            keepLines: Set<String> = AckLines.DEFAULT.toSet(),
+            keepLines: Set<String> = ScriptedLines.KEEP,
             voice: String = CloudSpeechWire.VOICE,
             usage: (CallUsage) -> Unit = {},
         ): CloudSpeech {
@@ -262,17 +261,20 @@ internal class GeminiStt(
 
     override fun begin(onServiceEnd: () -> Unit): SttUtterance = Utterance(ids.addAndGet(2))
 
-    /** One transcript for [pcm] (16 kHz PCM16 mono). Never throws except to cancel. */
+    /**
+     * One transcript for [pcm] (16 kHz PCM16 mono). Never throws except to cancel. [report] gets
+     * each request's counts (a speculative draft holds them until it is kept or dropped).
+     */
     @Suppress("ReturnCount")
-    suspend fun transcribe(pcm: ByteArray): SttResult {
+    suspend fun transcribe(pcm: ByteArray, report: (CallUsage) -> Unit = usage): SttResult {
         val audioMs = pcm.size / BYTES_PER_MS
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
         val body = CloudSpeechWire.transcribe(pcm)
         val started = now()
-        var (outcome, turn) = attempt(body, audioMs.toLong())
+        var (outcome, turn) = attempt(body, audioMs.toLong(), report)
         if (CloudSpeechWire.worthRetry(outcome)) {
             log("stt_cloud_retry after=${CloudSpeechWire.token(outcome)}")
-            val again = attempt(body, audioMs.toLong())
+            val again = attempt(body, audioMs.toLong(), report)
             outcome = again.first
             turn = again.second
         }
@@ -293,16 +295,20 @@ internal class GeminiStt(
     }
 
     /** One request, its usage reported whatever happens (a cancel reports what came, as discarded). */
-    private suspend fun attempt(body: JSONObject, audioMs: Long): Pair<StreamOutcome, StreamedTurn> {
+    private suspend fun attempt(
+        body: JSONObject,
+        audioMs: Long,
+        report: (CallUsage) -> Unit,
+    ): Pair<StreamOutcome, StreamedTurn> {
         val turn = StreamedTurn()
         val o = try {
             transport.stream(CloudSpeechWire.STT_MODEL, body) { turn.onEvent(it) }
         } catch (e: kotlinx.coroutines.CancellationException) {
-            usage(CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage, audioMs, discarded = true))
+            report(CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage, audioMs, discarded = true))
             throw e
         }
         val ok = o == StreamOutcome.Ok
-        usage(
+        report(
             CallUsage.of(CallUsage.STT, CloudSpeechWire.STT_MODEL, turn.usage.takeIf { ok }, audioMs, discarded = !ok)
                 .copy(failed = !ok),
         )
@@ -371,8 +377,8 @@ internal class GeminiStt(
  * request at once (at most [maxParallel] at a time), so the first sentence plays while the model is
  * still writing the rest and the next one is already on its way.
  *
- * The scripted opening lines ([keepLines]) are kept for the process once spoken: the same short line
- * is not paid for twice.
+ * The scripted lines ([keepLines]) are kept once spoken, in memory and on disk ([KeptLineAudio]): the
+ * same short line is not paid for, or waited for, twice.
  */
 internal class GeminiTts(
     private val transport: GeminiStreamTransport,
@@ -541,7 +547,7 @@ internal class GeminiTts(
         override suspend fun outcome(): TtsOutcome = outcome.await()
     }
 
-    private fun keyOf(text: String) = "${CloudSpeechWire.TTS_MODEL}|$voice|$text"
+    private fun keyOf(text: String) = "cloud|${CloudSpeechWire.TTS_MODEL}|$voice|$sampleRate|$text"
 
     companion object {
         /** 24 kHz PCM16 mono. */
@@ -550,7 +556,7 @@ internal class GeminiTts(
         /** The sentence playing and the next one; more would only queue at Google. */
         const val MAX_PARALLEL = 2
 
-        /** The scripted lines' audio, for the process. Eight short lines: a few hundred KB at most. */
-        private val KEPT: MutableMap<String, ByteArray> = ConcurrentHashMap()
+        /** The scripted lines' audio: in memory, and on disk across app starts ([KeptLineAudio]). */
+        private val KEPT: MutableMap<String, ByteArray> get() = KeptLineAudio.SHARED
     }
 }

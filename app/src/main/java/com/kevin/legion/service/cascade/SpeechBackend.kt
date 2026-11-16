@@ -60,6 +60,21 @@ internal class TurnUtterance(
 ) : SttUtterance by inner {
     private val kept = ByteArrayOutputStream()
 
+    /** Cloud drafts started for this utterance (each is a paid transcription and model call). */
+    private val cloudDrafts = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Another cloud draft may start: fewer than [SpeculationRules.MAX_CLOUD_DRAFTS] have. */
+    val cloudDraftBudgetLeft: Boolean get() = cloudDrafts.get() < SpeculationRules.MAX_CLOUD_DRAFTS
+
+    /** Counts one cloud draft against the cap; false (and not counted) when the cap is spent. */
+    fun spendCloudDraft(): Boolean {
+        while (true) {
+            val n = cloudDrafts.get()
+            if (n >= SpeculationRules.MAX_CLOUD_DRAFTS) return false
+            if (cloudDrafts.compareAndSet(n, n + 1)) return true
+        }
+    }
+
     override fun audio(pcm: ByteArray, offset: Int, length: Int) {
         inner.audio(pcm, offset, length)
         if (!keepAudio || length <= 0) return

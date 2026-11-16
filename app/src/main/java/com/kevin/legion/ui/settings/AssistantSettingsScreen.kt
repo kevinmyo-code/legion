@@ -35,6 +35,7 @@ import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.WakeEngineKind
 import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.WakeWordPreferences
+import com.kevin.legion.service.cascade.VoiceEngineSettings
 import com.kevin.legion.service.conversationlog.ConversationLog
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.ui.ActiveCompanionRow
@@ -97,6 +98,7 @@ fun AssistantSettingsScreen(
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
+    var speculate by remember { mutableStateOf(VoiceEngineSettings.speculate(context)) }
     var bluetoothMic by remember { mutableStateOf(VoiceTurnSettings.bluetoothMic(context)) }
     var localCommands by remember { mutableStateOf(VoiceTurnSettings.localCommands(context)) }
     var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
@@ -231,6 +233,20 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceTurnSettings.setSmartEndOfTurn(context, on)
                         smartEndOfTurn = on
+                    },
+                )
+
+                // 2026-11-15: speculative answers (voice-fast). Nothing is said or done early.
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Answer sooner (start thinking at a pause)",
+                    explanation = "when you seem to have finished, the answer is started early and " +
+                        "kept only if you really had; nothing is said or done before then. A dropped " +
+                        "start costs a fraction of a cent. Applies from the next conversation.",
+                    enabled = speculate,
+                    onToggle = { on ->
+                        VoiceEngineSettings.setSpeculate(context, on)
+                        speculate = on
                     },
                 )
 

@@ -44,6 +44,7 @@ fun interface WireConnector {
  * and clip with a `dropped` failure at once, so the session above can hand the conversation to
  * Live instead of waiting out a timeout. [onDrop] fires once, with the reason.
  */
+@Suppress("LongParameterList") // the wire, its config and its fakes' seams (scope, ping, kept lines)
 class LaptopVoiceConnection(
     private val connector: WireConnector,
     private val config: LaptopVoiceConfig,
@@ -52,6 +53,13 @@ class LaptopVoiceConnection(
     private val voice: String? = null,
     private val pingEveryMs: Long = PING_EVERY_MS,
     private val onDrop: (String) -> Unit = {},
+    /**
+     * Scripted lines (the opening acknowledgements, the tool filler) whose audio is kept once spoken,
+     * per laptop voice, in memory and on disk ([KeptLineAudio]): the next time, even after an app
+     * restart, it plays at once with no request.
+     */
+    private val keepLines: Set<String> = ScriptedLines.KEEP,
+    private val kept: MutableMap<String, ByteArray> = KEPT,
 ) : SpeechToText, TextToSpeech {
 
     sealed interface OpenResult {
@@ -90,6 +98,26 @@ class LaptopVoiceConnection(
         private set
 
     val isDropped: Boolean get() = dropped.get()
+
+    /** The service's voice model and voice, from `ready` (kept lines are per voice). */
+    @Volatile private var voiceKey: String = ""
+
+    private fun keyOf(text: String) = "laptop|$voiceKey|$sampleRate|$text"
+
+    /**
+     * The service sends `stt.maybe_end` (contract 4b, 2026-11-15): `ready.capabilities.maybe_end`.
+     * False on an older service, which never sends one.
+     */
+    @Volatile var sendsMaybeEnd: Boolean = false
+        private set
+
+    /**
+     * Early signals for a speculative answer, on the socket's thread: `stt.maybe_end` ([id], the text
+     * so far, whether the service has already decided the turn is over and is flushing) and
+     * `stt.partial` ([id], the running transcript). Nothing is final until `stt.final`.
+     */
+    @Volatile var onMaybeEnd: ((id: Int, text: String, atEndOfTurn: Boolean) -> Unit)? = null
+    @Volatile var onPartial: ((id: Int, text: String) -> Unit)? = null
 
     /** Connects, says hello and waits for `ready`. Never throws. */
     @Suppress("ReturnCount") // one worded failure per open step
@@ -226,6 +254,14 @@ class LaptopVoiceConnection(
         val id = nextTts.addAndGet(2)
         val clip = Clip(id, streamed = false)
         clip.sent.append(text)
+        val cached = if (text in keepLines) kept[keyOf(text)] else null
+        if (cached != null && !dropped.get()) {
+            // Played from memory: nothing goes to the laptop.
+            clip.push(cached)
+            clip.finish(TtsOutcome.Done(cached.size.toLong() / TTS_BYTES_PER_MS, 0))
+            return clip
+        }
+        if (text in keepLines) clip.keepAs = keyOf(text)
         clips[id] = clip
         when {
             dropped.get() -> clip.finish(TtsOutcome.Failed(dropReason ?: "dropped"))
@@ -260,6 +296,10 @@ class LaptopVoiceConnection(
         private val finished = AtomicBoolean(false)
         val sent = StringBuffer()
 
+        /** Set for a scripted line: its audio is kept under this key once it has played whole. */
+        @Volatile var keepAs: String? = null
+        private val whole = java.io.ByteArrayOutputStream()
+
         override val text: String get() = sent.toString()
 
         override fun append(text: String) {
@@ -281,10 +321,16 @@ class LaptopVoiceConnection(
         }
 
         fun push(pcm: ByteArray) {
-            if (!cancelled.get() && !outcome.isCompleted) frames.trySend(pcm)
+            if (cancelled.get() || outcome.isCompleted) return
+            if (keepAs != null) synchronized(whole) { whole.write(pcm) }
+            frames.trySend(pcm)
         }
 
         fun finish(o: TtsOutcome) {
+            val key = keepAs
+            if (key != null && o is TtsOutcome.Done && !outcome.isCompleted) {
+                synchronized(whole) { if (whole.size() > 0) kept[key] = whole.toByteArray() }
+            }
             if (outcome.complete(o)) frames.close()
             clips.remove(id)
         }
@@ -332,12 +378,16 @@ class LaptopVoiceConnection(
                         return
                     }
                     val tts = m.optJSONObject("tts")
+                    // What the kept lines are keyed by: the service's voice model and voice.
+                    val voiceName = voice ?: tts?.optString("default_voice").orEmpty()
+                    voiceKey = "${tts?.optString("model").orEmpty()}|$voiceName"
                     tts?.optInt("sample_rate", DEFAULT_TTS_RATE)?.takeIf { it > 0 }?.let { sampleRate = it }
                     val caps = m.optJSONObject("capabilities")
                     streamsText = tts?.optBoolean("text_streaming", false) == true ||
                         caps?.optBoolean("text_streaming", false) == true
                     endsTurns = m.optJSONObject("stt")?.optBoolean("end_of_turn", false) == true ||
                         caps?.optBoolean("end_of_turn", false) == true
+                    sendsMaybeEnd = caps?.optBoolean("maybe_end", false) == true
                     ready.complete(OpenResult.Ready)
                 }
                 "stt.final" -> {
@@ -372,7 +422,8 @@ class LaptopVoiceConnection(
                     )
                 }
                 "error" -> onError(id, m.optString("code").ifBlank { "internal" })
-                else -> Unit // pong, stt.partial, stt.pause, and anything a later protocol adds
+                "stt.maybe_end", "stt.partial" -> onEarlySignal(m, id)
+                else -> Unit // pong, stt.pause, and anything a later protocol adds
             }
         }
 
@@ -385,6 +436,17 @@ class LaptopVoiceConnection(
 
         override fun onClosed(code: Int, reason: String) {
             markDropped(if (code == BUSY_CLOSE) "busy" else "dropped_$code")
+        }
+    }
+
+    /** `stt.maybe_end` / `stt.partial` for an utterance still open: to the session's early hooks. */
+    private fun onEarlySignal(m: JSONObject, id: Int?) {
+        if (id == null || !utterances.containsKey(id)) return
+        val text = m.optString("text").trim()
+        if (m.optString("type") == "stt.partial") {
+            onPartial?.invoke(id, text)
+        } else {
+            onMaybeEnd?.invoke(id, text, m.optBoolean("end_of_turn", false))
         }
     }
 
@@ -411,6 +473,12 @@ class LaptopVoiceConnection(
 
     companion object {
         const val PROTOCOL = 1
+
+        /** 24 kHz PCM16 mono. */
+        private const val TTS_BYTES_PER_MS = 48
+
+        /** The scripted lines' audio: in memory, and on disk across app starts ([KeptLineAudio]). */
+        private val KEPT: MutableMap<String, ByteArray> get() = KeptLineAudio.SHARED
         const val DEFAULT_TTS_RATE = 24_000
         const val HEADER_BYTES = 8
         const val KIND_MIC: Byte = 0x01

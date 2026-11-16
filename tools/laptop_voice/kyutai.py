@@ -35,7 +35,11 @@ class _SttStream:
     def __init__(self, eng: "KyutaiStt", lang: str | None):
         self.lang = lang
         self.s = eng.start()
+        # The end-of-turn text goes out before the flush (stt.maybe_end), then the final after it.
+        self.s.defer_flush = True
+        self.s.maybe_threshold = eng.maybe_threshold
         self.quiet_ms = 0
+        self.last_prob = 0.0
 
     def feed(self, pcm: np.ndarray):
         out = []
@@ -43,10 +47,17 @@ class _SttStream:
         self.quiet_ms = 0 if loud else self.quiet_ms + len(pcm) * 1000 // 16000
         for kind, value in self.s.feed(pcm):
             if kind == "pause":
+                self.last_prob = float(value)
                 out.append(("pause", (value, self.quiet_ms)))
+            elif kind in ("maybe_end", "eot_pending"):
+                out.append((kind, (value, self.last_prob)))
             else:
                 out.append((kind, value))
         return out
+
+    def complete_turn(self) -> str:
+        """The flush after an ("eot_pending", ...) event: the final text of the turn."""
+        return self.s.complete_turn()
 
     def finish(self) -> SttResult:
         return SttResult(text=self.s.finish(), lang=self.lang, lang_prob=None)
@@ -55,6 +66,7 @@ class _SttStream:
 class KyutaiStt(core.KyutaiStt):
     end_of_turn = True
     partials = True
+    maybe_end = True          # sends stt.maybe_end before the end-of-turn flush (contract 4b, 2026-11-15)
     max_sessions = 1          # batch size 1: one live stream at a time
     languages = "en,fr"
 
@@ -63,6 +75,10 @@ class KyutaiStt(core.KyutaiStt):
         kw.setdefault("pause_threshold", float(os.environ.get("LEGION_VOICE_KYUTAI_PAUSE", "0.6")))
         kw.setdefault("flush_extra_s", float(os.environ.get("LEGION_VOICE_KYUTAI_FLUSH_EXTRA_S", "1.6")))
         super().__init__(*a, **kw)
+        # An earlier "maybe the end" at a lower probability (launcher --maybe-threshold). Unset: the
+        # only maybe_end is the one sent at the end-of-turn crossing, before the flush.
+        maybe = os.environ.get("LEGION_VOICE_KYUTAI_MAYBE")
+        self.maybe_threshold = float(maybe) if maybe else None
 
     def open_stream(self, lang: str | None):
         return _SttStream(self, lang)
@@ -146,6 +162,14 @@ class KyutaiTts(core.KyutaiTts):
     max_sessions = 1
 
     def __init__(self, *a, **kw):
+        # Codebooks per 80 ms frame (launcher --tts-nq, 2026-11-15). Unset: the model's full 32. Fewer
+        # means less depformer work per step, so first audio and every frame after it come sooner, at
+        # lower audio quality for the WHOLE utterance: moshi's LMGen fixes the count for its captured
+        # CUDA graphs, so "fewer for the first frames only" would need a second generator (VRAM: the
+        # card has ~250 MB left). Not measured on the 4060 yet; off by default.
+        nq = os.environ.get("LEGION_VOICE_KYUTAI_TTS_NQ")
+        if nq:
+            kw.setdefault("n_q", int(nq))
         super().__init__(*a, **kw)
         self.allowlist = list(core.VOICES)   # fixed ids; the engine maps each to one file in kyutai/tts-voices
         self.voices = self.allowlist

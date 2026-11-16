@@ -14,8 +14,19 @@ import org.json.JSONObject
  */
 enum class SourceState { FACTS, EMPTY, UNREADABLE }
 
-/** One thing a greeting may mention. [topic] is the engine's stable key, or the phone's own for place. */
-data class GreetingItem(val topic: String, val says: String, val raised: Boolean = false, val kind: String? = null)
+/**
+ * One thing a greeting may mention. [topic] is the engine's stable key, or the phone's own for place.
+ * [passesAtMs] is when it stops being true as said: an event still to come today stops at its start,
+ * a task due soon at its due time. A pack kept from earlier ([GreetingPackCache]) drops such an item
+ * once that moment has passed ([FactsPack.asOf]), so a kept pack never announces the past as ahead.
+ */
+data class GreetingItem(
+    val topic: String,
+    val says: String,
+    val raised: Boolean = false,
+    val kind: String? = null,
+    val passesAtMs: Long? = null,
+)
 
 data class GreetingSource(
     val name: String,
@@ -39,7 +50,35 @@ data class FactsPack(
     /** False when the engine could not read which topics were already raised: nothing was left out. */
     val topicsRead: Boolean,
     val topicsReason: String?,
-)
+    /** The body this was parsed from, so a kept pack survives the process ([GreetingPackCache]). */
+    val raw: String? = null,
+) {
+    /**
+     * This pack as of [nowMs]: items whose moment has passed are dropped ([GreetingItem.passesAtMs]).
+     * A source left with nothing was read and now holds nothing: EMPTY, in its own words.
+     */
+    fun asOf(nowMs: Long): FactsPack {
+        if (sources.none { s -> s.items.any { (it.passesAtMs ?: Long.MAX_VALUE) <= nowMs } }) return this
+        return copy(
+            sources = sources.map { s ->
+                val kept = s.items.filter { (it.passesAtMs ?: Long.MAX_VALUE) > nowMs }
+                when {
+                    kept.size == s.items.size -> s
+                    kept.isEmpty() -> s.copy(state = SourceState.EMPTY, says = PASSED_SAYS, items = emptyList())
+                    else -> s.copy(items = kept, says = "${kept.size} on file.")
+                }
+            },
+        )
+    }
+
+    /** [topics] marked as already raised (the phone raised them since this pack was fetched). */
+    fun withSaid(topics: Set<String>): FactsPack =
+        if (topics.isEmpty() || said.containsAll(topics)) this else copy(said = said + topics)
+
+    companion object {
+        const val PASSED_SAYS = "Everything on file here has already passed today; nothing is still ahead."
+    }
+}
 
 /** How an engine call ended, the [com.kevin.legion.grades.GradesOutcome] shape. */
 sealed interface GreetingOutcome<out T> {
@@ -79,6 +118,7 @@ object FactsParser {
             closed = strings(root.optJSONArray("closed")),
             topicsRead = topics?.optString("state") == "read",
             topicsReason = topics?.optStringOrNull("reason"),
+            raw = json,
         )
     }
 
@@ -93,7 +133,7 @@ object FactsParser {
             else -> SourceState.UNREADABLE
         }
         val items = o.optJSONArray("items")?.let { arr ->
-            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::item) }
+            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { item(it, PASSES_AT[name]) } }
         }.orEmpty()
         val says = o.optString("says")
         // A "facts" source with no readable item says nothing mentionable: unreadable, not empty.
@@ -109,13 +149,19 @@ object FactsParser {
         )
     }
 
-    private fun item(o: JSONObject): GreetingItem? {
+    /** The field that says when an item of each source stops being ahead of him. */
+    private val PASSES_AT = mapOf("today_events" to "starts_at", "due_soon" to "due_at")
+
+    private fun item(o: JSONObject, passesAtKey: String?): GreetingItem? {
         val topic = o.optStringOrNull("topic")
         val says = o.optStringOrNull("says")
+        val passesAt = passesAtKey?.let { o.optStringOrNull(it) }?.let { iso ->
+            runCatching { java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli() }.getOrNull()
+        }
         return if (topic == null || says == null) {
             null
         } else {
-            GreetingItem(topic, says, o.optBoolean("raised", false), o.optStringOrNull("kind"))
+            GreetingItem(topic, says, o.optBoolean("raised", false), o.optStringOrNull("kind"), passesAt)
         }
     }
 

@@ -2,12 +2,12 @@ package com.kevin.legion.ui.typeset
 
 import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.assistant.cards.PhoneCards
+import com.kevin.legion.calendar.DueSummary
 import com.kevin.legion.finance.BudgetsWire
 import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.ui.assistant.CardDestination
 import com.kevin.legion.ui.home.AgendaKind
 import com.kevin.legion.ui.home.AgendaRowUi
-import com.kevin.legion.ui.home.TodoRowUi
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -134,12 +134,28 @@ object TypesetHomeDerive {
         return TypesetFigure(number = time(at), label = row.title, lines = listOf(inWords(now, at)))
     }
 
-    /** Open to-dos due today: the count, and the first two by name. */
-    fun due(openCount: Int, todos: List<TodoRowUi>): TypesetFigure {
-        val names = todos.filter { !it.done }.map { it.title }.take(2)
-        val more = (openCount - names.size).coerceAtLeast(0)
-        val lines = names + listOfNotNull(if (more > 0) "and $more more" else null)
-        return TypesetFigure(number = openCount.toString(), label = "due today", lines = lines)
+    /**
+     * What is due TODAY and not done: calendar tasks and dated to-dos whose date is today, counted by
+     * the same reader Alfred answers "what's due" from ([com.kevin.legion.calendar.DueReader]). The
+     * first two by name; what is overdue from earlier days on its own line, never in the number.
+     * (2026-11-15: this read "44 due today" from every open to-do of any date, when 2 were due.)
+     */
+    fun due(summary: DueSummary?, note: String?): TypesetFigure {
+        if (summary == null) {
+            val why = note ?: "Reading what is due."
+            return TypesetFigure(number = "No figure", label = "due today", lines = listOf(why))
+        }
+        val today = summary.open.filter { it.item.date == summary.from }
+        val earlier = summary.open.size - today.size
+        val names = today.map { it.item.title }.take(2)
+        val more = today.size - names.size
+        val lines = names +
+            listOfNotNull(
+                if (more > 0) "and $more more" else null,
+                if (earlier > 0) "$earlier overdue from earlier" else null,
+                summary.unreadable.takeIf { it.isNotEmpty() }?.let { "Couldn't read ${it.joinToString(" or ")}" },
+            )
+        return TypesetFigure(number = today.size.toString(), label = "due today", lines = lines)
     }
 
     /**

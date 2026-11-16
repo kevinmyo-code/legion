@@ -187,6 +187,30 @@ class CascadeWiringTest {
         assertTrue(Regex("catch \\(e: CancellationException\\) \\{\\s+throw e").containsMatchIn(bodyOf(s, "awaitPrompt")))
     }
 
+    // --- speculative answers (voice-fast, 2026-11-15) ----------------------------------------------
+
+    @Test
+    fun `a draft becomes the answer only after the turn is confirmed and checked like any turn`() {
+        val s = session()
+        val run = bodyOf(s, "runTurn")
+        val take = run.indexOf("takeDraft(u, heard)")
+        assertTrue(take >= 0)
+        for (check in listOf("CrisisDetector.detect(heard)", "WakePhrases.isSleepPhrase(heard)", "heard.isBlank()")) {
+            assertTrue("$check must come before a draft is taken", run.indexOf(check) in 0 until take)
+        }
+        assertTrue(bodyOf(s, "answerTurn").contains("drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))"))
+        // The draft path never speaks and never reaches a tool runner: both come only with adopt().
+        for (name in listOf("onMaybeEnd", "startDraftAnswer", "watchCloudSilence", "startCloudDraft", "onPartialText")) {
+            val body = bodyOf(s, name)
+            for (forbidden in listOf("newSpeaker(", "executorFor(", "host.runTool(", "listenerFor(", "playCue(")) {
+                assertFalse("$name must not call $forbidden", body.contains(forbidden))
+            }
+        }
+        assertTrue(bodyOf(s, "draftable").contains("CrisisDetector.detect(heard)"))
+        assertTrue(bodyOf(s, "releaseNow").contains("discardDraft(\"closed\")"))
+        assertTrue(bodyOf(s, "swapToCloud").contains("discardDraft("))
+    }
+
     @Test
     fun `the car's hands-free mic and the Bluetooth watch carry over from Live`() {
         val s = session()

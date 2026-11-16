@@ -106,7 +106,7 @@ fun main(args: Array<String>) = runBlocking {
                 scope = scope,
                 play = { pcm -> bytes += pcm.size; delay(pcm.size * 1000L / 2 / c.sampleRate); true },
                 firstFrameTimeoutMs = CascadeTimings.TTS_FIRST_AUDIO_TIMEOUT_MS,
-                onFirstAudio = { firstAt = System.currentTimeMillis() },
+                onFirstAudio = { _, _ -> firstAt = System.currentTimeMillis() },
                 onClipStarted = {},
             )
             for (w in text.split(" ")) { sp.text("$w "); delay(30) } // about the model's streaming pace

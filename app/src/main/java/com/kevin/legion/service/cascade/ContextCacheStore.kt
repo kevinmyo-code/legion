@@ -59,6 +59,20 @@ class ContextCacheStore(
         return null
     }
 
+    /**
+     * For the open's log line: `live left_s=N` (this prompt's cache is reused), `other_prompt` (a
+     * cache exists for a different prompt; a new one will be created), `expiring`, `creating`, `none`.
+     */
+    fun state(prefix: CascadePrefix): String {
+        val e = entry ?: return if (creating?.isActive == true) "creating" else "none"
+        val left = e.expiresAtMs - now()
+        return when {
+            e.key != prefix.key -> "other_prompt"
+            left <= MARGIN_MS -> "expiring"
+            else -> "live left_s=${left / MS_PER_S}"
+        }
+    }
+
     /** Drops [name] if it is the one held: a request said it is gone or unusable. */
     fun invalidate(name: String) {
         if (entry?.name == name) {

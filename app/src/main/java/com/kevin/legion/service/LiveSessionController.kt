@@ -95,6 +95,9 @@ class LiveSessionController(context: Context) {
     private val appContext = context.applicationContext
     private val brain = AriaBrain.get(appContext)
 
+    // voice-fast (2026-11-15): the cascade's prompt is prepared ahead, and a wake onset warms it.
+    init { com.kevin.legion.service.cascade.CascadeWarmup.install(appContext) }
+
     // Events from GeminiLiveSession arrive on the main thread; keep all state
     // transitions there too so reads in callbacks see the latest value.
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())

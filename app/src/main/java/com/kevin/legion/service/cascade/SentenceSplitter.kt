@@ -98,7 +98,14 @@ class SentenceSplitter(private val firstClauseWords: Int = FIRST_CLAUSE_WORDS) {
     }
 
     companion object {
-        const val FIRST_CLAUSE_WORDS = 12
+        /**
+         * 6 (voice-fast step 4, 2026-11-15; was 12): a first sentence goes to the voice at its first
+         * clause mark once it holds six words, so a sentence-by-sentence voice (the cloud's Gemini
+         * TTS, Kokoro) starts a clause sooner. Six keeps a lone "Sure," or "Well," from becoming a
+         * clip of its own, and a comma is a pause in speech anyway, so the cut is where a speaker
+         * breathes. Kyutai takes streamed text and never uses this splitter.
+         */
+        const val FIRST_CLAUSE_WORDS = 6
         private const val CLOSERS = "\"')]”’"
         private const val CLAUSE_MARKS = ",;:–—"
         private val ABBREVIATIONS = setOf(

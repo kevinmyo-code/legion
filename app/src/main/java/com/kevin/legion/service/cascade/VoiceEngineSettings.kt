@@ -101,6 +101,7 @@ object VoiceEngineSettings {
     private const val ENC_PREFIX = "enc:"
     private const val KEY_STATUS = "last_status"
     private const val KEY_STATUS_AT = "last_status_at"
+    private const val KEY_SPECULATE = "speculate"
 
     /**
      * Gemini Live is retired on the phone (Kevin, 2026-11-15: "replace the sts live pipeline with
@@ -124,6 +125,16 @@ object VoiceEngineSettings {
 
     fun setEngine(context: Context, engine: VoiceEngine) =
         prefs(context).edit().putString(KEY_ENGINE, engine.name).apply()
+
+    /**
+     * Speculative answers (Kevin approved, 2026-11-15): the text model is asked at a likely end of his
+     * turn and the draft is kept only if the turn ends with the same words. Nothing is spoken and no
+     * tool runs before that. On by default; off answers only after the turn is confirmed. Read once
+     * per conversation.
+     */
+    fun speculate(context: Context): Boolean = prefs(context).getBoolean(KEY_SPECULATE, true)
+
+    fun setSpeculate(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SPECULATE, on).apply()
 
     fun laptop(context: Context): LaptopVoiceConfig {
         val p = prefs(context)

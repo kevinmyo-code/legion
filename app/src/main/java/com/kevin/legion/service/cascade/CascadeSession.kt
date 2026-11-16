@@ -150,6 +150,12 @@ internal class CascadeSession(
     private val turnsAnswered = AtomicInteger(0)
     private var greetingLoop: GeminiTextLoop? = null
 
+    /** Speculative answers (the setting, read once at open) and the one draft in flight ([TurnDraft]). */
+    private var speculate = false
+    @Volatile private var draft: TurnDraft? = null
+    private var specPollJob: Job? = null
+    private var cacheStore: ContextCacheStore? = null
+
     /** The open's start, for `open_first_audio_ms` (once). */
     private var openStartedAtMs = 0L
     private var firstAudioLogged = false
@@ -214,6 +220,7 @@ internal class CascadeSession(
         val toolsRan = mutableListOf<String>()
         val writesDone = mutableListOf<String>()
         @Volatile var readThrough = false
+        @Volatile var fillerPlayed = false
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -244,10 +251,15 @@ internal class CascadeSession(
             null
         }
         val config = VoiceEngineSettings.laptop(ctx)
+        CascadeWarmup.conversationOpen = true
+        // The laptop is probed and connected while the mic and the turn models get ready (a wake
+        // word's onset may have started it already); [tryLaptop] takes it.
+        if (laptopFirst) LaptopPrewarm.start(ctx, "open")
         if (listens) {
             // The mic first, as Live claimed it before it connected: the wake capture lets go while
             // the backend opens, so the first capture is not refused.
             if (!MicArbiter.request(micClaimant) { scope.launch(loop) { onMicPreempted() } }) {
+                LaptopPrewarm.cancel("open_aborted")
                 host.notice("Didn't start - the microphone is in use")
                 shutdown("mic_held")
                 host.closed("mic_held")
@@ -255,18 +267,22 @@ internal class CascadeSession(
             }
             micClaimed = true
         }
+        LiveLatency.log(LiveLatency.TAG, "open_mic_ms=${System.currentTimeMillis() - started}")
         // Either voice needs the phone's turn detection to listen: without it, nothing can.
         val models = if (listens) {
             withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
         } else {
             null
         }
+        LiveLatency.log(LiveLatency.TAG, "open_models_ms=${System.currentTimeMillis() - started}")
         if (listens && models == null) {
+            LaptopPrewarm.cancel("open_aborted")
             handOver(Handover.Moment.AtOpen, "open", "turn_models_unavailable")
             return
         }
         this.models = models
         val opened = openBackend(config, started) ?: return
+        LiveLatency.log(LiveLatency.TAG, "open_backend_ms=${System.currentTimeMillis() - started}")
         val b = opened.first
         val probeMs = opened.second
         backend = b
@@ -278,14 +294,21 @@ internal class CascadeSession(
         // prompt building and the cache create). See [buildPrompt].
         val brain = AriaBrain.get(ctx)
         val cache = CACHE
-            ?: ContextCacheStore(OkHttpGemini(), CACHE_SCOPE, log = { LiveLatency.log(LiveLatency.TAG, it) })
-                .also { CACHE = it }
+            ?: ContextCacheStore(
+                OkHttpGemini(),
+                CACHE_SCOPE,
+                memo = PrefsCacheMemo(ctx),
+                log = { LiveLatency.log(LiveLatency.TAG, it) },
+            ).also { CACHE = it }
         // The cache this conversation creates is priced with it (storage runs for its TTL).
         cache.onCreated = { model, tokens, ttlS -> usageLedger.cacheCreated(model, tokens ?: 0, ttlS) }
         buildPrompt(brain, cache, started)
         textLoop = newTextLoop(cache, CallUsage.LLM)
         greetingLoop = newTextLoop(cache, CallUsage.GREETING)
+        cacheStore = cache
         enginesUsed.add(b.kind.token)
+        speculate = listens && VoiceEngineSettings.speculate(ctx)
+        wireEarlySignals(b)
 
         val smartReady = models?.smartTurn != null && TurnModels.smartTurnBroken == null
         val p = CascadeRules.turnPlan(
@@ -357,9 +380,16 @@ internal class CascadeSession(
      * The opening line needs none of it; the greeting and the first turn await [prefixReady].
      */
     private fun buildPrompt(brain: AriaBrain, cache: ContextCacheStore, started: Long) {
+        // Prepared ahead (app start, a wake word's onset, the last conversation): no build at all.
+        val prepared = CascadePrep.fresh()
+        LiveLatency.log(
+            LiveLatency.TAG,
+            "open_prompt prepared=${prepared != null}" +
+                (prepared?.let { " age_s=${(System.currentTimeMillis() - it.builtAtMs) / MS_PER_S}" } ?: ""),
+        )
         val base = scope.async(Dispatchers.IO) {
             val t = System.currentTimeMillis()
-            CascadePrompt.split(brain.buildBaseInstruction()).also {
+            (prepared?.split ?: CascadePrompt.split(brain.buildBaseInstruction())).also {
                 LiveLatency.log(LiveLatency.TAG, "open_base_ms=${System.currentTimeMillis() - t}")
                 // The date paragraph alone until the live context lands.
                 preamble = CascadePrompt.preamble(it.volatile, "")
@@ -368,11 +398,17 @@ internal class CascadeSession(
         prefixReady = scope.async(Dispatchers.IO) {
             val split = base.await()
             val t = System.currentTimeMillis()
-            val declarations = CascadeRules.declarations(LiveToolbox.declarations())
+            val built = prepared?.prefix ?: CascadePrefix(
+                MODEL,
+                split.cacheable,
+                CascadeRules.declarations(LiveToolbox.declarations()),
+            ).also { CascadePrep.offer(split, it) }
             LiveLatency.log(LiveLatency.TAG, "open_declarations_ms=${System.currentTimeMillis() - t}")
-            CascadePrefix(MODEL, split.cacheable, declarations).also {
+            built.also {
                 prefix = it
                 LiveLatency.log(LiveLatency.TAG, "open_prefix_ready_ms=${System.currentTimeMillis() - started}")
+                // Reused across conversations while it lives (same prompt, same key): the line says which.
+                LiveLatency.log(LiveLatency.TAG, "open_cache state=${cache.state(it)}")
                 // A speak-only line makes one round: a cache it would create costs more than it saves.
                 if (listens) cache.warm(it)
             }
@@ -422,7 +458,12 @@ internal class CascadeSession(
     @Suppress("ReturnCount") // the laptop, nothing (Live retired), or the cloud voice
     private suspend fun openBackend(config: LaptopVoiceConfig, started: Long): Pair<SpeechBackend, Long>? {
         // Engine CLOUD: no laptop is asked at all.
-        val laptop = if (laptopFirst) tryLaptop(config, started) else LaptopTry(null, CLOUD_ENGINE, -1L)
+        // The connection started ahead ([LaptopPrewarm]) first; else the usual probe and connect.
+        val laptop = if (laptopFirst) {
+            takePrewarmed() ?: tryLaptop(config, started)
+        } else {
+            LaptopTry(null, CLOUD_ENGINE, -1L)
+        }
         val probeMs = laptop.probeMs
         laptop.speech?.let { return it to probeMs }
         val refusal = laptop.refusal
@@ -489,6 +530,41 @@ internal class CascadeSession(
             LaptopVoiceConnection.OpenResult.Ready -> {
                 VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
                 LaptopTry(speech, "ok", probeMs)
+            }
+        }
+    }
+
+    /**
+     * The laptop connection started at the wake word's onset or at the top of [openNow]
+     * ([LaptopPrewarm]): its probe and hello/ready already ran (or are running) while the mic and the
+     * turn models got ready. Null: nothing in hand, or it dropped; the usual probe and connect follow.
+     */
+    @Suppress("ReturnCount")
+    private suspend fun takePrewarmed(): LaptopTry? {
+        val a = LaptopPrewarm.take() ?: return null
+        val waitMs = CascadeTimings.PROBE_TIMEOUT_MS + CascadeTimings.OPEN_TIMEOUT_MS
+        val r = withTimeoutOrNull(waitMs) { runCatching { a.result.await() }.getOrNull() }
+        when (r) {
+            is LaptopPrewarm.Opened.Ready -> {
+                if (r.connection.isDropped) {
+                    LaptopPrewarm.release(a, "dropped")
+                    return null
+                }
+                val speech = LaptopSpeech(r.connection)
+                a.onDrop = { reason -> scope.launch(loop) { onBackendDropped(speech, reason) } }
+                VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("ok"))
+                return LaptopTry(speech, "ok", r.probeMs)
+            }
+            is LaptopPrewarm.Opened.Refused -> {
+                if (r.token.startsWith("unreachable") || r.token.startsWith("connect_")) {
+                    lastUnreachableAtMs = System.currentTimeMillis()
+                }
+                LiveLatency.log(LiveLatency.TAG, "cascade_probe_ms=${r.probeMs} probe=${r.token} prewarmed=true")
+                return LaptopTry(null, r.token, r.probeMs)
+            }
+            null -> {
+                LaptopPrewarm.release(a, "slow")
+                return null
             }
         }
     }
@@ -567,12 +643,15 @@ internal class CascadeSession(
                 val utt = self ?: return@begin
                 scope.launch(loop) { onServiceEnd(utt) }
             }
-            // The laptop's words are also kept on the phone: if it fails, the cloud hears them.
-            val u = TurnUtterance(inner, b, keepAudio = b.kind == SpeechBackend.Kind.LAPTOP)
+            // The laptop's words are also kept on the phone: if it fails, the cloud hears them. On
+            // the cloud voice they are kept for a speculative draft's transcription.
+            val keep = b.kind == SpeechBackend.Kind.LAPTOP || speculate
+            val u = TurnUtterance(inner, b, keepAudio = keep)
             self = u
             currentUtt = u
             scope.launch(loop) {
                 onUserTurnStart()
+                if (speculate && b.kind == SpeechBackend.Kind.CLOUD) watchCloudSilence(u)
                 // A wall-clock cap under the service's 30 s: in steady noise the silence cap never
                 // fires, and a turn must still end.
                 uttCapJob?.cancel()
@@ -595,7 +674,15 @@ internal class CascadeSession(
         override fun sendActivityEnd() {
             val u = currentUtt ?: return
             currentUtt = null
-            u.end()
+            // A cloud draft transcribed this audio and he said nothing since: that transcript is the
+            // turn's, so the same words are not paid for twice.
+            val d = draft?.takeIf { confirmsAudio(it, u) }
+            if (d != null) {
+                d.audioConfirmed = true
+                u.cancel()
+            } else {
+                u.end()
+            }
             val at = System.currentTimeMillis()
             val source = plan?.phoneEnd ?: CascadeRules.EotSource.PHONE_DETECTOR
             scope.launch(loop) { onTurnEnd(u, at, source, null) }
@@ -626,6 +713,12 @@ internal class CascadeSession(
 
         override fun onLocalSpeech() {
             lastLocalSpeechAtMs = System.currentTimeMillis()
+            // He spoke again after a cloud draft took its audio: that draft is of half a turn.
+            val d = draft ?: return
+            val at = d.speechAtSnapshotMs ?: return
+            if (lastLocalSpeechAtMs > at && d.resumed.compareAndSet(false, true)) {
+                scope.launch(loop) { if (draft === d) discardDraft("speech_resumed") }
+            }
         }
 
         override fun onSileroFailed(reason: String) {
@@ -642,6 +735,7 @@ internal class CascadeSession(
     }
 
     private fun onUserTurnStart() {
+        draft?.takeIf { it.utt !== currentUtt }?.let { discardDraft("new_utterance") }
         followUpEvent(FollowUpWindow.Event.UserSpeech)
         audit.activityStart()
         if (!speaking) host.phase(Phase.LISTENING, "Listening...")
@@ -685,12 +779,16 @@ internal class CascadeSession(
 
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
     private suspend fun runTurn(u: TurnUtterance, eotAtMs: Long) {
-        val stt = u.result(u.backend.sttFinalTimeoutMs)
+        // The cloud draft's transcript, when the phone confirmed the turn on the same audio.
+        val fromDraft = draft?.takeIf { it.utt === u && it.audioConfirmed }
+        val stt = fromDraft?.let { draftTranscript(it, u.backend.sttFinalTimeoutMs) }
+            ?: u.result(u.backend.sttFinalTimeoutMs)
         LiveLatency.log(LiveLatency.TAG, "stt_final_ms=${System.currentTimeMillis() - eotAtMs}" +
             ((stt as? SttResult.Text)?.decodeMs?.let { " stt_decode_ms=$it" } ?: "") +
-            " stt_backend=${u.backend.kind.token}")
+            " stt_backend=${u.backend.kind.token}" + if (fromDraft != null) " stt_spec=true" else "")
         val words = when (stt) {
             is SttResult.Failed -> {
+                discardDraftOf(u, "stt_failed")
                 if (stt.reason == "cancelled") return
                 recoverWords(u, stt.reason) ?: return
             }
@@ -698,22 +796,25 @@ internal class CascadeSession(
         }
         val heard = (carry + " " + words).trim()
         if (heard.isBlank()) {
+            discardDraftOf(u, "nothing_heard")
             backToListening()
             return
         }
         carry = ""
         audit.user(heard, final = true)
         if (CrisisDetector.detect(heard)) {
+            discardDraftOf(u, "not_answered")
             shutdown("crisis")
             host.crisis()
             return
         }
         if (WakePhrases.isSleepPhrase(heard)) {
+            discardDraftOf(u, "not_answered")
             recordTurn(heard, "")
             endByVoice()
             return
         }
-        answerTurn(heard, eotAtMs, TurnRecord(heard))
+        answerTurn(heard, eotAtMs, TurnRecord(heard), takeDraft(u, heard))
     }
 
     /**
@@ -722,7 +823,13 @@ internal class CascadeSession(
      * and a prompt turn ([speakOpener]) so both answer the same way.
      */
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
-    private suspend fun answerTurn(heard: String, eotAtMs: Long?, record: TurnRecord) {
+    private suspend fun answerTurn(
+        heard: String,
+        eotAtMs: Long?,
+        record: TurnRecord,
+        /** A speculative draft confirmed with these words: its answer is this turn's. */
+        drafted: SpeculativeAnswer? = null,
+    ) {
         turn = record
         val seq = turnSeq.getAndIncrement()
         val pfx = try {
@@ -733,10 +840,12 @@ internal class CascadeSession(
             withContext(NonCancellable) {
                 if (turn === record) turn = null
                 if (carry.isBlank()) recordTurn(heard, "", record.readThrough, seq, record.fromUser)
+                drafted?.discard()
             }
             throw e
         } ?: run {
             if (turn === record) turn = null
+            drafted?.discard()
             handOver(heardMoment(heard), "prompt", "prefix_missing")
             return
         }
@@ -744,12 +853,14 @@ internal class CascadeSession(
         var reply = newSpeaker(eotAtMs)
         var outcome: ReplySpeaker.Outcome = ReplySpeaker.Outcome.Interrupted
         try {
-            val result = textLoop!!.answer(
-                pfx,
-                contentsFor(heard),
-                executorFor(record, seq),
-                listenerFor(record, reply),
-            )
+            // A confirmed draft replays what it held (text, marks) and only now may run its tools.
+            val result = drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))
+                ?: textLoop!!.answer(
+                    pfx,
+                    contentsFor(heard),
+                    executorFor(record, seq),
+                    listenerFor(record, reply),
+                )
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
             val text = if (result.failure != null && !reply.anyText) {
                 result.failureWords ?: result.failure.lead
@@ -949,6 +1060,16 @@ internal class CascadeSession(
 
         override fun onToolCalls(names: List<String>) {
             synchronized(record) { record.toolsRan.addAll(names) }
+            // A confirmed turn going to a slow tool says so at once, unless the model already spoke
+            // (its own "let me check" is enough). Never an outcome. A draft only gets here after
+            // confirmation ([SpeculativeAnswer] holds this call until then).
+            if (record.fromUser && ScriptedLines.fillerDue(names, reply.anyText, record.fillerPlayed)) {
+                record.fillerPlayed = true
+                if (reply.filler(ScriptedLines.FILLERS.random())) {
+                    val slow = names.filter { it in ScriptedLines.SLOW_TOOLS }.joinToString(",")
+                    LiveLatency.log(LiveLatency.TAG, "filler tools=$slow")
+                }
+            }
         }
 
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {
@@ -971,16 +1092,25 @@ internal class CascadeSession(
         val p = player!!
         val gen = p.generation()
         var ttsAskedAtMs = System.currentTimeMillis()
+        var audible = false
         return ReplySpeaker(
             tts = b.tts,
             scope = scope,
             play = { pcm -> p.write(pcm, gen) },
             firstFrameTimeoutMs = b.ttsFirstAudioTimeoutMs,
-            onFirstAudio = {
+            onFirstAudio = { _, filler ->
                 val now = System.currentTimeMillis()
-                eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
-                LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
-                scope.launch(loop) { onReplyAudible() }
+                if (filler) {
+                    // Its own line: eot_reply_ms stays the answer's first audio, not the filler's.
+                    eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
+                } else {
+                    eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
+                    LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
+                }
+                if (!audible) {
+                    audible = true
+                    scope.launch(loop) { onReplyAudible() }
+                }
             },
             onClipStarted = { text ->
                 ttsAskedAtMs = System.currentTimeMillis()
@@ -1301,8 +1431,15 @@ internal class CascadeSession(
         usageLedger.add(u)
     }
 
-    /** The text loop for [kind] (`llm` for turns, `greeting` for the greeting): same model, cache, tools. */
-    private fun newTextLoop(cache: ContextCacheStore, kind: String) = GeminiTextLoop(
+    /**
+     * The text loop for [kind] (`llm` for turns, `greeting` for the greeting): same model, cache,
+     * tools. [sink] gets its usage lines (a draft's go through its [UsageHold]).
+     */
+    private fun newTextLoop(
+        cache: ContextCacheStore,
+        kind: String,
+        sink: (CallUsage) -> Unit = ::noteUsage,
+    ) = GeminiTextLoop(
         transport = OkHttpGemini(),
         // A speak-only line makes one round: no cache (a peek would start a create it never uses).
         cache = cache.takeIf { listens },
@@ -1311,12 +1448,197 @@ internal class CascadeSession(
         toolTimeoutMs = { TOOL_BACKSTOP_MS },
         meter = { model, usage ->
             meter(model, usage)
-            noteUsage(CallUsage.of(kind, model, usage))
+            sink(CallUsage.of(kind, model, usage))
         },
         discarded = { model, usage, chars ->
-            noteUsage(CallUsage.of(kind, model, usage, chars = chars, discarded = true))
+            sink(CallUsage.of(kind, model, usage, chars = chars, discarded = true))
         },
     )
+
+    // --- speculative answers ([TurnDraft], Kevin approved 2026-11-15) ----------------------------------
+
+    /** The laptop's early signals reach the session (only when the setting is on). */
+    private fun wireEarlySignals(b: SpeechBackend) {
+        val c = (b as? LaptopSpeech)?.connection
+        LiveLatency.log(
+            LiveLatency.TAG,
+            "spec_config on=$speculate backend=${b.kind.token} maybe_end=${c?.sendsMaybeEnd ?: false}",
+        )
+        if (!speculate || c == null) return
+        c.onMaybeEnd = { id, text, atEnd -> scope.launch(loop) { onMaybeEnd(id, text, atEnd) } }
+        c.onPartial = { id, text -> scope.launch(loop) { onPartialText(id, text) } }
+    }
+
+    /** Why no draft may start now, or null. */
+    private fun draftRefusal(): String? = when {
+        !speculate -> "off"
+        closing.get() -> "closing"
+        prefix == null || cacheStore == null -> "prompt_not_ready"
+        // The first answer waits for the live context (clock, place); a draft must not skip it.
+        preambleReady?.isCompleted == false -> "context_not_ready"
+        speaking || turnJob?.isActive == true -> "turn_busy"
+        else -> null
+    }
+
+    /** The laptop says the turn may be over (or is, and is flushing): draft on its words. */
+    @Suppress("ReturnCount") // one exit per reason not to draft
+    private fun onMaybeEnd(id: Int, text: String, atEnd: Boolean) {
+        val u = currentUtt?.takeIf { it.id == id } ?: return
+        val heard = (carry + " " + text).trim()
+        val d = draft
+        if (d != null && d.utt === u && SpeculationRules.sameText(d.heard.orEmpty(), heard)) return
+        val trigger = if (atEnd) "eot" else "maybe"
+        if (!draftable(heard)) return
+        draftRefusal()?.let { return }
+        discardDraft("superseded")
+        val next = TurnDraft(u, trigger, System.currentTimeMillis())
+        draft = next
+        startDraftAnswer(next, heard)
+    }
+
+    /** A new running transcript for a drafted utterance: different words mean he kept talking. */
+    private fun onPartialText(id: Int, text: String) {
+        val d = draft ?: return
+        if (d.utt.id != id || d.speechAtSnapshotMs != null) return
+        val heard = (carry + " " + text).trim()
+        if (!SpeculationRules.sameText(d.heard.orEmpty(), heard)) discardDraft("speech_resumed")
+    }
+
+    /** Long enough, and nothing [runTurn] would stop before the model (crisis, the sleep phrase). */
+    private fun draftable(heard: String): Boolean =
+        SpeculationRules.longEnough(heard) && !CrisisDetector.detect(heard) && !WakePhrases.isSleepPhrase(heard)
+
+    /** The model is asked on [heard]; its text and tool calls are held ([SpeculativeAnswer]). */
+    @Suppress("ReturnCount")
+    private fun startDraftAnswer(d: TurnDraft, heard: String) {
+        val pfx = prefix ?: return
+        val cache = cacheStore ?: return
+        val hold = UsageHold(::noteUsage)
+        val answer = SpeculativeAnswer(scope, newTextLoop(cache, CallUsage.LLM, hold::add), hold)
+        d.heard = heard
+        d.historySize = history.size
+        d.preamble = preamble
+        d.answer = answer
+        if (d.stt == null) usageLedger.spec(started = 1)
+        LiveLatency.log(
+            LiveLatency.TAG,
+            CascadeLines.specStart(d.trigger, d.utt.backend.kind.token, heard.length),
+        )
+        answer.start(pfx, contentsFor(heard))
+    }
+
+    /**
+     * The cloud voice's early signal: [SpeculationRules.CLOUD_SILENCE_MS] of quiet after his speech
+     * (the phone ends the turn at 700 ms or later). The audio so far is transcribed as a draft; if he
+     * says nothing more, that transcript is the turn's and the answer drafted on it is kept.
+     */
+    private fun watchCloudSilence(u: TurnUtterance) {
+        specPollJob?.cancel()
+        specPollJob = scope.launch(loop) {
+            while (currentUtt === u && !closing.get()) {
+                delay(SpeculationRules.CLOUD_POLL_MS)
+                if (currentUtt !== u) break
+                val last = lastLocalSpeechAtMs
+                val quiet = last > 0 && System.currentTimeMillis() - last >= SpeculationRules.CLOUD_SILENCE_MS
+                val drafting = draft?.utt === u
+                if (quiet && !drafting && cloudDraftAllowed(u)) startCloudDraft(u, last)
+            }
+        }
+    }
+
+    /** Another cloud draft may start for [u] now: its cap is not spent and nothing else refuses. */
+    private fun cloudDraftAllowed(u: TurnUtterance): Boolean = u.cloudDraftBudgetLeft && draftRefusal() == null
+
+    @Suppress("ReturnCount") // one exit per reason not to draft
+    private fun startCloudDraft(u: TurnUtterance, speechAt: Long) {
+        val gemini = (u.backend as? CloudSpeech)?.stt ?: return
+        val audio = u.keptAudio() ?: return
+        if (audio.size < SpeculationRules.CLOUD_MIN_AUDIO_BYTES) return
+        if (!u.spendCloudDraft()) return
+        discardDraft("superseded")
+        val hold = UsageHold(::noteUsage)
+        val d = TurnDraft(u, "silence", System.currentTimeMillis(), speechAtSnapshotMs = speechAt)
+        d.sttHold = hold
+        d.stt = scope.async(Dispatchers.IO) { gemini.transcribe(audio, hold::add) }
+        draft = d
+        usageLedger.spec(started = 1)
+        LiveLatency.log(LiveLatency.TAG, CascadeLines.specStart(d.trigger, u.backend.kind.token, 0))
+        scope.launch(loop) {
+            val r = runCatching { d.stt?.await() }.getOrNull()
+            if (draft !== d || d.answer != null) return@launch
+            LiveLatency.log(LiveLatency.TAG, "spec_stt_ms=${System.currentTimeMillis() - d.startedAtMs} " +
+                "audio_ms=${audio.size / PCM_BYTES_PER_MS}")
+            val heard = (carry + " " + ((r as? SttResult.Text)?.text ?: return@launch)).trim()
+            if (draftable(heard) && draftRefusal() == null) startDraftAnswer(d, heard)
+        }
+    }
+
+    /** The draft transcript, as the turn's (its cost is billed as heard, not discarded). */
+    private suspend fun draftTranscript(d: TurnDraft, timeoutMs: Long): SttResult {
+        val job = d.stt ?: return SttResult.Failed("no_draft")
+        val r = withTimeoutOrNull(timeoutMs) { runCatching { job.await() }.getOrNull() }
+        d.sttHold?.release(discarded = false)
+        if (r == null) job.cancel()
+        return r ?: SttResult.Failed("timeout")
+    }
+
+    /**
+     * The turn is confirmed as [heard]: the draft's answer when it was made from the same words, the
+     * same history and the same context; otherwise it is thrown away (and costed as such).
+     */
+    @Suppress("ReturnCount") // nothing to take, dropped, or kept
+    private fun takeDraft(u: TurnUtterance, heard: String): SpeculativeAnswer? {
+        val d = draft ?: return null
+        draft = null
+        val answer = d.answer
+        val reason = when {
+            d.utt !== u -> "other_utterance"
+            answer == null -> if (d.audioConfirmed) null else "no_answer"
+            !SpeculationRules.sameText(d.heard.orEmpty(), heard) -> "text_changed"
+            d.historySize != history.size || d.preamble != preamble -> "context_changed"
+            answer.unusableReason != null -> answer.unusableReason
+            else -> null
+        }
+        val age = System.currentTimeMillis() - d.startedAtMs
+        if (reason != null || answer == null) {
+            d.drop()
+            if (reason != null) {
+                usageLedger.spec(discarded = 1)
+                LiveLatency.log(LiveLatency.TAG, CascadeLines.specDiscard(d.trigger, reason, age))
+            } else {
+                // The transcript was kept; there was no answer drafted to keep.
+                usageLedger.spec(kept = 1)
+                LiveLatency.log(LiveLatency.TAG, CascadeLines.specKept(d.trigger, age, null, 0, false, false))
+            }
+            return null
+        }
+        usageLedger.spec(kept = 1)
+        val ahead = answer.firstPartAtMs?.let { System.currentTimeMillis() - it }
+        LiveLatency.log(
+            LiveLatency.TAG,
+            CascadeLines.specKept(d.trigger, age, ahead, answer.draftChars, answer.heldAtTool, answer.isDone),
+        )
+        return answer
+    }
+
+    /** [d] transcribed [u]'s audio and he has not spoken since: its transcript is the turn's. */
+    private fun confirmsAudio(d: TurnDraft, u: TurnUtterance): Boolean =
+        d.utt === u && d.stt != null && lastLocalSpeechAtMs == d.speechAtSnapshotMs
+
+    /** Throws the draft away (it was of [u], and the turn will not use it). */
+    private fun discardDraftOf(u: TurnUtterance, reason: String) {
+        if (draft?.utt === u) discardDraft(reason)
+    }
+
+    /** Throws away the draft in flight, if any: nothing it wrote is heard, nothing it asked for runs. */
+    private fun discardDraft(reason: String) {
+        val d = draft ?: return
+        draft = null
+        d.drop()
+        usageLedger.spec(discarded = 1)
+        val age = System.currentTimeMillis() - d.startedAtMs
+        LiveLatency.log(LiveLatency.TAG, CascadeLines.specDiscard(d.trigger, reason, age))
+    }
 
     /** What the follow-up lines carry: the backend speaking now. */
     private fun engineToken(): String = backend?.kind?.token ?: SpeechBackend.Kind.LAPTOP.token
@@ -1350,6 +1672,7 @@ internal class CascadeSession(
         LiveLatency.log(LiveLatency.TAG, CascadeLines.fallback(failed.kind.token, "cloud", stage, reason))
         VoiceEngineSettings.noteStatus(ctx, VoiceEngineSettings.statusWords("${stage}_$reason"))
         host.notice(DROPPED_NOTICE)
+        discardDraft("backend_swap")
         step("laptop_close") { failed.close(reason) }
         val next = cloudSpeech(scope, ::noteUsage)
         enginesUsed.add(next.kind.token)
@@ -1537,6 +1860,8 @@ internal class CascadeSession(
         step("jobs") {
             followUpJob?.cancel()
             uttCapJob?.cancel()
+            specPollJob?.cancel()
+            discardDraft("closed")
             speaker?.interrupt()
             turnJob?.takeIf { it !== caller }?.cancel()
             currentUtt?.cancel()
@@ -1564,6 +1889,12 @@ internal class CascadeSession(
             CACHE?.onCreated = null
         }
         step("audit") { if (auditStarted) audit.sessionEnd(reason) }
+        step("warmup") {
+            CascadeWarmup.conversationOpen = false
+            // The next conversation finds its prompt ready ([CascadePrep]), and its greeting's pack.
+            CascadePrep.prepare(ctx, "close")
+            com.kevin.legion.greeting.GreetingFactory.prefetch(ctx, "close")
+        }
         LiveLatency.log("LIVE_TURN", "cascade closed reason=$reason backend=${engineToken()}")
         scope.launch {
             delay(SCOPE_GRACE_MS)
@@ -1629,6 +1960,9 @@ internal class CascadeSession(
 
 
         private const val CAPTION_CHARS = 160
+
+        /** 16 kHz PCM16 mono. */
+        private const val PCM_BYTES_PER_MS = 32
         private const val DROPPED_NOTICE = "Laptop voice dropped - switched to cloud voice"
         private val CLOUD_FAILED_NOTICE = if (VoiceEngineSettings.LIVE_RETIRED) {
             "Cloud voice failed - conversation ended, tap to try again"
@@ -1652,6 +1986,11 @@ internal class CascadeSession(
         private const val OPENED_NOTE = "(He opened the conversation and you greeted him.)"
 
         @Volatile private var lastUnreachableAtMs = 0L
+
+        private const val MS_PER_S = 1_000L
+
+        /** The laptop failed to answer moments ago: not asked again yet ([CascadeTimings.RECENT_UNREACHABLE_MS]). */
+        fun recentlyUnreachable(now: Long): Boolean = now - lastUnreachableAtMs < CascadeTimings.RECENT_UNREACHABLE_MS
 
         /** A successful Test connection in Settings: try the laptop again at once. */
         fun clearRecentFailure() {

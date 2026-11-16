@@ -110,6 +110,10 @@ Some voice models (Kyutai TTS) can start speaking while the text is still arrivi
   - `stt.final` on Kyutai: `lang` is the forced `lang` or `null` (Kyutai has no language detection; it hears English and French), `lang_prob` is `null`. With `reason: "end_of_turn"`, `decode_ms` is the time of the model step that ended the turn (it includes the flush of the last words).
 - **`end_of_turn: false`:** exactly as section 4 so far. The phone runs its own end-of-turn and sends `stt.end`; every `stt.final` carries `"reason": "client_end"`.
 - Fields added to `stt.final`: `"reason"`: `"client_end"` | `"end_of_turn"` | `"cancelled"`.
+- **`stt.maybe_end` (optional, added 2026-11-15)**, only when `capabilities.maybe_end` is true: `{id, text, prob}` = "the turn may be over; this is the text so far". Nothing is final and the id stays open: an `stt.final` (or more audio, then more events) always follows. Two moments:
+  - with `"end_of_turn": true`: the model has decided the turn is over and this is its text **before** the flush that writes out the last words (median ~275 ms of compute on the 4060, 11-10). The `stt.final` follows with the flushed text, which may be longer ("ending in" -> "ending in 4417").
+  - without it: the pause probability crossed the launcher's lower `--maybe-threshold` (off by default). At most one per stretch of words; new words re-arm it.
+  - The phone may start drafting an answer on the text (its speculative answer) but must speak nothing and run no tool until the `stt.final`, and must compare its draft's text with the final's.
 
 ### 4c. Notes on STT
 
@@ -191,3 +195,8 @@ phone  -> {"type":"bye"}
   - **Tailscale fallback changed** (section 1): `--tls-terminated-tcp=443` keeps the same `https://`/`wss://` URL; no `:8765`, no 100.x bind.
   - **Streamed text is capped at 1,000 chars per stream id** (sum of all `tts.stream.text` for that id). A longer reply: end the id and continue on a new one. A `tts.stream.text` that crosses the cap gets `bad_request` and **closes that id** (no `tts.done` follows); speech queued behind it carries on.
   - **Barge-in partials are late on Kyutai:** while the laptop is speaking, STT and TTS share the GPU, and a streaming utterance's `stt.partial` / `stt.final` ran **0.9 to 3.0 s** behind (measured). Section 4b's barge-in line holds, but do not treat laptop partials as a fast barge-in trigger; keep the phone's `BargeInGate` for that.
+- **2026-11-15, ADDITIVE, protocol stays 1 (the phone's speculative answer, Kevin approved):**
+  - NEW `capabilities.maybe_end` in `ready` and `/health` (false on every engine but Kyutai STT). Unknown to an old phone, which ignores it.
+  - NEW `stt.maybe_end {id, text, prob[, end_of_turn]}` (section 4b). An old phone drops it (it ignores unknown types); a new phone on an old service never sees one and answers after `stt.final` as before.
+  - The turn ends at the same moment with the same final text as before: the flush only moved after the event.
+  - NEW launcher flag `--maybe-threshold` (off by default).

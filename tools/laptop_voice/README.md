@@ -49,6 +49,12 @@ Kyutai holds about 6.7 GB of VRAM and about 10 GB of Windows commit (VRAM is cha
 on WDDM; peak 12.6 GB while loading). The launcher's default cap for Kyutai is 16 GB.
 `--eot-threshold` (default 0.6) sets the pause probability that ends a turn: higher means fewer
 mid-sentence splits and a later end of turn.
+`--maybe-threshold` (off by default) also sends `stt.maybe_end` at that lower pause probability, so
+the phone can start drafting its answer earlier; without it the only `stt.maybe_end` is the one sent
+at the end-of-turn crossing, before the flush (contract 4b).
+`--tts-nq` (8 to 32, default 32) runs the voice with fewer codebooks per frame: faster to first
+audio, lower quality for the whole line. Not measured on the 4060; leave it off until it is
+(`bench_tts.py` with each value, then listen).
 
 ## Test
 
