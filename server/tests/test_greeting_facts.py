@@ -464,3 +464,80 @@ def test_the_tool_reads_the_same_pack_and_says_its_rules(kevin, auth_client, pin
     assert "- ended_events (facts): 1 on file." in text
     assert "Dentist checkup ended Fri Nov 13, 10:00 AM at Example Clinic." in text
     assert structured["sources"] == auth_client.get(FACTS).data["sources"]
+
+
+# =============================================================================
+# Speed (2026-11-15): one events read for the whole pack, no BEGIN/COMMIT per source, no
+# subscription scan. Same answers.
+# =============================================================================
+
+
+def _repeating_class(client):
+    """A daily class this afternoon with yesterday's occurrence skipped."""
+    eid = _event(client, "Daily standup", start=_at(-48 + 2), end=_at(-48 + 3))
+    Event.objects.filter(pk=eid).update(repeat_kind="DAILY", repeat_every=1, repeat_end_kind="NEVER")
+    skipped = (NOW - dt.timedelta(days=1)).date().isoformat()
+    made = client.post(f"/api/events/{eid}/skips", {"skip_date": skipped}, format="json")
+    assert made.status_code == 201, made.data
+    return eid
+
+
+def test_the_shared_events_read_gives_the_same_sources_as_each_reader_alone(
+    kevin, auth_client, pinned
+):
+    _day(auth_client)
+    _repeating_class(auth_client)
+    caller = Caller(kevin)
+    zone, _note = facts.zone_for(kevin_household(kevin))
+    together = facts.pack(caller, NOW)["sources"]
+    for name in ("ended_events", "today_events", "due_soon"):
+        alone = facts._apply_topics(name, facts.READERS[name](caller, NOW, zone), set(), set())
+        assert together[name] == alone, name
+    assert "Daily standup" in _titles(together["today_events"])
+
+
+def kevin_household(user):
+    return HouseholdMember.objects.get(user=user).household
+
+
+def test_the_pack_reads_the_events_table_once(kevin, auth_client, pinned):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    _day(auth_client)
+    _repeating_class(auth_client)
+    with CaptureQueriesContext(connection) as q:
+        facts.pack(Caller(kevin), NOW)
+    events_reads = [
+        x["sql"] for x in q.captured_queries
+        if x["sql"].startswith("SELECT") and 'FROM "events"' in x["sql"]
+    ]
+    # One for one-off rows, one for repeating series (it was six, plus the Canvas check).
+    assert len(events_reads) == 2, events_reads
+    skips_reads = [x for x in q.captured_queries if 'FROM "event_skips"' in x["sql"]]
+    assert len(skips_reads) == 1
+
+
+def test_no_transaction_is_opened_per_source_in_autocommit(monkeypatch):
+    import contextlib
+
+    from django.db import connection
+
+    monkeypatch.setattr(connection, "in_atomic_block", False)
+    assert isinstance(facts._isolated(), contextlib.nullcontext)
+    monkeypatch.setattr(connection, "in_atomic_block", True)
+    assert not isinstance(facts._isolated(), contextlib.nullcontext)
+
+
+def test_the_greeting_skips_the_subscription_scan_and_keeps_every_line(world):  # noqa: F811
+    from api.spend import Month
+    from finance.budgets import budgets
+
+    household, caller = world
+    today = dt.date(2026, 11, 15)
+    full = budgets(caller, household, Month.of(today), today)
+    lean = budgets(caller, household, Month.of(today), today, subscriptions=False)
+    assert lean["subscriptions"] is None and lean["new_subscriptions"] is None
+    assert full["subscriptions"] and full["new_subscriptions"] == ["NEWAPP"]
+    for key in ("categories", "total", "fixed", "days_elapsed", "days_in_month"):
+        assert lean[key] == full[key], key
