@@ -17,10 +17,12 @@ import kotlinx.coroutines.withTimeoutOrNull
  * connect); on the laptop pipeline the ack line is a TTS first-audio, 0.75 s median after the cache
  * is warm (`CascadeTimings`).
  *
- * - [PACK_MS]: the pack fetch and the place read, started AT THE TAP and overlapping the connect
- *   (Live) or the probe, connect and prompt build (laptop). Both already take at least a second, so
- *   a pack answering inside 1.5 s costs the tap nothing; a slow or unreachable engine costs at most
- *   this and then the scripted line plays.
+ * - [PACK_MS]: the most a tap waits for the facts pack and, separately, for the place read. The pack
+ *   is normally in hand before the tap ([GreetingPackCache], 2026-11-15: fetched at app start, a wake
+ *   word's onset, after each conversation and on a timer while the screen is on), so a tap with a
+ *   usable kept pack waits for nothing; only a tap with no usable pack waits, at most this, for the
+ *   refresh it started, and then the scripted line plays. The 11-15 logs showed why waiting at the
+ *   tap alone could not work: the engine answers in 1.6 to 2.0 s, past this budget, every time.
  * - [FIRST_OUTPUT_MS]: from the greeting request going out to its first text (laptop) or first audio
  *   (Live). 2.5 s is `CascadeTimings.TTS_FIRST_AUDIO_TIMEOUT_MS` and about 2.5 times the measured
  *   model first-token time (`llm_first_ms`, about 1 s); past it the person has already waited
@@ -43,50 +45,78 @@ sealed interface GreetingPlan {
 }
 
 /**
- * Turns a tap into a [GreetingPlan]: fetches the pack, reads the place, renders the block and picks
- * the topic. Never throws and never blocks past [GreetingBudget.PACK_MS]; every miss (engine
- * unreachable, route missing, refused, slow, nothing to say) is [GreetingPlan.Scripted], and nothing
- * is spoken about it.
+ * Turns a tap into a [GreetingPlan]: takes the pack ([GreetingPackCache]), reads the place, renders
+ * the block and picks the topic. Never throws and never blocks past [GreetingBudget.PACK_MS]; every
+ * miss (no usable pack and the engine unreachable, refused or slow, nothing to say) is
+ * [GreetingPlan.Scripted], and nothing is spoken about it.
+ *
+ * Logs `greeting_pack source=cache|fresh|none age_s=<n>` once per tap, so a phone audit can see
+ * whether the pack was in hand.
  */
 class GreetingOpening(
     private val backend: GreetingBackend,
     private val place: PlaceSignals,
     private val scope: CoroutineScope,
     private val packBudgetMs: Long = GreetingBudget.PACK_MS,
+    private val cache: GreetingPackCache = GreetingPackCache(backend, scope),
+    private val log: (String) -> Unit = {},
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     @Suppress("ReturnCount") // one exit per way the pack can fail
-    suspend fun prepare(now: LocalTime): GreetingPlan {
-        val result = try {
-            withTimeoutOrNull(packBudgetMs) {
-                coroutineScope {
-                    val facts = async { backend.facts() }
-                    val where = async {
-                        try {
-                            GreetingPlace.read(place)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                            GreetingPlace.failed(e.javaClass.simpleName)
-                        }
-                    }
-                    facts.await() to where.await()
-                }
+    suspend fun prepare(now: LocalTime): GreetingPlan = coroutineScope {
+        val where = async { readPlace() }
+        // Every tap refreshes the pack for the next one; this tap waits on it only with none in hand.
+        val refresh = cache.refresh("tap")
+        val kept = cache.usable()
+        val outcome: GreetingOutcome<FactsPack> = if (kept != null) {
+            log("greeting_pack source=cache age_s=${(clock() - kept.fetchedAtMs) / MS_PER_S}")
+            GreetingOutcome.Ok(kept.pack)
+        } else {
+            val fresh = try {
+                withTimeoutOrNull(packBudgetMs) { refresh.await() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                GreetingOutcome.Unconfirmed("pack_exception_${e.javaClass.simpleName}")
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-            return GreetingPlan.Scripted("pack_exception_${e.javaClass.simpleName}")
-        } ?: return GreetingPlan.Scripted("pack_timeout")
-        val (outcome, where) = result
+            val stale = cache.latest()?.let { (clock() - it.fetchedAtMs) / MS_PER_S } ?: -1
+            if (fresh is GreetingOutcome.Ok) {
+                log("greeting_pack source=fresh age_s=0")
+                GreetingOutcome.Ok(cache.adjusted(fresh.value))
+            } else {
+                log("greeting_pack source=none age_s=$stale")
+                if (fresh == null) {
+                    where.cancel()
+                    return@coroutineScope GreetingPlan.Scripted("pack_timeout")
+                }
+                fresh
+            }
+        }
         val pack = when (outcome) {
             is GreetingOutcome.Ok -> outcome.value
-            is GreetingOutcome.Unreachable -> return GreetingPlan.Scripted("engine_unreachable")
-            is GreetingOutcome.Refused -> return GreetingPlan.Scripted("engine_refused_${outcome.status}")
-            is GreetingOutcome.Unconfirmed -> return GreetingPlan.Scripted("engine_unconfirmed")
+            is GreetingOutcome.Unreachable -> return@coroutineScope scripted(where, "engine_unreachable")
+            is GreetingOutcome.Refused ->
+                return@coroutineScope scripted(where, "engine_refused_${outcome.status}")
+            is GreetingOutcome.Unconfirmed -> return@coroutineScope scripted(where, "engine_unconfirmed")
         }
-        val place = GreetingPlace.applyTopics(where, pack.said, pack.closed)
-        val lead = GreetingBlock.pick(pack, place, now.hour) ?: return GreetingPlan.Scripted("nothing_to_say")
-        return GreetingPlan.Personal(GreetingPrompt.build(GreetingBlock.render(pack, place, now), lead), lead.topic)
+        val place = GreetingPlace.applyTopics(where.await(), pack.said, pack.closed)
+        val lead = GreetingBlock.pick(pack, place, now.hour)
+            ?: return@coroutineScope GreetingPlan.Scripted("nothing_to_say")
+        GreetingPlan.Personal(GreetingPrompt.build(GreetingBlock.render(pack, place, now), lead), lead.topic)
+    }
+
+    private fun scripted(where: kotlinx.coroutines.Deferred<GreetingSource>, reason: String): GreetingPlan {
+        where.cancel()
+        return GreetingPlan.Scripted(reason)
+    }
+
+    /** The place, bounded on its own: a slow fix or geocoder costs the place, never the greeting. */
+    private suspend fun readPlace(): GreetingSource = try {
+        withTimeoutOrNull(packBudgetMs) { GreetingPlace.read(place) } ?: GreetingPlace.failed("timeout")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+        GreetingPlace.failed(e.javaClass.simpleName)
     }
 
     /**
@@ -94,6 +124,7 @@ class GreetingOpening(
      * costs only a possible repeat tomorrow, which the next pack's `said` list would have prevented.
      */
     fun noteRaised(topic: String) {
+        cache.noteRaised(topic)
         scope.launch(Dispatchers.IO) {
             runCatching { backend.recordTopic(topic, STATE_RAISED) }
         }
@@ -101,5 +132,6 @@ class GreetingOpening(
 
     companion object {
         const val STATE_RAISED = "raised"
+        private const val MS_PER_S = 1_000L
     }
 }

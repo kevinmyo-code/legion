@@ -16,7 +16,6 @@ import okio.ByteString.Companion.toByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -378,8 +377,8 @@ internal class GeminiStt(
  * request at once (at most [maxParallel] at a time), so the first sentence plays while the model is
  * still writing the rest and the next one is already on its way.
  *
- * The scripted opening lines ([keepLines]) are kept for the process once spoken: the same short line
- * is not paid for twice.
+ * The scripted lines ([keepLines]) are kept once spoken, in memory and on disk ([KeptLineAudio]): the
+ * same short line is not paid for, or waited for, twice.
  */
 internal class GeminiTts(
     private val transport: GeminiStreamTransport,
@@ -548,7 +547,7 @@ internal class GeminiTts(
         override suspend fun outcome(): TtsOutcome = outcome.await()
     }
 
-    private fun keyOf(text: String) = "${CloudSpeechWire.TTS_MODEL}|$voice|$text"
+    private fun keyOf(text: String) = "cloud|${CloudSpeechWire.TTS_MODEL}|$voice|$sampleRate|$text"
 
     companion object {
         /** 24 kHz PCM16 mono. */
@@ -557,7 +556,7 @@ internal class GeminiTts(
         /** The sentence playing and the next one; more would only queue at Google. */
         const val MAX_PARALLEL = 2
 
-        /** The scripted lines' audio, for the process. Eight short lines: a few hundred KB at most. */
-        private val KEPT: MutableMap<String, ByteArray> = ConcurrentHashMap()
+        /** The scripted lines' audio: in memory, and on disk across app starts ([KeptLineAudio]). */
+        private val KEPT: MutableMap<String, ByteArray> get() = KeptLineAudio.SHARED
     }
 }

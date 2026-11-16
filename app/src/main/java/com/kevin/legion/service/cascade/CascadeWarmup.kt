@@ -1,7 +1,10 @@
 package com.kevin.legion.service.cascade
 
 import android.content.Context
+import android.os.PowerManager
 import com.kevin.legion.BuildConfig
+import com.kevin.legion.greeting.GreetingFactory
+import com.kevin.legion.greeting.GreetingPackCache
 import com.kevin.legion.service.LiveLatency
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -13,7 +16,8 @@ import kotlinx.coroutines.launch
 
 /**
  * What runs BEFORE a conversation opens (voice-fast step 2, 2026-11-15): the prompt is prepared at
- * app start ([CascadePrep]), and a wake word's onset (a score past the detector's near-miss floor,
+ * app start ([CascadePrep]), the greeting's facts pack is fetched then and every
+ * [GreetingPackCache.TIMER_MS] while the screen is on ([GreetingFactory.prefetch]), and a wake word's onset (a score past the detector's near-miss floor,
  * under the wake threshold) starts preparing it again and connecting to the laptop
  * ([LaptopPrewarm]); a wake that does not confirm closes that connection.
  *
@@ -50,11 +54,22 @@ internal object CascadeWarmup {
     fun install(context: Context) {
         val ctx = context.applicationContext
         appContext = ctx
+        KeptLineAudio.install(ctx)
         scope.launch {
             delay(START_DELAY_MS)
             CascadePrep.prepare(ctx, "start")
+            GreetingFactory.prefetch(ctx, "start")
+            // The greeting's facts pack, kept fresh while the screen is on (a dark screen asks
+            // for nothing; the onset and the tap still refresh it).
+            while (true) {
+                delay(GreetingPackCache.TIMER_MS)
+                if (screenOn(ctx)) GreetingFactory.prefetch(ctx, "timer")
+            }
         }
     }
+
+    private fun screenOn(ctx: Context): Boolean =
+        (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
 
     /** The wake word's score rose past its onset floor (not yet the wake threshold). */
     fun onWakeOnset() {
@@ -62,6 +77,7 @@ internal object CascadeWarmup {
         if (conversationOpen) return
         LiveLatency.log(LiveLatency.TAG, "wake_onset")
         CascadePrep.prepare(ctx, "onset")
+        GreetingFactory.prefetch(ctx, "onset")
         if (missCooling(System.currentTimeMillis())) {
             LiveLatency.log(LiveLatency.TAG, "prewarm_skip reason=miss_cooldown")
         } else if (VoiceEngineSettings.engine(ctx) == VoiceEngine.LAPTOP) {

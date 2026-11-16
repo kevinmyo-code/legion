@@ -1891,8 +1891,9 @@ internal class CascadeSession(
         step("audit") { if (auditStarted) audit.sessionEnd(reason) }
         step("warmup") {
             CascadeWarmup.conversationOpen = false
-            // The next conversation finds its prompt ready ([CascadePrep]).
+            // The next conversation finds its prompt ready ([CascadePrep]), and its greeting's pack.
             CascadePrep.prepare(ctx, "close")
+            com.kevin.legion.greeting.GreetingFactory.prefetch(ctx, "close")
         }
         LiveLatency.log("LIVE_TURN", "cascade closed reason=$reason backend=${engineToken()}")
         scope.launch {
