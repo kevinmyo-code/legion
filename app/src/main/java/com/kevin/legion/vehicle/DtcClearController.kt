@@ -105,7 +105,7 @@ object DtcClearController {
                 codesAfter = null,
                 freezeFrameJson = "",
                 ackRaw = "",
-                message = confirmMessage(codesBefore, engineRunning),
+                message = confirmMessage(engineRunning),
             )
         }
 
@@ -180,33 +180,25 @@ object DtcClearController {
     )
 
     /**
-     * D9's confirm-prompt register, recited every time (D4.3 - never first-use-only, since the
-     * codes differ each time). [engineRunning] adds D4.5's warn-not-gate clause; an ECU that
-     * genuinely refuses while running still surfaces as [ClearOutcome.REFUSED] on the next call,
-     * so this is a heads-up, never a block.
+     * D9's confirm-prompt register, recited every time. [engineRunning] adds D4.5's warn-not-gate
+     * clause; an ECU that genuinely refuses while running still surfaces as [ClearOutcome.REFUSED]
+     * on the next call, so this is a heads-up, never a block.
+     *
+     * **It names no code and no count (2026-11-16, stage 7 fleet eval).** flash-lite used this
+     * question as a code reader for "read the codes again" and "any fault codes?" because it
+     * recited the stored codes; reading codes is ask_fleet's job. The codes stay on the result
+     * ([ClearResult.codesBefore]) for the record, never in the words.
      */
-    private fun confirmMessage(codes: List<String>, engineRunning: Boolean): String {
-        val pronoun = when (codes.size) {
-            1 -> "it"
-            2 -> "both"
-            else -> "them"
-        }
+    private fun confirmMessage(engineRunning: Boolean): String {
         val engineClause = if (engineRunning) {
             " Engine is running - some ECUs refuse a clear while running."
         } else {
             ""
         }
-        return "${countWord(codes.size)} stored: ${englishList(codes)}. Clearing wipes $pronoun, wipes the " +
-            "freeze frame, and resets the readiness monitors, so the car will fail an emissions test " +
-            "until it has driven enough to reset them.$engineClause Do you want me to clear?"
+        return "Clearing wipes the stored trouble codes, wipes the freeze frame, and resets the readiness " +
+            "monitors, so the car will fail an emissions test until it has driven enough to reset them." +
+            "$engineClause Do you want me to clear?"
     }
-
-    private val NUMBER_WORDS = mapOf(
-        1 to "One", 2 to "Two", 3 to "Three", 4 to "Four", 5 to "Five",
-        6 to "Six", 7 to "Seven", 8 to "Eight", 9 to "Nine",
-    )
-
-    private fun countWord(n: Int): String = NUMBER_WORDS[n] ?: n.toString()
 
     /** "P0420" / "P0420 and P0128" / "P0420, P0128, and P0301" - Oxford comma, matching D9's example. */
     private fun englishList(codes: List<String>): String = when (codes.size) {

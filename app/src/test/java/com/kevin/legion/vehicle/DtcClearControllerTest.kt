@@ -88,8 +88,11 @@ class DtcClearControllerTest {
         assertNull("the confirm-prompt turn is not yet one of the five ClearOutcome states", result.outcome)
         assertEquals(listOf("P0133", "P0420"), result.codesBefore)
         assertNull(result.codesAfter)
-        assertTrue("the prompt names the actual stored codes", result.message.contains("P0133"))
-        assertTrue(result.message.contains("P0420"))
+        // 2026-11-16: the question is useless as a code reader; the codes stay on the result only.
+        assertFalse("the prompt names no stored code", result.message.contains("P0133"))
+        assertFalse(result.message.contains("P0420"))
+        val count = Regex("\\b(one|two|three)\\b", RegexOption.IGNORE_CASE)
+        assertFalse("nor a count", count.containsMatchIn(result.message))
         assertTrue("the prompt ends by asking", result.message.endsWith("Do you want me to clear?"))
         assertFalse("confirmed=false must NEVER send Mode 04 (D4.1)", fake.clearSent)
     }
