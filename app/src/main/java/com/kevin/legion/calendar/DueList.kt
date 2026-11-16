@@ -158,7 +158,8 @@ object DueList {
             else -> "Nothing else open is due in this window."
         }
         // Overdue work from before the window is looked for whenever the window reaches today.
-        if (overdue.isEmpty() && s.today != null && !s.to.isBefore(s.today) && s.unreadable.isEmpty()) {
+        val lookedForOverdue = s.today?.let { !s.to.isBefore(it) } == true && s.unreadable.isEmpty()
+        if (overdue.isEmpty() && lookedForOverdue) {
             parts += "Nothing is overdue."
         }
         if (s.doneCount > 0) parts += "${s.doneCount} already done."

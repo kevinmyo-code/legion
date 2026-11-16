@@ -80,7 +80,8 @@ class ReadCalendarDueBlockTest {
         assertEquals("todo", items.getJSONObject(0).getString("source"))
         assertEquals("Lab worksheet", items.getJSONObject(1).getString("title"))
         assertEquals("calendar", items.getJSONObject(1).getString("source"))
-        assertTrue(due.getString("says"), due.getString("says").startsWith("2 open and due, not done, not overdue yet:"))
+        val says = due.getString("says")
+        assertTrue(says, says.startsWith("2 open and due, not done, not overdue yet:"))
 
         // Rows: the two tasks (reminders are not calendar rows), the open one first.
         assertEquals(2, r.getInt("count"))

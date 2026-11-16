@@ -123,7 +123,10 @@ class DueListTest {
         assertEquals("Nothing open is due in this window. Nothing is overdue.", DueList.says(clear))
         val blind = DueList.summarize(emptyList(), today, today, today, noon, listOf("to-dos"))
         assertTrue(DueList.says(blind).contains("Could not read to-dos"))
-        assertFalse("an unreadable source never says nothing is overdue", DueList.says(blind).contains("Nothing is overdue"))
+        assertFalse(
+            "an unreadable source never says nothing is overdue",
+            DueList.says(blind).contains("Nothing is overdue"),
+        )
     }
 
     @Test fun `the json block leads with the counts and tags each item's source`() {
@@ -169,7 +172,8 @@ class DueListTest {
     @Test fun `at 00 30 local, last night's 23 59 work is overdue and tomorrow is the new tomorrow`() {
         val next = today.plusDays(1)
         val s = nightSummary(next.atTime(0, 30), next, next)
-        assertEquals(setOf("Tonight quiz", "Last night homework"), s.open.filter { it.overdue }.map { it.item.title }.toSet())
+        val overdue = s.open.filter { it.overdue }.map { it.item.title }.toSet()
+        assertEquals(setOf("Tonight quiz", "Last night homework"), overdue)
         val says = DueList.says(s)
         assertTrue(says, says.contains("Tonight quiz (due yesterday, Sun "))
         assertEquals("Monday 2026-11-16", DueReader.toJson(s).getString("today"))

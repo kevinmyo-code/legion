@@ -1547,8 +1547,10 @@ object LiveToolbox {
         if (action != "add" && args.optString("vehicle").isBlank()) {
             // 2026-11-15 voice eval: "which cars do I have on file" called switch_vehicle with no car.
             // Nothing changes without a named car; the refusal says where a read goes instead.
-            if (action == "switch") return result(false, SWITCH_NEEDS_A_CAR)
-            return result(false, "Which car do you mean? Tell me and I'll $action it.")
+            return result(
+                false,
+                if (action == "switch") SWITCH_NEEDS_A_CAR else "Which car do you mean? Tell me and I'll $action it.",
+            )
         }
 
         return when (action) {
@@ -1572,19 +1574,7 @@ object LiveToolbox {
                 if (name == null) result(false, "What would you like me to call it?")
                 else result(true, VehicleController.correctVehicle(context, it.obdMac, name = name))
             }
-            "switch" -> withResolvedVehicle(context, args) {
-                // With the dongle connected this also answers "which car is it in" (2026-11-15), and
-                // can refuse (a VIN conflict), so the flag is the outcome's, never a hardcoded true.
-                // Already the selected car and no dongle connected: nothing to change, said so.
-                val noDongle = com.kevin.legion.vehicle.DongleCarController.state.value == null
-                if (ActiveVehicle.selected(context) == it.obdMac && noDongle) {
-                    return@withResolvedVehicle result(
-                        true, "The ${VehicleController.label(it)} was already the selected car; nothing changed.",
-                    )
-                }
-                val outcome = VehicleController.switchToOutcome(context, it.obdMac)
-                result(outcome.success, outcome.message)
-            }
+            "switch" -> withResolvedVehicle(context, args) { switchTo(context, it) }
             "archive" -> withResolvedVehicle(context, args) {
                 VehicleController.archive(context, it.obdMac)
                 result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")
@@ -2021,6 +2011,21 @@ object LiveToolbox {
 
     private const val TASK_WINDOW_AHEAD_MS = 7L * 24 * 60 * 60 * 1000
     private val RELATIVE_WORDS = setOf("today", "tomorrow", "yesterday")
+    /**
+     * `manage_vehicle switch` once the car is resolved. With the dongle connected this also answers
+     * "which car is it in" (2026-11-15), and can refuse (a VIN conflict), so the flag is the
+     * outcome's, never a hardcoded true. Already the selected car with no dongle connected: nothing
+     * to change, and the result says so.
+     */
+    private suspend fun switchTo(context: Context, car: Vehicle): JSONObject {
+        val noDongle = com.kevin.legion.vehicle.DongleCarController.state.value == null
+        if (ActiveVehicle.selected(context) == car.obdMac && noDongle) {
+            return result(true, "The ${VehicleController.label(car)} was already the selected car; nothing changed.")
+        }
+        val outcome = VehicleController.switchToOutcome(context, car.obdMac)
+        return result(outcome.success, outcome.message)
+    }
+
     private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +
         "and needs the car's name. To say which cars he has, call ask ask_fleet."
     private const val TASK_WINDOW_BEHIND_MS = 30L * 24 * 60 * 60 * 1000
@@ -4007,8 +4012,11 @@ object LiveToolbox {
         val s = raw.trim()
         if (s.isBlank()) return null
         // The words resolve on the local date too (RelativeDay, 2026-11-16).
-        if (s.lowercase() in RELATIVE_WORDS) return RelativeDay.parse(s, RelativeDay.today())
-        return runCatching { java.time.LocalDate.parse(s, NOTE_DATE_FORMAT) }.getOrNull()
+        return if (s.lowercase() in RELATIVE_WORDS) {
+            RelativeDay.parse(s, RelativeDay.today())
+        } else {
+            runCatching { java.time.LocalDate.parse(s, NOTE_DATE_FORMAT) }.getOrNull()
+        }
     }
 
     /** `HH:mm` as a local wall-clock time. Null if blank/unparseable. */

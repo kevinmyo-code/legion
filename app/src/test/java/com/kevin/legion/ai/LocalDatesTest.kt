@@ -44,7 +44,8 @@ class LocalDatesTest {
 
     @Test fun `the paragraph still splits out of the cached instruction, and names no zone id`() {
         val now = at(LocalDate.of(2026, 11, 15), 23, 30)
-        val base = "An invented instruction.\n\n" + localDates(now) + " The user's clock reads UTC-06:00.\n\nMore rules."
+        val base = "An invented instruction.\n\n" + localDates(now) +
+            " The user's clock reads UTC-06:00.\n\nMore rules."
         val split = CascadePrompt.split(base)
         assertTrue(split.volatile, split.volatile.contains("(2026-11-16)"))
         assertFalse(split.cacheable, split.cacheable.contains("2026-11-15"))
