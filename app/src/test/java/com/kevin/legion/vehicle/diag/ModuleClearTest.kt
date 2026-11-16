@@ -95,6 +95,9 @@ class ModuleClearTest {
         assertEquals(ModuleClearer.MOVING, rig.clear(targets).refusedAll)
         car.speedKmh = -1
         assertEquals("no speed answer is not parked", ModuleClearer.SPEED_UNKNOWN, rig.clear(targets).refusedAll)
+        car.speedKmh = 0
+        car.rpm = -1
+        assertEquals("no RPM answer is not engine off", ModuleClearer.RPM_UNKNOWN, rig.clear(targets).refusedAll)
         assertTrue(car.modules.all { m -> m.received.none { it.first() == Uds.CLEAR_DTC || it.first() == 0x04 } })
     }
 

@@ -51,16 +51,16 @@ data class ClearRun(
 class ModuleClearer(private val link: DiagLink, private val bus: BusKind) {
 
     suspend fun clear(targets: List<ClearTarget>, before: ScanReport): ClearRun {
-        // Fails closed on speed: a clear is a write, so a speed the car did not give is not "parked".
-        val speed = if (targets.isEmpty()) null else GenericPid.speedKmh(link.send("010D", TIMEOUT_MS))
-        val refusal = when {
-            targets.isEmpty() -> "Nothing was chosen to clear."
-            speed == null -> SPEED_UNKNOWN
-            speed > 0 -> MOVING
-            (rpm(link.send("010C", TIMEOUT_MS)) ?: 0) > 0 -> RUNNING
-            else -> null
-        }
+        // Fails closed: a clear is a write, so a speed or RPM the car did not give is not "parked, engine off".
+        val refusal = if (targets.isEmpty()) "Nothing was chosen to clear." else parkedRefusal()
         return if (refusal != null) ClearRun(emptyList(), refusal) else send(targets, before)
+    }
+
+    private suspend fun parkedRefusal(): String? {
+        val speed = GenericPid.speedKmh(link.send("010D", TIMEOUT_MS)) ?: return SPEED_UNKNOWN
+        if (speed > 0) return MOVING
+        val rpm = rpm(link.send("010C", TIMEOUT_MS)) ?: return RPM_UNKNOWN
+        return if (rpm > 0) RUNNING else null
     }
 
     private suspend fun send(targets: List<ClearTarget>, before: ScanReport): ClearRun {
@@ -171,6 +171,8 @@ class ModuleClearer(private val link: DiagLink, private val bus: BusKind) {
         const val MOVING = "The car is moving. Nothing was sent; clear codes only when parked."
         const val SPEED_UNKNOWN = "The car did not give its speed, so it is not known to be parked. Nothing was " +
             "sent; key at ON, engine off, and ask again."
+        const val RPM_UNKNOWN = "The car did not give its engine speed, so the engine is not known to be off. " +
+            "Nothing was sent; key at ON, engine off, and ask again."
         const val RUNNING = "The engine is running. Nothing was sent: turn the engine off, leave the key at ON, " +
             "and ask again."
         const val HEADERS_REFUSED = "The adapter refused headers on, so no module beyond the engine was cleared."
