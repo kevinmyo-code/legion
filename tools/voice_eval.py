@@ -332,6 +332,12 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
             fails.append("said nothing is due while a tool result shows an open task")
     if not answer:
         fails.append("no answer text")
+    # A question that only reads must not change anything (2026-11-15: "which cars do I have"
+    # called car/switch_vehicle on the laptop eval).
+    if not write:
+        for c in turn.calls:
+            if _looks_write(c):
+                fails.append(f"changed something on a question that only reads: {c.key}")
     # Writes on the phone: refused unless the case allows them, and never claimed.
     for c in turn.calls:
         if phone and not allow_writes and c.success and not c.refused_for_test and _looks_write(c):
@@ -344,7 +350,9 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
     return fails, warns
 
 
-WRITE_ACTIONS = {"add", "remove", "tick", "untick", "schedule", "skip", "create", "clear_ticked", "set", "log"}
+WRITE_ACTIONS = {"add", "remove", "tick", "untick", "schedule", "skip", "create", "clear_ticked", "set", "log",
+                 "complete_task", "watch_set", "watch_pause", "watch_resume", "watch_remove", "remember", "forget",
+                 "start_voice_note", "stop_voice_note", "place_call", "answer_call", "decline_call", "install"}
 WRITE_TOOLS = {"complete_task", "car", "body_log", "money", "place", "memory", "phone", "clock", "goal", "trip"}
 READ_ACTIONS = {"list", "read", "lists", "ticked", "list_budget_categories", "watch_list", "recall", "search"}
 
@@ -353,7 +361,8 @@ def _looks_write(c: ToolCall) -> bool:
     """Only a hint for the scorer; the phone's own gate is the guarantee (TestTurnPolicy.kt)."""
     if c.action in READ_ACTIONS:
         return False
-    return c.action in WRITE_ACTIONS or c.name in WRITE_TOOLS
+    return (c.action in WRITE_ACTIONS or c.action.startswith(("log_", "set_", "switch_", "add_"))
+            or c.name in WRITE_TOOLS)
 
 
 def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
@@ -455,14 +464,15 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         turn_ms = [t.timings.get("test_turn_ms") or t.timings.get("eot_reply_ms") for t in run.turns]
         ms = "/".join(str(x) for x in turn_ms if x is not None) or (str(run.ms) if run.ms else "-")
         row = {"id": case["id"], "pass": v.passed, "llm": v.llm, "tools": tools, "ms": ms,
-               "tokens": tok, "usd": str(cost), "failures": v.failures, "warnings": v.warnings,
+               "tokens": tok, "usd": str(cost), "priced": not any("no price" in n for n in notes), "failures": v.failures, "warnings": v.warnings,
                "answer": " | ".join(t.answer for t in run.turns), "notes": run.notes,
                "timings": run.timings}
         rows.append(row)
         flag = "PASS" if v.passed else "FAIL"
         llm = f"  LLM {v.llm}" if v.llm else ""
+        money = usd(cost) if row["priced"] else "no price"
         lines.append(f"{flag}  {case['id']:<22} {tools[:48]:<48} {ms:>11}  "
-                     f"in {tok['prompt']:>6} cached {tok['cached']:>6} out {tok['out']:>4}  {usd(cost):>8}{llm}")
+                     f"in {tok['prompt']:>6} cached {tok['cached']:>6} out {tok['out']:>4}  {money:>8}{llm}")
         if verbose or not v.passed:
             for f in v.failures:
                 lines.append(f"      x {f}")
@@ -482,6 +492,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         total += overhead
     head = (f"VOICE EVAL ({'phone, real data' if phone else 'laptop, fake data'})  model={model}  "
             f"pass {passed}/{passed + failed}" + (f"  not run {missing}" if missing else "")
+            + ("  cost INCOMPLETE: some calls have no price on file" if any(not r["priced"] for r in rows) else "")
             + f"  cost {usd(total)} (ESTIMATE"
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
     tail = [f"note: {n}" for n in sorted(notes_all)]
@@ -506,7 +517,8 @@ def compare(summaries: list[dict]) -> list[str]:
         cells = []
         for s in summaries:
             r = next((x for x in s["cases"] if x["id"] == i), None)
-            cells.append("-" if r is None else f"{'PASS' if r['pass'] else 'FAIL'} {r['ms']}ms {usd(Decimal(r['usd']))}")
+            money = usd(Decimal(r["usd"])) if r is not None and r.get("priced", True) else "no price"
+            cells.append("-" if r is None else f"{'PASS' if r['pass'] else 'FAIL'} {r['ms']}ms {money}")
         out.append(f"{i:<22}" + "".join(f"  {c:<24}" for c in cells))
     out.append(f"{'total':<22}" + "".join(
         f"  {str(s['passed']) + '/' + str(s['passed'] + s['failed']) + ' ' + usd(Decimal(s['usd'])):<24}" for s in summaries))

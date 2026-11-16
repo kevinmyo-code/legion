@@ -76,7 +76,7 @@
     {
       "id": "time_now",
       "say": "what time is it",
-      "expect": {"answer_has": ["\\d|noon|midnight|o'clock"]}
+      "expect": {"answer_has": ["\\d|noon|midnight|o'clock|\\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b"]}
     },
     {
       "id": "then_tomorrow",
