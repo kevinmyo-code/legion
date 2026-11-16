@@ -111,12 +111,17 @@ class GreetingOpening(
     }
 
     /** The place, bounded on its own: a slow fix or geocoder costs the place, never the greeting. */
-    private suspend fun readPlace(): GreetingSource = try {
-        withTimeoutOrNull(packBudgetMs) { GreetingPlace.read(place) } ?: GreetingPlace.failed("timeout")
-    } catch (e: CancellationException) {
-        throw e
-    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-        GreetingPlace.failed(e.javaClass.simpleName)
+    private suspend fun readPlace(): GreetingSource {
+        val t = clock()
+        val source = try {
+            withTimeoutOrNull(packBudgetMs) { GreetingPlace.read(place) } ?: GreetingPlace.failed("timeout")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            GreetingPlace.failed(e.javaClass.simpleName)
+        }
+        log("greeting_place ms=${clock() - t} state=${source.state.name.lowercase()}")
+        return source
     }
 
     /**

@@ -57,8 +57,9 @@ class FilePackStore(private val file: File) : PackStore {
  * open fall back to "Yes?" with `pack_timeout`: the pack was fetched at the tap with a 1.5 s budget
  * ([GreetingBudget.PACK_MS]) while `GET /api/greeting/facts` took 1.6 to 2.0 s on the engine itself
  * (Cloud Run request logs). So the pack is now fetched on the same moments the prompt is prepared
- * (app start, a wake word's onset, after each conversation) and on a timer while the screen is on
- * (`CascadeWarmup`), and a tap uses the last good one at once while it refreshes.
+ * (app start, the screen coming on and unlock, a wake word's onset, after each conversation) and
+ * on a timer while the screen is on (`CascadeWarmup`), and a tap uses the last good one at once
+ * while it refreshes.
  *
  * **When a kept pack may be used** ([usable]): fetched within [MAX_AGE_MS] and for today. The facts
  * are day-scale (what is due today, today's workout, the month's budget pace); the parts that move
@@ -115,8 +116,10 @@ class GreetingPackCache(
     fun refresh(reason: String): Deferred<GreetingOutcome<FactsPack>> {
         inFlight?.takeIf { it.isActive }?.let { return it }
         val now = clock()
-        val c = held
-        if (c != null && now - lastStartMs < MIN_GAP_MS) return CompletableDeferred(GreetingOutcome.Ok(c.pack))
+        // Only a pack fetched inside the gap stands in for a fetch: after a failed one the pack in
+        // hand may be hours old, and handing it back here would pass it off as fresh.
+        val c = held?.takeIf { now - it.fetchedAtMs < MIN_GAP_MS }
+        if (c != null) return CompletableDeferred(GreetingOutcome.Ok(c.pack))
         lastStartMs = now
         val started = now
         val d = scope.async {

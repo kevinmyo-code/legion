@@ -122,7 +122,7 @@ class GreetingPackCacheTest {
     }
 
     @Test fun `a tap with a kept pack greets at once though the engine is slow, and logs the source`() = runBlocking {
-        val lines = mutableListOf<String>()
+        val lines: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         val slow = FakeGreetingBackend {
             delay(5_000)
             GreetingOutcome.Ok(good)
@@ -142,7 +142,7 @@ class GreetingPackCacheTest {
     }
 
     @Test fun `a tap with nothing kept and a slow engine logs none and falls back at the budget`() = runBlocking {
-        val lines = mutableListOf<String>()
+        val lines: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         val slow = FakeGreetingBackend {
             delay(5_000)
             GreetingOutcome.Ok(good)
@@ -150,15 +150,35 @@ class GreetingPackCacheTest {
         val plan = GreetingOpening(slow, GreetingTestSupport.homeOnly, scope, packBudgetMs = 150L,
             cache = cache(slow), log = { lines += it }, clock = { now }).prepare(LocalTime.of(9, 0))
         assertEquals("pack_timeout", (plan as GreetingPlan.Scripted).reason)
-        assertEquals(listOf("greeting_pack source=none age_s=-1"), lines)
+        assertEquals(listOf("greeting_pack source=none age_s=-1"), lines.filter { it.startsWith("greeting_pack") })
     }
 
     @Test fun `a tap with nothing kept and a quick engine logs fresh`() = runBlocking {
-        val lines = mutableListOf<String>()
+        val lines: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         val backend = FakeGreetingBackend { GreetingOutcome.Ok(good) }
         val plan = GreetingOpening(backend, GreetingTestSupport.homeOnly, scope, cache = cache(backend),
             log = { lines += it }, clock = { now }).prepare(LocalTime.of(9, 0))
         assertTrue(plan is GreetingPlan.Personal)
-        assertEquals(listOf("greeting_pack source=fresh age_s=0"), lines)
+        assertEquals(listOf("greeting_pack source=fresh age_s=0"), lines.filter { it.startsWith("greeting_pack") })
+        assertTrue(lines.toString(), lines.any { it.startsWith("greeting_place ms=") && it.endsWith("state=empty") })
+    }
+
+    @Test fun `an old kept pack is never handed back as a fresh fetch`() = runBlocking<Unit> {
+        val file = File.createTempFile("pack", ".json").also { it.delete() }
+        FilePackStore(file).save(good.raw!!, nine - 2 * 60 * 60_000L) // two hours old
+        val calls = AtomicInteger()
+        val c = cache(
+            FakeGreetingBackend {
+                calls.incrementAndGet()
+                GreetingOutcome.Unreachable("down")
+            },
+            FilePackStore(file),
+        )
+        assertNull(c.usable()) // too old to use; now loaded as the pack in hand
+        assertTrue(c.refresh("onset").await() is GreetingOutcome.Unreachable)
+        now += 1_000 // inside MIN_GAP_MS of that failed fetch
+        assertTrue(c.refresh("tap").await() is GreetingOutcome.Unreachable)
+        assertEquals(2, calls.get())
+        file.delete()
     }
 }

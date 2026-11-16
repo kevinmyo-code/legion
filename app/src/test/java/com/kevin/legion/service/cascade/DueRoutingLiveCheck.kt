@@ -5,6 +5,7 @@ package com.kevin.legion.service.cascade
 import com.kevin.legion.ai.ALFRED
 import com.kevin.legion.ai.DUE_ROUTING
 import com.kevin.legion.ai.SHARED_INSTRUCTIONS
+import com.kevin.legion.ai.openItemsParagraph
 import com.kevin.legion.calendar.DueInput
 import com.kevin.legion.calendar.DueList
 import com.kevin.legion.calendar.DueReader
@@ -31,7 +32,8 @@ import org.robolectric.RobolectricTestRunner
  *
  * Sends the three utterances below through the cascade's own text loop with the real tool surface
  * ([LiveToolbox.declarations] through [CascadeRules.declarations]) and the shared instructions plus
- * [DUE_ROUTING], on both models, and prints which tool each call chose and the answer. The tools are
+ * [DUE_ROUTING] and the open-list paragraph his prompt carries (the one that names read_list), on
+ * both models, and prints which tool each call chose and the answer. The tools are
  * fakes answering from invented rows shaped like the 11-15 audit (two open assignments, one handed
  * in, a to-do due tomorrow, an overdue one): nothing on a phone is read. Costs a few cents.
  *
@@ -47,7 +49,8 @@ class DueRoutingLiveCheck {
         assumeTrue("LEGION_GEMINI_KEY_FILE not set: skipped", keyFile.isNotBlank())
         val key = File(keyFile).readText().trim()
         val instruction = ALFRED.clause.trimIndent() + " " + ALFRED.delivery + " " + SHARED_INSTRUCTIONS +
-            "\n\n" + DUE_ROUTING + "\n\n" + CascadePrompt.VOICE_CLAUSE
+            "\n\n" + DUE_ROUTING + "\n\n" + openItemsParagraph(4) + "\n\n" +
+            CascadePrompt.VOICE_CLAUSE
         val declarations = CascadeRules.declarations(LiveToolbox.declarations())
         for (model in MODELS) {
             for (utterance in UTTERANCES) {
