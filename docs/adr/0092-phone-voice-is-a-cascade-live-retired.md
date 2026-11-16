@@ -30,8 +30,8 @@ not covered.
   context cache** (`service/cascade/ContextCacheStore.kt`), so a turn that hits it does not send or
   pay full input price for that prefix again. With no usable cache the turn goes inline and a cache
   is created in the background; it never holds a turn up.
-- **The tools are Live's set minus `look`** (`CascadeRules.declarations`). ADR 0087's tool budget
-  still governs that set.
+- **The tools are Live's declarations** (`LiveToolbox.declarations()`, run through
+  `CascadeRules.declarations`), so ADR 0087's tool budget still governs that set.
 - **One flag: `VoiceEngineSettings.LIVE_RETIRED`.** While it is true, Settings offers Cloud and
   Laptop only, a stored Live setting reads as Cloud, and a voice that cannot start or fails ends the
   conversation in words. Live's code is still in the tree, unreachable.
@@ -40,8 +40,7 @@ not covered.
 
 Kevin, 2026-11-15, of the Cloud voice that had been built as the laptop pipeline's fallback: *"lets
 change the fallback to the text+gemini voice, so tht we save costs from the sts"*, then *"ship it
-once done. replace the sts live pipeline with it"*. Speech-to-speech was the expensive part of the
-voice bill. He asked for the new path to be auditable too: *"make sure we can audit the costs of
+once done. replace the sts live pipeline with it"*. Speech-to-speech was too expensive. He asked for the new path to be auditable too: *"make sure we can audit the costs of
 each convo too"*.
 
 Until then Live was the phone's voice by ruling (`library/decisions.md`, 2026-10-02 and
@@ -66,11 +65,14 @@ ADR and the 2026-11-15 log entry replace it.
   `tools/voice_cost.py` prices those lines from `tools/voice_prices.json`. It is an estimate from
   published prices, not a bill, and it reads counts and model ids only, never conversation text.
 - **Lost with Live, known at ship:**
-  - The camera. "Look at this" refuses in words: by hand, "Didn't start - looking needs the Live
-    voice, which is off"; asked by voice, the tool answers "That only works on the Live voice
-    engine." ADR 0084 is unreachable while the flag holds.
-  - A navigation turn cue can overlap a reply and be heard by the mic: only the Live session
-    registers the cue hold (`service/AssistantCueHold.kt`).
+  - The camera. "Look at this" refuses in words. By hand: "Didn't start - looking needs the Live
+    voice, which is off". By voice, the `look` action still reaches `LookController`, whose sink
+    is the Live session, so it answers "Not opened: no voice conversation is running, so nothing
+    could see the picture." (traced, not run; `CascadeRules.LIVE_ONLY_TOOLS` filters a top-level
+    `look`, which no longer exists since ADR 0087 folded it into an action tool). ADR 0084 is
+    unreachable while the flag holds.
+  - A navigation turn cue can overlap a reply: only the Live session registers the cue hold
+    (`service/AssistantCueHold.kt`).
   - A finished Claude task is not offered into an open conversation: `LiveNotes`' sink reads the
     Live session only.
   - No resume-music nudge: only the Live session nudges a player it ducked to play again.
@@ -79,7 +81,8 @@ ADR and the 2026-11-15 log entry replace it.
     Silero model failed, is gone: a phone-side fault now ends the conversation in words.
 - **Rollback:** set `LIVE_RETIRED` to false. Live is then the default and selectable again, every
   Live door reopens, and the cascade hands failures back to Live. A stored Cloud choice stays Cloud
-  until Kevin picks Live in Settings.
+  until Kevin picks Live in Settings. Traced in the code only: no build with the flag flipped has
+  been compiled or run.
 - Other ADRs with text written for Live: 0064 (server VAD as the fallback), 0084 (the camera), 0091
   ("On Live too"). Their rules still read correctly for Live; on the cascade, this ADR says what
   holds.

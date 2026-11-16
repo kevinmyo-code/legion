@@ -28,7 +28,7 @@ believed.
 `legion-00085-mp4` built from `d31ba333` (no migration). Phone OTA **263200900** (visual cards: bars,
 meters, charts; kinds readings, status_list, trend; engine, web and phone). Stages 1 to 3 (Cloud
 voice cascade, OBD VIN, greeting pack ahead of the tap and voice-fast, 263200608) are in it. Nothing
-from stages 1 to 4 has been audited on the phone yet: Kevin's own use is the test. The web card
+from stages 3 and 4 has been audited on the phone yet: Kevin's own use is the test. The web card
 pictures had only DOM tests before the ship; the stage 4 integration report says whether a browser
 render was done.
 
