@@ -71,8 +71,18 @@ data class PackFile(val note: String = "", val readings: List<PackReading>)
 object DiagPacks {
     private val JSON = Json { ignoreUnknownKeys = true }
 
+    /**
+     * The only services a pack row may send: ReadDataByIdentifier (0x22) and KWP
+     * ReadDataByLocalIdentifier (0x21). A row naming anything else (a write, a routine, security
+     * access) is dropped here, so the scanner stays read-only whatever the asset says.
+     */
+    val READ_SERVICES = setOf(Uds.READ_DID, Uds.KWP_READ_LOCAL_ID)
+
     fun parse(text: String): List<PackReading> =
         runCatching { JSON.decodeFromString(PackFile.serializer(), text).readings }.getOrDefault(emptyList())
+            .filter { row -> row.service.toIntOrNull(HEX) in READ_SERVICES }
+
+    private const val HEX = 16
 
     /** The rows for [make] (case-insensitive). No make, or a make with no pack, gets nothing. */
     fun forMake(all: List<PackReading>, make: String?): List<PackReading> {

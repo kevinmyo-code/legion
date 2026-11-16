@@ -5,6 +5,10 @@ class PackReader(private val setup: ElmSetup, private val request: ModuleRequest
 
     suspend fun read(rows: List<PackReading>): List<PackReadingResult> = rows.map { row ->
         val id = row.module.toLongOrNull(HEX)
+        // Read services only, whoever built the row list (DiagPacks.parse already drops the rest).
+        if (row.service.toIntOrNull(HEX) !in DiagPacks.READ_SERVICES) {
+            return@map result(row, Outcome.NOT_READ, "not a read request, so it was not sent", "")
+        }
         if (id == null || !setup.address(ModuleCandidates.candidate11(id))) {
             return@map result(row, Outcome.NOT_READ, null, "")
         }

@@ -93,6 +93,19 @@ class DiagPartsTest {
     }
 
     @Test
+    fun `a pack row naming anything but a read service is dropped`() {
+        fun row(key: String, service: String) =
+            """{"make":"ford","key":"$key","label":"x","module":"7E0","service":"$service","identifier":"01",""" +
+                """"applies":"made-up","source_url":"https://example.invalid"}"""
+        val text = """{"readings":[${listOf(
+            row("read_22", "22"), row("read_21", "21"), row("write_2e", "2E"),
+            row("security_27", "27"), row("routine_31", "31"), row("session_10", "10"), row("junk", "zz"),
+        ).joinToString(",")}]}"""
+        assertEquals(listOf("read_22", "read_21"), DiagPacks.parse(text).map { it.key })
+        assertTrue(DiagPacks.parse(PackFiles.text()).all { it.service.toInt(16) in DiagPacks.READ_SERVICES })
+    }
+
+    @Test
     fun `compare says new, gone, unchanged, and what could not be rechecked`() {
         fun report(engine: List<String>, abs: List<String>, absOutcome: Outcome) = ScanReport(
             startedAtMs = 0, finishedAtMs = 0,
@@ -116,6 +129,24 @@ class DiagPartsTest {
         assertEquals(listOf("P0171 (engine, stored)"), d.gone)
         assertEquals(listOf("P0420 (engine, stored)"), d.unchanged)
         assertEquals(listOf("C0040 (ABS)"), d.notRechecked)
+    }
+
+    @Test
+    fun `one engine read failing is said, never no stored or pending codes`() {
+        fun words(stored: CodeRead, pending: CodeRead) = ScanWords.summary(
+            ScanReport(
+                startedAtMs = 0, finishedAtMs = 0,
+                adapter = AdapterSummary("ELM327", "ELM327 v1.5", words = ""),
+                bus = BusKind.ISO_9141,
+                engine = EngineReport(stored, pending, CodeRead(Outcome.READ, "0A")),
+                coverage = Coverage("quick", 0, 0, ""),
+            ),
+        )
+        val pendingLost = words(CodeRead(Outcome.READ, "03"), CodeRead(Outcome.NO_ANSWER, "07", detail = "no answer"))
+        assertTrue(pendingLost, pendingLost.contains("no stored codes; pending codes not read (no answer)"))
+        assertFalse(pendingLost.contains("no stored or pending codes"))
+        val storedLost = words(CodeRead(Outcome.REFUSED, "03"), CodeRead(Outcome.READ, "07", listOf(ModuleDtc("P0133"))))
+        assertTrue(storedLost, storedLost.contains("P0133; stored codes not read (refused)"))
     }
 
     @Test
