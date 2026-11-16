@@ -1,5 +1,7 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.ChatTurn
+import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.TurnConfig
@@ -134,6 +136,22 @@ object CascadePrompt {
         val parts = listOf(volatile, liveContext).map { it.trim() }.filter { it.isNotEmpty() }
         if (parts.isEmpty()) return ""
         return "(Current context, use naturally if relevant:\n" + parts.joinToString("\n") + ")\n\n"
+    }
+
+    /**
+     * A turn's contents: [history] plus [heard], capped as typed chat caps it, with [preamble] in
+     * the first user turn (never in the cached instruction). Shared by [CascadeSession] and the
+     * laptop voice eval (`voiceeval/VoiceEvalHarness`), so the eval sends what a spoken turn sends.
+     */
+    fun contents(history: List<ChatTurn>, heard: String, preamble: String): JSONArray {
+        val capped = TextChatEngine.capHistory(history + ChatTurn(fromUser = true, text = heard))
+        val contents = TextChatEngine.historyContents(capped)
+        if (preamble.isNotEmpty() && contents.length() > 0) {
+            val first = contents.getJSONObject(0)
+            val part = first.getJSONArray("parts").getJSONObject(0)
+            part.put("text", preamble + part.optString("text"))
+        }
+        return contents
     }
 }
 

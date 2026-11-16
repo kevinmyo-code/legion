@@ -32,7 +32,6 @@ import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.MicArbiter
 import com.kevin.legion.service.Phase
 import com.kevin.legion.service.TelephonyController
-import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.WakePhrases
 import com.kevin.legion.service.conversationlog.ConversationLog
@@ -996,18 +995,8 @@ internal class CascadeSession(
         return (spoken + " (Interrupted. Already done and confirmed: ${writes.joinToString(", ")}.)").trim()
     }
 
-    private fun contentsFor(heard: String) = run {
-        val capped = TextChatEngine.capHistory(history + ChatTurn(fromUser = true, text = heard))
-        val contents = TextChatEngine.historyContents(capped)
-        // The date, the place and this conversation's context ride in the first user turn (never
-        // in the cached instruction).
-        if (preamble.isNotEmpty() && contents.length() > 0) {
-            val first = contents.getJSONObject(0)
-            val part = first.getJSONArray("parts").getJSONObject(0)
-            part.put("text", preamble + part.optString("text"))
-        }
-        contents
-    }
+    // The date, the place and this conversation's context ride in the first user turn.
+    private fun contentsFor(heard: String) = CascadePrompt.contents(history, heard, preamble)
 
     private fun executorFor(record: TurnRecord, seq: Long) = TextToolExecutor { name, args, readThrough ->
         val id = "c${toolSeq.incrementAndGet()}"

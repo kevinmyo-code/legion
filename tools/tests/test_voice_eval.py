@@ -1,0 +1,192 @@
+"""`tools/voice_eval.py`: parsing the phone's line shapes, the rule checks, pricing and the scorecard.
+Invented utterances and counts only. Run from the repo root:
+
+    python -m pytest tools/tests/test_voice_eval.py -p no:cacheprovider
+"""
+
+from __future__ import annotations
+
+import datetime
+import importlib.util
+import json
+import sys
+from decimal import Decimal
+from pathlib import Path
+
+TOOLS = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location("voice_eval_under_test", TOOLS / "voice_eval.py")
+ve = importlib.util.module_from_spec(spec)
+sys.modules["voice_eval_under_test"] = ve
+spec.loader.exec_module(ve)
+
+DAY = datetime.date(2026, 11, 15)
+M = "gemini-3.5-flash-lite"
+
+
+def L(tag: str, msg: str, t: str = "10:00:00") -> str:
+    return f"11-15 {t}.000  4242  4242 I {tag}: {msg}"
+
+
+def case_lines(cid: str, user: str, calls: list[tuple[str, dict, str]], answer: str, ms: int = 1500,
+               end: bool = True) -> list[str]:
+    out = [L("LIVE_TEST", f"case_begin id={cid}"), L("LIVE_AUDIT", f"session_start model=eval+{M} async_set=none"),
+           L("LIVE_AUDIT", f"user final=true text={json.dumps(user)}")]
+    for i, (name, args, response) in enumerate(calls):
+        out.append(L("LIVE_AUDIT", f"tool_call id=e{i} name={name} async=false args={json.dumps(args, separators=(',', ':'))}"))
+        ok = "false" if "test_mode" in response or '"success":false' in response else "true"
+        out.append(L("LIVE_AUDIT", f"tool_result id=e{i} name={name} success={ok} ms=40 scheduling=none sent=true response={response}"))
+    out.append(L("LIVE_LATENCY", f"gemini_usage kind=llm model={M} usage=present prompt=12000 prompt_text=12000 "
+                                 "prompt_audio=0 cached=11000 out=60 out_text=0 out_audio=0 thoughts=0 audio_s=0.0 chars=0 discarded=false"))
+    out.append(L("LIVE_AUDIT", f"assistant text={json.dumps(answer)}"))
+    out.append(L("LIVE_AUDIT", "turn_complete"))
+    out.append(L("LIVE_LATENCY", f"test_turn_ms={ms} first_text_ms=700 failure=none"))
+    out.append(L("LIVE_AUDIT", 'session_end reason="eval"'))
+    if end:
+        out.append(L("LIVE_TEST", f"case_end id={cid} ms={ms}"))
+    return out
+
+
+CAL_OPEN = '{"success":true,"count":3,"events":[{"title":"HIST 101 reading quiz","kind":"task","done":false}]}'
+CASES = [
+    {"id": "due_today", "say": "what's due today",
+     "expect": {"calls": ["day/read_calendar"], "no_empty_claim": True,
+                "args": {"day/read_calendar": {"from": {"lte": "{today}"}, "to": {"gte": "{today}"}}}},
+     "fixture": {"answer_has": ["quiz"]}},
+    {"id": "write_todo", "say": "add stamps to my to-do list", "write": True,
+     "expect": {"calls": ["manage_checklist/add"], "args": {"manage_checklist/add": {"list": {"re": "(?i)^to-?do$"}}}}},
+]
+
+
+def parse(lines):
+    return ve.parse_run(lines, 2026)
+
+
+def test_expand_tokens():
+    assert ve.expand("{today}", DAY) == "2026-11-15"
+    assert ve.expand("{today+1}", DAY) == "2026-11-16"
+    assert ve.expand("{today-1}", DAY) == "2026-11-14"
+
+
+def test_parse_splits_cases_turns_calls_and_usage():
+    lines = case_lines("due_today", "what's due today",
+                       [("day", {"action": "read_calendar", "from": "2026-11-15", "to": "2026-11-15"}, CAL_OPEN)],
+                       "One quiz is due tonight.")
+    _, runs = parse(lines)
+    (r,) = runs
+    assert r.id == "due_today" and r.ended and r.model == M and r.day == DAY
+    (t,) = r.turns
+    assert t.user == "what's due today"
+    assert t.calls[0].key == "day/read_calendar" and t.calls[0].success is True
+    assert t.answer == "One quiz is due tonight."
+    assert t.timings["test_turn_ms"] == 1500
+    assert len(r.usage) == 1 and r.usage[0].counts["cached"] == 11000
+
+
+def test_routing_bug_is_caught():
+    # 2026-11-15: "what do I have due" went to the reminders list.
+    lines = case_lines("due_today", "what's due today", [("manage_item", {"action": "read_list"}, '{"success":true}')],
+                       "You have no reminders.")
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[0], runs[0], phone=False)
+    assert not v.passed
+    assert any("expected call day/read_calendar; saw manage_item/read_list" in f for f in v.failures)
+
+
+def test_empty_claim_over_an_open_task_fails():
+    lines = case_lines("due_today", "what's due today",
+                       [("day", {"action": "read_calendar", "from": "2026-11-15", "to": "2026-11-15"}, CAL_OPEN)],
+                       "Looks like a quiet day, nothing due.")
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[0], runs[0], phone=True)
+    assert any("open task" in f for f in v.failures)
+
+
+def test_args_out_of_range_fail_and_fixture_checks_only_on_laptop():
+    lines = case_lines("due_today", "what's due today",
+                       [("day", {"action": "read_calendar", "from": "2026-11-16", "to": "2026-11-16"}, CAL_OPEN)],
+                       "Your physics lecture is tomorrow.")
+    _, runs = parse(lines)
+    laptop = ve.score_case(CASES[0], runs[0], phone=False)
+    assert any("args" in f for f in laptop.failures)
+    assert any("lacks /quiz/" in f for f in laptop.failures)
+    phone = ve.score_case(CASES[0], runs[0], phone=True)
+    assert not any("quiz" in f for f in phone.failures)
+
+
+def test_phone_write_refused_and_honest_passes():
+    refused = '{"success":false,"test_mode":true,"message":"Test mode: not done."}'
+    lines = case_lines("write_todo", "add stamps to my to-do list",
+                       [("manage_checklist", {"action": "add", "list": "Todo", "text": "stamps"}, refused)],
+                       "Test mode is on, so I didn't add it.")
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[1], runs[0], phone=True)
+    assert v.passed, v.failures
+
+
+def test_phone_write_claimed_after_refusal_fails():
+    refused = '{"success":false,"test_mode":true,"message":"Test mode: not done."}'
+    lines = case_lines("write_todo", "add stamps to my to-do list",
+                       [("manage_checklist", {"action": "add", "list": "Todo", "text": "stamps"}, refused)],
+                       "Added stamps to your to-do list.")
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[1], runs[0], phone=True)
+    assert any("claimed a write" in f for f in v.failures)
+
+
+def test_phone_write_that_went_through_is_flagged():
+    lines = case_lines("write_todo", "add stamps to my to-do list",
+                       [("manage_checklist", {"action": "add", "list": "Todo", "text": "stamps"}, '{"success":true}')],
+                       "Added.")
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[1], runs[0], phone=True)
+    assert any("WRITE WENT THROUGH" in f for f in v.failures)
+
+
+def test_unfinished_case_fails():
+    lines = case_lines("due_today", "what's due today", [], "", end=False)
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[0], runs[0], phone=False)
+    assert any("did not finish" in f for f in v.failures)
+
+
+def test_price_uses_voice_prices():
+    lines = case_lines("due_today", "what's due today", [], "ok")
+    _, runs = parse(lines)
+    usd, notes, tok = ve.price(runs[0])
+    # 1000 uncached x 0.30 + 11000 cached x 0.03 + 60 out x 2.50, per million.
+    assert usd == Decimal("0.0003") + Decimal("0.00033") + Decimal("0.00015")
+    assert tok == {"prompt": 12000, "cached": 11000, "out": 60}
+
+
+def test_unknown_model_says_no_price():
+    lines = [x.replace(f"model={M}", "model=gemini-x-unknown") for x in case_lines("due_today", "x", [], "ok")]
+    _, runs = parse(lines)
+    usd, notes, _ = ve.price(runs[0])
+    assert usd == 0 and any("no price on file" in n for n in notes)
+
+
+def test_scorecard_and_compare():
+    lines = case_lines("due_today", "what's due today",
+                       [("day", {"action": "read_calendar", "from": "2026-11-15", "to": "2026-11-15"}, CAL_OPEN)],
+                       "Your HIST 101 reading quiz is due tonight.")
+    facts, runs = parse(lines)
+    out, summary = ve.scorecard(CASES[:1], runs, facts, phone=False)
+    assert out[0].startswith("VOICE EVAL (laptop, fake data)") and "pass 1/1" in out[0]
+    assert summary["passed"] == 1
+    cmp = ve.compare([summary, summary])
+    assert cmp[0] == "COMPARISON" and "due_today" in cmp[2]
+
+
+def test_committed_cases_load_and_have_unique_ids():
+    cases = ve.load_cases([ve.CASES])
+    assert len(cases) >= 10
+    assert all(ve.case_turns(c) for c in cases)
+
+
+def test_greeting_fallback_is_noted():
+    lines = case_lines("due_today", "what's due today", [], "ok")
+    lines.insert(2, L("LIVE_LATENCY", "open_greeting_plan_ms=4100 plan=Scripted"))
+    lines.insert(3, L("LIVE_LATENCY", "greeting scripted reason=timeout"))
+    _, runs = parse(lines)
+    assert runs[0].timings["open_greeting_plan_ms"] == 4100
+    assert any("scripted line (timeout)" in n for n in runs[0].notes)
