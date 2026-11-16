@@ -700,6 +700,7 @@ object WakeWordEngine {
         if (isFinal && hit) triggerConversation(context)
     }
 
+    @Suppress("ReturnCount") // enrolling, the trigger gap, a wake "only my voice" held back
     private fun triggerConversation(context: Context) {
         // Ticket 20: the enrollment screen is recording takes. A good take must not open a
         // conversation, which would take the mic and end the session; it is logged instead.

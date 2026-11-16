@@ -54,6 +54,7 @@ object SpeakerEnrolment {
     }
 
     /** The mean of the L2-normalised embeddings of [windows]; needs [SpeakerPolicy.MIN_ENROL_TAKES]. */
+    @Suppress("ReturnCount") // too few, unusable, then the voiceprint
     fun build(windows: List<ShortArray>, embed: (ShortArray) -> FloatArray): Built {
         if (windows.size < SpeakerPolicy.MIN_ENROL_TAKES) return Built.TooFew(windows.size)
         val c = SpeakerMath.centroid(windows.map(embed)) ?: return Built.Failed
