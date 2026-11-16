@@ -68,8 +68,8 @@ object GreetingPrompt {
      */
     private val MONEY_RULE = """
         - This one is about money: say no amount, no figure and no timing at all (no "already", no
-          days, weeks or month end). React only to it being over its cap, as news: nothing may sound
-          like it happened before.
+          days, weeks or month end). React only to it being over its cap, as news: it has not
+          happened before as far as you know, so never "again".
     """.trimIndent()
 
     /** The workout twin of [MONEY_RULE]: the tone check had it count sets ("fourteen sets waiting"). */
@@ -90,7 +90,8 @@ object GreetingPrompt {
           context note in this conversation, even if one is there.
         - It stands alone: nothing that refers to anything before this moment, no earlier words,
           nothing said or done before.
-        - Friendly, never curt or bossy. Not a stock one-word hello: give it a little character.
+        - Friendly, never curt or bossy: no command to him. Not a stock one-word hello: give it a
+          little character.
         - It may hand the floor to him, or not. At most one question.{avoid_rule}
         - Never mention his absence, how long it has been, a streak, or his use of this app.
         - Do not call any tool, and do not say you did anything. Then stop and listen.)
@@ -140,8 +141,9 @@ object GreetingPrompt {
     fun subject(lead: GreetingBlock.Lead): String = when (lead.source) {
         // Place alone gets "add nothing": asked to react to a bare "he is away", the model made up
         // the rest (an empty house, a slow day); tone check 2026-11-16, place-only attempt.
-        GreetingPlace.SOURCE -> "that he is away from home today, which is news to you. Name the place in a plain " +
-            "few words and add nothing to it: no guess about why he is there, what it is like, or what he left behind"
+        GreetingPlace.SOURCE -> "that he is away from home today; as far as you know he only just got there, so " +
+            "never \"again\", \"still\" or \"already\". Name the place in a plain few words and add nothing to " +
+            "it: no guess about why he is there, what it is like, or what he left behind"
         "body" -> if (lead.item.kind == "weigh_in") "his weigh-in" else "today's workout"
         "money" -> GreetingBlock.category(lead.item)?.let { "his $it budget, which is over its cap" }
             ?: "a budget that is over its cap"
