@@ -96,6 +96,12 @@ class AgendaBlockTest {
         assertTrue(block.contains("NOT listed here"))
         assertTrue(block.contains("any other day or range"))
         assertTrue(block.contains("day read_calendar"))
+        // 2026-11-16 agenda gate: only calendar-only questions skip the tool; today and due read it first.
+        assertTrue(block.contains("only about what is on his calendar today may be answered from this block"))
+        assertTrue(block.contains("Overdue work is NOT in this block"))
+        assertTrue(block.contains("before answering what he has today, what is due, or anything"))
+        assertTrue(block.contains("never answer those from this block"))
+        assertFalse(block.contains("Answer what he has on today, or what is due, from this block"))
         // Every write goes through its tool.
         assertTrue(block.contains("(complete, add, move, delete) goes through its tool"))
         // The pack has no weather: said as missing, never as fine.

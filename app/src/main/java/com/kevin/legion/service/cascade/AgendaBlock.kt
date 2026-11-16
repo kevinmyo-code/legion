@@ -8,9 +8,10 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 /**
- * Today's agenda in a spoken conversation's context (2026-11-16, voice quick wins item C), so "what
- * do I have today" and "what's due" are answered in one model round with no tool call (6 of 12
- * cloud tool turns measured that morning were `day`, ~1.1 s each for round 1 plus the tool).
+ * Today's agenda in a spoken conversation's context (2026-11-16, voice quick wins item C, ADR 0093).
+ * Narrowed the same day by the agenda gate: only a calendar-only question for today is answered from
+ * it without a tool call. "What do I have today" and "what's due" still call `day read_calendar`,
+ * because overdue work is not in the pack and the model, answering from the block, dropped it.
  *
  * Read from the greeting's facts pack the phone already keeps
  * ([com.kevin.legion.greeting.GreetingPackCache]); a fetch already in flight is waited for briefly.
@@ -42,12 +43,13 @@ internal object AgendaBlock {
         val at = hhmm(Instant.ofEpochMilli(cached.fetchedAtMs).atZone(zone).toLocalTime())
         val by = pack.sources.associateBy { it.name }
         val lines = mutableListOf<String>()
-        lines += "TODAY'S AGENDA, read from the household engine at $at (today is ${pack.today}). Answer " +
-            "what he has on today, or what is due, from this block without a tool call. It holds ONLY " +
-            "what is listed: call $TOOL for any other day or range, for anything not listed, for events " +
-            "that already ended, and for overdue work, which this block does not carry. Every change " +
-            "(complete, add, move, delete) goes through its tool, never through this block. When you " +
-            "answer from it, you may say it is as of $at."
+        lines += "TODAY'S AGENDA, read from the household engine at $at (today is ${pack.today}). A question " +
+            "only about what is on his calendar today may be answered from this block without a tool call. " +
+            "Overdue work is NOT in this block: before answering what he has today, what is due, or anything " +
+            "about to-dos or work, call $TOOL (it returns overdue items); never answer those from this block " +
+            "alone. Also call $TOOL for any other day or range, for anything not listed, and for events " +
+            "that already ended. Every change (complete, add, move, delete) goes through its tool, never " +
+            "through this block. When you answer from it, you may say it is as of $at."
         lines += source("Today's remaining calendar events", by["today_events"])
         lines += source(DUE_LABEL, by["due_soon"]) +
             "\n    note: work already past its due time (overdue) and work due later than that is NOT listed here."
