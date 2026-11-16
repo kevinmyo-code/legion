@@ -78,10 +78,15 @@ internal fun NetCashSection(
         }
         if (body != null && model.hasFigure) {
             NetCashText.trend(body, floorCents)?.let { card ->
-                Text("LAST 30 DAYS", style = TypesetType.caps, color = SoftColors.text, modifier = Modifier.padding(top = 12.dp))
+                Text(
+                    "LAST 30 DAYS",
+                    style = TypesetType.caps,
+                    color = SoftColors.text,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
                 TrendChart(card)
+                Text(NetCashText.trendNote(body), style = TypesetType.smallItalic, color = SoftColors.text2)
             }
-            Text(NetCashText.trendNote(body), style = TypesetType.smallItalic, color = SoftColors.text2)
         }
         Floor(floorCents, onSetFloor)
     }

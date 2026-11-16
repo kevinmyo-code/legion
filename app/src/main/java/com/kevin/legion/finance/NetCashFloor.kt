@@ -21,6 +21,7 @@ object NetCashFloor {
     private const val KEY = "floor_cents"
 
     private val state = MutableStateFlow<Long?>(null)
+    private val read: StateFlow<Long?> = state.asStateFlow()
     private var seeded = false
 
     private fun prefs(context: Context) =
@@ -33,7 +34,7 @@ object NetCashFloor {
             state.value = if (p.contains(KEY)) p.getLong(KEY, 0L) else null
             seeded = true
         }
-        return state.asStateFlow()
+        return read
     }
 
     fun get(context: Context): Long? = flow(context).value

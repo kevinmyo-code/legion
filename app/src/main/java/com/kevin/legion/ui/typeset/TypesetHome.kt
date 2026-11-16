@@ -220,28 +220,35 @@ private fun Figure(f: TypesetFigure, tier: FitTier, onOpen: () -> Unit) {
 /**
  * Net cash (Kevin, 2026-11-16, ADR 0094): "one big number near the top, with the as-of time under
  * it". Above the time headline, so it is the first figure on the page and the flexible headline
- * gives up the height, never the rows below it. Both lines show on every [FitTier]: the as-of line
- * is not a secondary line here. Low cash is the accent AND the words in the label ("net cash, below
+ * gives up the height, never the rows below it. Every line shows on every [FitTier]: the as-of line
+ * is not a secondary line here. Low cash is the accent AND its words on their own line ("Below
  * zero"), never colour alone. A tap opens Money, where the working is.
  */
 @Composable
 private fun CashLine(c: NetCashText.Model, tier: FitTier, onOpen: () -> Unit) {
     val ink = if (c.flag != null) SoftColors.caution else SoftColors.text
-    Row(
-        Modifier.fillMaxWidth().padding(top = tier.gap).tap("Net cash, open Money", onOpen),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        FitLine(
-            c.figure,
-            TypesetType.fig,
-            ink,
-            min = 17.sp,
-            modifier = Modifier.weight(CASH_FIGURE_SHARE),
-        )
-        Column(Modifier.padding(start = 12.dp).weight(1f - CASH_FIGURE_SHARE)) {
-            OneLine(c.label, TypesetType.bodyStrong, ink)
-            OneLine(c.line, TypesetType.smallItalic, SoftColors.text2)
+    // The figure and "net cash" share a row; the flag and the as-of line run the full width under
+    // it and wrap rather than ellipsise, so "below your $500 floor", "Last known, over a day old"
+    // and a missing account's name are never cut.
+    Column(Modifier.fillMaxWidth().padding(top = tier.gap).tap(c.label + ", open Money", onOpen)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            FitLine(c.figure, TypesetType.fig, ink, min = 17.sp, modifier = Modifier.weight(1f))
+            Text(
+                NetCashText.LABEL,
+                style = TypesetType.bodyStrong,
+                color = ink,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 12.dp, bottom = 4.dp),
+            )
         }
+        c.flag?.let { flag ->
+            Text(
+                flag.replaceFirstChar { it.uppercase() },
+                style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
+                color = ink,
+            )
+        }
+        Text(c.line, style = TypesetType.smallItalic, color = SoftColors.text2, maxLines = CASH_LINES)
     }
 }
 
@@ -458,7 +465,7 @@ private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeAct
 }
 
 private const val CONTENTS_PER_ROW = 5
-private const val CASH_FIGURE_SHARE = 0.55f
+private const val CASH_LINES = 2
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp

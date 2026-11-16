@@ -92,7 +92,7 @@ class NetCashScreenshotTest {
     fun `home - below zero, flagged in words, night`() {
         val low = NetCashText.model(FinanceRead.Fresh(BODY.copy(netCents = -4_500)), null, NOW, ZoneOffset.UTC)
         shot("net-cash-home-below-zero-night.png") { Home(low) }
-        rule.onNodeWithText("net cash, below zero").assertExists()
+        rule.onNodeWithText("Below zero").assertExists()
     }
 
     @Test

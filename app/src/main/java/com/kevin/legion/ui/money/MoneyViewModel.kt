@@ -88,7 +88,13 @@ class MoneyViewModel(
         // Net cash is not a hidden household section: Kevin asked for it here (ADR 0094).
         viewModelScope.launch {
             val cash = finance.netCash()
-            _state.update { it.copy(netCash = cash, floorCents = NetCashFloor.get(getApplication<Application>())) }
+            _state.update {
+                it.copy(
+                    today = LocalDate.now(),
+                    netCash = cash,
+                    floorCents = NetCashFloor.get(getApplication<Application>()),
+                )
+            }
         }
         // Hidden household sections ([MoneySections]) read nothing: their figures are not on screen.
         if (MoneySections.SHOW_HOUSEHOLD) viewModelScope.launch {
