@@ -102,7 +102,11 @@ class SpeakerChecker(
     private fun run(e: SpeakerEmbedder, vp: FloatArray, window: ShortArray): SpeakerResult {
         val t0 = nowMs()
         return try {
-            val score = SpeakerMath.cosine(e.embedWindow(window), vp)
+            val emb = e.embedWindow(window)
+            // A model whose size does not match the voiceprint (a different model file) must not
+            // score 0 and be gated as "not him": it is a failure, and the wake opens.
+            if (emb.size != vp.size) return SpeakerResult.Failed("DimensionMismatch")
+            val score = SpeakerMath.cosine(emb, vp)
             if (score.isNaN()) SpeakerResult.Failed("NaN") else SpeakerResult.Scored(score, nowMs() - t0)
         } catch (t: Throwable) {
             SpeakerResult.Failed(t.javaClass.simpleName)

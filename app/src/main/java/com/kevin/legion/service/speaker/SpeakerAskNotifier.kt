@@ -48,7 +48,7 @@ object SpeakerAskNotifier {
             .setContentIntent(pending)
             .setAutoCancel(true)
             .setTimeoutAfter(SpeakerPolicy.ASK_TIMEOUT_MS)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, n)
@@ -62,8 +62,14 @@ object SpeakerAskNotifier {
 
     private fun ensureChannel(app: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // High so it shows as a heads-up, but silent: a ding on every unsure wake from a TV would be
+        // the false-trigger noise this feature exists to stop.
         val channel = NotificationChannel(CHANNEL_ID, "Wake word: was that you?", NotificationManager.IMPORTANCE_HIGH)
-            .apply { description = "Asks for a tap when the wake word heard a voice it was not sure was yours." }
+            .apply {
+                description = "Asks for a tap when the wake word heard a voice it was not sure was yours."
+                setSound(null, null)
+                enableVibration(false)
+            }
         app.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 }

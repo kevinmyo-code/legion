@@ -61,6 +61,13 @@ class SpeakerCheckerTest {
     }
 
     @Test
+    fun `a model whose size does not match the voiceprint fails instead of scoring 0`() {
+        val r = checker(EmbedderState.Ready(fixed(floatArrayOf(1f, 0f)))).gated(window)
+        assertEquals(SpeakerResult.Failed("DimensionMismatch"), r)
+        assertEquals(SpeakerPolicy.Band.OPEN, SpeakerPolicy.act(SpeakerPolicy.Mode.GATED, r))
+    }
+
+    @Test
     fun `no audio is its own result`() {
         assertEquals(SpeakerResult.NoAudio, checker(EmbedderState.Ready(fixed(print))).gated(ShortArray(0)))
     }

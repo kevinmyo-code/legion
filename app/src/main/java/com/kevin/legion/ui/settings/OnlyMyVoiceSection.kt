@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.service.WakeSampleRecorder
 import com.kevin.legion.service.WakeWordPreferences
 import com.kevin.legion.service.speaker.SpeakerPolicy
 import com.kevin.legion.service.speaker.SpeakerVerifier
@@ -41,16 +42,9 @@ import java.util.Date
 fun OnlyMyVoiceSection(context: Context) {
     val sem = LocalLegionSemantics.current
     val info by SpeakerVerifier.info.collectAsState()
-    val note by SpeakerVerifier.note.collectAsState()
     var on by remember { mutableStateOf(WakeWordPreferences.onlyMyVoice(context)) }
-    var sessions by remember { mutableStateOf<List<SpeakerVerifier.Session>>(emptyList()) }
-    var chosen by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var deleteArmed by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        SpeakerVerifier.refresh(context)
-        sessions = withContext(Dispatchers.IO) { SpeakerVerifier.sessions(context) }
-    }
+    LaunchedEffect(Unit) { SpeakerVerifier.refresh(context) }
     // A deleted voiceprint turns the switch off with it.
     LaunchedEffect(info) { if (info == null) on = WakeWordPreferences.onlyMyVoice(context) }
 
@@ -73,6 +67,21 @@ fun OnlyMyVoiceSection(context: Context) {
         },
     )
     Spacer(Modifier.height(8.dp))
+    VoiceprintControls(context = context, info = info, onDeleted = { on = false })
+}
+
+/** The stored voiceprint, the session choice, build and delete. */
+@Composable
+private fun VoiceprintControls(context: Context, info: SpeakerVerifier.Info?, onDeleted: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    val note by SpeakerVerifier.note.collectAsState()
+    val lastTake by WakeSampleRecorder.lastTake.collectAsState()
+    var sessions by remember { mutableStateOf<List<SpeakerVerifier.Session>>(emptyList()) }
+    var chosen by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var deleteArmed by remember { mutableStateOf(false) }
+    // Re-read after every take, so a session recorded on this screen shows up without leaving it.
+    LaunchedEffect(lastTake) { sessions = withContext(Dispatchers.IO) { SpeakerVerifier.sessions(context) } }
+
     Text(
         info?.let {
             "Voiceprint from ${it.takes} takes, built " +
@@ -102,7 +111,7 @@ fun OnlyMyVoiceSection(context: Context) {
         onClick = {
             if (deleteArmed) {
                 SpeakerVerifier.delete(context)
-                on = false
+                onDeleted()
                 deleteArmed = false
             } else {
                 deleteArmed = true

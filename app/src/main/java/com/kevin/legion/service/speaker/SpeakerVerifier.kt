@@ -73,8 +73,18 @@ object SpeakerVerifier {
      * held wake does (the tap prompt for an unsure score, the log, the sample signal). Shadow mode
      * always returns true without waiting; gated waits at most [SpeakerPolicy.CHECK_DEADLINE_MS].
      */
+    // Runs on the wake capture loop: a throw there would end the loop and leave the wake word deaf,
+    // so anything unexpected opens as today and says so.
+    @Suppress("TooGenericExceptionCaught")
+    fun allowOpen(context: Context): Boolean = try {
+        decide(context)
+    } catch (t: Throwable) {
+        LiveLatency.log(LiveLatency.TAG, "speaker_check result=failed_${t.javaClass.simpleName} acted=open")
+        true
+    }
+
     @Suppress("ReturnCount") // shadow opens, a gated open opens, a held wake does not
-    fun allowOpen(context: Context): Boolean {
+    private fun decide(context: Context): Boolean {
         val mode = SpeakerPolicy.mode(WakeWordPreferences.onlyMyVoice(context))
         val window = SpeakerWindow.pick(ring.snapshot())
         if (mode == SpeakerPolicy.Mode.SHADOW) {
@@ -117,7 +127,7 @@ object SpeakerVerifier {
     fun build(context: Context, sessionNames: Set<String>) {
         val app = context.applicationContext
         _note.value = "Building..."
-        worker.execute { _note.value = buildNow(app, sessionNames) }
+        worker.execute { _note.value = buildSafely(app, sessionNames) }
     }
 
     /** Deletes the voiceprint and turns "Only my voice" off with it. */
@@ -136,8 +146,9 @@ object SpeakerVerifier {
 
     // Any failure to load is "model missing" in words; the wake word must keep working.
     @Suppress("TooGenericExceptionCaught")
-    private fun loadModel(app: Context) {
-        if (loadAttempted) return
+    private fun loadModel(app: Context, retry: Boolean = false) {
+        if (embedderState is EmbedderState.Ready) return
+        if (loadAttempted && !retry) return
         loadAttempted = true
         embedderState = EmbedderState.Loading
         val t0 = System.currentTimeMillis()
@@ -158,10 +169,20 @@ object SpeakerVerifier {
         _info.value = v?.let { Info(it.takes, it.builtAtMs) }
     }
 
+    // A file or model failure mid-build (say, recordings deleted meanwhile) is a sentence on the
+    // screen, never an uncaught throw on this thread.
+    @Suppress("TooGenericExceptionCaught")
+    private fun buildSafely(app: Context, sessionNames: Set<String>): String = try {
+        buildNow(app, sessionNames)
+    } catch (t: Throwable) {
+        "Could not build the voiceprint (${t.javaClass.simpleName}). Nothing was saved."
+    }
+
     @Suppress("ReturnCount") // two refusals in words, then the build
     private fun buildNow(app: Context, sessionNames: Set<String>): String {
         if (sessionNames.isEmpty()) return "Choose at least one session."
-        loadModel(app)
+        // An explicit build tries again, so a model pushed after a miss is found without a restart.
+        loadModel(app, retry = true)
         val embedder = (embedderState as? EmbedderState.Ready)?.embedder
             ?: return "The speaker model is not on this phone, so no voiceprint can be built."
         val windows = sessionDirs(app).filter { it.name in sessionNames }
