@@ -3124,3 +3124,25 @@ val MIGRATION_78_79 = object : Migration(SCHEMA_V78, SCHEMA_V79) {
         if (!hasColumn) db.execSQL("ALTER TABLE `vehicles_replica` ADD COLUMN `plate` TEXT")
     }
 }
+
+private const val SCHEMA_V80 = 80
+
+/**
+ * Module scans (brand-neutral diagnostics, 2026-11-15): one new phone-only table, `diag_scans`, and
+ * its (vehicleId, startedAtMs) index. Additive, nothing existing touched, nothing backfilled. The
+ * SQL is copied verbatim from the generated `80.json`.
+ */
+val MIGRATION_79_80 = object : Migration(SCHEMA_V79, SCHEMA_V80) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `diag_scans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`vehicleId` TEXT NOT NULL, `startedAtMs` INTEGER NOT NULL, `finishedAtMs` INTEGER NOT NULL, " +
+                "`bus` TEXT NOT NULL, `moduleCount` INTEGER NOT NULL, `faultCount` INTEGER NOT NULL, " +
+                "`complete` INTEGER NOT NULL, `reportJson` TEXT NOT NULL, `clearJson` TEXT)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_diag_scans_vehicleId_startedAtMs` ON `diag_scans` " +
+                "(`vehicleId`, `startedAtMs`)",
+        )
+    }
+}

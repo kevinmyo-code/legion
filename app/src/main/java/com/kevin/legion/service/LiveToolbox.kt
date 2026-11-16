@@ -621,7 +621,14 @@ object LiveToolbox {
      * LiveToolboxAgentToolTimeoutTest pins the order.
      */
     internal fun agentToolTimeoutMs(name: String): Long =
-        if (name in SPECIALIST_TOOLS) SPECIALIST_TOOL_TIMEOUT_MS else AGENT_TOOL_TIMEOUT_MS
+        if (name in SPECIALIST_TOOLS || name in SLOW_READ_TOOLS) SPECIALIST_TOOL_TIMEOUT_MS else AGENT_TOOL_TIMEOUT_MS
+
+    /**
+     * Reads that talk to the car for longer than a plain PID (2026-11-15): `get_codes` with
+     * `all_modules` waits up to [com.kevin.legion.vehicle.diag.DiagVoice.SCAN_WAIT_MS] for a module
+     * scan. The engine-only read still answers in about a second, so the longer leash costs it nothing.
+     */
+    internal val SLOW_READ_TOOLS = setOf("get_codes")
 
     internal const val AGENT_TOOL_TIMEOUT_MS = 8_000L
     internal const val SPECIALIST_TOOL_TIMEOUT_MS = 32_000L
@@ -888,7 +895,13 @@ object LiveToolbox {
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
-            "get_codes" -> getCodes(context)
+            // 2026-11-15: all_modules reads every module the dongle can reach (DiagVoice), not just
+            // the engine's generic codes; the engine-only read is unchanged.
+            "get_codes" -> if (args.optBoolean("all_modules", false)) {
+                com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
+            } else {
+                getCodes(context)
+            }
             "get_current_time" -> getCurrentTime()
             "diagnose_codes" -> diagnoseCodes(context, args)
             "read_vehicle_sensor" -> readVehicleSensor(context, args)
@@ -1053,7 +1066,17 @@ object LiveToolbox {
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
             "check_readiness" -> checkReadiness()
-            "clear_codes" -> clearCodes(context, args, userText)
+            // 2026-11-15: a module clear (modules named, or the yes to a module question) goes to
+            // DiagVoice and its own yes-check; everything else is the engine's Mode 04 below.
+            "clear_codes" -> if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
+                    args.optString("modules"),
+                    args.optBoolean("confirmed", false),
+                )
+            ) {
+                moduleClear(context, args, userText)
+            } else {
+                clearCodes(context, args, userText)
+            }
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
@@ -3935,6 +3958,19 @@ object LiveToolbox {
         return out
     }
 
+    /** `clear_codes` for named modules (DiagVoice): refused in words with no dongle, nothing sent. */
+    private suspend fun moduleClear(context: Context, args: JSONObject, userText: String?): JSONObject =
+        if (!ObdBluetoothManager.isConnected) {
+            result(false, com.kevin.legion.vehicle.diag.DiagScanController.NOT_CONNECTED)
+        } else {
+            com.kevin.legion.vehicle.diag.DiagVoice.clear(
+                context,
+                args.optString("modules").trim(),
+                args.optBoolean("confirmed", false),
+                userText,
+            )
+        }
+
     private suspend fun clearCodes(context: Context, args: JSONObject, userText: String?): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
         val connected = ObdBluetoothManager.isConnected
@@ -3955,6 +3991,8 @@ object LiveToolbox {
         val out = result(success = r.outcome == DtcClearController.ClearOutcome.CLEARED, message = r.message)
         if (r.outcome == null) {
             // The confirm question: remember it was asked, and tell the model to ask and wait.
+            // A module-clear question left waiting is void now (one question at a time).
+            com.kevin.legion.vehicle.diag.DiagVoice.forget()
             gate.asked(userText)
             out.put("needsConfirmation", true)
                 .put("instruction", com.kevin.legion.vehicle.ClearCodesVoiceGate.ASK_AND_WAIT)
