@@ -85,6 +85,13 @@ data class HomeCalendarUiState(
     /** Set when the grid or the day could not be read in full; shown in words under the title. */
     val readNote: String? = null,
     val openTodoCount: Int = 0,
+    /**
+     * What is DUE today, from the same reader Alfred's `read_calendar` uses
+     * ([com.kevin.legion.calendar.DueReader]): calendar tasks and dated to-dos due today, plus what
+     * is overdue. Null until read, or when it could not be read ([dueNote] says so).
+     */
+    val dueToday: com.kevin.legion.calendar.DueSummary? = null,
+    val dueNote: String? = null,
     val todos: List<TodoRowUi> = emptyList(),
     val todosNote: String? = null,
     val lists: List<ListRowUi> = emptyList(),

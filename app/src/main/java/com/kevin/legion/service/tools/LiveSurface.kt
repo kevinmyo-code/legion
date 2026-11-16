@@ -199,7 +199,8 @@ internal object LiveSurface {
             actions = listOf(
                 Action(
                     "read_calendar", "read_calendar",
-                    "events and due tasks over a date range (from, to, YYYY-MM-DD)",
+                    // 2026-11-15: "due" means school work AND dated to-dos (the result's `due`).
+                    "events, and everything due incl. to-dos, over from-to YYYY-MM-DD; any what's due",
                 ),
                 Action("complete_task", "complete_task", "mark a calendar task (assignment) done or not (title, done)"),
                 Action(
@@ -363,7 +364,9 @@ internal object LiveSurface {
             name = "manage_item",
             base = "manage_item",
             summary = "",
-            actions = listOf(Action("read_list", "read_list", "read back open reminders")),
+            actions = listOf(
+                Action("read_list", "read_list", "read back every reminder; what's due is day read_calendar"),
+            ),
         ),
         ActionTool(
             name = "control_music",
@@ -387,6 +390,10 @@ internal object LiveSurface {
      * ride on that tool's RESULT as `rule` (billed per call), via [withRule].
      */
     val RESULT_RULES: Map<String, String> = mapOf(
+        // 2026-11-15: "quiet on the calendar" over two open assignments. Billed per call, not per turn.
+        "read_calendar" to "Answer what is due from `due`: each open item is due and not done (overdue ones " +
+            "say so), school work and to-dos alike. Never call a window with open items quiet or clear.",
+        "read_list" to "This is the reminder list only. For what is due (school work too), call day read_calendar.",
         "stop_voice_note" to "The recording is saved and is being transcribed in the background; it is " +
             "not transcribed yet. Never say it is ready or summarized. He can ask for it back later.",
         "read_voice_note" to "The summary is model-made from the transcript. Never state a number, date, " +

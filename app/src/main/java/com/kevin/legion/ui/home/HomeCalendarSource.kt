@@ -38,6 +38,9 @@ interface HomeCalendarSource {
 
     suspend fun openTodos(zone: ZoneId): List<TodoRowUi>
 
+    /** What is due today and what is overdue ([com.kevin.legion.calendar.DueReader]); null: no reader. */
+    suspend fun dueToday(zone: ZoneId): com.kevin.legion.calendar.DueSummary? = null
+
     /** True when the tick landed. False is a refusal (a recurring reminder, a row that vanished). */
     suspend fun setTodoDone(ref: TodoRef, done: Boolean): Boolean
 
@@ -106,6 +109,11 @@ class ContextHomeCalendarSource(context: Context) : HomeCalendarSource {
                     ref = if (row.source == AgendaSource.LOCAL) TodoRef.Reminder(row.id) else TodoRef.Task(row.id),
                 )
             }
+    }
+
+    override suspend fun dueToday(zone: ZoneId): com.kevin.legion.calendar.DueSummary {
+        val today = LocalDate.now(zone)
+        return com.kevin.legion.calendar.DueReader.read(appContext, today, today, zone)
     }
 
     override suspend fun setTodoDone(ref: TodoRef, done: Boolean): Boolean = when (ref) {

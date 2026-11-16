@@ -68,6 +68,7 @@ import com.kevin.legion.backend.EventsAppointmentWriter
 import com.kevin.legion.calendar.TaskDoneMatcher
 import com.kevin.legion.data.local.OutboxTarget
 import com.kevin.legion.backend.EventKind
+import com.kevin.legion.calendar.DueReader
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.nextAppointmentId
@@ -2092,8 +2093,18 @@ object LiveToolbox {
                 dao.activeByKindInLocalWindow(EventKind.TASK, startMs, endMs, zone)
             ).sortedBy { it.startsAt ?: Long.MAX_VALUE }
         ToolCards.publish(PhoneCards.calendar(events, zone, startMs))
+        // 2026-11-15: "Quiet on the calendar for today" over two open assignments. Everything due,
+        // from BOTH places a due date lives (calendar tasks and dated to-dos, overdue too), is
+        // summed up in Kotlin ahead of the rows ([DueReader]), and the
+        // rows put open tasks first, so the answer is the first thing in the result.
+        val due = DueReader.read(
+            context,
+            java.time.Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate(),
+            java.time.Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate(),
+            zone,
+        )
         val arr = JSONArray()
-        for (event in events) {
+        for (event in openTasksFirst(events)) {
             val eventStart = event.startsAt ?: continue
             val eventEnd = event.endsAt ?: eventStart
             arr.put(
@@ -2128,19 +2139,50 @@ object LiveToolbox {
                     },
             )
         }
-        val o = JSONObject().put("success", true).put("count", arr.length()).put("events", arr)
+        val o = calendarResult(due, events, arr)
         // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
-        // user could do, not plans, and `count` and the empty-window sentence below stay about plans.
+        // user could do, not plans, and `count` and the empty-window sentence stay about plans.
         com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone,
             args.optString("city"))
-        // Says what was actually looked at. "Nothing on the calendar" invited the model to answer a
-        // question about DEADLINES with a sentence about appointments, which is how a window that
-        // excluded every task still sounded authoritative.
-        if (arr.length() == 0) {
-            o.put("message", "Nothing on the calendar and nothing due in that window.")
+        return o
+    }
+
+    /**
+     * `read_calendar`'s result: the `due` block first, then the rows. With no rows it says what
+     * was looked at, and "nothing due" only when the `due` block is empty and could be read.
+     * ("Nothing on the calendar" once invited the model to answer a question about DEADLINES with a
+     * sentence about appointments, which is how a window that excluded every task still sounded
+     * authoritative.)
+     */
+    private fun calendarResult(
+        due: com.kevin.legion.calendar.DueSummary,
+        events: List<com.kevin.legion.data.local.Event>,
+        rows: JSONArray,
+    ): JSONObject {
+        val o = JSONObject().put("success", true)
+            .put("due", DueReader.toJson(due))
+            .put("events_count", events.count { it.kind == EventKind.EVENT })
+            .put("count", rows.length())
+            .put("events", rows)
+        if (rows.length() == 0) {
+            o.put(
+                "message",
+                if (due.open.isEmpty() && due.unreadable.isEmpty()) {
+                    "Nothing on the calendar and nothing due in that window."
+                } else {
+                    "Nothing on the calendar in that window; what is due is under due."
+                },
+            )
         }
         return o
     }
+
+    /** Open tasks first (by time), then everything else (by time): the rows the model reads first. */
+    private fun openTasksFirst(events: List<com.kevin.legion.data.local.Event>) = events.sortedWith(
+        compareBy<com.kevin.legion.data.local.Event> {
+            !(it.kind == EventKind.TASK && !it.done && !DueReader.handedIn(it.structuredMeta))
+        }.thenBy { it.startsAt ?: Long.MAX_VALUE },
+    )
 
     private suspend fun withResolvedVehicle(
         context: Context,

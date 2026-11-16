@@ -84,7 +84,7 @@ fun TypesetHomeHost(
         dateline = calendar.today.format(DATELINE),
         time = clock,
         next = TypesetHomeDerive.next(calendar.dayRows, now),
-        due = TypesetHomeDerive.due(calendar.openTodoCount, calendar.todos),
+        due = TypesetHomeDerive.due(calendar.dueToday, calendar.dueNote),
         left = TypesetHomeDerive.left(money.budgets, money.today.month.getDisplayName(TextStyle.FULL, Locale.US)),
     )
     val status = if (voice.enabled) voice.state.label else "Assistant off, tap to set it up"
