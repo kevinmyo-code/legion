@@ -319,6 +319,12 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
         if not any(all(arg_ok(c.args.get(k), mt, today) for k, mt in params.items()) for c in cands):
             got = "; ".join(json.dumps(c.args, sort_keys=True) for c in cands)
             fails.append(f"{spec} args {json.dumps(params)} not met (today {today}); got {got}")
+    # `args_all`: EVERY matching call must fit, so a wrong first call that the model later corrects
+    # still fails (2026-11-15: "and tomorrow?" asked for today+2 first, then today+1).
+    for spec, params in expect.get("args_all", {}).items():
+        for c in (c for c in turn.calls if matches(c, spec)):
+            if not all(arg_ok(c.args.get(k), mt, today) for k, mt in params.items()):
+                fails.append(f"{spec} call {json.dumps(c.args, sort_keys=True)} misses {json.dumps(params)} (today {today})")
     answer = turn.answer
     for rx in expect.get("answer_has", []):
         if not re.search(rx, answer, re.I):

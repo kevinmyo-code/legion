@@ -94,6 +94,8 @@ sent typed and the scorecard says why.
   `domain`) the model sent, a bare name matches a tool or an action. `not_calls`: must not be.
 - `args`: on a matching call, each argument equals the value, or `{"lte"|"gte": ...}`, or
   `{"re": ...}`. `{today}`, `{today+1}`, `{today-1}` are the run's date.
+- `args_all`: like `args`, but EVERY matching call must fit (a wrong first call the model later
+  corrects still fails).
 - `answer_has` / `answer_not`: regexes on the reply (case-insensitive).
 - `no_empty_claim`: fails a reply that says nothing is due while a tool result in that turn shows an
   open task (`"done":false`).

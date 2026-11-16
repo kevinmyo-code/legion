@@ -86,7 +86,7 @@
           "say": "and tomorrow?",
           "expect": {
             "calls": ["day/read_calendar"],
-            "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+            "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
           }
         }
       ],
@@ -103,7 +103,7 @@
           "barge": true,
           "expect": {
             "calls": ["day/read_calendar"],
-            "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+            "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
           }
         }
       ]

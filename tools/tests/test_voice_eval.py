@@ -238,3 +238,16 @@ def test_empty_claim_over_the_due_block_counts_fails():
     _, runs = parse(lines)
     v = ve.score_case(CASES[0], runs[0], phone=True)
     assert any("open task" in f for f in v.failures)
+
+
+def test_args_all_fails_a_wrong_first_call_the_model_later_corrected():
+    case = {"id": "then_tomorrow", "say": "and tomorrow?",
+            "expect": {"calls": ["day/read_calendar"],
+                       "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}}}
+    lines = case_lines("then_tomorrow", "and tomorrow?",
+                       [("day", {"action": "read_calendar", "from": "2026-11-17", "to": "2026-11-17"}, CAL_OPEN),
+                        ("day", {"action": "read_calendar", "from": "2026-11-16", "to": "2026-11-16"}, CAL_OPEN)],
+                       "Tomorrow you have a lecture.")
+    _, runs = parse(lines)
+    v = ve.score_case(case, runs[0], phone=False)
+    assert any("misses" in f for f in v.failures), v.failures
