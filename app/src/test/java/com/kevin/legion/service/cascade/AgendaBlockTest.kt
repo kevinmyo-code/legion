@@ -162,6 +162,7 @@ class AgendaBlockTest {
         assertTrue(block.contains("what he has today, what is due today, what is overdue, what is on his calendar"))
         assertTrue(block.contains("may be answered from this block without a tool call"))
         assertTrue(block.contains("you may say it is as of 09:05"))
+        assertTrue(block.contains("A plain \"what's due\" with no day named means due today plus overdue"))
         assertTrue(block.contains("include the overdue work"))
         assertTrue(block.contains("say how many"))
         assertTrue(block.contains("Call day read_calendar for any other day or range (tomorrow, this week)"))

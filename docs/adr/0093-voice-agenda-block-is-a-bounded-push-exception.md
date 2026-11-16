@@ -16,7 +16,8 @@ on `feat/agenda-block-overdue` (same day, below; not yet gated on the model, mer
 phone). **The phone's voice cascade puts today's agenda into his turns: today's calendar events,
 open work due today and open overdue work, read from the phone's own data by the same function
 `day read_calendar` uses for today. A question about today (what he has today, what is due, what
-is overdue, what is on his calendar) may be answered from it with no tool call.** This is the one
+is overdue, what is on his calendar) may be answered from it with no tool call; a plain "what's
+due" with no day named means today plus overdue.** This is the one
 standing exception to CLAUDE.md section 7's "Pull-based tools always". Everything else in that rule
 still holds, and no other domain may cite this ADR to pre-inject its own data.
 

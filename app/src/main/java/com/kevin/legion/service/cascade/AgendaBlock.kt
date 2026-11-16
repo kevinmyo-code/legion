@@ -45,6 +45,8 @@ internal object AgendaBlock {
     const val WEATHER_LINE = "- Weather: NOT IN THIS BLOCK. For weather, call day get_sitrep with modules weather."
 
     private const val TOOL = "day read_calendar"
+    private const val DUE_LABEL = "Open work due today, calendar tasks and dated to-dos"
+    private const val OVERDUE_LABEL = "Overdue open work (past due, not done)"
 
     /** Said in a write's tool result, for the rest of the turn that made it (history keeps text only). */
     const val TOOL_NOTE = "The agenda block in this conversation's context is now out of date. For anything " +
@@ -73,14 +75,15 @@ internal object AgendaBlock {
             "$dayName $day). It is what $TOOL returns for today, read at $at: today's events, open work " +
             "due today, and open overdue work. A question about today (what he has today, what is due " +
             "today, what is overdue, what is on his calendar today) may be answered from this block " +
-            "without a tool call; you may say it is as of $at. When you say what he has today or what is " +
-            "due, include the overdue work, and where a line says more are not listed, say how many. " +
+            "without a tool call; you may say it is as of $at. A plain \"what's due\" with no day named " +
+            "means due today plus overdue: answer it from this block. When you say what he has today or " +
+            "what is due, include the overdue work, and where a line says more are not listed, say how many. " +
             "Call $TOOL for any other day or range (tomorrow, this week), for work due after today, for " +
             "the full list behind an \"and N more\" line, and for anything not in this block. Every change " +
             "(complete, add, move, delete) goes through its tool, never through this block."
         lines += events(s.events, s.readAtMs, zone)
-        lines += dueToday(s.due)
-        lines += overdue(s.due)
+        lines += duePart(s.due, overdue = false)
+        lines += duePart(s.due, overdue = true)
         if (s.due.doneCount > 0) lines += "- Already done today: ${s.due.doneCount}."
         lines += WEATHER_LINE
         return lines.joinToString("\n")
@@ -110,13 +113,15 @@ internal object AgendaBlock {
      * day than [nowMs], else [read] as it was.
      */
     fun current(read: String, readAtMs: Long, changedAt: LocalTime?, nowMs: Long, zone: ZoneId): String {
-        if (read.isEmpty()) return ""
-        if (changedAt != null) return withdrawn(changedAt)
-        if (readAtMs <= 0L) return read // an unavailable() line: nothing to age out
         val then = Instant.ofEpochMilli(readAtMs).atZone(zone)
-        val now = Instant.ofEpochMilli(nowMs).atZone(zone)
-        val stale = nowMs - readAtMs > MAX_AGE_MS || then.toLocalDate() != now.toLocalDate()
-        return if (stale) expired(then.toLocalTime()) else read
+        val otherDay = then.toLocalDate() != Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        return when {
+            read.isEmpty() -> ""
+            changedAt != null -> withdrawn(changedAt)
+            readAtMs <= 0L -> read // an unavailable() line: nothing to age out
+            nowMs - readAtMs > MAX_AGE_MS || otherDay -> expired(then.toLocalTime())
+            else -> read
+        }
     }
 
     private fun events(events: List<AgendaEvent>, readAtMs: Long, zone: ZoneId): String {
@@ -141,34 +146,27 @@ internal object AgendaBlock {
         return "${e.title}, $time$place$over"
     }
 
-    private fun dueToday(s: DueSummary): String {
-        val label = "Open work due today, calendar tasks and dated to-dos"
-        val open = s.open.filter { !it.overdue }
+    /**
+     * Open work due later today, or ([overdue]) open overdue work, in [DueList]'s own sentence. Both
+     * due sources unread ([com.kevin.legion.calendar.DueReader] names calendar tasks and to-dos) is
+     * COULD NOT BE READ; one unread is PARTLY READ; never EMPTY unless both were read.
+     */
+    private fun duePart(s: DueSummary, overdue: Boolean): String {
+        val label = if (overdue) OVERDUE_LABEL else DUE_LABEL
+        val entries = s.open.filter { it.overdue == overdue }
+        val what = if (overdue) "nothing overdue" else "nothing open"
         return when {
-            open.isNotEmpty() -> "- $label (facts${partly(s)}): ${DueList.dueSays(open, s.today, MAX_DUE_LISTED)}"
-            unreadAll(s) -> "- $label (COULD NOT BE READ, which is not the same as empty): ${DueList.unreadableSays(s)}"
+            entries.isNotEmpty() ->
+                "- $label (facts${partly(s)}): ${DueList.openSays(entries, overdue, s.today, MAX_DUE_LISTED)}"
+            s.unreadable.size >= 2 ->
+                "- $label (COULD NOT BE READ, which is not the same as empty): ${DueList.unreadableSays(s)}"
             s.unreadable.isNotEmpty() ->
-                "- $label (PARTLY READ, which is not the same as empty): nothing open was found in what could be " +
+                "- $label (PARTLY READ, which is not the same as empty): $what was found in what could be " +
                     "read. ${DueList.unreadableSays(s)}"
+            overdue -> "- $label (EMPTY: read, and nothing is overdue)."
             else -> "- $label (EMPTY: read, and nothing open is due later today)."
         }
     }
-
-    private fun overdue(s: DueSummary): String {
-        val label = "Overdue open work (past due, not done)"
-        val late = s.open.filter { it.overdue }
-        return when {
-            late.isNotEmpty() -> "- $label (facts${partly(s)}): ${DueList.overdueSays(late, s.today, MAX_DUE_LISTED)}"
-            unreadAll(s) -> "- $label (COULD NOT BE READ, which is not the same as empty): ${DueList.unreadableSays(s)}"
-            s.unreadable.isNotEmpty() ->
-                "- $label (PARTLY READ, which is not the same as empty): nothing overdue was found in what could " +
-                    "be read. ${DueList.unreadableSays(s)}"
-            else -> "- $label (EMPTY: read, and nothing is overdue)."
-        }
-    }
-
-    /** Both due sources failed ([com.kevin.legion.calendar.DueReader] names calendar tasks and to-dos). */
-    private fun unreadAll(s: DueSummary) = s.unreadable.size >= 2
 
     private fun partly(s: DueSummary): String =
         if (s.unreadable.isEmpty()) "" else "; PARTLY READ: ${DueList.unreadableSays(s)}"
