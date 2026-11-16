@@ -1371,11 +1371,60 @@ def _account_balances(request, args) -> ToolResult:
         elif not anchored and (a["unverified_since_count"] or a["pending_count"]):
             said.append("That unverified activity is movement, not a balance.")
         lines.append(" ".join(said))
+    structured = {"accounts": found}
+    lead = ""
+    if not args.get("account"):
+        # Kevin, 2026-11-16 (ADR 0094): asked how much he has, the answer leads with net cash.
+        from finance.net_cash import net_cash
+
+        cash = net_cash(request)
+        lead = _net_cash_words(request, cash)
+        if lead:
+            structured["net_cash"] = cash
+            lead += "\n\n"
     return ok(
-        "Balances per account, never added across currencies:\n"
+        lead
+        + "Balances per account, never added across currencies:\n"
         + "\n".join(f"- {t}" for t in lines),
-        structured={"accounts": found},
+        structured=structured,
     )
+
+
+NET_CASH_STALE = timedelta(hours=24)
+
+
+def _net_cash_words(request, cash: dict) -> str:
+    """The net cash lead for `account_balances`, or "" when nothing is linked
+    to the bank feed (no checking or card record at all: nothing to say)."""
+    from brief.compose import money
+
+    if not cash["parts"] and not cash["missing"]:
+        return ""
+    if not cash["available"]:
+        return (
+            f"{cash['reason']} Do not add the accounts below up yourself: say which account "
+            f"has no balance on file."
+        )
+    c = cash["currency"]
+    as_of = cash["as_of"]
+    said = [
+        f"Net cash now: {money(cash['net_cents'], c)} ({c}), "
+        f"{_bank_as_of_words(request, as_of)}. Say this first, with its as-of time."
+    ]
+    if as_of is not None and _now() - as_of > NET_CASH_STALE:
+        said.append("It is more than a day old: say so.")
+    said.append(
+        "It is the linked checking account minus everything owed on every linked card, with "
+        "charges still pending at the bank counted as already spent, from the last bank sync."
+    )
+    pending = cash["pending_cents"] or 0
+    if pending:
+        said.append(f"Of which pending at the bank: {money(pending, c)}.")
+    said.append(
+        "The per-account lines below are each bank's own balance; a card's owed figure there "
+        "leaves out its pending charges, which net cash counts."
+    )
+    return " ".join(said)
 
 
 def _grocery_spend(request, args) -> ToolResult:

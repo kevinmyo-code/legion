@@ -1809,5 +1809,16 @@ def test_bank_connections_are_scoped_by_household(
         assert token_b.get("/api/ingest/plaid").data["connected"] is True
         assert LedgerTransaction.objects.filter(household=household_a).count() == 0
         assert LedgerTransaction.objects.filter(household=household_b).count() == 1
+        # ADR 0094: net cash reads B's balances for B and never for A.
+        item_b = PlaidItem.objects.get(household=household_b)
+        item_b.accounts = [
+            {**CHECKING, "balance_current_cents": 50_000, "balance_available_cents": None,
+             "balance_currency": "USD", "balance_as_of": "2026-11-16T14:00:00+00:00"},
+        ]
+        item_b.save(update_fields=["accounts"])
+        a_cash = token_a.get("/api/finance/net-cash").data
+        assert a_cash["parts"] == [] and a_cash["net_cents"] is None
+        assert "Household B" not in str(a_cash) and "1000" not in str(a_cash)
+        assert token_b.get("/api/finance/net-cash").data["net_cents"] == 50_000
     finally:
         plaid_client.set_gateway_factory(None)

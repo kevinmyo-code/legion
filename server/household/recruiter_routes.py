@@ -64,6 +64,8 @@ RECRUITER_ALLOWED: frozenset[str] = frozenset(
         "finance.figure_views.RunwayView",
         "finance.figure_views.SafeToSpendView",
         "finance.figure_views.BudgetsView",
+        # net cash (ADR 0094): the visit's copy links no bank, so it says so in words.
+        "finance.figure_views.NetCashView",
         # pantry
         "api.pantry.GroceryStapleViewSet",
         "api.pantry.ReceiptViewSet",
