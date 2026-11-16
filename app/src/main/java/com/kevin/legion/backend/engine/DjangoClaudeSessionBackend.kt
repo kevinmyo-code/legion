@@ -175,15 +175,22 @@ private data class HealthRow(
                 )
             }.getOrNull()
         },
-        limits = limits?.let { LaptopLimits(it.hotC, it.ramHighPct, it.diskLowGb) },
+        limits = limits?.let { l ->
+            if (l.hotC != null && l.ramHighPct != null && l.diskLowGb != null) {
+                LaptopLimits(l.hotC, l.ramHighPct, l.diskLowGb)
+            } else {
+                null
+            }
+        },
     )
 }
 
+/** Each threshold optional, so a partial `limits` costs the card its lines, never the whole status read. */
 @Serializable
 private data class LimitsRow(
-    @SerialName("hot_c") val hotC: Double,
-    @SerialName("ram_high_pct") val ramHighPct: Double,
-    @SerialName("disk_low_gb") val diskLowGb: Double,
+    @SerialName("hot_c") val hotC: Double? = null,
+    @SerialName("ram_high_pct") val ramHighPct: Double? = null,
+    @SerialName("disk_low_gb") val diskLowGb: Double? = null,
 )
 
 @Serializable

@@ -90,6 +90,9 @@ object GeneralCards {
             )
         }
         require(series.size in 1..ConversationCard.MAX_SERIES) { "series: ${series.size}" }
+        val style = requireNotNull(TrendStyle.of(c.text("style"))) { "style" }
+        // Bars draw one series: a second would be silently left out.
+        require(style == TrendStyle.LINE || series.size == 1) { "bars take one series" }
         ConversationCard.Trend(
             title = c.getString("title"),
             unit = unit,
@@ -98,7 +101,7 @@ object GeneralCards {
             period = c.text("period"),
             note = c.text("note"),
             guide = CardPictures.mark(c.obj("guide"), unit),
-            style = requireNotNull(TrendStyle.of(c.text("style"))) { "style" },
+            style = style,
         )
     }.getOrNull()
 

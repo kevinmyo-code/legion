@@ -60,6 +60,37 @@ class DomainCardsTest {
     }
 
     @Test
+    fun `the picture fields survive the engine path, Open link added`() {
+        val grades = EngineCards.fromAnswer(
+            answer(
+                "canvas_grades",
+                """{"card":"readings","title":"Grades","lead":0,"items":[
+                {"label":"Calculus II","value":84.25,"unit":"%","scale":{"min":0,"max":100}}],"more":0}""",
+            ),
+        ) as ConversationCard.Readings
+        assertEquals(0, grades.lead)
+        assertEquals(BigDecimal(100), grades.items.single().scale!!.max)
+        assertEquals(CardDestination.GRADES, grades.open)
+        val weight = EngineCards.fromAnswer(
+            answer(
+                "get_weight_trend",
+                """{"card":"trend","title":"Weight","unit":"lb","guide":{"value":175,"label":"Goal 175 lb"},
+                "series":[{"name":"Weighed","points":[{"at":"2026-11-01","value":186.2}]}]}""",
+            ),
+        ) as ConversationCard.Trend
+        assertEquals("Goal 175 lb", weight.guide!!.label)
+        assertEquals(CardDestination.BODY, weight.open)
+        val pace = EngineCards.fromAnswer(
+            answer(
+                "budgets",
+                """{"card":"status_list","title":"Budget pace","items":[{"name":"Food","status":"ok",
+                "meter":{"value":9000,"max":20000,"unit":"usd"}}],"more":0}""",
+            ),
+        ) as ConversationCard.StatusList
+        assertEquals(BigDecimal(20000), pace.items.single().meter!!.max)
+    }
+
+    @Test
     fun `a tool with no screen of its own leaves the card without an Open link`() {
         val card = EngineCards.fromAnswer(
             answer(

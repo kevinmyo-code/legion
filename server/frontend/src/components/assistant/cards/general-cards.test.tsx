@@ -174,6 +174,7 @@ describe('the general kinds on screen', () => {
     expect(asCard(row({ level: { value: 5, of: 4 } }))).toBeUndefined()
     const trend = { card: 'trend', title: 'x', unit: 'h', series: [{ name: 'a', points: [] }] }
     expect(asCard({ ...trend, style: 'pie' })).toBeUndefined()
+    expect(asCard({ ...trend, style: 'bars', series: [...trend.series, ...trend.series] })).toBeUndefined()
     expect(asCard({ ...trend, guide: { value: '8', label: 'x' } })).toBeUndefined()
     expect(asCard(card(reading))).toBeDefined()
   })

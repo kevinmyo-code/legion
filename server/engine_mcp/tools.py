@@ -480,7 +480,7 @@ def _read_records(request, args) -> ToolResult:
         )
     card = None
     if table == "drives":
-        card = cards.safe(cards.drives_card, data, _household_zone(request))
+        card = cards.safe(cards.drives_card, data, _household_zone(request), more=more)
     return ok(f"{head}:\n{_json(data)}", structured={"table": table, "rows": data}, card=card)
 
 

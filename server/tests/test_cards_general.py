@@ -468,6 +468,8 @@ def test_drives_are_miles_per_day_with_the_total_as_headline_and_never_fuel_econ
     assert fri["note"] == "1 drive, no end time stored. 1 with no miles stored, not counted."
     assert "mpg" not in json.dumps(card).lower()
     assert cards.drives_card([], ZoneInfo("UTC")) is None
+    capped = cards.drives_card(rows, ZoneInfo("America/Chicago"), more=True)
+    assert "Only the newest 3 drives were read" in capped["note"]
 
 
 # =============================================================================
@@ -534,4 +536,5 @@ def test_lead_meter_level_guide_and_style_are_held_to_their_shape():
     good = cards.trend_card("Sleep", "h", [line], guide=(8, "Target 8 h"), style="bars")
     assert cards.check(good) and good["style"] == "bars"
     assert not cards.check({**good, "style": "pie"})
+    assert not cards.check({**good, "series": [line, line]})
     assert not cards.check({**good, "guide": {"value": "8", "label": "Target"}})

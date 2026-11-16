@@ -301,7 +301,7 @@ export function asCard(value: unknown): Card | undefined {
             s.points.every((p) => typeof p.at === 'string' && AT.test(p.at) && isNumber(p.value)),
         ) &&
         markOk(value.guide, value.unit) &&
-        (value.style === undefined || value.style === 'line' || value.style === 'bars')
+        (value.style === undefined || value.style === 'line' || (value.style === 'bars' && value.series.length === 1))
         ? (value as unknown as TrendCard)
         : undefined
     default:

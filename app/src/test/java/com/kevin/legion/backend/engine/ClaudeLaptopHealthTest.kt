@@ -8,6 +8,7 @@ import com.kevin.legion.claude.ClaudeStatus
 import com.kevin.legion.claude.ClaudeWording
 import com.kevin.legion.claude.LaptopHealth
 import com.kevin.legion.claude.LaptopHealthWording
+import com.kevin.legion.claude.LaptopLimits
 import com.kevin.legion.ui.claudesession.ClaudeQuickRows
 import com.kevin.legion.ui.claudesession.ClaudeSessionRows
 import java.time.Instant
@@ -56,6 +57,16 @@ class ClaudeLaptopHealthTest {
         assertEquals(Instant.parse("2026-11-12T02:40:00Z"), h.temps24h[0].at)
         assertNull(h.temps24h[2].gpuC)
         assertEquals(listOf(55f, 60f, 63f), LaptopHealthWording.spark(h))
+        assertEquals(LaptopLimits(hotC = 90.0, ramHighPct = 95.0, diskLowGb = 15.0), h.limits)
+    }
+
+    @Test
+    fun `limits are optional, and a partial one costs only the lines, never the status read`() {
+        val sent = """"limits": {"hot_c": 90.0, "ram_high_pct": 95.0, "disk_low_gb": 15.0}"""
+        val none = NEW_STATUS.replace(sent, """"limits": null""")
+        assertNull(statusFrom(none).machines.single().health!!.limits)
+        val partial = NEW_STATUS.replace(""", "ram_high_pct": 95.0, "disk_low_gb": 15.0""", "")
+        assertNull(statusFrom(partial).machines.single().health!!.limits)
     }
 
     @Test
@@ -112,7 +123,8 @@ class ClaudeLaptopHealthTest {
             "disk_free_gb": 180.2, "uptime_s": 93600, "boot_at": "2026-11-11T01:05:00+00:00",
             "laptopctl_agent": false, "on_mains": true, "reboot_pending": false,
             "alerts": ["agent_down"], "temps_24h": [["2026-11-12T02:40:00+00:00", 55.0, 50.0],
-            ["2026-11-12T02:50:00+00:00", 58.0, 60.0], ["2026-11-12T03:00:00+00:00", 63.0, null]]}}],
+            ["2026-11-12T02:50:00+00:00", 58.0, 60.0], ["2026-11-12T03:00:00+00:00", 63.0, null]],
+            "limits": {"hot_c": 90.0, "ram_high_pct": 95.0, "disk_low_gb": 15.0}}}],
             "sessions": []}"""
     }
 }

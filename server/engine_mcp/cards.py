@@ -310,6 +310,8 @@ def check(card: dict) -> bool:
             and all(_series_ok(s, unit) for s in series)
             and _mark_ok(card.get("guide"), unit)
             and card.get("style") in (None, *TREND_STYLES)
+            # Bars draw one series: a second would be silently left out.
+            and (card.get("style") != "bars" or len(series) == 1)
         )
     return False
 
@@ -1165,11 +1167,12 @@ def memories_card(rows: list[dict]) -> dict:
 # =============================================================================
 
 
-def drives_card(rows: list[dict], zone) -> dict | None:
+def drives_card(rows: list[dict], zone, more: bool = False) -> dict | None:
     """The drives `read_records` read, as miles per day, newest day first, with the total as the
     headline: sums of the stored rows' own miles. A drive with no miles stored is counted in
-    words and never as zero. No fuel economy: the phone withholds mpg on purpose, so the card
-    never works one out."""
+    words and never as zero. `more` (the read stopped at its limit) says the total and the
+    oldest day cover only the drives read. No fuel economy: the phone withholds mpg on purpose,
+    so the card never works one out."""
     from django.utils.dateparse import parse_datetime
 
     days: dict[date, dict] = {}
@@ -1230,11 +1233,17 @@ def drives_card(rows: list[dict], zone) -> dict | None:
     }
     total_miles = round(total["miles"], 1) if total["drives"] > total["unread"] else None
     items.insert(0, reading("Total", total_miles, "mi", note=counted(total)))
+    note = "Miles as the phone logged them; no fuel economy."
+    if more:
+        note += (
+            f" Only the newest {total['drives']} drives were read, so the total and the oldest"
+            " day may be short."
+        )
     card = readings_card(
         "Drives",
         items,
         period=f"{len(ordered)} day{'s' if len(ordered) != 1 else ''} with drives",
-        note="Miles as the phone logged them; no fuel economy.",
+        note=note,
         lead=0,
     )
     card["more"] = max(len(ordered) - len(shown), 0)

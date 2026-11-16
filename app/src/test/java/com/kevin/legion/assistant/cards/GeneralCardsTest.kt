@@ -111,6 +111,9 @@ class GeneralCardsTest {
         assertNull(ServerCards.parse(row(""","level":{"value":5,"of":4}""")))
         val trend = """{"card":"trend","title":"x","unit":"h","series":[{"name":"a","points":[]}]"""
         assertNull(ServerCards.parse(JSONObject("""$trend,"style":"pie"}""")))
+        val series = """[{"name":"a","points":[]},{"name":"b","points":[]}]"""
+        val two = """{"card":"trend","title":"x","unit":"h","style":"bars","series":$series}"""
+        assertNull(ServerCards.parse(JSONObject(two)))
         assertNull(ServerCards.parse(JSONObject("""$trend,"guide":{"value":"8","label":"x"}}""")))
         assertEquals(TrendStyle.LINE, (ServerCards.parse(JSONObject("$trend}")) as ConversationCard.Trend).style)
     }
