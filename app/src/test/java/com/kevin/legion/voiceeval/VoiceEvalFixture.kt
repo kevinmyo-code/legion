@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber") // a fixture: the numbers are the made-up data
+@file:Suppress("MagicNumber", "MaxLineLength") // a fixture: the numbers are the made-up data, one row per line
 
 package com.kevin.legion.voiceeval
 

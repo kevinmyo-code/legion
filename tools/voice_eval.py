@@ -210,6 +210,8 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
                 cur.model = model.split("+", 1)[1] if "+" in model else model
             elif event == "user":
                 cur.turns.append(Turn(user=str(f.get("text", ""))))
+            elif event == "interrupted":
+                cur.notes.append(f"reply interrupted ({f.get('source', '?')})")
             elif event == "assistant" and cur.turns:
                 cur.turns[-1].answer_parts.append(str(f.get("text", "")))
             elif event == "tool_call":

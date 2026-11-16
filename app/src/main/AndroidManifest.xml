@@ -651,6 +651,14 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
+        <!-- Test turns from a computer (service/testturn/). Exported because adb's shell is
+             another uid; the provider answers only the shell or root uid, and only while
+             Settings, Assistant, "Allow test turns from a computer" is on (off by default). -->
+        <provider
+            android:name=".service.testturn.TestTurnProvider"
+            android:authorities="${applicationId}.testturn"
+            android:exported="true" />
+
         <!-- The Quiet tile: vibrate, calls and alarms only, every other notification silent.
              See quiet/QuietMode.kt. -->
         <!-- Dumb mode's call screener (ADR 0062). Android binds it only after the user grants LEGION the

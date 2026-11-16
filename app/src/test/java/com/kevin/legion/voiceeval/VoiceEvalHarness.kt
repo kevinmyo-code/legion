@@ -143,6 +143,7 @@ internal class VoiceEvalHarness(
     }
 
     /** `LiveSessionController.runTool`'s order, minus the screens (there is none here). */
+    @Suppress("ReturnCount") // the session-owned tools answer first, as in CascadeSession's executor
     private suspend fun runTool(name: String, args: JSONObject, readThrough: Boolean, userText: String): JSONObject {
         if (name == "end_conversation") {
             return JSONObject().put("success", true)

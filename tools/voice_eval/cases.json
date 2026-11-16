@@ -4,6 +4,7 @@
     {
       "id": "due_open",
       "say": "what do I have due?",
+      "audio": true,
       "why": "2026-11-15: this went to the reminders list instead of the calendar",
       "expect": {
         "calls": ["day/read_calendar"],
@@ -83,6 +84,22 @@
         {"say": "what's due today", "expect": {"calls": ["day/read_calendar"], "no_empty_claim": true}},
         {
           "say": "and tomorrow?",
+          "expect": {
+            "calls": ["day/read_calendar"],
+            "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+          }
+        }
+      ]
+    },
+    {
+      "id": "barge_in",
+      "audio": true,
+      "why": "with --audio on the phone, the second turn is spoken over the first reply (barge-in)",
+      "turns": [
+        {"say": "read me everything on my calendar this week", "expect": {"calls": ["day/read_calendar"]}},
+        {
+          "say": "stop, just tomorrow",
+          "barge": true,
           "expect": {
             "calls": ["day/read_calendar"],
             "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}

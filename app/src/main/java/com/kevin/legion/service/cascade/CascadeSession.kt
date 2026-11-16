@@ -42,6 +42,8 @@ import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.TurnModels
 import com.kevin.legion.service.turn.TurnTaker
 import com.kevin.legion.service.turn.VoiceTurnSettings
+import com.kevin.legion.service.testturn.TestSession
+import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.vehicle.ActiveVehicle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -114,6 +116,8 @@ internal class CascadeSession(
     },
     /** Whether the cloud voice can start at all: it runs on the key Kevin pasted in Settings. */
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
+    /** A test conversation from a computer ([TestSession]): test mic, logcat audit, no records kept. */
+    private val test: TestSession? = null,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -130,7 +134,7 @@ internal class CascadeSession(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val loop = Dispatchers.Default.limitedParallelism(1)
 
-    private val audit = LiveAudit()
+    private val audit = if (test != null) LiveAudit(sink = { TestTurns.auditSink(LiveAudit.TAG, it) }) else LiveAudit()
     private val ackLines = ACK
 
     /** Where speech goes now: the laptop, or the cloud voice after a fallback. Changed only on [loop]. */
@@ -338,7 +342,7 @@ internal class CascadeSession(
             }
         }
         player = ReplyPlayer(b.tts.sampleRate) { callAudio?.isActive == true }
-        audit.enabled = ConversationLog.auditWantedAfterReading(ctx)
+        audit.enabled = ConversationLog.auditWantedAfterReading(ctx) || test != null
         audit.sessionStart("${b.kind.token}+$MODEL", emptySet(), brain.basePackToken)
         auditStarted = true
         LiveLatency.log(
@@ -589,6 +593,59 @@ internal class CascadeSession(
      * runs after the turn in flight, as Live folded such a line into the open conversation. False
      * when this session cannot take it (closing, or a speak-only line still playing).
      */
+    /**
+     * A test turn (adb, [TestTurns]): [text] taken as his own words, as if speech-to-text had just
+     * returned it. Waits for the open (and its greeting) to finish, then runs like a spoken turn.
+     * False when this is not a test conversation or it is closing.
+     */
+    fun testTurn(text: String): Boolean {
+        if (test == null || closing.get() || !listens) return false
+        scope.launch(loop) {
+            awaitTestOpen()
+            if (closing.get()) return@launch
+            val previous = turnJob
+            turnJob = scope.launch(loop) {
+                previous?.join()
+                if (closing.get()) return@launch
+                followUpEvent(FollowUpWindow.Event.UserSpeech)
+                host.phase(Phase.THINKING, "...")
+                audit.user(text, final = true, typed = true)
+                answerTurn(text, System.currentTimeMillis(), TurnRecord(text))
+            }
+        }
+        return true
+    }
+
+    /**
+     * A test clip ([TestSession.mic]) in place of his voice: queued once the open and any reply
+     * have finished, as he would wait to speak, or at once with [barge] to talk over a reply.
+     */
+    fun testAudio(pcm: ByteArray, barge: Boolean): Boolean {
+        val mic = test?.mic?.takeIf { !closing.get() && listens } ?: return false
+        if (!barge) {
+            scope.launch(loop) {
+                awaitTestOpen()
+                turnJob?.join()
+                if (!closing.get()) mic.queue(pcm)
+            }
+        }
+        return !barge || mic.queue(pcm)
+    }
+
+    /** Still opening: the greeting (or its scripted line) becomes the first turnJob. */
+    private suspend fun awaitTestOpen() {
+        var waited = 0L
+        while (turnJob == null && !closing.get() && waited < CascadeTimings.MODEL_WAIT_MS + OPEN_WAIT_MS) {
+            delay(TEST_POLL_MS)
+            waited += TEST_POLL_MS
+        }
+    }
+
+    /** For the test door's status: a reply audible, a turn in flight, turns answered. */
+    val testSpeaking: Boolean get() = speaking
+    val testBusy: Boolean get() = turnJob?.isActive == true
+    val answeredTurns: Int get() = turnsAnswered.get()
+
     fun say(line: CascadeOpener): Boolean {
         // Still opening (no prompt yet): the line would end the conversation he just opened.
         if (closing.get() || !listens || prefixReady == null) return false
@@ -1324,6 +1381,8 @@ internal class CascadeSession(
         val kept = if (readThrough) LiveAudit.REDACTED else said
         if (said.isNotBlank()) history.add(ChatTurn(fromUser = false, text = kept))
         host.turnTranscript(if (fromUser) heard else "", said)
+        // A test conversation keeps no record: nothing uploads, nothing becomes a memory.
+        if (test != null) return
         val vehicle = ActiveVehicle.current(ctx)
         scope.launch(Dispatchers.IO) {
             runCatching {
@@ -1896,7 +1955,9 @@ internal class CascadeSession(
         micJob = scope.launch(Dispatchers.IO) {
             // The car's hands-free link, when it was asked for, carries the route before capture.
             audioRoute.awaitBluetoothMic()
-            CascadeMic(ctx).run(
+            // A test conversation never opens the real mic ([TestMic]).
+            test?.mic?.play { buf, n -> synchronized(turnLock) { turnTaker?.feed(buf, n, playbackActive) } }
+                ?: CascadeMic(ctx).run(
                 // Under [turnLock]: a backend swap never lands inside a feed.
                 onBuffer = { buf, n -> synchronized(turnLock) { turnTaker?.feed(buf, n, playbackActive) } },
                 onNoPermission = {
@@ -1945,6 +2006,10 @@ internal class CascadeSession(
 
         /** The loop's own backstop; the controller's runner already applies each tool's real ceiling. */
         const val TOOL_BACKSTOP_MS = 47_000L
+
+        /** A test turn waits this long (beyond the turn models) for the open to start its first line. */
+        private const val OPEN_WAIT_MS = 20_000L
+        private const val TEST_POLL_MS = 50L
 
 
         private const val CAPTION_CHARS = 160

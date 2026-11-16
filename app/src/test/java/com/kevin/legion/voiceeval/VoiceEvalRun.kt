@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber") // a by-hand run: poll intervals and caps
+@file:Suppress("MagicNumber", "MaxLineLength") // a by-hand run: poll intervals, caps and one-line logs
 
 package com.kevin.legion.voiceeval
 
@@ -105,9 +105,10 @@ class VoiceEvalRun {
                 ContextCacheStore(transport, scope, log = { out(LiveLatency.TAG, it) })
             }
             // As a conversation open does: create the cache first, so case 1 is priced like the rest.
-            cache?.let {
-                it.warm(prefix)
-                repeat(60) { _ -> if (!it.state(prefix).startsWith("creating")) return@let; delay(500) }
+            if (cache != null) {
+                cache.warm(prefix)
+                var tries = 0
+                while (cache.state(prefix).startsWith("creating") && tries++ < 60) delay(500)
             }
             out(VoiceEvalHarness.TEST_TAG, "run_begin model=$model cases=${cases.size} cache=${cache?.state(prefix) ?: "off"}")
             val harness = VoiceEvalHarness(context, transport, cache, prefix, preamble, out)

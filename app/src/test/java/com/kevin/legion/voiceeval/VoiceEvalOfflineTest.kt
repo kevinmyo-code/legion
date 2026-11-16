@@ -1,4 +1,4 @@
-@file:Suppress("MaxLineLength") // test fixtures: invented wire frames read best on one line
+@file:Suppress("MaxLineLength", "NestedBlockDepth") // invented wire frames on one line; cases walk nested JSON
 
 package com.kevin.legion.voiceeval
 
