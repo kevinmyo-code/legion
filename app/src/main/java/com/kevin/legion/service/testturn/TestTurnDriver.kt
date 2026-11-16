@@ -63,6 +63,8 @@ internal class TestTurnDriver(
             "speaking" to (owns(c) && c!!.testSpeaking),
             "busy" to (owns(c) && c!!.testBusy),
             "turns_answered" to (if (owns(c)) c!!.answeredTurns else 0),
+            "user_turns" to (if (owns(c)) c!!.heardTurns else 0),
+            "audio_pending" to (owns(c) && c!!.testAudioPending),
             "phase" to phase(),
         )
     }

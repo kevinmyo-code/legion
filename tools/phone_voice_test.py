@@ -17,8 +17,8 @@ conversation. The phone's `LIVE_AUDIT` / `LIVE_LATENCY` lines are read from logc
 on; only adb's shell uid is answered; in a test conversation every tool that would change data or act
 (add, edit, delete, send, call, control, open a screen) is refused in words with `test_mode`, unless
 `--allow-writes <case>` names that case. Reads use his real data. The phone closes a test conversation
-itself after 90 s with no command and after 15 minutes in all, and a real tap or wake word ends it at
-once. **Here:** a conversation is ended after every case and in `finally`; if a real (non-test)
+itself after 90 s with no command and after 15 minutes in all, and a real tap ends it at once (the
+wake word is not listening while any conversation is open). **Here:** a conversation is ended after every case and in `finally`; if a real (non-test)
 conversation is open, the run waits up to `--wait-real` seconds and otherwise stops.
 
 **Audio cases** are made from the case text by the laptop voice service (Kyutai) ONLY when its
@@ -137,19 +137,27 @@ def case_block(cid: str, lines: list[str], ms: int, note: str | None, fallback_s
     return [frame(first, "LIVE_TEST", f"case_begin id={cid}")] + lines + [frame(last, "LIVE_TEST", end)]
 
 
-def turn_finished(before: dict, now: dict, sent_at: float, clock: float, saw_busy: bool) -> str | None:
-    """Why a turn is over, or None to keep waiting. A turn is over when the phone answered one more
-    turn and is quiet again, or the conversation closed, or a real conversation took over."""
+def heard(before: dict, now: dict) -> bool:
+    """The phone took the turn as his words (a typed turn after the open, a clip after it was fed)."""
+    return now.get("user_turns", 0) > before.get("user_turns", 0)
+
+
+def turn_finished(before: dict, now: dict, heard_at: float | None, clock: float, saw_busy: bool) -> str | None:
+    """Why a turn is over, or None to keep waiting. Over when the phone heard the turn, answered one
+    more and is quiet with no clip still waiting; or the conversation closed; or a real one took
+    over. The greeting's own busy spell never counts: nothing is over before the turn was heard."""
     conv = now.get("conversation")
     if conv == "real":
         return "real_conversation"
     if conv == "none":
         return "closed"
+    if now.get("audio_pending") or not heard(before, now):
+        return None
     quiet = not now.get("busy") and not now.get("speaking")
     if now.get("turns_answered", 0) > before.get("turns_answered", 0) and quiet:
         return "answered"
-    # Answered with a failure (no answer counted): it was busy and is quiet again for a while.
-    if saw_busy and quiet and clock - sent_at > 3:
+    # Answered with a failure (no answer counted): busy after it was heard, quiet again for a while.
+    if saw_busy and quiet and heard_at is not None and clock - heard_at > 3:
         return "quiet"
     return None
 
@@ -291,29 +299,35 @@ def make_clip(text: str) -> tuple[Path | None, str]:
 # --------------------------------------------------------------------------- the run
 
 
-def wait_turn(phone: Phone, before: dict, timeout: float, poll: float = 0.5) -> tuple[str, dict]:
+def wait_turn(phone, before: dict, timeout: float, poll: float = 0.5) -> tuple[str, dict]:
     sent = time.monotonic()
     saw_busy = False
+    heard_at = None
     now = before
     while time.monotonic() - sent < timeout:
         time.sleep(poll)
         now = phone.status()
         if not now.get("ok", True):
             return "status_failed", now
-        saw_busy |= bool(now.get("busy") or now.get("speaking"))
-        why = turn_finished(before, now, sent, time.monotonic(), saw_busy)
+        if heard_at is None and heard(before, now):
+            heard_at = time.monotonic()
+        if heard_at is not None:
+            saw_busy |= bool(now.get("busy") or now.get("speaking"))
+        why = turn_finished(before, now, heard_at, time.monotonic(), saw_busy)
         if why:
             return why, now
     return "timeout", now
 
 
-def wait_speaking(phone: Phone, timeout: float, poll: float = 0.25) -> str:
+def wait_speaking(phone, before: dict, timeout: float, poll: float = 0.25) -> str:
+    """Until the reply to the turn just sent is audible (never the greeting: the turn must be heard
+    first, and no clip may still be waiting)."""
     t0 = time.monotonic()
     while time.monotonic() - t0 < timeout:
         st = phone.status()
         if st.get("conversation") != "test":
             return f"conversation {st.get('conversation')}"
-        if st.get("speaking"):
+        if heard(before, st) and not st.get("audio_pending") and st.get("speaking"):
             return "speaking"
         time.sleep(poll)
     return "timeout"
@@ -399,7 +413,7 @@ def run(a) -> int:
                 # The next turn talks over this reply: send it as soon as the reply is audible.
                 nxt = turns[i + 1] if i + 1 < len(turns) else {}
                 if nxt.get("barge") and a.audio and case.get("audio"):
-                    why = wait_speaking(phone, a.turn_timeout)
+                    why = wait_speaking(phone, before, a.turn_timeout)
                     if why != "speaking":
                         note = f"barge-in: the reply never became audible ({why})"
                         break

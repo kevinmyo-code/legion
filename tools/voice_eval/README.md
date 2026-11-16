@@ -59,10 +59,14 @@ Safety lives on the phone (`app/.../service/testturn/`):
   that changes data or acts (add, edit, delete, send, call, control, open a screen) is refused with
   "Test mode: not done" and `test_mode: true` in the result, unless the run names that case in
   `--allow-writes`;
-- a test conversation never opens the real microphone, keeps no conversation record (nothing
-  uploads as a memory source), always logs its audit lines to logcat, and closes itself after 90 s
-  without a command or 15 minutes in all; a real tap or wake word ends it at once, and the real
-  conversation then opens normally.
+- a test conversation never opens the real microphone; its words stay out of every record: its
+  `LIVE_AUDIT` lines go to logcat only (never the engine's conversation spool, which memory
+  consolidation reads), no conversation audit rows, no assistant panel (typed chat's history), and
+  its greeting does not use up a topic. Timing lines (`LIVE_LATENCY`, no words) still spool. It
+  closes itself after 90 s
+  without a command or 15 minutes in all; a real tap (or Brief me, or a proactive line) ends it at
+  once and then runs normally. The wake word is not listening while it is open, as in any
+  conversation, so the CLI ends it after every case.
 
 Audio cases are spoken by the laptop voice service (Kyutai) only when its `/health` says ready with
 no connection and an empty queue, cached under `~/.legion/voice-eval/clips/`; otherwise the case is

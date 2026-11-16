@@ -56,14 +56,62 @@ def test_pick_device():
             pass
 
 
+def st(**k):
+    return {"conversation": "test", "turns_answered": 1, "user_turns": 1, **k}
+
+
 def test_turn_finished():
-    before = {"turns_answered": 1, "conversation": "test"}
-    assert pvt.turn_finished(before, {"conversation": "test", "turns_answered": 1, "busy": True}, 0, 1, True) is None
-    assert pvt.turn_finished(before, {"conversation": "test", "turns_answered": 2, "busy": False, "speaking": False}, 0, 5, True) == "answered"
-    assert pvt.turn_finished(before, {"conversation": "test", "turns_answered": 2, "busy": False, "speaking": True}, 0, 5, True) is None
-    assert pvt.turn_finished(before, {"conversation": "real"}, 0, 1, False) == "real_conversation"
-    assert pvt.turn_finished(before, {"conversation": "none"}, 0, 1, False) == "closed"
-    assert pvt.turn_finished(before, {"conversation": "test", "turns_answered": 1, "busy": False}, 0, 4, True) == "quiet"
+    before = st()
+    assert pvt.turn_finished(before, st(user_turns=2, busy=True), 0, 1, True) is None
+    assert pvt.turn_finished(before, st(user_turns=2, turns_answered=2), 0, 5, True) == "answered"
+    assert pvt.turn_finished(before, st(user_turns=2, turns_answered=2, speaking=True), 0, 5, True) is None
+    assert pvt.turn_finished(before, {"conversation": "real"}, None, 1, False) == "real_conversation"
+    assert pvt.turn_finished(before, {"conversation": "none"}, None, 1, False) == "closed"
+    assert pvt.turn_finished(before, st(user_turns=2), 0, 4, True) == "quiet"
+
+
+def test_greeting_then_clip_is_not_mistaken_for_the_answer():
+    """An audio case: the greeting is busy, then quiet, while the clip still waits to be fed. None
+    of that is the turn; it is over only once the clip was heard and answered."""
+    before = st(turns_answered=0, user_turns=0)
+    greeting = st(turns_answered=0, user_turns=0, speaking=True, audio_pending=True)
+    after_greeting = st(turns_answered=0, user_turns=0, audio_pending=True)
+    fed = st(turns_answered=0, user_turns=0, audio_pending=False)
+    answered = st(turns_answered=1, user_turns=1, audio_pending=False)
+    for now in (greeting, after_greeting, fed):
+        assert pvt.turn_finished(before, now, None, 30, True) is None
+    assert pvt.turn_finished(before, answered, 10, 30, True) == "answered"
+
+
+class FakePhone:
+    def __init__(self, states):
+        self.states = list(states)
+
+    def status(self):
+        return self.states.pop(0) if len(self.states) > 1 else self.states[0]
+
+
+def test_barge_waits_for_the_reply_not_the_greeting():
+    before = st(user_turns=0)
+    phone = FakePhone([
+        st(user_turns=0, speaking=True, audio_pending=True),  # the greeting
+        st(user_turns=1, speaking=False),  # heard, thinking
+        st(user_turns=1, speaking=True),  # the reply
+    ])
+    assert pvt.wait_speaking(phone, before, timeout=5, poll=0) == "speaking"
+    assert len(phone.states) == 1
+
+
+def test_wait_turn_ignores_the_greeting_then_ends_on_the_answer():
+    before = st(turns_answered=0, user_turns=0, ok=True)
+    phone = FakePhone([
+        st(turns_answered=0, user_turns=0, speaking=True, ok=True),  # greeting
+        st(turns_answered=0, user_turns=0, ok=True),  # quiet, nothing heard yet
+        st(turns_answered=0, user_turns=1, busy=True, ok=True),  # heard, thinking
+        st(turns_answered=1, user_turns=1, ok=True),  # answered
+    ])
+    why, _ = pvt.wait_turn(phone, before, timeout=5, poll=0)
+    assert why == "answered"
 
 
 def test_wav_is_16k_mono_16bit():

@@ -41,10 +41,10 @@ object TestTurnPolicy {
         "watch" to setOf("list"),
         "memory" to setOf("recall", "list"),
         "books" to setOf("status"),
-        "app_update" to setOf("check", "whats_new"),
+        // "check" may start a download: refused.
+        "app_update" to setOf("whats_new"),
         "bought_log" to setOf("last", "recent"),
-        "claude_session" to setOf("status"),
-        "clock" to setOf("list"),
+        "clock" to setOf("alarm_list", "timer_left"),
     )
 
     /**
@@ -63,6 +63,8 @@ object TestTurnPolicy {
         "show_app", "show_agenda_modal", "show_saved_places", "show_generated_view", "show_vault_item",
         "import_receipt", "look", "browser", "create_record", "update_record", "delete_record",
         "aspect_clerk", "create_aspect", "update_aspect", "ask_engine",
+        // Its "check" can arm a watch; every other action sends or changes something.
+        "claude_session",
         "set_companion_name", "set_personality", "set_driver", "finish_intro",
         // An action tool resolves to the tool its action names; one with no known action stays
         // itself and is refused (dispatch would refuse it too).

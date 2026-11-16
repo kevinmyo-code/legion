@@ -409,8 +409,8 @@ fun AssistantSettingsScreen(
                     explanation = "a computer connected by USB or wireless debugging may hold short test " +
                         "conversations with ${activeName ?: "the assistant"}: typed or recorded words taken " +
                         "as yours. Lookups use your real data; anything that would change something or " +
-                        "act is refused and not done. A test ends itself when idle, and a tap or the wake " +
-                        "word ends it at once.",
+                        "act is refused and not done. A test ends itself when idle, and a tap ends it at " +
+                        "once (the wake word waits, as in any open conversation).",
                     enabled = testTurns,
                     onToggle = { on ->
                         TestTurnSettings.setAllowed(context, on)

@@ -190,3 +190,14 @@ def test_greeting_fallback_is_noted():
     _, runs = parse(lines)
     assert runs[0].timings["open_greeting_plan_ms"] == 4100
     assert any("scripted line (timeout)" in n for n in runs[0].notes)
+
+
+def test_empty_claim_over_a_due_block_fails():
+    # fix/greet-and-due puts a `due` block first in read_calendar's result.
+    due = '{"success":true,"due":[{"title":"Invented essay","overdue":false}],"count":1}'
+    lines = case_lines("due_today", "what's due today",
+                       [("day", {"action": "read_calendar", "from": "2026-11-15", "to": "2026-11-15"}, due)],
+                       "Nothing due today, you're clear.")
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[0], runs[0], phone=True)
+    assert any("open task" in f for f in v.failures)

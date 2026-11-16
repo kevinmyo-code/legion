@@ -19,8 +19,13 @@ class TestMic {
     @Volatile var feeding = false
         private set
 
+    private val waiting = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** A clip is queued or still being fed. */
+    val pending: Boolean get() = waiting.get() > 0
+
     /** False when [MAX_QUEUED] clips already wait. */
-    fun queue(pcm: ByteArray): Boolean = clips.trySend(pcm).isSuccess
+    fun queue(pcm: ByteArray): Boolean = clips.trySend(pcm).isSuccess.also { if (it) waiting.incrementAndGet() }
 
     suspend fun play(onBuffer: (ByteArray, Int) -> Unit) {
         val silence = ByteArray(CHUNK_BYTES)
@@ -46,6 +51,7 @@ class TestMic {
                 }
             } finally {
                 feeding = false
+                waiting.decrementAndGet()
             }
         }
     }

@@ -921,7 +921,10 @@ class LiveSessionController(context: Context) {
                     ?: cascadeTool(name, args, readThrough, userText, turnSeq, keepRecord = test == null)
             },
             transcript = { heard, said ->
-                AssistantChatStore.update { it.withSpeaker(speakerName()).turnComplete(heard, said, false) }
+                // The panel is typed chat's history too: a test conversation stays out of it.
+                if (test == null) {
+                    AssistantChatStore.update { it.withSpeaker(speakerName()).turnComplete(heard, said, false) }
+                }
             },
             onCrisis = {
                 cascade = null
@@ -974,12 +977,12 @@ class LiveSessionController(context: Context) {
         keepRecord: Boolean,
     ): JSONObject = withContext(Dispatchers.Main.immediate) {
         val response = runToolBounded(name, args, readThrough, userText)
-        if (response.has("success")) {
+        if (keepRecord && response.has("success")) {
             val ok = response.optBoolean("success", false)
             val detail = if (ok) null else response.optString("message").takeIf { it.isNotBlank() }
             AssistantChatStore.update { it.tool(name, ok, detail) }
         }
-        // A test conversation keeps no record (nothing uploads, nothing becomes a memory).
+        // A test conversation keeps no record: no panel line, no audit row, nothing uploads.
         if (keepRecord) auditToolCall(name, args, response, turnSeq)
         response
     }

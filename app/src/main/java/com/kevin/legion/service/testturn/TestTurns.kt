@@ -2,7 +2,6 @@ package com.kevin.legion.service.testturn
 
 import android.content.Context
 import android.util.Log
-import com.kevin.legion.service.conversationlog.ConversationLog
 import java.io.File
 
 /**
@@ -15,7 +14,8 @@ import java.io.File
  * reach this; and a test conversation runs every tool through [TestTurnPolicy], so nothing is
  * changed unless the case allowed writes. A test conversation is closed by the CLI after each run,
  * by the phone itself after [IDLE_CLOSE_MS] with no command or [MAX_OPEN_MS] in all, and at once by
- * a real tap or wake word (the real conversation then opens normally, outside test mode).
+ * a real tap, Brief me or a proactive line (the real one then runs normally, outside test mode).
+ * The wake word is not listening while it is open, as in any conversation (the mic is claimed).
  */
 object TestTurns {
     const val TAG = "LIVE_TEST"
@@ -49,10 +49,12 @@ object TestTurns {
 
     @Volatile var host: Host? = null
 
-    /** A test conversation's LIVE_AUDIT lines always reach logcat (the CLI reads them there). */
+    /**
+     * A test conversation's LIVE_AUDIT lines: logcat only (the CLI reads them there). Never the
+     * engine's conversation spool, which memory consolidation reads (`member_memory/consolidate.py`).
+     */
     fun auditSink(tag: String, message: String) {
         Log.i(tag, message)
-        ConversationLog.record(tag, message)
     }
 
     fun log(message: String) {
@@ -73,7 +75,9 @@ object TestTurns {
  * service, unknown method, missing text, bad clip.
  */
 object TestTurnCommands {
-    val STATUS_KEYS = listOf("conversation", "test_id", "speaking", "busy", "turns_answered", "phase")
+    val STATUS_KEYS = listOf(
+        "conversation", "test_id", "speaking", "busy", "turns_answered", "user_turns", "audio_pending", "phase",
+    )
 
     @Suppress("ReturnCount", "LongParameterList") // one worded refusal per guard
     fun handle(

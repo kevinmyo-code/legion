@@ -111,6 +111,13 @@ class VoiceEvalRun {
                 while (cache.state(prefix).startsWith("creating") && tries++ < 60) delay(500)
             }
             out(VoiceEvalHarness.TEST_TAG, "run_begin model=$model cases=${cases.size} cache=${cache?.state(prefix) ?: "off"}")
+            // What the prompt was built from, so a laptop run can be compared with a phone's `pack=`.
+            out(
+                VoiceEvalHarness.TEST_TAG,
+                "prompt pack=${brain.basePackToken} instruction_chars=${split.cacheable.length} " +
+                    "declarations=${prefix.functionDeclarations.length()}",
+            )
+            preamble.lines().filter { it.isNotBlank() }.forEach { out(VoiceEvalHarness.TEST_TAG, "preamble ${it.take(300)}") }
             val harness = VoiceEvalHarness(context, transport, cache, prefix, preamble, out)
             for (c in cases) {
                 harness.runCase(c)
