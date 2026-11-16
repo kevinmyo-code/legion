@@ -103,7 +103,7 @@ class DueRoutingLiveCheck {
             task("ALG 2401 Homework 11.1 to 11.6", false),
             task("ALG 2401 Chapter 11 Quiz", true),
             DueInput("Return the library book", 0L, true, today.plusDays(1), false, DueSource.TODO, whenLabel = "Nov 16"),
-            DueInput("Spring registration form", 1L, true, today.minusDays(5), false, DueSource.TODO, whenLabel = "Nov 10"),
+            DueInput("Gym waiver form", 1L, true, today.minusDays(5), false, DueSource.TODO, whenLabel = "Nov 10"),
         )
         val due = DueList.summarize(inputs, today, today.plusDays(1), today, now)
         val events = JSONArray()

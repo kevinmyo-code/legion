@@ -67,9 +67,9 @@ class DueListTest {
                 task("Old essay", today.minusDays(DueList.TASK_OVERDUE_LOOKBACK_DAYS + 5)),
                 task("Lab report", today.minusDays(3)),
             ),
-            listOf(todo("Spring registration", today.minusDays(60))),
+            listOf(todo("Gym waiver", today.minusDays(60))),
         )
-        assertEquals(listOf("Spring registration", "Lab report"), s.open.map { it.item.title })
+        assertEquals(listOf("Gym waiver", "Lab report"), s.open.map { it.item.title })
         assertTrue(s.open.all { it.overdue })
         assertEquals(2, s.overdueCount)
         assertTrue(DueList.says(s).contains("still open from before it (overdue)"))
@@ -77,7 +77,7 @@ class DueListTest {
 
     @Test fun `a window in the past does not pull in today's overdue items`() {
         val lastWeek = today.minusDays(7)
-        val s = summary(emptyList(), listOf(todo("Spring registration", today.minusDays(20))), lastWeek, lastWeek)
+        val s = summary(emptyList(), listOf(todo("Gym waiver", today.minusDays(20))), lastWeek, lastWeek)
         assertTrue(s.open.isEmpty())
     }
 
