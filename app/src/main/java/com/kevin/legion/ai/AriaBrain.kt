@@ -575,15 +575,7 @@ class AriaBrain private constructor(context: Context) {
         // the calendar's task rows as a clear day. Said always, whatever the list holds.
         sb.appendSection(DUE_ROUTING)
         val openItems = NotesController.openItemCount(appContext)
-        if (openItems > 0) {
-            sb.appendSection("The user has $openItems open item(s) on their list - car to-dos, " +
-                "errands, appointments and reminders all live on the one list. Call manage_item read_list to " +
-                "read the whole list out (not for what is due: that is day read_calendar), and use manage_item " +
-                "to add, tick off, or remove items - always use " +
-                "the tools, don't just claim you did. When an item has a date or a time, pass it on " +
-                "the SAME manage_item add call; never add it first and schedule it after. If it " +
-                "feels natural, you may occasionally offer to run through the list.")
-        }
+        if (openItems > 0) sb.appendSection(openItemsParagraph(openItems))
 
         sb.toString()
     }
@@ -1126,6 +1118,16 @@ internal const val RECORD_FACTS =
  * todolists too no? like everything due"*). In the base instruction, not the shared rules: the twins
  * test and the payload ceiling pin those.
  */
+/** The open-list paragraph of the base instruction (a function so a live check sends the same words). */
+internal fun openItemsParagraph(openItems: Int): String =
+    "The user has $openItems open item(s) on their list - car to-dos, " +
+        "errands, appointments and reminders all live on the one list. Call manage_item read_list to " +
+        "read the whole list out (not for what is due: that is day read_calendar), and use manage_item " +
+        "to add, tick off, or remove items - always use " +
+        "the tools, don't just claim you did. When an item has a date or a time, pass it on " +
+        "the SAME manage_item add call; never add it first and schedule it after. If it " +
+        "feels natural, you may occasionally offer to run through the list."
+
 internal const val DUE_ROUTING =
     "For anything about what is due (what do I have due, what's due today, tomorrow or this week), call " +
         "day read_calendar over those dates: its `due` block holds everything due in one list, school " +

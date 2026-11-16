@@ -1,7 +1,11 @@
 package com.kevin.legion.service.cascade
 
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.PowerManager
+import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.greeting.GreetingFactory
 import com.kevin.legion.greeting.GreetingPackCache
@@ -56,6 +60,7 @@ internal object CascadeWarmup {
         val ctx = context.applicationContext
         appContext = ctx
         KeptLineAudio.install(ctx)
+        watchScreen(ctx)
         scope.launch {
             delay(START_DELAY_MS)
             CascadePrep.prepare(ctx, "start")
@@ -67,6 +72,22 @@ internal object CascadeWarmup {
                 if (screenOn(ctx)) GreetingFactory.prefetch(ctx, "timer")
             }
         }
+    }
+
+    /**
+     * The screen coming on and an unlock fetch the pack too: the timer does not run while the
+     * phone sleeps, so after a long idle these are what put a fresh pack in hand before the tap
+     * (LEGION is the home app, so an unlock is usually followed by a tap within seconds).
+     */
+    private fun watchScreen(ctx: Context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val reason = if (intent.action == Intent.ACTION_USER_PRESENT) "unlock" else "screen_on"
+                GreetingFactory.prefetch(ctx, reason)
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_USER_PRESENT) }
+        runCatching { ContextCompat.registerReceiver(ctx, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED) }
     }
 
     private fun screenOn(ctx: Context): Boolean =

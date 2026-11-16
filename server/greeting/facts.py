@@ -163,8 +163,8 @@ class EventSnapshot:
     """The member's event rows for the whole pack, read ONCE (2026-11-15).
 
     The three event sources used to run their own two or three queries each. The engine reaches
-    its database across regions (Cloud Run us-south1, the Supabase pooler in us-east-1), so every
-    query is a round trip of tens of milliseconds, and the pack took 1.6 to 2.0 s server side
+    its database in another region, so every query is a round trip of tens of milliseconds, and
+    the pack took 1.6 to 2.0 s server side
     (Cloud Run request logs, 2026-11-15). One read of every kind over the widest window any source
     needs, filtered here per source, gives the same rows in two queries plus the skips."""
 
