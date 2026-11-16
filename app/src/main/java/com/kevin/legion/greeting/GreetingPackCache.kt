@@ -113,6 +113,7 @@ class FileLeadStore(private val file: File) : LeadStore {
  * file keeps where he was at the last greeting (place leads only on arrival) and the last two
  * hellos' words (the next hello is asked not to reuse them).
  */
+@Suppress("TooManyFunctions") // the pack and the lead history share one process-wide holder on purpose
 class GreetingPackCache(
     private val backend: GreetingBackend,
     private val scope: CoroutineScope,

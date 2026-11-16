@@ -10,6 +10,9 @@ import java.time.LocalTime
  * states every source's facts, or says in words that the source is empty (read, nothing on file) or
  * could not be read and why, and says outright that nothing outside it may be mentioned.
  */
+// The block, the lead picker and its caps share one pure object on purpose (one place states what a
+// greeting may say); 2026-11-16 added the caps' helpers. Splitting it would scatter that.
+@Suppress("TooManyFunctions")
 object GreetingBlock {
     private val LABELS = mapOf(
         "ended_events" to "Calendar events that ended in the last 24 hours",
@@ -50,15 +53,7 @@ object GreetingBlock {
             when (s.state) {
                 SourceState.FACTS -> {
                     lines += "- $label (facts):"
-                    s.items.forEach {
-                        val mark = when {
-                            !offerable(pack, it) -> " [already raised or answered: do not mention]"
-                            it == lead -> " $LEAD_MARK"
-                            else -> ""
-                        }
-                        val says = if (it == lead && s.name == "money") moneyLeadLine(it) else it.says
-                        lines += "    * $says$mark"
-                    }
+                    s.items.forEach { lines += itemLine(pack, s.name, it, lead) }
                 }
                 SourceState.EMPTY -> lines += "- $label (EMPTY: read, and nothing is on file): ${s.says}"
                 SourceState.UNREADABLE -> lines += "- $label (COULD NOT BE READ, which is not the same as empty): " +
@@ -67,6 +62,17 @@ object GreetingBlock {
             s.note?.let { lines += "    note: $it" }
         }
         return lines.joinToString("\n")
+    }
+
+    /** One fact line: a money lead says only its category and the cap; marks for raised and the lead. */
+    private fun itemLine(pack: FactsPack, source: String, item: GreetingItem, lead: GreetingItem?): String {
+        val mark = when {
+            !offerable(pack, item) -> " [already raised or answered: do not mention]"
+            item == lead -> " $LEAD_MARK"
+            else -> ""
+        }
+        val says = if (item == lead && source == "money") moneyLeadLine(item) else item.says
+        return "    * $says$mark"
     }
 
     /**
