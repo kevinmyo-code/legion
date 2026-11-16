@@ -16,6 +16,7 @@ import android.util.Log
 import com.kevin.legion.MidnightEvents
 import kotlin.math.abs
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.service.speaker.SpeakerVerifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -195,6 +196,8 @@ object WakeWordEngine {
 
         val appContext = context.applicationContext
         appContextForCallback = appContext
+        // "Only my voice": voiceprint read and model loaded off this thread, never on a wake hit.
+        SpeakerVerifier.prepare(appContext)
         val runScope = CoroutineScope(Dispatchers.Default)
         scope = runScope
         runScope.launch {
@@ -423,6 +426,7 @@ object WakeWordEngine {
             else -> WakeSampleCapture.ENGINE_VOSK
         }
         WakeSampleRecorder.configure(context, sourceName, effects.size, twoStage = detector != null, engine = engineKey)
+        SpeakerVerifier.resetAudio()
         registerSilenceWatch(context, r)
 
         // Mirrors GeminiLiveSession's own capture line on purpose: ticket 12 was diagnosed by
@@ -533,6 +537,7 @@ object WakeWordEngine {
         }
         _peakLevel.value = peak
         WakeSampleRecorder.onAudio(buf, n)
+        SpeakerVerifier.onAudio(buf, n)
         if (openWakeWord != null) {
             // openWakeWord hears its own gain (1, the raw capture; see OpenWakeWordDetector.INPUT_GAIN).
             val gain = OpenWakeWordDetector.INPUT_GAIN
@@ -706,6 +711,9 @@ object WakeWordEngine {
         val now = System.currentTimeMillis()
         if (now - lastTriggerAtMs < MIN_TRIGGER_GAP_MS) return
         lastTriggerAtMs = now
+        // "Only my voice": shadow mode scores and opens; gated may hold a wake back (and has then
+        // already asked for a tap or ignored it). Every failure opens as before.
+        if (!SpeakerVerifier.allowOpen(context)) return
         WakeSampleRecorder.onSignal(WakeSignal.Opened)
         // Release Vosk's own AudioRecord synchronously, right here, before Gemini's mic ever
         // opens - the watchdog's 500ms poll of ConversationState.isBusy is too slow (micLoop's

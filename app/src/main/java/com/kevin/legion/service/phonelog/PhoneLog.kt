@@ -320,6 +320,8 @@ object PhoneLog {
     /** Batches are redacted when written; this runs the current redactor over them again on the way out. */
     private fun redactAgain(bytes: ByteArray): ByteArray =
         String(bytes, Charsets.UTF_8).split('\n')
+            // A local-only line (the speaker check) never leaves, even from a spool an older build wrote.
+            .filterNot { LogcatLines.isLocalOnly(it) }
             .joinToString("\n") { if (it.isEmpty()) it else LogcatRedactor.redactLine(it) }
             .toByteArray(Charsets.UTF_8)
 

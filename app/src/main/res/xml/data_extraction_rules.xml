@@ -27,6 +27,8 @@
         <!-- Recordings of his voice stay on the phone: never in a backup. -->
         <exclude domain="external" path="voice-turns/" />
         <exclude domain="external" path="wake-samples/" />
+        <!-- "Only my voice": the voiceprint built from his voice never leaves the phone. -->
+        <exclude domain="file" path="voiceprint/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="companion_profile.xml" />
@@ -34,5 +36,7 @@
         <!-- Recordings of his voice stay on the phone: never in a backup. -->
         <exclude domain="external" path="voice-turns/" />
         <exclude domain="external" path="wake-samples/" />
+        <!-- "Only my voice": the voiceprint built from his voice never leaves the phone. -->
+        <exclude domain="file" path="voiceprint/" />
     </device-transfer>
 </data-extraction-rules>

@@ -25,6 +25,9 @@ sealed interface WakeSignal {
 
     /** The engine opened a conversation. */
     data object Opened : WakeSignal
+
+    /** "Only my voice" held a wake back: [decision] is `ask` or `ignore`. Never a score. */
+    data class SpeakerHeld(val decision: String) : WakeSignal
 }
 
 /** 16-bit mono PCM to a WAV file's bytes. Pure, so the header is a JVM test. */
@@ -157,6 +160,7 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
             WakeSignal.VadOff -> e.put("stage", "vad_off")
             WakeSignal.Suppressed -> e.put("stage", "open_suppressed")
             WakeSignal.Opened -> e.put("stage", "opened")
+            is WakeSignal.SpeakerHeld -> e.put("stage", "speaker_held").put("decision", signal.decision)
             is WakeSignal.KwsHit -> e.put("stage", "kws_hit").put("keyword", signal.keyword)
                 .put("tokens", JSONArray(signal.tokens))
                 .put("timestamps", JSONArray(signal.timestamps.map { it.toDouble() }))
@@ -193,7 +197,8 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
             val e = events.getJSONObject(i)
             when (e.getString("stage")) {
                 "kws_hit" -> kwsHit = true
-                "open_suppressed", "opened" -> fired = true
+                // A wake "only my voice" held back was still a detector hit.
+                "open_suppressed", "opened", "speaker_held" -> fired = true
                 "confirm" -> {
                     confirmText = e.getString("text")
                     accepted = e.getBoolean("accepted")
