@@ -9,6 +9,8 @@ import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.greeting.GreetingFactory
 import com.kevin.legion.greeting.GreetingPackCache
+import com.kevin.legion.service.checkin.CheckInMoments
+import com.kevin.legion.service.checkin.CheckIns
 import com.kevin.legion.service.LiveLatency
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -70,6 +72,8 @@ internal object CascadeWarmup {
             while (true) {
                 delay(GreetingPackCache.TIMER_MS)
                 if (screenOn(ctx)) GreetingFactory.prefetch(ctx, "timer")
+                // Listening check-ins look on the same beat (alfred-greets ticket 03).
+                CheckIns.evaluate(ctx, CheckInMoments.Trigger.TICK)
             }
         }
     }
@@ -84,6 +88,7 @@ internal object CascadeWarmup {
             override fun onReceive(context: Context, intent: Intent) {
                 val reason = if (intent.action == Intent.ACTION_USER_PRESENT) "unlock" else "screen_on"
                 GreetingFactory.prefetch(ctx, reason)
+                if (intent.action == Intent.ACTION_USER_PRESENT) CheckIns.evaluate(ctx, CheckInMoments.Trigger.UNLOCK)
             }
         }
         val filter = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_USER_PRESENT) }

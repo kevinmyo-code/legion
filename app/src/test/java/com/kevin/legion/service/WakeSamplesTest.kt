@@ -110,6 +110,39 @@ class WakeSamplesTest {
     }
 
     @Test
+    fun `an openWakeWord take that would have opened reads as heard, not as nothing hit`() {
+        // 2026-11-16: with openWakeWord the sidecar showed open_suppressed and the screen still
+        // said "did not hear it", because the verdict read only the old spotter's signals.
+        val c = WakeSampleCapture()
+        val meta = mapOf(WakeSampleCapture.META_ENGINE to WakeSampleCapture.ENGINE_OWW)
+        c.beginTake("pos_normal_01", maxMs = 1_000L, meta = meta)
+        c.onAudio(chunkOf(4), chunk)
+        c.onSignal(WakeSignal.Suppressed)
+        val s = c.endTake()!!
+        assertEquals("oww_hit", s.sidecar.getString("verdict"))
+        assertEquals(WakeSampleCapture.ENGINE_OWW, s.sidecar.getString("engine"))
+    }
+
+    @Test
+    fun `an openWakeWord take with no open is its own miss`() {
+        val c = WakeSampleCapture()
+        c.beginTake("pos_far_01", maxMs = 1_000L, meta = mapOf(WakeSampleCapture.META_ENGINE to "oww"))
+        c.onAudio(chunkOf(4), chunk)
+        assertEquals("oww_miss", c.endTake()!!.sidecar.getString("verdict"))
+    }
+
+    @Test
+    fun `verdicts by engine`() {
+        assertEquals("oww_hit", WakeSampleCapture.verdict(false, null, fired = true, engine = "oww"))
+        assertEquals("oww_miss", WakeSampleCapture.verdict(false, null, fired = false, engine = "oww"))
+        // Vosk-only emits no stage signals: an open is its hit.
+        assertEquals("opened", WakeSampleCapture.verdict(false, null, fired = true, engine = "vosk"))
+        // The two-stage verdicts are unchanged by the open signal.
+        assertEquals("confirm_rejected", WakeSampleCapture.verdict(true, false, fired = false, engine = "two_stage"))
+        assertEquals("opened", WakeSampleCapture.verdict(true, true, fired = true, engine = "two_stage"))
+    }
+
+    @Test
     fun `the enrollment script is twenty positives then one negative`() {
         val steps = WakeEnrollPlan.steps("hey alfred")
         assertEquals(20, WakeEnrollPlan.POSITIVE_COUNT)

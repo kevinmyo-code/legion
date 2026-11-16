@@ -36,6 +36,9 @@ interface PlaceSignals {
  */
 object GreetingPlace {
     const val SOURCE = "place"
+
+    /** The place source's sentence when he is away from a saved home: what the arrival check-in keys on. */
+    const val AWAY_SAYS = "He is away from home."
     private const val KEY_PREFIX = "place:"
 
     const val NO_FIX =
@@ -66,7 +69,7 @@ object GreetingPlace {
         return when (atHome) {
             true -> GreetingSource(SOURCE, SourceState.EMPTY, "He is at home, so there is no place to mention.")
             false -> GreetingSource(
-                SOURCE, SourceState.FACTS, "He is away from home.",
+                SOURCE, SourceState.FACTS, AWAY_SAYS,
                 items = listOf(GreetingItem(topic, "He is in $name, away from home.", kind = "place")),
             )
             // No saved home: away-ness is unknown, so only the area is a fact.
