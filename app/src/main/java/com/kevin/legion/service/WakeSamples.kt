@@ -81,6 +81,7 @@ object WavEncoder {
  *
  * Offsets in the sidecar are samples from the start of that sample's own audio.
  */
+@Suppress("TooManyFunctions") // the capture's entry points plus the live, hit and take helpers
 class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
 
     /** One finished recording: the PCM and its sidecar. [kind] is "live" or "take". */
