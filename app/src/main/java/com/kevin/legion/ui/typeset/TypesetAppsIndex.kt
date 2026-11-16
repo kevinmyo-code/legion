@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.typeset
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,10 @@ import com.kevin.legion.ui.theme.soft.TypesetType
  * app the blocker covers reads "blocked" beside its name, from the same block list the drawer
  * uses (ADR 0066); the tap still goes to the caller, whose block screen says why. A work-profile
  * app says "work" in words. Stateless: `AppsScreen` owns the query, the loaded apps and the launch.
+ *
+ * With a work profile, a plain line under "Find an app" pauses or turns on the work apps
+ * ([workPaused] null = no work profile, no line). Stage 6, 2026-11-16: only the Matrix grid had
+ * this control, so a paused work app here pointed at a row that did not exist (ADR 0050, 0035).
  */
 @Composable
 @Suppress("LongParameterList") // one tray, its state and its taps; nothing invented here
@@ -47,6 +52,8 @@ fun TypesetAppsIndex(
     onLongPress: (DrawerApp) -> Unit,
     modifier: Modifier = Modifier,
     message: String? = null,
+    workPaused: Boolean? = null,
+    onToggleWork: () -> Unit = {},
 ) {
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(
@@ -56,6 +63,7 @@ fun TypesetAppsIndex(
             modifier = Modifier.padding(top = 12.dp),
         )
         FindLine(query, onQueryChange)
+        workPaused?.let { paused -> WorkLine(paused, onToggleWork) }
         message?.let { Text(it, style = TypesetType.small, color = SoftColors.onAlert) }
         if (folders.isEmpty()) {
             Text(
@@ -97,6 +105,28 @@ private fun FindLine(query: String, onQueryChange: (String) -> Unit) {
         HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
     }
 }
+
+/** Pauses or turns on the work profile's apps; the words say which, never a switch alone. */
+@Composable
+private fun WorkLine(paused: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = MinTarget)
+            .clickable(role = Role.Button, onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (paused) WORK_PAUSED_LINE else WORK_PAUSE_LINE,
+            style = TypesetType.body,
+            color = if (paused) SoftColors.onAlert else SoftColors.text,
+        )
+    }
+}
+
+/** The work line's words; [com.kevin.legion.ui.apps.launchDrawerApp]'s paused sentence points at the first. */
+const val WORK_PAUSED_LINE = "Work apps are paused. Tap to turn them on."
+const val WORK_PAUSE_LINE = "Pause work apps"
 
 /** One letter, its apps down the right column, a rule under the row. */
 @Composable

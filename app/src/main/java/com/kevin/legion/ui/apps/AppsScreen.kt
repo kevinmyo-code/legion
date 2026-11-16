@@ -82,10 +82,17 @@ fun AppsScreen() {
                 query = query,
                 onQueryChange = { query = it },
                 blocked = { app -> graph.blockPolicy.verdict(app.packageName).blocked },
-                onOpen = { app -> message = launchDrawerApp(context, app, state) },
+                onOpen = { app -> message = launchDrawerApp(context, app, state, PAUSED_TYPESET) },
                 onLongPress = { app -> pinMenuApp = app },
                 modifier = Modifier.fillMaxSize(),
                 message = message,
+                workPaused = state.workPaused.takeIf { state.workProfile != null },
+                onToggleWork = {
+                    state.workProfile?.let { work ->
+                        message = setWorkPaused(context, work, pause = !state.workPaused)
+                        reload++
+                    }
+                },
             )
         }
     } else
@@ -144,7 +151,7 @@ fun AppsScreen() {
                             icons = state.icons,
                             workPaused = state.workPaused,
                             columns = SEARCH_COLUMNS,
-                            onOpen = { app -> message = launchDrawerApp(context, app, state) },
+                            onOpen = { app -> message = launchDrawerApp(context, app, state, PAUSED_MATRIX) },
                             onLongPress = { app -> pinMenuApp = app },
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -163,7 +170,7 @@ fun AppsScreen() {
                             onDismiss = { openFolder = null },
                             onOpen = { app ->
                                 openFolder = null
-                                message = launchDrawerApp(context, app, state)
+                                message = launchDrawerApp(context, app, state, PAUSED_MATRIX)
                             },
                             onLongPress = { app -> pinMenuApp = app },
                         )
@@ -231,17 +238,31 @@ private fun PinMenuSheet(app: DrawerApp, pinned: Boolean, onDismiss: () -> Unit,
  * launch callback is the SAME `LauncherApps` call and the same failure sentence, per ticket 06's
  * own "Tap launches it exactly the way the drawer does". */
 @Suppress("ReturnCount") // guard clauses, one worded exit each
-internal fun launchDrawerApp(context: Context, app: DrawerApp, state: Loaded): String? {
+internal fun launchDrawerApp(
+    context: Context,
+    app: DrawerApp,
+    state: Loaded,
+    /** What a paused work app says: it names the control on the screen the tap came from. */
+    pausedMessage: String = PAUSED_ELSEWHERE,
+): String? {
     val handle = state.handles[app.profileKey] ?: return "Couldn't find the profile ${app.label} belongs to."
-    if (app.isWork && state.workPaused) {
-        return "Work apps are paused. Tap \"WORK APPS ARE PAUSED\" above to turn them on first."
-    }
+    if (app.isWork && state.workPaused) return pausedMessage
     return runCatching {
         context.getSystemService(LauncherApps::class.java)
             .startMainActivity(ComponentName(app.packageName, app.className), handle, null, null)
         null
     }.getOrElse { "Couldn't open ${app.label}: ${it.message ?: it.javaClass.simpleName}" }
 }
+
+/** The Matrix grid's row reads "WORK APPS ARE PAUSED - TAP TO TURN ON". */
+internal const val PAUSED_MATRIX = "Work apps are paused. Tap \"WORK APPS ARE PAUSED\" above to turn them on first."
+
+/** The Typeset index's line ([com.kevin.legion.ui.typeset.WORK_PAUSED_LINE]) sits under "Find an app". */
+internal const val PAUSED_TYPESET =
+    "Work apps are paused. Tap \"Work apps are paused\" under \"Find an app\" to turn them on."
+
+/** A tap from somewhere with no control (the home dock): where the control is. */
+internal const val PAUSED_ELSEWHERE = "Work apps are paused. Turn them on at the top of the Apps screen first."
 
 /** Pauses or resumes the work profile, or returns why it couldn't. Android only lets the DEFAULT
  * home app do this, so it fails, and says so, when LEGION isn't set as the Home app. */
