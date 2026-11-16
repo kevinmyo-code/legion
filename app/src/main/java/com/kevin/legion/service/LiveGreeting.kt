@@ -65,11 +65,13 @@ internal class LiveGreeting(
             val plan = prep.await()
             // Tapped again, or ended, while the pack was being fetched.
             if (!isCurrent(s)) return@launch
+            // Live keeps the free scripted cue when there is nothing to raise (2026-11-16): a model
+            // hello there is a paid Live generation on every such open. The hello is the cascade's.
             if (plan is GreetingPlan.Personal) {
                 armFirstTurn(s)
                 if (s.beginConversation(plan.prompt)) {
                     log("greeting personal topic=${plan.topic}")
-                    opening.noteRaised(plan.topic)
+                    opening.noteOpened(plan)
                     watch = scope.launch {
                         delay(firstOutputMs)
                         if (!spoke && isCurrent(s) && s.abandonOpener(cue())) log("greeting model_slow scripted")
@@ -78,6 +80,8 @@ internal class LiveGreeting(
                 }
             } else if (plan is GreetingPlan.Scripted) {
                 log("greeting scripted reason=${plan.reason}")
+            } else if (plan is GreetingPlan.Hello) {
+                log("greeting scripted reason=nothing_to_say_live")
             }
             if (!scripted(s) && isCurrent(s)) onStale()
         }

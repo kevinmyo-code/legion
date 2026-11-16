@@ -370,7 +370,7 @@ internal class CascadeSession(
         LiveLatency.log(LiveLatency.TAG, "open_greeting_plan_ms=${System.currentTimeMillis() - started} " +
             "plan=${plan?.javaClass?.simpleName ?: "none"}")
         if (closing.get()) return
-        if (plan is GreetingPlan.Personal) {
+        if (plan is GreetingPlan.Spoken) {
             speakGreeting(plan)
         } else {
             if (plan is GreetingPlan.Scripted) {
@@ -1293,7 +1293,8 @@ internal class CascadeSession(
     }
 
     /**
-     * The personal greeting (ADR 0091, ticket 02): ONE streamed text call through the same cached
+     * The personal greeting (ADR 0091, ticket 02), or the hello with no topic ([GreetingPlan.Hello],
+     * 2026-11-16): ONE streamed text call through the same cached
      * prefix and the same [textLoop] a turn uses, the reply spoken as it streams. The model is
      * called here, on the phone, with Alfred's cached instruction; the laptop only speaks it. Cost is
      * one text generation against the cache, which is what makes the greeting affordable on this
@@ -1305,7 +1306,7 @@ internal class CascadeSession(
      * instead; nothing about the miss is spoken. A tap while it plays interrupts like any reply.
      */
     @Suppress("LongMethod", "ReturnCount") // one exit per way the greeting ends
-    private fun speakGreeting(plan: GreetingPlan.Personal) {
+    private fun speakGreeting(plan: GreetingPlan.Spoken) {
         val loopRef = greetingLoop
         if (loopRef == null) {
             speakScripted(ackLines.next())
@@ -1360,7 +1361,7 @@ internal class CascadeSession(
                 call.join()
                 reply.finishText()
                 // A test open (adb) does not use up the topic for his real greetings.
-                if (test == null) greeting?.noteRaised(plan.topic)
+                if (test == null) greeting?.noteOpened(plan, reply.spoken())
                 when (val o = reply.await()) {
                     ReplySpeaker.Outcome.Played -> {
                         // So his answer is understood: the greeting is the first exchange.
