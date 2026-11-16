@@ -218,6 +218,15 @@ def test_an_account_with_no_posted_row_gives_only_todays_point():
     assert [p["on"] for p in history["points"]] == [TODAY]
 
 
+def test_checking_with_available_but_no_current_has_a_figure_and_only_todays_point():
+    rows = [row("1000", days_ago(3), -100), row("7823", days_ago(3), -100)]
+    body = compute(
+        [checking(balance_current_cents=None, balance_available_cents=150_000), card()], rows, UTC
+    )
+    assert body["net_cents"] == 150_000 - 40_000
+    assert [p["on"] for p in body["history"]["points"]] == [TODAY]
+
+
 def test_a_card_payment_does_not_move_net_cash_when_both_legs_post_the_same_day():
     """Rule 4: paying the card from checking moves both sides by the same
     amount. Today's figures are after the payment."""

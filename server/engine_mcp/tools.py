@@ -1409,7 +1409,8 @@ def _net_cash_words(request, cash: dict) -> str:
     as_of = cash["as_of"]
     said = [
         f"Net cash now: {money(cash['net_cents'], c)} ({c}), "
-        f"{_bank_as_of_words(request, as_of)}. Say this first, with its as-of time."
+        f"{_bank_as_of_words(request, as_of)}. Asked how much he has, this is the figure to "
+        f"give first, with its as-of time."
     ]
     if as_of is not None and _now() - as_of > NET_CASH_STALE:
         said.append("It is more than a day old: say so.")
@@ -1424,6 +1425,11 @@ def _net_cash_words(request, cash: dict) -> str:
         "The per-account lines below are each bank's own balance; a card's owed figure there "
         "leaves out its pending charges, which net cash counts."
     )
+    if any(p["basis"] == "bank_available" for p in cash["parts"]):
+        said.append(
+            "For checking, net cash uses the bank's available balance (pending already taken "
+            "off), not the Now figure below."
+        )
     return " ".join(said)
 
 

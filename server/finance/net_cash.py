@@ -200,7 +200,9 @@ def compute(records: list[dict], rows: list[dict], zone) -> dict:
                 "pending_count": len(pending),
                 "as_of": _as_of(record),
                 # Posted basis, for the line: the bank's current in the ledger's sign.
-                "_posted": current if role == "checking" else -current,
+                "_posted": (
+                    None if current is None else current if role == "checking" else -current
+                ),
             }
         )
     parts.sort(key=lambda p: (p["role"] != "checking", p["label"], p["mask"]))
@@ -253,6 +255,13 @@ def _history(parts: list[dict], rows: list[dict], zone, net: int) -> dict:
         return at.astimezone(zone).date()
 
     end = min(day_of(p["as_of"]) for p in parts)
+    if any(p["_posted"] is None for p in parts):
+        # A checking account the bank gave `available` but no `current`: there is no
+        # posted figure to walk back from, so the line is today's point alone.
+        return {
+            "basis": "posted", "start": end, "end": end, "short": True,
+            "points": [{"on": end, "net_cents": net}],
+        }
     start = end - dt.timedelta(days=WINDOW_DAYS - 1)
     posted_by_part = []
     for p in parts:
