@@ -54,8 +54,9 @@ class LaptopVoiceConnection(
     private val pingEveryMs: Long = PING_EVERY_MS,
     private val onDrop: (String) -> Unit = {},
     /**
-     * Scripted lines (the opening acknowledgements, the tool filler) whose audio is kept for the
-     * process once spoken, per laptop voice: the next time it plays at once, with no request.
+     * Scripted lines (the opening acknowledgements, the tool filler) whose audio is kept once spoken,
+     * per laptop voice, in memory and on disk ([KeptLineAudio]): the next time, even after an app
+     * restart, it plays at once with no request.
      */
     private val keepLines: Set<String> = ScriptedLines.KEEP,
     private val kept: MutableMap<String, ByteArray> = KEPT,
@@ -101,7 +102,7 @@ class LaptopVoiceConnection(
     /** The service's voice model and voice, from `ready` (kept lines are per voice). */
     @Volatile private var voiceKey: String = ""
 
-    private fun keyOf(text: String) = "laptop|$voiceKey|$text"
+    private fun keyOf(text: String) = "laptop|$voiceKey|$sampleRate|$text"
 
     /**
      * The service sends `stt.maybe_end` (contract 4b, 2026-11-15): `ready.capabilities.maybe_end`.
@@ -476,8 +477,8 @@ class LaptopVoiceConnection(
         /** 24 kHz PCM16 mono. */
         private const val TTS_BYTES_PER_MS = 48
 
-        /** The scripted lines' audio for the process: a few short lines, a few hundred KB at most. */
-        private val KEPT: MutableMap<String, ByteArray> = ConcurrentHashMap()
+        /** The scripted lines' audio: in memory, and on disk across app starts ([KeptLineAudio]). */
+        private val KEPT: MutableMap<String, ByteArray> get() = KeptLineAudio.SHARED
         const val DEFAULT_TTS_RATE = 24_000
         const val HEADER_BYTES = 8
         const val KIND_MIC: Byte = 0x01
