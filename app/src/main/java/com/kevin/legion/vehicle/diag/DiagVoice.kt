@@ -133,7 +133,10 @@ object DiagVoice {
         val chosen = plan?.let { pick(it, modules) }.orEmpty()
         return when {
             last == null || plan == null ->
-                fail("There is no module scan of the $label yet. Scan it first, then ask to clear.")
+                fail(
+                    "There is no module scan of the $label yet, so nothing was cleared. Ask me to scan every " +
+                        "module first, then ask to clear.",
+                )
             chosen.isEmpty() -> {
                 gate.reset()
                 fail(ScanWords.clearQuestion(label, plan.copy(targets = emptyList())))

@@ -82,6 +82,7 @@ class DiagVoiceTest {
         val r = DiagVoice.clear(context, "all", false, "clear all modules")
         assertFalse(r.getBoolean("success"))
         assertTrue(r.getString("message"), "no module scan" in r.getString("message"))
+        assertTrue(r.getString("message"), "scan every module" in r.getString("message"))
         assertFalse(DiagVoice.handles("", true))
     }
 
