@@ -12,6 +12,8 @@ import com.kevin.legion.finance.CashFlowWire
 import com.kevin.legion.finance.FinanceAccountWire
 import com.kevin.legion.finance.FinanceController
 import com.kevin.legion.finance.FinanceRead
+import com.kevin.legion.finance.NetCashFloor
+import com.kevin.legion.finance.NetCashWire
 import com.kevin.legion.finance.NetWorthWire
 import com.kevin.legion.finance.SafeToSpendWire
 import com.kevin.legion.ledger.LedgerController
@@ -64,6 +66,10 @@ data class MoneyViewUiState(
     val pages: Map<YearMonth, MoneyMonthPage> = emptyMap(),
     /** The This month card's view currency: USD, or SGD at the engine's stated rate. */
     val currency: String = "USD",
+    /** Net cash (ADR 0094), shown on the current month's page whatever [MoneySections] says. */
+    val netCash: FinanceRead<NetCashWire>? = null,
+    /** The low-cash floor Kevin set on this phone ([NetCashFloor]); null with none. */
+    val floorCents: Long? = null,
 )
 
 /**
@@ -74,11 +80,16 @@ class MoneyViewModel(
     application: Application,
     private val finance: FinanceController = FinanceController.forApp(application),
 ) : AndroidViewModel(application) {
-    private val _state = MutableStateFlow(MoneyViewUiState())
+    private val _state = MutableStateFlow(MoneyViewUiState(floorCents = NetCashFloor.get(application)))
     val state: StateFlow<MoneyViewUiState> = _state.asStateFlow()
 
     /** Today's figures, and every month already on screen again. */
     fun refresh() {
+        // Net cash is not a hidden household section: Kevin asked for it here (ADR 0094).
+        viewModelScope.launch {
+            val cash = finance.netCash()
+            _state.update { it.copy(netCash = cash, floorCents = NetCashFloor.get(getApplication<Application>())) }
+        }
         // Hidden household sections ([MoneySections]) read nothing: their figures are not on screen.
         if (MoneySections.SHOW_HOUSEHOLD) viewModelScope.launch {
             val safe = async { finance.safeToSpend() }
@@ -104,6 +115,12 @@ class MoneyViewModel(
             val page = MoneyMonthPage(budgets.await(), cash.await(), txns, transactionsFailed = txns == null)
             _state.update { it.copy(pages = it.pages + (month to page)) }
         }
+    }
+
+    /** The low-cash floor, or none. Phone-local ([NetCashFloor]); HOME reads the same store. */
+    fun setFloor(cents: Long?) {
+        NetCashFloor.set(getApplication<Application>(), cents)
+        _state.update { it.copy(floorCents = cents) }
     }
 
     fun setCurrency(currency: String) {

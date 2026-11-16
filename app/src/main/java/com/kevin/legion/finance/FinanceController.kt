@@ -109,6 +109,10 @@ class FinanceController(
     suspend fun cashFlow(month: YearMonth): FinanceRead<CashFlowWire> =
         read("cashflow:$month", "$ROOT/cashflow", mapOf("month" to month.toString()), CashFlowWire.serializer())
 
+    /** Net cash (ADR 0094): HOME's big number, the Money screen's working and `get_balance`'s lead. */
+    suspend fun netCash(): FinanceRead<NetCashWire> =
+        read("netcash", "$ROOT/net-cash", emptyMap(), NetCashWire.serializer())
+
     suspend fun accounts(): FinanceRead<List<FinanceAccountWire>> =
         read("accounts", "$ROOT/accounts", emptyMap(), ListSerializer(FinanceAccountWire.serializer()))
 

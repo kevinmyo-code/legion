@@ -192,3 +192,65 @@ data class FinanceAccountWire(
     @SerialName("is_debt") val isDebt: Boolean = false,
     val active: Boolean = true,
 )
+
+/**
+ * `GET /api/finance/net-cash` (Kevin, 2026-11-16, ADR 0094): the linked checking account minus what
+ * is owed on every linked card, pending charges counted as spent. Worked out ONCE on the engine
+ * (`server/finance/net_cash.py`); this side only says it. `available = false` carries [reason] and
+ * [missing]: there is no net figure then, never a partial sum. [asOf] is the older of the parts'
+ * as-of times, ISO with offset; whether it is stale is the reader's call against its own clock.
+ */
+@Serializable
+data class NetCashWire(
+    val available: Boolean = false,
+    val reason: String? = null,
+    @SerialName("net_cents") val netCents: Long? = null,
+    val currency: String? = null,
+    @SerialName("as_of") val asOf: String? = null,
+    /** Of which pending, in the ledger's sign (charges negative). */
+    @SerialName("pending_cents") val pendingCents: Long? = null,
+    val parts: List<NetCashPartWire> = emptyList(),
+    val missing: List<NetCashMissingWire> = emptyList(),
+    val history: NetCashHistoryWire? = null,
+)
+
+@Serializable
+data class NetCashPartWire(
+    /** `checking` or `card`. */
+    val role: String,
+    val label: String = "",
+    val mask: String = "",
+    val currency: String = "USD",
+    /** What the account adds to net cash, pending counted; a card is negative. */
+    @SerialName("balance_cents") val balanceCents: Long = 0,
+    /** `bank_available` or `current_plus_pending`. */
+    val basis: String = "",
+    @SerialName("pending_cents") val pendingCents: Long = 0,
+    @SerialName("pending_count") val pendingCount: Int = 0,
+    @SerialName("as_of") val asOf: String? = null,
+)
+
+@Serializable
+data class NetCashMissingWire(
+    val role: String,
+    val label: String = "",
+    val mask: String? = null,
+    val reason: String = "",
+)
+
+/** The 30-day line: past days posted only, the last point the headline (pending included). */
+@Serializable
+data class NetCashHistoryWire(
+    val basis: String = "posted",
+    val start: String? = null,
+    val end: String? = null,
+    /** The bank feed reaches back fewer than 30 days. */
+    val short: Boolean = false,
+    val points: List<NetCashPointWire> = emptyList(),
+)
+
+@Serializable
+data class NetCashPointWire(
+    val on: String,
+    @SerialName("net_cents") val netCents: Long,
+)

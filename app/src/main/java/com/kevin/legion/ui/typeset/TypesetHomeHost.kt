@@ -25,6 +25,8 @@ import com.kevin.legion.assistant.cards.ConversationCards
 import com.kevin.legion.clock.AlarmMath
 import com.kevin.legion.clock.ClockGraph
 import com.kevin.legion.dumb.FeedOffRule
+import com.kevin.legion.finance.NetCashFloor
+import com.kevin.legion.finance.NetCashText
 import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.Phase
 import com.kevin.legion.ui.assistant.CardDestination
@@ -79,6 +81,7 @@ fun TypesetHomeHost(
     var controlsOpen by remember { mutableStateOf(false) }
     val controls = rememberControls(nav, onClose = { controlsOpen = false })
 
+    val floor by NetCashFloor.flow(context).collectAsStateWithLifecycle()
     val now = remember(clock) { runCatching { LocalTime.parse(clock) }.getOrDefault(LocalTime.now()) }
     val glance = TypesetGlance(
         dateline = calendar.today.format(DATELINE),
@@ -86,6 +89,8 @@ fun TypesetHomeHost(
         next = TypesetHomeDerive.next(calendar.dayRows, now),
         due = TypesetHomeDerive.due(calendar.dueToday, calendar.dueNote),
         left = TypesetHomeDerive.left(money.budgets, money.today.month.getDisplayName(TextStyle.FULL, Locale.US)),
+        // Re-said each minute with the shell's clock, so "today" and "over a day old" stay true.
+        cash = NetCashText.model(money.netCash, floor, Instant.now(), ZoneId.systemDefault()),
     )
     val status = if (voice.enabled) voice.state.label else "Assistant off, tap to set it up"
     val onTalk = if (voice.enabled) voice.talk else nav.onOpenSettings

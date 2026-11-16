@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevin.legion.R
 import com.kevin.legion.assistant.cards.ConversationCard
+import com.kevin.legion.finance.NetCashText
 import com.kevin.legion.ui.assistant.CardStage
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
@@ -152,6 +153,7 @@ private fun ColumnScope.Glance(g: TypesetGlance, tier: FitTier, measuring: Boole
             modifier = Modifier.padding(top = tier.gap),
         )
     }
+    g.cash?.let { CashLine(it, tier, actions.onOpenMoney) }
     // The headline takes the height left over and shrinks to it; one line, never wrapped.
     val slot = if (measuring) Modifier.height(MinTime) else Modifier.weight(1f)
     Box(
@@ -212,6 +214,34 @@ private fun Figure(f: TypesetFigure, tier: FitTier, onOpen: () -> Unit) {
             }
         }
         HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
+    }
+}
+
+/**
+ * Net cash (Kevin, 2026-11-16, ADR 0094): "one big number near the top, with the as-of time under
+ * it". Above the time headline, so it is the first figure on the page and the flexible headline
+ * gives up the height, never the rows below it. Both lines show on every [FitTier]: the as-of line
+ * is not a secondary line here. Low cash is the accent AND the words in the label ("net cash, below
+ * zero"), never colour alone. A tap opens Money, where the working is.
+ */
+@Composable
+private fun CashLine(c: NetCashText.Model, tier: FitTier, onOpen: () -> Unit) {
+    val ink = if (c.flag != null) SoftColors.caution else SoftColors.text
+    Row(
+        Modifier.fillMaxWidth().padding(top = tier.gap).tap("Net cash, open Money", onOpen),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FitLine(
+            c.figure,
+            TypesetType.fig,
+            ink,
+            min = 17.sp,
+            modifier = Modifier.weight(CASH_FIGURE_SHARE),
+        )
+        Column(Modifier.padding(start = 12.dp).weight(1f - CASH_FIGURE_SHARE)) {
+            OneLine(c.label, TypesetType.bodyStrong, ink)
+            OneLine(c.line, TypesetType.smallItalic, SoftColors.text2)
+        }
     }
 }
 
@@ -428,6 +458,7 @@ private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeAct
 }
 
 private const val CONTENTS_PER_ROW = 5
+private const val CASH_FIGURE_SHARE = 0.55f
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp
