@@ -40,9 +40,17 @@ object ScanWords {
             codes == null -> "Generic engine codes were not read."
             failed.size == 2 -> "The engine did not give its generic codes (" +
                 (e.stored.detail ?: e.stored.outcome.words) + ")."
+            // One of the two reads failed: say which, never "no stored or pending codes".
+            failed.size == 1 -> engineHalf(storedFailed = failed.single() === e.stored, failed.single(), codes)
             codes.isEmpty() -> "Engine (generic): no stored or pending codes."
             else -> "Engine (generic): ${codes.joinToString()}."
         }
+    }
+
+    private fun engineHalf(storedFailed: Boolean, failed: CodeRead, codes: List<String>): String {
+        val (lost, got) = if (storedFailed) "stored" to "pending" else "pending" to "stored"
+        val have = if (codes.isEmpty()) "no $got codes" else codes.joinToString()
+        return "Engine (generic): $have; $lost codes not read (${failed.detail ?: failed.outcome.words})."
     }
 
     fun label(m: ModuleReport) = m.name?.let { "$it at ${m.address}" } ?: "an unidentified module at ${m.address}"
