@@ -75,6 +75,8 @@ object ProactiveBus {
         val carriesReadThroughContent: Boolean = false,
         /** See [ProactiveRaise.listenHoldMs]. */
         val listenHoldMs: Long = 0L,
+        /** See [ProactiveRaise.checkIn]. */
+        val checkIn: com.kevin.legion.service.checkin.CheckInMark? = null,
     )
 
     private val _requestSpeak = MutableSharedFlow<SpeakRequest>(extraBufferCapacity = 4)
@@ -214,10 +216,14 @@ object ProactiveBus {
         listensForReply: Boolean = false,
         carriesReadThroughContent: Boolean = false,
         listenHoldMs: Long = 0L,
+        checkIn: com.kevin.legion.service.checkin.CheckInMark? = null,
     ) {
         val listens = listensForReply && ProactiveDelivery.mayListen()
         _requestSpeak.tryEmit(
-            SpeakRequest(prompt, listens, carriesReadThroughContent, if (listens) listenHoldMs else 0L),
+            SpeakRequest(
+                prompt, listens, carriesReadThroughContent, if (listens) listenHoldMs else 0L,
+                checkIn = checkIn?.takeIf { listens },
+            ),
         )
     }
 
@@ -293,6 +299,8 @@ object ProactiveBus {
         if (refusal == RaiseOutcome.Suppressed) return refusal
 
         var route = ProactiveDelivery.route(context, raise, gateAllowsSpeech = refusal == null, time = time)
+        // A check-in is spoken or nothing: a question posted to the shade would be a nag.
+        if (raise.checkIn != null && route != ProactiveDelivery.Route.SPEAK) return RaiseOutcome.NotNow
         if (alarm != null) SafetyAlarms.remember(context, alarm)
         if (route == ProactiveDelivery.Route.RING && !SafetyAlarms.ring(context, raise)) {
             // The ring could not start (Android refused the background start): post it, never drop it.
@@ -318,7 +326,10 @@ object ProactiveBus {
                 // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
                 // Arm decline detection BEFORE the line goes out, so a fast reply cannot beat it.
                 awaitingReplyFor = raise.ruleId
-                emit(raise.prompt, raise.listensForReply, raise.carriesReadThroughContent, raise.listenHoldMs)
+                emit(
+                    raise.prompt, raise.listensForReply, raise.carriesReadThroughContent, raise.listenHoldMs,
+                    raise.checkIn,
+                )
                 return RaiseOutcome.Raised(rowId)
             }
             ProactiveDelivery.Route.RING -> return RaiseOutcome.Rang(rowId)

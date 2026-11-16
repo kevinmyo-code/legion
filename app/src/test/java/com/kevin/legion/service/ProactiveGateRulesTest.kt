@@ -215,9 +215,13 @@ class ProactiveGateRulesTest {
     }
 
     @Test
-    fun `claude tasks, app updates and watches are the categories on by default`() {
+    fun `claude tasks, app updates, watches and check-ins are the categories on by default`() {
+        // Check-ins: Kevin asked for them (2026-11-15); the switch turns them off.
         assertEquals(
-            setOf(ProactiveCategory.CLAUDE_TASKS, ProactiveCategory.UPDATES, ProactiveCategory.WATCHES),
+            setOf(
+                ProactiveCategory.CLAUDE_TASKS, ProactiveCategory.UPDATES, ProactiveCategory.WATCHES,
+                ProactiveCategory.CHECK_INS,
+            ),
             ProactiveCategory.DEFAULT_ON,
         )
     }

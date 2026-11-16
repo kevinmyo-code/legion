@@ -107,4 +107,10 @@ data class CascadeOpener(
     val listen: Boolean,
     val readThrough: Boolean = false,
     val userInitiated: Boolean = true,
+    /**
+     * A listening check-in: after the line, a question gets the cue, the listening mark and the
+     * reply window, and silence gets a scripted closer; a statement just closes. Only on an opener
+     * that listens; a line folded into an open conversation ([CascadeSession.say]) ignores it.
+     */
+    val checkIn: com.kevin.legion.service.checkin.CheckInMark? = null,
 )

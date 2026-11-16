@@ -24,6 +24,10 @@ import com.kevin.legion.greeting.GreetingOpening
 import com.kevin.legion.greeting.GreetingPlan
 import com.kevin.legion.service.FollowUpWindow
 import com.kevin.legion.service.VoiceTurnRecorder
+import com.kevin.legion.service.checkin.CheckInOutcome
+import com.kevin.legion.service.checkin.CheckInRules
+import com.kevin.legion.service.checkin.CheckIns
+import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
@@ -32,6 +36,7 @@ import com.kevin.legion.service.ListenCue
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.MicArbiter
 import com.kevin.legion.service.Phase
+import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.TextToolExecutor
@@ -217,6 +222,15 @@ internal class CascadeSession(
     private fun keepTurnAudio(u: TurnUtterance) {
         if (saveTurns) u.keptAudio()?.let { VoiceTurnRecorder.keep(ctx, it) }
     }
+
+    /**
+     * A listening check-in's progress (alfred-greets ticket 03): [CheckInStep.LINE] while its line
+     * plays, [CheckInStep.LISTENING] in the reply window, [CheckInStep.DONE] once he spoke or it
+     * closed. [CheckInStep.NONE] for every other conversation.
+     */
+    private var checkInStep = if (opener?.checkIn != null) CheckInStep.LINE else CheckInStep.NONE
+
+    private enum class CheckInStep { NONE, LINE, LISTENING, DONE }
 
     private var followUp = FollowUpWindow.State()
     private var followUpJob: Job? = null
@@ -745,6 +759,10 @@ internal class CascadeSession(
     }
 
     private fun onUserTurnStart() {
+        if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
+            checkInStep = CheckInStep.DONE
+            reportCheckIn(CheckInOutcome.ANSWERED)
+        }
         draft?.takeIf { it.utt !== currentUtt }?.let { discardDraft("new_utterance") }
         followUpEvent(FollowUpWindow.Event.UserSpeech)
         audit.activityStart()
@@ -812,6 +830,9 @@ internal class CascadeSession(
         }
         carry = ""
         audit.user(heard, final = true)
+        // A brush-off of the last unprompted line quiets that rule for a day (ProactiveBus.noteReply);
+        // only the first turn after a raise counts, which the bus enforces.
+        scope.launch(Dispatchers.IO) { runCatching { ProactiveBus.noteReply(ctx, heard) } }
         if (CrisisDetector.detect(heard)) {
             discardDraftOf(u, "not_answered")
             shutdown("crisis")
@@ -914,7 +935,70 @@ internal class CascadeSession(
         } finally {
             if (turn === record) turn = null
         }
-        if (outcome == ReplySpeaker.Outcome.Played) afterReply()
+        if (outcome != ReplySpeaker.Outcome.Played) return
+        if (checkInStep == CheckInStep.LINE && !record.fromUser) {
+            afterCheckInLine(record.reply.toString())
+        } else {
+            afterReply()
+        }
+    }
+
+    // --- listening check-in (alfred-greets ticket 03; Kevin 2026-11-15) ----------------------------
+
+    /**
+     * The check-in's line has played. A question: a short cue, the listening mark and the reply
+     * window ([FollowUpWindow.WINDOW_MS], about 8 s). A statement: no window and no closer.
+     */
+    private suspend fun afterCheckInLine(line: String) {
+        if (!CheckInRules.isQuestion(line)) {
+            checkInStep = CheckInStep.DONE
+            reportCheckIn(CheckInOutcome.STATEMENT)
+            player?.awaitDrained()
+            speaking = false
+            playbackActive = false
+            audit.turnComplete()
+            shutdown("check_in_statement")
+            host.closed("check_in_statement")
+            return
+        }
+        // The cue plays while the reply still counts as playback, so the mic never takes it as him.
+        val p = player
+        if (p != null && backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE) {
+            p.awaitDrained()
+            val gen = p.generation()
+            withContext(Dispatchers.IO) { p.write(ListenCue.earconPcm(), gen) }
+        }
+        if (checkInStep == CheckInStep.LINE) checkInStep = CheckInStep.LISTENING
+        LiveLatency.log("LIVE_FOLLOWUP", "check_in listening")
+        afterReply()
+        if (checkInStep == CheckInStep.LISTENING && !closing.get()) {
+            host.phase(Phase.LISTENING, "Listening for your answer...")
+        }
+    }
+
+    /** The reply window closed in silence: the mic closes, a scripted closer is said, and it ends. */
+    private suspend fun closeCheckInUnanswered() {
+        checkInStep = CheckInStep.DONE
+        reportCheckIn(CheckInOutcome.NO_REPLY)
+        LiveLatency.log("LIVE_FOLLOWUP", "check_in no_reply")
+        // Closed before the closer plays: nothing said from here on is taken as his turn.
+        runCatching { micJob?.cancelAndJoin() }
+        micJob = null
+        currentUtt?.cancel()
+        currentUtt = null
+        val reply = newSpeaker(null)
+        reply.say(ClosingLines.next(ctx))
+        val o = withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() }
+        if (o == ReplySpeaker.Outcome.Played) player?.awaitDrained() else host.closingTone()
+        shutdown("check_in_no_reply")
+        host.closed("check_in_no_reply")
+    }
+
+    private fun reportCheckIn(outcome: CheckInOutcome) {
+        val mark = opener?.checkIn ?: return
+        val words = "check_in outcome=${outcome.name.lowercase()} moment=${mark.moment.name.lowercase()}"
+        LiveLatency.log("LIVE_FOLLOWUP", words)
+        CheckIns.onOutcome(ctx, mark, outcome)
     }
 
     /**
@@ -1409,6 +1493,10 @@ internal class CascadeSession(
 
     private fun onFollowUpExpired() {
         if (closing.get()) return
+        if (checkInStep == CheckInStep.LISTENING) {
+            scope.launch(loop) { closeCheckInUnanswered() }
+            return
+        }
         scope.launch(loop) {
             LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}")
             host.closingTone()
@@ -1992,6 +2080,9 @@ internal class CascadeSession(
         private const val SCOPE_GRACE_MS = 2_000L
 
         private val ACK = AckLines()
+
+        /** The longest a check-in's closer may take to say before the conversation just ends. */
+        private const val CLOSER_MAX_MS = 6_000L
 
         private const val OPENED_NOTE = "(He opened the conversation and you greeted him.)"
 

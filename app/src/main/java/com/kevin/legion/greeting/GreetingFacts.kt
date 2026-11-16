@@ -26,6 +26,8 @@ data class GreetingItem(
     val raised: Boolean = false,
     val kind: String? = null,
     val passesAtMs: Long? = null,
+    /** When an ended event ended (`ended_events`' `ended_at`): what the after-an-event check-in keys on. */
+    val endedAtMs: Long? = null,
 )
 
 data class GreetingSource(
@@ -133,7 +135,7 @@ object FactsParser {
             else -> SourceState.UNREADABLE
         }
         val items = o.optJSONArray("items")?.let { arr ->
-            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { item(it, PASSES_AT[name]) } }
+            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { item(it, PASSES_AT[name], name == ENDED) } }
         }.orEmpty()
         val says = o.optString("says")
         // A "facts" source with no readable item says nothing mentionable: unreadable, not empty.
@@ -152,18 +154,22 @@ object FactsParser {
     /** The field that says when an item of each source stops being ahead of him. */
     private val PASSES_AT = mapOf("today_events" to "starts_at", "due_soon" to "due_at")
 
-    private fun item(o: JSONObject, passesAtKey: String?): GreetingItem? {
+    private const val ENDED = "ended_events"
+
+    private fun item(o: JSONObject, passesAtKey: String?, ended: Boolean): GreetingItem? {
         val topic = o.optStringOrNull("topic")
         val says = o.optStringOrNull("says")
-        val passesAt = passesAtKey?.let { o.optStringOrNull(it) }?.let { iso ->
-            runCatching { java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli() }.getOrNull()
-        }
+        val passesAt = passesAtKey?.let { o.optStringOrNull(it) }?.let(::epochMs)
+        val endedAt = if (ended) o.optStringOrNull("ended_at")?.let(::epochMs) else null
         return if (topic == null || says == null) {
             null
         } else {
-            GreetingItem(topic, says, o.optBoolean("raised", false), o.optStringOrNull("kind"), passesAt)
+            GreetingItem(topic, says, o.optBoolean("raised", false), o.optStringOrNull("kind"), passesAt, endedAt)
         }
     }
+
+    private fun epochMs(iso: String): Long? =
+        runCatching { java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli() }.getOrNull()
 
     private fun strings(a: JSONArray?): Set<String> =
         if (a == null) emptySet() else (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.toSet()

@@ -235,7 +235,8 @@ internal object ScriptedLines {
      */
     val FILLERS = listOf("One moment.", "Just a moment.")
 
-    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS).toSet()
+    /** The opening acks, the fillers and the check-in closers ([com.kevin.legion.service.checkin.ClosingLines]). */
+    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS + com.kevin.legion.service.checkin.ClosingLines.LINES).toSet()
 
     /**
      * Tools that take seconds: the specialist dispatchers, each its own model call (Live ran the four

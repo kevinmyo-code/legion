@@ -663,11 +663,13 @@ class LiveSessionController(context: Context) {
         carriesReadThroughContent: Boolean = false,
         userInitiated: Boolean = false,
         listenHoldMs: Long = 0L,
+        /** A listening check-in ([ProactiveRaise.checkIn]): the cascade session's reply window and closer. */
+        checkIn: com.kevin.legion.service.checkin.CheckInMark? = null,
     ) {
         // Live retired (2026-11-15): every proactive line is the cascade's, folded into a cascade
         // conversation already open or opening one of its own. Any refusal is said, never dropped.
         if (VoiceEngineSettings.LIVE_RETIRED || cascade != null) {
-            speakOnCascade(prompt, listensForReply, carriesReadThroughContent, userInitiated)
+            speakOnCascade(prompt, listensForReply, carriesReadThroughContent, userInitiated, checkIn)
             return
         }
         // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
@@ -860,9 +862,18 @@ class LiveSessionController(context: Context) {
      * ([listensForReply]: an incoming call), which opens the mic as a ring window.
      */
     @Suppress("ReturnCount") // one worded exit per guard, as in requestSpeak
-    private fun speakOnCascade(prompt: String, listensForReply: Boolean, readThrough: Boolean, userInitiated: Boolean) {
+    private fun speakOnCascade(
+        prompt: String,
+        listensForReply: Boolean,
+        readThrough: Boolean,
+        userInitiated: Boolean,
+        checkIn: com.kevin.legion.service.checkin.CheckInMark? = null,
+    ) {
         val listen = listensForReply && hasMicPermission()
-        val line = CascadeOpener(prompt, listen = listen, readThrough = readThrough, userInitiated = userInitiated)
+        val line = CascadeOpener(
+            prompt, listen = listen, readThrough = readThrough, userInitiated = userInitiated,
+            checkIn = checkIn?.takeIf { listen },
+        )
         cascade?.let { open ->
             if (!open.say(line)) refuse(VoiceRefusal.CONNECT_IN_FLIGHT, userInitiated)
             return

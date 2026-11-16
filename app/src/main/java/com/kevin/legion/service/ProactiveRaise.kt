@@ -157,6 +157,13 @@ data class ProactiveRaise(
     val notificationText: String? = null,
     /** How hard this raise may push. See [ProactiveUrgency]. */
     val urgency: ProactiveUrgency = ProactiveUrgency.Ordinary,
+    /**
+     * Set on a listening check-in ([com.kevin.legion.service.checkin.CheckIns]): the session opens
+     * the reply window only if the spoken line is a question, and says a scripted closer on
+     * silence. **A check-in is spoken or nothing:** when it cannot be spoken the bus drops it
+     * ([ProactiveBus.RaiseOutcome.NotNow]) rather than post a question to the shade.
+     */
+    val checkIn: com.kevin.legion.service.checkin.CheckInMark? = null,
 ) {
     init {
         require(ruleId.isNotBlank()) { "a raise must name the rule that fired it" }

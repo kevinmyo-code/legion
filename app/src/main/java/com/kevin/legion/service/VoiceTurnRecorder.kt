@@ -16,8 +16,9 @@ import java.util.concurrent.Executors
  *
  * - Local files only, beside the wake samples: the app's external files dir `voice-turns/`, a
  *   sibling of `wake-samples/` so the wake screen's own "delete all" never takes these and this
- *   one never takes those. Both are excluded from device backup (`res/xml/*backup*`), so nothing
- *   here is uploaded by Android either. Pulled to the laptop by hand (adb), like the wake samples.
+ *   one never takes those. Both are excluded from device backup (the two backup rule files in
+ *   `res/xml`), so nothing here is uploaded by Android either. Pulled to the laptop by hand
+ *   (adb), like the wake samples.
  * - Audio only: no transcript, no sidecar, nothing of what was said. Never logged: the log says a
  *   count or a failure, never a file name or a word.
  * - Capped by [VoiceTurnFiles.MAX_FILES], [VoiceTurnFiles.MAX_BYTES] and [VoiceTurnFiles.MAX_AGE_MS],
