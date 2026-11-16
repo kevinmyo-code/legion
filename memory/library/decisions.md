@@ -8059,3 +8059,10 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   answered from the block alone dropped overdue work. Narrowed: only calendar-only questions skip
   the lookup; today, due, to-do and work questions read `day read_calendar` first. Overdue in the
   block from the phone's own due list is the planned follow-up. ADR 0093 records the runs.
+- Same day, follow-up built (`feat/agenda-block-overdue`, not yet gated on the model or merged):
+  the block is now the phone's own read of today, the same one `day read_calendar` makes
+  (`calendar/CalendarWindowRead`): today's events, open work due today, open overdue work, each as
+  facts, EMPTY or COULD NOT BE READ in the tool's own due sentences, overdue and due today capped at
+  8 listed each with "and N more", events at 12. Today, due and overdue questions may be answered
+  from it again; other days, the full list and every write still go through tools. The 30-minute
+  and other-day limit is now checked at every turn. Ships only if its model gate passes.
