@@ -108,7 +108,7 @@ object GreetingBlock {
      * most recent ended event, the workout before the weigh-in. Null means no topic: the greeting is
      * a hello about nothing ([GreetingPrompt.hello]).
      *
-     * The caps (Kevin, 2026-11-16: "most of them were for budget"; each budget is its own topic, so
+     * The caps (Kevin, 2026-11-16: most greetings led with a budget; each budget is its own topic, so
      * once the others were raised every later open led with another budget):
      * - money leads only for a budget OVER its cap, and at most once a day; near the cap or on pace is
      *   not a topic (nothing to say, and money is the easiest topic to nag about);

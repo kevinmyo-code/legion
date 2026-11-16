@@ -6,8 +6,8 @@ package com.kevin.legion.greeting
  * instruction both paths already carry (`ai/Personas.kt` through `AssistantIdentity`), so no name
  * and no register copy is written here.
  *
- * **Casual, not a report (Kevin, 2026-11-16: "sounded like just someone reading a report to me. i
- * want them more casual and witty and short").** The lead used to be pasted in as "lead with this
+ * **Casual, not a report (Kevin, 2026-11-16: the greetings read like a report; he wants them
+ * casual, dry-witty and short).** The lead used to be pasted in as "lead with this
  * topic: <the fact text>", and with the persona's "numbers first" the model read the fact out, cents
  * and all. Now the lead is a few-word subject ([subject]) and a `[LEAD]` mark on its line in the
  * block, and the rules ask for a reaction, at most one rounded figure and never cents. The persona
@@ -58,7 +58,7 @@ object GreetingPrompt {
 
     /**
      * The opener when there is nothing to raise (2026-11-16). Capping money left more opens with no
-     * topic, and the bare scripted line there is what Kevin called "just a simple yes". A proactive
+     * topic, and the bare scripted line there is what Kevin found too bare earlier. A proactive
      * prompt states its facts or forbids its subject (CLAUDE.md section 1): this one hands over no
      * facts and forbids every subject, the context note the cascade puts on the first turn included.
      */
@@ -85,7 +85,10 @@ object GreetingPrompt {
      * topic key (`money:<month>:<category>`).
      */
     fun subject(lead: GreetingBlock.Lead): String = when (lead.source) {
-        GreetingPlace.SOURCE -> "that he is away from home today"
+        // Place alone gets "add nothing": asked to react to a bare "he is away", the model made up
+        // the rest (an empty house, a slow day); tone check 2026-11-16, place-only attempt.
+        GreetingPlace.SOURCE -> "that he is away from home today. Name the place in a plain few words and " +
+            "add nothing to it: no guess about why he is there, what it is like, or what he left behind"
         "body" -> if (lead.item.kind == "weigh_in") "his weigh-in" else "today's workout"
         "money" -> lead.item.topic.substringAfter(':', "").substringAfter(':', "").takeIf { it.isNotBlank() }
             ?.let { "his $it budget, which is over its cap" } ?: "a budget that is over its cap"
