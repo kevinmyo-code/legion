@@ -459,7 +459,7 @@ internal class CascadeSession(
      * keeps; a fetch already running is waited for up to [AGENDA_WAIT_MS]. "" for a test
      * conversation or one with an opener (a proactive line states only its own facts).
      */
-    @Suppress("TooGenericExceptionCaught") // no pack is said in words, never a failed open
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // no pack is said in words, never a failed open
     private suspend fun loadAgenda(): String {
         if (test != null || opener != null) return ""
         val t = System.currentTimeMillis()
@@ -473,6 +473,7 @@ internal class CascadeSession(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            LiveLatency.log(LiveLatency.TAG, "agenda_unavailable reason=${e.javaClass.simpleName}")
             AgendaBlock.unavailable()
         }
         LiveLatency.log(LiveLatency.TAG, "open_agenda_ms=${System.currentTimeMillis() - t} chars=${block.length}")

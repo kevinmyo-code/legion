@@ -12,7 +12,10 @@ import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 
-/** [AgendaBlock] (voice quick wins C): facts, EMPTY and COULD NOT BE READ, the as-of time, the limits. Invented data only. */
+/**
+ * [AgendaBlock] (voice quick wins C): facts, EMPTY and COULD NOT BE READ, the as-of time, the limits.
+ * Invented data only.
+ */
 class AgendaBlockTest {
 
     private val zone = ZoneOffset.UTC
@@ -67,18 +70,27 @@ class AgendaBlockTest {
             zone,
         )
         assertTrue(block, block.contains("Today's remaining calendar events (EMPTY: read, and nothing is on file)"))
-        assertTrue(block.contains("(COULD NOT BE READ, which is not the same as empty): Invented: the engine could not read Canvas."))
+        assertTrue(
+            block.contains(
+                "(COULD NOT BE READ, which is not the same as empty): Invented: the engine could not read Canvas.",
+            ),
+        )
     }
 
     @Test
     fun `a source missing from the pack reads as could not be read`() {
-        val block = AgendaBlock.render(CachedPack(pack(facts("today_events", "Invented call at 16:00.")), fetchedAt), zone)
-        assertTrue(block, block.contains("To-dos and Canvas work due in the 24 hours after it was read (COULD NOT BE READ"))
+        val block =
+            AgendaBlock.render(CachedPack(pack(facts("today_events", "Invented call at 16:00.")), fetchedAt), zone)
+        assertTrue(
+            block,
+            block.contains("To-dos and Canvas work due in the 24 hours after it was read (COULD NOT BE READ"),
+        )
     }
 
     @Test
     fun `the block says what it does not carry and sends it to the tools`() {
-        val block = AgendaBlock.render(CachedPack(pack(facts("due_soon", "Invented essay due at 10:00.")), fetchedAt), zone)
+        val block =
+            AgendaBlock.render(CachedPack(pack(facts("due_soon", "Invented essay due at 10:00.")), fetchedAt), zone)
         // Overdue work and later days are not in the pack: said, never implied away.
         assertTrue(block.contains("overdue"))
         assertTrue(block.contains("NOT listed here"))
@@ -89,7 +101,9 @@ class AgendaBlockTest {
         // The pack has no weather: said as missing, never as fine.
         assertTrue(block.contains(AgendaBlock.WEATHER_LINE))
         // Only the ruled words for an unread or empty source: no blanket "clear" or "free".
-        for (word in listOf("clear", "free", "nothing due")) assertFalse("$word in $block", block.lowercase().contains(word))
+        for (word in listOf("clear", "free", "nothing due")) {
+            assertFalse("$word in $block", block.lowercase().contains(word))
+        }
     }
 
     @Test

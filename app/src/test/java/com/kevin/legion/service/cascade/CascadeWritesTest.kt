@@ -32,8 +32,10 @@ class CascadeWritesTest {
 
     @Test
     fun `a router call is a write only when it asks to record`() {
-        assertFalse(CascadeRules.isWrite("ask", call("domain" to "ask_fleet", "question" to "invented", "intent" to "ask")))
-        assertTrue(CascadeRules.isWrite("ask", call("domain" to "ask_fleet", "question" to "invented", "intent" to "record")))
+        val ask = call("domain" to "ask_fleet", "question" to "invented", "intent" to "ask")
+        assertFalse(CascadeRules.isWrite("ask", ask))
+        val record = call("domain" to "ask_fleet", "question" to "invented", "intent" to "record")
+        assertTrue(CascadeRules.isWrite("ask", record))
         assertFalse(CascadeRules.isWrite("look_up", call("domain" to "ask_money", "question" to "invented")))
         assertFalse(CascadeRules.isWrite("end_conversation", call()))
     }
