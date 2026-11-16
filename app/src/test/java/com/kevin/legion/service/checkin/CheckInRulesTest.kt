@@ -5,6 +5,7 @@ import com.kevin.legion.greeting.FactsParser
 import com.kevin.legion.greeting.GreetingBlock
 import com.kevin.legion.greeting.GreetingItem
 import com.kevin.legion.greeting.GreetingPlace
+import com.kevin.legion.greeting.GreetingPrompt
 import com.kevin.legion.greeting.GreetingSource
 import com.kevin.legion.greeting.SourceState
 import com.kevin.legion.service.ProactiveCategory
@@ -252,6 +253,37 @@ class CheckInRulesTest {
         assertTrue(prompt.contains("Do not call any tool"))
         assertTrue(prompt.contains("FACTS PACK. invented"))
         assertTrue(prompt.contains("Say no amount of money"))
+    }
+
+    @Test
+    fun `only a whole check-in line is said, anything else drops in silence`() {
+        val ok = "Your invented lab report is due at eleven fifty-nine. Started on it?"
+        assertNull(CheckInRules.lineRejection(ok, failed = false, toolCalled = false))
+        assertNull(CheckInRules.lineRejection("  How was the invented seminar?\"  ", false, false))
+        // The 2026-11-16 gate: a failed call's own words must never be said unprompted.
+        val error = "Not answered: Gemini is overloaded right now. Try again in a moment. Nothing was changed."
+        assertEquals("model_failed", CheckInRules.lineRejection(error, failed = true, toolCalled = false))
+        assertEquals("not_a_question", CheckInRules.lineRejection(error, failed = false, toolCalled = false))
+        assertEquals("model_failed", CheckInRules.lineRejection(ok, failed = true, toolCalled = false))
+        assertEquals("tool_called", CheckInRules.lineRejection(ok, failed = false, toolCalled = true))
+        assertEquals("empty", CheckInRules.lineRejection("  ", failed = false, toolCalled = false))
+        assertEquals("not_a_question", CheckInRules.lineRejection("The report is due tonight.", false, false))
+        val three = "One thing. Another thing. Is that right?"
+        assertEquals("too_long", CheckInRules.lineRejection(three, failed = false, toolCalled = false))
+        val long = "Is " + "very ".repeat(60) + "long?"
+        assertEquals("too_long", CheckInRules.lineRejection(long, failed = false, toolCalled = false))
+    }
+
+    @Test
+    fun `the prompt keeps clock times as written and never presses after his answer`() {
+        val lead = GreetingItem("due:x", "Invented essay due at 23:59.")
+        val prompt = CheckInPrompt.build("FACTS PACK. invented", lead, CheckInMoment.DUE_SOON)
+        assertTrue(prompt.contains(GreetingPrompt.TIMES_RULE))
+        assertTrue(prompt.contains("exactly as the facts give it, never rounded or renamed"))
+        assertTrue(prompt.contains("whatever he says, acknowledge it in a few words and stop"))
+        assertTrue(prompt.contains("Do not ask again"))
+        assertTrue(prompt.contains("add no urgency and no time left"))
+        assertTrue(prompt.contains("offer help only if he asks for it"))
     }
 
     @Test

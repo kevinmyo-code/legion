@@ -204,8 +204,12 @@ internal class CascadeSession(
     /** Whether this session has a mic to go back to after a reply (the controller's tap reads it). */
     val listensForReply: Boolean get() = listens
 
-    /** A background line nobody asked for: its failure is not put on screen. */
-    private val quiet = opener != null && !opener.listen && !opener.userInitiated
+    /**
+     * A background line nobody asked for: its failure is not put on screen. A listening check-in is
+     * quiet too until its line has passed and played: a failure before that is never said.
+     */
+    private val quiet: Boolean
+        get() = opener != null && !opener.userInitiated && (!opener.listen || checkInStep == CheckInStep.LINE)
 
     /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
     private val audioRoute = CascadeAudio(ctx, audioManager)
@@ -272,6 +276,9 @@ internal class CascadeSession(
 
         /** Dropped for his next words, which carry these: not recorded on its own. */
         @Volatile var merged = false
+
+        /** A check-in line: held until whole, checked ([CheckInRules.lineRejection]), then said or dropped. */
+        @Volatile var holdLine = false
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -399,7 +406,8 @@ internal class CascadeSession(
         )
         val openMs = System.currentTimeMillis() - started
         LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, b.tts.streamsText, b.kind.token))
-        if (listens) startMic()
+        // A check-in opens the mic only once its line has passed and played ([afterCheckInLine]).
+        if (listens && checkInStep == CheckInStep.NONE) startMic()
         if (closing.get()) return
         if (opener != null) {
             speakOpener(opener)
@@ -762,6 +770,7 @@ internal class CascadeSession(
 
     private fun promptRecord(o: CascadeOpener) = TurnRecord(o.prompt, fromUser = false).also {
         it.readThrough = o.readThrough
+        it.holdLine = o.checkIn != null && checkInStep == CheckInStep.LINE
     }
 
     /** The opener's prompt as the first turn (no greeting, no ack line). */
@@ -1045,13 +1054,27 @@ internal class CascadeSession(
                     listenerFor(record, reply),
                 )
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
-            val text = if (result.failure != null && !reply.anyText) {
+            if (record.holdLine) {
+                val toolCalled = synchronized(record) { record.toolsRan.isNotEmpty() }
+                val why = CheckInRules.lineRejection(result.text, result.failure != null, toolCalled)
+                if (why != null) {
+                    reply.interrupt()
+                    dropCheckIn(why, result.failure?.name)
+                    return
+                }
+            }
+            val text = if (!record.holdLine && result.failure != null && !reply.anyText) {
                 result.failureWords ?: result.failure.lead
             } else {
                 null
             }
             // A background line nobody asked for does not announce a fault (Settings says why).
-            if (text != null && !quiet) reply.say(text) else reply.finishText()
+            when {
+                // The check-in line passed: said whole, as written.
+                record.holdLine -> reply.say(result.text.trim())
+                text != null && !quiet -> reply.say(text)
+                else -> reply.finishText()
+            }
             outcome = reply.await()
             val failed = outcome as? ReplySpeaker.Outcome.Failed
             if (failed != null) {
@@ -1113,7 +1136,9 @@ internal class CascadeSession(
             host.closed("check_in_statement")
             return
         }
-        // The cue plays while the reply still counts as playback, so the mic never takes it as him.
+        // The mic opens only now that the line passed and played; the cue plays while the reply still
+        // counts as playback, so the mic never takes it as him.
+        if (listens && micJob == null) startMic()
         val p = player
         if (p != null && backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE) {
             p.awaitDrained()
@@ -1126,6 +1151,25 @@ internal class CascadeSession(
         if (checkInStep == CheckInStep.LISTENING && !closing.get()) {
             host.phase(Phase.LISTENING, "Listening for your answer...")
         }
+    }
+
+    /**
+     * The check-in's line failed or is not a check-in line: nothing is said, nothing is shown, the
+     * mic never opened, and the conversation ends. No outcome is reported, so the ask is not counted
+     * and the topic comes back under the retry rule ([CheckInMoments], [CheckInRules.RETRY_GAP_MS]).
+     */
+    private suspend fun dropCheckIn(reason: String, failure: String?) {
+        checkInStep = CheckInStep.DONE
+        val mark = opener?.checkIn
+        LiveLatency.log(
+            "LIVE_FOLLOWUP",
+            "check_in dropped reason=$reason" + (failure?.let { " failure=$it" } ?: "") +
+                (mark?.let { " moment=${it.moment.name.lowercase()}" } ?: ""),
+        )
+        speaking = false
+        playbackActive = false
+        shutdown("check_in_dropped")
+        host.closed("check_in_dropped")
     }
 
     /** The reply window closed in silence: the mic closes, a scripted closer is said, and it ends. */
@@ -1249,6 +1293,11 @@ internal class CascadeSession(
     private fun turnContentsFor(heard: String) = CascadePrompt.contents(history, heard, turnPreamble())
 
     private fun executorFor(record: TurnRecord, seq: Long) = TextToolExecutor { name, args, readThrough ->
+        // A check-in line calls no tool (its prompt says so); one asked for never runs, and the line drops.
+        if (record.holdLine) {
+            LiveLatency.log(LiveLatency.TAG, "check_in tool_refused tool=$name")
+            return@TextToolExecutor JSONObject().put("success", false).put("message", "No tool for this line.")
+        }
         // Before anything can run: his next words must never carry a write into a second run.
         if (CascadeRules.isWrite(name, args)) record.writeCalled = true
         val id = "c${toolSeq.incrementAndGet()}"
@@ -1296,7 +1345,7 @@ internal class CascadeSession(
     private fun listenerFor(record: TurnRecord, reply: ReplySpeaker) = object : GeminiTextLoop.Listener {
         override fun onText(delta: String) {
             record.reply.append(delta)
-            reply.text(delta)
+            if (!record.holdLine) reply.text(delta)
         }
 
         override fun onToolCalls(names: List<String>) {

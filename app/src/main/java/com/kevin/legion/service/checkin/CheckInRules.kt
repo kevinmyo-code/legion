@@ -4,6 +4,7 @@ import com.kevin.legion.greeting.FactsPack
 import com.kevin.legion.greeting.GreetingBlock
 import com.kevin.legion.greeting.GreetingItem
 import com.kevin.legion.greeting.GreetingPlace
+import com.kevin.legion.greeting.GreetingPrompt
 import com.kevin.legion.greeting.GreetingSource
 import com.kevin.legion.greeting.SourceState
 import java.time.LocalDateTime
@@ -118,6 +119,32 @@ object CheckInRules {
 
     /** True when the model's line asked something: only then does the mic stay open and a closer follow. */
     fun isQuestion(line: String): Boolean = line.trim().contains('?')
+
+    /** The longest check-in line accepted: two short sentences. */
+    const val MAX_LINE_CHARS = 240
+    private const val MAX_SENTENCES = 2
+    private val SENTENCE_END = Regex("""(?<=[.?!])\s+""")
+
+    /**
+     * Why the model's text is not a check-in line, or null when it is one (stage 6, 2026-11-16: a
+     * failed call came back as "Not answered: ..." and would have been said unprompted). A check-in
+     * is held until whole and said only when it passes; otherwise it is dropped in silence and the
+     * topic waits for the retry rule. A line passes when the call did not fail, no tool was asked
+     * for, and it is one or two sentences ending in a question mark.
+     */
+    @Suppress("ReturnCount") // one worded reason per check
+    fun lineRejection(text: String, failed: Boolean, toolCalled: Boolean): String? {
+        if (failed) return "model_failed"
+        if (toolCalled) return "tool_called"
+        val line = text.trim().trimEnd('"', '\'', ')')
+        return when {
+            line.isEmpty() -> "empty"
+            !line.endsWith('?') -> "not_a_question"
+            line.length > MAX_LINE_CHARS -> "too_long"
+            line.split(SENTENCE_END).count { it.isNotBlank() } > MAX_SENTENCES -> "too_long"
+            else -> null
+        }
+    }
 }
 
 /**
@@ -273,11 +300,13 @@ object CheckInPrompt {
         - One sentence, at most two short ones, and it ends with a question mark.
         - Mention nothing that is not in the facts below. If something is not there you do not know it.
         - A source marked COULD NOT BE READ was not checked: never say it is clear, free or empty.
-        - Times are clock times and days by name, as written below.
+        - ${GreetingPrompt.TIMES_RULE} Say a clock time exactly as the facts give it, never rounded or renamed.
         - Say no amount of money and no budget figure (stage 5's greeting rule): a budget is only over its cap.
         - Never mention his absence, how long it has been, a streak, his use of this app, or that you
           asked before. No guilt, no pressure, no lecture: a question he may answer or ignore.
         - Do not call any tool for this line and do not say you did anything.
+        - When he answers, whatever he says, acknowledge it in a few words and stop. Do not ask again,
+          add no urgency and no time left, and offer help only if he asks for it.
 
         $block)
     """.trimIndent()
