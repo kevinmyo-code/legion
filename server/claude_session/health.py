@@ -55,6 +55,13 @@ RAM_FOR = dt.timedelta(minutes=10)
 # One missed reading is a busy agent, not a dead one; two in a row (snapshots are a minute apart).
 AGENT_FOR = dt.timedelta(minutes=2)
 
+
+def limits() -> dict:
+    """The alert thresholds above, sent beside each snapshot so a screen can draw them as lines
+    and marks (cards, 2026-11-15) without keeping its own copy of the engine's rules."""
+    return {"hot_c": HOT_C, "ram_high_pct": RAM_HIGH_PCT, "disk_low_gb": DISK_LOW_GB}
+
+
 OFFLINE = "offline"
 HOT = "hot"
 DISK_LOW = "disk_low"

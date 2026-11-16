@@ -22,58 +22,52 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-11-15 ~12:15 (laptop going OFF; a phone/cloud session picks this up)
+## Where we stopped - 2026-11-16 (stage 4 integration, laptop)
 
-**Live now (2026-11-15):** `dev` = `main` = `6315ebd3`. Engine deployed at 702aa88b's code (grades,
-greeting, budget pace migrations applied). Phone OTA **263191730** (stage 1) published 11:48:
-- the **cloud cascade replaces Gemini Live on the phone** (Gemini speech-to-text -> Flash-Lite with
-  tools and the context cache -> Gemini TTS). Settings, Voice engine: Cloud (default) or Laptop
-  pipeline. `VoiceEngineSettings.LIVE_RETIRED` is the one flag; the Live code is still in the tree.
-- the opening line no longer waits for the prompt build; per-conversation cost audit
-  (`gemini_usage` / `cascade_usage_summary` log lines, `tools/voice_cost.py`, `tools/voice_prices.json`);
-- updates install with the car connected, download on mobile data, and are checked every 3 hours.
-- **Never run on a phone before it shipped.** Real Gemini calls passed (`CloudVoiceLiveCheck`).
-  Kevin's first conversations are the test. If he says the Cloud voice is bad: forward-build
-  `fix/install-in-car` (`1a35aa16`: Live kept, new update rules) with a higher versionCode and
-  release it; then revert on dev.
-- **Known gaps on Cloud:** the camera look refuses in words (Kevin: "camera later"); a navigation
-  turn cue can overlap a reply; finished Claude-task notes are not offered into an open
-  conversation; no resume-music nudge. Brief me and unprompted lines always use the Cloud voice.
+**Live now (2026-11-16):** stage 3 shipped. `dev` == `main` == `0742a48a`. Engine revision
+`legion-00084-mss` built from `0742a48a` (no migration). Phone OTA **263200608** (greeting pack ahead
+of the tap, "what's due" from calendar + to-dos, home due-today count, voice-fast speedups). Stages 1
+and 2 (Cloud voice cascade, OBD VIN) are in it. None of stages 1 to 3 has been audited on the phone
+yet: Kevin's own use is the test.
 
-**Kevin's standing word (2026-11-15):** build all of the queue below and ship it in stages at
-Claude's judgment, each stage only when its gates are green. Not covered: module writes or
-programming, anything outside this queue.
+**Stage 4 (2026-11-16):** branch `ship/stage4-1116` = `0742a48a` + merge of `feat/cards-viz`
+(cards at a glance: bars, meters, charts; kinds readings, status_list, trend; engine, web and phone;
+`shared/cards/fixtures.json` v2). No migration, no Room change. Engine + web deploy, then the phone
+OTA, by the stage 4 ship script. Kevin approved the phone card screens (2026-11-16); the web card
+pictures had only DOM tests on the branch, and the integration report says whether a browser
+render was done.
 
-**In flight, each on its own pushed branch (WIP commits possible; read the branch log first):**
-| Branch | What | State when the laptop went off |
+**Owed by Kevin (carried, 2026-11-15, still true 2026-11-16):** use the phone after stages 1 to 3: tap
++ a few asks incl. one tool, wake word, a barge-in, a car Bluetooth drive, Settings shows Cloud
+selected; the OBD dongle's brand and model (decides whether the second CAN network is reachable).
+- **Cloud voice known gaps (2026-11-15):** the camera look refuses in words; a navigation turn cue
+  can overlap a reply; finished Claude-task notes are not offered into an open conversation; no
+  resume-music nudge. If Kevin says Cloud is bad: forward-build `fix/install-in-car` (`1a35aa16`,
+  Live kept) with a higher versionCode, then revert on dev.
+- **Laptop only:** restart the laptop voice service for `stt.maybe_end` (steps in the stage 3
+  integration report, needs Kevin's OK; laptop `maybe_end` drafts are still uncapped); read the
+  phone's uploaded logs and price them (`tools/phone_audit_engine.py`, `tools/voice_cost.py`).
+
+**In flight, each on its own pushed branch (read the branch log first):**
+| Branch | What | State 2026-11-16 |
 |---|---|---|
-| `feat/voice-fast` | speculative answers at a likely end of turn, prepare-ahead open, filler on slow tools, earlier first clause, `--tts-nq` flag on the laptop voice | `8e2eea84`, on dev `6315ebd3`, all 5 steps committed; 1,508 tests / 0 failed, laptop_voice 40 passed, detekt clean in its files. **Fix before shipping:** a draft whose call already failed is still adopted (drop it, make a normal call); no per-utterance cap on cloud drafts; no cooldown on the laptop connection after a wake-word near miss; the opening line is not reliably played from memory. Setting "Answer sooner" (default on). Expected gain is small on the laptop path (0.1 to 0.3 s a turn; the filler brings first sound on a slow tool to about 1 to 1.5 s); nothing measured on the real model or a phone. The laptop service change (`stt.maybe_end`, protocol still 1) needs a service restart at the laptop. Ship only after a phone audit of stage 1 |
-| `feat/obd-vin` (merged to dev 2026-11-15 evening, cloud session) | read the VIN on OBD connect, match a car on file, ask once when unknown or unreadable, attribute all OBD data to that car | On dev. detekt 291 (dev was 291, ceiling 293); full phone suite 7,142 / 0 failed / 18 skipped. A review before merge fixed four defects (the move is one Room transaction; a second answer to an emptied pending id changes nothing; the notification button cannot crash; a switch with the dongle gone says held readings still wait). **Open, Kevin to rule:** no voice way to answer "which car" after the dongle disconnects (Cars card and notification only); one unanswered connection blocks all later OBD upload, no expiry; a switch refused because the VIN proves another car still returns success to the model; a VIN retry at engine start can pause polling up to 12 s. Release phone dry run started from dev; publish only after it passes. Fake dongle replies only; nothing ran against a car or on a phone. `docs_check.py` and `decision_debt.py` fail on dev itself (ADR 0061 names a path that does not exist) |
-| `feat/cards-expand-r2` (the old `feat/cards-expand` and `feat/cards-expand-1115b` are stale duplicates) | three shared card kinds (readings, status_list, trend) on engine + web + phone, then domain cards (school, money, weather, laptop, trip, body, food, mail draft, memory, drive) | `dade8e36`, on dev `6315ebd3`. Engine + web change, no migration. Kinds and most domain cards done; server 3,498 passed, web 998 / 998, card tests green. NOT run: detekt, the full phone suite, the existing card screenshots. Gaps with no tool behind them: one receipt, weather forecast, leave-by, training trend; the voice-service and voice-cost cards wait on a publish call in `service/cascade/`. Kevin wants to see the renders before it ships (they are on the laptop, not in the repo) |
-| queued, not started | brand-neutral diagnostics: module discovery + all-module code read/clear (UDS), per-make extras picked by the VIN (Ford, Mitsubishi), read-only; then OBD cards on the new kinds | after `feat/obd-vin`; pre-CAN cars stay at generic OBD |
+| `feat/listening-checkins` | opt-in saved voice turns beside the wake samples; wake enrol verdict per engine | on `0742a48a`, not integrated |
+| `fix/voice-routing` | lists by any door, local dates, overdue said plainly, no switch on a read; voice eval cases | not integrated |
+| `feat/obd-diagnostics` | module discovery, all-module code read/clear, per-make extras by VIN, code descriptions | `98f20112`; Room v79 -> v80; never run on a car |
 
-**Stage order:** 2 `feat/obd-vin` (on dev, release pending) -> 3 `feat/voice-fast` (after reading his phone's stage 1 logs) ->
-4 `feat/cards-expand` -> 5 diagnostics. A phone stage ships from GitHub with the laptop off:
-Actions, **Release phone**, on `dev`, dry run first; Kevin approves the `production` gate each run
-(signing key, wake-word models from the private bucket, engine token: all set 2026-11-15; the dry
-run passed, a real publish from GitHub has not been exercised yet). An engine stage is `ship.yml`
-(never run yet) or the laptop.
+**Open, Kevin to rule (carried from 2026-11-15):** the voice-fast opening line (a prefetch / b prefer
+cached / c disk); the four OBD VIN rulings (no voice answer after disconnect, no expiry on an
+unanswered connection, refused switch returns success, VIN retry pause); cards gaps (grade letter
+ticks need a grading scheme source; due-today strip needs a done flag).
 
-**Only the laptop can do these (owed when it is back on):** read the phone's uploaded logs and
-price them (`tools/phone_audit_engine.py`, `tools/voice_cost.py`); restart the laptop voice service
-for `feat/voice-fast`'s service-side change; the by-hand real-Gemini check (needs the key file).
+**Kevin's standing word (2026-11-15):** build the queue and ship it in stages at Claude's judgment,
+each stage only when its gates are green. A phone stage can also ship from GitHub (Actions, Release
+phone, on `dev`, dry run first, Kevin approves the `production` gate); a real publish from GitHub has
+not been exercised. Cloud containers: Android SDK at `$HOME/android-sdk`, Maven via Google's mirror,
+clone is shallow (`git fetch --unshallow` before a commit or the hook writes a truncated devlog).
 
-**Owed docs:** an ADR for retiring Live on the phone (supersedes the 2026-11-10 "Live stays the
-default" ruling), a `library/decisions.md` entry, and CLAUDE.md section 3's "Gemini Live over a
-WebSocket" line.
-
-**Owed by Kevin:** install 263191730 and use it; the OBD dongle's brand and model (decides whether
-the second CAN network is reachable); on the phone after stage 1: tap + a few asks incl. one tool,
-wake word, a barge-in, a car Bluetooth drive, Settings shows Cloud selected.
-- **Cloud container notes:** Android SDK at `$HOME/android-sdk`; `~/.gradle/init.d/central-mirror.gradle`
-  routes Maven Central and Robolectric to Google's mirror (Central rate-limits these containers);
-  the environment must allow `dl.google.com` and `api.mapbox.com`. Clone is shallow: `git fetch
-  --unshallow` before a commit, or the hook writes a truncated devlog.
+**Owed docs:** an ADR for retiring Live on the phone, a `library/decisions.md` entry, and CLAUDE.md
+section 3's "Gemini Live over a WebSocket" line.
 
 ## Proactive voice - 2026-11-10
 

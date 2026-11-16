@@ -26,7 +26,12 @@ data class LaptopHealth(
     val alerts: List<String> = emptyList(),
     /** The last 24 h, oldest first, one point per 10 minutes. */
     val temps24h: List<TempPoint> = emptyList(),
+    /** The engine's alert thresholds, for drawing; null from an engine that sends none. */
+    val limits: LaptopLimits? = null,
 )
+
+/** `server/claude_session/health.py`'s `HOT_C`, `RAM_HIGH_PCT` and `DISK_LOW_GB`, as it sends them. */
+data class LaptopLimits(val hotC: Double, val ramHighPct: Double, val diskLowGb: Double)
 
 data class TempPoint(val at: Instant?, val cpuC: Double?, val gpuC: Double?)
 

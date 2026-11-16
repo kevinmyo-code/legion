@@ -947,6 +947,8 @@ private fun LegionShell(
                         onOpenLists = { navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true } },
                         onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
                         onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
+                        // A card's Open link to a screen the front page has no button for.
+                        onOpenRoute = { route -> navController.navigate(route) { launchSingleTop = true } },
                         onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
                         onOpenRecordings = {
                             navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) { launchSingleTop = true }
@@ -1374,12 +1376,7 @@ private fun LegionShell(
                 // dash does it"). Not while driving, and not on Matrix HOME, which has no cards.
                 if (!isDrivingMode && !isDumbHome && !isTypesetHome) {
                     com.kevin.legion.ui.assistant.CardStageOverlay(onOpen = { where ->
-                        val route = when (where) {
-                            com.kevin.legion.ui.assistant.CardDestination.TODAY -> LegionRoute.CALENDAR
-                            com.kevin.legion.ui.assistant.CardDestination.MONEY -> LegionRoute.MONEY
-                            com.kevin.legion.ui.assistant.CardDestination.CAR -> LegionRoute.FLEET
-                            com.kevin.legion.ui.assistant.CardDestination.LISTS -> LegionRoute.CHECKLISTS
-                        }
+                        val route = com.kevin.legion.ui.assistant.cardRoute(where)
                         navController.navigate(route) { launchSingleTop = true }
                     })
                 }

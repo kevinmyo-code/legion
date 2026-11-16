@@ -6,9 +6,11 @@ import { BarsView } from './bars'
 import { CarView } from './car'
 import { ChecklistView } from './checklist'
 import { DiagramView } from './diagram'
+import { ReadingsView, StatusListView } from './readings'
 import { ResumeView } from './resume'
 import { StepsView } from './steps'
 import { TimelineView } from './timeline'
+import { TrendView } from './trend'
 import type { Card } from './types'
 
 /**
@@ -34,6 +36,12 @@ export function ToolCard({ card, className }: { card: Card; className?: string }
         <DiagramView card={card} />
       ) : card.card === 'resume' ? (
         <ResumeView card={card} />
+      ) : card.card === 'readings' ? (
+        <ReadingsView card={card} />
+      ) : card.card === 'status_list' ? (
+        <StatusListView card={card} />
+      ) : card.card === 'trend' ? (
+        <TrendView card={card} />
       ) : (
         <ChecklistView card={card} />
       )}

@@ -230,6 +230,8 @@ object ClaudeSessionToolbox {
         if (o.status.machines.isEmpty()) return result(true, ClaudeWording.NO_MACHINE_EVER.substringBefore(","))
         val lines = mutableListOf<String>()
         machines.forEach { lines += c.wording.machineLine(it) }
+        // The health this read carried, on a card (2026-11-15); the words above are unchanged.
+        machines.forEach { com.kevin.legion.assistant.cards.DomainToolCards.laptop(it) }
         lines += workflowLines(machines, question)
         val tasks = o.tasks.filter { wanted(it.machine) }.take(CHECK_TASKS)
         if (tasks.isEmpty()) lines += "No tasks yet."

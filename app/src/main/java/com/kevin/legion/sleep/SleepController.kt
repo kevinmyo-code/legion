@@ -102,6 +102,10 @@ object SleepController {
         }
     }
 
+    /** The nightly target in force today, in minutes; null when none is set (the sleep card's guide). */
+    suspend fun currentTargetMinutes(context: Context, now: Long = System.currentTimeMillis()): Int? =
+        CarDatabase.getDatabase(context).sleepTargetDao().currentTarget(dayStartEpoch(now))?.targetMinutes
+
     /** Tonight's (i.e. today's wake-date's) gap - see [SleepLog.sleepDate]'s doc comment for the wake-date convention. */
     suspend fun gapFor(context: Context, now: Long = System.currentTimeMillis()): SleepGap {
         val dayStart = dayStartEpoch(now)

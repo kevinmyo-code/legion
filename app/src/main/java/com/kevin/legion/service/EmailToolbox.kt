@@ -121,6 +121,7 @@ object EmailToolbox {
     ): JSONObject {
         gate.register(created.draftId, created.messageId, recipient.address, subject, userText)
         val toSaid = if (recipient.name.isBlank()) recipient.address else "${recipient.name} (${recipient.address})"
+        com.kevin.legion.assistant.cards.DomainToolCards.draft(recipient.address, subject)
         return result(true, EmailCompose.drafted(toSaid, subject))
             .put("draft_id", created.draftId)
             .put("to", recipient.address)

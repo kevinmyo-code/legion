@@ -478,7 +478,10 @@ def _read_records(request, args) -> ToolResult:
             f". {unverified} of them are UNVERIFIED (UNRECONCILED): provisional, never to be "
             f"stated as fact"
         )
-    return ok(f"{head}:\n{_json(data)}", structured={"table": table, "rows": data})
+    card = None
+    if table == "drives":
+        card = cards.safe(cards.drives_card, data, _household_zone(request), more=more)
+    return ok(f"{head}:\n{_json(data)}", structured={"table": table, "rows": data}, card=card)
 
 
 def _list_events(request, args) -> ToolResult:
@@ -2062,7 +2065,7 @@ def _budgets(request, args) -> ToolResult:
         parts.append(f"No payment on file yet this month for: {', '.join(unpaid)}.")
     if body["new_subscriptions"]:
         parts.append(f"New subscriptions this month: {', '.join(body['new_subscriptions'])}.")
-    return ok(" ".join(parts), structured=body)
+    return ok(" ".join(parts), structured=body, card=cards.safe(cards.budget_pace_card, body))
 
 
 def _canvas_grades(request, args) -> ToolResult:
@@ -2080,7 +2083,11 @@ def _canvas_grades(request, args) -> ToolResult:
         except service.NotFound as exc:
             return refused(exc.message) if exc.message.startswith("Nothing") else ok(exc.message)
         body = service.course_dict(request, row)
-        return ok(service.grades_words([body], detail=True), structured={"results": [body]})
+        return ok(
+            service.grades_words([body], detail=True),
+            structured={"results": [body]},
+            card=cards.safe(cards.grades_card, [body], _household_zone(request)),
+        )
     rows = list(service.my_courses(request))
     if not rows:
         return ok(
@@ -2090,7 +2097,11 @@ def _canvas_grades(request, args) -> ToolResult:
             structured={"results": []},
         )
     bodies = [service.course_dict(request, row, with_assignments=False) for row in rows]
-    return ok(service.grades_words(bodies, detail=False), structured={"results": bodies})
+    return ok(
+        service.grades_words(bodies, detail=False),
+        structured={"results": bodies},
+        card=cards.safe(cards.grades_card, bodies, _household_zone(request)),
+    )
 
 
 def _what_i_need(request, args) -> ToolResult:
@@ -2415,7 +2426,7 @@ def _check_conditions(request, args) -> ToolResult:
     )
     if all(s["status"] in ("failed", "not_configured") for s in structured["sections"]):
         return failed(f"Nothing was read. {text}")
-    return ok(text, structured)
+    return ok(text, structured, card=cards.safe(cards.conditions_card, structured))
 
 
 # =============================================================================
@@ -2561,6 +2572,7 @@ def _list_memories(request, args) -> ToolResult:
     return ok(
         f"{len(rows)} memories, newest first. Each id can be passed to forget_memory.\n{lines}",
         structured={"memories": rows},
+        card=cards.safe(cards.memories_card, rows),
     )
 
 

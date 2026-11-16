@@ -171,9 +171,13 @@ def get_weight_trend(request, args):
     elif data["waist"]:
         latest = data["waist"][0]
         lines.append(f"Latest waist {latest['waist_in']} in on {latest['measured_on']}.")
+    from engine_mcp import cards
+
+    # The card is built from the points before they leave `structured` (2026-11-15).
+    card = cards.safe(cards.weight_trend_card, data)
     structured = {k: v for k, v in data.items() if k != "points"}
     structured["points_shown"] = len(data["points"])
-    return ok(" ".join(lines), structured=structured)
+    return ok(" ".join(lines), structured=structured, card=card)
 
 
 def _say_meal(row) -> str:

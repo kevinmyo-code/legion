@@ -160,6 +160,18 @@ class PhoneCardsTest {
         assertTrue(card.note!!.contains("Nothing on the calendar"))
     }
 
+    @Test
+    fun `coursework and to-dos alone are titled Due, a mixed day is the Calendar`() {
+        val due = listOf(
+            event("Lab report", at(2026, 11, 4, 23, 59), kind = EventKind.TASK),
+            event("Problem set 6", at(2026, 11, 6, 23, 59), kind = EventKind.TASK),
+        )
+        assertEquals("Due", PhoneCards.calendar(due, chicago, at(2026, 11, 2, 0, 0)).title)
+        val mixed = due + event("Class", at(2026, 11, 4, 9, 30))
+        assertEquals("Calendar", PhoneCards.calendar(mixed, chicago, at(2026, 11, 2, 0, 0)).title)
+        assertEquals("Calendar", PhoneCards.calendar(emptyList(), chicago, at(2026, 11, 2, 0, 0)).title)
+    }
+
     private val now = at(2026, 11, 4, 12, 0)
 
     private fun jeep(baselineAt: Long = now - 3 * 86_400_000L, trip: Double = 0.0) = Vehicle(
