@@ -6,10 +6,7 @@
       "say": "what do I have due?",
       "audio": true,
       "why": "2026-11-15: this went to the reminders list instead of the calendar",
-      "expect": {
-        "calls": ["day/read_calendar"],
-        "no_empty_claim": true
-      },
+      "expect": {"calls": ["day/read_calendar"], "no_empty_claim": true},
       "fixture": {"answer_has": ["quiz"]}
     },
     {
@@ -32,7 +29,8 @@
         "args": {"day/read_calendar": {"from": {"lte": "{today-1}"}}},
         "no_empty_claim": true
       },
-      "fixture": {"answer_has": ["homework|math"]}
+      "fixture": {"answer_has": ["homework|math"]},
+      "why": "2026-11-15: flash-lite named tonight's two 23:59 tasks as overdue and dropped yesterday's homework"
     },
     {
       "id": "due_week",
@@ -62,21 +60,23 @@
     {
       "id": "todo_read",
       "say": "what's on my to-do list",
-      "expect": {
-        "calls": ["manage_checklist/read|manage_checklist/lists"]
-      },
-      "fixture": {"answer_has": ["printer ink"]}
+      "expect": {"calls": ["manage_checklist/read|manage_checklist/lists|manage_item/read_list"]},
+      "fixture": {"answer_has": ["printer ink"]},
+      "why": "2026-11-15: read the reminders instead of the Todo checklist; either read now carries both"
     },
     {
       "id": "cars",
       "say": "which cars do I have on file",
-      "expect": {"calls": ["ask/ask_fleet|car|list_vehicles"]},
-      "fixture": {"answer_has": ["ranger|fit"]}
+      "expect": {"calls": ["ask/ask_fleet|car|list_vehicles"], "not_calls": ["car/switch_vehicle"]},
+      "fixture": {"answer_has": ["ranger|fit"]},
+      "why": "2026-11-15: flash-lite called car/switch_vehicle (a write) for this read"
     },
     {
       "id": "time_now",
       "say": "what time is it",
-      "expect": {"answer_has": ["\\d|noon|midnight|o'clock|\\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b"]}
+      "expect": {
+        "answer_has": ["\\d|noon|midnight|o'clock|\\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b"]
+      }
     },
     {
       "id": "then_tomorrow",
@@ -89,7 +89,8 @@
             "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
           }
         }
-      ]
+      ],
+      "why": "2026-11-15: at night (UTC-06:00, already the next day in UTC) flash-lite asked for today+2; run it after 18:00 local to cover that"
     },
     {
       "id": "barge_in",
@@ -112,27 +113,86 @@
       "say": "add buy stamps to my to-do list",
       "write": true,
       "expect": {
-        "calls": ["manage_checklist/add"],
-        "args": {"manage_checklist/add": {"list": {"re": "(?i)^to-?do$"}}}
+        "calls": ["manage_checklist/add|manage_item/add"],
+        "succeeded": ["manage_checklist/add|manage_item/add"],
+        "result_has": ["(?i)to-?do"]
       },
-      "fixture": {"answer_has": ["stamps"]}
+      "fixture": {"answer_has": ["stamps"]},
+      "why": "2026-11-15: became an undated reminder; an undated manage_item add now lands on Todo"
     },
     {
       "id": "write_reminder",
       "say": "remind me to call the dentist tomorrow at 9am",
       "write": true,
       "audio": true,
-      "expect": {
-        "calls": ["manage_item/add"],
-        "args": {"manage_item/add": {"date": "{today+1}", "time": "09:00"}}
-      }
+      "expect": {"calls": ["manage_item/add"], "args": {"manage_item/add": {"date": "{today+1}", "time": "09:00"}}}
     },
     {
       "id": "write_complete",
       "say": "I finished the history reading quiz, mark it done",
       "write": true,
-      "expect": {"calls": ["day/complete_task"]},
-      "fixture": {"answer_has": ["quiz"]}
+      "expect": {
+        "calls": ["day/complete_task|manage_item/tick|manage_checklist/tick"],
+        "succeeded": ["day/complete_task|manage_item/tick|manage_checklist/tick"]
+      },
+      "fixture": {"answer_has": ["quiz"], "result_has": ["HIST 101 reading quiz"]},
+      "why": "2026-11-15: called manage_item/tick, and 'history' did not match 'HIST 101'; any tick door now completes the task"
+    },
+    {
+      "id": "due_tomorrow",
+      "say": "what's due tomorrow",
+      "why": "2026-11-15 neighbour of then_tomorrow, asked cold: tomorrow is today+1 on the local clock, at night too",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "args": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+      },
+      "fixture": {"answer_not": ["reading quiz|discussion"]}
+    },
+    {
+      "id": "reminders_today",
+      "say": "do I have any reminders today",
+      "expect": {"calls": ["manage_item/read_list|day/read_calendar"]},
+      "fixture": {"answer_has": ["landlord"]}
+    },
+    {
+      "id": "cars_on_file",
+      "say": "what cars are on file",
+      "why": "neighbour of cars: a read, never a switch",
+      "expect": {"calls": ["ask/ask_fleet|car|list_vehicles"], "not_calls": ["car/switch_vehicle"]},
+      "fixture": {"answer_has": ["ranger|fit"]}
+    },
+    {
+      "id": "switch_car",
+      "say": "switch to the Ranger",
+      "write": true,
+      "why": "the write that cars must never make: here it is asked for, names the car, and says what changed",
+      "expect": {
+        "calls": ["car/switch_vehicle"],
+        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)ranger"}}},
+        "succeeded": ["car/switch_vehicle"]
+      },
+      "fixture": {"result_has": ["Ranger"]}
+    },
+    {
+      "id": "tick_homework",
+      "say": "tick off the math homework",
+      "write": true,
+      "why": "2026-11-15 neighbour of write_complete: 'tick off' pulls toward a list, the row is a calendar task",
+      "expect": {
+        "calls": ["day/complete_task|manage_item/tick|manage_checklist/tick"],
+        "succeeded": ["day/complete_task|manage_item/tick|manage_checklist/tick"]
+      },
+      "fixture": {"result_has": ["MATH 110 homework 7"]}
+    },
+    {
+      "id": "tick_todo",
+      "say": "tick printer ink off my to-do list",
+      "write": true,
+      "expect": {
+        "calls": ["manage_checklist/tick|manage_item/tick|day/complete_task"],
+        "succeeded": ["manage_checklist/tick|manage_item/tick|day/complete_task"]
+      },
+      "fixture": {"result_has": ["printer ink"]}
     }
   ]
 }

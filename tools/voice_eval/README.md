@@ -97,7 +97,12 @@ sent typed and the scorecard says why.
 - `answer_has` / `answer_not`: regexes on the reply (case-insensitive).
 - `no_empty_claim`: fails a reply that says nothing is due while a tool result in that turn shows an
   open task (`"done":false`).
-- `fixture`: checks that hold only on the made-up data (layer 1); skipped on the phone.
+- `succeeded`: a matching call came back `success: true`; `result_has`: a successful call's result
+  matches the regex. Outcome checks, so a write may reach its row by any tool (2026-11-15: a tick
+  sent to the wrong list still completes the right row). Skipped on a phone write that test mode
+  refuses.
+- `fixture`: checks that hold only on the made-up data (layer 1; `answer_has`, `answer_not`,
+  `result_has`); skipped on the phone.
 - `write`: on the phone the write must be refused in test mode and the reply must not claim it.
 - `grade`: a rubric for the optional LLM grader (`--grade`), shown in its own LLM column; it never
   changes PASS or FAIL.

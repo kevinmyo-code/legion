@@ -201,3 +201,29 @@ def test_empty_claim_over_a_due_block_fails():
     _, runs = parse(lines)
     v = ve.score_case(CASES[0], runs[0], phone=True)
     assert any("open task" in f for f in v.failures)
+
+
+TICK = {"id": "write_complete", "say": "mark the quiz done", "write": True,
+        "expect": {"calls": ["day/complete_task|manage_item/tick"], "succeeded": ["day/complete_task|manage_item/tick"]},
+        "fixture": {"result_has": ["HIST 101 reading quiz"]}}
+
+
+def test_a_tick_by_another_door_passes_when_the_row_changed():
+    # 2026-11-15: manage_item/tick on a calendar task completes it; the outcome is what is scored.
+    done = '{"success":true,"message":"Marked done: HIST 101 reading quiz (due Nov 15, 2026). It was a calendar task, not a reminder."}'
+    lines = case_lines("write_complete", "mark the quiz done",
+                       [("manage_item", {"action": "tick", "item": "history reading quiz"}, done)], "Done, the quiz is marked.")
+    _, runs = parse(lines)
+    assert ve.score_case(TICK, runs[0], phone=False).passed
+
+
+def test_a_tick_that_changed_nothing_fails_on_the_laptop_only():
+    miss = '{"success":false,"message":"Nothing was changed: no task matched that."}'
+    lines = case_lines("write_complete", "mark the quiz done",
+                       [("day", {"action": "complete_task", "title": "history quiz"}, miss)], "That didn't catch.")
+    _, runs = parse(lines)
+    laptop = ve.score_case(TICK, runs[0], phone=False)
+    assert any("no successful call" in f for f in laptop.failures)
+    assert any("no successful tool result has" in f for f in laptop.failures)
+    phone = ve.score_case(TICK, runs[0], phone=True)
+    assert not any("successful" in f for f in phone.failures)

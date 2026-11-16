@@ -333,6 +333,15 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
             fails.append("said nothing is due while a tool result shows an open task")
     if not answer:
         fails.append("no answer text")
+    # Outcome checks (2026-11-15): the change landed, whichever tool the model reached it by. Not
+    # on a phone write that test mode refuses (nothing can land there).
+    if not (phone and write and not allow_writes):
+        for spec in expect.get("succeeded", []):
+            if not any(matches(c, spec) and c.success for c in turn.calls):
+                fails.append(f"no successful call {spec}; saw {seen}")
+        for rx in expect.get("result_has", []):
+            if not any(c.success and re.search(rx, c.response or "", re.I) for c in turn.calls):
+                fails.append(f"no successful tool result has /{rx}/")
     # A question that only reads must not change anything (2026-11-15: "which cars do I have"
     # called car/switch_vehicle on the laptop eval).
     if not write:
@@ -379,6 +388,7 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
             fx = spec.get("fixture", {})
             expect["answer_has"] = expect.get("answer_has", []) + fx.get("answer_has", [])
             expect["answer_not"] = expect.get("answer_not", []) + fx.get("answer_not", [])
+            expect["result_has"] = expect.get("result_has", []) + fx.get("result_has", [])
         f, w = check_turn(got, expect, run.day, phone=phone, write=bool(case.get("write")),
                           allow_writes=bool(case.get("allow_writes")))
         prefix = f"turn {i + 1}: " if len(turns) > 1 else ""
