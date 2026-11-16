@@ -82,6 +82,30 @@ class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMil
             "Nothing was cleared: \"$words\" is not a yes to clearing. Ask again whether to clear the " +
                 "codes, which wipes the freeze frame and the readiness monitors, and wait for a yes."
 
+        /**
+         * Why an unconfirmed `clear_codes` may not even ask (2026-11-16, stage 7 fleet eval): flash-lite
+         * used the ask, which reads the stored codes back, as a code reader for "check the codes", "read
+         * the codes again" and "scan every module". The ask now needs his own words this turn to ask
+         * for a clear; otherwise nothing is read or asked and the model is pointed at ask_fleet. Null
+         * means go ahead. A confirmed call is the yes-check's business, and no words (a hands path)
+         * is not judged here.
+         */
+        fun notAskedToClear(confirmed: Boolean, userText: String?): String? = when {
+            confirmed || userText.isNullOrBlank() -> null
+            CLEAR_ASK.containsMatchIn(userText) -> null
+            else -> NOT_ASKED
+        }
+
+        const val NOT_ASKED =
+            "Nothing was cleared and nothing was asked: his words did not ask to clear or erase codes. " +
+                "Reading codes and scanning every module go through ask with domain ask_fleet (all modules " +
+                "when he says every module). Call that now instead."
+
+        private val CLEAR_ASK = Regex(
+            "\\b(clear|clearing|erase|wipe|reset|delete|remove|get rid of|turn off)\\b",
+            RegexOption.IGNORE_CASE,
+        )
+
         private val YES_WORDS = setOf(
             "yes", "yeah", "yep", "yup", "yea", "ya", "sure", "ok", "okay", "affirmative",
             "absolutely", "definitely", "please", "correct",

@@ -1068,15 +1068,19 @@ object LiveToolbox {
             "check_readiness" -> checkReadiness()
             // 2026-11-15: a module clear (modules named, or the yes to a module question) goes to
             // DiagVoice and its own yes-check; everything else is the engine's Mode 04 below.
-            "clear_codes" -> if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
-                    args.optString("modules"),
-                    args.optBoolean("confirmed", false),
-                )
-            ) {
-                moduleClear(context, args, userText)
-            } else {
-                clearCodes(context, args, userText)
-            }
+            // 2026-11-16: an ask needs his words to ask for a clear (ClearCodesVoiceGate.notAskedToClear).
+            "clear_codes" -> com.kevin.legion.vehicle.ClearCodesVoiceGate
+                .notAskedToClear(args.optBoolean("confirmed", false), userText)
+                ?.let { result(false, it) }
+                ?: if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
+                        args.optString("modules"),
+                        args.optBoolean("confirmed", false),
+                    )
+                ) {
+                    moduleClear(context, args, userText)
+                } else {
+                    clearCodes(context, args, userText)
+                }
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
