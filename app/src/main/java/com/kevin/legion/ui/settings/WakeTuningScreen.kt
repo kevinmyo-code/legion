@@ -92,6 +92,8 @@ fun WakeTuningScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(24.dp))
                 SaveMyTurns(context)
                 Spacer(Modifier.height(24.dp))
+                OnlyMyVoiceSection(context)
+                Spacer(Modifier.height(24.dp))
             }
         }
     }
