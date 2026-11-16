@@ -309,9 +309,11 @@ internal object ScriptedLines {
     /**
      * What is said the moment a confirmed turn goes to a slow tool, so the wait is not silent
      * (voice-fast step 3, 2026-11-15; Live's NON_BLOCKING lookups had a "still checking" line, the
-     * cascade had none). Claims nothing: no outcome, no promise of one.
+     * cascade had none). Claims nothing: no outcome, no promise of one. Five lines, not two, so the
+     * same pair is not heard on every lookup (Kevin, 2026-11-16: his own words for it were "on it"
+     * and "a moment"); [AckLines] still never says one twice running.
      */
-    val FILLERS = listOf("One moment.", "Just a moment.")
+    val FILLERS = listOf("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.")
 
     val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS).toSet()
 

@@ -244,6 +244,17 @@ class ReplySpeakerTest {
     }
 
     @Test
+    fun `the filler set is the five approved claim-nothing lines, all kept in memory`() {
+        // Kevin, 2026-11-16: three more beside the first two, his own words "on it" and "a moment".
+        assertEquals(
+            listOf("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look."),
+            ScriptedLines.FILLERS,
+        )
+        assertTrue(ScriptedLines.KEEP.containsAll(ScriptedLines.FILLERS))
+        assertTrue(ScriptedLines.KEEP.containsAll(AckLines.DEFAULT))
+    }
+
+    @Test
     fun `the filler never says the same line twice running`() {
         val lines = AckLines(ScriptedLines.FILLERS)
         val said = List(12) { lines.next() }
