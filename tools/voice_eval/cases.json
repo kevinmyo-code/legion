@@ -26,11 +26,11 @@
       "say": "is anything overdue?",
       "expect": {
         "calls": ["day/read_calendar"],
-        "args": {"day/read_calendar": {"from": {"lte": "{today-1}"}}},
+        "args": {"day/read_calendar": {"to": {"gte": "{today-1}"}}},
         "no_empty_claim": true
       },
       "fixture": {"answer_has": ["homework|math"]},
-      "why": "2026-11-15: flash-lite named tonight's two 23:59 tasks as overdue and dropped yesterday's homework"
+      "why": "2026-11-15: flash-lite named tonight's two 23:59 tasks as overdue and dropped yesterday's homework. Any window reaching yesterday or later carries the overdue items (DueList.summarize), so a window of today alone is right too"
     },
     {
       "id": "due_week",

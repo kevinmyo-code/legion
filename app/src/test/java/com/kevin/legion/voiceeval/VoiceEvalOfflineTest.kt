@@ -109,8 +109,9 @@ class VoiceEvalOfflineTest {
         assertTrue(lines.any { it == "LIVE_AUDIT user final=true text=\"what's due today\"" })
         val result = lines.single { it.startsWith("LIVE_AUDIT tool_result") }
         assertTrue(result, result.contains("name=day success=true"))
-        assertTrue(result, result.contains(VoiceEvalFixture.Facts.TASK_TODAY_A))
-        assertTrue(result, result.contains("\"done\":false"))
+        // The audit line keeps a result's first 400 characters: the due block's counts lead it.
+        assertTrue(result, result.contains("\"due\":{\"open\":"))
+        assertTrue(result, Regex("\"open\":[1-9]").containsMatchIn(result))
         assertTrue(lines.any { it.startsWith("LIVE_LATENCY gemini_usage kind=llm model=model-x usage=present prompt=900") })
         assertTrue(lines.any { it.startsWith("LIVE_LATENCY llm_usage model=model-x") })
         assertTrue(lines.any { it == "LIVE_AUDIT assistant text=\"Two things are due tonight.\"" })
@@ -124,7 +125,10 @@ class VoiceEvalOfflineTest {
         val todo = toolResult("manage_checklist", JSONObject().put("action", "read").put("list", "Todo"))
         assertTrue(todo, todo.contains(VoiceEvalFixture.Facts.TODO_A))
         val tomorrow = today.plusDays(1).toString()
-        val cal = toolResult("day", JSONObject().put("action", "read_calendar").put("from", tomorrow).put("to", tomorrow))
+        // The whole result, not the audit line (which keeps only its first 400 characters).
+        val cal = LiveToolbox.dispatch(
+            context, "read_calendar", JSONObject().put("from", tomorrow).put("to", tomorrow),
+        )!!.toString()
         assertTrue(cal, cal.contains(VoiceEvalFixture.Facts.ALL_DAY_TOMORROW))
         assertTrue(cal, cal.contains(VoiceEvalFixture.Facts.EVENT_TOMORROW))
     }

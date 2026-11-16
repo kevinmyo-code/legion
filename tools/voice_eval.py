@@ -328,7 +328,9 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
             fails.append(f"answer has /{rx}/")
     if expect.get("no_empty_claim"):
         # An open task in the result: a task row not done, or a non-empty `due` block (fix/greet-and-due).
-        open_task = any('"done":false' in c.response or re.search(r'"due":\[\{', c.response) for c in turn.calls)
+        # The `due` block leads with its counts, so `"open":N` survives the audit line's 400-character cut.
+        open_task = any('"done":false' in c.response or re.search(r'"due":\[\{|"due":\{"open":[1-9]', c.response)
+                        for c in turn.calls)
         if open_task and EMPTY_CLAIM.search(answer):
             fails.append("said nothing is due while a tool result shows an open task")
     if not answer:

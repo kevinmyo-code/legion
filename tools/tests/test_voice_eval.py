@@ -227,3 +227,14 @@ def test_a_tick_that_changed_nothing_fails_on_the_laptop_only():
     assert any("no successful tool result has" in f for f in laptop.failures)
     phone = ve.score_case(TICK, runs[0], phone=True)
     assert not any("successful" in f for f in phone.failures)
+
+
+def test_empty_claim_over_the_due_block_counts_fails():
+    # The real block (2026-11-15) leads with its counts; the rows may be cut from the audit line.
+    due = '{"success":true,"due":{"open":2,"overdue":1,"done":0,"today":"Sunday 2026-11-15","says":"1 OVERDUE...'
+    lines = case_lines("due_today", "what's due today",
+                       [("day", {"action": "read_calendar", "from": "2026-11-15", "to": "2026-11-15"}, due)],
+                       "Nothing due today, you're clear.")
+    _, runs = parse(lines)
+    v = ve.score_case(CASES[0], runs[0], phone=True)
+    assert any("open task" in f for f in v.failures)

@@ -133,13 +133,15 @@ object DueReader {
                 .put("overdue", e.overdue)
             items.put(o)
         }
+        // Counts first (2026-11-15): the audit line keeps only a result's first 400 characters, and
+        // the open count is what a reader of that line (the voice eval's scorer) must always see.
         return JSONObject()
-            .put("says", DueList.says(s))
-            // The local day the window was read against (never UTC; 2026-11-15).
-            .also { o -> s.today?.let { o.put("today", dayAndDate(it)) } }
             .put("open", s.open.size)
             .put("overdue", s.overdueCount)
             .put("done", s.doneCount)
+            // The local day the window was read against (never UTC; 2026-11-15).
+            .also { o -> s.today?.let { o.put("today", dayAndDate(it)) } }
+            .put("says", DueList.says(s))
             .put("open_items", items)
             .also { o -> if (s.unreadable.isNotEmpty()) o.put("unreadable", JSONArray(s.unreadable)) }
     }
