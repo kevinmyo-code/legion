@@ -64,12 +64,13 @@ object GreetingPrompt {
     /**
      * A money lead says no figure and no timing at all (2026-11-16 tone check: rounding went the
      * wrong way and a week count was wrong). Dropping the numbers beats policing them; the lead line
-     * in the block carries none either ([GreetingBlock.moneyLeadLine]).
+     * in the block carries none either ([GreetingBlock.moneyLeadLine]). "already" is allowed here
+     * (Kevin, 2026-11-16): every clean money line in the tone check said it, and it claims no figure.
      */
     private val MONEY_RULE = """
-        - This one is about money: say no amount, no figure and no timing at all (no "already", no
-          days, weeks or month end). React only to it being over its cap, as news: it has not
-          happened before as far as you know, so never "again".
+        - This one is about money: say no amount, no figure and no timing at all (no days, weeks or
+          month end). React only to it being over its cap, as news: it has not happened before as
+          far as you know, so never "again".
     """.trimIndent()
 
     /** The workout twin of [MONEY_RULE]: the tone check had it count sets ("fourteen sets waiting"). */

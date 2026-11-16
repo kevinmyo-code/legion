@@ -234,7 +234,10 @@ class GreetingBlockTest {
         assertFalse(block.contains(overSays))
         val prompt = GreetingPrompt.build(block, lead)
         assertTrue(prompt.contains("Your one subject: his Fuel budget, which is over its cap."))
-        assertTrue(prompt.contains("say no amount, no figure and no timing at all"))
+        assertTrue(prompt.contains("say no amount, no figure and no timing at all (no days, weeks or"))
+        // 2026-11-16 (Kevin): "already" is allowed on a money lead; "again" stays banned.
+        assertFalse(prompt.contains("no \"already\""))
+        assertTrue(prompt.contains("so never \"again\""))
         val noCategory = GreetingBlock.moneyLeadLine(GreetingItem("money:x", "y"))
         assertEquals("One budget is over its cap this month.", noCategory)
     }
