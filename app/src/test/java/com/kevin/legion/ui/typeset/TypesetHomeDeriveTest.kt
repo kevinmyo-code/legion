@@ -1,6 +1,10 @@
 package com.kevin.legion.ui.typeset
 
 import com.kevin.legion.assistant.cards.PhoneCards
+import com.kevin.legion.calendar.DueEntry
+import com.kevin.legion.calendar.DueInput
+import com.kevin.legion.calendar.DueSource
+import com.kevin.legion.calendar.DueSummary
 import com.kevin.legion.finance.BudgetTotalWire
 import com.kevin.legion.finance.BudgetsWire
 import com.kevin.legion.finance.FinanceRead
@@ -8,6 +12,7 @@ import com.kevin.legion.ui.home.AgendaKind
 import com.kevin.legion.ui.home.AgendaRowUi
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalTime
 
 /** The Typeset home's three figures (ADR 0081): what each says, and words (never a zero) when it has none. */
@@ -68,5 +73,42 @@ class TypesetHomeDeriveTest {
         val f = TypesetHomeDerive.left(FinanceRead.Unavailable("The engine is out of reach."), "November")
         assertEquals("No figure", f.number)
         assertEquals(listOf("The engine is out of reach."), f.lines)
+    }
+
+    // 2026-11-15: "why do i have 44 due today on the home screen". The label says "due today", so the
+    // number is what is due TODAY and not done; overdue work from earlier days is its own line.
+    private val day = LocalDate.of(2026, 11, 15)
+
+    private fun entry(title: String, date: LocalDate, overdue: Boolean = false) = DueEntry(
+        DueInput(title, 0L, true, date, false, DueSource.TODO, whenLabel = "Nov ${date.dayOfMonth}"),
+        overdue,
+    )
+
+    @Test
+    fun `due today counts only what is due today, overdue on its own line`() {
+        val s = DueSummary(
+            from = day,
+            to = day,
+            open = listOf(
+                entry("Old form", day.minusDays(5), overdue = true),
+                entry("Old quiz", day.minusDays(26), overdue = true),
+                entry("Module quiz", day),
+                entry("Homework set", day),
+                entry("Renew permit", day),
+            ),
+            doneCount = 1,
+        )
+        val f = TypesetHomeDerive.due(s, null)
+        assertEquals("3", f.number)
+        assertEquals("due today", f.label)
+        assertEquals(listOf("Module quiz", "Homework set", "and 1 more", "2 overdue from earlier"), f.lines)
+    }
+
+    @Test
+    fun `nothing due today is zero, and an unread figure says why, never zero`() {
+        assertEquals("0", TypesetHomeDerive.due(DueSummary(day, day, emptyList(), 0), null).number)
+        val unread = TypesetHomeDerive.due(null, "Couldn't read what is due.")
+        assertEquals("No figure", unread.number)
+        assertEquals(listOf("Couldn't read what is due."), unread.lines)
     }
 }
