@@ -145,6 +145,8 @@ fun HomeScreen(
     onOpenSettings: () -> Unit = {},
     onOpenClock: () -> Unit = {},
     onOpenField: () -> Unit = {},
+    /** An answer card's Open link to a screen with no button here (Grades, Body, Memory...). */
+    onOpenRoute: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -370,6 +372,7 @@ fun HomeScreen(
             onOpenIdeas = { calendarViewModel.openSheet(PanelSheet.IDEAS) },
             onOpenTodos = { calendarViewModel.openSheet(PanelSheet.TODOS) },
             onBrief = { briefOpen = true },
+            onOpenRoute = onOpenRoute,
         ),
     )
     // The sheets are drawn in the page's edition, as the page is.

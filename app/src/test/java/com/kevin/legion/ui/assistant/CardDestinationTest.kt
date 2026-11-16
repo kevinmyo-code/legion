@@ -39,4 +39,15 @@ class CardDestinationTest {
     fun `a run of steps has no screen behind it`() {
         assertNull(cardDestination(ConversationCard.Steps("Ran", "x", emptyList(), null)))
     }
+
+    @Test
+    fun `every destination opens its own screen, and a general card opens the one it names`() {
+        val routes = CardDestination.entries.map(::cardRoute)
+        assertEquals(routes.size, routes.toSet().size)
+        assertEquals(com.kevin.legion.ui.LegionRoute.GRADES, cardRoute(CardDestination.GRADES))
+        assertEquals(com.kevin.legion.ui.LegionRoute.SETTINGS_MEMORY, cardRoute(CardDestination.MEMORY))
+        val readings = ConversationCard.Readings("Grades", emptyList(), open = CardDestination.GRADES)
+        assertEquals(CardDestination.GRADES, cardDestination(readings))
+        assertNull(cardDestination(ConversationCard.Trend("x", "", emptyList())))
+    }
 }

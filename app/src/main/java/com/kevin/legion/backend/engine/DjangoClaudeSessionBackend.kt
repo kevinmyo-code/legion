@@ -20,6 +20,7 @@ import com.kevin.legion.claude.ClaudeWorkflowName
 import com.kevin.legion.claude.ClaudeWorkflowParam
 import com.kevin.legion.claude.ClaudeWorkflowRun
 import com.kevin.legion.claude.LaptopHealth
+import com.kevin.legion.claude.LaptopLimits
 import com.kevin.legion.claude.TempPoint
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -150,6 +151,7 @@ private data class HealthRow(
     val alerts: List<String> = emptyList(),
     // [iso time, cpu_c, gpu_c]; mixed types, so read as raw JSON.
     @SerialName("temps_24h") val temps24h: List<JsonArray> = emptyList(),
+    val limits: LimitsRow? = null,
 ) {
     fun toHealth() = LaptopHealth(
         at = instant(at),
@@ -173,8 +175,23 @@ private data class HealthRow(
                 )
             }.getOrNull()
         },
+        limits = limits?.let { l ->
+            if (l.hotC != null && l.ramHighPct != null && l.diskLowGb != null) {
+                LaptopLimits(l.hotC, l.ramHighPct, l.diskLowGb)
+            } else {
+                null
+            }
+        },
     )
 }
+
+/** Each threshold optional, so a partial `limits` costs the card its lines, never the whole status read. */
+@Serializable
+private data class LimitsRow(
+    @SerialName("hot_c") val hotC: Double? = null,
+    @SerialName("ram_high_pct") val ramHighPct: Double? = null,
+    @SerialName("disk_low_gb") val diskLowGb: Double? = null,
+)
 
 @Serializable
 private data class WorkflowNameRow(val name: String, val says: String = "")

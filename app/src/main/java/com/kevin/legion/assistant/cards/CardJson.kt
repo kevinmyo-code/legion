@@ -24,6 +24,9 @@ object CardJson {
                 .put("listName", card.listName)
                 .put("items", JSONArray(card.items.map { JSONObject().put("text", it.text).put("done", it.done) }))
                 .put("more", card.more)
+            is ConversationCard.Readings -> GeneralCards.write(out, card)
+            is ConversationCard.StatusList -> GeneralCards.write(out, card)
+            is ConversationCard.Trend -> GeneralCards.write(out, card)
         }
         return out
     }

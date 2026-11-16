@@ -24,7 +24,12 @@ import com.kevin.legion.navigation.resolve.Resolution
  * refusal, a "needs a yes" and a failure are all false and say in words what did NOT happen.
  * [message] is safe to read aloud.
  */
-data class NavToolResult(val success: Boolean, val message: String)
+data class NavToolResult(
+    val success: Boolean,
+    val message: String,
+    /** `trip_status`'s snapshot, the one [message] worded, for its card; null for anything else. */
+    val trip: TripStatus.Navigating? = null,
+)
 
 /** Brings the nav screen to the front. Returns whether it is actually showing afterwards. */
 fun interface NavScreenLauncher {
@@ -218,7 +223,7 @@ class NavVoiceTools(
         }
         return when (val st = controller.status()) {
             is TripStatus.NotNavigating -> NavToolResult(true, st.message)
-            is TripStatus.Navigating -> NavToolResult(true, answer(what, st.destination.name, st.guidance))
+            is TripStatus.Navigating -> NavToolResult(true, answer(what, st.destination.name, st.guidance), trip = st)
         }
     }
 

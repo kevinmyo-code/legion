@@ -5363,7 +5363,7 @@ export interface components {
             outcome: components["schemas"]["OutcomeEnum"];
             /** @description The result in words, for the model. */
             text: string;
-            /** @description What the screen draws beside the transcript, built by the engine from the tool's own rows (`engine_mcp/cards.py`): `card` is bars, timeline, car, steps, checklist or diagram. Absent when the tool has none. Never sent to Gemini: `response` is the whole of what the browser forwards. */
+            /** @description What the screen draws beside the transcript, built by the engine from the tool's own rows (`engine_mcp/cards.py`): `card` is bars, timeline, car, steps, checklist, diagram, resume, readings, status_list or trend. Absent when the tool has none. Never sent to Gemini: `response` is the whole of what the browser forwards. */
             card?: unknown;
         };
         AverageSpend: {
@@ -6172,6 +6172,25 @@ export interface components {
             alerts: string[];
             /** @description [time, cpu_c, gpu_c] every 10 minutes over the last 24 h, oldest first. */
             temps_24h: unknown[][];
+            /** @description The engine's alert thresholds, for drawing; absent from an older engine. */
+            limits?: components["schemas"]["ClaudeMachineHealthLimits"];
+        };
+        ClaudeMachineHealthLimits: {
+            /**
+             * Format: double
+             * @description CPU or GPU at or above this, sustained, is `hot`.
+             */
+            hot_c: number;
+            /**
+             * Format: double
+             * @description RAM at or above this, sustained, is `ram_high`.
+             */
+            ram_high_pct: number;
+            /**
+             * Format: double
+             * @description C: free below this is `disk_low`.
+             */
+            disk_low_gb: number;
         };
         ClaudeMachineRef: {
             name: string;

@@ -149,13 +149,17 @@ object BodyCoachToolbox {
             }
             return CoachTwoText.alternativesResult(controllerFactory(context).alternatives(exercise))
         }
-        if (name == "get_todays_workout") return WorkoutText.todayResult(workoutFactory(context).today(), phoneDate())
+        if (name == "get_todays_workout") {
+            return WorkoutText.todayResult(workoutFactory(context).today(), phoneDate())
+                .also(com.kevin.legion.assistant.cards.DomainToolCards::workout)
+        }
         // Workout reads, 2026-11-06: the same engine read as today's, said as the whole programme.
         if (name == "get_workout_programme") return WorkoutText.programmeResult(workoutFactory(context).today(), phoneDate())
         val controller = controllerFactory(context)
         return when (name) {
             "get_energy_estimate" -> BodyCoachText.energyResult(controller.energy())
             "get_weight_trend" -> BodyCoachText.trendResult(controller.trend())
+                .also(com.kevin.legion.assistant.cards.DomainToolCards::weightTrend)
             else -> BodyCoachText.savedMealsResult(controller.savedMeals())
         }
     }

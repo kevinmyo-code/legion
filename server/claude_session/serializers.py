@@ -318,6 +318,14 @@ class ClaudeWorkflowNameSerializer(serializers.Serializer):
     says = serializers.CharField()
 
 
+class ClaudeMachineHealthLimitsSerializer(serializers.Serializer):
+    hot_c = serializers.FloatField(help_text="CPU or GPU at or above this, sustained, is `hot`.")
+    ram_high_pct = serializers.FloatField(
+        help_text="RAM at or above this, sustained, is `ram_high`."
+    )
+    disk_low_gb = serializers.FloatField(help_text="C: free below this is `disk_low`.")
+
+
 class ClaudeMachineHealthSerializer(serializers.Serializer):
     at = serializers.DateTimeField(help_text="When the engine received this snapshot.")
     cpu_c = serializers.FloatField(allow_null=True)
@@ -340,6 +348,10 @@ class ClaudeMachineHealthSerializer(serializers.Serializer):
     temps_24h = serializers.ListField(
         child=serializers.ListField(),
         help_text="[time, cpu_c, gpu_c] every 10 minutes over the last 24 h, oldest first.",
+    )
+    limits = ClaudeMachineHealthLimitsSerializer(
+        required=False,
+        help_text="The engine's alert thresholds, for drawing; absent from an older engine.",
     )
 
 

@@ -2928,6 +2928,7 @@ object LiveToolbox {
             i.fatG?.let { o.put("estimatedFatG", it) }
             arr.put(o)
         }
+        com.kevin.legion.assistant.cards.DomainToolCards.groceries(items)
         return JSONObject().put("success", true).put("count", items.size).put("items", arr)
     }
 
@@ -3843,6 +3844,10 @@ object LiveToolbox {
             l.notes?.let { o.put("notes", it) }
             arr.put(o)
         }
+        com.kevin.legion.assistant.cards.DomainToolCards.sleep(
+            logs.map { it.sleepDate to it.durationMinutes },
+            runCatching { com.kevin.legion.sleep.SleepController.currentTargetMinutes(context) }.getOrNull(),
+        )
         return JSONObject().put("success", true).put("count", logs.size).put("nights", arr)
     }
 
@@ -6939,6 +6944,7 @@ object LiveToolbox {
                 else -> tools.endTrip()
             }
         }
+        r.trip?.let(com.kevin.legion.assistant.cards.DomainToolCards::trip)
         return result(r.success, r.message)
     }
 

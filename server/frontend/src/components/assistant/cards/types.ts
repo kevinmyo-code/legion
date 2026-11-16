@@ -135,7 +135,94 @@ export interface ResumeCard extends Common {
   alt: string
 }
 
-export type Card = BarsCard | TimelineCard | CarCard | StepsCard | ChecklistCard | DiagramCard | ResumeCard
+/**
+ * The three general kinds (2026-11-15), shared with the phone; one of each, with the words every
+ * screen says for it, is in `shared/cards/fixtures.json`. `unit` "usd" means integer cents.
+ */
+export interface Reading {
+  label: string
+  /** Null: it could not be read. Said "not read", never drawn as zero. */
+  value: number | null
+  unit: string
+  flag?: Flag
+  /** An earlier value of the same reading: a before and after. */
+  was?: number | null
+  /** A value that is words, not a number ("Closed loop", a VIN); `value` is then null. */
+  text?: string
+  note?: string
+  /** The span the value is drawn on as a bar (same unit). Optional picture field, 2026-11-15. */
+  scale?: { min: number; max: number }
+  /** One reference on `scale`: "Alert at 95%". */
+  mark?: Mark
+  /** One whole in 2 to 4 parts (macros in grams), one stacked bar; `flag` covers every part. */
+  split?: { unit: string; parts: { label: string; value: number }[] }
+  /** The source says this value needs attention: said in words, drawn in the accent. */
+  attention?: boolean
+}
+
+/** A reference value with its label: a mark on a scale, or a trend's guide line. */
+export interface Mark {
+  value: number
+  label: string
+}
+
+export interface ReadingsCard extends Common {
+  card: 'readings'
+  /** The "as of" time, YYYY-MM-DD or YYYY-MM-DDTHH:MM on the household's clock. */
+  at?: string
+  items: Reading[]
+  more: number
+  /** The item drawn as the card's headline. */
+  lead?: number
+}
+
+export type Status = 'ok' | 'attention' | 'failed' | 'unknown' | 'not_reached'
+
+export interface StatusRow {
+  name: string
+  status: Status
+  note?: string
+  /** An amount against its limit: spent against the cap, the mark an even pace today. */
+  meter?: { value: number; max: number; unit: string; mark?: Mark }
+  /** A rank on a named scale: an NWS alert's severity, 1 (Minor) to 4 (Extreme). */
+  level?: { value: number; of: number }
+}
+
+export interface StatusListCard extends Common {
+  card: 'status_list'
+  at?: string
+  items: StatusRow[]
+  more: number
+}
+
+export interface TrendSeries {
+  name: string
+  /** Oldest first; `at` is YYYY-MM-DD or YYYY-MM-DDTHH:MM. */
+  points: { at: string; value: number }[]
+  flag?: Flag
+}
+
+export interface TrendCard extends Common {
+  card: 'trend'
+  unit: string
+  series: TrendSeries[]
+  /** One reference line the source states: a target, a goal, an alert threshold. */
+  guide?: Mark
+  /** "line" (the default) or "bars": a column a point from zero. */
+  style?: 'line' | 'bars'
+}
+
+export type Card =
+  | BarsCard
+  | TimelineCard
+  | CarCard
+  | StepsCard
+  | ChecklistCard
+  | DiagramCard
+  | ResumeCard
+  | ReadingsCard
+  | StatusListCard
+  | TrendCard
 
 /** The cards that open over the whole page (`screen-modal.tsx`) as well as drawing in the chat. */
 export type ModalCard = DiagramCard | ResumeCard
@@ -190,9 +277,241 @@ export function asCard(value: unknown): Card | undefined {
         typeof value.alt === 'string'
         ? (value as unknown as ResumeCard)
         : undefined
+    case 'readings':
+      return isList(value.items) &&
+        value.items.every(isReading) &&
+        atOk(value.at) &&
+        (value.lead === undefined ||
+          (Number.isInteger(value.lead) && (value.lead as number) >= 0 && (value.lead as number) < value.items.length))
+        ? (value as unknown as ReadingsCard)
+        : undefined
+    case 'status_list':
+      return isList(value.items) && value.items.every(isStatusRow) && atOk(value.at)
+        ? (value as unknown as StatusListCard)
+        : undefined
+    case 'trend':
+      return typeof value.unit === 'string' &&
+        isList(value.series) &&
+        value.series.length >= 1 &&
+        value.series.length <= 2 &&
+        value.series.every(
+          (s) =>
+            typeof s.name === 'string' &&
+            isList(s.points) &&
+            s.points.every((p) => typeof p.at === 'string' && AT.test(p.at) && isNumber(p.value)),
+        ) &&
+        markOk(value.guide, value.unit) &&
+        (value.style === undefined || value.style === 'line' || (value.style === 'bars' && value.series.length === 1))
+        ? (value as unknown as TrendCard)
+        : undefined
     default:
       return undefined
   }
+}
+
+const STATUSES: readonly Status[] = ['ok', 'attention', 'failed', 'unknown', 'not_reached']
+const AT = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/
+
+const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+
+const atOk = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && AT.test(value))
+
+/** A number in `unit`: integer cents for usd. */
+const valueOk = (v: unknown, unit: unknown) => isNumber(v) && (unit !== 'usd' || Number.isInteger(v))
+
+const markOk = (mark: unknown, unit: unknown) =>
+  mark === undefined ||
+  (isObject(mark) && valueOk(mark.value, unit) && typeof mark.label === 'string' && mark.label !== '')
+
+function scaleOk(scale: unknown, unit: unknown): boolean {
+  return scale === undefined || (isObject(scale) && valueOk(scale.min, unit) && valueOk(scale.max, unit) && (scale.min as number) < (scale.max as number))
+}
+
+function splitOk(split: unknown): boolean {
+  if (split === undefined) return true
+  if (!isObject(split) || typeof split.unit !== 'string' || !isList(split.parts)) return false
+  return (
+    split.parts.length >= 2 &&
+    split.parts.length <= 4 &&
+    split.parts.every((p) => typeof p.label === 'string' && isNumber(p.value) && p.value >= 0)
+  )
+}
+
+function isReading(item: Record<string, unknown>): boolean {
+  if (typeof item.label !== 'string' || typeof item.unit !== 'string') return false
+  if (item.text !== undefined && item.text !== null && (typeof item.text !== 'string' || item.value !== null)) return false
+  const fits = (v: unknown) => v === undefined || v === null || valueOk(v, item.unit)
+  if (!fits(item.value) || !fits(item.was)) return false
+  if (!scaleOk(item.scale, item.unit) || !splitOk(item.split)) return false
+  if (item.mark !== undefined && (item.scale === undefined || !markOk(item.mark, item.unit))) return false
+  return item.attention === undefined || typeof item.attention === 'boolean'
+}
+
+function isStatusRow(item: Record<string, unknown>): boolean {
+  if (typeof item.name !== 'string' || !STATUSES.includes(item.status as Status)) return false
+  const meter = item.meter
+  if (
+    meter !== undefined &&
+    !(
+      isObject(meter) &&
+      typeof meter.unit === 'string' &&
+      valueOk(meter.value, meter.unit) &&
+      (meter.value as number) >= 0 &&
+      valueOk(meter.max, meter.unit) &&
+      (meter.max as number) > 0 &&
+      markOk(meter.mark, meter.unit)
+    )
+  )
+    return false
+  const level = item.level
+  return (
+    level === undefined ||
+    (isObject(level) &&
+      Number.isInteger(level.value) &&
+      Number.isInteger(level.of) &&
+      (level.value as number) >= 1 &&
+      (level.value as number) <= (level.of as number) &&
+      (level.of as number) <= 5)
+  )
+}
+
+/** Status in words, never a colour or a glyph alone. The engine's `cards.STATUS_WORDS`. */
+export const STATUS_WORDS: Record<Status, string> = {
+  ok: 'OK',
+  attention: 'Needs attention',
+  failed: 'Failed',
+  unknown: 'Unknown',
+  not_reached: 'Not reached',
+}
+
+/** "72.5", "203,000": at most three decimals, no trailing zeros. The phone's `CardWords.number`. */
+export function numberWords(value: number): string {
+  return value.toLocaleString('en-US', { maximumFractionDigits: 3 })
+}
+
+/** A value with its unit: "$1,234.56" (usd is cents), "45%", "72.5 °C", "3". */
+export function unitWords(value: number, unit: string): string {
+  if (unit === 'usd') return centsWords(value)
+  if (unit === '') return numberWords(value)
+  if (unit === '%') return `${numberWords(value)}%`
+  return `${numberWords(value)} ${unit}`
+}
+
+/**
+ * A reading's value in words: "not read" when it could not be read, then the earlier value, then
+ * its flag ("32 g (estimate)"). The phone's `CardWords.reading`.
+ */
+export function readingWords(item: Reading): string {
+  if (item.value === null) return item.text ?? 'not read'
+  const was = item.was != null ? ` (was ${unitWords(item.was, item.unit)})` : ''
+  const flag = item.flag ? ` (${FLAG_WORDS[item.flag]})` : ''
+  const attention = item.attention ? ' (needs attention)' : ''
+  return unitWords(item.value, item.unit) + was + flag + attention
+}
+
+/** A card's big line: what it answers at a glance. The phone's `CardGeneralWords.Headline`. */
+export interface Headline {
+  label?: string
+  value: string
+  attention?: boolean
+}
+
+/** The lead item's label and words. */
+export function readingsHeadline(card: ReadingsCard): Headline | null {
+  const item = card.lead === undefined ? undefined : card.items[card.lead]
+  if (!item) return null
+  return { label: item.label, value: readingWords(item), attention: item.attention === true }
+}
+
+/** "4 need attention" (a failure counted too), "All OK", or how many are not known. */
+export function statusHeadline(card: StatusListCard): Headline | null {
+  const rows = card.items
+  if (rows.length === 0) return null
+  const flagged = rows.filter((r) => r.status === 'attention' || r.status === 'failed').length
+  const unknown = rows.filter((r) => r.status === 'unknown' || r.status === 'not_reached').length
+  const value =
+    rows.length === 1
+      ? STATUS_WORDS[rows[0].status]
+      : flagged === 1
+        ? '1 needs attention'
+        : flagged > 1
+          ? `${flagged} need attention`
+          : unknown === 0
+            ? 'All OK'
+            : `${unknown} of ${rows.length} not known`
+  return { value, attention: flagged > 0 }
+}
+
+/** The first series' latest point: "Morning weight, Nov 14" over "182.4 lb". */
+export function trendHeadline(card: TrendCard): Headline | null {
+  const series = card.series.find((s) => s.points.length > 0)
+  if (!series) return null
+  const last = series.points[series.points.length - 1]
+  const flag = series.flag ? ` (${FLAG_WORDS[series.flag]})` : ''
+  return { label: `${series.name}, ${pointWords(last.at)}`, value: unitWords(last.value, card.unit) + flag }
+}
+
+/** "Protein 13 g, Carbs 68 g, Fat 7 g (estimate)". */
+export function splitWords(item: Reading): string | null {
+  if (!item.split) return null
+  const flag = item.flag ? ` (${FLAG_WORDS[item.flag]})` : ''
+  return item.split.parts.map((p) => `${p.label} ${unitWords(p.value, item.split!.unit)}`).join(', ') + flag
+}
+
+/** "$520.00 of $500.00". */
+export function meterWords(meter: NonNullable<StatusRow['meter']>): string {
+  return `${unitWords(meter.value, meter.unit)} of ${unitWords(meter.max, meter.unit)}`
+}
+
+/** "Level 2 of 4". */
+export function levelWords(level: NonNullable<StatusRow['level']>): string {
+  return `Level ${level.value} of ${level.of}`
+}
+
+/** "Nov 14", or "Nov 14, 2:20 pm" for a point with a time. */
+function pointWords(at: string): string {
+  const m = AT.exec(at)
+  return m && m[4] ? `${shortDayWords(at)}, ${clockWords(`${m[4]}:${m[5]}`)}` : shortDayWords(at)
+}
+
+/** An end of a trend's time axis: its clock time, with its day when the axis spans days, else "Nov 14". */
+export function axisWords(at: string, withDay = false): string {
+  const m = AT.exec(at)
+  if (!m || !m[4]) return shortDayWords(at)
+  return withDay ? pointWords(at) : clockWords(`${m[4]}:${m[5]}`)
+}
+
+/** "As of Sun Nov 15, 2026" from a card's `at`; its clock time in words when it carries one. */
+export function asOfWords(at: string | undefined): string | null {
+  if (!at) return null
+  const m = AT.exec(at)
+  if (!m) return null
+  const day = dayWords(`${m[1]}-${m[2]}-${m[3]}`)
+  return m[4] ? `As of ${day}, ${clockWords(`${m[4]}:${m[5]}`)}` : `As of ${day}`
+}
+
+/** "Nov 14" from an `at`. */
+export function shortDayWords(at: string): string {
+  const m = AT.exec(at)
+  return m ? `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}` : at
+}
+
+/** "Weight: latest 182.4 lb on Nov 14, low 181 lb, high 186.2 lb." Every value in words. */
+export function seriesWords(series: TrendSeries, unit: string): string {
+  const name = series.flag ? `${series.name} (${FLAG_WORDS[series.flag]})` : series.name
+  if (series.points.length === 0) return `${name}: nothing recorded in this window.`
+  const last = series.points[series.points.length - 1]
+  const values = series.points.map((p) => p.value)
+  const low = Math.min(...values)
+  const high = Math.max(...values)
+  return `${name}: latest ${unitWords(last.value, unit)} on ${shortDayWords(last.at)}, low ${unitWords(low, unit)}, high ${unitWords(high, unit)}.`
+}
+
+/** Minutes since 1970 for an `at`, read as a clock time with no zone: for placing points only. */
+export function atMinutes(at: string): number {
+  const m = AT.exec(at)
+  if (!m) return 0
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 0), Number(m[5] ?? 0)) / 60_000
 }
 
 /** "$1,234.56" from integer cents. Display only: nothing adds these back up. */
