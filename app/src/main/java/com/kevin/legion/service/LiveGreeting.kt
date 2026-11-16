@@ -65,11 +65,12 @@ internal class LiveGreeting(
             val plan = prep.await()
             // Tapped again, or ended, while the pack was being fetched.
             if (!isCurrent(s)) return@launch
-            if (plan is GreetingPlan.Personal) {
+            if (plan is GreetingPlan.Spoken) {
                 armFirstTurn(s)
                 if (s.beginConversation(plan.prompt)) {
-                    log("greeting personal topic=${plan.topic}")
-                    opening.noteRaised(plan.topic)
+                    val what = if (plan is GreetingPlan.Personal) "personal topic=${plan.topic}" else "hello"
+                    log("greeting $what")
+                    opening.noteOpened(plan)
                     watch = scope.launch {
                         delay(firstOutputMs)
                         if (!spoke && isCurrent(s) && s.abandonOpener(cue())) log("greeting model_slow scripted")

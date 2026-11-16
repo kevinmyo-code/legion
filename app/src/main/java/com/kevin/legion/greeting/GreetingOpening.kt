@@ -37,8 +37,19 @@ object GreetingBudget {
 
 /** What a tap opens with. */
 sealed interface GreetingPlan {
+    /** A line the model writes from [prompt], under the same deadlines, with the scripted line as fallback. */
+    sealed interface Spoken : GreetingPlan {
+        val prompt: String
+    }
+
     /** A personal greeting: [prompt] is [GreetingPrompt.build]'s text and [topic] is the key it leads with. */
-    data class Personal(val prompt: String, val topic: String) : GreetingPlan
+    data class Personal(override val prompt: String, val topic: String) : Spoken
+
+    /**
+     * Nothing to raise: a short hello about nothing ([GreetingPrompt.hello]), no facts handed over and
+     * no topic recorded (2026-11-16; before, this was the bare scripted line).
+     */
+    data class Hello(override val prompt: String) : Spoken
 
     /** The scripted line. [reason] is for the log only; it is never spoken. */
     data class Scripted(val reason: String) : GreetingPlan
@@ -47,8 +58,8 @@ sealed interface GreetingPlan {
 /**
  * Turns a tap into a [GreetingPlan]: takes the pack ([GreetingPackCache]), reads the place, renders
  * the block and picks the topic. Never throws and never blocks past [GreetingBudget.PACK_MS]; every
- * miss (no usable pack and the engine unreachable, refused or slow, nothing to say) is
- * [GreetingPlan.Scripted], and nothing is spoken about it.
+ * miss (no usable pack and the engine unreachable, refused or slow) is [GreetingPlan.Scripted], and
+ * nothing is spoken about it. A usable pack with nothing to raise is [GreetingPlan.Hello].
  *
  * Logs `greeting_pack source=cache|fresh|none age_s=<n>` once per tap, so a phone audit can see
  * whether the pack was in hand.
@@ -100,9 +111,14 @@ class GreetingOpening(
             is GreetingOutcome.Unconfirmed -> return@coroutineScope scripted(where, "engine_unconfirmed")
         }
         val place = GreetingPlace.applyTopics(where.await(), pack.said, pack.closed)
-        val lead = GreetingBlock.pick(pack, place, now.hour)
-            ?: return@coroutineScope GreetingPlan.Scripted("nothing_to_say")
-        GreetingPlan.Personal(GreetingPrompt.build(GreetingBlock.render(pack, place, now), lead), lead.topic)
+        val lead = GreetingBlock.lead(pack, place, now.hour, cache.history())
+        if (lead == null) {
+            log("greeting_lead none hello")
+            return@coroutineScope GreetingPlan.Hello(GreetingPrompt.hello())
+        }
+        log("greeting_lead source=${lead.source}")
+        val block = GreetingBlock.render(pack, place, now, lead.item)
+        GreetingPlan.Personal(GreetingPrompt.build(block, lead), lead.item.topic)
     }
 
     private fun scripted(where: kotlinx.coroutines.Deferred<GreetingSource>, reason: String): GreetingPlan {
@@ -122,6 +138,18 @@ class GreetingOpening(
         }
         log("greeting_place ms=${clock() - t} state=${source.state.name.lowercase()}")
         return source
+    }
+
+    /**
+     * The greeting [plan] was spoken: a personal one records its topic ([noteRaised]); a hello
+     * records only that this open led with no topic, so a run of one kind is broken
+     * ([GreetingBlock.History]). Nothing goes to the engine for a hello.
+     */
+    fun noteOpened(plan: GreetingPlan.Spoken) {
+        when (plan) {
+            is GreetingPlan.Personal -> noteRaised(plan.topic)
+            is GreetingPlan.Hello -> cache.noteHello()
+        }
     }
 
     /**

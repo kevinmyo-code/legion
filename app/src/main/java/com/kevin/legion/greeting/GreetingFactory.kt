@@ -28,6 +28,7 @@ object GreetingFactory {
                     scope = cacheScope,
                     store = FilePackStore(File(File(app.filesDir, "greeting"), "pack.json")),
                     log = ::log,
+                    leads = FileLeadStore(File(File(app.filesDir, "greeting"), "leads.json")),
                 ).also { shared = it }
             }
         }

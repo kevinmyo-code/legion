@@ -53,6 +53,40 @@ class FilePackStore(private val file: File) : PackStore {
 }
 
 /**
+ * Where the lead history ([GreetingBlock.History]) is kept across process deaths: the day, today's
+ * lead kinds in order and the last kind, as one small JSON body. A seam so tests hold it in memory.
+ */
+interface LeadStore {
+    fun load(): String?
+
+    fun save(body: String)
+
+    /** Nothing kept: every process starts with no history. */
+    object None : LeadStore {
+        override fun load(): String? = null
+
+        override fun save(body: String) = Unit
+    }
+}
+
+/** One small file in the app's private storage. */
+class FileLeadStore(private val file: File) : LeadStore {
+    override fun load(): String? = runCatching { if (file.exists()) file.readText() else null }.getOrNull()
+
+    override fun save(body: String) {
+        runCatching {
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(body)
+            if (!tmp.renameTo(file)) {
+                file.delete()
+                tmp.renameTo(file)
+            }
+        }
+    }
+}
+
+/**
  * The greeting's facts pack, fetched AHEAD of the tap (2026-11-15). The 11-15 phone logs had every
  * open fall back to "Yes?" with `pack_timeout`: the pack was fetched at the tap with a 1.5 s budget
  * ([GreetingBudget.PACK_MS]) while `GET /api/greeting/facts` took 1.6 to 2.0 s on the engine itself
@@ -71,6 +105,11 @@ class FilePackStore(private val file: File) : PackStore {
  *
  * Process-wide by construction: one instance per process ([GreetingFactory.cache]), because a
  * conversation's [GreetingOpening] is built per tap and would otherwise start empty every time.
+ *
+ * **It also keeps what this phone led with ([history], 2026-11-16)**, for the picker's caps: money
+ * once a day, body once a day, no kind twice in a row. The engine's `said` cannot say it: its keys
+ * carry no time (a money key names the month, read over a 90-day window), so whether money led
+ * TODAY is known only here. Kept in [leads] so a process death does not reset the day.
  */
 class GreetingPackCache(
     private val backend: GreetingBackend,
@@ -79,6 +118,7 @@ class GreetingPackCache(
     private val clock: () -> Long = System::currentTimeMillis,
     private val today: () -> LocalDate = LocalDate::now,
     private val log: (String) -> Unit = {},
+    private val leads: LeadStore = LeadStore.None,
 ) {
     @Volatile private var held: CachedPack? = null
     @Volatile private var loaded = false
@@ -87,6 +127,9 @@ class GreetingPackCache(
 
     /** Topics raised on this phone since the packs in hand were fetched, by the day they were raised. */
     private val raisedHere = ConcurrentHashMap<String, LocalDate>()
+
+    /** What this phone led with ([history]); loaded from [leads] on first use. */
+    private var led: LeadLog? = null
 
     /** The pack a tap may use now without waiting, or null. Already [FactsPack.asOf] now. */
     fun usable(): CachedPack? {
@@ -159,6 +202,48 @@ class GreetingPackCache(
     /** A topic was raised: a kept pack must not offer it again (ADR 0091, never the same question twice). */
     fun noteRaised(topic: String) {
         raisedHere[topic] = today()
+        GreetingBlock.kindOfTopic(topic)?.let { noteLed(it) }
+    }
+
+    /** A greeting with no topic was spoken: it ends a run of one kind. */
+    fun noteHello() = noteLed(GreetingBlock.HELLO)
+
+    /** Today's lead kinds in order and the last one, for [GreetingBlock.lead]. */
+    @Synchronized
+    fun history(): GreetingBlock.History {
+        val kept = loadedLeads()
+        val day = today().toString()
+        return GreetingBlock.History(today = if (kept.day == day) kept.kinds else emptyList(), last = kept.last)
+    }
+
+    @Synchronized
+    private fun noteLed(kind: String) {
+        val day = today().toString()
+        val kept = loadedLeads()
+        val kinds = if (kept.day == day) kept.kinds + kind else listOf(kind)
+        val next = LeadLog(day, kinds.takeLast(MAX_LEADS_KEPT), kind)
+        led = next
+        leads.save(next.toJson())
+    }
+
+    private fun loadedLeads(): LeadLog =
+        led ?: (leads.load()?.let { LeadLog.parse(it) } ?: LeadLog.EMPTY).also { led = it }
+
+    /** [history]'s stored form. */
+    private data class LeadLog(val day: String, val kinds: List<String>, val last: String?) {
+        fun toJson(): String = JSONObject().put("day", day).put("kinds", org.json.JSONArray(kinds))
+            .put("last", last ?: JSONObject.NULL).toString()
+
+        companion object {
+            val EMPTY = LeadLog("", emptyList(), null)
+
+            fun parse(body: String): LeadLog? = runCatching {
+                val o = JSONObject(body)
+                val a = o.optJSONArray("kinds")
+                val kinds = if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) }
+                LeadLog(o.optString("day"), kinds, if (o.isNull("last")) null else o.optString("last"))
+            }.getOrNull()
+        }
     }
 
     private fun loadFromStore() {
@@ -182,6 +267,9 @@ class GreetingPackCache(
 
         /** Two refreshes this close together are one (a tap right after an onset prefetch). */
         const val MIN_GAP_MS = 30_000L
+
+        /** Today's lead kinds kept: far more opens than a day has, so the list never grows unbounded. */
+        private const val MAX_LEADS_KEPT = 50
 
         /** The screen-on timer's period (`CascadeWarmup`): a pack at most this old plus a fetch. */
         const val TIMER_MS = 10 * 60_000L

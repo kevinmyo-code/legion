@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -62,10 +63,39 @@ class GreetingOpeningTest {
         assertTrue(plan is GreetingPlan.Scripted)
     }
 
-    @Test fun `nothing offerable is the scripted line, not a model call about nothing`() = runBlocking {
-        val spent = parsed(pack(due = facts(item("due:1", "x")), said = listOf("due:1")))
+    @Test fun `nothing offerable is a hello about nothing, with no facts handed over`() = runBlocking {
+        val spent = parsed(pack(due = facts(item("due:1", "Essay is due Friday.")), said = listOf("due:1")))
         val plan = opening(FakeGreetingBackend { GreetingOutcome.Ok(spent) }).prepare(morning)
-        assertEquals("nothing_to_say", (plan as GreetingPlan.Scripted).reason)
+        plan as GreetingPlan.Hello
+        assertEquals(GreetingPrompt.hello(), plan.prompt)
+        assertFalse(plan.prompt.contains("Essay"))
+    }
+
+    @Test fun `a spoken hello records no topic on the engine, a personal greeting records its own`() = runBlocking {
+        val backend = FakeGreetingBackend { GreetingOutcome.Ok(good) }
+        val o = opening(backend)
+        o.noteOpened(GreetingPlan.Hello(GreetingPrompt.hello()))
+        o.noteOpened(GreetingPlan.Personal("p", "due:1"))
+        repeat(50) { if (backend.recorded.isEmpty()) delay(20) }
+        delay(50)
+        assertEquals(listOf("due:1" to "raised"), backend.recorded)
+    }
+
+    @Test fun `a money lead today leaves the next open without money`() = runBlocking {
+        // Invented: two budgets over their caps and nothing else.
+        val money = parsed(
+            pack(
+                money = facts(
+                    item("money:2026-11:Fuel", "Fuel: \$300.00 of \$200.00 spent. Over the cap."),
+                    item("money:2026-11:Hobbies", "Hobbies: \$90.00 of \$60.00 spent. Over the cap."),
+                ),
+            ),
+        )
+        val o = opening(FakeGreetingBackend { GreetingOutcome.Ok(money) })
+        val first = o.prepare(morning) as GreetingPlan.Personal
+        assertEquals("money:2026-11:Fuel", first.topic)
+        o.noteOpened(first)
+        assertTrue(o.prepare(morning) is GreetingPlan.Hello)
     }
 
     @Test fun `a throwing place read does not stop the greeting and is said as unreadable`() = runBlocking {

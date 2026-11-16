@@ -104,7 +104,44 @@ class GreetingPackCacheTest {
         assertTrue("due:1" in c.usable()!!.pack.said)
         val plan = GreetingOpening(FakeGreetingBackend { GreetingOutcome.Ok(good) }, GreetingTestSupport.homeOnly,
             scope, cache = c, clock = { now }).prepare(LocalTime.of(9, 0))
-        assertEquals("nothing_to_say", (plan as GreetingPlan.Scripted).reason)
+        assertTrue(plan is GreetingPlan.Hello)
+    }
+
+    @Test fun `the lead history is per day, keeps the last kind across days, and survives the process`() {
+        val file = File.createTempFile("leads", ".json").also { it.delete() }
+        try {
+            val backend = FakeGreetingBackend { GreetingOutcome.Ok(good) }
+            fun at(day: LocalDate) = GreetingPackCache(backend, scope, clock = { now }, today = { day },
+                leads = FileLeadStore(file))
+            val first = at(packDay)
+            assertEquals(GreetingBlock.History.NONE, first.history())
+            first.noteRaised("money:2026-11:Fuel")
+            first.noteRaised("event:4")
+            first.noteHello()
+            first.noteRaised("unknown-key") // no known shape: caps nothing, recorded as nothing
+            val hello = GreetingBlock.HELLO
+            assertEquals(GreetingBlock.History(listOf("money", "calendar", hello), hello), first.history())
+
+            assertEquals(listOf("money", "calendar", hello), at(packDay).history().today) // a restarted process
+
+            val tomorrow = at(packDay.plusDays(1))
+            assertEquals(GreetingBlock.History(emptyList(), hello), tomorrow.history())
+            tomorrow.noteRaised("place:austin, texas")
+            assertEquals(GreetingBlock.History(listOf("place"), "place"), tomorrow.history())
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test fun `an unreadable lead file is an empty history, not a crash`() {
+        val file = File.createTempFile("leads", ".json").also { it.writeText("not json") }
+        try {
+            val c = GreetingPackCache(FakeGreetingBackend { GreetingOutcome.Ok(good) }, scope, today = { packDay },
+                leads = FileLeadStore(file))
+            assertEquals(GreetingBlock.History.NONE, c.history())
+        } finally {
+            file.delete()
+        }
     }
 
     @Test fun `the kept pack survives the process through its store`() = runBlocking {
