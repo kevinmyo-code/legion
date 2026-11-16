@@ -57,10 +57,16 @@ class ModuleClearer(private val link: DiagLink, private val bus: BusKind) {
     }
 
     private suspend fun parkedRefusal(): String? {
-        val speed = GenericPid.speedKmh(link.send("010D", TIMEOUT_MS)) ?: return SPEED_UNKNOWN
-        if (speed > 0) return MOVING
-        val rpm = rpm(link.send("010C", TIMEOUT_MS)) ?: return RPM_UNKNOWN
-        return if (rpm > 0) RUNNING else null
+        val speed = GenericPid.speedKmh(link.send("010D", TIMEOUT_MS))
+        // RPM is read only once the car is known to be standing still.
+        val rpm = if (speed == 0) rpm(link.send("010C", TIMEOUT_MS)) else null
+        return when {
+            speed == null -> SPEED_UNKNOWN
+            speed > 0 -> MOVING
+            rpm == null -> RPM_UNKNOWN
+            rpm > 0 -> RUNNING
+            else -> null
+        }
     }
 
     private suspend fun send(targets: List<ClearTarget>, before: ScanReport): ClearRun {

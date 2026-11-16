@@ -68,13 +68,12 @@ object DiagCard {
 
     private fun words(c: CodeRead) = c.detail ?: c.outcome.words
 
-    private fun rank(s: RowStatus) = when (s) {
-        RowStatus.ATTENTION -> 0
-        RowStatus.FAILED -> 1
-        RowStatus.UNKNOWN -> 2
-        RowStatus.NOT_REACHED -> 3
-        RowStatus.OK -> 4
-    }
+    /** Needs-a-look first, clean last. */
+    private val ORDER = listOf(
+        RowStatus.ATTENTION, RowStatus.FAILED, RowStatus.UNKNOWN, RowStatus.NOT_REACHED, RowStatus.OK,
+    )
+
+    private fun rank(s: RowStatus) = ORDER.indexOf(s)
 
     /** Said on every scan card: an address that never answered is not on it, and is not "clear". */
     const val NOT_LISTED = "Modules that did not answer the scan, or sit on another network, are not listed " +
