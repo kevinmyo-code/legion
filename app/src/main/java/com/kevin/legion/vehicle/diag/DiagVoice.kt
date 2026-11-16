@@ -12,9 +12,8 @@ import org.json.JSONObject
 
 /**
  * The voice side of module diagnostics: `get_codes` with `all_modules` (behind ask_fleet, no new
- * declaration) and the `car` tool's `clear_codes` with `modules`. Results are shaped so richer
- * cards (module status list, readings) can be built from them later; today they feed the existing
- * codes card.
+ * declaration) and the `car` tool's `clear_codes` with `modules`. A finished scan publishes its
+ * `status_list` card ([DiagCard]).
  */
 object DiagVoice {
     /** Longest a voice call waits for a scan, inside the 32 s slow-read leash. */
@@ -70,9 +69,9 @@ object DiagVoice {
         val previous = DiagScanStore.latest(context, s.carId, 2).firstOrNull { it.row.id != s.scanId }
         val diff = previous?.let { ScanCompare.diff(it.report, s.report) }
         val shape = DiagShape.report(context, s.report, diff)
-        val codes = DiagShape.allCodes(s.report)
-        val meanings = codes.associateWith { c -> DiagScanStore.describe(context, c).let { it.words to it.source } }
-        ToolCards.codes(context, s.carId, codes, meanings)
+        // The status_list card, one row per module (2026-11-16). It replaced the codes card here,
+        // which drew "No trouble codes stored." for a scan that stopped or could not read a module.
+        ToolCards.publish(DiagCard.scan(label, s.report))
         val message = buildString {
             append("$label: ")
             append(ScanWords.summary(s.report))
