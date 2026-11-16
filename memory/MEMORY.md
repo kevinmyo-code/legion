@@ -33,8 +33,20 @@ yet: Kevin's own use is the test.
 **Stage 4 (2026-11-16):** branch `ship/stage4-1116` = `0742a48a` + merge of `feat/cards-viz`
 (cards at a glance: bars, meters, charts; kinds readings, status_list, trend; engine, web and phone;
 `shared/cards/fixtures.json` v2). No migration, no Room change. Engine + web deploy, then the phone
-OTA, by the stage 4 ship script. Kevin approved the phone card screens; the web cards were first
-rendered in a browser only at integration.
+OTA, by the stage 4 ship script. Kevin approved the phone card screens (2026-11-16); the web card
+pictures had only DOM tests on the branch, and the integration report says whether a browser
+render was done.
+
+**Owed by Kevin (carried, 2026-11-15, still true 2026-11-16):** use the phone after stages 1 to 3: tap
++ a few asks incl. one tool, wake word, a barge-in, a car Bluetooth drive, Settings shows Cloud
+selected; the OBD dongle's brand and model (decides whether the second CAN network is reachable).
+- **Cloud voice known gaps (2026-11-15):** the camera look refuses in words; a navigation turn cue
+  can overlap a reply; finished Claude-task notes are not offered into an open conversation; no
+  resume-music nudge. If Kevin says Cloud is bad: forward-build `fix/install-in-car` (`1a35aa16`,
+  Live kept) with a higher versionCode, then revert on dev.
+- **Laptop only:** restart the laptop voice service for `stt.maybe_end` (steps in the stage 3
+  integration report, needs Kevin's OK; laptop `maybe_end` drafts are still uncapped); read the
+  phone's uploaded logs and price them (`tools/phone_audit_engine.py`, `tools/voice_cost.py`).
 
 **In flight, each on its own pushed branch (read the branch log first):**
 | Branch | What | State 2026-11-16 |
