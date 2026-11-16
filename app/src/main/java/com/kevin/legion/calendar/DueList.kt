@@ -1,6 +1,9 @@
 package com.kevin.legion.calendar
 
 import java.time.LocalDate
+import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 /**
  * Everything DUE, from both places a due date lives (2026-11-15). Kevin: *"what do i have due should
@@ -55,6 +58,8 @@ data class DueSummary(
     val open: List<DueEntry>,
     val doneCount: Int,
     val unreadable: List<String> = emptyList(),
+    /** The local day this was read on: what "today", "tomorrow" and "overdue" are relative to. */
+    val today: LocalDate? = null,
 ) {
     val overdueCount: Int get() = open.count { it.overdue }
 
@@ -96,7 +101,8 @@ object DueList {
         }
         val open = kept.filter { !it.item.done }
             .sortedWith(compareBy<DueEntry> { !it.overdue }.thenBy { it.item.atMs })
-        return DueSummary(from, to, open, kept.count { it.item.done && it.item.date in from..to }, unreadable)
+        val done = kept.count { it.item.done && it.item.date in from..to }
+        return DueSummary(from, to, open, done, unreadable, today)
     }
 
     fun isOverdue(item: DueInput, today: LocalDate, nowMs: Long): Boolean = when {
@@ -130,21 +136,30 @@ object DueList {
     fun normalise(title: String): String = title.lowercase().replace(NON_WORD, " ").trim()
 
     /**
-     * The summary in one sentence, for the model: an open item is due and not done, said so in
-     * words so a list of them is never read as a quiet day.
+     * The summary in a few sentences, for the model: an open item is due and not done, said so in
+     * words so a list of them is never read as a quiet day. Overdue and not-yet-overdue are separate
+     * sentences (2026-11-15 voice eval: asked "is anything overdue?" at night, flash-lite called
+     * tonight's 23:59 work overdue and dropped yesterday's), each due time carries its weekday and,
+     * near today, the word for it ("today", "tomorrow"), so nothing is left to date arithmetic.
      */
     fun says(s: DueSummary): String {
         val parts = mutableListOf<String>()
-        val inWindow = s.open.filter { !it.overdue || it.item.date >= s.from }
-        val earlier = s.open - inWindow.toSet()
-        parts += if (inWindow.isEmpty()) {
-            "Nothing open is due in this window."
-        } else {
-            "${inWindow.size} open and due, not done: " + inWindow.joinToString("; ") { line(it) } + "."
+        val overdue = s.open.filter { it.overdue }
+        val notYet = s.open.filter { !it.overdue }
+        if (overdue.isNotEmpty()) {
+            parts += "${overdue.size} OVERDUE (past due, not done): " +
+                overdue.joinToString("; ") { line(it, s.today) } + "."
         }
-        if (earlier.isNotEmpty()) {
-            parts += "${earlier.size} still open from before it (overdue): " +
-                earlier.joinToString("; ") { line(it) } + "."
+        parts += when {
+            notYet.isNotEmpty() ->
+                "${notYet.size} open and due, not done, not overdue yet: " +
+                    notYet.joinToString("; ") { line(it, s.today) } + "."
+            overdue.isEmpty() -> "Nothing open is due in this window."
+            else -> "Nothing else open is due in this window."
+        }
+        // Overdue work from before the window is looked for whenever the window reaches today.
+        if (overdue.isEmpty() && s.today != null && !s.to.isBefore(s.today) && s.unreadable.isEmpty()) {
+            parts += "Nothing is overdue."
         }
         if (s.doneCount > 0) parts += "${s.doneCount} already done."
         if (s.unreadable.isNotEmpty()) {
@@ -153,6 +168,18 @@ object DueList {
         return parts.joinToString(" ")
     }
 
-    private fun line(e: DueEntry): String =
-        "${e.item.title} (${if (e.overdue) "overdue, " else ""}due ${e.item.whenLabel}, ${e.item.source.token})"
+    private fun line(e: DueEntry, today: LocalDate?): String =
+        "${e.item.title} (due ${dueWhen(e.item, today)}, ${e.item.source.token})"
+
+    /** "today, Sun Nov 15, 2026 23:59": the weekday always, the word for the day when it has one. */
+    fun dueWhen(item: DueInput, today: LocalDate?): String {
+        val day = item.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.US)
+        val word = when (today?.let { ChronoUnit.DAYS.between(it, item.date) }) {
+            0L -> "today, "
+            1L -> "tomorrow, "
+            -1L -> "yesterday, "
+            else -> ""
+        }
+        return "$word$day ${item.whenLabel}"
+    }
 }

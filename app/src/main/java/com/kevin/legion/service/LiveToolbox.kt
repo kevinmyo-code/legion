@@ -91,6 +91,7 @@ import com.kevin.legion.gmail.GmailAuth
 import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
 import com.kevin.legion.checklists.ChecklistController
+import com.kevin.legion.service.tools.day.ListRouting
 import com.kevin.legion.checklists.ChecklistItemMatch
 import com.kevin.legion.checklists.checklistScheduleLabel
 import com.kevin.legion.checklists.matchChecklistItem
@@ -1230,7 +1231,9 @@ object LiveToolbox {
             "track_package" -> trackPackage(context)
             "flight_status" -> flightStatus(context)
             "read_calendar" -> readCalendar(context, args)
-            "complete_task" -> completeTask(context, args)
+            "complete_task" -> completeTask(context, args, onNoMatch = {
+                tickReminderOrTodo(context, args.optString("title"), args.optBoolean("done", true))
+            })
             "why_did_you_say_that" -> whyDidYouSayThatTool(context, args)
             "get_sitrep" -> getSitrepTool(context, args)
             "answer_call" -> answerCallTool(context, args)
@@ -1538,6 +1541,9 @@ object LiveToolbox {
         // rewrite whatever car happened to be active, which is how the Outlander
         // became an F-150. Every editing action must name its target out loud.
         if (action != "add" && args.optString("vehicle").isBlank()) {
+            // 2026-11-15 voice eval: "which cars do I have on file" called switch_vehicle with no car.
+            // Nothing changes without a named car; the refusal says where a read goes instead.
+            if (action == "switch") return result(false, SWITCH_NEEDS_A_CAR)
             return result(false, "Which car do you mean? Tell me and I'll $action it.")
         }
 
@@ -1565,6 +1571,13 @@ object LiveToolbox {
             "switch" -> withResolvedVehicle(context, args) {
                 // With the dongle connected this also answers "which car is it in" (2026-11-15), and
                 // can refuse (a VIN conflict), so the flag is the outcome's, never a hardcoded true.
+                // Already the selected car and no dongle connected: nothing to change, said so.
+                val noDongle = com.kevin.legion.vehicle.DongleCarController.state.value == null
+                if (ActiveVehicle.selected(context) == it.obdMac && noDongle) {
+                    return@withResolvedVehicle result(
+                        true, "The ${VehicleController.label(it)} was already the selected car; nothing changed.",
+                    )
+                }
                 val outcome = VehicleController.switchToOutcome(context, it.obdMac)
                 result(outcome.success, outcome.message)
             }
@@ -1954,7 +1967,12 @@ object LiveToolbox {
      * setDone returned from.
      */
     @Suppress("CyclomaticComplexMethod") // one dispatch; a split scatters the decision
-    private suspend fun completeTask(context: Context, args: JSONObject): JSONObject {
+    private suspend fun completeTask(
+        context: Context,
+        args: JSONObject,
+        // What to try when no task matches (2026-11-15): another list's line by the same words.
+        onNoMatch: (suspend () -> JSONObject?)? = null,
+    ): JSONObject {
         val target = args.optBoolean("done", true)
         val dateArg = args.optString("date").trim()
         val now = System.currentTimeMillis()
@@ -1986,7 +2004,7 @@ object LiveToolbox {
         return when (resolution) {
             TaskDoneMatcher.Resolution.EmptyQuery -> result(false, TaskDoneMatcher.EMPTY_QUERY_TEXT)
             is TaskDoneMatcher.Resolution.NoMatch ->
-                result(false, TaskDoneMatcher.noMatchText(resolution.nearest, dateOf))
+                onNoMatch?.invoke() ?: result(false, TaskDoneMatcher.noMatchText(resolution.nearest, dateOf))
             is TaskDoneMatcher.Resolution.Ambiguous ->
                 result(false, TaskDoneMatcher.ambiguousText(resolution.candidates, dateOf))
             is TaskDoneMatcher.Resolution.AlreadyThere ->
@@ -1996,6 +2014,8 @@ object LiveToolbox {
     }
 
     private const val TASK_WINDOW_AHEAD_MS = 7L * 24 * 60 * 60 * 1000
+    private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +
+        "and needs the car's name. To say which cars he has, call ask ask_fleet."
     private const val TASK_WINDOW_BEHIND_MS = 30L * 24 * 60 * 60 * 1000
 
     /** The write half of [completeTask]: one [EventsAppointmentWriter.setDone] per row, each
@@ -4025,6 +4045,13 @@ object LiveToolbox {
             // reminder" applied.
             val kindArg = args.optString("kind").trim().ifBlank { null }
             val kind = ScheduleIntentResolver.resolve(kindArg)
+            // 2026-11-15 voice eval: "add buy stamps to my to-do list" became an undated reminder. A
+            // to-do with no date, time or repeat lives on the Todo checklist (ListRouting), so it goes
+            // there whichever tool the model picked, and the result says where it went.
+            val repeatArg = args.optString("repeat_kind").trim().lowercase()
+            if (date == null && kind !is ScheduleIntentResolver.Kind.Appointment && repeatArg in setOf("", "none")) {
+                return addToTodo(context, itemArg)
+            }
 
             if (kind is ScheduleIntentResolver.Kind.Appointment) {
                 // A calendar event needs SOMETHING to put on the calendar - CalendarContract's
@@ -4067,8 +4094,14 @@ object LiveToolbox {
                 // only a task, never an event - see [NotesController.openAppointments]'s own doc
                 // comment - so this branch now genuinely finds nothing for a class/event title,
                 // which is correct.
-                if (action == "tick" || action == "untick") tickOrUntickAppointment(context, itemArg, action)
-                else result(false, "I don't see \"$itemArg\" on your list - add it?")
+                when (action) {
+                    "tick", "untick" -> tickOrUntickAppointment(context, itemArg, action)
+                    "schedule" -> scheduleTodoLine(context, list, itemArg, args)
+                        ?: result(false, "I don't see \"$itemArg\" on your list - add it?")
+                    "remove" -> removeTodoLine(context, itemArg)
+                        ?: result(false, "I don't see \"$itemArg\" on your list - add it?")
+                    else -> result(false, "I don't see \"$itemArg\" on your list - add it?")
+                }
             }
             is ItemMatch.Ambiguous -> result(
                 false, "Nothing was changed. Which one? " + match.candidates.joinToString(", ") { it.text },
@@ -4090,10 +4123,15 @@ object LiveToolbox {
         // 'Which one?' with eight OTHER quizzes. completeTask matches on every word, counts a done
         // task as a match (so 'already done' is reported as that), words the result as task done /
         // not done, and its failures all begin 'Nothing was changed' with the closest real titles.
+        // 2026-11-15: and when no task matches either, a Todo checklist line ("tick off printer
+        // ink"), so a tick sent to the reminder tool ends on whichever list holds the thing.
         completeTask(
             context,
             JSONObject().put("title", itemArg).put("done", action == "tick"),
-        )
+            onNoMatch = { tickTodoLine(context, itemArg, action == "tick") },
+        ).also { r ->
+            if (r.optBoolean("success") && r.optString("message").startsWith("Marked")) noteRoute(r, TASK_NOT_REMINDER)
+        }
 
     /**
      * `manage_item`'s `add` action once [ScheduleIntentResolver] has decided the item is an
@@ -4495,8 +4533,11 @@ object LiveToolbox {
         if (isGroceriesName(name)) {
             ChecklistController.builtInGroceries(context)
         } else {
-            ChecklistController.allChecklists(context)
-                .firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+            ChecklistController.allChecklists(context).let { all ->
+                all.firstOrNull { it.name.trim().equals(name.trim(), ignoreCase = true) }
+                    // "to-do", "to do list", "my to-dos": the Todo checklist (ListRouting, 2026-11-15).
+                    ?: if (ListRouting.isTodoName(name)) todoChecklist(context) else null
+            }
         }
 
     private fun isGroceriesName(name: String) = name.trim().equals("Groceries", ignoreCase = true)
@@ -4596,7 +4637,11 @@ object LiveToolbox {
             return result(true, "Created the \"$listArg\" checklist, $scheduleWords.")
         }
 
-        // Every action from here on addresses an EXISTING checklist by name.
+        // Every action from here on addresses an EXISTING checklist by name. The Todo checklist is
+        // made on its first add (the to-do list must exist to be written to; ListRouting).
+        if (action == "add" && ListRouting.isTodoName(listArg) && resolveChecklistByName(context, listArg) == null) {
+            todoChecklistOrNew(context)
+        }
         val checklist = resolveChecklistByName(context, listArg)
             ?: return result(
                 false,
@@ -4659,7 +4704,9 @@ object LiveToolbox {
                     is ChecklistController.ChecklistItemsResult.Loaded -> {
                         ToolCards.checklist(checklist.name, loaded.items.map { ChecklistLine(it.item.text, it.ticked) })
                         if (loaded.items.isEmpty()) {
-                            return result(true, "\"${checklist.name}\" has no items yet.")
+                            return result(true, "\"${checklist.name}\" has no items yet.").also {
+                                if (ListRouting.isTodoName(checklist.name)) withReminders(context, it)
+                            }
                         }
                         val arr = JSONArray()
                         for (state in loaded.items) {
@@ -4684,6 +4731,7 @@ object LiveToolbox {
                             .put("list", checklist.name)
                             .put("count", loaded.items.size)
                             .put("items", arr)
+                            .also { if (ListRouting.isTodoName(checklist.name)) withReminders(context, it) }
                     }
                 }
             }
@@ -4707,8 +4755,24 @@ object LiveToolbox {
                 if (itemArg.isBlank()) return result(false, "Which item on \"${checklist.name}\"?")
                 val items = ChecklistController.itemsFor(context, checklist.id)
                 return when (val match = matchChecklistItem(itemArg, items)) {
-                    is ChecklistItemMatch.NoMatch ->
-                        result(false, "I don't see \"$itemArg\" on \"${checklist.name}\" - add it?")
+                    is ChecklistItemMatch.NoMatch -> {
+                        val notHere = result(false, "I don't see \"$itemArg\" on \"${checklist.name}\" - add it?")
+                        // 2026-11-15: "tick off the homework" sent to the to-do list. On Todo, a calendar
+                        // task by those words is completed instead, and the result says so; any other
+                        // list only names the tool (Groceries and routines never tick a task).
+                        if (action == "remove") {
+                            notHere
+                        } else if (!ListRouting.isTodoName(checklist.name)) {
+                            noteRoute(notHere, "If it is a calendar task (an assignment), use day complete_task.")
+                            notHere
+                        } else {
+                            completeTask(
+                                context,
+                                JSONObject().put("title", itemArg).put("done", action == "tick"),
+                                onNoMatch = { notHere },
+                            ).also { if (it.optBoolean("success")) noteRoute(it, TASK_NOT_CHECKLIST) }
+                        }
+                    }
                     is ChecklistItemMatch.Ambiguous -> result(
                         false,
                         "Which one on \"${checklist.name}\"? " + match.candidates.joinToString(", ") { it.text },
@@ -4842,11 +4906,14 @@ object LiveToolbox {
             if (row.recurring) o.put("repeats", true)
             arr.put(o)
         }
-        return JSONObject()
+        val out = JSONObject()
             .put("success", true)
             .put("count", rows.size)
             .put("open_count", rows.count { !it.done })
             .put("items", arr)
+        // "What's on my to-do list" is ambiguous (ListRouting): the Todo checklist rides along.
+        openTodoLines(context)?.takeIf { it.isNotEmpty() }?.let { out.put(ListRouting.TODO_KEY, JSONArray(it)) }
+        return out
     }
 
     /**
@@ -4895,7 +4962,14 @@ object LiveToolbox {
         val now = java.time.ZonedDateTime.now(zone)
         val stamp = now.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a"))
         val zoneName = zone.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
-        return result(true, "$stamp ($zoneName, the phone's own clock).")
+        // The day as a date too, with tomorrow's (2026-11-15: no date arithmetic left to the model).
+        val tomorrow = now.toLocalDate().plusDays(1)
+        val tomorrowDay = tomorrow.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US)
+        return result(
+            true,
+            "$stamp ($zoneName, the phone's own clock). Today is ${now.toLocalDate()}; " +
+                "tomorrow is $tomorrowDay $tomorrow.",
+        )
     }
 
     /** Outlives the get_codes call, so the glance card can be redrawn after the lookup settles. */
@@ -7027,6 +7101,123 @@ object LiveToolbox {
 
     private fun result(success: Boolean, message: String?): JSONObject =
         JSONObject().put("success", success).apply { if (message != null) put("message", message) }
+
+    // ---- Lists a tool call may have reached by the wrong door (ListRouting, 2026-11-15) ----
+
+    private const val TASK_NOT_REMINDER = "It was a calendar task, not a reminder."
+    private const val TASK_NOT_CHECKLIST = "It was a calendar task, not a checklist line."
+    private const val TODO_LINE = "a to-do, not a reminder or a calendar task"
+
+    /** [r]'s message with [note] after it: what kind of row was changed, said in words. */
+    private fun noteRoute(r: JSONObject, note: String) {
+        r.put("message", (r.optString("message") + " " + note).trim())
+    }
+
+    /** The Todo checklist, found and made as `notes/ReminderChecklistMigration` does (archived included). */
+    private suspend fun todoChecklist(context: Context): Checklist? =
+        ChecklistController.allChecklists(context, includeArchived = true)
+            .firstOrNull { ListRouting.isTodoName(it.name) }
+
+    private suspend fun todoChecklistOrNew(context: Context): Checklist =
+        todoChecklist(context)
+            ?: ChecklistController.createChecklist(context, name = ListRouting.TODO, scheduleKind = null)
+
+    /** The Todo checklist's lines not ticked today; null when there is none or it cannot be read. */
+    @Suppress("ReturnCount") // guard clauses: no list, no single match
+    private suspend fun openTodoLines(context: Context): List<String>? {
+        val todo = todoChecklist(context) ?: return null
+        val loaded = ChecklistController.itemsWithTickState(context, todo.id)
+            as? ChecklistController.ChecklistItemsResult.Loaded ?: return null
+        return loaded.items.filter { !it.ticked }.map { it.item.text }
+    }
+
+    /** A Todo read's [ListRouting.REMINDERS_KEY]: open reminders, each with when it is due. */
+    private suspend fun withReminders(context: Context, out: JSONObject) {
+        val rows = runCatching { buildInboxRows(NotesController.allItems(context), System.currentTimeMillis()) }
+            .getOrNull()?.filter { !it.done } ?: return
+        if (rows.isEmpty()) return
+        out.put(
+            ListRouting.REMINDERS_KEY,
+            JSONArray(rows.map { r -> JSONObject().put("text", r.text).put("due", r.dateLabel ?: "no date set") }),
+        )
+        out.put("rule", ListRouting.TODO_READ_NOTE)
+    }
+
+    /** An undated `manage_item` add: a line on the Todo checklist (made if missing). */
+    private suspend fun addToTodo(context: Context, text: String): JSONObject {
+        val todo = todoChecklistOrNew(context)
+        val order = ChecklistController.itemsFor(context, todo.id).size
+        val added = ChecklistController.addItem(context, checklistId = todo.id, text = text, sortOrder = order)
+        return result(
+            true,
+            "Added \"${added.text}\" to his to-do list (the ${todo.name} checklist): no date or repeat, so " +
+                "it is a to-do, not a reminder.",
+        )
+    }
+
+    /** A tick for a Todo line by [phrase]; null when no single line there matches it. */
+    @Suppress("ReturnCount") // guard clauses: no list, no single match
+    private suspend fun tickTodoLine(context: Context, phrase: String, tick: Boolean): JSONObject? {
+        val todo = todoChecklist(context) ?: return null
+        val match = matchChecklistItem(phrase, ChecklistController.itemsFor(context, todo.id))
+        val line = (match as? ChecklistItemMatch.Resolved)?.item ?: return null
+        if (!tick) {
+            ChecklistController.untick(context, line.id)
+            return result(true, "Unticked \"${line.text}\" on the ${todo.name} checklist ($TODO_LINE).")
+        }
+        return when (val o = ChecklistController.tick(context, line.id)) {
+            is ChecklistController.TickOutcome.Refused -> result(false, o.message)
+            ChecklistController.TickOutcome.Ticked ->
+                result(true, "Ticked \"${line.text}\" on the ${todo.name} checklist ($TODO_LINE).")
+        }
+    }
+
+    /** `manage_item remove` for a Todo line (an undated add lands there); null when none matches. */
+    @Suppress("ReturnCount") // guard clauses: no list, no single match
+    private suspend fun removeTodoLine(context: Context, phrase: String): JSONObject? {
+        val todo = todoChecklist(context) ?: return null
+        val match = matchChecklistItem(phrase, ChecklistController.itemsFor(context, todo.id))
+        val line = (match as? ChecklistItemMatch.Resolved)?.item ?: return null
+        ChecklistController.deleteItem(context, line.id)
+        return result(true, "Removed \"${line.text}\" from the ${todo.name} checklist ($TODO_LINE).")
+    }
+
+    /** `complete_task` matched no task: a reminder by those words, then a Todo line; null when neither. */
+    @Suppress("ReturnCount") // guard clauses: no list, no single match
+    private suspend fun tickReminderOrTodo(context: Context, phrase: String, done: Boolean): JSONObject? {
+        if (phrase.isBlank()) return null
+        val list = theList(context)
+        val reminder = (NotesController.findItem(context, list.id, phrase) as? ItemMatch.Resolved)?.item
+            ?: return tickTodoLine(context, phrase, done)
+        return dispatchItemAction(context, if (done) "tick" else "untick", list, reminder, JSONObject())
+            .also { if (it.optBoolean("success")) noteRoute(it, "It was a reminder, not a calendar task.") }
+    }
+
+    /**
+     * `manage_item schedule` for a Todo line (added undated, then given a date or a repeat): it
+     * becomes a reminder with that schedule and leaves the checklist. Null when no Todo line matches.
+     * If the schedule fails, the new reminder is taken back and the line stays where it was.
+     */
+    @Suppress("ReturnCount") // guard clauses: no list, no single match
+    private suspend fun scheduleTodoLine(
+        context: Context,
+        list: ItemList,
+        phrase: String,
+        args: JSONObject,
+    ): JSONObject? {
+        val todo = todoChecklist(context) ?: return null
+        val match = matchChecklistItem(phrase, ChecklistController.itemsFor(context, todo.id))
+        val line = (match as? ChecklistItemMatch.Resolved)?.item ?: return null
+        val reminder = NotesController.addItem(context, list.id, line.text)
+        val r = dispatchItemAction(context, "schedule", list, reminder, args)
+        if (r.optBoolean("success")) {
+            ChecklistController.deleteItem(context, line.id)
+            noteRoute(r, "It moved from the ${todo.name} checklist to his reminders.")
+        } else {
+            NotesController.removeItem(context, reminder)
+        }
+        return r
+    }
 
     /**
      * Pure decision extracted out of [agentResult] so it's unit-testable without a real Gemini

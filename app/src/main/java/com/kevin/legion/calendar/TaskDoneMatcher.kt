@@ -10,7 +10,8 @@ import com.kevin.legion.data.local.Event
  * calendar UI's tick makes, ADR 0035), and everything that can be decided without either lives here
  * so it can be tested with plain [Event] values.
  *
- * **Matching is every-word, on whole tokens.** "math 2413" matches "MATH 2413 WebAssign 4.3" and
+ * **Matching is every-word, on whole tokens** (or a course abbreviation of one, [wordIn]).
+ * "math 2413" matches "MATH 2413 WebAssign 4.3" and
  * not "MATH 3391 ..." (2413 is not in it). A one-word query is deliberately loose ("math" matches
  * every math task) - that is what [Resolution.Ambiguous] is for: several matches change nothing
  * unless the caller said all_matches. A trailing "s" is dropped from both sides so Kevin's "maths
@@ -71,10 +72,17 @@ object TaskDoneMatcher {
         if (q.isEmpty()) return Resolution.EmptyQuery
 
         fun usable(list: List<Event>) = list.filter { it.kind == EventKind.TASK && !it.deleted }
+        // Whole words first; a course abbreviation ([wordIn]) only when no title has every word.
         val matches = usable(scoped).filter { e -> tokens(e.title).toSet().containsAll(q) }
+            .ifEmpty {
+                usable(scoped).filter { e ->
+                    val title = tokens(e.title).toSet()
+                    q.all { w -> wordIn(w, title) }
+                }
+            }
         if (matches.isEmpty()) {
             val nearest = usable(all)
-                .map { it to tokens(it.title).toSet().count { t -> t in q } }
+                .map { e -> e to q.count { w -> wordIn(w, tokens(e.title).toSet()) } }
                 .filter { it.second > 0 }
                 .sortedWith(
                     compareByDescending<Pair<Event, Int>> { it.second }
@@ -94,6 +102,25 @@ object TaskDoneMatcher {
 
     const val NEAREST_LIMIT = 3
     private const val MIN_STEM_LENGTH = 3
+
+    /** The shortest word that may stand for a longer one ("chem" for "chemistry"). Four letters, so
+     * a title's "for" or "the" never stands for "forum" or "theory". */
+    private const val MIN_ABBREVIATION = 4
+
+    private val LETTERS = Regex("[a-z]+")
+
+    /**
+     * [word] (from the query) is in [title]'s tokens, whole or as a course abbreviation either way:
+     * "history" finds "HIST 101 ..." and "chem" finds "Chemistry lab" (2026-11-15 voice eval: "mark
+     * the history reading quiz done" matched nothing because the title says HIST). Letters only, so
+     * a number or a section such as "4.3" still has to match whole; the shorter word needs at least
+     * [MIN_ABBREVIATION] letters. Used only when no title holds every word whole; a loose match is
+     * still caught by [Resolution.Ambiguous].
+     */
+    internal fun wordIn(word: String, title: Set<String>): Boolean = word in title || title.any { t ->
+        val (short, long) = if (t.length <= word.length) t to word else word to t
+        short.length >= MIN_ABBREVIATION && LETTERS.matches(short) && LETTERS.matches(long) && long.startsWith(short)
+    }
 
     /** "Title (due Oct 5, 2026)" - [dateOf] formats an instant, so the caller picks UTC for an
      * all-day row and the device zone otherwise. A dateless task reads "no due date". */

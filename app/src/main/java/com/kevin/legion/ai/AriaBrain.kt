@@ -13,6 +13,7 @@ import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.notes.NotesController
+import com.kevin.legion.service.tools.day.ListRouting
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
@@ -204,8 +205,6 @@ class AriaBrain private constructor(context: Context) {
     }
 
     private suspend fun assembleBase(textMode: Boolean): String {
-        val today = java.time.LocalDate.now()
-            .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
 
         // Identity first and from ONE source (AssistantIdentity - single global
         // identity, no per-car branch). SAFETY_INSTRUCTIONS goes last: it says it
@@ -247,7 +246,10 @@ class AriaBrain private constructor(context: Context) {
         // 2026-08-07). Naming the gap and pointing at the tool that closes it
         // is the fix; the zone is stated too so nothing has to fall back on
         // UTC as a default.
-        sb.append("\n\nToday's date is $today. ").append(whereAndWhen())
+        // 2026-11-15: the date is stated with tomorrow and yesterday spelled out, as local dates
+        // ([localDates]), so "tomorrow" or "Sunday" never rests on the model's own date arithmetic.
+        sb.append("\n\n").append(localDates(java.time.ZonedDateTime.now(ZoneId.systemDefault())))
+            .append(" ").append(whereAndWhen())
         sb.append(" You do NOT have a clock and cannot tell the time on your own. " +
             "Whenever the user asks the time, or the answer depends on it, call the " +
             "day tool (get_current_time) and use what it returns. Never guess a time - a confidently " +
@@ -421,11 +423,7 @@ class AriaBrain private constructor(context: Context) {
         // only accurate as of the moment a conversation opens, which is why
         // get_current_time exists as well - a long conversation must re-read
         // the clock rather than trust this note.
-        val zone = ZoneId.systemDefault()
-        val stamp = java.time.ZonedDateTime.now(zone)
-            .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a"))
-        sb.appendSection("Right now it is $stamp (${utcOffset(zone)}). Call day get_current_time rather " +
-            "than reusing this if the conversation has been going a while.")
+        sb.appendSection(clockNote(java.time.ZonedDateTime.now(ZoneId.systemDefault())))
 
         buildContinuityNote()?.let { sb.appendSection(it) }
 
@@ -626,8 +624,7 @@ class AriaBrain private constructor(context: Context) {
     }
 
     /** e.g. "-05:00". The offset for right now, so it is correct across daylight saving. */
-    private fun utcOffset(zone: ZoneId): String =
-        java.time.ZonedDateTime.now(zone).offset.id.let { if (it == "Z") "+00:00" else it }
+    private fun utcOffset(zone: ZoneId): String = offsetText(java.time.ZonedDateTime.now(zone))
 
     /**
      * City and state for a fix - "Houston, Texas" - as opposed to [reverseGeocode]'s street-level
@@ -1119,19 +1116,51 @@ internal const val RECORD_FACTS =
  * test and the payload ceiling pin those.
  */
 /** The open-list paragraph of the base instruction (a function so a live check sends the same words). */
+// 2026-11-15 voice eval: this said "car to-dos, errands, appointments and reminders all live on the
+// one list", which is how "what's on my to-do list" read reminders and "add X to my to-do list" made
+// one. The to-do list is the Todo checklist now; the words for each list live in ListRouting.
 internal fun openItemsParagraph(openItems: Int): String =
-    "The user has $openItems open item(s) on their list - car to-dos, " +
-        "errands, appointments and reminders all live on the one list. Call manage_item read_list to " +
-        "read the whole list out (not for what is due: that is day read_calendar), and use manage_item " +
-        "to add, tick off, or remove items - always use " +
+    "The user has $openItems open reminder(s) and appointment(s) on the reminder list. Call manage_item " +
+        "read_list to read them out, and use manage_item to add, tick off, or remove one - always use " +
         "the tools, don't just claim you did. When an item has a date or a time, pass it on " +
         "the SAME manage_item add call; never add it first and schedule it after. If it " +
         "feels natural, you may occasionally offer to run through the list."
 
-internal const val DUE_ROUTING =
-    "For anything about what is due (what do I have due, what's due today, tomorrow or this week), call " +
-        "day read_calendar over those dates: its `due` block holds everything due in one list, school " +
-        "work and dated to-dos alike, overdue ones marked."
+/** Where each list and "what's due" go: [ListRouting.PROMPT], said always (2026-11-15). */
+internal const val DUE_ROUTING = ListRouting.PROMPT
+
+private val LONG_DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.US)
+private val SHORT_DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US)
+private val CLOCK_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a", Locale.US)
+
+/** "-06:00" for [now]'s offset; "+00:00" for UTC (never "Z"). */
+internal fun offsetText(now: java.time.ZonedDateTime): String = now.offset.id.let { if (it == "Z") "+00:00" else it }
+
+/**
+ * The date paragraph's opening (it must start "Today's date is ": `CascadePrompt.split` moves it out
+ * of the cached instruction by that mark). Today, tomorrow and yesterday, each with its weekday and
+ * its yyyy-MM-dd, all read on [now]'s own clock.
+ *
+ * 2026-11-15 voice eval, flash-lite at about 19:00 at UTC-06:00 (already Monday in UTC): "and
+ * tomorrow?" after a calendar answer became today+2 in both follow-up cases, and it called Sunday
+ * "Monday", while single-turn "tomorrow" was right. The prompt named only today's date beside a UTC
+ * offset, so any other day was the model's own arithmetic; spelled out here, there is nothing to work
+ * out, and the paragraph says the dates are his and never UTC. The clock is still a UTC offset,
+ * never an IANA id (CLAUDE.md section 1).
+ */
+internal fun localDates(now: java.time.ZonedDateTime): String {
+    val today = now.toLocalDate()
+    val tomorrow = today.plusDays(1)
+    val yesterday = today.minusDays(1)
+    return "Today's date is ${today.format(LONG_DAY)} ($today) on the user's own clock. Tomorrow is " +
+        "${tomorrow.format(SHORT_DAY)} ($tomorrow); yesterday was ${yesterday.format(SHORT_DAY)} ($yesterday). " +
+        "Every date you say or pass to a tool is his local date, never a UTC one."
+}
+
+/** The live context's clock line, read on [now]'s own clock with its UTC offset. */
+internal fun clockNote(now: java.time.ZonedDateTime): String =
+    "Right now it is ${now.format(CLOCK_STAMP)}, his local time (UTC${offsetText(now)}). Call day " +
+        "get_current_time rather than reusing this if the conversation has been going a while."
 
 /** The shared rules between [RECORD_FACTS] and [CURRENCY_CLAUSE]. Fixed in code, see [SHARED_TOOL_RULES]. */
 internal const val SHARED_RECORD_RULES =

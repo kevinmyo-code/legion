@@ -129,6 +129,57 @@ class VoiceEvalOfflineTest {
         assertTrue(cal, cal.contains(VoiceEvalFixture.Facts.EVENT_TOMORROW))
     }
 
+    // --- 2026-11-15: every door to a list ends at the right row, and says which -------------------
+
+    @Test
+    fun `a to-do list read carries both lists, whichever tool read it`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val reminders = toolResult("manage_item", JSONObject().put("action", "read_list"))
+        assertTrue(reminders, reminders.contains("todo_list") && reminders.contains(VoiceEvalFixture.Facts.TODO_A))
+        val todo = toolResult("manage_checklist", JSONObject().put("action", "read").put("list", "to-do list"))
+        assertTrue(todo, todo.contains(VoiceEvalFixture.Facts.TODO_A))
+        assertTrue(todo, todo.contains("\"reminders\"") && todo.contains(VoiceEvalFixture.Facts.REMINDER_TODAY))
+    }
+
+    @Test
+    fun `an undated add lands on the Todo checklist, whichever tool added it`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val viaItem = toolResult("manage_item", JSONObject().put("action", "add").put("item", "buy stamps"))
+        assertTrue(viaItem, viaItem.contains("success=true") && viaItem.contains("Todo checklist"))
+        val viaList = toolResult("manage_checklist", JSONObject().put("action", "add").put("list", "to-do").put("text", "mail the form"))
+        assertTrue(viaList, viaList.contains("success=true") && viaList.contains("Todo"))
+        val read = toolResult("manage_checklist", JSONObject().put("action", "read").put("list", "Todo"))
+        assertTrue(read, read.contains("buy stamps") && read.contains("mail the form"))
+        val dated = toolResult(
+            "manage_item",
+            JSONObject().put("action", "add").put("item", "call the dentist").put("date", today.plusDays(1).toString()),
+        )
+        assertTrue(dated, dated.contains("success=true") && !dated.contains("Todo checklist"))
+    }
+
+    @Test
+    fun `a tick by any door completes the calendar task and says it was one`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val viaItem = toolResult("manage_item", JSONObject().put("action", "tick").put("item", "history reading quiz"))
+        assertTrue(viaItem, viaItem.contains("success=true") && viaItem.contains(VoiceEvalFixture.Facts.TASK_TODAY_A))
+        assertTrue(viaItem, viaItem.contains("calendar task, not a reminder"))
+        val viaList = toolResult(
+            "manage_checklist", JSONObject().put("action", "tick").put("list", "Todo").put("item", "math homework"),
+        )
+        assertTrue(viaList, viaList.contains("success=true") && viaList.contains(VoiceEvalFixture.Facts.TASK_OVERDUE))
+        val todoLine = toolResult("day", JSONObject().put("action", "complete_task").put("title", "printer ink"))
+        assertTrue(todoLine, todoLine.contains("success=true") && todoLine.contains("Todo checklist"))
+        val reminder = toolResult("day", JSONObject().put("action", "complete_task").put("title", "call the landlord"))
+        assertTrue(reminder, reminder.contains("success=true") && reminder.contains("a reminder, not a calendar task"))
+    }
+
+    @Test
+    fun `a switch with no car named changes nothing and says where a read goes`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val r = toolResult("car", JSONObject().put("action", "switch_vehicle"))
+        assertTrue(r, r.contains("success=false") && r.contains("Nothing was switched") && r.contains("ask_fleet"))
+    }
+
     private suspend fun toolResult(name: String, args: JSONObject): String =
         runScripted("t", "invented", call(name, args), text("ok.")).single { it.startsWith("LIVE_AUDIT tool_result") }
 

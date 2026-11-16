@@ -68,7 +68,8 @@ internal object LiveSurface {
     val ACTION_TOOLS: List<ActionTool> = listOf(
         ActionTool(
             name = "car",
-            summary = "Changes to the cars. Readings, codes, specs, recalls and service history are ask_fleet.",
+            summary = "Changes to the cars. Which cars he has, readings, codes, specs, recalls and service " +
+                "history are ask_fleet.",
             actions = listOf(
                 Action(
                     "log_service", "log_service",
@@ -93,7 +94,11 @@ internal object LiveSurface {
                 Action("add_vehicle", "manage_vehicle", "another car he owns", mapOf("action" to "add")),
                 Action("correct_vehicle", "manage_vehicle", "fix a saved car's details", mapOf("action" to "correct")),
                 Action("rename_vehicle", "manage_vehicle", "nickname a car (name)", mapOf("action" to "rename")),
-                Action("switch_vehicle", "manage_vehicle", "make a car the selected one", mapOf("action" to "switch")),
+                // 2026-11-15: called for "which cars do I have"; a read is ask_fleet.
+                Action(
+                    "switch_vehicle", "manage_vehicle", "select the car he names; never to list cars",
+                    mapOf("action" to "switch"),
+                ),
                 Action("archive_vehicle", "manage_vehicle", "sold or gone", mapOf("action" to "archive")),
                 Action("unarchive_vehicle", "manage_vehicle", "bring one back", mapOf("action" to "unarchive")),
                 Action(
@@ -315,7 +320,7 @@ internal object LiveSurface {
             actions = listOf(
                 Action(
                     "ask_fleet", "ask_fleet",
-                    "the cars: live readings, trouble codes, mileage, specs, recalls, service and " +
+                    "the cars: which he has, live readings, trouble codes, mileage, specs, recalls, service and " +
                         "build history; how the car is doing comes only from this",
                 ),
                 Action(
@@ -393,7 +398,7 @@ internal object LiveSurface {
         // 2026-11-15: "quiet on the calendar" over two open assignments. Billed per call, not per turn.
         "read_calendar" to "Answer what is due from `due`: each open item is due and not done (overdue ones " +
             "say so), school work and to-dos alike. Never call a window with open items quiet or clear.",
-        "read_list" to "This is the reminder list only. For what is due (school work too), call day read_calendar.",
+        "read_list" to com.kevin.legion.service.tools.day.ListRouting.REMINDER_READ_NOTE,
         "stop_voice_note" to "The recording is saved and is being transcribed in the background; it is " +
             "not transcribed yet. Never say it is ready or summarized. He can ask for it back later.",
         "read_voice_note" to "The summary is model-made from the transcript. Never state a number, date, " +

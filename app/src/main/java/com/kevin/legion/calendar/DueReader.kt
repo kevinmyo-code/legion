@@ -16,6 +16,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -125,19 +127,25 @@ object DueReader {
         for (e in s.open) {
             val o = JSONObject()
                 .put("title", e.item.title)
-                .put("due", e.item.whenLabel)
+                .put("due", DueList.dueWhen(e.item, s.today))
                 .put("source", e.item.source.token)
-            if (e.overdue) o.put("overdue", true)
+                // Always said, true or false (2026-11-15): a missing key read as "maybe".
+                .put("overdue", e.overdue)
             items.put(o)
         }
         return JSONObject()
             .put("says", DueList.says(s))
+            // The local day the window was read against (never UTC; 2026-11-15).
+            .also { o -> s.today?.let { o.put("today", dayAndDate(it)) } }
             .put("open", s.open.size)
             .put("overdue", s.overdueCount)
             .put("done", s.doneCount)
             .put("open_items", items)
             .also { o -> if (s.unreadable.isNotEmpty()) o.put("unreadable", JSONArray(s.unreadable)) }
     }
+
+    /** "Sunday 2026-11-15". */
+    private fun dayAndDate(d: LocalDate): String = "${d.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.US)} $d"
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // a failed read is named, never an empty list
     private suspend fun <T> readOrNull(what: String, unreadable: MutableList<String>, block: suspend () -> T): T? =

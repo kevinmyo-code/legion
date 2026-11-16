@@ -145,4 +145,29 @@ class TaskDoneMatcherTest {
         assertTrue(text, text.startsWith("Marked done:"))
         assertTrue(text, !text.contains("attended"))
     }
+
+    // 2026-11-15 voice eval: "mark the history reading quiz done" matched nothing (the title says HIST).
+    @Test fun spokenCourseNameFindsItsAbbreviation() {
+        val hist = task("HIST 101 reading quiz")
+        val engl = task("ENGL 102 discussion post")
+        val r = resolve("history reading quiz", list = listOf(hist, engl)) as Resolution.Apply
+        assertEquals(listOf(hist), r.toChange)
+        val back = resolve("engl discussion", list = listOf(hist, task("English essay"), engl)) as Resolution.Apply
+        assertEquals(listOf(engl), back.toChange)
+    }
+
+    @Test fun abbreviationNeverStretchesANumberOrATwoLetterWord() {
+        assertTrue(resolve("webassign 4", list = listOf(webassign)) is Resolution.NoMatch)
+        assertTrue(!TaskDoneMatcher.wordIn("ma", setOf("math")))
+        assertTrue(!TaskDoneMatcher.wordIn("forum", setOf("for")))
+        assertTrue(!TaskDoneMatcher.wordIn("theory", setOf("the")))
+        assertTrue(TaskDoneMatcher.wordIn("chemistry", setOf("chem")))
+    }
+
+    @Test fun wholeWordsWinOverAnAbbreviation() {
+        val exact = task("History essay")
+        val abbreviated = task("HIST 101 essay")
+        val r = resolve("history essay", list = listOf(exact, abbreviated)) as Resolution.Apply
+        assertEquals(listOf(exact), r.toChange)
+    }
 }
