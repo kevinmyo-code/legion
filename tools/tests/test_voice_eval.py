@@ -251,3 +251,9 @@ def test_args_all_fails_a_wrong_first_call_the_model_later_corrected():
     _, runs = parse(lines)
     v = ve.score_case(case, runs[0], phone=False)
     assert any("misses" in f for f in v.failures), v.failures
+
+
+def test_a_relative_day_word_is_scored_as_the_date_it_means():
+    assert ve.arg_ok("tomorrow", {"lte": "{today+1}"}, DAY) and ve.arg_ok("tomorrow", {"gte": "{today+1}"}, DAY)
+    assert not ve.arg_ok("tomorrow", {"lte": "{today}"}, DAY)
+    assert ve.arg_ok("Today", "{today}", DAY)

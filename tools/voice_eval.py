@@ -278,10 +278,16 @@ def matches(call: ToolCall, spec: str) -> bool:
     return False
 
 
+RELATIVE_DAYS = {"today": 0, "tomorrow": 1, "yesterday": -1}
+
+
 def arg_ok(value, matcher, today: datetime.date) -> bool:
     if value is None:
         return False
     v = str(value).strip()
+    # A date tool may take the word he said (RelativeDay.kt, 2026-11-16): score the date it means.
+    if v.lower() in RELATIVE_DAYS:
+        v = (today + datetime.timedelta(days=RELATIVE_DAYS[v.lower()])).isoformat()
     if isinstance(matcher, str):
         return v.lower() == expand(matcher, today).lower()
     ok = True

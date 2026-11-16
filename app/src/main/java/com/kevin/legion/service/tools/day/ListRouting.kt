@@ -56,6 +56,10 @@ internal object ListRouting {
         "`items` is the Todo checklist; `reminders` are his dated or repeating reminders, also part of " +
             "his to-do list: say both."
 
+    /** The rule on a successful list change: say what changed by name. */
+    const val NAME_IT =
+        "Say what changed by its name (\"Added buy stamps to your to-do list\"), never just \"done\"."
+
     /** The rule riding on a reminder read that carries [TODO_KEY]. */
     const val REMINDER_READ_NOTE =
         "`items` are his reminders; `todo_list` is the separate Todo checklist: say it too when he " +

@@ -178,6 +178,19 @@ class VoiceEvalOfflineTest {
     }
 
     @Test
+    fun `read_calendar takes the word tomorrow and says the day back`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val r = LiveToolbox.dispatch(
+            context, "read_calendar", JSONObject().put("from", "tomorrow").put("to", "tomorrow"),
+        )!!
+        assertTrue(r.toString(), r.getBoolean("success"))
+        assertTrue(r.toString(), r.getString("window").endsWith(today.plusDays(1).toString()))
+        assertTrue(r.toString(), r.toString().contains(VoiceEvalFixture.Facts.ALL_DAY_TOMORROW))
+        val bad = LiveToolbox.dispatch(context, "read_calendar", JSONObject().put("from", "next week").put("to", "x"))!!
+        assertTrue(bad.toString(), !bad.getBoolean("success"))
+    }
+
+    @Test
     fun `a switch with no car named changes nothing and says where a read goes`() = runBlocking {
         VoiceEvalFixture.seed(context, today)
         val r = toolResult("car", JSONObject().put("action", "switch_vehicle"))

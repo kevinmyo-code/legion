@@ -205,7 +205,9 @@ internal object LiveSurface {
                 Action(
                     "read_calendar", "read_calendar",
                     // 2026-11-15: "due" means school work AND dated to-dos (the result's `due`).
-                    "events, and everything due incl. to-dos, over from-to YYYY-MM-DD; any what's due",
+                    // 2026-11-16: the word he said, resolved in Kotlin on the local date (RelativeDay).
+                    "events, and everything due incl. to-dos, over from-to YYYY-MM-DD, or pass today, " +
+                        "tomorrow or yesterday as said, never worked out; any what's due",
                 ),
                 Action("complete_task", "complete_task", "mark a calendar task (assignment) done or not (title, done)"),
                 Action(

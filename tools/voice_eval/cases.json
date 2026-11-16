@@ -93,6 +93,20 @@
       "why": "2026-11-15: at night (UTC-06:00, already the next day in UTC) flash-lite asked for today+2; run it after 18:00 local to cover that"
     },
     {
+      "id": "then_tomorrow_due",
+      "why": "2026-11-16: the follow-up shape of finding 3, worded differently; the tool takes the word tomorrow",
+      "turns": [
+        {"say": "what do I have due today", "expect": {"calls": ["day/read_calendar"], "no_empty_claim": true}},
+        {
+          "say": "what about tomorrow?",
+          "expect": {
+            "calls": ["day/read_calendar"],
+            "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+          }
+        }
+      ]
+    },
+    {
       "id": "barge_in",
       "audio": true,
       "why": "with --audio on the phone, the second turn is spoken over the first reply (barge-in)",

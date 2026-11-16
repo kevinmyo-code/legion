@@ -92,6 +92,7 @@ import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.service.tools.day.ListRouting
+import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.checklists.ChecklistItemMatch
 import com.kevin.legion.checklists.checklistScheduleLabel
 import com.kevin.legion.checklists.matchChecklistItem
@@ -1153,7 +1154,7 @@ object LiveToolbox {
             )
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".
-            "manage_item" -> manageItem(context, args)
+            "manage_item" -> nameIt(manageItem(context, args), args)
             "read_list" -> readList(context)
             // "manage_grocery" retired one-today ticket 10 slice B, 2026-09-05 - named explicitly
             // (never falling through to the generic "Unknown tool" branch below) so a model that
@@ -1164,7 +1165,7 @@ object LiveToolbox {
                 "manage_grocery was retired - the shopping list is a checklist named \"Groceries\" " +
                     "now, managed through manage_checklist.",
             )
-            "manage_checklist" -> manageChecklist(context, args)
+            "manage_checklist" -> nameIt(manageChecklist(context, args), args)
             "get_last_ticked" -> getLastTicked(context, args.optString("item"))
             "log_build_entry" -> withResolvedVehicle(context, args) { logBuildEntry(context, args, it.obdMac) }
             "list_build_history" -> withResolvedVehicle(context, args) { listBuildHistory(context, args.optString("type"), it.obdMac) }
@@ -1231,9 +1232,12 @@ object LiveToolbox {
             "track_package" -> trackPackage(context)
             "flight_status" -> flightStatus(context)
             "read_calendar" -> readCalendar(context, args)
-            "complete_task" -> completeTask(context, args, onNoMatch = {
-                tickReminderOrTodo(context, args.optString("title"), args.optBoolean("done", true))
-            })
+            "complete_task" -> nameIt(
+                completeTask(context, args, onNoMatch = {
+                    tickReminderOrTodo(context, args.optString("title"), args.optBoolean("done", true))
+                }),
+                JSONObject().put("action", "tick"),
+            )
             "why_did_you_say_that" -> whyDidYouSayThatTool(context, args)
             "get_sitrep" -> getSitrepTool(context, args)
             "answer_call" -> answerCallTool(context, args)
@@ -1945,8 +1949,10 @@ object LiveToolbox {
      * `calendar/CalendarReadToolLogic.kt` (one-today ticket 01) - the model's own date shape for
      * `read_calendar`'s `from`/`to` args, unchanged. Null on a malformed date or `to` before `from`. */
     private fun parseCalendarWindow(from: String, to: String, zone: java.time.ZoneId): Pair<Long, Long>? {
-        val fromDate = runCatching { java.time.LocalDate.parse(from) }.getOrNull() ?: return null
-        val toDate = runCatching { java.time.LocalDate.parse(to) }.getOrNull() ?: return null
+        // `today`/`tomorrow`/`yesterday` resolve here, on the local date (RelativeDay, 2026-11-16).
+        val today = RelativeDay.today(zone)
+        val fromDate = RelativeDay.parse(from, today) ?: return null
+        val toDate = RelativeDay.parse(to, today) ?: return null
         if (toDate.isBefore(fromDate)) return null
         val startMs = fromDate.atStartOfDay(zone).toInstant().toEpochMilli()
         val endMs = toDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
@@ -1954,8 +1960,8 @@ object LiveToolbox {
     }
 
     private const val CALENDAR_INVALID_WINDOW_MESSAGE =
-        "I need a valid date range to read your calendar - from and to as yyyy-MM-dd, with to on " +
-            "or after from."
+        "I need a valid date range to read your calendar - from and to as yyyy-MM-dd or today, " +
+            "tomorrow or yesterday, with to on or after from."
 
     /**
      * `complete_task` (2026-10-03). Resolves with [TaskDoneMatcher], writes with
@@ -2014,6 +2020,7 @@ object LiveToolbox {
     }
 
     private const val TASK_WINDOW_AHEAD_MS = 7L * 24 * 60 * 60 * 1000
+    private val RELATIVE_WORDS = setOf("today", "tomorrow", "yesterday")
     private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +
         "and needs the car's name. To say which cars he has, call ask ask_fleet."
     private const val TASK_WINDOW_BEHIND_MS = 30L * 24 * 60 * 60 * 1000
@@ -2160,6 +2167,11 @@ object LiveToolbox {
             )
         }
         val o = calendarResult(due, events, arr)
+        // The window said back as local days, so a reply about "tomorrow" stands on a date it was given.
+        val fromDay = java.time.Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate()
+        val toDay = java.time.Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate()
+        val window = RelativeDay.label(fromDay) + if (fromDay == toDay) "" else " to ${RelativeDay.label(toDay)}"
+        o.put("window", window)
         // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
         // user could do, not plans, and `count` and the empty-window sentence stay about plans.
         com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone,
@@ -3989,6 +4001,8 @@ object LiveToolbox {
     private fun parseNoteLocalDate(raw: String): java.time.LocalDate? {
         val s = raw.trim()
         if (s.isBlank()) return null
+        // The words resolve on the local date too (RelativeDay, 2026-11-16).
+        if (s.lowercase() in RELATIVE_WORDS) return RelativeDay.parse(s, RelativeDay.today())
         return runCatching { java.time.LocalDate.parse(s, NOTE_DATE_FORMAT) }.getOrNull()
     }
 
@@ -7107,6 +7121,20 @@ object LiveToolbox {
     private const val TASK_NOT_REMINDER = "It was a calendar task, not a reminder."
     private const val TASK_NOT_CHECKLIST = "It was a calendar task, not a checklist line."
     private const val TODO_LINE = "a to-do, not a reminder or a calendar task"
+
+    private val CHANGE_ACTIONS = setOf("add", "tick", "untick", "remove", "schedule")
+
+    /**
+     * A successful change says, as its `rule`, to name the item (2026-11-16 voice eval: "add buy
+     * stamps to my to-do list" and "mark the quiz done" were answered "Added." and "Done.", which
+     * tell him nothing about WHAT changed). Reads and failures are untouched.
+     */
+    private fun nameIt(r: JSONObject, args: JSONObject): JSONObject {
+        if (r.optBoolean("success") && args.optString("action") in CHANGE_ACTIONS && !r.has("rule")) {
+            r.put("rule", ListRouting.NAME_IT)
+        }
+        return r
+    }
 
     /** [r]'s message with [note] after it: what kind of row was changed, said in words. */
     private fun noteRoute(r: JSONObject, note: String) {
