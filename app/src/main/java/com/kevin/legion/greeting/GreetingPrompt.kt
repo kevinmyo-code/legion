@@ -43,7 +43,7 @@ object GreetingPrompt {
           Never cents, never two amounts, never how many are done or left.
         - React as if you just found out. You know nothing of earlier days, so nothing may sound like
           it happened before, and say no day count or timing the facts do not give.
-        - About money or a workout not done: no shame, no nagging, no telling him what he should do.{money_rule}
+        - About money or a workout not done: no shame, no nagging, no telling him what he should do.{topic_rule}
         - At most one question, and it may be none.
 
         Rules, all of them binding:
@@ -68,7 +68,13 @@ object GreetingPrompt {
      */
     private val MONEY_RULE = """
         - This one is about money: say no amount, no figure and no timing at all (no "already", no
-          days, weeks or month end). React only to it being over its cap.
+          days, weeks or month end). React only to it being over its cap, as news: nothing may sound
+          like it happened before.
+    """.trimIndent()
+
+    /** The workout twin of [MONEY_RULE]: the tone check had it count sets ("fourteen sets waiting"). */
+    private val WORKOUT_RULE = """
+        - This one is about a workout: say no number at all, no sets or sessions counted, done or left.
     """.trimIndent()
 
     private val HELLO = """
@@ -94,8 +100,14 @@ object GreetingPrompt {
     fun build(block: String, lead: GreetingBlock.Lead): String = BUILD
         .replace("{subject}", subject(lead))
         .replace("{lead_mark}", GreetingBlock.LEAD_MARK)
-        .replace("{money_rule}", if (lead.source == "money") "\n" + MONEY_RULE else "")
+        .replace("{topic_rule}", topicRule(lead))
         .replace("{block}", block)
+
+    private fun topicRule(lead: GreetingBlock.Lead): String = when {
+        lead.source == "money" -> "\n" + MONEY_RULE
+        lead.source == "body" && lead.item.kind != "weigh_in" -> "\n" + WORKOUT_RULE
+        else -> ""
+    }
 
     /**
      * The opener when there is nothing to raise (2026-11-16, the laptop and cloud voices only; Live
@@ -128,8 +140,8 @@ object GreetingPrompt {
     fun subject(lead: GreetingBlock.Lead): String = when (lead.source) {
         // Place alone gets "add nothing": asked to react to a bare "he is away", the model made up
         // the rest (an empty house, a slow day); tone check 2026-11-16, place-only attempt.
-        GreetingPlace.SOURCE -> "that he is away from home today. Name the place in a plain few words and " +
-            "add nothing to it: no guess about why he is there, what it is like, or what he left behind"
+        GreetingPlace.SOURCE -> "that he is away from home today, which is news to you. Name the place in a plain " +
+            "few words and add nothing to it: no guess about why he is there, what it is like, or what he left behind"
         "body" -> if (lead.item.kind == "weigh_in") "his weigh-in" else "today's workout"
         "money" -> GreetingBlock.category(lead.item)?.let { "his $it budget, which is over its cap" }
             ?: "a budget that is over its cap"
