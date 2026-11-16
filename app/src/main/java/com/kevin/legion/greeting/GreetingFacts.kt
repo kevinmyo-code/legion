@@ -135,7 +135,9 @@ object FactsParser {
             else -> SourceState.UNREADABLE
         }
         val items = o.optJSONArray("items")?.let { arr ->
-            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { item(it, PASSES_AT[name], name == ENDED) } }
+            (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { item(it, PASSES_AT[name], name == ENDED) }
+            }
         }.orEmpty()
         val says = o.optString("says")
         // A "facts" source with no readable item says nothing mentionable: unreadable, not empty.

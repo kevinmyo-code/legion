@@ -241,7 +241,12 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
          * have opened ([fired]: `open_suppressed` while enrolling, `opened` otherwise), so its
          * verdict is `oww_hit` or `oww_miss` (2026-11-16: it said "did not hear it" on every take).
          */
-        fun verdict(kwsHit: Boolean, accepted: Boolean?, fired: Boolean = false, engine: String? = null): String = when {
+        fun verdict(
+            kwsHit: Boolean,
+            accepted: Boolean?,
+            fired: Boolean = false,
+            engine: String? = null,
+        ): String = when {
             engine == ENGINE_OWW -> if (fired) "oww_hit" else "oww_miss"
             accepted == true -> "opened"
             kwsHit && accepted == false -> "confirm_rejected"

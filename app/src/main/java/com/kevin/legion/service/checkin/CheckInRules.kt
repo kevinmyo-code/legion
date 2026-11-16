@@ -173,7 +173,7 @@ data class CheckInPick(val item: GreetingItem, val sourceName: String, val momen
 object CheckInMoments {
     enum class Trigger { UNLOCK, TICK }
 
-    @Suppress("ReturnCount") // one exit per moment, in order
+    /** One look: a retry first, then the morning, an ended event, away from home, something due. */
     fun pick(
         pack: FactsPack,
         place: GreetingSource,
@@ -185,46 +185,67 @@ object CheckInMoments {
         val nowMs = now.atZone(zone).toInstant().toEpochMilli()
         if (nowMs - ledger.lastRaisedAtMs < CheckInRules.MIN_GAP_MS) return null
         val sources = GreetingBlock.allSources(pack, place).filter { it.state == SourceState.FACTS }
+        val look = Look(pack, sources, ledger, nowMs)
+        return look.retry()
+            ?: (if (trigger == Trigger.UNLOCK) look.morning(place, now) else null)
+            ?: look.eventEnded()
+            ?: look.away()
+            ?: look.due()
+    }
+
+    private class Look(
+        val pack: FactsPack,
+        val sources: List<GreetingSource>,
+        val ledger: CheckInLedger,
+        val nowMs: Long,
+    ) {
         fun open(s: GreetingSource) = s.items.filter { GreetingBlock.offerable(pack, it) }
 
-        // A retry first: same topic, still in the pack, still open on the engine, after the gap.
-        for (s in sources) {
-            for (item in open(s)) {
-                val e = ledger.topics[item.topic] ?: continue
-                if (!e.done && e.asks < CheckInRules.MAX_ASKS && nowMs - e.lastAtMs >= CheckInRules.RETRY_GAP_MS) {
-                    return CheckInPick(item, s.name, e.moment)
-                }
-            }
-        }
         fun fresh(s: GreetingSource) = open(s).filter { it.topic !in ledger.topics }
 
-        val today = now.toLocalDate().toString()
-        val hour = now.hour
-        if (trigger == Trigger.UNLOCK && ledger.morningDay != today &&
-            hour >= CheckInRules.QUIET_END_HOUR && hour < CheckInRules.MORNING_END_HOUR
-        ) {
-            val lead = GreetingBlock.pick(pack.copy(said = pack.said + ledger.topics.keys), place, hour)
-            if (lead != null) {
-                val src = sources.firstOrNull { s -> s.items.any { it.topic == lead.topic } }
-                if (src != null) return CheckInPick(lead, src.name, CheckInMoment.MORNING)
+        fun source(name: String) = sources.firstOrNull { it.name == name }
+
+        /** Same topic, still in the pack, still open on the engine, after the gap. */
+        fun retry(): CheckInPick? {
+            for (s in sources) {
+                for (item in open(s)) {
+                    val e = ledger.topics[item.topic] ?: continue
+                    if (retryDue(e)) return CheckInPick(item, s.name, e.moment)
+                }
             }
+            return null
         }
-        sources.firstOrNull { it.name == "ended_events" }?.let { s ->
+
+        private fun retryDue(e: CheckInLedger.Entry): Boolean =
+            !e.done && e.asks < CheckInRules.MAX_ASKS && nowMs - e.lastAtMs >= CheckInRules.RETRY_GAP_MS
+
+        fun morning(place: GreetingSource, now: LocalDateTime): CheckInPick? {
+            val inWindow = now.hour in CheckInRules.QUIET_END_HOUR until CheckInRules.MORNING_END_HOUR
+            if (!inWindow || ledger.morningDay == now.toLocalDate().toString()) return null
+            val lead = GreetingBlock.pick(pack.copy(said = pack.said + ledger.topics.keys), place, now.hour)
+            val src = lead?.let { l -> sources.firstOrNull { s -> s.items.any { it.topic == l.topic } } }
+            return if (lead != null && src != null) CheckInPick(lead, src.name, CheckInMoment.MORNING) else null
+        }
+
+        fun eventEnded(): CheckInPick? = source("ended_events")?.let { s ->
             fresh(s).lastOrNull { i ->
-                val ended = i.endedAtMs ?: return@lastOrNull false
-                nowMs - ended in CheckInRules.EVENT_ENDED_MIN_MS..CheckInRules.EVENT_ENDED_MAX_MS
-            }?.let { return CheckInPick(it, s.name, CheckInMoment.EVENT_ENDED) }
+                val ended = i.endedAtMs
+                ended != null && nowMs - ended in CheckInRules.EVENT_ENDED_MIN_MS..CheckInRules.EVENT_ENDED_MAX_MS
+            }?.let { CheckInPick(it, s.name, CheckInMoment.EVENT_ENDED) }
         }
-        sources.firstOrNull { it.name == GreetingPlace.SOURCE && it.says == GreetingPlace.AWAY_SAYS }?.let { s ->
-            fresh(s).firstOrNull()?.let { return CheckInPick(it, s.name, CheckInMoment.ARRIVED) }
+
+        fun away(): CheckInPick? {
+            val s = sources.firstOrNull { it.name == GreetingPlace.SOURCE && it.says == GreetingPlace.AWAY_SAYS }
+                ?: return null
+            return fresh(s).firstOrNull()?.let { CheckInPick(it, s.name, CheckInMoment.ARRIVED) }
         }
-        sources.firstOrNull { it.name == "due_soon" }?.let { s ->
+
+        fun due(): CheckInPick? = source("due_soon")?.let { s ->
             fresh(s).firstOrNull { i ->
-                val due = i.passesAtMs ?: return@firstOrNull true // a day-dated item: due today
-                due - nowMs in 0..CheckInRules.DUE_WITHIN_MS
-            }?.let { return CheckInPick(it, s.name, CheckInMoment.DUE_SOON) }
+                val due = i.passesAtMs // null: a day-dated item, due today
+                due == null || due - nowMs in 0..CheckInRules.DUE_WITHIN_MS
+            }?.let { CheckInPick(it, s.name, CheckInMoment.DUE_SOON) }
         }
-        return null
     }
 }
 
