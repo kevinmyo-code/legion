@@ -111,10 +111,12 @@ class GreetingOpening(
             is GreetingOutcome.Unconfirmed -> return@coroutineScope scripted(where, "engine_unconfirmed")
         }
         val place = GreetingPlace.applyTopics(where.await(), pack.said, pack.closed)
-        val lead = GreetingBlock.lead(pack, place, now.hour, cache.history())
+        placeAtPrepare = GreetingBlock.placeKey(place)
+        val history = cache.history()
+        val lead = GreetingBlock.lead(pack, place, now.hour, history)
         if (lead == null) {
             log("greeting_lead none hello")
-            return@coroutineScope GreetingPlan.Hello(GreetingPrompt.hello())
+            return@coroutineScope GreetingPlan.Hello(GreetingPrompt.hello(history.hellos))
         }
         log("greeting_lead source=${lead.source}")
         val block = GreetingBlock.render(pack, place, now, lead.item)
@@ -143,14 +145,20 @@ class GreetingOpening(
     /**
      * The greeting [plan] was spoken: a personal one records its topic ([noteRaised]); a hello
      * records only that this open led with no topic, so a run of one kind is broken
-     * ([GreetingBlock.History]). Nothing goes to the engine for a hello.
+     * ([GreetingBlock.History]), and its [words] so the next hello differs. Nothing goes to the
+     * engine for a hello. Either way, where he was ([GreetingBlock.placeKey]) is kept: place leads
+     * only when that changes.
      */
-    fun noteOpened(plan: GreetingPlan.Spoken) {
+    fun noteOpened(plan: GreetingPlan.Spoken, words: String? = null) {
         when (plan) {
             is GreetingPlan.Personal -> noteRaised(plan.topic)
-            is GreetingPlan.Hello -> cache.noteHello()
+            is GreetingPlan.Hello -> cache.noteHello(words)
         }
+        cache.notePlace(placeAtPrepare)
     }
+
+    /** Where he was when [prepare] last ran, for [noteOpened]. */
+    @Volatile private var placeAtPrepare: String? = null
 
     /**
      * Records [topic] as raised, fire and forget: the conversation never waits on it and a failure

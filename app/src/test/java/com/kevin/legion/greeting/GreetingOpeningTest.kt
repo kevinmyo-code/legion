@@ -81,6 +81,15 @@ class GreetingOpeningTest {
         assertEquals(listOf("due:1" to "raised"), backend.recorded)
     }
 
+    @Test fun `the next hello is asked not to reuse the last one's words`() = runBlocking {
+        val spent = parsed(pack(due = facts(item("due:1", "Essay is due Friday.")), said = listOf("due:1")))
+        val o = opening(FakeGreetingBackend { GreetingOutcome.Ok(spent) })
+        val first = o.prepare(morning) as GreetingPlan.Hello
+        o.noteOpened(first, "An invented hello line.")
+        val second = o.prepare(morning) as GreetingPlan.Hello
+        assertTrue(second.prompt, second.prompt.contains("\"An invented hello line.\""))
+    }
+
     @Test fun `a money lead today leaves the next open without money`() = runBlocking {
         // Invented: two budgets over their caps and nothing else.
         val money = parsed(

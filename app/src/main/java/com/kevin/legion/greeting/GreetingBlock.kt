@@ -56,7 +56,8 @@ object GreetingBlock {
                             it == lead -> " $LEAD_MARK"
                             else -> ""
                         }
-                        lines += "    * ${it.says}$mark"
+                        val says = if (it == lead && s.name == "money") moneyLeadLine(it) else it.says
+                        lines += "    * $says$mark"
                     }
                 }
                 SourceState.EMPTY -> lines += "- $label (EMPTY: read, and nothing is on file): ${s.says}"
@@ -94,9 +95,15 @@ object GreetingBlock {
     /**
      * What this phone has led with lately ([GreetingPackCache.history]): the lead kinds of today's
      * greetings in order, and the kind of the very last one whatever its day. A greeting with no
-     * topic is the kind [HELLO], so it ends a run.
+     * topic is the kind [HELLO], so it ends a run. [lastPlace] is where he was at the last spoken
+     * greeting (a place topic key, or [AT_HOME]); [hellos] are the last hellos' words, newest last.
      */
-    data class History(val today: List<String> = emptyList(), val last: String? = null) {
+    data class History(
+        val today: List<String> = emptyList(),
+        val last: String? = null,
+        val lastPlace: String? = null,
+        val hellos: List<String> = emptyList(),
+    ) {
         companion object {
             val NONE = History()
         }
@@ -113,7 +120,10 @@ object GreetingBlock {
      * - money leads only for a budget OVER its cap, and at most once a day; near the cap or on pace is
      *   not a topic (nothing to say, and money is the easiest topic to nag about);
      * - body (workout or weigh-in) leads at most once a day (its engine key is per day too);
-     * - no kind leads twice in a row ([History.last]); the two calendar sources are one kind.
+     * - no kind leads twice in a row ([History.last]); the two calendar sources are one kind;
+     * - place leads only on arrival: where he is differs from where he was at the last greeting
+     *   ([History.lastPlace]), or it is the first greeting of the day and he is away. Never when
+     *   nothing changed (2026-11-16 tone check: a place said again came out as "<city> again").
      */
     fun lead(pack: FactsPack, place: GreetingSource, hour: Int, history: History = History.NONE): Lead? {
         val by = allSources(pack, place).associateBy { it.name }
@@ -123,9 +133,37 @@ object GreetingBlock {
             if (capped) return@firstNotNullOfOrNull null
             by[name]?.takeIf { it.state == SourceState.FACTS }
                 ?.let { choose(name, it.items.filter { i -> offerable(pack, i) }) }
+                ?.takeIf { name != GreetingPlace.SOURCE || arrived(it.topic, history) }
                 ?.let { Lead(name, it) }
         }
     }
+
+    /** A place item is news only on arrival: somewhere new since the last greeting, or the day's first. */
+    private fun arrived(placeTopic: String, history: History): Boolean =
+        history.today.isEmpty() || placeTopic != history.lastPlace
+
+    /**
+     * Where he is for [History.lastPlace]: the place item's topic key when away (or home unknown),
+     * [AT_HOME] at home, null when the place could not be read (the last known place then stands).
+     */
+    fun placeKey(place: GreetingSource): String? = when (place.state) {
+        SourceState.FACTS -> place.items.firstOrNull()?.topic
+        SourceState.EMPTY -> AT_HOME
+        SourceState.UNREADABLE -> null
+    }
+
+    /**
+     * The block line for a money lead: the category and that it is over its cap, nothing else. The
+     * amounts, the day count and the projection stay out of the lead line (2026-11-16 tone check:
+     * given them, the model rounded wrongly and made up timing); the other budget lines are
+     * background the prompt forbids.
+     */
+    fun moneyLeadLine(item: GreetingItem): String =
+        category(item)?.let { "$it: over its cap this month." } ?: "One budget is over its cap this month."
+
+    /** A budget's category from its topic key (`money:<month>:<category>`), or null. */
+    fun category(item: GreetingItem): String? =
+        item.topic.substringAfter(':', "").substringAfter(':', "").takeIf { it.isNotBlank() }
 
     /** [lead]'s item alone. */
     fun pick(pack: FactsPack, place: GreetingSource, hour: Int, history: History = History.NONE): GreetingItem? =
@@ -162,6 +200,9 @@ object GreetingBlock {
 
     /** The lead kind of a greeting with no topic. */
     const val HELLO = "hello"
+
+    /** [History.lastPlace] when he was at home. */
+    const val AT_HOME = "home"
 
     const val LEAD_MARK = "[LEAD]"
 

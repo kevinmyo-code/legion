@@ -109,7 +109,9 @@ class FileLeadStore(private val file: File) : LeadStore {
  * **It also keeps what this phone led with ([history], 2026-11-16)**, for the picker's caps: money
  * once a day, body once a day, no kind twice in a row. The engine's `said` cannot say it: its keys
  * carry no time (a money key names the month, read over a 90-day window), so whether money led
- * TODAY is known only here. Kept in [leads] so a process death does not reset the day.
+ * TODAY is known only here. Kept in [leads] so a process death does not reset the day. The same
+ * file keeps where he was at the last greeting (place leads only on arrival) and the last two
+ * hellos' words (the next hello is asked not to reuse them).
  */
 class GreetingPackCache(
     private val backend: GreetingBackend,
@@ -205,15 +207,38 @@ class GreetingPackCache(
         GreetingBlock.kindOfTopic(topic)?.let { noteLed(it) }
     }
 
-    /** A greeting with no topic was spoken: it ends a run of one kind. */
-    fun noteHello() = noteLed(GreetingBlock.HELLO)
+    /**
+     * A greeting with no topic was spoken: it ends a run of one kind, and [words] (what was said, when
+     * known) is kept so the next hello is asked not to reuse it.
+     */
+    @Synchronized
+    fun noteHello(words: String? = null) {
+        noteLed(GreetingBlock.HELLO)
+        val said = words?.trim()?.take(GreetingPrompt.MAX_AVOID_CHARS)?.takeIf { it.isNotEmpty() } ?: return
+        save(loadedLeads().let { it.copy(hellos = (it.hellos + said).takeLast(HELLOS_KEPT)) })
+    }
 
-    /** Today's lead kinds in order and the last one, for [GreetingBlock.lead]. */
+    /**
+     * Where he was at a spoken greeting ([GreetingBlock.placeKey]): place leads only when this
+     * changes, or on the day's first greeting. Null (the place could not be read) keeps the last one.
+     */
+    @Synchronized
+    fun notePlace(key: String?) {
+        if (key == null) return
+        save(loadedLeads().copy(lastPlace = key))
+    }
+
+    /** Today's lead kinds, the last kind, the last place and the last hellos, for [GreetingBlock.lead]. */
     @Synchronized
     fun history(): GreetingBlock.History {
         val kept = loadedLeads()
         val day = today().toString()
-        return GreetingBlock.History(today = if (kept.day == day) kept.kinds else emptyList(), last = kept.last)
+        return GreetingBlock.History(
+            today = if (kept.day == day) kept.kinds else emptyList(),
+            last = kept.last,
+            lastPlace = kept.lastPlace,
+            hellos = kept.hellos,
+        )
     }
 
     @Synchronized
@@ -221,7 +246,10 @@ class GreetingPackCache(
         val day = today().toString()
         val kept = loadedLeads()
         val kinds = if (kept.day == day) kept.kinds + kind else listOf(kind)
-        val next = LeadLog(day, kinds.takeLast(MAX_LEADS_KEPT), kind)
+        save(kept.copy(day = day, kinds = kinds.takeLast(MAX_LEADS_KEPT), last = kind))
+    }
+
+    private fun save(next: LeadLog) {
         led = next
         leads.save(next.toJson())
     }
@@ -229,20 +257,36 @@ class GreetingPackCache(
     private fun loadedLeads(): LeadLog =
         led ?: (leads.load()?.let { LeadLog.parse(it) } ?: LeadLog.EMPTY).also { led = it }
 
-    /** [history]'s stored form. */
-    private data class LeadLog(val day: String, val kinds: List<String>, val last: String?) {
+    /** [history]'s stored form: one small JSON body in [leads]. */
+    private data class LeadLog(
+        val day: String,
+        val kinds: List<String>,
+        val last: String?,
+        val lastPlace: String? = null,
+        val hellos: List<String> = emptyList(),
+    ) {
         fun toJson(): String = JSONObject().put("day", day).put("kinds", org.json.JSONArray(kinds))
-            .put("last", last ?: JSONObject.NULL).toString()
+            .put("last", last ?: JSONObject.NULL)
+            .put("last_place", lastPlace ?: JSONObject.NULL)
+            .put("hellos", org.json.JSONArray(hellos))
+            .toString()
 
         companion object {
             val EMPTY = LeadLog("", emptyList(), null)
 
             fun parse(body: String): LeadLog? = runCatching {
                 val o = JSONObject(body)
-                val a = o.optJSONArray("kinds")
-                val kinds = if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) }
-                LeadLog(o.optString("day"), kinds, if (o.isNull("last")) null else o.optString("last"))
+                LeadLog(
+                    day = o.optString("day"),
+                    kinds = strings(o.optJSONArray("kinds")),
+                    last = if (o.isNull("last")) null else o.optString("last"),
+                    lastPlace = if (o.isNull("last_place")) null else o.optString("last_place"),
+                    hellos = strings(o.optJSONArray("hellos")),
+                )
             }.getOrNull()
+
+            private fun strings(a: org.json.JSONArray?): List<String> =
+                if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) }
         }
     }
 
@@ -270,6 +314,9 @@ class GreetingPackCache(
 
         /** Today's lead kinds kept: far more opens than a day has, so the list never grows unbounded. */
         private const val MAX_LEADS_KEPT = 50
+
+        /** The last hellos handed back as wording not to reuse. */
+        private const val HELLOS_KEPT = 2
 
         /** The screen-on timer's period (`CascadeWarmup`): a pack at most this old plus a fetch. */
         const val TIMER_MS = 10 * 60_000L

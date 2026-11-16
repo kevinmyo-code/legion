@@ -1361,7 +1361,7 @@ internal class CascadeSession(
                 call.join()
                 reply.finishText()
                 // A test open (adb) does not use up the topic for his real greetings.
-                if (test == null) greeting?.noteOpened(plan)
+                if (test == null) greeting?.noteOpened(plan, reply.spoken())
                 when (val o = reply.await()) {
                     ReplySpeaker.Outcome.Played -> {
                         // So his answer is understood: the greeting is the first exchange.

@@ -133,6 +133,28 @@ class GreetingPackCacheTest {
         }
     }
 
+    @Test fun `the last place and the last two hellos are kept beside the leads and survive the process`() {
+        val file = File.createTempFile("leads", ".json").also { it.delete() }
+        try {
+            val backend = FakeGreetingBackend { GreetingOutcome.Ok(good) }
+            fun at(day: LocalDate) = GreetingPackCache(backend, scope, clock = { now }, today = { day },
+                leads = FileLeadStore(file))
+            val c = at(packDay)
+            c.notePlace("place:austin, texas")
+            c.notePlace(null) // unreadable: the last known place stands
+            c.noteHello("First invented hello.")
+            c.noteHello("Second invented hello.")
+            c.noteHello("Third invented hello.")
+            c.noteHello() // words unknown: still a hello, nothing kept
+            val h = at(packDay.plusDays(1)).history()
+            assertEquals("place:austin, texas", h.lastPlace)
+            assertEquals(listOf("Second invented hello.", "Third invented hello."), h.hellos)
+            assertEquals(GreetingBlock.HELLO, h.last)
+        } finally {
+            file.delete()
+        }
+    }
+
     @Test fun `an unreadable lead file is an empty history, not a crash`() {
         val file = File.createTempFile("leads", ".json").also { it.writeText("not json") }
         try {

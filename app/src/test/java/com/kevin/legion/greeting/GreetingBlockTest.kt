@@ -211,16 +211,75 @@ class GreetingBlockTest {
     }
 
     @Test fun `the lead is marked in the block and named as a subject, its facts never pasted into the rules`() {
+        val p = parsed(pack(due = facts(due, item("due:3", "Lab report is due Friday."))))
+        val lead = GreetingBlock.lead(p, noPlace, 8)!!
+        val block = GreetingBlock.render(p, noPlace, morning, lead.item)
+        assertTrue(block.lines().single { it.contains("Essay") }.endsWith(GreetingBlock.LEAD_MARK))
+        assertFalse(block.lines().single { it.contains("Lab report") }.contains(GreetingBlock.LEAD_MARK))
+        val prompt = GreetingPrompt.build(block, lead)
+        assertTrue(prompt.contains("Your one subject: something he has due soon."))
+        // The fact text is in the block once, and nowhere before it.
+        val says = "Essay is due Friday, 5:00 PM."
+        assertEquals(1, Regex(Regex.escape(says)).findAll(prompt).count())
+        assertTrue(prompt.indexOf(says) > prompt.indexOf("FACTS PACK"))
+        assertFalse(prompt.contains("This one is about money"))
+    }
+
+    @Test fun `a money lead carries no figure: the lead line is the category and the cap, nothing else`() {
         val p = parsed(pack(money = facts(onPace, over)))
         val lead = GreetingBlock.lead(p, noPlace, 13)!!
         val block = GreetingBlock.render(p, noPlace, morning, lead.item)
-        assertTrue(block.lines().single { it.contains("Fuel:") }.endsWith(GreetingBlock.LEAD_MARK))
-        assertFalse(block.lines().single { it.contains("Dining:") }.contains(GreetingBlock.LEAD_MARK))
+        val leadLine = block.lines().single { "Fuel" in it }
+        assertEquals("    * Fuel: over its cap this month. ${GreetingBlock.LEAD_MARK}", leadLine)
+        assertFalse(block.contains(overSays))
         val prompt = GreetingPrompt.build(block, lead)
         assertTrue(prompt.contains("Your one subject: his Fuel budget, which is over its cap."))
-        // The fact text is in the block once, and nowhere before it.
-        assertEquals(1, Regex(Regex.escape(overSays)).findAll(prompt).count())
-        assertTrue(prompt.indexOf(overSays) > prompt.indexOf("FACTS PACK"))
+        assertTrue(prompt.contains("say no amount, no figure and no timing at all"))
+        val noCategory = GreetingBlock.moneyLeadLine(GreetingItem("money:x", "y"))
+        assertEquals("One budget is over its cap this month.", noCategory)
+    }
+
+    @Test fun `place leads only on arrival, or on the day's first greeting`() = runBlocking {
+        val away = GreetingPlace.read(GreetingTestSupport.signals())
+        val here = away.items.single().topic
+        val p = parsed(pack(due = facts(due)))
+        // Same place as the last greeting, later in the day: not news.
+        val sameLater = GreetingBlock.History(today = listOf("due"), last = "due", lastPlace = here)
+        assertEquals("due:1", GreetingBlock.lead(p, away, 8, sameLater.copy(last = "calendar"))?.item?.topic)
+        assertNull(GreetingBlock.lead(parsed(pack()), away, 8, sameLater))
+        // Somewhere else at the last greeting (home, or another city): he has arrived.
+        val fromHome = sameLater.copy(lastPlace = GreetingBlock.AT_HOME)
+        assertEquals(here, GreetingBlock.lead(p, away, 8, fromHome)?.item?.topic)
+        // The day's first greeting while away leads with the place even if nothing changed.
+        assertEquals(here, GreetingBlock.lead(p, away, 8, GreetingBlock.History(lastPlace = here))?.item?.topic)
+        // The key kept for each state of the place.
+        assertEquals(here, GreetingBlock.placeKey(away))
+        val home = GreetingPlace.read(GreetingTestSupport.signals(atHome = true))
+        assertEquals(GreetingBlock.AT_HOME, GreetingBlock.placeKey(home))
+        assertNull(GreetingBlock.placeKey(GreetingPlace.read(GreetingTestSupport.signals(fix = null))))
+    }
+
+    @Test fun `templates are trimmed before the block goes in, so nothing goes out indented`() {
+        val p = parsed(pack(due = facts(due)))
+        val lead = GreetingBlock.lead(p, noPlace, 8)!!
+        val prompt = GreetingPrompt.build(GreetingBlock.render(p, noPlace, morning, lead.item), lead)
+        assertTrue(prompt.startsWith("(System:"))
+        assertTrue(prompt.lines().none { it.startsWith("        ") })
+        assertFalse(prompt.contains("{"))
+        val hello = GreetingPrompt.hello(listOf("x"))
+        assertTrue(hello.startsWith("(System:"))
+        assertFalse(hello.contains("{"))
+    }
+
+    @Test fun `the hello is asked not to reuse the last hellos, quoted safely`() {
+        assertFalse(GreetingPrompt.hello().contains("Do not reuse"))
+        val long = "a".repeat(200)
+        val hello = GreetingPrompt.hello(listOf("He said \"hi\"\nthere", long, "  "))
+        val line = hello.lines().single { it.startsWith("- Do not reuse this wording") }
+        assertTrue(line, line.contains("\"He said hi there\""))
+        assertTrue(line, line.contains("\"${"a".repeat(GreetingPrompt.MAX_AVOID_CHARS)}\""))
+        assertFalse(line, line.contains("a".repeat(GreetingPrompt.MAX_AVOID_CHARS + 1)))
+        assertTrue(hello.contains("nothing that refers to anything before this moment"))
     }
 
     @Test fun `the prompt forbids the things the rulings forbid and names no one`() {
@@ -233,7 +292,7 @@ class GreetingBlockTest {
             "never ask the same question twice", "Never \"two hours ago\"", "estimate", "absence", "streak",
             "use of this app", "Do not call any tool",
             // 2026-11-16: short and casual, a reaction, one rounded figure at most, never cents, no shame.
-            "One short sentence, fifteen words at most", "Casual and dry", "never read its facts out",
+            "One short sentence, fifteen words at most", "one clause", "Casual and dry", "never read its facts out",
             "at most one, rounded", "Never cents", "never two amounts", "no shame, no nagging",
         ).forEach {
             assertTrue(it, prompt.contains(it))
