@@ -20,14 +20,6 @@ from household.models import Household
 from ingest.drive import Response
 from tests.test_assistant import google  # noqa: F401 - fixture
 
-
-@pytest.fixture(autouse=True)
-def _recruiters_on_live(monkeypatch):
-    """These tests pin the Live path, which stays whole behind the per-role switch (ADR 0102:
-    a recruiter's default is the cascade, `tests/test_assistant_cascade.py`)."""
-    monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", "live")
-
-
 NOON = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 
 

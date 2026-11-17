@@ -193,6 +193,10 @@ export function turnForm(request: TurnRequest): FormData {
     form.append('audio', new Blob([bytes], { type: 'application/octet-stream' }), 'utterance.pcm')
   }
   if (request.text) form.append('text', request.text)
+  if (request.greet) {
+    form.append('greet', 'true')
+    if (request.greetingHistory) form.append('greeting_history', JSON.stringify(request.greetingHistory))
+  }
   if (request.conversationId) form.append('conversation_id', request.conversationId)
   form.append('utc_offset_minutes', String(request.utcOffsetMinutes))
   form.append('client_now_ms', String(Date.now()))
@@ -206,6 +210,7 @@ async function startTurn(request: TurnRequest, signal: AbortSignal): Promise<Tur
     // The typed fields for the contract; the form (with the utterance as a file) is what is sent.
     body: {
       ...(request.text ? { text: request.text } : {}),
+      ...(request.greet ? { greet: true } : {}),
       conversation_id: request.conversationId,
       utc_offset_minutes: request.utcOffsetMinutes,
       ...(request.preface ? { preface: request.preface } : {}),
@@ -236,5 +241,12 @@ export function createCascadeDeps(): CascadeDeps {
     now: () => Date.now(),
     utcOffsetMinutes: () => -new Date().getTimezoneOffset(),
     record: recordTransport,
+    greetingStore: {
+      load: () => window.localStorage.getItem(GREETING_KEY),
+      save: (value) => window.localStorage.setItem(GREETING_KEY, value),
+    },
   }
 }
+
+/** The greeting's caps (spec 27): lead kinds today and the last hellos' words, never facts. */
+const GREETING_KEY = 'legion.assistant.greeting.v1'

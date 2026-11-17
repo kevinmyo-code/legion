@@ -10,18 +10,19 @@ from datetime import datetime, timedelta
 
 from assistant import live
 from assistant.companions import ResolvedCompanion, companion_for
-from assistant.prompt import build_system_prompt
+from assistant.prompt import build_system_prompt_parts
 from assistant.surface import tools_for, web_description
 from demo.budget import max_session_minutes
 from household.models import is_recruiter
 from household.timezones import utc_offset_minutes as zone_offset_minutes
 
 
-def system_prompt_for(
+def system_prompt_parts_for(
     user, *, now: datetime, utc_offset_minutes: int | None
-) -> tuple[str, ResolvedCompanion]:
-    """(the system prompt, the companion it speaks as): the one prompt both voice engines use
-    (`token_request_for` for Live, `assistant.cascade` for the cascade, ADR 0102).
+) -> tuple[str, str, ResolvedCompanion]:
+    """(the prompt's stable body, its clock-and-speaker tail, the companion it speaks as): the
+    one prompt both voice engines use (Live joins the two, `system_prompt_for`; the cascade
+    caches the body and sends the tail per turn, ADR 0102).
 
     The browser's own offset wins. Without one, the household's timezone
     (when its owner has set one) supplies the CURRENT offset at `now` - a
@@ -36,7 +37,7 @@ def system_prompt_for(
             household.timezone if household is not None else None, now
         )
         from_household = utc_offset_minutes is not None
-    prompt = build_system_prompt(
+    body, tail = build_system_prompt_parts(
         companion=companion,
         first_name=user.first_name,
         now=now,
@@ -44,7 +45,17 @@ def system_prompt_for(
         offset_from_household=from_household,
         recruiter=is_recruiter(user),
     )
-    return prompt, companion
+    return body, tail, companion
+
+
+def system_prompt_for(
+    user, *, now: datetime, utc_offset_minutes: int | None
+) -> tuple[str, ResolvedCompanion]:
+    """(the whole system prompt, the companion): what a Live token carries."""
+    body, tail, companion = system_prompt_parts_for(
+        user, now=now, utc_offset_minutes=utc_offset_minutes
+    )
+    return f"{body}\n\n{tail}", companion
 
 
 def token_request_for(

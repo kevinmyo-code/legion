@@ -519,6 +519,16 @@ def auth_client(household_user):
 
 
 @pytest.fixture(autouse=True)
+def _web_voice_on_live(monkeypatch):
+    """ADR 0102: the web assistant's default engine is the cascade for every role. The suite
+    written for the Live path (mint, tool door, record, budget, write guard) pins Live, which
+    stays whole behind the switch; `tests/test_assistant_cascade.py` clears this and tests the
+    defaults and the cascade itself."""
+    monkeypatch.setenv("LEGION_WEB_VOICE", "live")
+    monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", "live")
+
+
+@pytest.fixture(autouse=True)
 def _no_nhtsa(monkeypatch):
     """No test reaches the network: `vehicle_recalls`' one call to NHTSA fails
     in words unless a test hands it an answer (`tests/test_parity_tools.py`)."""

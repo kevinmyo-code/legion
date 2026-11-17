@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import struct
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -49,6 +50,34 @@ STT_INSTRUCTION = (
 )
 STT_ASK = "Transcribe this audio."
 _QUOTES = {'"', "'", "“", "”"}
+
+
+# Spec 3: the loudest 100 ms must reach about -40 dBFS (RMS 330 of 32,768) or nothing is sent
+# (11-17: hiss was transcribed as a word). The browser's own end-of-speech line is the same.
+LOUDNESS_GATE_RMS = 330
+_WINDOW_SAMPLES = INPUT_RATE // 10
+
+
+def loudest_100ms(pcm: bytes) -> float:
+    """The highest RMS over consecutive 100 ms windows of 16-bit little-endian mono PCM."""
+    count = len(pcm) // 2
+    if count == 0:
+        return 0.0
+    samples = struct.unpack(f"<{count}h", pcm[: count * 2])
+    best = 0.0
+    for at in range(0, count, _WINDOW_SAMPLES):
+        window = samples[at : at + _WINDOW_SAMPLES]
+        rms = (sum(v * v for v in window) / len(window)) ** 0.5
+        best = max(best, rms)
+    return best
+
+
+def _worth_retry(said: str) -> bool:
+    """A dropped request or a server error (the phone's `worthRetry`); a 4xx is not."""
+    if "could not be reached" in said or "stopped answering" in said:
+        return True
+    match = re.search(r"HTTP (\d{3})", said)
+    return bool(match) and int(match.group(1)) >= 500
 
 
 def wav(pcm: bytes, rate: int = INPUT_RATE) -> bytes:
@@ -188,7 +217,7 @@ class GeminiSpeech:
 
     def transcribe(self, pcm: bytes) -> Heard:
         audio_ms = len(pcm) // 32
-        if len(pcm) < MIN_AUDIO_BYTES:
+        if len(pcm) < MIN_AUDIO_BYTES or loudest_100ms(pcm) < LOUDNESS_GATE_RMS:
             return Heard("", audio_ms, 0)
         started = self._clock()
         text, usage = [], {}
@@ -212,21 +241,31 @@ class GeminiSpeech:
 
     def speak(self, text: str, voice: str, spoken: Spoken) -> Iterator[bytes]:
         """Yields whole 16-bit samples of `text` in `voice`, 24 kHz mono, as they arrive.
-        `spoken` is filled in as it goes. A failure before any audio raises `SpeechFailure`;
-        one after audio has played ends the sentence there (a retry would repeat its start)."""
+        `spoken` is filled in as it goes. Before any audio, the phone's two retries
+        (`CloudSpeech.kt` 459-467): a 400 is tried once more with the legacy voice shape, and a
+        dropped request or a server error once more as it was. A failure after audio has played
+        ends the sentence there (a retry would say its start twice)."""
         started = self._clock()
         sent = 0
-        try:
-            for chunk in self._speak_once(text, voice, spoken, started):
-                sent += len(chunk)
-                yield chunk
-        except ModelFailure as exc:
-            if sent or self._legacy_voice or "400" not in str(exc):
-                raise SpeechFailure(spoken.failed or "tts_failed") from None
-            # Google refused the 3.8 voice shape: the older one, once, for the rest of the turn.
-            self._legacy_voice = True
-            spoken.failed = None
-            yield from self._speak_once(text, voice, spoken, started)
+        retried = False
+        while True:
+            try:
+                for chunk in self._speak_once(text, voice, spoken, started):
+                    sent += len(chunk)
+                    yield chunk
+                return
+            except ModelFailure as exc:
+                said = str(exc)
+                if sent:
+                    raise SpeechFailure(spoken.failed or "tts_failed") from None
+                if "400" in said and not self._legacy_voice:
+                    # Google refused the 3.8 voice shape: the older one, for the rest of the turn.
+                    self._legacy_voice = True
+                elif _worth_retry(said) and not retried:
+                    retried = True
+                else:
+                    raise SpeechFailure(spoken.failed or "tts_failed") from None
+                spoken.failed = None
 
     def _speak_once(self, text, voice, spoken: Spoken, started: float) -> Iterator[bytes]:
         first = True

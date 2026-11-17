@@ -273,6 +273,32 @@ def web_shared_clauses() -> str:
     return "".join(shared_clauses.CLAUSES[name] for name in shared_clauses.WEB_ORDER)
 
 
+def build_system_prompt_parts(
+    *,
+    companion: ResolvedCompanion,
+    first_name: str,
+    now: datetime,
+    utc_offset_minutes: int | None,
+    offset_from_household: bool = False,
+    recruiter: bool = False,
+) -> tuple[str, str]:
+    """(the stable body, the per-conversation tail: the clock and who is speaking).
+
+    The web cascade (ADR 0102) caches the body with the tool declarations as an explicit Gemini
+    context cache and sends the tail with each turn, so the clock never breaks the cache. Live
+    joins the two (`build_system_prompt`), unchanged."""
+    who = companion.clause
+    if companion.delivery:
+        who += " " + companion.delivery
+    if recruiter:
+        who += "\n\n" + RECRUITER_REGISTER
+    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else MEMORY_CLAUSE)
+    body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
+    clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
+    speaker = VISITOR_FACT if recruiter else member_fact(first_name)
+    return body, f"{clock} {speaker}"
+
+
 def build_system_prompt(
     *,
     companion: ResolvedCompanion,
@@ -285,13 +311,12 @@ def build_system_prompt(
     """`recruiter` (ADR 0068) adds the visitor register after the companion's
     own, the demo frame after the web frame, and says who is speaking as a
     visitor rather than a member. Off, the prompt is unchanged."""
-    who = companion.clause
-    if companion.delivery:
-        who += " " + companion.delivery
-    if recruiter:
-        who += "\n\n" + RECRUITER_REGISTER
-    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else MEMORY_CLAUSE)
-    body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
-    clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
-    speaker = VISITOR_FACT if recruiter else member_fact(first_name)
-    return f"{body}\n\n{clock} {speaker}"
+    body, tail = build_system_prompt_parts(
+        companion=companion,
+        first_name=first_name,
+        now=now,
+        utc_offset_minutes=utc_offset_minutes,
+        offset_from_household=offset_from_household,
+        recruiter=recruiter,
+    )
+    return f"{body}\n\n{tail}"

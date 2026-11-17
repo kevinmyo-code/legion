@@ -14125,7 +14125,7 @@ components:
           type: string
           format: uri
           description: 'One utterance: raw 16-bit little-endian mono PCM at 16 kHz,
-            no header, at most 15 seconds. Send this OR `text`. Never stored.'
+            no header, at most 28 seconds. Send this OR `text`. Never stored.'
         text:
           type: string
           description: A typed message, answered in text only (no speech). Send this
@@ -14148,6 +14148,16 @@ components:
           nullable: true
           description: As for `POST /api/assistant/session`; read when a conversation
             starts.
+        greet:
+          type: boolean
+          default: false
+          description: 'The greeting on open, spoken: no `audio` or `text` with it.
+            A member''s is built from their greeting facts; a demo visit''s is scripted.'
+        greeting_history:
+          type: string
+          description: 'With `greet`: JSON the page keeps for the greeting''s caps,
+            `{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`.'
+          maxLength: 2000
         preface:
           type: string
           description: A hidden line the page puts ahead of the person's words (the

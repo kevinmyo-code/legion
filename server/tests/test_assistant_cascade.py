@@ -58,6 +58,8 @@ class FakeSpeech:
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
+    # Filler audio is never fetched here unless a test says so (it would be the fake's speech).
+    monkeypatch.setattr(cascade, "FILLER_AUDIO", cascade.FillerAudio(spawn=lambda work: None))
     monkeypatch.setenv(GEMINI_KEY_ENV, KEY)
     monkeypatch.delenv("LEGION_WEB_VOICE", raising=False)
     monkeypatch.delenv("LEGION_WEB_VOICE_RECRUITER", raising=False)
@@ -79,8 +81,7 @@ def engine(monkeypatch):
 
 
 @pytest.fixture
-def member(household_user, monkeypatch):
-    monkeypatch.setenv("LEGION_WEB_VOICE", "cascade")
+def member(household_user):
     household_user.first_name = "Sam"
     household_user.save(update_fields=["first_name"])
     return browser(household_user)
@@ -142,8 +143,7 @@ def _record(conversation_id) -> str:
 # =============================================================================
 
 
-def test_a_stranger_and_a_csrf_less_browser_are_refused(client, household_user, monkeypatch):
-    monkeypatch.setenv("LEGION_WEB_VOICE", "cascade")
+def test_a_stranger_and_a_csrf_less_browser_are_refused(client, household_user):
     assert client.post("/api/assistant/turn", {"text": "hi"}).status_code in (401, 403)
     from rest_framework.test import APIClient
 
@@ -152,30 +152,35 @@ def test_a_stranger_and_a_csrf_less_browser_are_refused(client, household_user, 
     assert no_csrf.post("/api/assistant/turn", {"text": "hi"}).status_code == 403
 
 
-def test_a_device_token_cannot_use_the_turn_door(auth_client, monkeypatch):
-    monkeypatch.setenv("LEGION_WEB_VOICE", "cascade")
+def test_a_device_token_cannot_use_the_turn_door(auth_client):
     assert auth_client.post("/api/assistant/turn", {"text": "hi"}).status_code in (401, 403)
 
 
-def test_the_defaults_are_cascade_for_a_visitor_and_live_for_a_member(household_user, visitor):
+def test_the_default_is_cascade_for_every_role(household_user, visitor):
     member = browser(household_user)
-    assert member.get("/api/assistant/session").data["engine"] == "live"
+    mine = member.get("/api/assistant/session").data
+    assert mine["engine"] == "cascade" and mine["session_minutes"] is None
     said = visitor.get("/api/assistant/session").data
     assert said["engine"] == "cascade"
     assert said["session_minutes"] == 5
     assert said["max_utterance_seconds"] == views.MAX_UTTERANCE_SECONDS
-    # Each door refuses a caller whose engine is the other one, and nothing runs.
-    assert _post(member, text="hi").status_code == 409
-    refused = visitor.post("/api/assistant/session", {}, format="json")
-    assert refused.status_code == 409
-    assert refused.data["detail"] == views.CASCADE_ONLY
+    # The Live door mints nothing for a cascade caller, member or visitor.
+    for client in (member, visitor):
+        refused = client.post("/api/assistant/session", {}, format="json")
+        assert refused.status_code == 409
+        assert refused.data["detail"] == views.CASCADE_ONLY
 
 
-def test_the_switch_is_one_env_per_role_and_a_typo_is_ignored(household_user, visitor, monkeypatch):
+def test_live_is_the_fallback_one_env_per_role_and_a_typo_is_ignored(
+    household_user, visitor, monkeypatch
+):
     member = browser(household_user)
-    monkeypatch.setenv("LEGION_WEB_VOICE", "cascade")
+    monkeypatch.setenv("LEGION_WEB_VOICE", "live")
+    assert member.get("/api/assistant/session").data["engine"] == "live"
+    assert visitor.get("/api/assistant/session").data["engine"] == "cascade"
+    # The turn door refuses a Live caller, and nothing runs.
+    assert _post(member, text="hi").status_code == 409
     monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", "live")
-    assert member.get("/api/assistant/session").data["engine"] == "cascade"
     assert visitor.get("/api/assistant/session").data["engine"] == "live"
     monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", "casade")
     assert visitor.get("/api/assistant/session").data["engine"] == "cascade"
@@ -203,8 +208,12 @@ def test_a_typed_turn_answers_in_text_and_speaks_nothing(member, engine):
     assert '0  2 I LIVE_AUDIT: user final=true typed=true text="Anything on today?"' in record
     assert 'assistant text="Nothing is on today."' in record
     assert "cascade_turn status=done spoken=false" in record
-    # The model saw the web prompt and the member's declarations, nothing else.
+    # The model saw the web prompt and the member's declarations, nothing else. The clock rides
+    # in the turn, never in the cached prefix.
     sent = engine.model.requests[0]
+    assert "This conversation started" not in sent.system
+    assert sent.contents[-1]["parts"][0]["text"].startswith("[Context, not said by the person:")
+    assert sent.contents[-1]["parts"][-1]["text"] == "Anything on today?"
     assert {d["name"] for d in sent.declarations} == set(WEB_TOOL_NAMES)
     assert "behavior" not in sent.declarations[0]
 
@@ -292,7 +301,9 @@ def test_a_model_failure_ends_in_words(member, engine):
     engine.model = Broken()
     events = _events(_post(member, text="Hi."))
     assert _of(events, "done")[0]["status"] == "failed"
-    assert "couldn't reach the model" in _of(events, "sentence")[-1]["text"]
+    assert _of(events, "sentence")[-1]["text"] == (
+        cascade.NOT_ANSWERED_MODEL + cascade.NOTHING_CHANGED
+    )
 
 
 def test_an_unexpected_error_ends_the_stream_in_words(member, engine, monkeypatch):
@@ -337,7 +348,8 @@ def test_no_write_follows_a_web_search_in_the_same_turn_and_the_next_turn_may(me
 def test_a_visitor_is_declared_exactly_its_allowlist(visitor, engine):
     _events(_post(visitor, text="Hello."))
     declared = {d["name"] for d in engine.model.requests[0].declarations}
-    assert declared == set(RECRUITER_TOOLS)
+    # The allowlist, plus the one control every role has (spec 18), which reaches no data.
+    assert declared == set(RECRUITER_TOOLS) | {cascade.END_TOOL}
 
 
 @pytest.mark.parametrize(
@@ -501,3 +513,152 @@ def test_a_verbatim_sentence_is_spoken_and_model_money_after_it_is_dropped(
 )
 def test_has_money_matches_the_phones_filter(sentence, money):
     assert cascade.has_money(sentence) is money
+
+
+# =============================================================================
+# The phone's behaviours (voice-behaviour-spec-1117)
+# =============================================================================
+
+
+def test_the_cached_prefix_carries_the_voice_clause_and_the_turn_the_context(member, engine):
+    _events(_post(member, text="Hi."))
+    sent = engine.model.requests[0]
+    assert sent.system.endswith(cascade.VOICE_CLAUSE)
+    assert sent.contents[-1]["parts"][0]["text"].startswith("(Current context, use naturally")
+
+
+def test_end_conversation_signs_off_and_tells_the_page_to_close(member, engine):
+    engine.model = FakeModel([call(cascade.END_TOOL, {}), say("Very well.")])
+    events = _events(_post(member, text="That will be all."))
+    done = _of(events, "done")[0]
+    assert done["end"] is True
+    assert _of(events, "sentence")[-1]["text"] == "Very well."
+    response = engine.model.requests[1].contents[-1]["parts"][0]["functionResponse"]
+    assert response["response"]["message"] == cascade.END_INSTRUCTION
+
+
+def test_end_conversation_is_open_to_a_visitor_and_reaches_nothing(visitor, engine):
+    engine.model = FakeModel([call(cascade.END_TOOL, {}), say("Goodbye.")])
+    events = _events(_post(visitor, text="I'm good."))
+    assert _of(events, "tool")[0]["ok"] is True
+    assert _of(events, "done")[0]["end"] is True
+
+
+def test_a_reply_that_opens_with_a_filler_line_loses_it(member, engine):
+    engine.model = FakeModel([say("One moment. Your day is clear.")])
+    events = _events(_post(member, text="Anything today?"))
+    assert [s["text"] for s in _of(events, "sentence")] == ["Your day is clear."]
+
+
+def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch, household_user):
+    from assistant.companions import companion_for
+
+    fillers = cascade.FillerAudio(spawn=lambda work: work())
+    fillers.warm(engine.speech, companion_for(household_user).voice_name)
+    monkeypatch.setattr(cascade, "FILLER_AUDIO", fillers)
+    engine.speech.spoken.clear()
+    engine.model = FakeModel(
+        [call("legion_docs", {"query": "how is it built"}), say("It is Django.")]
+    )
+    events = _events(_post(member, audio=PCM))
+    kinds = _kinds(events)
+    working = kinds.index("working")
+    # The filler's audio comes right after the slow tool is announced, before the answer.
+    assert kinds[working + 1] == "audio"
+    assert kinds.index("sentence") > working + 1
+
+
+def test_no_reply_at_all_says_so_in_the_phones_words(member, engine):
+    engine.model = FakeModel([[*say("")[2:]]])
+    events = _events(_post(member, text="Hm."))
+    assert _of(events, "sentence")[-1]["text"] == cascade.NO_TEXT + cascade.NOTHING_CHANGED
+
+
+def test_a_member_greeting_reads_their_facts_and_is_spoken(member, engine, monkeypatch):
+    from greeting import facts
+
+    pack = {
+        "generated_at": "2026-11-17T09:30:00-06:00",
+        "today": "2026-11-17",
+        "utc_offset": "UTC-06:00",
+        "zone_note": None,
+        "sources": {
+            "ended_events": {"state": "empty", "says": "None.", "items": [], "note": None},
+            "today_events": {"state": "empty", "says": "None.", "items": [], "note": None},
+            "due_soon": {
+                "state": "facts",
+                "says": "One due.",
+                "note": None,
+                "items": [{"topic": "due:abc", "raised": False, "says": "Essay due 5 PM."}],
+            },
+            "body": {"state": "unreadable", "says": "x", "reason": "No access.", "items": []},
+            "money": {"state": "empty", "says": "None.", "items": [], "note": None},
+        },
+        "said": [],
+        "closed": [],
+        "topics": {"state": "read", "reason": None},
+    }
+    monkeypatch.setattr(facts, "pack", lambda request: pack)
+    engine.model = FakeModel([say("That essay's still waiting, huh?")])
+    events = _events(_post(member, greet="true"))
+    assert _of(events, "greeting")[0]["kind"] == "due"
+    assert _of(events, "audio")
+    prompt = engine.model.requests[0].contents[-1]["parts"][-1]["text"]
+    assert "Essay due 5 PM. [LEAD]" in prompt
+    assert "COULD NOT BE READ" in prompt
+    # The greeting is on the record as the assistant's, and the next turn's history opens with
+    # the page's open, then the greeting.
+    conversation = _of(events, "turn")[0]["conversation_id"]
+    engine.model = FakeModel([say("Sure.")])
+    _events(_post(member, text="Remind me later.", conversation_id=conversation))
+    contents = engine.model.requests[0].contents
+    assert contents[0]["parts"][0]["text"] == views.OPENED_LINE
+    assert contents[1]["parts"][0]["text"] == "That essay's still waiting, huh?"
+
+
+def test_a_greeting_past_its_deadline_is_the_scripted_line(member, engine, monkeypatch):
+    from assistant import web_greeting
+
+    class Slow:
+        requests: list = []
+
+        def stream(self, req):
+            raise ModelFailure("Gemini could not be reached (TimeoutError)")
+            yield
+
+    engine.model = Slow()
+    events = _events(_post(member, greet="true"))
+    greeting = _of(events, "greeting")[0]
+    assert greeting["kind"] == "scripted"
+    assert greeting["text"] in web_greeting.ACK_LINES
+
+
+def test_a_visitor_greeting_is_scripted_and_asks_no_model(visitor, engine):
+    from assistant import web_greeting
+
+    events = _events(_post(visitor, greet="true"))
+    assert _of(events, "greeting")[0]["text"] == web_greeting.RECRUITER_HELLO
+    assert engine.model.requests == []
+    assert _of(events, "audio")
+    # Its history then opens with the demo's opener line, as the prompt expects.
+    conversation = _of(events, "turn")[0]["conversation_id"]
+    _events(_post(visitor, text="What did we spend?", conversation_id=conversation))
+    from assistant.prompt import RECRUITER_OPENER
+
+    assert engine.model.requests[0].contents[0]["parts"][0]["text"] == RECRUITER_OPENER
+
+
+def test_a_greeting_carries_no_words(member, engine):
+    assert _post(member, greet="true", text="hi").status_code == 400
+
+
+def test_quiet_audio_is_not_sent_for_transcription():
+    from assistant.speech import GeminiSpeech
+
+    class NoNetwork:
+        def lines(self, *a, **k):
+            raise AssertionError("nothing should be sent")
+
+    quiet = b"\x05\x00" * 16_000
+    heard = GeminiSpeech(lambda: "k", stt_model="m", transport=NoNetwork()).transcribe(quiet)
+    assert heard.text == ""

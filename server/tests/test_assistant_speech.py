@@ -115,3 +115,108 @@ def test_no_key_is_a_failure_and_nothing_is_sent():
     with pytest.raises(SpeechFailure):
         GeminiSpeech(lambda: None, stt_model="m", transport=fake).transcribe(b"\x00" * 8000)
     assert fake.sent == []
+
+
+# ---- the prompt cache (`assistant/prompt_cache.py`) ---------------------------------------------
+
+from agents.runtime.model import ModelRequest, request_body, say  # noqa: E402
+from assistant.prompt_cache import CacheStore, CachingModel  # noqa: E402
+
+
+class CacheFake:
+    """`stream` records requests and answers a fixed round; `create_cache` names a cache."""
+
+    def __init__(self, fail_cached: Exception | None = None):
+        self.requests: list[ModelRequest] = []
+        self.created: list[str] = []
+        self.fail_cached = fail_cached
+
+    def stream(self, req):
+        self.requests.append(req)
+        if req.cached_content and self.fail_cached is not None:
+            raise self.fail_cached
+        yield from say("Fine.")
+
+    def create_cache(self, model, system, declarations, ttl_s=300):
+        self.created.append(system)
+        return f"cachedContents/{len(self.created)}"
+
+
+DECLS = [{"name": "list_events", "description": "x", "parameters": {"type": "object"}}]
+
+
+def _req(allow_tools=True, system="BODY"):
+    return ModelRequest(
+        model="m", system=system, contents=[], declarations=DECLS, allow_tools=allow_tools
+    )
+
+
+def _store(clock=lambda: 1000.0):
+    return CacheStore(clock=clock, spawn=lambda work: work())
+
+
+def test_the_first_round_goes_inline_and_the_next_uses_the_cache():
+    inner = CacheFake()
+    model = CachingModel(inner, _store())
+    list(model.stream(_req()))
+    assert inner.requests[0].cached_content is None and inner.created == ["BODY"]
+    list(model.stream(_req()))
+    sent = inner.requests[1]
+    assert sent.cached_content == "cachedContents/1"
+    body = request_body(sent)
+    # Only cachedContent, contents and generationConfig travel with a cache (the phone's rule).
+    assert set(body) == {"cachedContent", "contents", "generationConfig"}
+    assert model.used == 1
+
+
+def test_the_tool_free_last_round_goes_inline():
+    inner = CacheFake()
+    model = CachingModel(inner, _store())
+    list(model.stream(_req()))
+    list(model.stream(_req(allow_tools=False)))
+    assert inner.requests[1].cached_content is None
+    assert "toolConfig" in request_body(inner.requests[1])
+
+
+def test_a_different_body_is_a_different_cache():
+    inner = CacheFake()
+    model = CachingModel(inner, _store())
+    list(model.stream(_req(system="A")))
+    list(model.stream(_req(system="B")))
+    assert inner.created == ["A", "B"]
+
+
+def test_a_broken_cache_is_dropped_and_the_round_goes_inline_once():
+    inner = CacheFake(fail_cached=ModelFailure("Gemini answered HTTP 404"))
+    model = CachingModel(inner, _store())
+    list(model.stream(_req()))
+    out = list(model.stream(_req()))
+    assert out  # answered, inline
+    assert [r.cached_content for r in inner.requests] == [None, "cachedContents/1", None]
+
+
+def test_a_cache_near_expiry_is_not_used():
+    now = [1000.0]
+    inner = CacheFake()
+    model = CachingModel(inner, _store(clock=lambda: now[0]))
+    list(model.stream(_req()))
+    now[0] += 1200 - 100
+    list(model.stream(_req()))
+    assert inner.requests[1].cached_content is None
+
+
+def test_a_failed_create_backs_off():
+    class Refusing(CacheFake):
+        def create_cache(self, *a, **k):
+            self.created.append("x")
+            raise ModelFailure("Gemini refused the cache (HTTP 400)")
+
+    now = [1000.0]
+    inner = Refusing()
+    model = CachingModel(inner, _store(clock=lambda: now[0]))
+    list(model.stream(_req()))
+    list(model.stream(_req()))
+    assert inner.created == ["x"]
+    now[0] += 61
+    list(model.stream(_req()))
+    assert inner.created == ["x", "x"]

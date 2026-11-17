@@ -53,8 +53,8 @@ from api.schema import DetailSerializer
 from assistant import cascade, live, read_through, voice_engine
 from assistant.companions import companion_for
 from assistant.models import AssistantCall
-from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES
-from assistant.session import system_prompt_for, token_request_for
+from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES, RECRUITER_OPENER
+from assistant.session import system_prompt_parts_for, token_request_for
 from assistant.surface import recruiter_only_tool, refusal_for
 from demo import budget as demo_budget
 from devicelogs import web_conversation
@@ -306,7 +306,7 @@ class AssistantSessionView(_AssistantView):
                 DetailSerializer,
                 description=(
                     "Too many starts; nothing started. For a recruiter's demo visit, also: "
-                    "\"Today's demo budget is used up. Try again tomorrow.\" For a member with "
+                    '"Today\'s demo budget is used up. Try again tomorrow." For a member with '
                     "`LEGION_MEMBER_DAILY_CAP` set: today's own spend limit is used up."
                 ),
             ),
@@ -324,7 +324,7 @@ class AssistantSessionView(_AssistantView):
                 DetailSerializer,
                 description=(
                     "No `LEGION_GEMINI_KEY` on this server (\"The assistant isn't set up on this "
-                    "server.\"), or Google did not answer."
+                    'server."), or Google did not answer.'
                 ),
             ),
         },
@@ -773,13 +773,16 @@ class AssistantCompanionView(APIView):
 
 # The longest utterance a turn takes, and so the most audio bytes (16 kHz, 16-bit mono). The
 # browser stops recording at this too (`frontend/src/assistant/endpointer.ts`).
-MAX_UTTERANCE_SECONDS = 15
+# Spec 13: the phone's utterance cap.
+MAX_UTTERANCE_SECONDS = 28
 MAX_AUDIO_BYTES = MAX_UTTERANCE_SECONDS * 16_000 * 2
 MAX_TYPED_CHARS = 2_000
 MAX_PREFACE_CHARS = 400
 
 TIME_LIMIT = "Nothing was answered. This demo conversation reached its time limit; start a new one."
-TURN_FAILED = "The engine hit an error answering that, so the turn stopped."
+TURN_FAILED = "Not answered: the engine hit an error answering that. Nothing was changed."
+# The turn a conversation's opening greeting answers, in its history (`web_conversation.history`).
+OPENED_LINE = "(They opened the assistant.)"
 
 
 class AssistantTurnThrottle(_PerMemberThrottle):
@@ -834,6 +837,23 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
         allow_null=True,
         help_text="As for `POST /api/assistant/session`; read when a conversation starts.",
     )
+    greet = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text=(
+            "The greeting on open, spoken: no `audio` or `text` with it. A member's is "
+            "built from their greeting facts; a demo visit's is scripted."
+        ),
+    )
+    greeting_history = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=2_000,
+        help_text=(
+            "With `greet`: JSON the page keeps for the greeting's caps, "
+            '`{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`.'
+        ),
+    )
     preface = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -848,15 +868,16 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
 def _cascade_clients():
     """The text model and the speech client, on the engine's key. Tests replace this."""
     from agents.runtime.model import GeminiClient
+    from assistant.prompt_cache import CachingModel
     from assistant.speech import GeminiSpeech
 
     return (
-        GeminiClient(key=gemini_key),
+        CachingModel(GeminiClient(key=gemini_key)),
         GeminiSpeech(gemini_key, stt_model=voice_engine.text_model()),
     )
 
 
-def _turn_sse(request, turn_input, row_id, history, turn_no, system, voice, reservation):
+def _turn_sse(request, turn_input, row_id, history, turn_no, system, context, voice, reservation):
     report = cascade.TurnReport()
     spoken = turn_input.audio is not None
     try:
@@ -868,6 +889,7 @@ def _turn_sse(request, turn_input, row_id, history, turn_no, system, voice, rese
             history=history,
             turn=turn_no,
             system=system,
+            context=context,
             voice=voice,
             model_name=voice_engine.text_model(),
             model=model,
@@ -896,6 +918,20 @@ def _turn_sse(request, turn_input, row_id, history, turn_no, system, voice, rese
             demo_budget.release_unused(
                 reservation, rounds_unused=cascade.MAX_ROUNDS - report.rounds
             )
+
+
+def _greeting_history(raw: str | None) -> dict:
+    """The page's greeting history, or {} when absent or not the shape asked for."""
+    try:
+        parsed = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    today = [str(k)[:20] for k in parsed.get("today") or [] if isinstance(k, str)][:10]
+    hellos = [str(h)[:200] for h in parsed.get("hellos") or [] if isinstance(h, str)][:3]
+    last = parsed.get("last") if isinstance(parsed.get("last"), str) else None
+    return {"today": today, "last": last, "hellos": hellos}
 
 
 def _refuse(request, detail: str, code: int) -> Response:
@@ -961,7 +997,14 @@ class AssistantTurnView(_AssistantView):
             )
         data = body.validated_data
         upload, text = data.get("audio"), (data.get("text") or "").strip()
-        if (upload is None) == (not text):
+        greet = bool(data.get("greet"))
+        if greet and (upload is not None or text):
+            return _refuse(
+                request,
+                "Nothing was answered. A greeting carries no `audio` or `text`.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        if not greet and (upload is None) == (not text):
             return _refuse(
                 request,
                 "Nothing was answered. Send one utterance as `audio` or one `text`.",
@@ -1000,7 +1043,9 @@ class AssistantTurnView(_AssistantView):
         reservation = None
         if demo_budget.counts(request.user):
             reservation = demo_budget.reserve_cascade_turn(
-                rounds=cascade.MAX_ROUNDS, spoken=audio is not None, user=request.user
+                rounds=1 if greet else cascade.MAX_ROUNDS,
+                spoken=greet or audio is not None,
+                user=request.user,
             )
             if reservation is None:
                 return _refuse(
@@ -1015,15 +1060,23 @@ class AssistantTurnView(_AssistantView):
                 model=f"cascade/{voice_engine.text_model()}",
                 client_now_ms=data.get("client_now_ms"),
             )
-        history, turn_no = web_conversation.history(row, max_turns=cascade.HISTORY_TURNS)
-        system, companion = system_prompt_for(
+        history, turn_no = web_conversation.history(
+            row,
+            max_turns=cascade.HISTORY_TURNS,
+            opened_line=RECRUITER_OPENER if is_recruiter(request.user) else OPENED_LINE,
+        )
+        system, context, companion = system_prompt_parts_for(
             request.user,
             now=datetime.now(UTC),
             utc_offset_minutes=data.get("utc_offset_minutes"),
         )
         _audit(request, AssistantCall.SESSION, Outcome.OK)
         turn_input = cascade.TurnInput(
-            audio=audio, text=text or None, preface=(data.get("preface") or "").strip() or None
+            audio=audio,
+            text=text or None,
+            preface=(data.get("preface") or "").strip() or None,
+            greet=greet,
+            greeting_history=_greeting_history(data.get("greeting_history")),
         )
         response = StreamingHttpResponse(
             _turn_sse(
@@ -1033,6 +1086,7 @@ class AssistantTurnView(_AssistantView):
                 history,
                 turn_no,
                 system,
+                context,
                 companion.voice_name,
                 reservation,
             ),

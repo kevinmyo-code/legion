@@ -8,28 +8,51 @@ import { base64ToPcm16 } from './pcm'
 import type { SseEvent } from './sse'
 
 /**
- * One conversation on the engine's own voice pipeline (ADR 0102): the browser records one
- * utterance, posts it to `POST /api/assistant/turn`, and the ENGINE transcribes it, runs the text
- * model's tool loop over the web tool door, and speaks the reply back as a stream of events. The
- * browser holds no Gemini credential of any kind.
+ * One conversation on the engine's own voice pipeline (ADR 0102), with the phone's cloud voice
+ * behaviour (`.legion/reports/voice-behaviour-spec-1117.md`, items cited as "spec N"). The browser
+ * records an utterance, posts it to `POST /api/assistant/turn`, and the ENGINE transcribes it,
+ * runs the text model's tool loop over the web tool door, and speaks the reply back as a stream of
+ * events. The browser holds no Gemini credential of any kind.
  *
  * Same surface as `LiveClient` (`AssistantClient`), so every screen works with either; which one
  * a page gets is the engine's answer (`GET /api/assistant/session`, `assistant-context.tsx`).
  *
- * The turn is the person's: tap to talk, and the utterance ends after a pause
- * (`endpointer.ts`), or at a second tap. A tap while the assistant speaks interrupts it. A typed
- * message is answered in text only, as on Live. What it will not do, as `LiveClient`: assert an
- * outcome the engine did not report (`Done:` only after `ok: true`), or keep anything in the
- * browser. The engine writes the conversation record's words and tool calls itself; this sends
- * only what the browser alone knows (mic changes, interruptions, the reply latency, the end).
+ * How a spoken conversation runs (Kevin, 2026-11-17: "keep listening unless user says stop or
+ * taps to close"):
+ * - **The opening tap** unlocks audio and starts the greeting request in the same tap (spec 29),
+ *   and the engine greets out loud (spec 25).
+ * - **Half-duplex** (spec 19, adapted): the microphone stays open for the conversation, but its
+ *   audio is ignored while the assistant thinks or speaks, so the page never hears itself.
+ *   Listening starts only once the reply has finished playing.
+ * - **The follow-up window** (spec 14, 15): after every reply the page listens again on its own;
+ *   eight seconds with no speech closes the conversation, with the phone's closing tone and the
+ *   note "Conversation closed" (spec 17). So does `end_conversation` (spec 18), after its sign-off.
+ * - **Taps** (spec 21): a tap while listening closes the conversation; a tap while the assistant
+ *   thinks or speaks interrupts it and listens again (spec 20).
+ * - **Nothing heard / not understood** (spec 32): a caption, no speech, and listening resumes.
+ *
+ * A typed message is answered in text only, as on Live. What it will not do, as `LiveClient`:
+ * assert an outcome the engine did not report (`Done:` only after `ok: true`), or keep anything
+ * of the conversation in the browser. The engine writes the conversation record's words and tool
+ * calls itself; this sends only what the browser alone knows (mic changes, interruptions, the
+ * reply latency, the end). The greeting's caps (spec 27) are the one thing kept in the browser:
+ * the kinds of topic led with today and the last hellos' words, never the facts.
  */
 
 export interface TurnRequest {
   audio?: Int16Array
   text?: string
+  greet?: boolean
+  greetingHistory?: GreetingHistory
   conversationId: string | null
   utcOffsetMinutes: number
   preface?: string
+}
+
+export interface GreetingHistory {
+  today: string[]
+  last: string | null
+  hellos: string[]
 }
 
 export type TurnStart =
@@ -44,6 +67,8 @@ export interface CascadeDeps {
   now(): number
   utcOffsetMinutes(): number
   record?: RecordTransport
+  /** The greeting caps' store (spec 27). Absent keeps them for this page only. */
+  greetingStore?: { load(): string | null; save(value: string): void }
 }
 
 export interface CascadeOptions {
@@ -51,7 +76,7 @@ export interface CascadeOptions {
   companionName: string | null
   /** Minutes one conversation may last (a demo visit), or null. */
   sessionMinutes: number | null
-  /** As `LiveOptions`: a hidden line ahead of a new conversation's first turn. */
+  /** As `LiveOptions`: the hidden line a later conversation on the page starts with. */
   openingTurn?: () => string | null
   continueTurn?: () => string | null
   /** As `LiveOptions`: the sentence a conversation ends with at its time limit. */
@@ -59,13 +84,30 @@ export interface CascadeOptions {
   endOnHidden: () => boolean
 }
 
+export const CONVERSATION_CLOSED = 'Conversation closed'
 const ENDED_LOCKED = 'Conversation ended when the screen locked.'
 const ENDED_LIMIT = 'The conversation reached its time limit. Start a new one.'
-const NOTHING_HEARD = "I didn't hear anything, so nothing was sent. Tap the mic and talk, or type."
-const UNREACHABLE = "Can't reach the engine, so nothing was asked."
+const UNREACHABLE = "Not answered: couldn't reach the engine. Nothing was changed."
+/** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
+const PREROLL_CHUNKS = 15
+/** The phone's closing tone (spec 17): 150 ms, half gain. */
+const TONE_MS = 150
+const TONE_HZ = 880
+const TONE_RATE = 24_000
 
 type Draft<T> = T extends unknown ? Omit<T, 'id'> : never
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+
+/** The phone's closing tone as 16-bit PCM. */
+export function closingTone(): Int16Array {
+  const n = Math.round((TONE_RATE * TONE_MS) / 1000)
+  const out = new Int16Array(n)
+  for (let i = 0; i < n; i++) {
+    const fade = Math.min(1, i / 240, (n - i) / 240)
+    out[i] = Math.round(0.5 * fade * 0x7fff * Math.sin((2 * Math.PI * TONE_HZ * i) / TONE_RATE))
+  }
+  return out
+}
 
 export class CascadeClient {
   private state: AssistantState
@@ -74,6 +116,10 @@ export class CascadeClient {
   private nextId = 1
   private micGeneration = 0
   private turnGeneration = 0
+  /** The conversation is open for voice: the mic is held and the page re-listens after replies. */
+  private voiceOpen = false
+  /** Listening for an utterance now (chunks are kept); false while thinking or speaking. */
+  private listening = false
   private endpointer: Endpointer | null = null
   private chunks: Int16Array[] = []
   private abort: AbortController | null = null
@@ -81,12 +127,14 @@ export class CascadeClient {
   private record: ConversationRecord | null = null
   private playing = false
   private awaiting = false
+  /** After the reply: close (end_conversation) or listen again once playback drains. */
+  private afterReply: 'listen' | 'close' | null = null
   private greeted = false
   private lastAsked: string | null = null
   private limitTimer: ReturnType<typeof setTimeout> | null = null
-  /** When the person's turn ended, until the reply's first sentence (the `reply` latency). */
   private replyFrom: number | null = null
   private spokenTurn = false
+  private memoryHistory: string | null = null
 
   private readonly deps: CascadeDeps
   private readonly options: CascadeOptions
@@ -140,9 +188,9 @@ export class CascadeClient {
 
   private activityFor(s: AssistantState): AssistantState['activity'] {
     if (s.phase === 'ended') return 'idle'
-    if (s.mic === 'on') return 'listening'
     if (this.awaiting) return 'thinking'
     if (this.playing) return 'speaking'
+    if (s.mic === 'on') return 'listening'
     return 'idle'
   }
 
@@ -184,7 +232,7 @@ export class CascadeClient {
     if (!text || this.state.phase === 'ended') return false
     const wasSpeaking = this.playing
     this.cutReply('barge_in')
-    if (this.state.mic === 'on') this.dropMic('typed')
+    this.stopListening()
     this.push({ kind: 'me', text, via: 'typed', open: false })
     if (wasSpeaking) this.push({ kind: 'sys', text: 'Stopped speaking because you typed.' })
     void this.turn({ text }, false)
@@ -192,64 +240,64 @@ export class CascadeClient {
   }
 
   /**
-   * Start listening for one utterance. **Call it straight from the tap's handler**: the mic and
-   * the playback context open before anything is awaited (the iPhone and Safari rule), so the
-   * reply can play later without another gesture.
+   * The orb or mic tap when nothing is listening. **Call it straight from the tap's handler**: the
+   * mic and the playback context open before anything is awaited, and the greeting request starts
+   * in the same tap (the iPhone and Safari rule, spec 29). With the conversation already open (the
+   * assistant thinking or speaking), it interrupts and listens again (spec 20, 21).
    */
   startVoice(): Promise<void> {
-    if (this.state.mic !== 'off' || this.state.phase === 'ended') return Promise.resolve()
-    if (this.playing || this.awaiting) this.cutReply('barge_in')
+    if (this.state.phase === 'ended') return Promise.resolve()
+    if (this.voiceOpen) {
+      if (this.playing || this.awaiting) this.cutReply('barge_in')
+      this.listen()
+      return Promise.resolve()
+    }
+    if (this.state.mic !== 'off') return Promise.resolve()
     this.set({ mic: 'starting', notice: null })
     const generation = ++this.micGeneration
-    this.chunks = []
-    this.endpointer = new Endpointer()
     let opened: Promise<void>
     try {
       const audio = (this.audioIO ??= this.deps.audio())
       opened = audio.startMic({
         onChunk: (pcm) => this.onChunk(pcm, generation),
         onMicLost: () => this.micLost(),
-        onPlaying: (playing) => {
-          this.playing = playing
-          this.refresh()
-        },
+        onPlaying: (playing) => this.onPlaying(playing),
       })
     } catch (error) {
       opened = Promise.reject(error)
     }
+    // The greeting goes now, in the tap, while the mic permission settles.
+    this.voiceOpen = true
+    void this.turn({ greet: true }, true)
     return opened.then(
       () => {
         if (generation !== this.micGeneration) return
-        this.set({ mic: 'on', phase: this.state.phase === 'idle' ? 'live' : this.state.phase })
         this.rec({ kind: 'mic_open', reason: 'tap' })
+        if (this.state.mic === 'starting') this.set({ mic: 'off' })
       },
       (error: unknown) => {
         if (generation !== this.micGeneration) return
+        this.voiceOpen = false
         const kind = error instanceof AudioError ? error.kind : 'unavailable'
         this.set({ mic: 'off', notice: micNotice(kind) })
       },
     )
   }
 
-  /** A tap while listening: the utterance ends now and is sent (if anything was said). */
+  /** A tap while listening closes the conversation (spec 21); while it speaks, it interrupts. */
   stopVoice() {
-    if (this.state.mic === 'on') {
-      this.finishUtterance('stopped')
-      return
-    }
-    if (this.state.mic === 'starting') {
-      this.micGeneration += 1
-      this.audioIO?.stopMic()
-      this.set({ mic: 'off' })
+    if (this.listening || this.state.mic === 'starting') {
+      this.close(false)
       return
     }
     this.interrupt()
   }
 
-  /** Stop the reply now: its audio, and the engine's turn if it is still running. */
+  /** Stop the reply now, its audio and the engine's turn, and listen again (spec 20). */
   interrupt() {
     if (!this.playing && !this.awaiting) return
     this.cutReply('barge_in')
+    if (this.voiceOpen) this.listen()
     this.refresh()
   }
 
@@ -278,23 +326,50 @@ export class CascadeClient {
 
   // ---- listening -----------------------------------------------------------
 
-  private onChunk(pcm: Int16Array, generation: number) {
-    if (generation !== this.micGeneration || this.state.mic !== 'on' || !this.endpointer) return
-    this.chunks.push(pcm)
-    const verdict = this.endpointer.push(pcm)
-    if (verdict === 'end') this.finishUtterance('silence')
-    else if (verdict === 'max') this.finishUtterance('max_length')
-    else if (verdict === 'nothing') this.finishUtterance('no_speech')
+  /** Start the follow-up window: the mic's audio counts from now (spec 14). */
+  private listen() {
+    if (!this.voiceOpen) return
+    this.afterReply = null
+    this.listening = true
+    this.endpointer = new Endpointer()
+    this.chunks = []
+    this.set({ mic: 'on', phase: this.state.phase === 'idle' ? 'live' : this.state.phase })
   }
 
-  private finishUtterance(reason: string) {
-    const heard = this.endpointer?.heardSpeech ?? false
+  private stopListening() {
+    this.listening = false
+    this.endpointer = null
+    this.chunks = []
+    if (this.state.mic === 'on') this.set({ mic: 'off' })
+  }
+
+  private onPlaying(playing: boolean) {
+    this.playing = playing
+    if (!playing && !this.awaiting) this.replyDrained()
+    this.refresh()
+  }
+
+  /** The reply has played to its end: listen again, or close if it was the sign-off. */
+  private replyDrained() {
+    const next = this.afterReply
+    this.afterReply = null
+    if (next === 'close') this.close(true)
+    else if (next === 'listen') this.listen()
+  }
+
+  private onChunk(pcm: Int16Array, generation: number) {
+    // Half-duplex: audio heard while the assistant thinks or speaks is never kept (spec 19).
+    if (generation !== this.micGeneration || !this.listening || !this.endpointer) return
+    const verdict = this.endpointer.push(pcm)
+    this.chunks.push(pcm)
+    if (!this.endpointer.heardSpeech && this.chunks.length > PREROLL_CHUNKS) this.chunks.shift()
+    if (verdict === 'end' || verdict === 'max') this.sendUtterance()
+    else if (verdict === 'lapsed') this.close(true)
+  }
+
+  private sendUtterance() {
     const chunks = this.chunks
-    this.dropMic(reason)
-    if (!heard) {
-      this.push({ kind: 'sys', text: NOTHING_HEARD })
-      return
-    }
+    this.stopListening()
     const total = chunks.reduce((n, c) => n + c.length, 0)
     const audio = new Int16Array(total)
     let at = 0
@@ -305,27 +380,40 @@ export class CascadeClient {
     void this.turn({ audio }, true)
   }
 
-  private dropMic(reason: string) {
-    if (this.state.mic === 'on') this.rec({ kind: 'mic_closed', reason })
-    this.micGeneration += 1
-    this.audioIO?.stopMic()
-    this.endpointer = null
-    this.chunks = []
-    this.set({ mic: 'off' })
-  }
-
   private micLost() {
     this.rec({ kind: 'mic_closed', reason: 'lost' })
     this.micGeneration += 1
     this.audioIO?.stopMic()
-    this.endpointer = null
-    this.chunks = []
+    this.voiceOpen = false
+    this.stopListening()
     this.set({ mic: 'off', notice: micNotice('lost') })
+  }
+
+  /**
+   * Close the conversation (window lapsed, end_conversation, or a tap): the phone's closing tone
+   * when it closed by itself, then the note (spec 17). The next tap opens a new one, with a greeting.
+   */
+  private close(tone: boolean) {
+    if (!this.voiceOpen && this.state.mic === 'off' && !this.conversationId) return
+    this.cutReply(null)
+    if (tone) this.audioIO?.play(closingTone(), TONE_RATE)
+    this.rec({ kind: 'mic_closed', reason: tone ? 'window' : 'tap' })
+    this.voiceOpen = false
+    this.stopListening()
+    this.micGeneration += 1
+    this.audioIO?.stopMic()
+    this.rememberLastAsked()
+    this.finishRecord(CONVERSATION_CLOSED)
+    this.conversationId = null
+    if (this.limitTimer) clearTimeout(this.limitTimer)
+    this.limitTimer = null
+    this.push({ kind: 'sys', text: CONVERSATION_CLOSED })
+    this.set({ mic: 'off', phase: 'idle' })
   }
 
   // ---- one turn ------------------------------------------------------------
 
-  private preface(): string | undefined {
+  private preface(greet: boolean): string | undefined {
     if (this.conversationId) return undefined
     if (this.greeted) {
       const base = this.options.continueTurn?.()?.trim()
@@ -335,17 +423,19 @@ export class CascadeClient {
     }
     const opening = this.options.openingTurn?.()?.trim()
     if (opening) this.greeted = true
-    return opening || undefined
+    // A spoken greeting is the opener itself; a typed first message carries it as the preface.
+    return greet ? undefined : opening || undefined
   }
 
-  private async turn(input: { audio?: Int16Array; text?: string }, spoken: boolean) {
+  private async turn(input: { audio?: Int16Array; text?: string; greet?: boolean }, spoken: boolean) {
     this.abort?.abort()
     const abort = new AbortController()
     this.abort = abort
     const generation = ++this.turnGeneration
     this.spokenTurn = spoken
     this.awaiting = true
-    this.replyFrom = this.deps.now()
+    this.afterReply = null
+    this.replyFrom = input.greet ? null : this.deps.now()
     this.set({ phase: 'live', notice: null })
     const startedConversation = this.conversationId === null
     let start: TurnStart
@@ -353,16 +443,18 @@ export class CascadeClient {
       start = await this.deps.startTurn(
         {
           ...input,
+          ...(input.greet ? { greetingHistory: this.greetingHistory() } : {}),
           conversationId: this.conversationId,
           utcOffsetMinutes: this.deps.utcOffsetMinutes(),
-          preface: this.preface(),
+          preface: this.preface(Boolean(input.greet)),
         },
         abort.signal,
       )
     } catch {
       if (generation !== this.turnGeneration) return
       this.awaiting = false
-      this.set({ notice: { kind: 'engine-unreachable', text: UNREACHABLE } })
+      this.push({ kind: 'sys', text: UNREACHABLE })
+      this.settle(spoken)
       return
     }
     if (generation !== this.turnGeneration) return
@@ -372,9 +464,11 @@ export class CascadeClient {
       return
     }
     let open: number | null = null
+    let end = false
     try {
       for await (const event of start.events) {
         if (generation !== this.turnGeneration) return
+        if (event.type === 'done' && event.data.end === true) end = true
         open = this.onEvent(event, open, startedConversation)
       }
     } catch {
@@ -385,10 +479,23 @@ export class CascadeClient {
         this.closeAi(open, false)
         this.awaiting = false
         this.abort = null
-        this.refresh()
         void this.record?.flush()
+        if (end) {
+          this.afterReply = 'close'
+          if (!this.playing) this.replyDrained()
+        } else {
+          this.settle(spoken)
+        }
+        this.refresh()
       }
     }
+  }
+
+  /** After a spoken turn: listen again once the reply has played (spec 14). */
+  private settle(spoken: boolean) {
+    if (!spoken || !this.voiceOpen) return
+    this.afterReply = 'listen'
+    if (!this.playing) this.replyDrained()
   }
 
   private onEvent(event: SseEvent, open: number | null, startedConversation: boolean): number | null {
@@ -411,11 +518,16 @@ export class CascadeClient {
         if (text) this.push({ kind: 'me', text, via: 'spoken', open: false })
         return open
       }
+      case 'greeting': {
+        this.noteGreeting(typeof data.kind === 'string' ? data.kind : '', typeof data.text === 'string' ? data.text : '')
+        return open
+      }
       case 'tool': {
         this.closeAi(open, false)
+        const name = typeof data.name === 'string' ? data.name : 'a tool'
+        if (name === 'end_conversation') return null
         const ok = data.ok === true
         const text = typeof data.text === 'string' ? data.text : ''
-        const name = typeof data.name === 'string' ? data.name : 'a tool'
         const card = this.mergedCard(asCard(data.card))
         this.push({
           kind: 'tool',
@@ -433,7 +545,6 @@ export class CascadeClient {
           this.replyFrom = null
           this.rec({ kind: 'latency', metric: 'reply', ms })
         }
-        this.awaiting = false
         if (open !== null) {
           const line = this.state.lines.find((l) => l.id === open)
           if (line && line.kind === 'ai') {
@@ -456,7 +567,7 @@ export class CascadeClient {
         return open
       }
       case 'error': {
-        const words = typeof data.words === 'string' ? data.words : 'The engine could not answer that.'
+        const words = typeof data.words === 'string' ? data.words : 'Not answered. Nothing was changed.'
         this.closeAi(open, false)
         this.push({ kind: 'sys', text: words })
         return null
@@ -489,6 +600,7 @@ export class CascadeClient {
         return
       default:
         this.push({ kind: 'sys', text: said('The engine refused that, so nothing was asked.') })
+        this.settle(this.spokenTurn)
     }
   }
 
@@ -504,9 +616,10 @@ export class CascadeClient {
     this.abort?.abort()
     this.abort = null
     this.turnGeneration += 1
-    this.audioIO?.flush()
-    this.playing = false
+    this.afterReply = null
     this.awaiting = false
+    this.playing = false
+    this.audioIO?.flush()
     const open = [...this.state.lines].reverse().find((l) => l.kind === 'ai' && l.open)
     if (open) this.closeAi(open.id, true)
     if (wasActive && source) this.rec({ kind: 'interrupted', reason: source })
@@ -516,6 +629,9 @@ export class CascadeClient {
     if (this.limitTimer) clearTimeout(this.limitTimer)
     this.limitTimer = null
     this.micGeneration += 1
+    this.voiceOpen = false
+    this.listening = false
+    this.afterReply = null
     this.audioIO?.stopMic()
     this.audioIO?.flush()
     this.playing = false
@@ -550,6 +666,51 @@ export class CascadeClient {
         this.lastAsked = line.text
         return
       }
+    }
+  }
+
+  // ---- the greeting's caps (spec 27) -----------------------------------------
+
+  private loadHistory(): { day: string; history: GreetingHistory } {
+    const day = new Date(this.deps.now()).toDateString()
+    let raw: string | null = this.memoryHistory
+    try {
+      raw = this.deps.greetingStore?.load() ?? raw
+    } catch {
+      // Storage refused (a private window): the page's own memory stands in.
+    }
+    try {
+      const parsed = raw ? (JSON.parse(raw) as { day?: string; history?: GreetingHistory }) : null
+      const history = parsed?.history
+      if (history && Array.isArray(history.hellos)) {
+        return { day, history: { ...history, today: parsed?.day === day ? history.today ?? [] : [] } }
+      }
+    } catch {
+      // Not ours, or not JSON: start clean.
+    }
+    return { day, history: { today: [], last: null, hellos: [] } }
+  }
+
+  private greetingHistory(): GreetingHistory {
+    return this.loadHistory().history
+  }
+
+  private noteGreeting(kind: string, text: string) {
+    if (!kind || kind === 'scripted') return
+    const { day, history } = this.loadHistory()
+    if (kind === 'hello') {
+      history.hellos = [...history.hellos, text].slice(-3)
+      history.last = 'hello'
+    } else {
+      history.today = [...history.today, kind]
+      history.last = kind
+    }
+    const value = JSON.stringify({ day, history })
+    this.memoryHistory = value
+    try {
+      this.deps.greetingStore?.save(value)
+    } catch {
+      // Storage refused: kept in memory for this page.
     }
   }
 

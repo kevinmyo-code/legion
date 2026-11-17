@@ -11,8 +11,9 @@ the web assistant has two engines.
   (`assistant/cascade.py`). The browser never holds a token.
 
 **Defaults are code, on purpose** (the deploy scripts pass only names they know, and this stage
-adds none): `cascade` for a recruiter's demo visit, `live` for a household member, until Kevin
-says otherwise. An environment override, for the day one is wanted, is one variable per role:
+adds none): `cascade` for every role (Kevin, 2026-11-17: *"same voice behavior across
+everything"*), with Live kept whole behind the switch as the fallback for any role. An
+environment override, for the day one is wanted, is one variable per role:
 
 - `LEGION_WEB_VOICE` = `live` | `cascade`: household members.
 - `LEGION_WEB_VOICE_RECRUITER` = `live` | `cascade`: recruiter demo visits.
@@ -39,7 +40,7 @@ ENGINES = (LIVE, CASCADE)
 MEMBER_ENV = "LEGION_WEB_VOICE"
 RECRUITER_ENV = "LEGION_WEB_VOICE_RECRUITER"
 
-MEMBER_DEFAULT = LIVE
+MEMBER_DEFAULT = CASCADE
 RECRUITER_DEFAULT = CASCADE
 
 # The text model the cascade runs its tool loop on, and the model that transcribes (the phone's

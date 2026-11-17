@@ -6055,7 +6055,7 @@ export interface components {
         AssistantTurnRequest: {
             /**
              * Format: uri
-             * @description One utterance: raw 16-bit little-endian mono PCM at 16 kHz, no header, at most 15 seconds. Send this OR `text`. Never stored.
+             * @description One utterance: raw 16-bit little-endian mono PCM at 16 kHz, no header, at most 28 seconds. Send this OR `text`. Never stored.
              */
             audio?: string;
             /** @description A typed message, answered in text only (no speech). Send this OR `audio`. */
@@ -6069,6 +6069,13 @@ export interface components {
             utc_offset_minutes?: number | null;
             /** @description As for `POST /api/assistant/session`; read when a conversation starts. */
             client_now_ms?: number | null;
+            /**
+             * @description The greeting on open, spoken: no `audio` or `text` with it. A member's is built from their greeting facts; a demo visit's is scripted.
+             * @default false
+             */
+            greet: boolean;
+            /** @description With `greet`: JSON the page keeps for the greeting's caps, `{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`. */
+            greeting_history?: string;
             /** @description A hidden line the page puts ahead of the person's words (the demo's opener). Never shown, never recorded as theirs. */
             preface?: string;
         };

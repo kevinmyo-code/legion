@@ -30,13 +30,6 @@ from tests.test_recruiter import _recruiter_browser, _visitor_token
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("google")]
 
-
-@pytest.fixture(autouse=True)
-def _recruiters_on_live(monkeypatch):
-    """These tests pin the Live path, which stays whole behind the per-role switch (ADR 0102:
-    a recruiter's default is the cascade, `tests/test_assistant_cascade.py`)."""
-    monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", "live")
-
 URL = "/api/assistant/conversation"
 CLIENT_NOW = 1_800_000_000_000  # the browser's clock at the mint, epoch ms
 

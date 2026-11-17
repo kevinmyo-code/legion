@@ -409,7 +409,7 @@ def record_lines(request, conversation_id, stamped: list[tuple]) -> None:
         log.warning("conversation record: could not write a cascade turn", exc_info=True)
 
 
-def history(row: DeviceLog, *, max_turns: int) -> tuple[list[dict], int]:
+def history(row: DeviceLog, *, max_turns: int, opened_line: str = "") -> tuple[list[dict], int]:
     """(the last `max_turns` exchanges as model contents, how many user turns the record holds).
 
     Only engine-written words: the person's as `user`, the reply as `model`, in time order. Tool
@@ -447,6 +447,12 @@ def history(row: DeviceLog, *, max_turns: int) -> tuple[list[dict], int]:
             if seen >= max_turns:
                 break
     kept.reverse()
-    while kept and kept[0]["role"] != "user":
-        kept.pop(0)
+    if kept and kept[0]["role"] != "user":
+        # The conversation opened with the assistant's greeting (ADR 0102): the page's
+        # open stands in as the turn it answered, so contents still start with a user turn.
+        if opened_line:
+            kept.insert(0, {"role": "user", "parts": [{"text": opened_line}]})
+        else:
+            while kept and kept[0]["role"] != "user":
+                kept.pop(0)
     return kept, users
