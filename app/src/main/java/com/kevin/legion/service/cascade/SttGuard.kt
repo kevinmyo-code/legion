@@ -16,19 +16,31 @@ package com.kevin.legion.service.cascade
  */
 internal object SttGuard {
     /** The fixed half of the hint: his car and tool words that a general model mishears. */
-    const val DOMAIN_WORDS = "OBD, OBD adapter, dongle, trouble codes, clear the codes, check engine light, " +
-        "P-codes like P0420, coolant, odometer, oil change, recall, to-do list, reminder, calendar, timer, navigate"
+    /**
+     * The fixed half of the hint: his car and tool words that a general model mishears. Words only, never
+     * an example number or sentence (2026-11-17, Midcon: a transcriber handed examples wrote them back as
+     * "speech" from room noise). Trouble codes are described by shape, not by an example code.
+     */
+    const val DOMAIN_WORDS = "OBD, OBD adapter, dongle, trouble codes (a letter then four digits), clear the " +
+        "codes, check engine light, coolant, odometer, oil change, recall, to-do list, reminder, calendar, timer, navigate"
 
-    /** At most this many runtime names, so the hint stays a line, not a list. */
-    const val MAX_NAMES = 12
 
-    /** The hint line for [names] (cars, the companion); blank names dropped, duplicates once. */
-    fun hint(names: List<String>): String {
-        val clean = names.map { it.trim() }.filter { it.length in 2..MAX_NAME_CHARS }
-            .distinctBy { it.lowercase() }.take(MAX_NAMES)
-        val tail = if (clean.isEmpty()) "" else "; names: ${clean.joinToString(", ")}"
-        return "Words he often says: $DOMAIN_WORDS$tail."
-    }
+    /**
+     * The hint line: his car and tool words only. No names (2026-11-17 real-model run: on noise, the
+     * hint's names came back as "speech", "Alfred", "Honda Fit"); the names stay on the phone as
+     * [verdict]'s `known` (never counted foreign, and a transcript of nothing else is dropped).
+     */
+    fun hint(): String = "Words he often says: $DOMAIN_WORDS."
+
+    /** Every word the fixed hint names, lower case: a transcript of nothing else was not heard, it was read. */
+    private val DOMAIN_VOCAB: Set<String> =
+        words(DOMAIN_WORDS) - setOf("a", "the", "then", "four", "digits", "letter", "to", "do", "list", "light")
+
+    private fun words(text: String): Set<String> =
+        text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.toSet()
+
+    /** Drop reasons that mean "nothing was said": silence, never a spoken "didn't catch that". */
+    val SILENT_REASONS: Set<String> = setOf("too_short", "hint_only")
 
     sealed interface Verdict {
         /** Believed: [text] goes to the model (a non-Latin aside like "嗯" already removed). */
@@ -81,12 +93,14 @@ internal object SttGuard {
         if (audioMs >= LONG_AUDIO_MS && kept.length * MS_PER_S < MIN_CHARS_PER_S * audioMs) {
             return Verdict.Drop("too_short")
         }
+        // Made only of the hint's own words (car names, OBD words): the transcriber read its hint back.
+        val said = words(kept)
+        if (said.isNotEmpty() && said.all { it in DOMAIN_VOCAB || it in known }) return Verdict.Drop("hint_only")
         return Verdict.Keep(kept)
     }
 
     private fun isLatin(c: Char): Boolean = Character.UnicodeScript.of(c.code) == Character.UnicodeScript.LATIN
 
-    private const val MAX_NAME_CHARS = 40
     const val SHORT_AUDIO_MS = 900L
     const val LONG_AUDIO_MS = 3_000L
     const val MIN_CHARS_PER_S = 3L

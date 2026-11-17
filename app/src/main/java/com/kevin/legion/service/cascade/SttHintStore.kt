@@ -12,8 +12,8 @@ import com.kevin.legion.vehicle.FleetEngineStore
  * Never logged, never written anywhere: it lives in memory and rides only in the STT request.
  */
 internal object SttHintStore {
-    @Volatile var line: String = SttGuard.hint(emptyList())
-        private set
+    /** The STT hint: fixed words, no names ([SttGuard.hint]). */
+    val line: String = SttGuard.hint()
 
     /**
      * The transcriber's instruction for the conversation now ([SpokenLanguages.sttInstruction]); the
@@ -44,7 +44,6 @@ internal object SttHintStore {
     }
 
     internal fun set(names: List<String>) {
-        line = SttGuard.hint(names)
         known = names.flatMap { it.split(Regex("\\s+")) }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
     }
 }

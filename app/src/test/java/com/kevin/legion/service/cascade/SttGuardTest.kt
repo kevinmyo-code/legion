@@ -51,13 +51,41 @@ class SttGuardTest {
     }
 
     @Test
-    fun `the hint is one compact line, names deduplicated and capped`() {
-        val names = listOf("Fit", "fit", "", "Ranger") + (1..20).map { "Name$it" }
-        val h = SttGuard.hint(names)
+    fun `the hint is one compact line of words, no names`() {
+        val h = SttGuard.hint()
         assertTrue(h.startsWith("Words he often says: OBD"))
-        assertEquals(1, Regex("(?i)\\bfit\\b").findAll(h).count())
-        assertTrue(h.length < 400)
-        // Measured for the report: about 4 characters a token.
-        println("STT_HINT_CHARS domain_only=${SttGuard.hint(emptyList()).length} with_12_names=${h.length}")
+        assertTrue(h.length < 300)
+        println("STT_HINT_CHARS ${h.length}")
+    }
+
+    @Test
+    fun `the transcriber is never handed an example number or sentence`() {
+        val digitRun = Regex("[0-9]{3,}")
+        val texts = listOf(
+            CloudSpeechWire.STT_INSTRUCTION,
+            SttGuard.hint(),
+            SpokenLanguages.sttInstruction(listOf(SpokenLanguages.ENGLISH) + SpokenLanguages.OFFERED),
+        )
+        for (t in texts) assertTrue(t, !digitRun.containsMatchIn(t))
+    }
+
+    @Test
+    fun `a transcript made only of the hint's own words was read, not heard, and counts as silence`() {
+        val known = setOf("ranger", "fit", "honda")
+        assertEquals("hint_only", (SttGuard.verdict("OBD adapter, dongle.", 2_000) as SttGuard.Verdict.Drop).reason)
+        assertEquals("hint_only", (SttGuard.verdict("Ranger. Honda Fit.", 2_000, known) as SttGuard.Verdict.Drop).reason)
+        assertTrue(SttGuard.verdict("Clear the codes on the Ranger.", 2_000, known) is SttGuard.Verdict.Keep)
+        assertTrue(SttGuard.verdict("It's the Ranger.", 1_500, known) is SttGuard.Verdict.Keep)
+        assertTrue("hint_only" in SttGuard.SILENT_REASONS && "too_short" in SttGuard.SILENT_REASONS)
+        assertTrue("not_english" !in SttGuard.SILENT_REASONS)
+    }
+
+    @Test
+    fun `no voice in the audio is silence, never words`() {
+        assertEquals("", CloudSpeechWire.cleanTranscript("<none>"))
+        assertEquals("", CloudSpeechWire.cleanTranscript(" <NONE>. "))
+        assertEquals("None of them.", CloudSpeechWire.cleanTranscript("None of them."))
+        assertTrue(CloudSpeechWire.STT_INSTRUCTION.contains(CloudSpeechWire.NO_SPEECH))
+        assertTrue(SpokenLanguages.sttInstruction(listOf(SpokenLanguages.ENGLISH) + SpokenLanguages.OFFERED).contains(CloudSpeechWire.NO_SPEECH))
     }
 }

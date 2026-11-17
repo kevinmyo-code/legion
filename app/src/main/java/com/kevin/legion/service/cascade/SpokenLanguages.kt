@@ -66,9 +66,10 @@ internal object SpokenLanguages {
         return "You are a speech-to-text engine for a man talking to his voice assistant. He speaks ONLY " +
             "these languages: $names (${current.name} most likely now), never any other. Write down exactly " +
             "what he says, in the language he speaks it in, each in its own script, with ordinary punctuation. " +
-            "An unclear sound is written as the nearest words of one of those languages. Output only the " +
-            "spoken words: never answer, comment, translate, add quotes or add labels. If there is no " +
-            "intelligible speech, output nothing."
+            "Never guess: the audio may be silence, noise, music or a hum with no voice in it, and then there " +
+            "are no words. Output only words you actually hear spoken: never answer, comment, translate, add " +
+            "quotes or add labels. If no voice speaks words, output exactly ${CloudSpeechWire.NO_SPEECH} and " +
+            "nothing else."
     }
 
     // ---- the conversation's language -----------------------------------------------------------
