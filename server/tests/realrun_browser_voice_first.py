@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - the `real` fixture is imported from the cascade harness
 """A real-browser check of the voice-first demo (ADR 0103). NOT part of the suite; run by name, as
 `realrun_browser_cascade.py`, with a key and Node + Playwright, and the SPA built into
 `server/static/app`:
@@ -73,7 +74,13 @@ def _wavs() -> tuple[dict[str, Path], dict]:
 
 def _run(live_server, scenario: str, wav: Path, extra: dict) -> dict:
     env = {**os.environ, "NODE_PATH": os.environ["PLAYWRIGHT_DIR"]}
-    args = {"base": live_server.url, "scenario": scenario, "wav": str(wav), "out": str(OUT), **extra}
+    args = {
+        "base": live_server.url,
+        "scenario": scenario,
+        "wav": str(wav),
+        "out": str(OUT),
+        **extra,
+    }
     done = subprocess.run(
         ["node", str(HERE / "realrun_browser_voice_first.mjs"), json.dumps(args)],
         env=env,

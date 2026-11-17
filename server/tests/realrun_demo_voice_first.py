@@ -1,5 +1,6 @@
-"""A real-model check of the voice-first demo (ADR 0103). NOT part of the suite (pytest collects only
-`test_*.py`); run it by name with a key, as `realrun_web_cascade.py`:
+# ruff: noqa: F811 - the `real` fixture is imported from the cascade harness
+"""A real-model check of the voice-first demo (ADR 0103). NOT part of the suite (pytest collects
+only `test_*.py`); run it by name with a key, as `realrun_web_cascade.py`:
 
     LEGION_GEMINI_KEY_FILE=<path> REALRUN_OUT=<dir> pt.sh <worktree> <port> <db> \\
         tests/realrun_demo_voice_first.py -s
@@ -24,9 +25,7 @@ import time
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from assistant import voice_engine
-from assistant import cascade, fillers
-from assistant.companions import companion_for
+from assistant import cascade, fillers, voice_engine
 from tests.realrun_web_cascade import QUESTIONS, _visitor, real  # noqa: F401 - fixture
 from tests.test_recruiter_content import load_fake
 
@@ -73,7 +72,11 @@ def _post(real, client, label, **fields):
         fields["audio"] = SimpleUploadedFile("u.pcm", fields["audio"], "application/octet-stream")
     started = time.monotonic()
     response = client.post("/api/assistant/turn", fields, format="multipart")
-    assert response.status_code == 200, (label, response.status_code, getattr(response, "data", None))
+    assert response.status_code == 200, (
+        label,
+        response.status_code,
+        getattr(response, "data", None),
+    )
     events, first_audio, audio_bytes = _stream(response, started)
     done = next((d for k, d in events if k == "done"), {})
     real.spent += float(done.get("cost_usd") or 0)
@@ -103,7 +106,9 @@ def _heard_back(real, row) -> str:
     if not row.get("_pcm"):
         return ""
     back = real.speech.transcribe(_to_16k(row["_pcm"]))
-    real.spent += (back.prompt_tokens * PRICE["text_in"] + back.output_tokens * PRICE["text_out"]) / 1e6
+    real.spent += (
+        back.prompt_tokens * PRICE["text_in"] + back.output_tokens * PRICE["text_out"]
+    ) / 1e6
     return back.text
 
 
@@ -132,9 +137,8 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
         if nxt is None:
             break
         beat = nxt
+    from assistant.speech_tags import untagged as strip
     from assistant.tour import END_LINE
-
-    from assistant.speech_tags import strip
 
     assert strip(END_LINE) in beats[-1]["said"], beats[-1]
     assert any(t[0] == "show_resume" for b in beats for t in b["tools"]), beats
@@ -179,7 +183,9 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
         if TAG_WORDS.search(back):
             spoken_tags.append((row["case"], back))
         assert "<" not in row["said"], row["said"]
-    money = _post(real, visitor, "tags-money", audio=real.audio_for("vf_spend"), conversation_id=cid)
+    money = _post(
+        real, visitor, "tags-money", audio=real.audio_for("vf_spend"), conversation_id=cid
+    )
     assert "<" not in money["said"]
     back = _heard_back(real, money)
     if TAG_WORDS.search(back):
@@ -192,7 +198,9 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
     response = visitor.post(
         "/api/assistant/turn",
         {
-            "audio": SimpleUploadedFile("u.pcm", real.audio_for("vf_spend"), "application/octet-stream"),
+            "audio": SimpleUploadedFile(
+                "u.pcm", real.audio_for("vf_spend"), "application/octet-stream"
+            ),
             "conversation_id": cid,
         },
         format="multipart",

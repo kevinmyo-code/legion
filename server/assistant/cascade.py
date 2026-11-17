@@ -854,7 +854,7 @@ def _answer(
         sentence as written, its allowed tags kept for speech only (`speech_tags`). Code lines
         (verbatim figures, refusals, failures) pass no `tagged` and are spoken plain."""
         nonlocal sentences, first_sentence
-        text = speech_tags.strip(text)
+        text = speech_tags.untagged(text)
         sentences += 1
         report.said.append(text)
         if first_sentence is None:
@@ -913,7 +913,7 @@ def _answer(
             if event.type == "sentence":
                 tagged = event.data["text"]
                 # Every check below reads the sentence without its tags (`speech_tags`).
-                text = speech_tags.strip(tagged)
+                text = speech_tags.untagged(tagged)
                 if not text:
                     continue
                 if text == NO_ANSWER_WORDS:
@@ -966,7 +966,7 @@ def _answer(
         # heard neither the search's answer nor the refusal). Asked once more, tool-free, with the
         # phone's note; whatever it says is the answer.
         for tagged in _ask_again(model, model_name, system, state.messages, door, rounds):
-            text = speech_tags.strip(tagged)
+            text = speech_tags.untagged(tagged)
             if not text or is_filler(text) or (verbatim_said and has_money(text)):
                 continue
             if not honest(text):
@@ -1051,12 +1051,15 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
     its sentence from code. Skips beats with nothing to show; "stop" ends the tour."""
     report.status = "tour"
     if words is not None and tour.is_stop(words):
-        report.said.append(speech_tags.strip(tour.STOPPED_LINE))
+        report.said.append(speech_tags.untagged(tour.STOPPED_LINE))
         speaker.add(tour.STOPPED_LINE, expressive=True)
-        yield ev.Event("sentence", {"text": speech_tags.strip(tour.STOPPED_LINE)})
+        yield ev.Event("sentence", {"text": speech_tags.untagged(tour.STOPPED_LINE)})
         yield from speaker.drain()
         yield ev.done(
-            "tour", speech_tags.strip(tour.STOPPED_LINE), False, tour={"beat": beat, "next": None}
+            "tour",
+            speech_tags.untagged(tour.STOPPED_LINE),
+            False,
+            tour={"beat": beat, "next": None},
         )
         return
     beats = tour.beats_for(request.user) if door.recruiter else []
@@ -1078,16 +1081,16 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
     if index >= len(beats):
         said, nxt = tour.END_LINE, None
     # Only the tour's own code lines may carry a tag; words from the content never do.
-    shown = speech_tags.strip(said)
+    shown = speech_tags.untagged(said)
     report.said.append(shown)
     report.timings["sentences"] = 1
     speaker.add(said, expressive=said in tour.CODE_LINES)
     yield ev.Event("sentence", {"text": shown})
     yield from speaker.drain()
     if nxt is None and said != tour.END_LINE:
-        report.said.append(speech_tags.strip(tour.END_LINE))
+        report.said.append(speech_tags.untagged(tour.END_LINE))
         speaker.add(tour.END_LINE, expressive=True)
-        yield ev.Event("sentence", {"text": speech_tags.strip(tour.END_LINE)})
+        yield ev.Event("sentence", {"text": speech_tags.untagged(tour.END_LINE)})
         yield from speaker.drain()
     yield ev.done(
         "tour", " ".join(report.said), False, tour={"beat": index, "next": nxt, "of": len(beats)}
@@ -1141,7 +1144,7 @@ def _greet(
             kind, text = "scripted", web_greeting.ack_line()
     report.rounds = len(rounds)
     report.status = "greeting"
-    tagged, text = text, speech_tags.strip(text)
+    tagged, text = text, speech_tags.untagged(text)
     report.said.append(text)
     report.timings.update(
         rounds=len(rounds),

@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - fixtures imported from the cascade tests
 """The demo's voice-first build (Kevin, 2026-11-17): honest per-tool fillers, the live strip's
 numbers, early transcripts, the one-minute tour, the short opening and the funnel counts.
 
@@ -15,10 +16,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 
 from agents.runtime.model import FakeModel, call, say
-from assistant import voice_engine
-from assistant import cascade, fillers, tour, web_greeting
-from assistant.companions import companion_for
-from assistant.speech_tags import strip
+from assistant import cascade, fillers, tour, voice_engine, web_greeting
+from assistant.speech_tags import untagged as strip
 from assistant.surface import RECRUITER_TOOLS, WEB_TOOL_NAMES
 from demo import funnel
 from demo.models import DemoBudgetDay, DemoFunnelDay

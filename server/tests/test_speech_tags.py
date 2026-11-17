@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - fixtures imported from the cascade tests
 """Expression tags and the per-role voice in the web cascade (Kevin, 2026-11-17: "i like neno
 plain. and with tags where possible", then "recruiter demo can stay puck plain").
 
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from agents.runtime.model import FakeModel, call, say
+from agents.runtime.model import FakeModel, say
 from assistant import cascade, speech_tags, tour, voice_engine
 from assistant.speech import FALLBACK_VOICE, GeminiSpeech, Spoken
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
@@ -33,11 +34,11 @@ pytestmark = pytest.mark.django_db
 
 
 def test_strip_removes_every_tag_and_tidies_the_spaces():
-    assert speech_tags.strip("Sure. <chuckle> That's it.") == "Sure. That's it."
-    assert speech_tags.strip("Okay, <short pause> done <breath>.") == "Okay, done."
-    assert speech_tags.strip("<long pause>Hello</b>") == "Hello"
-    assert speech_tags.strip("No tags here.") == "No tags here."
-    assert speech_tags.strip("3 < 4 and 5 > 2") == "3 < 4 and 5 > 2"
+    assert speech_tags.untagged("Sure. <chuckle> That's it.") == "Sure. That's it."
+    assert speech_tags.untagged("Okay, <short pause> done <breath>.") == "Okay, done."
+    assert speech_tags.untagged("<long pause>Hello</b>") == "Hello"
+    assert speech_tags.untagged("No tags here.") == "No tags here."
+    assert speech_tags.untagged("3 < 4 and 5 > 2") == "3 < 4 and 5 > 2"
 
 
 def test_only_allowed_tags_are_spoken_and_long_pause_is_not_one():
@@ -72,7 +73,9 @@ def test_a_sentence_with_a_figure_keeps_no_tag(sentence):
 
 
 def test_a_code_line_that_is_not_expressive_is_spoken_plain():
-    spoken = speech_tags.for_speech("<chuckle> Not answered.", speech_tags.Budget(), expressive=False)
+    spoken = speech_tags.for_speech(
+        "<chuckle> Not answered.", speech_tags.Budget(), expressive=False
+    )
     assert spoken == "Not answered."
 
 
@@ -157,7 +160,7 @@ def test_the_speaker_speaks_code_lines_plain_and_keeps_the_reply_budget():
 def test_the_tour_shows_its_lines_plain_and_speaks_their_tag(visitor, engine):
     engine.speech.heard = "stop"
     events = _events(_post(visitor, tour=0, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == [speech_tags.strip(tour.STOPPED_LINE)]
+    assert [s["text"] for s in _of(events, "sentence")] == [speech_tags.untagged(tour.STOPPED_LINE)]
     assert any("<chuckle>" in t for t, _v in engine.speech.spoken)
 
 

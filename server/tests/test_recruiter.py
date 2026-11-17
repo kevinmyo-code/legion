@@ -404,8 +404,8 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
     adding one is a decision someone reads. The conversation door (2026-11-03) takes a visitor's
     OWN conversation record and reads nothing; device logs stay denied. The turn door (ADR 0102,
     2026-11-17) is the demo's cascade voice: the same tool fence as the tool door
-    (`tests/test_assistant_cascade.py`). The transcribe door (2026-11-17) is its early speech-to-text:
-    it answers nothing, runs no tool and is charged to the demo budget
+    (`tests/test_assistant_cascade.py`). The transcribe door (2026-11-17) is its early
+    speech-to-text: it answers nothing, runs no tool and is charged to the demo budget
     (`tests/test_demo_voice_first.py`)."""
     opened = {p for p, c in ROUTES if _guarded(c) and getattr(c, "allows_recruiter", False)}
     assert opened == {

@@ -39,7 +39,7 @@ def _tidy(text: str) -> str:
     return _SPACE_BEFORE.sub(r"\1", re.sub(r"\s{2,}", " ", text)).strip()
 
 
-def strip(text: str) -> str:
+def untagged(text: str) -> str:
     """`text` with every tag removed: what is shown, stored, logged and checked."""
     if "<" not in (text or ""):
         return text or ""
@@ -62,7 +62,7 @@ def for_speech(text: str, budget: Budget | None, *, expressive: bool = True) -> 
     reply has any left; removes every other tag. A sentence with a figure keeps none."""
     if "<" not in (text or ""):
         return text or ""
-    plain = strip(text)
+    plain = untagged(text)
     if not expressive or budget is None or budget.left <= 0 or _FIGURE.search(plain):
         return plain
     kept = False

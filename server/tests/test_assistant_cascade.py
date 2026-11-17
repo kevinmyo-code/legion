@@ -15,8 +15,7 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from agents.runtime.model import FakeModel, ModelFailure, call, say
-from assistant import voice_engine
-from assistant import cascade, read_through, views
+from assistant import cascade, read_through, views, voice_engine
 from assistant.models import AssistantCall
 from assistant.speech import Heard
 from assistant.surface import RECRUITER_TOOLS, WEB_TOOL_NAMES
@@ -553,8 +552,6 @@ def test_a_reply_that_opens_with_a_filler_line_loses_it(member, engine):
 
 
 def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch, household_user):
-    from assistant.companions import companion_for
-
     fillers = cascade.FillerAudio(spawn=lambda work: work())
     fillers.warm(engine.speech, voice_engine.voice_for(household_user))
     monkeypatch.setattr(cascade, "FILLER_AUDIO", fillers)
@@ -648,7 +645,7 @@ def test_a_visitor_greeting_is_scripted_and_asks_no_model(visitor, visitor_user,
     from assistant.companions import companion_for
 
     name = companion_for(visitor_user).name
-    from assistant.speech_tags import strip
+    from assistant.speech_tags import untagged as strip
 
     # Shown without its expression tag; spoken with it.
     assert _of(events, "greeting")[0]["text"] == strip(web_greeting.recruiter_hello(name))
