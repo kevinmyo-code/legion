@@ -56,6 +56,13 @@ from tests.test_assistant import KEY, _start, _tool, google  # noqa: F401 - fixt
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _recruiters_on_live(monkeypatch):
+    """These tests pin the Live path, which stays whole behind the per-role switch (ADR 0102:
+    a recruiter's default is the cascade, `tests/test_assistant_cascade.py`)."""
+    monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", "live")
+
+
 # =============================================================================
 # Fixtures
 # =============================================================================
