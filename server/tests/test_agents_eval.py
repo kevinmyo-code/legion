@@ -141,12 +141,9 @@ def test_homes_covers_every_ticket_03_tool():
 
 
 # Suites written but not yet recorded live: their replay is skipped with this reason, never
-# faked. `records` (ticket 15) was written while the Gemini key was out of credit (HTTP 402);
-# recording it is the ship's live gate. An explicit list, so a deleted cassette of a recorded
-# suite still fails loudly instead of skipping.
-UNRECORDED_SUITES = {
-    "records": "not recorded yet: ticket 15's live run is DEFERRED (key out of credit)"
-}
+# faked. An explicit map, so a deleted cassette of a recorded suite still fails loudly instead of
+# skipping. Empty now: `records` (ticket 15) was recorded live on 2026-11-17 (27/27).
+UNRECORDED_SUITES: dict[str, str] = {}
 SUITES = sorted(p.stem for p in runner.CASES.glob("*.yaml"))
 
 

@@ -20,6 +20,7 @@ from agents.runtime.loop import (
     BUDGET_WORDS,
     CANCELLED_WORDS,
     MODEL_WORDS,
+    NO_ANSWER_WORDS,
     NUDGE,
     TIMEOUT_WORDS,
     LoopHooks,
@@ -180,6 +181,25 @@ def test_the_last_round_turns_calling_off_and_carries_the_nudge():
     assert [r.allow_tools for r in model.requests] == [True, True, False]
     # The nudge rides with the results that go into the last round.
     assert state.messages[-2]["parts"][-1] == {"text": NUDGE}
+
+
+def test_a_turn_that_ends_with_no_words_still_says_something():
+    """The ship's live run: three tool rounds, then the tools-off round came back empty and the
+    person heard nothing. Now the turn speaks NO_ANSWER_WORDS, which claims no outcome."""
+    from agents.legion.guards import claims_unbacked_outcome
+
+    empty_last = [m.Usage(100, 0, 0, 100), m.Finish("STOP")]
+    model = m.FakeModel([m.call("read_x"), m.call("read_x"), m.call("read_x"), empty_last])
+    state = _state()
+    events, result = _drive(run_loop(_spec(max_rounds=4), state, model, FakeGateway(), system="s"))
+    assert [r.allow_tools for r in model.requests] == [True, True, True, False]
+    assert [e.data["text"] for e in events if e.type == "sentence"] == [NO_ANSWER_WORDS]
+    assert result.status == "done" and result.final_text == NO_ANSWER_WORDS
+    assert not claims_unbacked_outcome(NO_ANSWER_WORDS, [])
+    # A turn that did say something is left alone.
+    model = m.FakeModel([m.say("Two rows.")])
+    _, result = _drive(run_loop(_spec(), _state(), model, FakeGateway(), system="s"))
+    assert result.final_text == "Two rows."
 
 
 def test_cancel_stops_before_the_next_round_and_before_a_tool():
