@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { Endpointer, MAX_UTTERANCE_MS, NO_SPEECH_MS, SILENCE_MS } from './endpointer'
+import { Endpointer, LATE_LOUD_MS, MAX_UTTERANCE_MS, SILENCE_MS, WINDOW_MS } from './endpointer'
 import { SseParser } from './sse'
 
 const LOUD = new Int16Array(320).fill(3000)
@@ -28,12 +28,26 @@ describe('Endpointer', () => {
     expect(e.heardSpeech).toBe(false)
   })
 
-  it('gives up when nothing is said', () => {
-    expect(run(new Endpointer(), QUIET, NO_SPEECH_MS + 40)).toBe('nothing')
+  it('the follow-up window lapses with no speech', () => {
+    expect(run(new Endpointer(), QUIET, WINDOW_MS + 40)).toBe('lapsed')
   })
 
-  it('stops at the longest utterance', () => {
-    expect(run(new Endpointer(), LOUD, MAX_UTTERANCE_MS + 40)).toBe('max')
+  it('a late sound runs the window again, at most twice', () => {
+    const e = new Endpointer()
+    for (let i = 0; i < 3; i++) {
+      expect(run(e, QUIET, WINDOW_MS - LATE_LOUD_MS + 200)).toBe('listening')
+      e.push(LOUD)
+      const verdict = run(e, QUIET, LATE_LOUD_MS)
+      if (i < 2) expect(verdict).toBe('listening')
+      else expect(verdict).toBe('lapsed')
+    }
+  })
+
+  it('stops at the longest utterance, counted from speech', () => {
+    const e = new Endpointer()
+    run(e, QUIET, 3000)
+    expect(run(e, LOUD, MAX_UTTERANCE_MS - 200)).toBe('listening')
+    expect(run(e, LOUD, 400)).toBe('max')
   })
 })
 
