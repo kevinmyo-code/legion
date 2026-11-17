@@ -358,3 +358,95 @@ def prune_visit_records(now: datetime.datetime | None = None) -> int:
         demo_visitor=True, household__isnull=True, received_at__lt=cutoff
     ).delete()
     return deleted
+
+
+# ---- the engine's own lines for a cascade turn (ADR 0102) ----------------------------------
+#
+# On the cascade path the ENGINE heard the words (it transcribed them) and wrote the reply, so it
+# writes the `user` and `assistant` lines itself, as `0 2` lines, the way the tool door writes tool
+# calls. The browser no longer sends them for a cascade conversation. The same lines are the
+# conversation's history for the next turn (`history`): only engine-written lines count, so a
+# browser upload (`0 1`) can never put words in the assistant's mouth.
+
+_ENGINE_TURN = re.compile(
+    r"^\S+ \S+  0  " + str(TID_ENGINE) + r" I " + AUDIT + r": "
+    r"(?:(?P<user>user final=true(?: typed=true)?)|(?P<ai>assistant)) text=(?P<text>\".*\")$"
+)
+
+
+def engine_user_line(at: datetime.datetime, text: str, *, typed: bool) -> tuple:
+    flag = " typed=true" if typed else ""
+    return (at, line(at, TID_ENGINE, AUDIT, f"user final=true{flag} text={quoted(text, CAP_TURN)}"))
+
+
+def engine_assistant_line(at: datetime.datetime, text: str) -> tuple:
+    return (at, line(at, TID_ENGINE, AUDIT, f"assistant text={quoted(text, CAP_TURN)}"))
+
+
+def engine_latency_line(at: datetime.datetime, msg: str) -> tuple:
+    """A timing line: numbers and names only, never words."""
+    return (at, line(at, TID_ENGINE, LATENCY, msg))
+
+
+def engine_interrupted_line(at: datetime.datetime) -> tuple:
+    return (at, line(at, TID_ENGINE, AUDIT, "interrupted source=barge_in"))
+
+
+def record_lines(request, conversation_id, stamped: list[tuple]) -> None:
+    """Append engine lines to the caller's conversation. Silent when it is not theirs, over the
+    cap, or the database refuses: the turn has already happened and must not fail on the record."""
+    if conversation_id is None or not stamped:
+        return
+    try:
+        with transaction.atomic():
+            row = owned(request, conversation_id)
+            if row is None:
+                return
+            append(row, stamped)
+    except TooLarge:
+        return
+    except DatabaseError:
+        log.warning("conversation record: could not write a cascade turn", exc_info=True)
+
+
+def history(row: DeviceLog, *, max_turns: int) -> tuple[list[dict], int]:
+    """(the last `max_turns` exchanges as model contents, how many user turns the record holds).
+
+    Only engine-written words: the person's as `user`, the reply as `model`, in time order. Tool
+    calls and their results are not replayed (the model asks again when it needs a figure), so a
+    figure from an earlier turn is never re-read as fresh."""
+    from devicelogs.views import inflate_capped
+
+    body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
+    turns: list[dict] = []
+    users = 0
+    for text in body:
+        match = _ENGINE_TURN.match(text)
+        if match is None:
+            continue
+        try:
+            words = json.loads(match.group("text"))
+        except ValueError:
+            continue
+        if not isinstance(words, str) or not words.strip():
+            continue
+        role = "user" if match.group("user") else "model"
+        if role == "user":
+            users += 1
+        if turns and turns[-1]["role"] == role:
+            turns[-1]["parts"][0]["text"] += " " + words
+        else:
+            turns.append({"role": role, "parts": [{"text": words}]})
+    # Keep whole exchanges from the end, starting on a user turn.
+    kept: list[dict] = []
+    seen = 0
+    for content in reversed(turns):
+        kept.append(content)
+        if content["role"] == "user":
+            seen += 1
+            if seen >= max_turns:
+                break
+    kept.reverse()
+    while kept and kept[0]["role"] != "user":
+        kept.pop(0)
+    return kept, users

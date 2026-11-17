@@ -51,6 +51,12 @@ route exists. Hence `LEGION_DEMO_TEXT_RESERVE_USD` defaults to 0 (Kevin,
 2026-11-02): typed chat shares the Live session, so one cap applies to both.
 Raise it the day a text-model route exists and `charge_text_call` is wired.
 
+**Since ADR 0102 (2026-11-17) the web has a cascade route** (`POST /api/assistant/turn`): a
+recruiter's turn reserves its worst case per turn (`reserve_cascade_turn`: its text rounds, plus
+speech for a spoken turn), a spoken turn against the voice cap and a typed one against the full
+budget, and gives back the rounds it did not use. The paragraph above still describes the Live
+path, which stays whole behind the switch (`assistant/voice_engine.py`).
+
 ## The defaults, and why (`reasoned`, not a quoted price)
 
 - `LEGION_DEMO_COST_PER_VOICE_MINUTE_USD` = 0.10. Live audio is billed as
@@ -311,7 +317,7 @@ def reserve_voice_mint(now: datetime | None = None, user=None) -> Reservation | 
 
 def charge_text_call(now: datetime | None = None, user=None) -> Reservation | None:
     """Reserve one text-model call against the FULL budget. None: refuse it.
-    Not wired: the web has no text-model route yet (see the module doc)."""
+    The web cascade (ADR 0102) reserves per turn instead (`reserve_cascade_turn`)."""
     lim = limits()
     return _reserve(lim.text_call_cents, lim.budget_cents, "text_calls", now, user)
 
@@ -321,6 +327,33 @@ def charge_web_search(now: datetime | None = None, user=None) -> Reservation | N
     Google is asked. None: refuse it (`BUDGET_USED_UP`)."""
     lim = limits()
     return _reserve(lim.search_cents, lim.budget_cents, "web_searches", now, user)
+
+
+def speech_turn_cents() -> int:
+    return _cents("LEGION_DEMO_COST_PER_SPEECH_TURN_USD")
+
+
+def reserve_cascade_turn(
+    *, rounds: int, spoken: bool, now: datetime | None = None, user=None
+) -> Reservation | None:
+    """Reserve one web cascade turn's worst case (ADR 0102) before anything is asked of Google:
+    `rounds` text-model calls at `LEGION_DEMO_COST_PER_TEXT_CALL_USD`, plus, for a spoken turn,
+    its speech-to-text and text-to-speech at `LEGION_DEMO_COST_PER_SPEECH_TURN_USD`. A spoken turn
+    is checked against the VOICE cap (ruling 7: text outlives voice), a typed one against the full
+    budget. Counted as one `text_calls` (no new counter, so no migration). None: refuse the turn.
+    `release_unused` gives back the rounds the turn did not use."""
+    lim = limits()
+    cents = lim.text_call_cents * rounds + (speech_turn_cents() if spoken else 0)
+    cap = lim.voice_cap_cents if spoken else lim.budget_cents
+    return _reserve(cents, cap, "text_calls", now, user)
+
+
+def release_unused(reservation: Reservation, *, rounds_unused: int) -> None:
+    """Give back `rounds_unused` text calls of a cascade turn's reservation. Never more than was
+    reserved, never below zero."""
+    cents = min(max(rounds_unused, 0) * limits().text_call_cents, reservation.cents)
+    if cents > 0:
+        release(Reservation(day=reservation.day, cents=cents, code_id=reservation.code_id))
 
 
 def release(reservation: Reservation) -> None:

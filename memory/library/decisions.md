@@ -8154,3 +8154,13 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   - Unprompted mentions pass the compulsion test and the ADR 0091 check-in rules.
   - The greeting picker is the first consumer once it runs on the engine.
 - ADR 0101.
+
+## 2026-11-17 - The web assistant's voice moves to the engine's cascade; recruiter first (Kevin)
+
+- **Kevin's words:** *"recruiter demo > can it [go] to our current cloud pipeline too"*. Reason: cost (Live speech-to-speech against speech-to-text, a flash-lite text loop and Gemini TTS).
+- **Built (branch `feat/web-assistant-cascade`, not shipped):**
+  - `POST /api/assistant/turn`: the browser posts one utterance or one typed message; the engine transcribes, runs the text model's tool loop over the web tool door, speaks the reply and streams it back. No token reaches the browser.
+  - The engine is chosen by the server per role: `cascade` for a recruiter's visit, `live` for a member, in code. `LEGION_WEB_VOICE` and `LEGION_WEB_VOICE_RECRUITER` override; neither is passed to Cloud Run yet.
+  - The recruiter's fence is the tool door's own code; the turn's words, tool calls and timings go to the existing conversation record.
+- **Open for Kevin:** the 1.2 s end-of-speech silence window; when members move to the cascade.
+- ADR 0102.

@@ -5,6 +5,11 @@
 - `POST /api/assistant/tool` runs one tool call the browser received from
   Gemini, through the SAME registry `/mcp` runs (`engine_mcp.tools.run_tool`),
   as that member, under their own `visible()`.
+- `GET /api/assistant/session` says which voice engine the caller's assistant runs on, `live` or
+  `cascade`, decided by the server per role (`assistant/voice_engine.py`, ADR 0102).
+- `POST /api/assistant/turn` (ADR 0102) is the cascade: one utterance or typed message in, the
+  engine's transcript, tool activity, sentences and speech out as Server-Sent Events
+  (`assistant/cascade.py`). Its tool calls go through the same checks as the tool door below.
 - `GET /api/assistant/companion` says who the member talks to.
 - `POST /api/assistant/conversation` takes the browser's half of the conversation record (Kevin,
   2026-11-03: "recorded to improve ... and seeing what tool calls etc went wrong"). The mint opens
@@ -32,9 +37,10 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from django.db import transaction
+from django.http import StreamingHttpResponse
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import exceptions, serializers, status
 from rest_framework.authentication import SessionAuthentication
@@ -44,11 +50,11 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from assistant import live, read_through
+from assistant import cascade, live, read_through, voice_engine
 from assistant.companions import companion_for
 from assistant.models import AssistantCall
 from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES
-from assistant.session import token_request_for
+from assistant.session import system_prompt_for, token_request_for
 from assistant.surface import recruiter_only_tool, refusal_for
 from demo import budget as demo_budget
 from devicelogs import web_conversation
@@ -212,9 +218,81 @@ SessionResponse = inline_serializer(
 )
 
 
+CASCADE_ONLY = (
+    "Nothing was started. This assistant answers through the engine's own voice pipeline here "
+    "(POST /api/assistant/turn), so no live voice token is minted."
+)
+LIVE_ONLY = (
+    "Nothing was answered. This assistant uses live voice here (POST /api/assistant/session), "
+    "not the engine's turn route."
+)
+
+EngineResponse = inline_serializer(
+    name="AssistantEngine",
+    fields={
+        "engine": serializers.ChoiceField(
+            choices=list(voice_engine.ENGINES),
+            help_text=(
+                "`live`: mint with `POST /api/assistant/session` and talk to Gemini Live. "
+                "`cascade`: post each utterance or typed message to `POST /api/assistant/turn`; "
+                "the engine transcribes, answers with its tools and speaks (ADR 0102). Decided by "
+                "the server per role; the other door refuses with 409."
+            ),
+        ),
+        "companion_name": serializers.CharField(),
+        "voice_name": serializers.CharField(),
+        "input_audio_rate": serializers.IntegerField(
+            help_text="`cascade`: the utterance is 16-bit mono PCM at this rate."
+        ),
+        "output_audio_rate": serializers.IntegerField(
+            help_text="`cascade`: the reply's audio is 16-bit mono PCM at this rate."
+        ),
+        "max_utterance_seconds": serializers.IntegerField(
+            help_text="`cascade`: the longest utterance the turn route accepts."
+        ),
+        "session_minutes": serializers.IntegerField(
+            allow_null=True,
+            help_text=(
+                "How long one conversation may last, for a recruiter's demo visit "
+                "(`LEGION_DEMO_MAX_SESSION_MINUTES`); null for a member."
+            ),
+        ),
+    },
+)
+
+
 class AssistantSessionView(_AssistantView):
     throttle_classes = [AssistantSessionThrottle]
     audit_kind = AssistantCall.SESSION
+
+    def get_throttles(self):
+        # The engine question is free: it reads two settings and the companion, starts nothing.
+        if self.request.method == "GET":
+            return []
+        return super().get_throttles()
+
+    @extend_schema(
+        tags=ASSISTANT_TAGS,
+        operation_id="api_assistant_session_retrieve",
+        summary="Which voice engine this caller's assistant runs on (live or cascade)",
+        responses={200: EngineResponse},
+    )
+    def get(self, request):
+        companion = companion_for(request.user)
+        return Response(
+            {
+                "engine": voice_engine.engine_for(request.user),
+                "companion_name": companion.name,
+                "voice_name": companion.voice_name,
+                "input_audio_rate": 16_000,
+                "output_audio_rate": cascade.OUTPUT_RATE,
+                "max_utterance_seconds": MAX_UTTERANCE_SECONDS,
+                "session_minutes": (
+                    demo_budget.max_session_minutes() if is_recruiter(request.user) else None
+                ),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @extend_schema(
         tags=ASSISTANT_TAGS,
@@ -232,6 +310,13 @@ class AssistantSessionView(_AssistantView):
                     "`LEGION_MEMBER_DAILY_CAP` set: today's own spend limit is used up."
                 ),
             ),
+            409: OpenApiResponse(
+                DetailSerializer,
+                description=(
+                    "This caller's assistant runs on the cascade (`GET` says `cascade`); no token "
+                    "is minted."
+                ),
+            ),
             502: OpenApiResponse(
                 DetailSerializer, description="Google refused the key or the session, in words."
             ),
@@ -245,6 +330,9 @@ class AssistantSessionView(_AssistantView):
         },
     )
     def post(self, request):
+        if voice_engine.engine_for(request.user) != voice_engine.LIVE:
+            _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
+            return Response({"detail": CASCADE_ONLY}, status=status.HTTP_409_CONFLICT)
         body = AssistantSessionRequestSerializer(data=request.data)
         if not body.is_valid():
             _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
@@ -677,3 +765,279 @@ class AssistantCompanionView(APIView):
                 "stored": companion.stored,
             }
         )
+
+
+# =============================================================================
+# POST /api/assistant/turn (ADR 0102)
+# =============================================================================
+
+# The longest utterance a turn takes, and so the most audio bytes (16 kHz, 16-bit mono). The
+# browser stops recording at this too (`frontend/src/assistant/endpointer.ts`).
+MAX_UTTERANCE_SECONDS = 15
+MAX_AUDIO_BYTES = MAX_UTTERANCE_SECONDS * 16_000 * 2
+MAX_TYPED_CHARS = 2_000
+MAX_PREFACE_CHARS = 400
+
+TIME_LIMIT = "Nothing was answered. This demo conversation reached its time limit; start a new one."
+TURN_FAILED = "The engine hit an error answering that, so the turn stopped."
+
+
+class AssistantTurnThrottle(_PerMemberThrottle):
+    scope = "assistant_turn"
+
+
+class AssistantTurnIpThrottle(SimpleRateThrottle):
+    """A recruiter's visit is a fresh user every time, so its turns are also counted per IP
+    address. Members are not counted here."""
+
+    scope = "assistant_turn_ip"
+
+    def get_cache_key(self, request, view):
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated or not is_recruiter(user):
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
+class AssistantTurnRequestSerializer(serializers.Serializer):
+    audio = serializers.FileField(
+        required=False,
+        allow_empty_file=False,
+        help_text=(
+            "One utterance: raw 16-bit little-endian mono PCM at 16 kHz, no header, at most "
+            f"{MAX_UTTERANCE_SECONDS} seconds. Send this OR `text`. Never stored."
+        ),
+    )
+    text = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=MAX_TYPED_CHARS,
+        help_text="A typed message, answered in text only (no speech). Send this OR `audio`.",
+    )
+    conversation_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text=(
+            "The conversation this turn continues: the `conversation_id` of an earlier turn's "
+            "`turn` event. Omit it to start a new conversation."
+        ),
+    )
+    utc_offset_minutes = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=MIN_OFFSET_MINUTES,
+        max_value=MAX_OFFSET_MINUTES,
+        help_text="As for `POST /api/assistant/session`.",
+    )
+    client_now_ms = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="As for `POST /api/assistant/session`; read when a conversation starts.",
+    )
+    preface = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=MAX_PREFACE_CHARS,
+        help_text=(
+            "A hidden line the page puts ahead of the person's words (the demo's opener). Never "
+            "shown, never recorded as theirs."
+        ),
+    )
+
+
+def _cascade_clients():
+    """The text model and the speech client, on the engine's key. Tests replace this."""
+    from agents.runtime.model import GeminiClient
+    from assistant.speech import GeminiSpeech
+
+    return (
+        GeminiClient(key=gemini_key),
+        GeminiSpeech(gemini_key, stt_model=voice_engine.text_model()),
+    )
+
+
+def _turn_sse(request, turn_input, row_id, history, turn_no, system, voice, reservation):
+    report = cascade.TurnReport()
+    spoken = turn_input.audio is not None
+    try:
+        model, speech = _cascade_clients()
+        for event in cascade.run_turn(
+            request,
+            turn_input,
+            conversation_id=row_id,
+            history=history,
+            turn=turn_no,
+            system=system,
+            voice=voice,
+            model_name=voice_engine.text_model(),
+            model=model,
+            speech=speech,
+            report=report,
+        ):
+            yield event.sse()
+    except Exception:  # noqa: BLE001 - the stream must end in words, always
+        cascade.log.warning("assistant cascade: turn failed", exc_info=True)
+        report.status = "failed"
+        yield cascade.ev.error(TURN_FAILED).sse()
+    finally:
+        now = datetime.now(UTC)
+        lines = []
+        said = " ".join(report.said).strip()
+        if said:
+            lines.append(web_conversation.engine_assistant_line(now, said))
+        if report.status == "cancelled":
+            lines.append(web_conversation.engine_interrupted_line(now))
+        timing = cascade.timing_line(report, spoken=spoken)
+        lines.append(web_conversation.engine_latency_line(now, timing))
+        web_conversation.record_lines(request, row_id, lines)
+        # Numbers and names only (`cascade.timing_line`), never words.
+        cascade.log.warning("assistant %s", timing)
+        if reservation is not None:
+            demo_budget.release_unused(
+                reservation, rounds_unused=cascade.MAX_ROUNDS - report.rounds
+            )
+
+
+def _refuse(request, detail: str, code: int) -> Response:
+    _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
+    return Response({"detail": detail}, status=code)
+
+
+class AssistantTurnView(_AssistantView):
+    """One cascade turn (ADR 0102), answered as Server-Sent Events."""
+
+    throttle_classes = [AssistantTurnThrottle, AssistantTurnIpThrottle]
+    audit_kind = AssistantCall.SESSION
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    @extend_schema(
+        tags=ASSISTANT_TAGS,
+        operation_id="api_assistant_turn_create",
+        summary="One assistant turn on the engine's voice pipeline, answered as Server-Sent Events",
+        description=(
+            "text/event-stream, one event per thing that happened: `turn` "
+            "{conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `working` "
+            "{tool}; `tool` {name, ok, outcome, text, card?}; `sentence` {text}; `audio` {pcm "
+            "(base64 16-bit mono PCM), rate} after each sentence of a spoken turn; "
+            "`speech_failed` {reason}; `done` {status, final_text, writes_ran, words?}; `error` "
+            "{words}. A typed turn gets no `audio`."
+        ),
+        request={"multipart/form-data": AssistantTurnRequestSerializer},
+        responses={
+            200: OpenApiResponse(description="text/event-stream, as described."),
+            400: OpenApiResponse(
+                DetailSerializer, description="The body did not fit; nothing ran."
+            ),
+            404: OpenApiResponse(
+                DetailSerializer, description="No conversation with that id is the caller's."
+            ),
+            409: OpenApiResponse(
+                DetailSerializer,
+                description=(
+                    "This caller's assistant runs on live voice, or a demo conversation reached "
+                    "its time limit. Nothing ran."
+                ),
+            ),
+            413: OpenApiResponse(DetailSerializer, description="The utterance is too long."),
+            429: OpenApiResponse(
+                DetailSerializer,
+                description=(
+                    "Too many turns (per member, and per address for a demo visit), or today's "
+                    "demo budget or the member's own spend limit is used up. Nothing ran."
+                ),
+            ),
+            503: OpenApiResponse(DetailSerializer, description="No Gemini key on this server."),
+        },
+    )
+    def post(self, request):
+        if voice_engine.engine_for(request.user) != voice_engine.CASCADE:
+            return _refuse(request, LIVE_ONLY, status.HTTP_409_CONFLICT)
+        body = AssistantTurnRequestSerializer(data=request.data)
+        if not body.is_valid():
+            return _refuse(
+                request,
+                f"Nothing was answered. The request did not fit: {body.errors}",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        data = body.validated_data
+        upload, text = data.get("audio"), (data.get("text") or "").strip()
+        if (upload is None) == (not text):
+            return _refuse(
+                request,
+                "Nothing was answered. Send one utterance as `audio` or one `text`.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        audio = None
+        if upload is not None:
+            if upload.size > MAX_AUDIO_BYTES:
+                return _refuse(
+                    request,
+                    "Nothing was answered. An utterance may last at most "
+                    f"{MAX_UTTERANCE_SECONDS} seconds.",
+                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                )
+            audio = upload.read(MAX_AUDIO_BYTES + 1)[:MAX_AUDIO_BYTES]
+            audio = audio[: len(audio) - len(audio) % 2]
+        if gemini_key() is None:
+            return _refuse(request, KEY_ABSENT, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        row = None
+        if data.get("conversation_id"):
+            with transaction.atomic():
+                row = web_conversation.owned(request, data["conversation_id"])
+            if row is None:
+                return _refuse(
+                    request,
+                    "Nothing was answered. No conversation with that id is yours.",
+                    status.HTTP_404_NOT_FOUND,
+                )
+            limit = timedelta(minutes=demo_budget.max_session_minutes())
+            if is_recruiter(request.user) and datetime.now(UTC) - row.window_start > limit:
+                return _refuse(request, TIME_LIMIT, status.HTTP_409_CONFLICT)
+
+        if member_cap.over_cap(request.user):
+            return _refuse(request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS)
+        reservation = None
+        if demo_budget.counts(request.user):
+            reservation = demo_budget.reserve_cascade_turn(
+                rounds=cascade.MAX_ROUNDS, spoken=audio is not None, user=request.user
+            )
+            if reservation is None:
+                return _refuse(
+                    request,
+                    demo_budget.used_up_message(request.user, "text"),
+                    status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
+        if row is None:
+            row = web_conversation.start(
+                request,
+                model=f"cascade/{voice_engine.text_model()}",
+                client_now_ms=data.get("client_now_ms"),
+            )
+        history, turn_no = web_conversation.history(row, max_turns=cascade.HISTORY_TURNS)
+        system, companion = system_prompt_for(
+            request.user,
+            now=datetime.now(UTC),
+            utc_offset_minutes=data.get("utc_offset_minutes"),
+        )
+        _audit(request, AssistantCall.SESSION, Outcome.OK)
+        turn_input = cascade.TurnInput(
+            audio=audio, text=text or None, preface=(data.get("preface") or "").strip() or None
+        )
+        response = StreamingHttpResponse(
+            _turn_sse(
+                request,
+                turn_input,
+                row.batch_id,
+                history,
+                turn_no,
+                system,
+                companion.voice_name,
+                reservation,
+            ),
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-cache, no-store"
+        response["X-Accel-Buffering"] = "no"
+        return response

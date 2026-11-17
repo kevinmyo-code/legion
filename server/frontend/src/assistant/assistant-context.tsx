@@ -14,7 +14,9 @@ import {
 import { api } from '@/api/client'
 import { useSurface } from '@/lib/surface'
 
-import { createLiveDeps, preloadAudio } from './deps'
+import { CascadeClient, type CascadeDeps } from './cascade-client'
+import type { AssistantClient } from './client'
+import { createCascadeDeps, createLiveDeps, preloadAudio } from './deps'
 import { LiveClient, type AssistantState, type LiveDeps } from './live-client'
 
 /**
@@ -59,7 +61,7 @@ export interface ChatCopy {
 }
 
 interface AssistantContextValue {
-  client: LiveClient
+  client: AssistantClient
   ui: AssistantUi
   /** The page's chat copy, if it set any; `AssistantChat` falls back to its own. */
   copy?: ChatCopy
@@ -82,9 +84,27 @@ export function useCompanionRead() {
   })
 }
 
+/**
+ * Which engine this caller's assistant runs on (ADR 0102), and what the cascade needs to know.
+ * The server decides per role; the other engine's door refuses.
+ */
+export function useAssistantEngine() {
+  return useQuery({
+    queryKey: ['assistant', 'engine'],
+    queryFn: async () => {
+      const { data, response } = await api.GET('/api/assistant/session')
+      if (!data) throw new Error(`GET /api/assistant/session answered ${response.status}`)
+      return data
+    },
+    retry: false,
+    staleTime: Infinity,
+  })
+}
+
 export function AssistantProvider({
   children,
   deps,
+  cascadeDeps,
   openingTurn,
   continueTurn,
   sessionLimit,
@@ -93,6 +113,8 @@ export function AssistantProvider({
 }: {
   children: ReactNode
   deps?: LiveDeps
+  /** Tests: stand in for the engine's turn route when the engine answers `cascade`. */
+  cascadeDeps?: CascadeDeps
   /** Opt-in: a hidden first turn so the assistant speaks first (`LiveOptions.openingTurn`). */
   openingTurn?: string
   /** Opt-in: what a later conversation on the same page starts with instead (`LiveOptions.continueTurn`). */
@@ -129,7 +151,8 @@ export function AssistantProvider({
   useEffect(() => {
     limitRef.current = sessionLimit
   }, [sessionLimit])
-  const [client] = useState(
+  const engine = useAssistantEngine()
+  const [client, setClient] = useState<AssistantClient>(
     () =>
       new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',
@@ -138,6 +161,24 @@ export function AssistantProvider({
         sessionLimit: () => limitRef.current ?? null,
       }),
   )
+  // The engine answered `cascade`: the conversation runs on the engine's own voice pipeline
+  // (ADR 0102). Swapped once, before anything was said (the answer arrives as the page mounts).
+  const cascadeInfo = engine.data?.engine === 'cascade' ? engine.data : null
+  useEffect(() => {
+    if (!cascadeInfo) return
+    setClient((current) => {
+      if (current instanceof CascadeClient) return current
+      const next: AssistantClient = new CascadeClient(cascadeDeps ?? createCascadeDeps(), {
+        companionName: cascadeInfo.companion_name,
+        sessionMinutes: cascadeInfo.session_minutes ?? null,
+        endOnHidden: () => surfaceRef.current === 'family',
+        openingTurn: () => openingRef.current ?? null,
+        continueTurn: () => continueRef.current ?? null,
+        sessionLimit: () => limitRef.current ?? null,
+      })
+      return next
+    })
+  }, [cascadeInfo, cascadeDeps])
   useEffect(() => {
     client.attach()
     return () => client.dispose()

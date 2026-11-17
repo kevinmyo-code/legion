@@ -2,8 +2,10 @@ import { api, csrfToken } from '@/api/client'
 import { asCard } from '@/components/assistant/cards/types'
 
 import type { AudioIO } from './audio'
+import type { CascadeDeps, TurnRequest, TurnStart } from './cascade-client'
 import type { RecordEvent, RecordTransport } from './conversation-record'
 import type { LiveDeps, Notice, SessionResult, ToolContext, ToolResult } from './live-client'
+import { readSse } from './sse'
 
 /**
  * The real `LiveDeps`: the engine through the generated client, a browser
@@ -172,6 +174,60 @@ export function createLiveDeps(): LiveDeps {
     startSession,
     runTool,
     openSocket: (url) => new WebSocket(url),
+    audio: (): AudioIO => {
+      if (audioFactory) return audioFactory()
+      if (!webAudio) throw new Error('The audio code has not loaded yet.')
+      return webAudio.createWebAudio()
+    },
+    now: () => Date.now(),
+    utcOffsetMinutes: () => -new Date().getTimezoneOffset(),
+    record: recordTransport,
+  }
+}
+
+/** The turn's form: one utterance (raw 16 kHz PCM16) or one typed text, and the conversation. */
+export function turnForm(request: TurnRequest): FormData {
+  const form = new FormData()
+  if (request.audio) {
+    const bytes = new Uint8Array(request.audio.buffer, request.audio.byteOffset, request.audio.byteLength)
+    form.append('audio', new Blob([bytes], { type: 'application/octet-stream' }), 'utterance.pcm')
+  }
+  if (request.text) form.append('text', request.text)
+  if (request.conversationId) form.append('conversation_id', request.conversationId)
+  form.append('utc_offset_minutes', String(request.utcOffsetMinutes))
+  form.append('client_now_ms', String(Date.now()))
+  if (request.preface) form.append('preface', request.preface)
+  return form
+}
+
+async function startTurn(request: TurnRequest, signal: AbortSignal): Promise<TurnStart> {
+  await primeCsrf()
+  const { response, error } = await api.POST('/api/assistant/turn', {
+    // The typed fields for the contract; the form (with the utterance as a file) is what is sent.
+    body: {
+      ...(request.text ? { text: request.text } : {}),
+      conversation_id: request.conversationId,
+      utc_offset_minutes: request.utcOffsetMinutes,
+      ...(request.preface ? { preface: request.preface } : {}),
+    },
+    bodySerializer: () => turnForm(request),
+    parseAs: 'stream',
+    signal,
+  })
+  if (response.ok && response.body) return { ok: true, events: readSse(response.body) }
+  let detail: string | null = null
+  try {
+    const parsed = (error ?? (await response.json())) as { detail?: string } | undefined
+    detail = typeof parsed?.detail === 'string' ? parsed.detail : null
+  } catch {
+    detail = null
+  }
+  return { ok: false, status: response.status, detail }
+}
+
+export function createCascadeDeps(): CascadeDeps {
+  return {
+    startTurn,
     audio: (): AudioIO => {
       if (audioFactory) return audioFactory()
       if (!webAudio) throw new Error('The audio code has not loaded yet.')

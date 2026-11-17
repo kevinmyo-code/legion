@@ -288,6 +288,12 @@ LEGION_DEMO_COST_PER_TEXT_CALL_USD = (
 # The recruiter token's lifetime and what each mint reserves (`demo/budget.py`).
 # One recruiter `web_search` (Gemini flash-class call with Google Search
 # grounding), reserved before the call. `demo/budget.py` says why 0.02.
+# ADR 0102: a web cascade turn's speech-to-text plus its text-to-speech, reserved per spoken turn
+# (`demo.budget.reserve_cascade_turn`). An estimate: about 15 s of audio in and a few sentences out
+# at flash-lite audio and flash TTS list prices is well under a cent; one cent rounds it up.
+LEGION_DEMO_COST_PER_SPEECH_TURN_USD = (
+    os.environ.get("LEGION_DEMO_COST_PER_SPEECH_TURN_USD", "").strip() or "0.01"
+)
 LEGION_DEMO_COST_PER_SEARCH_USD = (
     os.environ.get("LEGION_DEMO_COST_PER_SEARCH_USD", "").strip() or "0.02"
 )
@@ -598,6 +604,14 @@ REST_FRAMEWORK = {
             os.environ.get("LEGION_ASSISTANT_SESSION_RATE", "").strip() or "30/hour"
         ),
         "assistant_tool": os.environ.get("LEGION_ASSISTANT_TOOL_RATE", "").strip() or "60/min",
+        # ADR 0102: web cascade turns (`POST /api/assistant/turn`), per MEMBER, and for a
+        # recruiter's visit also per IP address (a visitor is a fresh user each visit). Each turn
+        # is up to a few model calls plus speech on the household's key. Same per-process
+        # LocMemCache caveat as `mcp` above.
+        "assistant_turn": os.environ.get("LEGION_ASSISTANT_TURN_RATE", "").strip() or "20/min",
+        "assistant_turn_ip": (
+            os.environ.get("LEGION_ASSISTANT_TURN_IP_RATE", "").strip() or "120/hour"
+        ),
         # ADR 0076: ID vault reveals per MEMBER (`id_vault.views.VaultRevealThrottle`). Same
         # per-process LocMemCache caveat as `mcp` above.
         "vault_reveal": os.environ.get("LEGION_VAULT_REVEAL_RATE", "").strip() or "10/hour",

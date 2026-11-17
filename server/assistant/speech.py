@@ -1,0 +1,267 @@
+"""Gemini speech-to-text and text-to-speech for the web cascade (ADR 0102), on the engine's key.
+
+The request shapes are copied from the phone's working code, `app/.../service/cascade/
+CloudSpeech.kt` (`CloudSpeechWire`), not from memory:
+
+- **Speech-to-text** runs on the cascade's own TEXT model with the utterance inline as a WAV
+  (`CloudSpeechWire.STT_MODEL = CascadeSession.MODEL`, `gemini-3.5-flash-lite`): the phone's note
+  says that is about a seventh of `gemini-3.5-transcribe`'s audio price, and the transcribe model is
+  documented only on the Interactions API. The system instruction and the ask are the phone's,
+  word for word.
+- **Text-to-speech** is `gemini-3.8-flash-tts`, one request per sentence, streamed, voice in the
+  3.8 doc's `voiceConfig.voice` shape, retried ONCE with the older
+  `prebuiltVoiceConfig.voiceName` shape when Google answers 400 before any audio. (The phone
+  retries only on a 400 whose body names the voice field; `UrllibTransport` hands back the status
+  alone, so this engine retries on any such 400, once per turn.) Output is
+  headerless 16-bit PCM, 24 kHz mono; a WAV header on the first chunk is stripped all the same.
+
+Both go over `streamGenerateContent?alt=sse`, the transport `agents.runtime.model` already uses,
+so a test fakes Google with one fake (`transport.lines`). The key goes into one header and never
+into a URL, an error or a log line (ADR 0056). Nothing here keeps audio: the utterance lives in
+the request's memory and is gone with it, and so is every synthesised chunk.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import struct
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
+
+from agents.runtime.model import API, ModelFailure, UrllibTransport
+
+TTS_MODEL = "gemini-3.8-flash-tts"
+INPUT_RATE = 16_000
+OUTPUT_RATE = 24_000
+STT_MAX_OUTPUT_TOKENS = 512
+STT_TIMEOUT_S = 12.0
+TTS_TIMEOUT_S = 12.0
+# Under 200 ms of audio is not a request worth paying for: nothing was said (the phone's
+# `GeminiStt.MIN_AUDIO_BYTES`).
+MIN_AUDIO_BYTES = 200 * 32
+
+STT_INSTRUCTION = (
+    "You are a speech-to-text engine. Write down exactly what the speaker says in the audio, in "
+    "the language they speak, with ordinary punctuation. Output only the spoken words: never "
+    "answer, comment, translate, add quotes or add labels. If there is no intelligible speech, "
+    "output nothing."
+)
+STT_ASK = "Transcribe this audio."
+_QUOTES = {'"', "'", "“", "”"}
+
+
+def wav(pcm: bytes, rate: int = INPUT_RATE) -> bytes:
+    """16-bit mono PCM in a 44-byte RIFF/WAVE header (`CloudSpeechWire.wav`)."""
+    header = b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVE"
+    header += b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    header += b"data" + struct.pack("<I", len(pcm))
+    return header + pcm
+
+
+def wav_header_length(chunk: bytes) -> int:
+    """How many leading bytes of a first chunk are a WAV header, or 0."""
+    if len(chunk) < 44 or chunk[:4] != b"RIFF":
+        return 0
+    at = 12
+    while at + 8 <= len(chunk):
+        ident = chunk[at : at + 4]
+        (length,) = struct.unpack("<I", chunk[at + 4 : at + 8])
+        if ident == b"data":
+            return at + 8
+        at += 8 + length
+    return 44
+
+
+def clean_transcript(raw: str) -> str:
+    text = raw.strip()
+    if len(text) >= 2 and text[0] in _QUOTES and text[-1] in _QUOTES:
+        text = text[1:-1].strip()
+    return text
+
+
+def transcribe_body(pcm: bytes) -> dict:
+    return {
+        "systemInstruction": {"parts": [{"text": STT_INSTRUCTION}]},
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "inlineData": {
+                            "mimeType": "audio/wav",
+                            "data": base64.b64encode(wav(pcm)).decode("ascii"),
+                        }
+                    },
+                    {"text": STT_ASK},
+                ],
+            }
+        ],
+        "generationConfig": {"maxOutputTokens": STT_MAX_OUTPUT_TOKENS},
+    }
+
+
+def speak_body(text: str, voice: str, *, legacy_voice: bool) -> dict:
+    shape = {"prebuiltVoiceConfig": {"voiceName": voice}} if legacy_voice else {"voice": voice}
+    return {
+        "contents": [{"role": "user", "parts": [{"text": text}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {"voiceConfig": shape},
+        },
+    }
+
+
+@dataclass(frozen=True)
+class Heard:
+    text: str
+    audio_ms: int
+    ms: int
+    prompt_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass
+class Spoken:
+    """What one sentence's synthesis cost, for the timing line (no content)."""
+
+    audio_ms: int = 0
+    first_audio_ms: int | None = None
+    prompt_tokens: int = 0
+    output_tokens: int = 0
+    failed: str | None = None
+
+
+class SpeechFailure(ModelFailure):
+    """Speech could not be had. `str(exc)` is a short token, safe to log; never content."""
+
+
+def _events(lines: Iterable[bytes]) -> Iterator[dict]:
+    for raw in lines:
+        line = raw.decode("utf-8", "replace").strip() if isinstance(raw, bytes) else raw.strip()
+        if not line.startswith("data:"):
+            continue
+        try:
+            yield json.loads(line[5:].strip())
+        except ValueError:
+            continue
+
+
+def _parts(ev: dict) -> list[dict]:
+    cands = ev.get("candidates") or []
+    cand = cands[0] if cands and isinstance(cands[0], dict) else {}
+    return [p for p in (cand.get("content") or {}).get("parts") or [] if isinstance(p, dict)]
+
+
+class GeminiSpeech:
+    """Speech-to-text and text-to-speech on the household's key. `transport` is
+    `agents.runtime.model.UrllibTransport` or a test's fake with the same `lines`."""
+
+    def __init__(
+        self,
+        key: Callable[[], str | None],
+        *,
+        stt_model: str,
+        transport=None,
+        api: str = API,
+        clock: Callable[[], float] | None = None,
+    ):
+        import time
+
+        self._key = key
+        self._stt_model = stt_model
+        self._transport = transport or UrllibTransport()
+        self._api = api
+        self._clock = clock or time.monotonic
+        self._legacy_voice = False
+
+    def _headers(self) -> dict:
+        key = self._key()
+        if not key:
+            raise SpeechFailure("no_key")
+        return {"Content-Type": "application/json", "x-goog-api-key": key}
+
+    def _stream(self, model: str, body: dict, timeout: float) -> Iterator[dict]:
+        url = f"{self._api}/models/{model}:streamGenerateContent?alt=sse"
+        data = json.dumps(body).encode()
+        yield from _events(self._transport.lines(url, self._headers(), data, timeout))
+
+    def transcribe(self, pcm: bytes) -> Heard:
+        audio_ms = len(pcm) // 32
+        if len(pcm) < MIN_AUDIO_BYTES:
+            return Heard("", audio_ms, 0)
+        started = self._clock()
+        text, usage = [], {}
+        for ev in self._stream(self._stt_model, transcribe_body(pcm), STT_TIMEOUT_S):
+            if isinstance(ev.get("error"), dict):
+                raise SpeechFailure(f"stt_error_{ev['error'].get('code', '?')}")
+            if (ev.get("promptFeedback") or {}).get("blockReason"):
+                raise SpeechFailure("stt_blocked")
+            if isinstance(ev.get("usageMetadata"), dict):
+                usage = ev["usageMetadata"]
+            for part in _parts(ev):
+                if isinstance(part.get("text"), str) and not part.get("thought"):
+                    text.append(part["text"])
+        return Heard(
+            clean_transcript("".join(text)),
+            audio_ms,
+            int((self._clock() - started) * 1000),
+            int(usage.get("promptTokenCount") or 0),
+            int(usage.get("candidatesTokenCount") or 0),
+        )
+
+    def speak(self, text: str, voice: str, spoken: Spoken) -> Iterator[bytes]:
+        """Yields whole 16-bit samples of `text` in `voice`, 24 kHz mono, as they arrive.
+        `spoken` is filled in as it goes. A failure before any audio raises `SpeechFailure`;
+        one after audio has played ends the sentence there (a retry would repeat its start)."""
+        started = self._clock()
+        sent = 0
+        try:
+            for chunk in self._speak_once(text, voice, spoken, started):
+                sent += len(chunk)
+                yield chunk
+        except ModelFailure as exc:
+            if sent or self._legacy_voice or "400" not in str(exc):
+                raise SpeechFailure(spoken.failed or "tts_failed") from None
+            # Google refused the 3.8 voice shape: the older one, once, for the rest of the turn.
+            self._legacy_voice = True
+            spoken.failed = None
+            yield from self._speak_once(text, voice, spoken, started)
+
+    def _speak_once(self, text, voice, spoken: Spoken, started: float) -> Iterator[bytes]:
+        first = True
+        odd = b""
+        body = speak_body(text, voice, legacy_voice=self._legacy_voice)
+        try:
+            for ev in self._stream(TTS_MODEL, body, TTS_TIMEOUT_S):
+                if isinstance(ev.get("error"), dict):
+                    spoken.failed = f"tts_error_{ev['error'].get('code', '?')}"
+                    raise ModelFailure(f"Gemini answered an error ({ev['error'].get('code')})")
+                if isinstance(ev.get("usageMetadata"), dict):
+                    usage = ev["usageMetadata"]
+                    spoken.prompt_tokens = int(usage.get("promptTokenCount") or 0)
+                    spoken.output_tokens = int(usage.get("candidatesTokenCount") or 0)
+                for part in _parts(ev):
+                    data = (part.get("inlineData") or {}).get("data")
+                    if not data:
+                        continue
+                    try:
+                        chunk = base64.b64decode(data)
+                    except ValueError:
+                        continue
+                    if first:
+                        first = False
+                        chunk = chunk[wav_header_length(chunk) :]
+                    chunk = odd + chunk
+                    odd = b""
+                    if len(chunk) % 2:
+                        odd, chunk = chunk[-1:], chunk[:-1]
+                    if not chunk:
+                        continue
+                    if spoken.first_audio_ms is None:
+                        spoken.first_audio_ms = int((self._clock() - started) * 1000)
+                    spoken.audio_ms += len(chunk) // 48
+                    yield chunk
+        except ModelFailure:
+            spoken.failed = spoken.failed or "tts_failed"
+            raise

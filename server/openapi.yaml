@@ -381,6 +381,20 @@ paths:
                 $ref: '#/components/schemas/Detail'
           description: The engine refused its own pack, so none was sent.
   /api/assistant/session:
+    get:
+      operationId: api_assistant_session_retrieve
+      summary: Which voice engine this caller's assistant runs on (live or cascade)
+      tags:
+      - assistant
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantEngine'
+          description: ''
     post:
       operationId: api_assistant_session_create
       summary: 'Start a live conversation: mint a locked Gemini Live token'
@@ -421,6 +435,13 @@ paths:
             visit, also: "Today''s demo budget is used up. Try again tomorrow." For
             a member with `LEGION_MEMBER_DAILY_CAP` set: today''s own spend limit
             is used up.'
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: This caller's assistant runs on the cascade (`GET` says `cascade`);
+            no token is minted.
         '502':
           content:
             application/json:
@@ -474,6 +495,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: Too many calls; nothing ran.
+  /api/assistant/turn:
+    post:
+      operationId: api_assistant_turn_create
+      description: 'text/event-stream, one event per thing that happened: `turn` {conversation_id,
+        turn}; `heard` {text} (a spoken turn''s transcript); `working` {tool}; `tool`
+        {name, ok, outcome, text, card?}; `sentence` {text}; `audio` {pcm (base64
+        16-bit mono PCM), rate} after each sentence of a spoken turn; `speech_failed`
+        {reason}; `done` {status, final_text, writes_ran, words?}; `error` {words}.
+        A typed turn gets no `audio`.'
+      summary: One assistant turn on the engine's voice pipeline, answered as Server-Sent
+        Events
+      tags:
+      - assistant
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: text/event-stream, as described.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No conversation with that id is the caller's.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: This caller's assistant runs on live voice, or a demo conversation
+            reached its time limit. Nothing ran.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The utterance is too long.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many turns (per member, and per address for a demo visit),
+            or today's demo budget or the member's own spend limit is used up. Nothing
+            ran.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No Gemini key on this server.
   /api/auth/csrf:
     get:
       operationId: api_auth_csrf_retrieve
@@ -13802,6 +13885,43 @@ components:
       required:
       - detail
       - stored_lines
+    AssistantEngine:
+      type: object
+      properties:
+        engine:
+          allOf:
+          - $ref: '#/components/schemas/EngineEnum'
+          description: |-
+            `live`: mint with `POST /api/assistant/session` and talk to Gemini Live. `cascade`: post each utterance or typed message to `POST /api/assistant/turn`; the engine transcribes, answers with its tools and speaks (ADR 0102). Decided by the server per role; the other door refuses with 409.
+
+            * `live` - live
+            * `cascade` - cascade
+        companion_name:
+          type: string
+        voice_name:
+          type: string
+        input_audio_rate:
+          type: integer
+          description: '`cascade`: the utterance is 16-bit mono PCM at this rate.'
+        output_audio_rate:
+          type: integer
+          description: '`cascade`: the reply''s audio is 16-bit mono PCM at this rate.'
+        max_utterance_seconds:
+          type: integer
+          description: '`cascade`: the longest utterance the turn route accepts.'
+        session_minutes:
+          type: integer
+          nullable: true
+          description: How long one conversation may last, for a recruiter's demo
+            visit (`LEGION_DEMO_MAX_SESSION_MINUTES`); null for a member.
+      required:
+      - companion_name
+      - engine
+      - input_audio_rate
+      - max_utterance_seconds
+      - output_audio_rate
+      - session_minutes
+      - voice_name
     AssistantPack:
       type: object
       properties:
@@ -13998,6 +14118,41 @@ components:
       - outcome
       - response
       - text
+    AssistantTurnRequest:
+      type: object
+      properties:
+        audio:
+          type: string
+          format: uri
+          description: 'One utterance: raw 16-bit little-endian mono PCM at 16 kHz,
+            no header, at most 15 seconds. Send this OR `text`. Never stored.'
+        text:
+          type: string
+          description: A typed message, answered in text only (no speech). Send this
+            OR `audio`.
+          maxLength: 2000
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 'The conversation this turn continues: the `conversation_id`
+            of an earlier turn''s `turn` event. Omit it to start a new conversation.'
+        utc_offset_minutes:
+          type: integer
+          maximum: 840
+          minimum: -720
+          nullable: true
+          description: As for `POST /api/assistant/session`.
+        client_now_ms:
+          type: integer
+          nullable: true
+          description: As for `POST /api/assistant/session`; read when a conversation
+            starts.
+        preface:
+          type: string
+          description: A hidden line the page puts ahead of the person's words (the
+            demo's opener). Never shown, never recorded as theirs.
+          maxLength: 400
     AverageSpend:
       type: object
       properties:
@@ -17211,6 +17366,14 @@ components:
       - weight_lbs
       - weight_source
       - words
+    EngineEnum:
+      enum:
+      - live
+      - cascade
+      type: string
+      description: |-
+        * `live` - live
+        * `cascade` - cascade
     EvaluatedOnEnum:
       enum:
       - engine

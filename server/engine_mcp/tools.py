@@ -1386,6 +1386,11 @@ def _account_balances(request, args) -> ToolResult:
         if lead:
             structured["net_cash"] = cash
             lead += "\n\n"
+        spoken = net_cash_spoken(request, cash)
+        if spoken:
+            # ADR 0102 (the web cascade): the figure a voice speaks is this code-written sentence,
+            # never the model's rewording of it (ADR 0094, the phone's `speak_verbatim`).
+            structured[SPEAK_VERBATIM] = spoken
     return ok(
         lead
         + "Balances per account, never added across currencies:\n"
@@ -1395,6 +1400,25 @@ def _account_balances(request, args) -> ToolResult:
 
 
 NET_CASH_STALE = timedelta(hours=24)
+
+# A result's `structured[SPEAK_VERBATIM]` is a sentence written by code that a voice client speaks
+# word for word instead of the model's wording (the phone's `VerbatimSpeech.KEY`). Only tools named
+# in `assistant.cascade.VERBATIM_TOOLS` are spoken from it.
+SPEAK_VERBATIM = "speak_verbatim"
+
+
+def net_cash_spoken(request, cash: dict) -> str:
+    """The net cash figure as one spoken sentence, or "" when there is no figure to say."""
+    from brief.compose import money
+
+    if not cash.get("available") or cash.get("net_cents") is None:
+        return ""
+    stale = cash.get("as_of") is not None and _now() - cash["as_of"] > NET_CASH_STALE
+    said = (
+        f"Net cash is {money(cash['net_cents'], cash['currency'])}, "
+        f"{_bank_as_of_words(request, cash.get('as_of'))}."
+    )
+    return said + (" That is more than a day old." if stale else "")
 
 
 def _net_cash_words(request, cash: dict) -> str:
