@@ -546,8 +546,9 @@ here.
 - [ ] A write path? It is a Django endpoint first and a Kotlin caller second (ADR 0044). The phone
       never writes Postgres directly. An integrity rule that must hold even if Django has a bug is
       SQL shipped by a Django migration; a business rule lives in Django once, never also in Kotlin.
-- [ ] Server down? The phone still reads from Room, queues the write, and says so in words. Voice
-      says it cannot reach the engine and answers nothing else (ADR 0095).
+- [ ] Server down? The phone still reads from Room, queues the write, and says so in words. After
+      the engine-brain switch ships, voice says it cannot reach the engine and answers nothing else
+      (ADR 0095); until then the phone's own loop still answers from Room.
 - [ ] New table, view or report? Scoped by household at the one choke point, listed in
       `household.tenancy.TENANT_TABLES`, and covered by the tenancy leak test (ADR 0045). A table
       that can hold private rows reads through `visible()` and is covered by `test_visibility.py`
