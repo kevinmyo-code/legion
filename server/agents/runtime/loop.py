@@ -9,7 +9,7 @@ Each round:
 1. stop if the turn was cancelled, ran out of time or out of budget;
 2. call the model with the spec's prompt and the gateway's declarations (the last round keeps the
    declarations but turns calling off, and carries the phone's nudge "Answer now with what you
-   have.", `GeminiTextLoop.kt`);
+   have.", `GeminiTextLoop.kt`); a turn that still ends with no words speaks `NO_ANSWER_WORDS`;
 3. stream text out sentence by sentence;
 4. run the round's calls through the gateway, in order (engine tools share the request's database
    connection, so they are not run in parallel threads; the plan's "in parallel" is changed to
@@ -46,6 +46,11 @@ CANCELLED_WORDS = "Stopped: the turn was cancelled."
 TIMEOUT_WORDS = "That took too long, so I stopped. Nothing after this point was done."
 BUDGET_WORDS = "This turn reached its spending limit, so I stopped before asking the model again."
 MODEL_WORDS = "I couldn't reach the model just now, so I can't answer that."
+# Spoken when a turn ends with no words at all: the last, tools-off round can come back empty (the
+# model still reaching for a tool). The person always hears something; it claims nothing.
+NO_ANSWER_WORDS = (
+    "I didn't get to an answer that time, so I stopped there. Ask me again and I'll pick it up."
+)
 
 DONE = "done"
 CANCELLED = "cancelled"
@@ -187,6 +192,9 @@ def run_loop(
         if parts:
             state.messages.append({"role": "model", "parts": parts})
         if not calls or last:
+            if not spoken:
+                spoken.append(NO_ANSWER_WORDS)
+                yield ev.sentence(NO_ANSWER_WORDS)
             return result(DONE, "", round_no + 1)
         outcomes = []
         for call in calls:

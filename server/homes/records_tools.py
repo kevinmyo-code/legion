@@ -36,8 +36,10 @@ turn. Every read is `scoped()` (the rows are shared in the household).
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
+import re
 import uuid
 from datetime import UTC, datetime, time
 
@@ -100,27 +102,88 @@ def _live(model, request):
 
 
 def _aspect(request, name: str):
-    name = (name or "").strip()
-    return (
-        _live(UserAspect, request).filter(archived=False, name__iexact=name).first()
-        if name
-        else None
+    return _pick(
+        name or "", list(_live(UserAspect, request).filter(archived=False)), lambda a: a.name
+    )
+
+
+_GENERIC = {
+    "tracker",
+    "trackers",
+    "log",
+    "logs",
+    "my",
+    "the",
+    "entry",
+    "entries",
+    "record",
+    "records",
+}
+
+
+def _norm(name: str) -> str:
+    """A name as he might say it: case, punctuation, plurals and the word "tracker" dropped."""
+    words = re.findall(r"[a-z0-9]+", (name or "").lower())
+    kept = [w for w in words if w not in _GENERIC] or words
+    return " ".join(
+        w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w for w in kept
+    )
+
+
+def _pick(name: str, options: list, label) -> object | None:
+    """The option `name` means: exact (any case), then the same said loosely, then one close
+    sound-alike. None when nothing, or more than one, fits."""
+    if not name.strip():
+        return None
+    exact = [o for o in options if label(o).lower() == name.strip().lower()]
+    if len(exact) == 1:
+        return exact[0]
+    loose = [o for o in options if _norm(label(o)) == _norm(name)]
+    if len(loose) == 1:
+        return loose[0]
+    close = difflib.get_close_matches(
+        _norm(name), [_norm(label(o)) for o in options], n=2, cutoff=0.8
+    )
+    if len(close) == 1:
+        found = [o for o in options if _norm(label(o)) == close[0]]
+        return found[0] if len(found) == 1 else None
+    return None
+
+
+def _live_types(request) -> list:
+    return list(
+        _live(UserRecordType, request)
+        .select_related("aspect")
+        .filter(aspect__archived=False, aspect__deleted_at__isnull=True)
+        .order_by("created_at_client", "id")
     )
 
 
 def _record_type(request, aspect_name: str, type_name: str):
-    """The live record type `type_name` inside the live aspect `aspect_name`: one query."""
-    return (
-        _live(UserRecordType, request)
-        .select_related("aspect")
-        .filter(
-            aspect__name__iexact=(aspect_name or "").strip(),
-            aspect__archived=False,
-            aspect__deleted_at__isnull=True,
-            name__iexact=(type_name or "").strip(),
-        )
-        .first()
-    )
+    """The record type he means, forgivingly (one query): the tracker by name, then its type by
+    name; a tracker with one record type needs no type name, and a type name unique across his
+    trackers needs no tracker name."""
+    types = _live_types(request)
+    aspects = list({t.aspect_id: t.aspect for t in types}.values())
+    aspect = _pick(aspect_name or "", aspects, lambda a: a.name)
+    if aspect is None:
+        return _pick(type_name or "", types, lambda t: t.name)
+    mine = [t for t in types if t.aspect_id == aspect.id]
+    picked = _pick(type_name or "", mine, lambda t: t.name)
+    return picked or (mine[0] if len(mine) == 1 else None)
+
+
+def _catalogue(request) -> str:
+    """His trackers, their record types and field names (no values): what a miss hands back so
+    the next call can be right."""
+    types = _live_types(request)
+    fields: dict = {}
+    for f in _live(UserFieldDef, request).filter(record_type__in=types).order_by("position", "id"):
+        fields.setdefault(f.record_type_id, []).append(f.name)
+    if not types:
+        return "He has no trackers of his own yet."
+    parts = [f"{t.aspect.name} > {t.name} ({', '.join(fields.get(t.id, []))})" for t in types]
+    return "His trackers (tracker > record type (fields)): " + "; ".join(parts) + "."
 
 
 def _fields(request, record_type) -> list:
@@ -144,15 +207,19 @@ def _options(field) -> list[str]:
     return [str(o) for o in raw] if isinstance(raw, list) else []
 
 
-def _no_aspect(name: str) -> str:
-    return f"There is no tracker called {name!r}; list_aspects names the ones that exist."
-
-
-def _no_type(aspect_name: str, type_name: str) -> str:
-    return (
-        f"{aspect_name!r} has no record type called {type_name!r} (or there is no such tracker); "
-        f"describe_aspect names its record types."
+def _no_aspect(name: str, request=None) -> str:
+    where = (
+        _catalogue(request) if request is not None else "list_aspects names the ones that exist."
     )
+    return f"There is no tracker called {name!r}. {where}"
+
+
+def _no_type(aspect_name: str, type_name: str, request=None) -> str:
+    said = f"{aspect_name!r}" + (f" / {type_name!r}" if type_name else "")
+    where = (
+        _catalogue(request) if request is not None else "describe_aspect names its record types."
+    )
+    return f"No tracker or record type matches {said}. {where}"
 
 
 # -- values: the phone's shapes in, words out ----------------------------------------------------
@@ -243,10 +310,9 @@ def _one_option(field, raw) -> str:
 
 def _values(fields: list, given: dict, zone, request) -> tuple[dict, list[str]]:
     """Name-keyed args to a guid-keyed payload delta. Unknown names come back, never dropped."""
-    by_name = {f.name.lower(): f for f in fields}
     out, unknown = {}, []
     for name, raw in (given or {}).items():
-        field = by_name.get(str(name).strip().lower())
+        field = _pick(str(name), fields, lambda f: f.name)  # "minute" finds "minutes"
         if field is None:
             unknown.append(str(name))
             continue
@@ -291,18 +357,24 @@ def _line(record, fields: list, zone) -> dict:
 
 
 def _list_aspects(request, args):
+    """His trackers, each record type and its field names (no values): enough to read or write
+    any of them next, so describe_aspect is only for options and required fields."""
     aspects = list(
         _live(UserAspect, request).filter(archived=False).order_by("position", "created_at_client")
     )
-    types = (
+    types = list(
         _live(UserRecordType, request)
         .filter(aspect__in=aspects)
         .order_by("created_at_client", "id")
-        .values_list("aspect_id", "name")
     )
+    fields: dict = {}
+    for f in _live(UserFieldDef, request).filter(record_type__in=types).order_by("position", "id"):
+        fields.setdefault(f.record_type_id, []).append(f.name)
     by_aspect: dict = {}
-    for aspect_id, name in types:
-        by_aspect.setdefault(aspect_id, []).append(name)
+    for t in types:
+        by_aspect.setdefault(t.aspect_id, []).append(
+            {"name": t.name, "fields": fields.get(t.id, [])}
+        )
     lines = [{"name": a.name, "record_types": by_aspect.get(a.id, [])} for a in aspects]
     if not lines:
         return ok(
@@ -316,7 +388,7 @@ def _describe_aspect(request, args):
     name = args.get("aspect_name") or ""
     aspect = _aspect(request, name)
     if aspect is None:
-        return refused(_no_aspect(name))
+        return refused(_no_aspect(name, request))
     types = list(
         _live(UserRecordType, request)
         .filter(aspect=aspect)
@@ -371,7 +443,7 @@ def _run_query(request, args):
     type_name = args.get("record_type_name") or ""
     record_type = _record_type(request, aspect_name, type_name)
     if record_type is None:
-        return None, None, None, _no_type(aspect_name, type_name)
+        return None, None, None, _no_type(aspect_name, type_name, request)
     fields = _fields(request, record_type)
     zone = _zone(request)
     filters = args.get("filters") or {}
@@ -383,19 +455,26 @@ def _run_query(request, args):
             None,
             None,
             (
-                f"{record_type.name!r} has no field called {', '.join(unknown)}; describe_aspect "
-                f"names its fields."
+                f"{record_type.name!r} has no field called {', '.join(unknown)}. Its fields: "
+                f"{', '.join(f.name for f in fields)}."
             ),
         )
-    search = (args.get("search_text") or "").strip().lower()
+    words = _search_words(args.get("search_text") or "", record_type)
     rows = _live(UserRecord, request).filter(record_type=record_type, trashed_at__isnull=True)
     matched = [
         r
         for r in rows.order_by("-updated_at_client")
         if _matches(r, fields, filters, zone, request)
-        and (not search or search in (r.search_text or "").lower())
+        and all(w in _norm(r.search_text or "") for w in words)
     ]
     return record_type, fields, matched, None
+
+
+def _search_words(phrase: str, record_type) -> list[str]:
+    """ "the rowing session" finds an entry whose text says Rowing: the type's and tracker's own
+    names and filler words are not required to appear."""
+    skip = set(_norm(record_type.name).split()) | set(_norm(record_type.aspect.name).split())
+    return [w for w in _norm(phrase).split() if w not in skip and len(w) > 1]
 
 
 def _query(request, args):
@@ -419,7 +498,7 @@ def _create_record(request, args):
     type_name = args.get("record_type_name") or ""
     record_type = _record_type(request, aspect_name, type_name)
     if record_type is None:
-        return refused(f"Nothing was written. {_no_type(aspect_name, type_name)}")
+        return refused(f"Nothing was written. {_no_type(aspect_name, type_name, request)}")
     fields = _fields(request, record_type)
     zone = _zone(request)
     try:
@@ -429,7 +508,7 @@ def _create_record(request, args):
     if unknown:
         return refused(
             f"Nothing was written. {record_type.name!r} has no field called "
-            f"{', '.join(unknown)}; describe_aspect names its fields."
+            f"{', '.join(unknown)}. Its fields: {', '.join(f.name for f in fields)}."
         )
     missing = [
         f.name
@@ -470,13 +549,38 @@ def _find_record(request, record_id: str):
     )
 
 
+def _one_by_search(request, args, verb: str):
+    """(record, None) when the tracker and search phrase name exactly one live entry, else
+    (None, the refusal in words, naming the candidates or what exists)."""
+    record_type, fields, matched, error = _run_query(request, args)
+    if error:
+        return None, f"Nothing was {verb}. {error}"
+    if len(matched) == 1:
+        return matched[0], None
+    if not matched:
+        return None, f"Nothing was {verb}. No {record_type.name} entry matches that."
+    zone = _zone(request)
+    shown = _dumps([_line(r, fields, zone) for r in matched[:PREVIEW]])
+    return None, (
+        f"Nothing was {verb}. {len(matched)} {record_type.name} entries match; ask which one and "
+        f"pass its record_id: {shown}"
+    )
+
+
 def _update_record(request, args):
     record_id = (args.get("record_id") or "").strip()
-    record = _find_record(request, record_id)
+    if record_id:
+        record = _find_record(request, record_id)
+    elif args.get("aspect_name") or args.get("search_text"):
+        record, refusal = _one_by_search(request, args, "written")
+        if refusal:
+            return refused(refusal)
+    else:
+        record = None
     if record is None:
         return refused(
-            f"Nothing was written. No entry has record_id {record_id!r}; query_aspect_records "
-            f"gives the ids."
+            f"Nothing was written. No entry has record_id {record_id!r}; give the tracker and a "
+            f"search_text, or a record_id from query_aspect_records."
         )
     if record.trashed_at is not None:
         return refused("Nothing was written. That entry is in the trash.")
@@ -488,8 +592,8 @@ def _update_record(request, args):
         return refused(f"Nothing was written. {exc}.")
     if unknown:
         return refused(
-            f"Nothing was written. That entry's type has no field called {', '.join(unknown)}; "
-            f"describe_aspect names its fields."
+            f"Nothing was written. That entry's type has no field called {', '.join(unknown)}. "
+            f"Its fields: {', '.join(f.name for f in fields)}."
         )
     if not values:
         return refused("Nothing was written. Name at least one field to change in `fields`.")
@@ -617,12 +721,15 @@ def _delete_record(request, args):
             f"{f' ({label})' if label else ''}{also}. It stays in the trash for 30 days.",
             structured={"record_id": record.origin_guid, "trashed": trashed},
         )
-    if not (args.get("aspect_name") and args.get("record_type_name")):
+    if not args.get("aspect_name") and not args.get("record_type_name"):
         return refused(
-            "Nothing was deleted. Give one record_id, or aspect_name and record_type_name (with "
-            "filters) for a set."
+            "Nothing was deleted. Give one record_id, or the tracker (aspect_name) with a "
+            "search_text or filters."
         )
     record_type, fields, matched, error = _run_query(request, args)
+    narrowed = bool((args.get("search_text") or "").strip() or args.get("filters"))
+    if not error and narrowed and len(matched) == 1 and not args.get("confirm"):
+        return _delete_record(request, {"record_id": matched[0].origin_guid})
     if error:
         return refused(f"Nothing was deleted. {error}")
     if not matched:
@@ -791,7 +898,7 @@ def _update_aspect(request, args):
     name = (args.get("aspect_name") or "").strip()
     aspect = _aspect(request, name)
     if aspect is None:
-        return refused(f"Nothing changed. {_no_aspect(name)}")
+        return refused(f"Nothing changed. {_no_aspect(name, request)}")
     change = args.get("change")
     if change not in UPDATE_CHANGES:
         return refused(f"Nothing changed. `change` is one of {', '.join(UPDATE_CHANGES)}.")
@@ -822,9 +929,8 @@ def _update_aspect(request, args):
     else:
         target = _record_type(request, aspect.name, args.get("target_record_type") or "")
         if target is None:
-            return refused(
-                f"Nothing changed. {_no_type(aspect.name, args.get('target_record_type') or '')}"
-            )
+            missing = _no_type(aspect.name, args.get("target_record_type") or "", request)
+            return refused(f"Nothing changed. {missing}")
         fields, error = _draft_fields([args.get("field") or {}])
         if error:
             return refused(f"Nothing changed. {error}.")
@@ -903,9 +1009,10 @@ LIST_ASPECTS = EngineTool(
     name="list_aspects",
     title="His trackers",
     description=(
-        "List the trackers he set up himself (workouts, reading, anything he defined) and the "
-        "record types each holds. Read-only. Not money, cars, food, notes, places or the "
-        "calendar: those have their own tools."
+        "List the trackers he set up himself (guitar practice, reading, anything he defined) "
+        'with each record type and its field names, for "what do I track". Read-only. Not '
+        "needed before reading or writing a tracker he named. Not money, cars, food, workouts, "
+        "notes, places or the calendar: those have their own tools."
     ),
     input_schema=_obj({}),
     handler=_list_aspects,
@@ -917,8 +1024,9 @@ DESCRIBE_ASPECT = EngineTool(
     title="A tracker's fields",
     description=(
         "Describe one of his trackers: each record type and its fields (name, type, required, a "
-        "choice field's options). Read-only. Call it before writing to a record type whose "
-        "field names you have not seen in this conversation."
+        'choice field\'s options), for "what can I log". Read-only. Not needed before a write: '
+        "pass field names as he says them, and a write with a name that does not fit is refused "
+        "with the real names, nothing written."
     ),
     input_schema=_obj({"aspect_name": _NAME}, ("aspect_name",)),
     handler=_describe_aspect,
@@ -929,19 +1037,20 @@ QUERY_ASPECT_RECORDS = EngineTool(
     name="query_aspect_records",
     title="Entries in a tracker",
     description=(
-        "Find entries of one record type in one of his trackers, newest first, each with its "
-        "`record_id`. `filters` is field name to the exact value it must equal; `search_text` "
-        "is a loose match over the text fields. Read-only."
+        "Find entries in one of his trackers, newest first, each with its `record_id`. Call it "
+        "straight away with the tracker's name as he says it; record_type_name is needed only "
+        "when the tracker has several. `search_text` matches words in the entry's text; "
+        "`filters` is field name to exact value. A miss lists his trackers. Read-only."
     ),
     input_schema=_obj(
         {
             "aspect_name": _NAME,
-            "record_type_name": _NAME,
+            "record_type_name": {"type": "string"},
             "filters": {"type": "object"},
             "search_text": {"type": "string"},
             "limit": {"type": "integer", "minimum": 1, "maximum": QUERY_LIMIT_MAX},
         },
-        ("aspect_name", "record_type_name"),
+        ("aspect_name",),
     ),
     handler=_query,
     writes=False,
@@ -951,11 +1060,17 @@ CREATE_ASPECT_RECORD = EngineTool(
     name="create_aspect_record",
     title="Log an entry in a tracker",
     description=(
-        "Log one new entry of one record type in one of his trackers. " + _VALUES + _WRITE
+        "Log one new entry in one of his trackers (record_type_name only when it has several). "
+        + _VALUES
+        + _WRITE
     ),
     input_schema=_obj(
-        {"aspect_name": _NAME, "record_type_name": _NAME, "fields": {"type": "object"}},
-        ("aspect_name", "record_type_name", "fields"),
+        {
+            "aspect_name": _NAME,
+            "record_type_name": {"type": "string"},
+            "fields": {"type": "object"},
+        },
+        ("aspect_name", "fields"),
     ),
     handler=_create_record,
     writes=True,
@@ -965,10 +1080,20 @@ UPDATE_ASPECT_RECORD = EngineTool(
     name="update_aspect_record",
     title="Change an entry in a tracker",
     description=(
-        "Change fields on one entry by its `record_id` (from query_aspect_records); only the "
-        "fields named change. " + _VALUES + _WRITE
+        "Change fields on one entry: by `record_id`, or by the tracker (aspect_name) and a "
+        "`search_text` that names exactly one entry (if several match, it lists them and changes "
+        "nothing). Only the fields named change. " + _VALUES + _WRITE
     ),
-    input_schema=_obj({"record_id": _NAME, "fields": {"type": "object"}}, ("record_id", "fields")),
+    input_schema=_obj(
+        {
+            "record_id": {"type": "string"},
+            "aspect_name": {"type": "string"},
+            "record_type_name": {"type": "string"},
+            "search_text": {"type": "string"},
+            "fields": {"type": "object"},
+        },
+        ("fields",),
+    ),
     handler=_update_record,
     writes=True,
 )
@@ -977,16 +1102,17 @@ DELETE_ASPECT_RECORD = EngineTool(
     name="delete_aspect_record",
     title="Delete tracker entries",
     description=(
-        "Trash (30 days, recoverable) one entry by `record_id`: done at once. Or a set by "
-        "aspect_name, record_type_name and filters: the first call only counts them and deletes "
-        "nothing; call again with the same arguments and confirm: true only after he agreed to "
-        "that count." + _WRITE
+        "Trash (30 days, recoverable) one entry: by `record_id`, or by the tracker (aspect_name) "
+        "and a `search_text` that names exactly one entry; that is done at once. A set (several "
+        "match, or filters only): the first call only counts them and deletes nothing; call again "
+        "with the same arguments and confirm: true only after he agreed to that count." + _WRITE
     ),
     input_schema=_obj(
         {
             "record_id": {"type": "string"},
             "aspect_name": {"type": "string"},
             "record_type_name": {"type": "string"},
+            "search_text": {"type": "string"},
             "filters": {"type": "object"},
             "confirm": {"type": "boolean"},
         }
