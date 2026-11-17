@@ -83,7 +83,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[08-demo-videos\|08]] | content | Demo videos: phone, head unit, receipt scan |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[09-resume-and-work-text\|09]] | content | Resume page and work text |
 | [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[10-about-kevin-profile\|10]] | decision | about_kevin: recruiters ask about Kevin himself |
-| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[12-phone-turn-taking-in-the-browser\|12]] | build | The phone's tuned turn-taking and barge-in, in the browser |
 | [[.scratch/two-clients/map\|two-clients]] | [[06-google-calendar-is-a-snapshot\|06]] | decision | Google Calendar rows are a snapshot from 2026-09-01, not a feed |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
@@ -246,6 +245,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/procedures/map\|procedures]] | [[13-build-run-traces\|13]] | build | Build: run traces, linked to conversation records, with retention |
 | [[.scratch/purchase-log/map\|purchase-log]] | [[06-server\|06]] | build | Server: table, API, tenancy, the Groceries hook, /mcp tools |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
+| [[.scratch/recruiter-demo/map\|recruiter-demo]] | [[12-phone-turn-taking-in-the-browser\|12]] | build | The phone's tuned turn-taking and barge-in, in the browser |
 | [[.scratch/retro-games/map\|retro-games]] | [[05-build-race-engine-pwa\|05]] | build | Build: engine match API + game_invite push, PWA Tetris solo and race |
 | [[.scratch/retro-games/map\|retro-games]] | [[06-build-race-phone\|06]] | build | Build: phone Tetris solo and race, background invite poll, local notification |
 | [[.scratch/voice-browser/map\|voice-browser]] | [[01-browser-screen-and-voice-tool\|01]] | build | The browser screen, its persistent profile, and the one `browser` voice tool |

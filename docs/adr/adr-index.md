@@ -107,6 +107,7 @@ Format and the test for whether something deserves an ADR:
 | 0100 | [[0100-agent-runtime-traces-and-eval-gates\|The agent runtime is a reusable package; traces and eval suites gate every release]] | accepted | 2026-11-17 | - |
 | 0101 | [[0101-derived-knowledge-baselines-and-changes\|Derived knowledge: baselines and changes, computed by code, never raw data in memory]] | accepted | 2026-11-17 | - |
 | 0102 | [[0102-web-assistant-voice-on-the-engine-cascade\|The web assistant's voice runs on the engine's cascade, with the phone's behaviour]] | accepted | 2026-11-17 | - |
+| 0103 | [[0103-demo-voice-first-and-browser-turn-taking\|The demo is voice-first, and the browser takes turns the way the phone does]] | accepted | 2026-11-17 | - |
 
 ## Superseded
 

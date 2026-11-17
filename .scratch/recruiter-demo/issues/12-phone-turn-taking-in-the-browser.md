@@ -8,7 +8,7 @@ status-detail: "built on feat/demo-voice-first (ADR 0103); owes a run on a real 
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 
