@@ -440,6 +440,22 @@ def test_the_finance_reads_never_reach_kevins_money(world, household_a):
     _allowed(world, "cash_flow", {"month": month})
     _allowed(world, "runway", {})
     _allowed(world, "budgets", {"month": month})
+    # Net cash (ADR 0094): the Kevin-like household links a bank; the visit's copy links none.
+    from ingest.models import PlaidItem
+
+    PlaidItem.objects.create(
+        household=household_a, item_id=f"{MARK}-item", access_token_ciphertext=b"not-a-token",
+        accounts=[{
+            "account_id": f"{MARK}-acc", "mask": "1000", "name": f"{MARK} checking",
+            "type": "depository", "subtype": "checking", "balance_current_cents": 100_000,
+            "balance_available_cents": None, "balance_currency": "USD",
+            "balance_as_of": "2026-11-16T14:00:00+00:00",
+        }],
+    )
+    assert MARK not in _allowed(world, "account_balances", {})
+    cash = world["browser"].get("/api/finance/net-cash")
+    assert cash.status_code == 200, cash.content
+    assert MARK not in str(cash.data) and cash.data["net_cents"] is None
 
 
 def test_about_kevin_reads_the_profile_and_nothing_of_either_household(world):

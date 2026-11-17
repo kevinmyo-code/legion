@@ -93,6 +93,17 @@ object WakeWordPreferences {
     fun setOwwThreshold(context: Context, value: Float) =
         prefs(context).edit().putFloat(KEY_OWW_THRESHOLD, WakeEngineKind.clampThreshold(value)).apply()
 
+    /**
+     * "Only my voice" (Kevin 2026-11-16). Off (default): every wake hit is scored and logged and
+     * nothing is held back (shadow mode). On: a wake that does not sound like him is held back
+     * ([com.kevin.legion.service.speaker.SpeakerPolicy]). The screen allows on only with a voiceprint.
+     */
+    fun onlyMyVoice(context: Context): Boolean = prefs(context).getBoolean(KEY_ONLY_MY_VOICE, false)
+
+    fun setOnlyMyVoice(context: Context, on: Boolean) =
+        prefs(context).edit().putBoolean(KEY_ONLY_MY_VOICE, on).apply()
+
+    private const val KEY_ONLY_MY_VOICE = "only_my_voice"
     private const val KEY_ENGINE = "engine"
     private const val KEY_OWW_THRESHOLD = "oww_threshold"
 }

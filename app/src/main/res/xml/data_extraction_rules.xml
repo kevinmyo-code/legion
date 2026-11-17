@@ -24,9 +24,19 @@
         <exclude domain="sharedpref" path="companion_profile.xml" />
         <!-- ADR 0080: files a Claude task brought to the phone (a scan may be an ID). -->
         <exclude domain="file" path="claude_files/" />
+        <!-- Recordings of his voice stay on the phone: never in a backup. -->
+        <exclude domain="external" path="voice-turns/" />
+        <exclude domain="external" path="wake-samples/" />
+        <!-- "Only my voice": the voiceprint built from his voice never leaves the phone. -->
+        <exclude domain="file" path="voiceprint/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="companion_profile.xml" />
         <exclude domain="file" path="claude_files/" />
+        <!-- Recordings of his voice stay on the phone: never in a backup. -->
+        <exclude domain="external" path="voice-turns/" />
+        <exclude domain="external" path="wake-samples/" />
+        <!-- "Only my voice": the voiceprint built from his voice never leaves the phone. -->
+        <exclude domain="file" path="voiceprint/" />
     </device-transfer>
 </data-extraction-rules>

@@ -114,6 +114,23 @@ enum class ProactiveCategory(
         "Watches",
         "Things you asked to be told about, and money, school and car signals.",
         true,
+    ),
+
+    /**
+     * Listening check-ins (alfred-greets ticket 03, ADR 0091; Kevin 2026-11-15): one short question
+     * from his real day at four moments (morning first unlock, after an event, away from home,
+     * something due within a day), with the mic open about 8 s for the answer and a scripted closer
+     * on silence ([com.kevin.legion.service.checkin.CheckIns]). **On by default** ([DEFAULT_ON]):
+     * he asked for it. Inside the master switch; never in quiet hours (10pm to 8am), a call, Matrix,
+     * or when he could not answer hands-free. The compulsion test: (a) the facts pack, (b) exempt
+     * for check-ins (ADR 0091), (c) the prompt forbids his absence, (d) this switch, or "no" (that
+     * topic family is quiet for a day).
+     */
+    CHECK_INS(
+        "check_ins",
+        "Check-ins",
+        "A short question about your day, with the mic open a few seconds for your answer.",
+        true,
     );
 
     companion object {
@@ -140,6 +157,6 @@ enum class ProactiveCategory(
          * deliberate exception to "a fresh install is quiet": every line it carries answers a task
          * he sent.
          */
-        val DEFAULT_ON = setOf(CLAUDE_TASKS, UPDATES, WATCHES)
+        val DEFAULT_ON = setOf(CLAUDE_TASKS, UPDATES, WATCHES, CHECK_INS)
     }
 }

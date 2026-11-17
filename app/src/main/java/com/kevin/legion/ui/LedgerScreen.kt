@@ -764,6 +764,7 @@ fun LedgerScreen(
                 onOpenBudget = { showBudget = true },
                 onOpenQuarantine = { showQuarantine = true },
                 onSetCurrency = moneyViewModel::setCurrency,
+                onSetFloor = moneyViewModel::setFloor,
                 // A page change moves the picked month, so the month effect above reloads it (the
                 // category drilldown and the budget details read the same month), and the engine
                 // figures for that month are read.

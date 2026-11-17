@@ -237,6 +237,58 @@ class CascadeWiringTest {
     }
 
     @Test
+    fun `the model's own leading filler is dropped where speech and the transcript meet`() {
+        val s = session()
+        assertTrue(bodyOf(s, "newSpeaker").contains("onFillerDropped = { LiveLatency.log(LiveLatency.TAG, \"reply_filler_dropped n=1\") }"))
+        val answer = bodyOf(s, "answerTurn")
+        assertTrue(answer.contains("reply.spoken().ifBlank { LeadingFiller.strip(result.text) }"))
+        assertTrue(answer.contains("text ?: LeadingFiller.strip(result.text)"))
+    }
+
+    @Test
+    fun `a check-in conversation carries no agenda block on any turn`() {
+        val s = session()
+        // A check-in opens its own conversation with an opener (CascadeOpener.checkIn set) ...
+        assertTrue(s.contains("private var checkInStep = if (opener?.checkIn != null) CheckInStep.LINE else CheckInStep.NONE"))
+        assertTrue(File(sourceRoot(), "service/LiveSessionController.kt").readText().contains("checkIn = checkIn?.takeIf { listen },"))
+        // ... so the read at open gives "", and every later turn sees "" (never the unavailable line).
+        assertTrue(bodyOf(s, "loadAgenda").contains("if (test != null || opener != null) return \"\""))
+        val now = 1_800_000_000_000L
+        val zone = java.time.ZoneId.of("UTC")
+        for (changed in listOf(null, java.time.LocalTime.NOON)) {
+            for (at in listOf(now, now + 86_400_000L)) {
+                assertEquals("", AgendaBlock.current("", 0L, changed, at, zone))
+            }
+        }
+        assertEquals("PRE.", CascadePrompt.withAgenda("PRE.", ""))
+        // His reply turns in that conversation and the check-in line both build from turnPreamble().
+        assertTrue(bodyOf(s, "turnPreamble").contains("CascadePrompt.withAgenda(preamble, agendaNow())"))
+    }
+
+    @Test
+    fun `a tool turn that ended on filler is counted, and a second filler says the failure line`() {
+        val answer = bodyOf(session(), "answerTurn")
+        assertTrue(answer.contains("\"reply_filler_continued n=1\""))
+        assertTrue(answer.contains("\"reply_filler_again n=1\""))
+        assertTrue(answer.contains("val sayFailure = !reply.anyText || result.fillerAgain"))
+    }
+
+    @Test
+    fun `the agenda is the tool's own read of today, bounded, and ages out at turn time`() {
+        val s = session()
+        // One source of truth (2026-11-16): the block reads what day read_calendar reads, no pack.
+        val load = bodyOf(s, "loadAgenda")
+        assertTrue(load.contains("withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone) }"))
+        assertFalse(load.contains("GreetingFactory"))
+        val toolbox = File(sourceRoot(), "service/LiveToolbox.kt").readText()
+        assertTrue(toolbox.contains("com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone)"))
+        // The 30-minute and other-day rule is checked for every turn, not only at open.
+        assertTrue(bodyOf(s, "agendaNow").contains("AgendaBlock.current("))
+        // The greeting never waits for the agenda: it does not wait for the preamble at all.
+        assertTrue(s.contains("awaitPrompt(liveContextWaitMs = 0)"))
+    }
+
+    @Test
     fun `writes are judged on the tool a call stands for, and marked before they run`() {
         val s = session()
         assertTrue(bodyOf(s, "newTextLoop").contains("isMutating = CascadeRules::isWrite"))

@@ -72,7 +72,6 @@ import com.kevin.legion.calendar.DueReader
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.nextAppointmentId
-import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
@@ -2151,22 +2150,16 @@ object LiveToolbox {
         // (`2026-09-14T04:59Z` = Sunday 23:59 in Houston), so [activeByKindInLocalWindow] buckets
         // them onto the correct local day already. Canvas writes an 11:59pm local deadline as
         // `04:59Z the next day`; the storage handles it. Only the `kind` filter was wrong.
-        val dao = CarDatabase.getDatabase(context).eventDao()
-        val events = (
-            dao.activeByKindInLocalWindow(EventKind.EVENT, startMs, endMs, zone) +
-                dao.activeByKindInLocalWindow(EventKind.TASK, startMs, endMs, zone)
-            ).sortedBy { it.startsAt ?: Long.MAX_VALUE }
+        // One read for the tool and the voice agenda block (ADR 0093, 2026-11-16): the block is what
+        // this tool returns for today.
+        val read = com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone)
+        val events = read.events
         ToolCards.publish(PhoneCards.calendar(events, zone, startMs))
         // 2026-11-15: "Quiet on the calendar for today" over two open assignments. Everything due,
         // from BOTH places a due date lives (calendar tasks and dated to-dos, overdue too), is
         // summed up in Kotlin ahead of the rows ([DueReader]), and the
         // rows put open tasks first, so the answer is the first thing in the result.
-        val due = DueReader.read(
-            context,
-            java.time.Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate(),
-            java.time.Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate(),
-            zone,
-        )
+        val due = read.due
         val arr = JSONArray()
         for (event in openTasksFirst(events)) {
             val eventStart = event.startsAt ?: continue
@@ -2732,6 +2725,8 @@ object LiveToolbox {
         }
     }
 
+    // One exit each: no ledger with a net cash figure, no ledger, the balances (ADR 0094 added the first).
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     private suspend fun getLedgerBalance(context: Context, account: String): JSONObject {
         val allBalances = LedgerController.accountBalances(context)
         // account is free-text from the driver's speech, not a stored key, so
@@ -2743,6 +2738,19 @@ object LiveToolbox {
             account.isBlank() || balance.accountId.contains(account, ignoreCase = true) ||
                 sameCard(balance.accountId, account)
         }
+        // ADR 0094 (Kevin, 2026-11-16): asked how much he has, the answer LEADS with net cash and
+        // its as-of time. The engine's figure through the one FinanceController HOME and the Money
+        // screen read (ADR 0035), its saved copy offline; never summed here. Only when no account
+        // was named: "the 7823 card" asks about that card.
+        val cash = if (account.isBlank()) com.kevin.legion.finance.FinanceController.forApp(context).netCash() else null
+        val voice = cash?.let {
+            com.kevin.legion.finance.NetCashVoice.voice(it, java.time.Instant.now(), java.time.ZoneId.systemDefault())
+        }
+        // Stage 7 money gate: when the engine was read, the answer is ONLY ready strings made by code
+        // (no raw cents to add up, no clock to turn into day words). The ledger's own per-account
+        // figures stay for a named account and for when the engine could not be read.
+        if (voice != null && voice.figures.isNotEmpty()) return netCashResult(voice)
+        val cashLead = voice?.sayFirst
         if (matched.isEmpty()) {
             return result(success = false, message = "No ledger accounts on file yet - import a statement first.")
         }
@@ -2751,6 +2759,8 @@ object LiveToolbox {
         // per matched account for a list that is typically small.
         val allPending = LedgerController.pendingTransactions(context)
         val balances = JSONObject()
+        val spoken = mutableListOf<String>()
+        voice?.speech?.takeIf { it.isNotBlank() }?.let { spoken += it }
         for (b in matched) {
             val entry = JSONObject()
             val postedBalanceCents = b.balanceCents
@@ -2782,6 +2792,11 @@ object LiveToolbox {
             // to read; new callers should prefer available_balance_cents.
             entry.put("balance", if (hasAnyFigure) availableCents / 100.0 else JSONObject.NULL)
             entry.put("verified", !b.isProvisional && !b.hasPendingRows)
+            // The figure to say, ready (stage 7): the model says this string, never its own sum.
+            val say = com.kevin.legion.finance.FinanceText.exact(availableCents, b.currency.name)
+            entry.put("say", if (hasAnyFigure) say else JSONObject.NULL)
+            val heard = if (hasAnyFigure) availableCents else null
+            spoken += com.kevin.legion.finance.NetCashVoice.ledgerSpeech(b.accountId, heard, b.currency.name)
             if (b.isProvisional || b.hasPendingRows) {
                 val notes = mutableListOf<String>()
                 if (b.isProvisional) {
@@ -2798,7 +2813,28 @@ object LiveToolbox {
             }
             balances.put(b.accountId, entry)
         }
-        return JSONObject().put("success", true).put("balances", balances)
+        val answer = JSONObject().put("success", true)
+        // First key, so the model reads it first; the per-account figures below leave out the
+        // bank's pending charges, which net cash counts.
+        cashLead?.let { answer.put("say_first", it) }
+        // Said by the phone itself, word for word (VerbatimSpeech): no amount is the model's.
+        answer.put(com.kevin.legion.ai.VerbatimSpeech.KEY, spoken.joinToString(" "))
+        answer.put(com.kevin.legion.ai.VerbatimSpeech.FROM, "get_balance")
+        answer.put("rule", com.kevin.legion.finance.NetCashVoice.RULE)
+        return answer.put("balances", balances)
+    }
+
+    /** `get_balance` with no account named and the engine read: net cash as ready strings only. */
+    private fun netCashResult(v: com.kevin.legion.finance.NetCashVoice.Voice): JSONObject {
+        val figures = JSONArray()
+        v.figures.forEach { figures.put(JSONObject().put("what", it.what).put("say", it.say)) }
+        val out = JSONObject().put("success", true)
+            .put(com.kevin.legion.ai.VerbatimSpeech.KEY, v.speech)
+            .put(com.kevin.legion.ai.VerbatimSpeech.FROM, "get_balance")
+            .put("say_first", v.sayFirst)
+        v.asOf?.let { out.put("as_of", it) }
+        v.stale?.let { out.put("stale", it) }
+        return out.put("figures", figures).put("rule", com.kevin.legion.finance.NetCashVoice.RULE)
     }
 
     /**
@@ -5308,7 +5344,13 @@ object LiveToolbox {
         return when (val r = call()) {
             is AgentResult.Success -> {
                 KeyHealth.noteOk()
-                successOrMutationRefusal(r.text, r.mutatingToolsCalled, requireMutation)
+                successOrMutationRefusal(r.text, r.mutatingToolsCalled, requireMutation).also { out ->
+                    // A routed balance read: the phone speaks its words itself (VerbatimSpeech).
+                    if (r.verbatim != null && r.verbatimFrom != null && out.optBoolean("success")) {
+                        out.put(com.kevin.legion.ai.VerbatimSpeech.KEY, r.verbatim)
+                        out.put(com.kevin.legion.ai.VerbatimSpeech.FROM, r.verbatimFrom)
+                    }
+                }
             }
             AgentResult.RateLimited -> {
                 KeyHealth.noteRateLimited()

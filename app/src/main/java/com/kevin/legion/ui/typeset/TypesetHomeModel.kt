@@ -5,6 +5,7 @@ import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.calendar.DueSummary
 import com.kevin.legion.finance.BudgetsWire
 import com.kevin.legion.finance.FinanceRead
+import com.kevin.legion.finance.NetCashText
 import com.kevin.legion.ui.assistant.CardDestination
 import com.kevin.legion.ui.home.AgendaKind
 import com.kevin.legion.ui.home.AgendaRowUi
@@ -36,6 +37,11 @@ data class TypesetGlance(
     val next: TypesetFigure,
     val due: TypesetFigure,
     val left: TypesetFigure,
+    /**
+     * Net cash (Kevin, 2026-11-16, ADR 0094): one big number near the top with its as-of line under
+     * it. Null draws nothing (the tests' fixed glances, and a build with no engine read yet).
+     */
+    val cash: NetCashText.Model? = null,
 )
 
 /** Every tap the Typeset home can make. Stateless: the caller wires each to its screen or service. */

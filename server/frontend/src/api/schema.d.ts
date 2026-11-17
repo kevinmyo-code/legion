@@ -2232,6 +2232,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/finance/net-cash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Net cash right now: the linked checking account minus what is owed on every linked card, charges pending at the bank counted as spent, from the last bank sync, with its as-of time and a 30-day posted-basis line. No net figure when any part is missing (ADR 0094). */
+        get: operations["api_finance_net_cash_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/finance/networth": {
         parameters: {
             query?: never;
@@ -7957,6 +7974,78 @@ export interface components {
          * @enum {string}
          */
         NeedStatusEnum: "needed" | "guaranteed" | "impossible" | "nothing_left";
+        NetCash: {
+            /** @description False when there is no net figure; `reason` says why. */
+            available: boolean;
+            reason: string | null;
+            /** @description Checking minus every card owed, pending counted as spent. */
+            net_cents: number | null;
+            currency: string | null;
+            /**
+             * Format: date-time
+             * @description The OLDER of the parts' as-of times. Staleness is the reader's call.
+             */
+            as_of: string | null;
+            /** @description Of which pending. */
+            pending_cents: number | null;
+            parts: components["schemas"]["NetCashPart"][];
+            missing: components["schemas"]["NetCashMissing"][];
+            history: components["schemas"]["NetCashHistory"] | null;
+        };
+        NetCashHistory: {
+            /** @description posted: past days are posted figures only; the last point is the headline, pending included. */
+            basis: string;
+            /**
+             * Format: date
+             * @description The line's first day.
+             */
+            start: string;
+            /**
+             * Format: date
+             * @description The headline's as-of day, the line's last point.
+             */
+            end: string;
+            /** @description True when the bank feed reaches back fewer than 30 days: say from when. */
+            short: boolean;
+            points: components["schemas"]["NetCashPoint"][];
+        };
+        NetCashMissing: {
+            /** @description checking | card. */
+            role: string;
+            label: string;
+            mask: string | null;
+            /** @description Why its balance is not usable, in words. */
+            reason: string;
+        };
+        NetCashPart: {
+            /** @description checking | card. */
+            role: string;
+            /** @description The bank's own name for the account. */
+            label: string;
+            /** @description The account's last four digits. */
+            mask: string;
+            currency: string;
+            /** @description What this account adds to net cash, pending counted: a card is negative. */
+            balance_cents: number;
+            /** @description bank_available: the bank's own available balance, which nets pending. current_plus_pending: the bank's current balance plus its pending rows. */
+            basis: string;
+            /** @description Plaid's current as stored; for a card, what is owed, positive. */
+            bank_current_cents: number | null;
+            bank_available_cents: number | null;
+            /** @description The account's pending bank-feed rows, ledger sign (charges negative). */
+            pending_cents: number;
+            pending_count: number;
+            /**
+             * Format: date-time
+             * @description When the bank stated this balance.
+             */
+            as_of: string;
+        };
+        NetCashPoint: {
+            /** Format: date */
+            on: string;
+            net_cents: number;
+        };
         NetWorth: {
             currency: string;
             /** Format: date */
@@ -15685,6 +15774,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_finance_net_cash_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetCash"];
                 };
             };
         };

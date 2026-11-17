@@ -25,6 +25,9 @@ sealed interface WakeSignal {
 
     /** The engine opened a conversation. */
     data object Opened : WakeSignal
+
+    /** "Only my voice" held a wake back: [decision] is `ask` or `ignore`. Never a score. */
+    data class SpeakerHeld(val decision: String) : WakeSignal
 }
 
 /** 16-bit mono PCM to a WAV file's bytes. Pure, so the header is a JVM test. */
@@ -67,13 +70,18 @@ object WavEncoder {
  * Two kinds of sample:
  *  - **Live segments** (only while [liveOn]): one per VAD utterance, from [PREROLL_SECONDS] before
  *    the VAD flipped on to when it flipped off, capped at [MAX_SEGMENT_SECONDS]. What the phone
- *    heard and decided on an ordinary day.
+ *    heard and decided on an ordinary day. Only the two-stage engine has a VAD: with openWakeWord or
+ *    Vosk alone no segment ever opened, so from 11-10 "save every wake attempt" kept nothing
+ *    (2026-11-16). There each wake hit ([isHit]) is a live sample of its own instead: the
+ *    [HIT_PREROLL_SECONDS] before the hit, closed at once (`closedBy` `wake_hit`), since a hit that
+ *    opens a conversation releases the mic straight after.
  *  - **Takes** (enrollment): continuous audio for a labelled window, whatever the VAD did. A take
  *    keeps the VAD out of the recording so the offline eval can sweep the VAD too; a segment-only
  *    recording would bake today's VAD threshold into every result.
  *
  * Offsets in the sidecar are samples from the start of that sample's own audio.
  */
+@Suppress("TooManyFunctions") // the capture's entry points plus the live, hit and take helpers
 class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
 
     /** One finished recording: the PCM and its sidecar. [kind] is "live" or "take". */
@@ -97,7 +105,7 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
 
     @Volatile var liveOn: Boolean = false
 
-    private val preroll = ShortArray((sampleRate * PREROLL_SECONDS).toInt())
+    private val preroll = ShortArray((sampleRate * HIT_PREROLL_SECONDS).toInt())
     private var written = 0L
     private var segment: Open? = null
     private var take: Open? = null
@@ -123,15 +131,23 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
     fun onSignal(signal: WakeSignal, meta: Map<String, String> = emptyMap()): List<Sample> {
         val out = mutableListOf<Sample>()
         if (signal == WakeSignal.VadOn && liveOn && segment == null) {
-            val lead = prerollTail()
-            segment = Open("live", written - lead.size, sampleRate * MAX_SEGMENT_SECONDS, meta).also {
-                it.append(lead, lead.size)
-            }
+            segment = openLive(PREROLL_SECONDS, meta)
         }
+        // No VAD segment around this hit (openWakeWord, Vosk alone): the hit is its own sample.
+        val hitOnly = isHit(signal) && liveOn && segment == null
+        if (hitOnly) segment = openLive(HIT_PREROLL_SECONDS, meta)
         segment?.let { record(it, signal) }
         take?.let { record(it, signal) }
         if (signal == WakeSignal.VadOff) closeSegment(reason = "vad_off")?.let(out::add)
+        if (hitOnly) closeSegment(reason = "wake_hit")?.let(out::add)
         return out
+    }
+
+    private fun openLive(seconds: Double, meta: Map<String, String>): Open {
+        val lead = prerollTail(seconds)
+        return Open("live", written - lead.size, sampleRate * MAX_SEGMENT_SECONDS, meta).also {
+            it.append(lead, lead.size)
+        }
     }
 
     /** Opens a labelled take of at most [maxMs]; an open take is closed and returned first. */
@@ -157,6 +173,7 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
             WakeSignal.VadOff -> e.put("stage", "vad_off")
             WakeSignal.Suppressed -> e.put("stage", "open_suppressed")
             WakeSignal.Opened -> e.put("stage", "opened")
+            is WakeSignal.SpeakerHeld -> e.put("stage", "speaker_held").put("decision", signal.decision)
             is WakeSignal.KwsHit -> e.put("stage", "kws_hit").put("keyword", signal.keyword)
                 .put("tokens", JSONArray(signal.tokens))
                 .put("timestamps", JSONArray(signal.timestamps.map { it.toDouble() }))
@@ -186,12 +203,15 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
     private fun sidecar(kind: String, o: Open, pcm: ShortArray, reason: String): JSONObject {
         val events = o.events
         var kwsHit = false
+        var fired = false
         var confirmText: String? = null
         var accepted: Boolean? = null
         for (i in 0 until events.length()) {
             val e = events.getJSONObject(i)
             when (e.getString("stage")) {
                 "kws_hit" -> kwsHit = true
+                // A wake "only my voice" held back was still a detector hit.
+                "open_suppressed", "opened", "speaker_held" -> fired = true
                 "confirm" -> {
                     confirmText = e.getString("text")
                     accepted = e.getBoolean("accepted")
@@ -209,14 +229,15 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
             put("kwsHit", kwsHit)
             put("confirmText", confirmText ?: JSONObject.NULL)
             put("confirmAccepted", accepted ?: JSONObject.NULL)
-            put("verdict", verdict(kwsHit, accepted))
+            put("verdict", verdict(kwsHit, accepted, fired, o.meta[META_ENGINE]))
             o.meta.forEach { (k, v) -> put(k, v) }
             put("events", events)
         }
     }
 
-    private fun prerollTail(): ShortArray {
-        val have = minOf(written, preroll.size.toLong()).toInt()
+    private fun prerollTail(seconds: Double): ShortArray {
+        val want = minOf((sampleRate * seconds).toLong(), preroll.size.toLong())
+        val have = minOf(written, want).toInt()
         val start = written - have
         return ShortArray(have) { preroll[((start + it) % preroll.size).toInt()] }
     }
@@ -224,14 +245,39 @@ class WakeSampleCapture(private val sampleRate: Int = SAMPLE_RATE) {
     companion object {
         const val SAMPLE_RATE = 16_000
         const val PREROLL_SECONDS = 1.0
+
+        /** A hit-only sample's lead: the phrase, which ends at the hit, and the second before it. */
+        const val HIT_PREROLL_SECONDS = 3.0
         const val MAX_SEGMENT_SECONDS = 20
         private const val MS_PER_SECOND = 1000L
 
-        /** One word for what the pipeline did with this audio. */
-        fun verdict(kwsHit: Boolean, accepted: Boolean?): String = when {
+        /** The sidecar key naming the engine that listened ([ENGINE_OWW], [ENGINE_TWO_STAGE], [ENGINE_VOSK]). */
+        const val META_ENGINE = "engine"
+        const val ENGINE_OWW = "oww"
+        const val ENGINE_TWO_STAGE = "two_stage"
+        const val ENGINE_VOSK = "vosk"
+
+        /** A wake that fired: opened, or held back by "only my voice" (enrolment's Suppressed is a take's). */
+        fun isHit(signal: WakeSignal): Boolean = signal == WakeSignal.Opened || signal is WakeSignal.SpeakerHeld
+
+        /**
+         * One word for what the pipeline did with this audio, from the signals of the engine that
+         * listened. openWakeWord emits no spotter or double-check signals, only whether it would
+         * have opened ([fired]: `open_suppressed` while enrolling, `opened` otherwise), so its
+         * verdict is `oww_hit` or `oww_miss` (2026-11-16: it said "did not hear it" on every take).
+         */
+        fun verdict(
+            kwsHit: Boolean,
+            accepted: Boolean?,
+            fired: Boolean = false,
+            engine: String? = null,
+        ): String = when {
+            engine == ENGINE_OWW -> if (fired) "oww_hit" else "oww_miss"
             accepted == true -> "opened"
             kwsHit && accepted == false -> "confirm_rejected"
             kwsHit -> "kws_hit"
+            // The Vosk-only fallback emits no stage signals either: an open is its only hit.
+            fired -> "opened"
             else -> "kws_miss"
         }
     }

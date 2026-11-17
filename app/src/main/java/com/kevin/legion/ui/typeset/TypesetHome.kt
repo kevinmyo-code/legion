@@ -1,3 +1,4 @@
+@file:Suppress("TooManyFunctions") // the front page: one composable per line of it, the net cash line the twelfth
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.kevin.legion.ui.typeset
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevin.legion.R
 import com.kevin.legion.assistant.cards.ConversationCard
+import com.kevin.legion.finance.NetCashText
 import com.kevin.legion.ui.assistant.CardStage
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
@@ -152,6 +154,7 @@ private fun ColumnScope.Glance(g: TypesetGlance, tier: FitTier, measuring: Boole
             modifier = Modifier.padding(top = tier.gap),
         )
     }
+    g.cash?.let { CashLine(it, tier, actions.onOpenMoney) }
     // The headline takes the height left over and shrinks to it; one line, never wrapped.
     val slot = if (measuring) Modifier.height(MinTime) else Modifier.weight(1f)
     Box(
@@ -212,6 +215,41 @@ private fun Figure(f: TypesetFigure, tier: FitTier, onOpen: () -> Unit) {
             }
         }
         HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
+    }
+}
+
+/**
+ * Net cash (Kevin, 2026-11-16, ADR 0094): "one big number near the top, with the as-of time under
+ * it". Above the time headline, so it is the first figure on the page and the flexible headline
+ * gives up the height, never the rows below it. Every line shows on every [FitTier]: the as-of line
+ * is not a secondary line here. Low cash is the accent AND its words on their own line ("Below
+ * zero"), never colour alone. A tap opens Money, where the working is.
+ */
+@Composable
+private fun CashLine(c: NetCashText.Model, tier: FitTier, onOpen: () -> Unit) {
+    val ink = if (c.flag != null) SoftColors.caution else SoftColors.text
+    // The figure and "net cash" share a row; the flag and the as-of line run the full width under
+    // it and wrap rather than ellipsise, so "below your $500 floor", "Last known, over a day old"
+    // and a missing account's name are never cut.
+    Column(Modifier.fillMaxWidth().padding(top = tier.gap).tap(c.label + ", open Money", onOpen)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            FitLine(c.figure, TypesetType.fig, ink, min = 17.sp, modifier = Modifier.weight(1f))
+            Text(
+                NetCashText.LABEL,
+                style = TypesetType.bodyStrong,
+                color = ink,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 12.dp, bottom = 4.dp),
+            )
+        }
+        c.flag?.let { flag ->
+            Text(
+                flag.replaceFirstChar { it.uppercase() },
+                style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
+                color = ink,
+            )
+        }
+        Text(c.line, style = TypesetType.smallItalic, color = SoftColors.text2, maxLines = CASH_LINES)
     }
 }
 
@@ -428,6 +466,7 @@ private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeAct
 }
 
 private const val CONTENTS_PER_ROW = 5
+private const val CASH_LINES = 2
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp

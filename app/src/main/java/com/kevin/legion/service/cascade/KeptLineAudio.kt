@@ -72,11 +72,14 @@ internal class KeptLineAudio(
     }
 
     companion object {
-        /** Ten lines in two or three voices, with room for a voice change. */
-        const val MAX_FILES = 40
+        /**
+         * Nineteen lines per voice since stage 6 (8 acks, 5 fillers, 6 check-in closers): 57 in three
+         * voices, so a closer never evicts an ack.
+         */
+        const val MAX_FILES = 64
 
-        /** About 40 s of 24 kHz PCM16: far more than every kept line takes. */
-        const val MAX_BYTES = 2L * 1024 * 1024
+        /** About 80 s of 24 kHz PCM16: more than every kept line takes in three voices. */
+        const val MAX_BYTES = 4L * 1024 * 1024
         private const val SUFFIX = ".pcm"
 
         fun name(key: String): String {

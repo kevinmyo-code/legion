@@ -315,7 +315,8 @@ internal object ScriptedLines {
      */
     val FILLERS = listOf("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.")
 
-    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS).toSet()
+    /** The opening acks, the fillers and the check-in closers ([com.kevin.legion.service.checkin.ClosingLines]). */
+    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS + com.kevin.legion.service.checkin.ClosingLines.LINES).toSet()
 
     /**
      * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename

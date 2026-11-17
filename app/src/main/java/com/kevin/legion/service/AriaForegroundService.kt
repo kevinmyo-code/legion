@@ -262,6 +262,7 @@ class AriaForegroundService : Service() {
             ProactiveBus.requestSpeak.collect {
                 sessionController.requestSpeak(
                     it.prompt, it.listensForReply, it.carriesReadThroughContent, listenHoldMs = it.listenHoldMs,
+                    checkIn = it.checkIn,
                 )
             }
         }

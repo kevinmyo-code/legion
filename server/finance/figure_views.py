@@ -354,6 +354,94 @@ class SafeToSpendView(APIView):
 
 
 # =============================================================================
+# Net cash (Kevin, 2026-11-16, ADR 0094)
+# =============================================================================
+
+
+class NetCashPartSerializer(serializers.Serializer):
+    role = serializers.CharField(help_text="checking | card.")
+    label = serializers.CharField(help_text="The bank's own name for the account.")
+    mask = serializers.CharField(help_text="The account's last four digits.")
+    currency = serializers.CharField()
+    balance_cents = serializers.IntegerField(
+        help_text="What this account adds to net cash, pending counted: a card is negative."
+    )
+    basis = serializers.CharField(
+        help_text="bank_available: the bank's own available balance, which nets pending. "
+        "current_plus_pending: the bank's current balance plus its pending rows."
+    )
+    bank_current_cents = serializers.IntegerField(
+        allow_null=True, help_text="Plaid's current as stored; for a card, what is owed, positive."
+    )
+    bank_available_cents = serializers.IntegerField(allow_null=True)
+    pending_cents = serializers.IntegerField(
+        help_text="The account's pending bank-feed rows, ledger sign (charges negative)."
+    )
+    pending_count = serializers.IntegerField()
+    as_of = serializers.DateTimeField(help_text="When the bank stated this balance.")
+
+
+class NetCashMissingSerializer(serializers.Serializer):
+    role = serializers.CharField(help_text="checking | card.")
+    label = serializers.CharField()
+    mask = serializers.CharField(allow_null=True)
+    reason = serializers.CharField(help_text="Why its balance is not usable, in words.")
+
+
+class NetCashPointSerializer(serializers.Serializer):
+    on = serializers.DateField()
+    net_cents = serializers.IntegerField()
+
+
+class NetCashHistorySerializer(serializers.Serializer):
+    basis = serializers.CharField(
+        help_text="posted: past days are posted figures only; the last point is the headline, "
+        "pending included."
+    )
+    start = serializers.DateField(help_text="The line's first day.")
+    end = serializers.DateField(help_text="The headline's as-of day, the line's last point.")
+    short = serializers.BooleanField(
+        help_text="True when the bank feed reaches back fewer than 30 days: say from when."
+    )
+    points = NetCashPointSerializer(many=True)
+
+
+class NetCashSerializer(serializers.Serializer):
+    available = serializers.BooleanField(
+        help_text="False when there is no net figure; `reason` says why."
+    )
+    reason = serializers.CharField(allow_null=True)
+    net_cents = serializers.IntegerField(
+        allow_null=True, help_text="Checking minus every card owed, pending counted as spent."
+    )
+    currency = serializers.CharField(allow_null=True)
+    as_of = serializers.DateTimeField(
+        allow_null=True,
+        help_text="The OLDER of the parts' as-of times. Staleness is the reader's call.",
+    )
+    pending_cents = serializers.IntegerField(allow_null=True, help_text="Of which pending.")
+    parts = NetCashPartSerializer(many=True)
+    missing = NetCashMissingSerializer(many=True)
+    history = NetCashHistorySerializer(allow_null=True)
+
+
+class NetCashView(APIView):
+    @extend_schema(
+        operation_id="api_finance_net_cash_retrieve",
+        tags=[TAG],
+        responses={200: NetCashSerializer},
+        description="Net cash right now: the linked checking account minus what is owed on every "
+        "linked card, charges pending at the bank counted as spent, from the last bank sync, "
+        "with its as-of time and a 30-day posted-basis line. No net figure when any part is "
+        "missing (ADR 0094).",
+    )
+    def get(self, request):
+        from finance.net_cash import net_cash
+
+        return Response(NetCashSerializer(net_cash(request)).data)
+
+
+# =============================================================================
 # Budgets
 # =============================================================================
 

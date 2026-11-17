@@ -20,10 +20,16 @@ import com.kevin.legion.data.local.record
 import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.greeting.GreetingBudget
-import com.kevin.legion.greeting.GreetingFactory
+import com.kevin.legion.backend.EventKind
+import com.kevin.legion.calendar.CalendarWindowRead
 import com.kevin.legion.greeting.GreetingOpening
 import com.kevin.legion.greeting.GreetingPlan
 import com.kevin.legion.service.FollowUpWindow
+import com.kevin.legion.service.VoiceTurnRecorder
+import com.kevin.legion.service.checkin.CheckInOutcome
+import com.kevin.legion.service.checkin.CheckInRules
+import com.kevin.legion.service.checkin.CheckIns
+import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
@@ -32,6 +38,7 @@ import com.kevin.legion.service.ListenCue
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.MicArbiter
 import com.kevin.legion.service.Phase
+import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.WakePhrases
@@ -178,6 +185,9 @@ internal class CascadeSession(
     /** Today's agenda as read at open ([AgendaBlock]), for his turns only; "" when none is given. */
     @Volatile private var agendaRead = ""
 
+    /** When [agendaRead] was read (0 when it is an "unavailable" line): it ages out after 30 min. */
+    @Volatile private var agendaReadAtMs = 0L
+
     /** When this conversation first called a write: the agenda read before it is withdrawn. */
     @Volatile private var agendaChangedAt: LocalTime? = null
 
@@ -198,8 +208,12 @@ internal class CascadeSession(
     /** Whether this session has a mic to go back to after a reply (the controller's tap reads it). */
     val listensForReply: Boolean get() = listens
 
-    /** A background line nobody asked for: its failure is not put on screen. */
-    private val quiet = opener != null && !opener.listen && !opener.userInitiated
+    /**
+     * A background line nobody asked for: its failure is not put on screen. A listening check-in is
+     * quiet too until its line has passed and played: a failure before that is never said.
+     */
+    private val quiet: Boolean
+        get() = opener != null && !opener.userInitiated && (!opener.listen || checkInStep == CheckInStep.LINE)
 
     /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
     private val audioRoute = CascadeAudio(ctx, audioManager)
@@ -233,6 +247,22 @@ internal class CascadeSession(
     private val toolSeq = AtomicInteger(0)
     private val toolsInFlight = AtomicInteger(0)
 
+    /** "Save my turns" (Settings, off by default): his turns' audio kept on the phone ([VoiceTurnRecorder]). */
+    private val saveTurns = VoiceTurnRecorder.enabled(ctx)
+
+    private fun keepTurnAudio(u: TurnUtterance) {
+        if (saveTurns) u.keptAudio()?.let { VoiceTurnRecorder.keep(ctx, it) }
+    }
+
+    /**
+     * A listening check-in's progress (alfred-greets ticket 03): [CheckInStep.LINE] while its line
+     * plays, [CheckInStep.LISTENING] in the reply window, [CheckInStep.DONE] once he spoke or it
+     * closed. [CheckInStep.NONE] for every other conversation.
+     */
+    private var checkInStep = if (opener?.checkIn != null) CheckInStep.LINE else CheckInStep.NONE
+
+    private enum class CheckInStep { NONE, LINE, LISTENING, DONE }
+
     private var followUp = FollowUpWindow.State()
     private var followUpJob: Job? = null
     private var followUpArmedAtMs = 0L
@@ -250,6 +280,9 @@ internal class CascadeSession(
 
         /** Dropped for his next words, which carry these: not recorded on its own. */
         @Volatile var merged = false
+
+        /** A check-in line: held until whole, checked ([CheckInRules.lineRejection]), then said or dropped. */
+        @Volatile var holdLine = false
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -377,7 +410,8 @@ internal class CascadeSession(
         )
         val openMs = System.currentTimeMillis() - started
         LiveLatency.log(LiveLatency.TAG, CascadeLines.open(openMs, probeMs, p, b.tts.streamsText, b.kind.token))
-        if (listens) startMic()
+        // A check-in opens the mic only once its line has passed and played ([afterCheckInLine]).
+        if (listens && checkInStep == CheckInStep.NONE) startMic()
         if (closing.get()) return
         if (opener != null) {
             speakOpener(opener)
@@ -443,7 +477,7 @@ internal class CascadeSession(
             }
         }
         preambleReady = scope.async(Dispatchers.IO) {
-            // Today's agenda, beside the live context (it waits for the pack at most AGENDA_WAIT_MS).
+            // Today's agenda, beside the live context: the phone's own read, bounded by AGENDA_WAIT_MS.
             val agenda = async { loadAgenda() }
             val split = base.await()
             val t = System.currentTimeMillis()
@@ -455,37 +489,53 @@ internal class CascadeSession(
     }
 
     /**
-     * Today's agenda for his turns (voice quick wins C, 2026-11-16), from the greeting pack the phone
-     * keeps; a fetch already running is waited for up to [AGENDA_WAIT_MS]. "" for a test
-     * conversation or one with an opener (a proactive line states only its own facts).
+     * Today's agenda for his turns (voice quick wins C, ADR 0093): the phone's own read of today,
+     * the same one `day read_calendar` makes ([CalendarWindowRead.today]), no network. Runs beside
+     * the live context inside `preambleReady`, bounded by [AGENDA_WAIT_MS]; the greeting never waits
+     * for it. "" for a test conversation or one with an opener (a proactive line or a check-in
+     * states only its own facts).
      */
-    @Suppress("TooGenericExceptionCaught", "SwallowedException") // no pack is said in words, never a failed open
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // no read is said in words, never a failed open
     private suspend fun loadAgenda(): String {
         if (test != null || opener != null) return ""
         val t = System.currentTimeMillis()
+        val zone = ZoneId.systemDefault()
         val block = try {
-            val cache = GreetingFactory.cache(ctx)
-            val cached = cache.usable() ?: run {
-                withTimeoutOrNull(AGENDA_WAIT_MS) { cache.refresh("agenda").await() }
-                cache.usable()
+            val read = withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone) }
+            if (read == null) {
+                AgendaBlock.unavailable(AgendaBlock.NOT_READ_IN_TIME)
+            } else {
+                agendaReadAtMs = read.readAtMs
+                AgendaBlock.render(agendaSnapshot(read), zone)
             }
-            cached?.let { AgendaBlock.render(it, ZoneId.systemDefault()) } ?: AgendaBlock.unavailable()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             LiveLatency.log(LiveLatency.TAG, "agenda_unavailable reason=${e.javaClass.simpleName}")
-            AgendaBlock.unavailable()
+            AgendaBlock.unavailable(AgendaBlock.READ_FAILED)
         }
         LiveLatency.log(LiveLatency.TAG, "open_agenda_ms=${System.currentTimeMillis() - t} chars=${block.length}")
         return block
     }
 
-    /** The agenda as his next turn sees it: as read, or withdrawn once something was changed. */
-    private fun agendaNow(): String {
-        val read = agendaRead
-        if (read.isEmpty()) return ""
-        return agendaChangedAt?.let { AgendaBlock.withdrawn(it) } ?: read
-    }
+    /** The tool's read as the block takes it: events only (tasks are in its due summary). */
+    private fun agendaSnapshot(read: CalendarWindowRead) = AgendaBlock.Snapshot(
+        events = read.events.filter { it.kind == EventKind.EVENT && it.startsAt != null }.map {
+            val start = it.startsAt ?: 0L
+            AgendaBlock.AgendaEvent(it.title, start, it.endsAt ?: start, it.allDay, it.location)
+        },
+        due = read.due,
+        readAtMs = read.readAtMs,
+    )
+
+    /** The agenda as his next turn sees it: as read, withdrawn after a write, or aged out. */
+    private fun agendaNow(): String = AgendaBlock.current(
+        agendaRead,
+        agendaReadAtMs,
+        agendaChangedAt,
+        System.currentTimeMillis(),
+        ZoneId.systemDefault(),
+    )
 
     /** His turns' preamble: the shared one plus the agenda ([CascadePrompt.withAgenda]). */
     private fun turnPreamble(): String = CascadePrompt.withAgenda(preamble, agendaNow())
@@ -740,6 +790,7 @@ internal class CascadeSession(
 
     private fun promptRecord(o: CascadeOpener) = TurnRecord(o.prompt, fromUser = false).also {
         it.readThrough = o.readThrough
+        it.holdLine = o.checkIn != null && checkInStep == CheckInStep.LINE
     }
 
     /** The opener's prompt as the first turn (no greeting, no ack line). */
@@ -780,7 +831,7 @@ internal class CascadeSession(
             }
             // The laptop's words are also kept on the phone: if it fails, the cloud hears them. On
             // the cloud voice they are kept for a speculative draft's transcription.
-            val keep = b.kind == SpeechBackend.Kind.LAPTOP || speculate
+            val keep = b.kind == SpeechBackend.Kind.LAPTOP || speculate || saveTurns
             val u = TurnUtterance(inner, b, keepAudio = keep)
             self = u
             currentUtt = u
@@ -794,6 +845,7 @@ internal class CascadeSession(
                     delay(CascadeTimings.UTTERANCE_CAP_MS)
                     if (currentUtt === u) {
                         currentUtt = null
+                        keepTurnAudio(u)
                         u.end()
                         turnTaker?.reset()
                         onTurnEnd(u, System.currentTimeMillis(), CascadeRules.EotSource.PHONE_CAP, null)
@@ -809,6 +861,7 @@ internal class CascadeSession(
         override fun sendActivityEnd() {
             val u = currentUtt ?: return
             currentUtt = null
+            keepTurnAudio(u)
             // A cloud draft transcribed this audio and he said nothing since: that transcript is the
             // turn's, so the same words are not paid for twice.
             val d = draft?.takeIf { confirmsAudio(it, u) }
@@ -870,6 +923,10 @@ internal class CascadeSession(
     }
 
     private fun onUserTurnStart() {
+        if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
+            checkInStep = CheckInStep.DONE
+            reportCheckIn(CheckInOutcome.ANSWERED)
+        }
         draft?.takeIf { it.utt !== currentUtt }?.let { discardDraft("new_utterance") }
         followUpEvent(FollowUpWindow.Event.UserSpeech)
         audit.activityStart()
@@ -954,6 +1011,9 @@ internal class CascadeSession(
         carry = ""
         userTurns.incrementAndGet()
         audit.user(heard, final = true)
+        // A brush-off of the last unprompted line quiets that rule for a day (ProactiveBus.noteReply);
+        // only the first turn after a raise counts, which the bus enforces.
+        scope.launch(Dispatchers.IO) { runCatching { ProactiveBus.noteReply(ctx, heard) } }
         if (CrisisDetector.detect(heard)) {
             discardDraftOf(u, "not_answered")
             shutdown("crisis")
@@ -1014,13 +1074,41 @@ internal class CascadeSession(
                     listenerFor(record, reply),
                 )
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
-            val text = if (result.failure != null && !reply.anyText) {
+            // A tool turn that ended on filler was asked once more ([FillerTurn]): counts only.
+            if (result.fillerContinued > 0) LiveLatency.log(LiveLatency.TAG, "reply_filler_continued n=1")
+            if (result.fillerAgain) LiveLatency.log(LiveLatency.TAG, "reply_filler_again n=1")
+            // A balance said by the phone itself (VerbatimSpeech); model money sentences dropped after it.
+            if (result.verbatimSpoken) LiveLatency.log(LiveLatency.TAG, "reply_verbatim n=1")
+            if (result.moneyDropped > 0) {
+                LiveLatency.log(LiveLatency.TAG, "reply_money_dropped n=${result.moneyDropped}")
+            }
+            if (record.holdLine) {
+                val toolCalled = synchronized(record) { record.toolsRan.isNotEmpty() }
+                val why = CheckInRules.lineRejection(result.text, result.failure != null, toolCalled)
+                if (why != null) {
+                    reply.interrupt()
+                    dropCheckIn(why, result.failure?.name)
+                    return
+                }
+            }
+            // Filler twice after a tool: the failure line is said even after words already heard.
+            val sayFailure = !reply.anyText || result.fillerAgain
+            val text = if (!record.holdLine && result.failure != null && sayFailure) {
                 result.failureWords ?: result.failure.lead
             } else {
                 null
             }
             // A background line nobody asked for does not announce a fault (Settings says why).
-            if (text != null && !quiet) reply.say(text) else reply.finishText()
+            when {
+                // The check-in line passed: said whole, as written.
+                record.holdLine -> reply.say(result.text.trim())
+                text != null && !quiet && reply.anyText -> {
+                    reply.text(" $text")
+                    reply.finishText()
+                }
+                text != null && !quiet -> reply.say(text)
+                else -> reply.finishText()
+            }
             outcome = reply.await()
             val failed = outcome as? ReplySpeaker.Outcome.Failed
             if (failed != null) {
@@ -1028,7 +1116,7 @@ internal class CascadeSession(
                 // reply goes again, whole, on the next voice; nothing is asked of the model twice.
                 // If no voice can say it, the answer and what was done still reach the panel and
                 // the record before the conversation ends.
-                val words = text ?: result.text
+                val words = text ?: LeadingFiller.strip(result.text)
                 val unsaid = { recordTurn(heard, withWrites(words, record), record.readThrough, seq, record.fromUser) }
                 val again = revoice(voice, failed.reason, heardMoment(heard, record), words, unsaid) ?: return
                 reply = again
@@ -1039,7 +1127,8 @@ internal class CascadeSession(
                     return
                 }
             }
-            val said = reply.spoken().ifBlank { result.text }
+            // Without the model's own leading "Checking.", as the speaker dropped it ([LeadingFiller]).
+            val said = reply.spoken().ifBlank { LeadingFiller.strip(result.text) }
             val kept = if (outcome == ReplySpeaker.Outcome.Interrupted) withWrites(reply.spoken(), record) else said
             recordTurn(heard, kept, record.readThrough, seq, record.fromUser)
             answeredOnce = true
@@ -1056,7 +1145,91 @@ internal class CascadeSession(
         } finally {
             if (turn === record) turn = null
         }
-        if (outcome == ReplySpeaker.Outcome.Played) afterReply()
+        if (outcome != ReplySpeaker.Outcome.Played) return
+        if (checkInStep == CheckInStep.LINE && !record.fromUser) {
+            afterCheckInLine(record.reply.toString())
+        } else {
+            afterReply()
+        }
+    }
+
+    // --- listening check-in (alfred-greets ticket 03; Kevin 2026-11-15) ----------------------------
+
+    /**
+     * The check-in's line has played. A question: a short cue, the listening mark and the reply
+     * window ([FollowUpWindow.WINDOW_MS], about 8 s). A statement: no window and no closer.
+     */
+    private suspend fun afterCheckInLine(line: String) {
+        if (!CheckInRules.isQuestion(line)) {
+            checkInStep = CheckInStep.DONE
+            reportCheckIn(CheckInOutcome.STATEMENT)
+            player?.awaitDrained()
+            speaking = false
+            playbackActive = false
+            audit.turnComplete()
+            shutdown("check_in_statement")
+            host.closed("check_in_statement")
+            return
+        }
+        // The mic opens only now that the line passed and played; the cue plays while the reply still
+        // counts as playback, so the mic never takes it as him.
+        if (listens && micJob == null) startMic()
+        val p = player
+        if (p != null && backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE) {
+            p.awaitDrained()
+            val gen = p.generation()
+            withContext(Dispatchers.IO) { p.write(ListenCue.earconPcm(), gen) }
+        }
+        if (checkInStep == CheckInStep.LINE) checkInStep = CheckInStep.LISTENING
+        LiveLatency.log("LIVE_FOLLOWUP", "check_in listening")
+        afterReply()
+        if (checkInStep == CheckInStep.LISTENING && !closing.get()) {
+            host.phase(Phase.LISTENING, "Listening for your answer...")
+        }
+    }
+
+    /**
+     * The check-in's line failed or is not a check-in line: nothing is said, nothing is shown, the
+     * mic never opened, and the conversation ends. No outcome is reported, so the ask is not counted
+     * and the topic comes back under the retry rule ([CheckInMoments], [CheckInRules.RETRY_GAP_MS]).
+     */
+    private suspend fun dropCheckIn(reason: String, failure: String?) {
+        checkInStep = CheckInStep.DONE
+        val mark = opener?.checkIn
+        LiveLatency.log(
+            "LIVE_FOLLOWUP",
+            "check_in dropped reason=$reason" + (failure?.let { " failure=$it" } ?: "") +
+                (mark?.let { " moment=${it.moment.name.lowercase()}" } ?: ""),
+        )
+        speaking = false
+        playbackActive = false
+        shutdown("check_in_dropped")
+        host.closed("check_in_dropped")
+    }
+
+    /** The reply window closed in silence: the mic closes, a scripted closer is said, and it ends. */
+    private suspend fun closeCheckInUnanswered() {
+        checkInStep = CheckInStep.DONE
+        reportCheckIn(CheckInOutcome.NO_REPLY)
+        LiveLatency.log("LIVE_FOLLOWUP", "check_in no_reply")
+        // Closed before the closer plays: nothing said from here on is taken as his turn.
+        runCatching { micJob?.cancelAndJoin() }
+        micJob = null
+        currentUtt?.cancel()
+        currentUtt = null
+        val reply = newSpeaker(null)
+        reply.say(ClosingLines.next(ctx))
+        val o = withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() }
+        if (o == ReplySpeaker.Outcome.Played) player?.awaitDrained() else host.closingTone()
+        shutdown("check_in_no_reply")
+        host.closed("check_in_no_reply")
+    }
+
+    private fun reportCheckIn(outcome: CheckInOutcome) {
+        val mark = opener?.checkIn ?: return
+        val words = "check_in outcome=${outcome.name.lowercase()} moment=${mark.moment.name.lowercase()}"
+        LiveLatency.log("LIVE_FOLLOWUP", words)
+        CheckIns.onOutcome(ctx, mark, outcome)
     }
 
     /**
@@ -1155,6 +1328,11 @@ internal class CascadeSession(
     private fun turnContentsFor(heard: String) = CascadePrompt.contents(history, heard, turnPreamble())
 
     private fun executorFor(record: TurnRecord, seq: Long) = TextToolExecutor { name, args, readThrough ->
+        // A check-in line calls no tool (its prompt says so); one asked for never runs, and the line drops.
+        if (record.holdLine) {
+            LiveLatency.log(LiveLatency.TAG, "check_in tool_refused tool=$name")
+            return@TextToolExecutor JSONObject().put("success", false).put("message", "No tool for this line.")
+        }
         // Before anything can run: his next words must never carry a write into a second run.
         if (CascadeRules.isWrite(name, args)) record.writeCalled = true
         val id = "c${toolSeq.incrementAndGet()}"
@@ -1202,7 +1380,7 @@ internal class CascadeSession(
     private fun listenerFor(record: TurnRecord, reply: ReplySpeaker) = object : GeminiTextLoop.Listener {
         override fun onText(delta: String) {
             record.reply.append(delta)
-            reply.text(delta)
+            if (!record.holdLine) reply.text(delta)
         }
 
         override fun onToolCalls(names: List<String>) {
@@ -1275,6 +1453,8 @@ internal class CascadeSession(
                 // The voice sheet and the talk strip read the caption, as for Live's subtitles.
                 CompanionPhase.setCaption(text.takeLast(CAPTION_CHARS))
             },
+            // Count only, never the words.
+            onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
         ).also { speaker = it }
     }
 
@@ -1572,6 +1752,10 @@ internal class CascadeSession(
 
     private fun onFollowUpExpired() {
         if (closing.get()) return
+        if (checkInStep == CheckInStep.LISTENING) {
+            scope.launch(loop) { closeCheckInUnanswered() }
+            return
+        }
         scope.launch(loop) {
             LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}")
             host.closingTone()
@@ -2168,8 +2352,11 @@ internal class CascadeSession(
         /** The filler lines as the voice is handed them ([ReplySpeaker] normalises the same way). */
         private val FILLERS_SPOKEN = ScriptedLines.FILLERS.map { SpokenText.forSpeech(it) }
 
-        /** How long the agenda waits for a pack fetch already running, beside the live context. */
-        private const val AGENDA_WAIT_MS = 1_500L
+        /** How long the phone's own read of today may take at open (normally well under 100 ms). */
+        private const val AGENDA_WAIT_MS = 1_000L
+
+        /** The longest a check-in's closer may take to say before the conversation just ends. */
+        private const val CLOSER_MAX_MS = 6_000L
 
         private const val OPENED_NOTE = "(He opened the conversation and you greeted him.)"
 

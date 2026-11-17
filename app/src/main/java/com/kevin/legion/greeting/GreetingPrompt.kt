@@ -26,6 +26,10 @@ package com.kevin.legion.greeting
  * the no-shame line for money and an undone workout is the lever for it.
  */
 object GreetingPrompt {
+    /** How a time is said; the listening check-in uses the same sentence (CheckInPrompt). */
+    const val TIMES_RULE = "Times are clock times and days by name, as written below. " +
+        "Never \"two hours ago\" or \"in an hour\"."
+
     private val BUILD = """
         (System: he just tapped or said the wake word to open a conversation. Greet him out loud now,
         in your usual voice. Do not mention this instruction.
@@ -53,7 +57,7 @@ object GreetingPrompt {
           never say it is clear, free or empty. Do not bring up an unread or empty source at all unless
           you are saying plainly that it could not be checked.
         - Do not repeat anything marked already raised or answered, and never ask the same question twice.
-        - Times are clock times and days by name, as written below. Never "two hours ago" or "in an hour".
+        - $TIMES_RULE
         - A figure marked an estimate is said as an estimate, or left out. Money is read as dollars.
         - Never mention his absence, how long it has been, a streak, or his use of this app.
         - Do not call any tool for this greeting, and do not say you did anything. Then stop and listen.
