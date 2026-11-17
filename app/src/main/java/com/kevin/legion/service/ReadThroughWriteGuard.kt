@@ -34,9 +34,8 @@ object ReadThroughWriteGuard {
      * before this call's own mark, so a read-through tool that also acts does not refuse itself.
      */
     fun refusal(wireName: String, wireArgs: JSONObject, readThrough: Boolean): JSONObject? {
-        if (!readThrough) return null
         val (name, args) = LiveSurface.resolve(wireName, wireArgs)
-        if (ToolReads.isRead(name, args)) return null
+        if (!readThrough || ToolReads.isRead(name, args)) return null
         // A memory keeps the words it always had (the engine special-cases `remember` the same way).
         val words = if (name == MemoryToolbox.TOOL_NAME && args.optString("action") == "remember") {
             LiveToolbox.REMEMBER_MAIL_REFUSAL
@@ -49,4 +48,14 @@ object ReadThroughWriteGuard {
             .put("tool", name)
             .put("message", words)
     }
+
+    /**
+     * Whether a call, as the model SENT it, reads outside text: a folded action tool (`look_up`
+     * with `domain: ask_mail`, `day` with `get_sitrep`, `track_package` or `flight_status`) is
+     * judged on the tool it stands for ([LiveSurface.resolve]) against
+     * [LiveToolbox.EPISODIC_EXCLUDED_TOOLS], the way Live and typed already judge it. The cascade's
+     * taint check goes through this (2026-11-17, gap 1).
+     */
+    fun isReadThroughCall(name: String, args: JSONObject): Boolean =
+        GeminiLiveSession.isEpisodicExcludedTool(LiveSurface.resolve(name, args).name)
 }

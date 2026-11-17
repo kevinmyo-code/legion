@@ -1,8 +1,8 @@
 package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.ChatTurn
-import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.AudioRoute
@@ -96,7 +96,7 @@ internal object CascadeRules {
      * cascade tested the called name, so none of those marked the turn.
      */
     fun isReadThrough(name: String, args: JSONObject): Boolean =
-        GeminiLiveSession.isReadThroughCall(name, args)
+        ReadThroughWriteGuard.isReadThroughCall(name, args)
 
     /** What his new speech does to a turn still being answered ([newSpeech]). */
     enum class NewSpeech {

@@ -2,6 +2,7 @@ package com.kevin.legion.data.local
 
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.ReadThroughWriteGuard
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -78,10 +79,11 @@ class ConversationAuditRedactionTest {
             "day" to JSONObject().put("action", "flight_status"),
         )
         for ((name, args) in folded) {
-            assertEquals("$name $args", READ_THROUGH_REDACTED, auditContent(mailBody, GeminiLiveSession.isReadThroughCall(name, args)))
+            val redacted = ReadThroughWriteGuard.isReadThroughCall(name, args)
+            assertEquals("$name $args", READ_THROUGH_REDACTED, auditContent(mailBody, redacted))
         }
         val calendar = JSONObject().put("action", "read_calendar")
-        assertFalse(GeminiLiveSession.isReadThroughCall("day", calendar))
+        assertFalse(ReadThroughWriteGuard.isReadThroughCall("day", calendar))
     }
 
     // ------------------------------------------------------------------ everything else

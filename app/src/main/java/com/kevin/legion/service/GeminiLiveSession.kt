@@ -3961,15 +3961,6 @@ class GeminiLiveSession(
         ): Boolean = toolName in excludedTools
 
         /**
-         * [isEpisodicExcludedTool] for a call as the model SENT it: a folded action tool
-         * (`look_up` with `domain: ask_mail`, `day` with `get_sitrep`) is judged on the tool it
-         * stands for ([LiveSurface.resolve]), the way Live and typed already judge it. The laptop
-         * voice's taint check and every audit row's redaction go through this (2026-11-17, ADR 0090 gap 1).
-         */
-        fun isReadThroughCall(name: String, args: JSONObject): Boolean =
-            isEpisodicExcludedTool(LiveSurface.resolve(name, args).name)
-
-        /**
          * Whether a web-carrying tool result must keep the turn read-through past the next
          * turnComplete ([markToolResultReadThrough]): only a NON_BLOCKING ([async]) result, and only
          * while the turn it was asked in is still open ([turnStillOpen], a tool was called and no
