@@ -186,15 +186,24 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
  * pinned dock beside the column (so nothing is laid out under it), on a phone
  * the Ask bar pinned to the bottom of the column.
  */
-function Shell({ children, assistant = false }: { children: ReactNode; assistant?: boolean }) {
+function Shell({
+  children,
+  assistant = false,
+  dock = true,
+}: {
+  children: ReactNode
+  assistant?: boolean
+  /** False on the voice-first page: its stage is the conversation, so no second dock or bar. */
+  dock?: boolean
+}) {
   const desk = useSurface() === 'workbench'
   const page = (
     <div className="recruiter rc-layout">
       <div className="rc-column rc-prose">
         <div className="rc-inner">{children}</div>
-        {assistant && !desk && <FamilyAssistant launcher="bar" />}
+        {assistant && dock && !desk && <FamilyAssistant launcher="bar" />}
       </div>
-      {assistant && desk && <AssistantDock pinned />}
+      {assistant && dock && desk && <AssistantDock pinned />}
     </div>
   )
   // The diagrams and the resume open over the whole page (demo-modals), from the conversation.
@@ -263,7 +272,7 @@ function VoiceFirstVisit({
   onFailed: (message: string) => void
   enter: () => Promise<boolean>
 }) {
-  const voiceFirst = useMemo(() => ({ prepare: enter, funnelRef: refTag, sessionMinutes: 5 }), [enter, refTag])
+  const voiceFirst = useMemo(() => ({ prepare: enter, funnelRef: refTag ?? '', sessionMinutes: 5 }), [enter, refTag])
   return (
     <AssistantProvider
       voiceFirst={voiceFirst}
@@ -272,7 +281,7 @@ function VoiceFirstVisit({
       copy={VISITOR_COPY}
     >
       {entered ? <VisitorBody expiresAt={expiresAt} /> : (
-        <Shell assistant>
+        <Shell assistant dock={false}>
           <VoiceStage />
         </Shell>
       )}
@@ -285,7 +294,7 @@ function VisitorBody({ expiresAt }: { expiresAt?: string }) {
   const access = <AccessNote expiry={expiryWords(expiresAt)} />
   const loaded = content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
-    <Shell assistant>
+    <Shell assistant dock={false}>
       <VoiceStage content={loaded} />
       {loaded ? <Sections content={loaded} access={access} /> : access}
     </Shell>
@@ -327,13 +336,13 @@ function RecruiterPage({ mode, expiresAt, refTag }: { mode: 'visitor' | 'preview
   const loaded = content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
     <AssistantProvider
-      funnelRef={mode === 'visitor' ? refTag : undefined}
+      funnelRef={mode === 'visitor' ? (refTag ?? '') : undefined}
       openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}
       continueTurn={mode === 'visitor' ? CONTINUE_TURN : undefined}
       sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
       copy={mode === 'visitor' ? VISITOR_COPY : PREVIEW_COPY}
     >
-      <Shell assistant>
+      <Shell assistant dock={mode !== 'visitor'}>
         {mode === 'preview' && (
           <p role="note" className="rc-note">
             Preview. This is what a visitor with the access code sees; the assistant here is still yours.{' '}

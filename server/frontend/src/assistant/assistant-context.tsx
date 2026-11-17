@@ -112,6 +112,7 @@ export function AssistantProvider({
   copy,
   defaultOpen = false,
   voiceFirst,
+  funnelRef,
 }: {
   children: ReactNode
   deps?: LiveDeps
@@ -137,6 +138,8 @@ export function AssistantProvider({
    * that tap, and `funnelRef` tags the page's funnel counts.
    */
   voiceFirst?: { prepare: () => Promise<boolean>; funnelRef?: string; sessionMinutes?: number | null }
+  /** The demo's ref tag: when set, the conversation counts its funnel steps under it. */
+  funnelRef?: string
 }) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
@@ -186,7 +189,7 @@ export function AssistantProvider({
     if (!cascadeInfo) return
     setClient((current) => {
       if (current instanceof CascadeClient) return current
-      const next: AssistantClient = new CascadeClient(cascadeDeps ?? createCascadeDeps(), {
+      const next: AssistantClient = new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef }), {
         companionName: cascadeInfo.companion_name,
         sessionMinutes: cascadeInfo.session_minutes ?? null,
         endOnHidden: () => surfaceRef.current === 'family',
@@ -196,7 +199,7 @@ export function AssistantProvider({
       })
       return next
     })
-  }, [cascadeInfo, cascadeDeps])
+  }, [cascadeInfo, cascadeDeps, funnelRef])
   useEffect(() => {
     client.attach()
     return () => client.dispose()

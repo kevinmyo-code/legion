@@ -12,6 +12,8 @@
  * first tap; the WASM runtime is bundled by the build. No third-party host is asked for anything.
  */
 import * as ort from 'onnxruntime-web/wasm'
+// The runtime's WebAssembly, served from this site by the build: never fetched from a CDN.
+import wasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url'
 
 import { WhisperLogMel, N_FRAMES, N_MELS } from './log-mel'
 
@@ -69,6 +71,7 @@ async function score(audio: Float32Array, turnKey: number): Promise<number> {
 async function init(sileroUrl?: string, smartUrl?: string) {
   const started = performance.now()
   ort.env.wasm.numThreads = 1
+  ort.env.wasm.wasmPaths = { wasm: wasmUrl }
   try {
     const opts: ort.InferenceSession.SessionOptions = { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }
     let smartError: string | undefined
