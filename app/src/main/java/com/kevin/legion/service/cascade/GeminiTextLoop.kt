@@ -47,7 +47,8 @@ class GeminiTextLoop(
     private val cache: ContextCacheStore?,
     private val classify: (RestOutcome.HttpError) -> AgentResult = GeminiRest::classify,
     private val isMutating: (name: String, args: JSONObject) -> Boolean,
-    private val isReadThrough: (String) -> Boolean,
+    /** Whether a call (as the model sent it, with its arguments) reads outside text. */
+    private val isReadThrough: (name: String, args: JSONObject) -> Boolean,
     private val toolTimeoutMs: (String) -> Long = { TextChatEngine.DEFAULT_TOOL_TIMEOUT_MS },
     private val meter: (model: String, usage: JSONObject?) -> Unit = { _, _ -> },
     /**
@@ -301,14 +302,16 @@ class GeminiTextLoop(
         listener: Listener,
         state: TurnState,
     ): AgentProtocol.ToolResult = withContext(NonCancellable) {
-        if (isReadThrough(call.name)) {
-            synchronized(state) { state.readThrough = true }
-            listener.onReadThrough(call.name)
-        }
+        // ADR 0090: the executor is handed the turn's mark as it stood before this call's OWN mark.
+        // A read-through tool that also acts (email reads mail for a recipient, browser opens a
+        // page) must not refuse itself; a mark from an earlier read still reaches it.
+        val ownMark = isReadThrough(call.name, call.args)
+        val markedBefore = synchronized(state) { state.readThrough.also { if (ownMark) state.readThrough = true } }
+        if (ownMark) listener.onReadThrough(call.name)
         val started = now()
         var confirmed = false
         val webRead = WebReadMark()
-        val readThroughNow = synchronized(state) { state.readThrough }
+        val readThroughNow = if (ownMark) markedBefore else synchronized(state) { state.readThrough }
         val response = try {
             withContext(webRead) {
                 withTimeoutOrNull(toolTimeoutMs(call.name)) { executor.run(call.name, call.args, readThroughNow) }

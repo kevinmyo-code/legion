@@ -2,10 +2,13 @@ package com.kevin.legion.data.local
 
 import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveToolbox
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
  * Read-through redaction in the conversation audit trail (ticket 23, hands-and-senses map).
@@ -23,6 +26,7 @@ import org.junit.Test
  * [auditContent] for the substitution - so composing them here is the decision production makes,
  * not a parallel reimplementation of it.
  */
+@RunWith(RobolectricTestRunner::class) // org.json
 class ConversationAuditRedactionTest {
 
     /** What a TOOL_RESULT row would store for [toolName] returning [result]. */
@@ -61,6 +65,23 @@ class ConversationAuditRedactionTest {
         // future edit that quietly drops one would otherwise still pass every loop above.
         assertTrue(GeminiLiveSession.isEpisodicExcludedTool("ask_mail"))
         assertTrue(GeminiLiveSession.isEpisodicExcludedTool("get_sitrep"))
+    }
+
+    @Test
+    fun `a folded mail, brief, parcel or flight call is redacted as the cascade sends it`() {
+        // 2026-11-17 (ADR 0090 gap 1): the cascade model sends the folded action tool, and the audit
+        // used to judge `look_up` / `day` by name, storing the result in clear.
+        val folded = listOf(
+            "look_up" to JSONObject().put("domain", "ask_mail").put("question", "newest"),
+            "day" to JSONObject().put("action", "get_sitrep"),
+            "day" to JSONObject().put("action", "track_package"),
+            "day" to JSONObject().put("action", "flight_status"),
+        )
+        for ((name, args) in folded) {
+            assertEquals("$name $args", READ_THROUGH_REDACTED, auditContent(mailBody, GeminiLiveSession.isReadThroughCall(name, args)))
+        }
+        val calendar = JSONObject().put("action", "read_calendar")
+        assertFalse(GeminiLiveSession.isReadThroughCall("day", calendar))
     }
 
     // ------------------------------------------------------------------ everything else

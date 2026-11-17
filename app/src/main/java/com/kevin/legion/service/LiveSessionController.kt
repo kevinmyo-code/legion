@@ -1726,7 +1726,9 @@ class LiveSessionController(context: Context) {
                 // web_lookup) notes the mark; the turn turns read-through before the answer is sent.
                 val webRead = WebReadMark()
                 val response: JSONObject = withContext(webRead) {
-                    runToolBounded(call.name, call.args, s.readThroughToolTouchedThisTurn(), s.userTextThisTurn())
+                    // ADR 0090: a read-through tool's own mark is not held against it (email, browser).
+                    val readThrough = s.readThroughToolTouchedThisTurn() && !call.ownMarkOnly
+                    runToolBounded(call.name, call.args, readThrough, s.userTextThisTurn())
                 }
                 if (webRead.touched) s.markToolResultReadThrough(call.name)
                 // The panel's tool line: only for a tool that came back with an explicit `success`
@@ -1831,6 +1833,8 @@ class LiveSessionController(context: Context) {
         // UI-scoped branches below (show_saved_places, show_agenda_modal...) still catch it. A
         // no-op for a name the session already resolved.
         val (name, args) = LiveSurface.resolve(wireName, wireArgs)
+        // ADR 0090: the one write guard, before anything runs, on every path (Live, cascade, typed).
+        ReadThroughWriteGuard.refusal(name, args, readThrough)?.let { return it }
         return LiveSurface.withRule(name, runResolvedTool(name, args, readThrough, userText))
     }
 
@@ -1954,7 +1958,11 @@ class LiveSessionController(context: Context) {
      *
      * Best-effort and fire-and-forget: an audit write must never delay or fail a real tool response.
      */
-    private fun auditToolCall(name: String, args: JSONObject, response: JSONObject, turnSeq: Long) {
+    private fun auditToolCall(wireName: String, wireArgs: JSONObject, response: JSONObject, turnSeq: Long) {
+        // 2026-11-17 (ADR 0090 gap 1, CLAUDE.md §7): judged and stored as the tool it stands for. The
+        // cascade hands over the called name (`look_up`, `day`), and a folded mail or brief result
+        // was stored and uploaded in clear. A no-op for a name Live or typed already resolved.
+        val (name, args) = LiveSurface.resolve(wireName, wireArgs)
         val toolRedacted = GeminiLiveSession.isEpisodicExcludedTool(name)
         val vehicleId = ActiveVehicle.current(appContext)
         scope.launch {

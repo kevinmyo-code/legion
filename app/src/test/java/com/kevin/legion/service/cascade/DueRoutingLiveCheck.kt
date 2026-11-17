@@ -59,7 +59,7 @@ class DueRoutingLiveCheck {
                     transport = OkHttpGemini(key = { key }),
                     cache = null,
                     isMutating = { _, _ -> false },
-                    isReadThrough = { false },
+                    isReadThrough = { _, _ -> false },
                 )
                 val contents = TextChatEngine.historyContents(listOf(ChatTurn(fromUser = true, text = PREAMBLE + utterance)))
                 val t0 = System.currentTimeMillis()

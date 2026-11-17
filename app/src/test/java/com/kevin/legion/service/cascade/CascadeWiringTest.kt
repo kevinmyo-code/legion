@@ -353,6 +353,51 @@ class CascadeWiringTest {
         assertEquals(1, toLive)
     }
 
+    // --- ADR 0090 on the phone (2026-11-17) -------------------------------------------------------
+
+    @Test
+    fun `the one write guard runs before any resolved tool, on every path`() {
+        val c = controller()
+        val runTool = bodyOf(c, "runTool")
+        val guardAt = runTool.indexOf("ReadThroughWriteGuard.refusal(name, args, readThrough)")
+        assertTrue("runTool asks the guard", guardAt >= 0)
+        assertTrue("before anything runs", guardAt < runTool.indexOf("runResolvedTool("))
+        // runTool is the only way in: one runResolvedTool caller, one dispatch caller.
+        assertEquals(2, Regex.fromLiteral("runResolvedTool(").findAll(c).count()) // the call and the definition
+        assertEquals(1, Regex.fromLiteral("LiveToolbox.dispatch(").findAll(c).count())
+        assertTrue(bodyOf(c, "runToolBounded").contains("runTool(name, args, readThrough, userText)"))
+    }
+
+    @Test
+    fun `Live hands a read-through tool the mark without its own`() {
+        assertTrue(controller().contains("s.readThroughToolTouchedThisTurn() && !call.ownMarkOnly"))
+    }
+
+    @Test
+    fun `the audit row is judged and named as the tool the call stands for`() {
+        val audit = bodyOf(controller(), "auditToolCall")
+        val resolveAt = audit.indexOf("LiveSurface.resolve(wireName, wireArgs)")
+        assertTrue(resolveAt >= 0)
+        assertTrue(resolveAt < audit.indexOf("isEpisodicExcludedTool(name)"))
+    }
+
+    @Test
+    fun `the cascade marks on the resolved call, logs the resolved tool and keeps an opener or carry mark`() {
+        val s = session()
+        assertTrue(s.contains("isReadThrough = CascadeRules::isReadThrough,"))
+        val exec = bodyOf(s, "executorFor")
+        val resolveAt = exec.indexOf("LiveSurface.resolve(name, args)")
+        assertTrue(resolveAt >= 0)
+        assertTrue(resolveAt < exec.indexOf("audit.toolCall(id, resolved.name"))
+        assertTrue(exec.contains("name = resolved.name,"))
+        assertTrue(exec.contains("readThrough || record.startMarked,"))
+        val answer = bodyOf(s, "answerTurn")
+        val carryAt = answer.indexOf("readThroughCarry.startTurn(record.fromUser, record.startMarked)")
+        assertTrue("the carry is taken as a turn starts", carryAt >= 0)
+        assertTrue("before the model runs", carryAt < answer.indexOf("textLoop!!.answer("))
+        assertTrue(bodyOf(s, "promptRecord").contains("it.startMarked = o.readThrough"))
+    }
+
     // --- source access ----------------------------------------------------------------------------
 
     private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())

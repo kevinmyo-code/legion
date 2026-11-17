@@ -1,6 +1,7 @@
 package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.ChatTurn
+import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.tools.LiveSurface
@@ -87,6 +88,15 @@ internal object CascadeRules {
      */
     fun isWrite(name: String, args: JSONObject): Boolean =
         LiveSurface.resolve(name, args).let { LiveToolbox.isMutatingCall(it.name, it.args) }
+
+    /**
+     * A call that reads outside text (ADR 0090, CLAUDE.md §7), judged on the tool it stands for,
+     * as [isWrite] is: the cascade model sends `look_up` with `domain: ask_mail` and `day` with
+     * `get_sitrep`, `track_package` or `flight_status`, never the real names. Until 2026-11-17 the
+     * cascade tested the called name, so none of those marked the turn.
+     */
+    fun isReadThrough(name: String, args: JSONObject): Boolean =
+        GeminiLiveSession.isReadThroughCall(name, args)
 
     /** What his new speech does to a turn still being answered ([newSpeech]). */
     enum class NewSpeech {
