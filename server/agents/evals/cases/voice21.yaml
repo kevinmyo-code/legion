@@ -1,0 +1,178 @@
+# voice21: the phone's 21 standing voice cases (tools/voice_eval/cases.json), ported to the
+# engine's tools on the invented household (agents/evals/fixture.py). FAKE utterances only: this
+# file is public. Real failed turns go in agents/evals/private/*.yaml (git-ignored).
+#
+# Tool names map phone -> engine: day/read_calendar -> read_calendar (engine twin),
+# manage_item/read_list -> read_list (engine twin), manage_checklist/read|lists -> list_checklists,
+# ask_fleet/car -> read_records (vehicles) or next_service, manage_checklist/add -> add_checklist_item,
+# manage_item/add -> add_event, day/complete_task|*/tick -> update_event or tick_checklist_item.
+#
+# Not ported (cannot run engine-side yet): switch_car. `car/switch_vehicle` sets the phone's active
+# vehicle, which lives only on the phone; it becomes a relay tool with the limb contract (stage 3,
+# ticket 04). barge_in is ported as two turns: the barge itself (speech over the reply) is the
+# phone's, so only the follow-up's routing and window are checked here.
+#
+# Matchers: `calls` entries are alternatives ("a|b"): each entry needs one call of any of them.
+# `args` / `args_all` check one / every call of a tool; a path may reach into objects
+# ("fields.starts_at"); {lte|gte|eq: day} compares a YYYY-MM-DD prefix, {re: pattern} searches.
+# {rid: title} is the fixture row id of that title (a tick names its line by id).
+# `{today}`, `{today+N}`, `{today-N}` are the household's local days.
+suite: voice21
+bar: 0.85
+runs: 3
+cases:
+  - id: due_open
+    turns:
+      - say: "what do I have due?"
+        expect:
+          calls: ["read_calendar"]
+          no_empty_claim: true
+          answer_has: ["quiz"]
+  - id: due_today
+    turns:
+      - say: "what's due today"
+        expect:
+          calls: ["read_calendar"]
+          args: {read_calendar: {from: {lte: "{today}"}, to: {gte: "{today}"}}}
+          no_empty_claim: true
+          answer_has: ["quiz", "discussion"]
+  - id: overdue
+    turns:
+      - say: "is anything overdue?"
+        expect:
+          calls: ["read_calendar"]
+          args: {read_calendar: {to: {gte: "{today-1}"}}}
+          no_empty_claim: true
+          answer_has: ["homework|math"]
+  - id: due_week
+    turns:
+      - say: "what's due for school this week"
+        expect:
+          calls: ["read_calendar"]
+          args: {read_calendar: {from: {lte: "{today}"}, to: {gte: "{today+3}"}}}
+          no_empty_claim: true
+          answer_has: ["lab report|chem"]
+  - id: calendar_tomorrow
+    turns:
+      - say: "what's on my calendar tomorrow"
+        expect:
+          calls: ["read_calendar"]
+          args: {read_calendar: {from: {lte: "{today+1}"}, to: {gte: "{today+1}"}}}
+          answer_has: ["lecture|physics", "career fair"]
+  - id: reminders
+    turns:
+      - say: "what reminders do I have"
+        expect:
+          calls: ["read_list"]
+          answer_has: ["registration"]
+  - id: todo_read
+    turns:
+      - say: "what's on my to-do list"
+        expect:
+          calls: ["list_checklists|read_list"]
+          answer_has: ["printer ink"]
+  - id: cars
+    turns:
+      - say: "which cars do I have on file"
+        expect:
+          calls: ["read_records|next_service"]
+          not_calls: ["update_event", "write_record"]
+          answer_has: ["ranger|fit"]
+  - id: time_now
+    turns:
+      - say: "what time is it"
+        expect:
+          answer_has: ["\\d|noon|midnight|o'clock|\\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b"]
+  - id: then_tomorrow
+    turns:
+      - say: "what's due today"
+        expect:
+          calls: ["read_calendar"]
+          no_empty_claim: true
+      - say: "and tomorrow?"
+        expect:
+          calls: ["read_calendar"]
+          args_all: {read_calendar: {from: {lte: "{today+1}"}, to: {gte: "{today+1}"}}}
+  - id: then_tomorrow_due
+    turns:
+      - say: "what do I have due today"
+        expect:
+          calls: ["read_calendar"]
+          no_empty_claim: true
+      - say: "what about tomorrow?"
+        expect:
+          calls: ["read_calendar"]
+          args_all: {read_calendar: {from: {lte: "{today+1}"}, to: {gte: "{today+1}"}}}
+  - id: barge_in
+    turns:
+      - say: "read me everything on my calendar this week"
+        expect:
+          calls: ["read_calendar"]
+      - say: "stop, just tomorrow"
+        expect:
+          calls: ["read_calendar"]
+          args_all: {read_calendar: {from: {lte: "{today+1}"}, to: {gte: "{today+1}"}}}
+  - id: write_todo
+    critical: true
+    turns:
+      - say: "add buy stamps to my to-do list"
+        expect:
+          calls: ["add_checklist_item|add_event"]
+          succeeded: ["add_checklist_item|add_event"]
+          answer_has: ["stamps"]
+  - id: write_reminder
+    critical: true
+    turns:
+      - say: "remind me to call the dentist tomorrow at 9am"
+        expect:
+          calls: ["add_event"]
+          succeeded: ["add_event"]
+          args: {add_event: {fields.starts_at: {re: "{today+1}[T ]09:00"}}}
+  - id: write_complete
+    critical: true
+    turns:
+      - say: "I finished the history reading quiz, mark it done"
+        expect:
+          calls: ["update_event|tick_checklist_item"]
+          succeeded: ["update_event|tick_checklist_item"]
+          result_has: ["HIST 101 reading quiz"]
+          answer_has: ["quiz"]
+  - id: due_tomorrow
+    turns:
+      - say: "what's due tomorrow"
+        expect:
+          calls: ["read_calendar"]
+          args: {read_calendar: {from: {lte: "{today+1}"}, to: {gte: "{today+1}"}}}
+          answer_not: ["reading quiz|discussion"]
+  - id: reminders_today
+    turns:
+      - say: "do I have any reminders today"
+        expect:
+          calls: ["read_list|read_calendar"]
+          answer_has: ["landlord"]
+  - id: cars_on_file
+    turns:
+      - say: "what cars are on file"
+        expect:
+          calls: ["read_records|next_service"]
+          not_calls: ["update_event", "write_record"]
+          answer_has: ["ranger|fit"]
+  - id: tick_homework
+    critical: true
+    turns:
+      - say: "tick off the math homework"
+        expect:
+          calls: ["update_event|tick_checklist_item"]
+          succeeded: ["update_event|tick_checklist_item"]
+          result_has: ["MATH 110 homework 7"]
+  - id: tick_todo
+    critical: true
+    turns:
+      - say: "tick printer ink off my to-do list"
+        expect:
+          calls: ["tick_checklist_item"]
+          succeeded: ["tick_checklist_item"]
+          args: {tick_checklist_item: {item_id: {rid: "Buy printer ink"}}}
+not_ported:
+  - id: switch_car
+    why: "car/switch_vehicle sets the phone's active vehicle, which exists only on the phone; it is a relay tool from stage 3 (ticket 04)"

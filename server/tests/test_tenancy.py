@@ -53,6 +53,8 @@ known state rather than leaving it to be discovered.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from django.db import connection
 
@@ -991,6 +993,43 @@ def test_procedure_runs_are_scoped_by_household(household_a, household_b, househ
     assert b_client.get(f"/api/procedures/runs/{run.id}").status_code == 404
     assert b_client.get("/api/procedures/report?name=lists_check").data["runs"] == 0
     assert [r["id"] for r in client.get("/api/procedures/runs").data["results"]] == [str(run.id)]
+
+
+def test_agent_traces_are_scoped_by_household(household_a, household_b, household_user, user_b):
+    """engine-brain ticket 02 (ADR 0100): a turn run in household A writes all five agent tables
+    with A's household and member, B sees none of it, and B naming A's conversation id gets a new
+    conversation of its own rather than A's history."""
+    from agents.evals.runner import member_request
+    from agents.legion.turn import open_conversation, run_turn
+    from agents.models import (
+        AgentCheckpoint,
+        AgentConversation,
+        AgentModelCall,
+        AgentToolCall,
+        AgentTurn,
+    )
+    from agents.runtime import model as m
+    from household.tenancy import scoped
+
+    tables = (AgentConversation, AgentTurn, AgentCheckpoint, AgentModelCall, AgentToolCall)
+    request_a = member_request(household_user)
+    conversation = open_conversation(request_a, None, "test")
+    model = m.FakeModel([m.call("read_list", {}), m.say("alpha-agent-reply.")])
+    for _ in run_turn(request_a, "alpha-agent-question", model, conversation=conversation):
+        pass
+    for table in tables:
+        assert table.objects.filter(household=household_a).exists(), table.__name__
+        assert not table.objects.filter(household=household_b).exists(), table.__name__
+        assert set(table.objects.values_list("owner_user_id", flat=True)) == {household_user.pk}
+    request_b = member_request(user_b)
+    for table in tables:
+        assert not scoped(table, request_b).exists(), table.__name__
+    theirs = open_conversation(request_b, conversation.pk, "test")
+    assert theirs.pk != conversation.pk and theirs.household_id == household_b.id
+    model_b = m.FakeModel([m.say("beta.")])
+    for _ in run_turn(request_b, "beta question", model_b, conversation=theirs):
+        pass
+    assert "alpha-agent" not in json.dumps(model_b.requests[0].contents)
 
 
 def test_every_registered_table_has_a_leak_test():

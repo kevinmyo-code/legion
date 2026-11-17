@@ -45,7 +45,13 @@ TURN_DONE = "done"
 TURN_CANCELLED = "cancelled"
 TURN_FAILED = "failed"
 TURN_REFUSED = "refused"
-TURN_STATUSES: tuple[str, ...] = (TURN_RUNNING, TURN_DONE, TURN_CANCELLED, TURN_FAILED, TURN_REFUSED)
+TURN_STATUSES: tuple[str, ...] = (
+    TURN_RUNNING,
+    TURN_DONE,
+    TURN_CANCELLED,
+    TURN_FAILED,
+    TURN_REFUSED,
+)
 
 TOOL_OUTCOMES: tuple[str, ...] = ("ok", "failed", "refused", "timed_out")
 # Which guard stopped a call, if one did (plan section 14).
@@ -121,7 +127,9 @@ class AgentTurn(_Owned):
     class Meta:
         db_table = "agents_turn"
         indexes = [
-            models.Index(fields=["household", "owner_user", "created_at"], name="agents_turn_owner_idx")
+            models.Index(
+                fields=["household", "owner_user", "created_at"], name="agents_turn_owner_idx"
+            )
         ]
         constraints = [
             models.UniqueConstraint(
@@ -144,7 +152,9 @@ class AgentCheckpoint(_Owned):
     class Meta:
         db_table = "agents_checkpoint"
         indexes = [
-            models.Index(fields=["household", "owner_user", "created_at"], name="agents_ckpt_owner_idx")
+            models.Index(
+                fields=["household", "owner_user", "created_at"], name="agents_ckpt_owner_idx"
+            )
         ]
 
 
@@ -165,7 +175,9 @@ class AgentModelCall(_Owned):
     class Meta:
         db_table = "agents_model_call"
         indexes = [
-            models.Index(fields=["household", "owner_user", "created_at"], name="agents_mc_owner_idx")
+            models.Index(
+                fields=["household", "owner_user", "created_at"], name="agents_mc_owner_idx"
+            )
         ]
 
 
@@ -185,7 +197,9 @@ class AgentToolCall(_Owned):
     class Meta:
         db_table = "agents_tool_call"
         indexes = [
-            models.Index(fields=["household", "owner_user", "created_at"], name="agents_tc_owner_idx")
+            models.Index(
+                fields=["household", "owner_user", "created_at"], name="agents_tc_owner_idx"
+            )
         ]
         constraints = [
             models.CheckConstraint(

@@ -101,6 +101,9 @@ urlpatterns = [
     # alfred-greets ticket 01 (ADR 0091): the facts a greeting may mention, read only, and the
     # topics the phone has raised, answered or silenced.
     path("api/greeting/", include("greeting.urls")),
+    # engine-brain ticket 02 (ADR 0095, 0100): the engine's agent turn, DARK (off unless
+    # LEGION_AGENTS_TURN=on; never for a recruiter), and ticket 01's SSE probe.
+    path("api/agents/", include("agents.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

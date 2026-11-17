@@ -603,3 +603,25 @@ def no_builtins(db):
     from procedures.models import Procedure
 
     Procedure.objects.filter(household__isnull=True).delete()
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "live_model: reaches the real Gemini API (the live eval only; off by default)"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_agent_model(request, monkeypatch):
+    """No agent test reaches Google (engine-brain ticket 02): the agent runtime's only transport
+    fails as unreachable, unless the test is the live eval (`@pytest.mark.live_model`, itself
+    skipped unless LEGION_AGENT_EVAL_LIVE is set)."""
+    if request.node.get_closest_marker("live_model"):
+        return
+    from agents.runtime import model
+
+    def _offline(*args, **kwargs):
+        raise model.ModelFailure("the network is off in tests")
+
+    monkeypatch.setattr(model.UrllibTransport, "lines", _offline)
+    monkeypatch.setattr(model.UrllibTransport, "request", _offline)

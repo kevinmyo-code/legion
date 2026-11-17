@@ -25,6 +25,10 @@ arrived, whether or not its visit has ended.
 procedures ticket 13): a visit's runs go with its household above; this is
 the 30-day backstop for recruiter runs and the 60-day sweep for members'
 (also run inline at each new run).
+
+**And agent turn traces past retention** (`agents.legion.retention.prune`, engine-brain ticket
+02, ADR 0100): checkpoints at 7 days, turn content at 30, model-call numbers at 90. Also run
+inline at each new turn; this hourly run is what prunes while the turn endpoint is off.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from agents.legion.retention import prune as prune_agent_traces
 from demo.models import DemoVisit
 from demo.visit_cleanup import delete_visit_household
 from devicelogs.models import VISIT_RETENTION_DAYS, DeviceLog
@@ -91,9 +96,10 @@ class Command(BaseCommand):
             legacy_users.delete()
         records = prune_visit_records()
         runs = prune_runs()
+        traces = sum(prune_agent_traces().values())
         self.stdout.write(
             f"Deleted {n_households} expired demo visit household(s) ({rows} rows, visitors "
             f"included) and {n_legacy} older visitor(s) with their tokens, and {records} visit "
             f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, and {runs} procedure "
-            f"run(s) past retention."
+            f"run(s) past retention, and {traces} agent trace row(s) past retention."
         )

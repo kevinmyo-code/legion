@@ -136,3 +136,7 @@ wake-samples/
 
 # Voice eval: Kevin's own cases (never committed; the repo is public).
 tools/voice_eval/private/
+
+# Agent evals (engine-brain ticket 02): private cases from real failed turns. Never committed; the
+# repo is public. tests/test_agents_eval.py asserts this line exists.
+server/agents/evals/private/

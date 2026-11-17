@@ -1,0 +1,97 @@
+name: generalist
+version: 1
+# Every registry tool the web assistant has today (assistant.surface.WEB_TOOL_NAMES), plus the
+# engine twins of the phone's day reads. tests/test_agents_specs.py fails when the registry
+# gains a tool this list does not classify.
+aspects: []
+model: gemini-3.5-flash-lite
+prompt: generalist.md
+tools:
+  engine:
+    - list_tables
+    - read_records
+    - list_events
+    - list_checklists
+    - last_ticked
+    - monthly_spend
+    - safe_to_spend
+    - net_worth
+    - cash_flow
+    - runway
+    - budgets
+    - next_service
+    - canvas_grades
+    - greeting_facts
+    - what_i_need
+    - account_balances
+    - grocery_spend
+    - vehicle_recalls
+    - brief_latest
+    - write_record
+    - delete_record
+    - add_event
+    - update_event
+    - delete_event
+    - add_checklist_item
+    - tick_checklist_item
+    - create_checklist
+    - untick_checklist_item
+    - remove_checklist_item
+    - archive_checklist
+    - rename_place
+    - skip_event_occurrence
+    - log_purchase
+    - last_bought
+    - list_purchases
+    - delete_purchase
+    - legion_docs
+    - show_diagram
+    - web_search
+    - check_conditions
+    - github_status
+    - recall_memory
+    - list_memories
+    - remember
+    - forget_memory
+    - get_energy_estimate
+    - get_weight_trend
+    - list_saved_meals
+    - set_body_profile
+    - log_waist
+    - save_meal
+    - delete_saved_meal
+    - log_saved_meal
+    - accept_energy_proposal
+    - dismiss_energy_proposal
+    - get_todays_workout
+    - start_workout
+    - tick_workout_set
+    - swap_exercise
+    - finish_workout
+    - get_exercise_alternatives
+    - propose_programme_change
+    - accept_programme_change
+    - dismiss_programme_change
+    - suggest_meal
+    - log_meal_option
+    - get_body_plan
+    - draft_body_plan
+    - lock_body_plan
+    - discard_body_plan
+    - run_procedure
+    - read_calendar
+    - read_list
+  relay: []
+writes: allowed
+# Destructive tools (EngineTool.destructive) always need a yes; nothing extra here.
+confirm: []
+# Holds web_search, brief_latest and github_status (today's surface), so it may be tainted.
+taint_ok: true
+limits:
+  max_rounds: 4
+  round_timeout_s: 12.0
+  turn_timeout_s: 30.0
+  max_input_tokens: 160000
+  max_cost_micro_usd: 60000
+router:
+  terms: []

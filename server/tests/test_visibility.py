@@ -847,3 +847,44 @@ def test_greeting_topics_and_facts_are_private_to_their_member(
     assert recorded.status_code == 200, recorded.data
     assert GreetingTopic.objects.get(topic_key=f"event:{ids['event']}").owner_user_id == mia.pk
     assert kevin_client.get("/api/greeting/facts").data["closed"] == ["place:secret-town"]
+
+
+# =============================================================================
+# Agent turns and traces (engine-brain ticket 02, ADR 0100): private to their member
+# =============================================================================
+
+
+def test_agent_turns_and_traces_are_private_to_their_member(kevin, mia):
+    """All five agent tables carry `owner_user`, never null (`OWNER_PATHS`): `visible()` hands a
+    member only their own conversations, turns and traces, never another member's."""
+    from agents.evals.runner import member_request
+    from agents.legion.turn import open_conversation, run_turn
+    from agents.models import (
+        AgentCheckpoint,
+        AgentConversation,
+        AgentModelCall,
+        AgentToolCall,
+        AgentTurn,
+    )
+    from agents.runtime import model as m
+    from household.tenancy import visible
+
+    kevins = member_request(kevin)
+    conversation = open_conversation(kevins, None, "test")
+    model = m.FakeModel([m.call("read_list", {}), m.say("secret-reply.")])
+    for _ in run_turn(kevins, "secret-question", model, conversation=conversation):
+        pass
+    mias = member_request(mia)
+    for table in (AgentConversation, AgentTurn, AgentCheckpoint, AgentModelCall, AgentToolCall):
+        assert visible(table, kevins).exists(), table.__name__
+        assert not visible(table, mias).exists(), table.__name__
+
+
+def test_the_database_refuses_an_agent_row_owned_by_a_non_member(household_a, kevin, user_b):
+    from agents.models import AgentConversation
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        AgentConversation.objects.create(household=household_a, owner_user=user_b, client="x")
+    row = AgentConversation.objects.create(household=household_a, owner_user=kevin, client="x")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        AgentConversation.objects.filter(pk=row.pk).update(owner_user=user_b)

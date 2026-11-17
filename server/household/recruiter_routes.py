@@ -127,6 +127,10 @@ _GRADES = "Canvas grades are one member's own coursework; not part of the demo"
 _GREETING = (
     "the greeting facts are one member's own day, coursework and budgets; not part of the demo"
 )
+_AGENTS = (
+    "the engine's agent turn is the household's own voice brain (ADR 0095); the demo's assistant "
+    "has its own door"
+)
 
 RECRUITER_DENIED: dict[str, str] = {
     # architecture review 2026-11-10, item 15: model ids are for the household's own clients;
@@ -217,6 +221,10 @@ RECRUITER_DENIED: dict[str, str] = {
     # time.
     "greeting.views.GreetingFactsView": _GREETING,
     "greeting.views.GreetingTopicView": _GREETING,
+    # engine-brain ticket 02 (ADR 0095): dark, and never a recruiter's in v1 (plan section 5).
+    "agents.views.AgentTurnView": _AGENTS,
+    "agents.views.AgentCancelView": _AGENTS,
+    "agents.views.AgentProbeSseView": _AGENTS,
     # ingestion: uploads, feed logins, the bank link, the files ledger
     "api.ingest_files.IngestedFileViewSet": (
         "the document-ingestion ledger is not part of the demo"
