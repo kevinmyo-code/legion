@@ -103,8 +103,6 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 #   defaults).
 # LEGION_MEMBER_DAILY_CAP: a member's daily web-assistant spend cap in USD (unset or 0 is off;
 #   suggested 3). LEGION_MEMBER_MINT_COST_USD: what one member Live mint is counted as (unset 0.50).
-# Engine brain (ticket 02, ADR 0095): LEGION_AGENTS_TURN=on opens the dark agent turn endpoint
-#   (`/api/agents/turn`); unset (the default) it refuses before authentication.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -115,7 +113,6 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_SKIP_MIGRATE", "LEGION_CONN_MAX_AGE", "GOOGLE_CLOUD_PROJECT", "LEGION_CSP",
     "LEGION_SCHEDULER_SA", "LEGION_TICK_AUDIENCE", "LEGION_MODELS",
     "LEGION_MEMBER_DAILY_CAP", "LEGION_MEMBER_MINT_COST_USD",
-    "LEGION_AGENTS_TURN",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because

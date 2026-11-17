@@ -3,8 +3,9 @@
 does not name it) it refuses before authentication, so nothing reaches the model. A recruiter is
 refused whatever the switch says (`household.recruiter_routes`, and the route in `turn.py`).
 
-Passed through by `deploy/cloudrun/_common.py` (`OPTIONAL_PLAIN_ENV_VARS`) only when set in
-`deploy/cloudrun/.env`; the ship script refuses if it is set there in this stage.
+Deliberately NOT yet in `deploy/cloudrun/_common.py`'s pass-through list, so no deploy of this
+stage can switch it on: the deploy scripts stay frozen, and a `.env` line would reach nothing.
+Turning it on is the switch's stage (ticket 04), which adds the name there with the per-member flag.
 """
 
 from __future__ import annotations
