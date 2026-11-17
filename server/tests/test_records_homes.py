@@ -42,7 +42,11 @@ def _tracker(client):
         ("f-4", "parking", "MONEY_CENTS", {}),
         ("f-5", "mood", "CHOICE", {"config": json.dumps({"options": ["good", "tired"]})}),
     ):
-        _put(client, "fields", guid, {"record_type": "t-1", "name": name, "type": kind, **extra})
+        # Positions as the phone keeps them: without one, five fields made in the same instant
+        # would come back in uuid order.
+        position = int(guid.removeprefix("f-")) - 1
+        body = {"record_type": "t-1", "name": name, "type": kind, "position": position, **extra}
+        _put(client, "fields", guid, body)
 
 
 # -- REST ----------------------------------------------------------------------------------------

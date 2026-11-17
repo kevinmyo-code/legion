@@ -206,6 +206,8 @@ class ManagedTombstoneViewSet(SyncedModelViewSet):
     (Found building ticket 15; stage 2's advice and pending tables had the gap.)"""
 
     def destroy(self, request, identity):
+        """Sets the tombstone AND stamps `updated_at` (no trigger on a Django-managed home), so
+        the `?since=` feed carries the removal. Idempotent: a second DELETE is still 204."""
         instance = self._lookup(identity)
         if instance is None:
             return self._not_found(identity)

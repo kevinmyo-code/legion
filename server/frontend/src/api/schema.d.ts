@@ -47,10 +47,8 @@ export interface paths {
         put: operations["api_advisor_advice_update"];
         post?: never;
         /**
-         * @description `DELETE <table>/<identity>/`. Sets the tombstone column; the row
-         *     stays, because a phone that has not synced since still needs to
-         *     learn the row is gone. Idempotent - a second delete is still a 204,
-         *     matching `EventsBackend.softDelete`'s own contract.
+         * @description Sets the tombstone AND stamps `updated_at` (no trigger on a Django-managed home), so
+         *     the `?since=` feed carries the removal. Idempotent: a second DELETE is still 204.
          */
         delete: operations["api_advisor_advice_destroy"];
         options?: never;
@@ -4054,10 +4052,8 @@ export interface paths {
         put: operations["api_ledger_pending_update"];
         post?: never;
         /**
-         * @description `DELETE <table>/<identity>/`. Sets the tombstone column; the row
-         *     stays, because a phone that has not synced since still needs to
-         *     learn the row is gone. Idempotent - a second delete is still a 204,
-         *     matching `EventsBackend.softDelete`'s own contract.
+         * @description Sets the tombstone AND stamps `updated_at` (no trigger on a Django-managed home), so
+         *     the `?since=` feed carries the removal. Idempotent: a second DELETE is still 204.
          */
         delete: operations["api_ledger_pending_destroy"];
         options?: never;
