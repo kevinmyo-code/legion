@@ -1,0 +1,56 @@
+# homes: engine-brain ticket 03's tools on the invented household (agents/evals/fixture.py,
+# `_seed_homes`). FAKE utterances and rows only: this file is public.
+#
+# Phone -> engine: goal/list_goals|set_goal|close_goal -> list_goals|set_goal|close_goal;
+# money/log_pending_transaction|list_pending_transactions|clear_pending_transaction -> the same
+# names; day/why_did_you_say_that -> why_did_you_say_that. Matchers as in voice21.yaml.
+suite: homes
+bar: 0.85
+runs: 3
+cases:
+  - id: goals_read
+    turns:
+      - say: "what are my goals right now?"
+        expect:
+          calls: ["list_goals"]
+          not_calls: ["set_goal", "close_goal"]
+          answer_has: ["10k|10 k|ten k|run", "bike|2,?000|two thousand"]
+          answer_not: ["first aid"]
+  - id: goal_set
+    critical: true
+    turns:
+      - say: "set a goal to read twelve books this year"
+        expect:
+          calls: ["set_goal"]
+          succeeded: ["set_goal"]
+          answer_has: ["book"]
+  - id: goal_close
+    critical: true
+    turns:
+      - say: "I ran my 10k, mark that goal achieved"
+        expect:
+          calls: ["close_goal"]
+          succeeded: ["close_goal"]
+          args: {close_goal: {status: {re: "achieved"}}}
+          result_has: ["Run a 10k"]
+  - id: pending_log
+    critical: true
+    turns:
+      - say: "I just spent 12 dollars on lunch on my everyday card"
+        expect:
+          calls: ["log_pending_transaction"]
+          succeeded: ["log_pending_transaction"]
+          args: {log_pending_transaction: {direction: {re: "debit"}}}
+          result_has: ["-1200"]
+  - id: pending_read
+    turns:
+      - say: "what pending charges have I logged?"
+        expect:
+          calls: ["list_pending_transactions"]
+          answer_has: ["coffee|cafe"]
+  - id: why_raised
+    turns:
+      - say: "why did you just say that?"
+        expect:
+          calls: ["why_did_you_say_that"]
+          answer_has: ["thunderstorm|storm|weather"]

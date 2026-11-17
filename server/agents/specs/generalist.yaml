@@ -1,7 +1,8 @@
 name: generalist
-version: 2
+version: 3
 # Every registry tool the web assistant has today (assistant.surface.WEB_TOOL_NAMES), plus the
-# engine twins of the phone's day reads. tests/test_agents_specs.py fails when the registry
+# engine twins of the phone's day reads and (ticket 03) of its goal, pending-transaction, advice
+# and why-did-you-say-that tools. tests/test_agents_specs.py fails when the registry
 # gains a tool this list does not classify.
 aspects: []
 model: gemini-3.5-flash-lite
@@ -81,6 +82,14 @@ tools:
     - run_procedure
     - read_calendar
     - read_list
+    - list_goals
+    - set_goal
+    - close_goal
+    - list_pending_transactions
+    - log_pending_transaction
+    - clear_pending_transaction
+    - recent_advice
+    - why_did_you_say_that
   relay: []
 writes: allowed
 # Destructive tools (EngineTool.destructive) always need a yes; nothing extra here.

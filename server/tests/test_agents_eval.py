@@ -120,10 +120,29 @@ def test_private_cases_are_git_ignored():
 # =============================================================================
 
 
+def test_homes_covers_every_ticket_03_tool():
+    suite = runner.load_suite("homes")
+    called = set()
+    for case in suite["cases"]:
+        for turn in case["turns"]:
+            for entry in turn["expect"].get("calls", []):
+                called.update(entry.split("|"))
+    assert {
+        "list_goals",
+        "set_goal",
+        "close_goal",
+        "log_pending_transaction",
+        "list_pending_transactions",
+        "why_did_you_say_that",
+    } <= called
+    assert suite["runs"] == 3 and 0 < suite["bar"] <= 1
+
+
 @pytest.mark.django_db
-def test_voice21_replays_from_its_cassette_and_grades_as_recorded(household_user, household_a):
-    cassette = runner.read_cassette("voice21")
-    suite = runner.load_suite("voice21")
+@pytest.mark.parametrize("name", ["voice21", "homes"])
+def test_suite_replays_from_its_cassette_and_grades_as_recorded(name, household_user, household_a):
+    cassette = runner.read_cassette(name)
+    suite = runner.load_suite(name)
     result, _ = runner.run_suite(suite, household_user, household_a, cassette=cassette)
     graded = cassette["graded"]
     for case in result.cases:
@@ -132,8 +151,9 @@ def test_voice21_replays_from_its_cassette_and_grades_as_recorded(household_user
     assert result.rate >= result.bar, "\n".join(result.lines())
 
 
-def test_the_cassette_holds_model_output_only():
-    raw = (runner.CASSETTES / "voice21.json").read_text(encoding="utf-8")
+@pytest.mark.parametrize("name", ["voice21", "homes"])
+def test_the_cassette_holds_model_output_only(name):
+    raw = (runner.CASSETTES / f"{name}.json").read_text(encoding="utf-8")
     for marker in ("x-goog-api-key", "generativelanguage.googleapis.com", "AIza", "Authorization"):
         assert marker not in raw
     key_file = os.environ.get("LEGION_GEMINI_KEY_FILE")

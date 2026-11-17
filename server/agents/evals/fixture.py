@@ -41,6 +41,14 @@ class Facts:
     TODO_B = "Return library book"
     CAR_A = "Fit"
     CAR_B = "Ranger"
+    # engine-brain ticket 03: the homes (goals, pending, advice, raises) and one ledger account.
+    ACCOUNT = "Everyday card 4242"
+    GOAL_RUN = "Run a 10k before spring"
+    GOAL_SAVE = "Save 2000 dollars for a bike"
+    GOAL_DONE = "Finish the first aid course"
+    PENDING = "Coffee at the campus cafe"
+    RAISE_REASON = "a severe thunderstorm warning covers Testville until 9 pm"
+    ADVICE_GIST = "Keep long runs easy, one a week"
 
 
 class NotLocal(RuntimeError):
@@ -142,4 +150,91 @@ def seed(household, owner, today: date, zone: ZoneInfo | None = None) -> dict:
             created_at=now,
             updated_at=now,
         )
+    _seed_homes(household, owner, today, now)
     return {"todo": str(rid("Todo"))}
+
+
+def _seed_homes(household, owner, today: date, now: datetime) -> None:
+    """Ticket 03's rows: two active goals and a closed one, a ledger account, a pending charge,
+    a piece of advice and the last thing Alfred raised on its own. All invented."""
+    from homes.models import AdvisorAdvice, PendingTransaction, ProactiveRaise
+    from legacy.enums import Provenance
+    from legacy.models.body import Goal
+    from legacy.models.ledger import LedgerTransaction
+
+    for n, (statement, aspect, target, unit, status) in enumerate(
+        (
+            (Facts.GOAL_RUN, "bio", 10, "km", "active"),
+            (Facts.GOAL_SAVE, "cred", 2000, "USD", "active"),
+            (Facts.GOAL_DONE, "bio", None, None, "achieved"),
+        )
+    ):
+        Goal.objects.create(
+            id=rid(statement),
+            household=household,
+            lineage_id=1000 + n,
+            aspect=aspect,
+            statement=statement,
+            target_value=target,
+            unit=unit,
+            status=status,
+            closed_at=now if status != "active" else None,
+            created_at_client=now - timedelta(days=30 - n),
+            provenance=Provenance.USER,
+            created_at=now,
+            updated_at=now,
+            origin_guid=str(rid(statement)),
+        )
+    LedgerTransaction.objects.create(
+        id=rid("ledger row"),
+        household=household,
+        statement=None,
+        account_last4="4242",
+        account_nickname=Facts.ACCOUNT,
+        currency="USD",
+        txn_date=today - timedelta(days=3),
+        description="Testville Grocer",
+        amount_cents=-2312,
+        balance_cents=None,
+        line_ref="fixture:1",
+        category=None,
+        category_pending=False,
+        provenance=Provenance.BANK_API,
+        created_at=now,
+        bank_transaction_id="fixture-txn-1",
+        bank_pending=False,
+    )
+    PendingTransaction.objects.create(
+        id=rid(Facts.PENDING),
+        household=household,
+        origin_guid=str(rid(Facts.PENDING)),
+        account_id=Facts.ACCOUNT,
+        currency="USD",
+        txn_date=today,
+        description=Facts.PENDING,
+        amount_cents=-650,
+        logged_at=now - timedelta(hours=2),
+    )
+    AdvisorAdvice.objects.create(
+        id=rid(Facts.ADVICE_GIST),
+        household=household,
+        owner_user=owner,
+        origin_guid=str(rid(Facts.ADVICE_GIST)),
+        aspect="body",
+        question_text="How should I train for the 10k?",
+        gist=Facts.ADVICE_GIST,
+        advice_text="Build up slowly: three short runs and one easy long run each week.",
+        outcome="pending",
+        given_at=now - timedelta(days=2),
+    )
+    ProactiveRaise.objects.create(
+        id=rid(Facts.RAISE_REASON),
+        household=household,
+        owner_user=owner,
+        origin_guid=str(rid(Facts.RAISE_REASON)),
+        rule_id="rough_weather_driving",
+        category="safety",
+        reason=Facts.RAISE_REASON,
+        spoken_at=now - timedelta(minutes=5),
+        delivery="spoken",
+    )
