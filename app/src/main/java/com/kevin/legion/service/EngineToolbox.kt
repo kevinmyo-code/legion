@@ -809,6 +809,7 @@ object EngineToolbox {
                 fieldCount++
             }
         }
+        RecordStore.schemaChanged()
         return result(true, "Created the \"$aspectName\" aspect with $recordTypeCount record type(s) and $fieldCount field(s).")
     }
 
@@ -897,6 +898,10 @@ object EngineToolbox {
 
     private suspend fun commitUpdateAspect(db: CarDatabase, aspect: Aspect, draft: JSONObject): JSONObject {
         val now = System.currentTimeMillis()
+        return applyUpdateAspect(db, aspect, draft, now).also { if (it.optBoolean("success")) RecordStore.schemaChanged() }
+    }
+
+    private suspend fun applyUpdateAspect(db: CarDatabase, aspect: Aspect, draft: JSONObject, now: Long): JSONObject {
         return when (draft.optString("changeType")) {
             "RENAME_ASPECT" -> {
                 val newName = draft.optString("newAspectName").ifBlank { return result(false, "The draft had no new name. Nothing changed.") }

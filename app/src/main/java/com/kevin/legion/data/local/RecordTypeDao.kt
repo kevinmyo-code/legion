@@ -18,6 +18,10 @@ interface RecordTypeDao {
     @Query("SELECT * FROM record_types WHERE id = :id")
     suspend fun getById(id: Long): RecordType?
 
+    /** Every record type: the engine homes' backfill (engine-brain ticket 15). */
+    @Query("SELECT * FROM record_types ORDER BY id ASC")
+    suspend fun listAll(): List<RecordType>
+
     @Query("SELECT * FROM record_types WHERE aspectId = :aspectId ORDER BY id ASC")
     suspend fun listByAspect(aspectId: Long): List<RecordType>
 }

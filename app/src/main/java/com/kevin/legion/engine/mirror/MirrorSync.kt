@@ -497,6 +497,7 @@ class MirrorSync(private val context: Context) {
                         updatedAt = System.currentTimeMillis(),
                     ),
                 )
+                RecordStore.schemaChanged()
             }
         }
         return warnings

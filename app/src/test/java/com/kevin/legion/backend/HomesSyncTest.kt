@@ -118,7 +118,7 @@ class HomesSyncTest {
         seedRoom()
         val reports = HomesSync.run(context, engine, now = 10_000L)
         assertTrue(reports.all { it.clean })
-        HomeTable.entries.forEach { assertEquals(1, engine.rows.getValue(it).size) }
+        HomeTable.STAGE_TWO.forEach { assertEquals(1, engine.rows.getValue(it).size) }
         // Done: a second run re-sends only what the reconcile covers (raises from the last 30 days).
         val again = HomesSync.run(context, engine, now = 10_000L + 40L * 24 * 60 * 60_000L)
         assertEquals(0, again.single { it.table == HomeTable.RAISES }.room)

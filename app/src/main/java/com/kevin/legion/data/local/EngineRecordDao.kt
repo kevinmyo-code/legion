@@ -28,6 +28,11 @@ interface EngineRecordDao {
     @Query("SELECT * FROM records WHERE id = :id")
     suspend fun getById(id: Long): EngineRecord?
 
+    /** Every record, trashed too (trash travels as a value): the engine homes' backfill
+     * (engine-brain ticket 15). */
+    @Query("SELECT * FROM records ORDER BY id ASC")
+    suspend fun listAll(): List<EngineRecord>
+
     /** Looks a record up by its cross-device [EngineRecord.guid] rather than its per-database
      * [EngineRecord.id] - the ONLY lookup [com.kevin.legion.engine.mirror.MirrorSync] uses to match
      * an imported mirror row against a local record. See [EngineRecord]'s own doc comment for why

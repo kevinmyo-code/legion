@@ -17,6 +17,10 @@ interface FieldDefDao {
     @Query("SELECT * FROM field_defs WHERE id = :id")
     suspend fun getById(id: Long): FieldDef?
 
+    /** Every field: the engine homes' backfill (engine-brain ticket 15). */
+    @Query("SELECT * FROM field_defs ORDER BY id ASC")
+    suspend fun listAll(): List<FieldDef>
+
     @Query("SELECT * FROM field_defs WHERE recordTypeId = :recordTypeId ORDER BY position ASC, id ASC")
     suspend fun forRecordType(recordTypeId: Long): List<FieldDef>
 

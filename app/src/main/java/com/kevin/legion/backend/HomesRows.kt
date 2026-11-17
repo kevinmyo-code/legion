@@ -25,6 +25,21 @@ enum class HomeTable(val path: String, val key: String) {
     ADVICE("/api/advisor/advice/", "advisor_advice"),
     PENDING("/api/ledger/pending/", "pending_transactions"),
     RAISES("/api/proactive/raises/", "proactive_raises"),
+
+    // engine-brain ticket 15: the user-aspect records, parents first (`HomesRecordsSync`).
+    USER_ASPECTS("/api/records/aspects/", "user_aspects"),
+    USER_RECORD_TYPES("/api/records/types/", "user_record_types"),
+    USER_FIELD_DEFS("/api/records/fields/", "user_field_defs"),
+    USER_RECORDS("/api/records/entries/", "user_records"),
+    ;
+
+    companion object {
+        /** Ticket 03's four, which [HomesSync.run] sends from their own Room tables. */
+        val STAGE_TWO = listOf(GOALS, ADVICE, PENDING, RAISES)
+
+        /** Ticket 15's four, in the order the engine needs them (a child names its parent). */
+        val RECORDS = listOf(USER_ASPECTS, USER_RECORD_TYPES, USER_FIELD_DEFS, USER_RECORDS)
+    }
 }
 
 /** What `POST <table>/batch/` said it did. [failed] counts rows it refused, each named on the wire. */

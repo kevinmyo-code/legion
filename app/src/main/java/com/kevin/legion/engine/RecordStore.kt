@@ -120,6 +120,13 @@ class RecordStore(
          * [MirrorSync]'s debounce. */
         private val _afterWrite = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
         val afterWrite: SharedFlow<Unit> = _afterWrite.asSharedFlow()
+
+        /** An aspect, record type or field changed (engine-brain ticket 15). Those rows are
+         * written outside this store (`AspectDao`'s doc), so their writers say so here, and the
+         * same listeners hear it: the mirror's export and the engine homes' write-through. */
+        fun schemaChanged() {
+            _afterWrite.tryEmit(Unit)
+        }
     }
 
     /** What [create]/[update] give back - never a bare `Long`/`Unit`, so a reference-validation

@@ -19,6 +19,10 @@ interface AspectDao {
     @Query("SELECT * FROM aspects WHERE id = :id")
     suspend fun getById(id: Long): Aspect?
 
+    /** Every aspect, archived too: the engine homes' backfill (engine-brain ticket 15). */
+    @Query("SELECT * FROM aspects ORDER BY id ASC")
+    suspend fun listAll(): List<Aspect>
+
     @Query("SELECT * FROM aspects WHERE archived = 0 ORDER BY position ASC")
     suspend fun listActive(): List<Aspect>
 
