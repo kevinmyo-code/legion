@@ -132,7 +132,12 @@ def test_the_model_is_told_the_tags_once():
 
 def test_a_model_tag_is_spoken_but_never_shown_stored_or_sent_back(member, engine):
     engine.model = FakeModel(
-        [say("<chuckle> The calendar is empty. <laugh> Enjoy the quiet evening while it lasts.")]
+        [
+            say(
+                "<chuckle> The calendar is empty. "
+                "<laugh> Enjoy the quiet evening while it lasts, honestly."
+            )
+        ]
     )
     events = _events(_post(member, audio=PCM))
     shown = [s["text"] for s in _of(events, "sentence")]

@@ -81,7 +81,7 @@ def loudest_100ms(pcm: bytes) -> float:
 _VOICED_RATE = 4_000
 _VOICED_FRAME = 160  # 40 ms at 4 kHz
 _VOICED_MIN_LAG, _VOICED_MAX_LAG = 10, 50  # 400 Hz .. 80 Hz
-_VOICED_CORR = 0.45
+_VOICED_CORR = 0.5
 _VOICED_MIN_FRAMES = 4  # 160 ms of voicing
 _VOICED_MAX_FRAMES = 75  # the loudest 3 s are enough
 
@@ -122,21 +122,30 @@ def _periodicity(frame: list[float]) -> tuple[float, int]:
 
 
 def voiced_speech(pcm: bytes) -> bool:
-    """True when the audio has a voice in it: at least 160 ms of voiced frames among its loudest
-    three seconds, whose pitch or loudness moves (a steady hum does not)."""
+    """True when the audio has a voice in it: a stretch of at least three frames in a row
+    (120 ms) that are periodic at a voice's pitch, with the pitch moving smoothly from frame to
+    frame, among the louder frames; and the voiced frames' pitch or loudness changes (a steady
+    hum does not). Noise is periodic only by chance, never three frames running at one pitch."""
     frames = _frames_4k(pcm)
     if not frames:
         return False
-    loud = sorted(frames, key=lambda f: sum(v * v for v in f), reverse=True)[:_VOICED_MAX_FRAMES]
-    voiced = []
-    for frame in loud:
-        corr, lag = _periodicity(frame)
-        if corr >= _VOICED_CORR:
-            voiced.append((lag, sum(v * v for v in frame) / len(frame)))
-    if len(voiced) < _VOICED_MIN_FRAMES:
+    power = [sum(v * v for v in f) / len(f) for f in frames]
+    floor = max(power) / 30
+    loud = [i for i, p in enumerate(power) if p >= floor][: _VOICED_MAX_FRAMES * 2]
+    pitch: dict[int, int] = {}
+    for i in loud:
+        corr, lag = _periodicity(frames[i])
+        if corr >= _VOICED_CORR and lag:
+            pitch[i] = lag
+    run, best = 1, 1
+    for i in sorted(pitch):
+        prev = pitch.get(i - 1)
+        run = run + 1 if prev is not None and abs(pitch[i] - prev) <= 2 else 1
+        best = max(best, run)
+    if best < 3 or len(pitch) < _VOICED_MIN_FRAMES:
         return False
-    lags = [lag for lag, _ in voiced]
-    powers = [p for _, p in voiced]
+    lags = list(pitch.values())
+    powers = [power[i] for i in pitch]
     mean_lag = sum(lags) / len(lags)
     lag_spread = (sum((v - mean_lag) ** 2 for v in lags) / len(lags)) ** 0.5
     mean_p = sum(powers) / len(powers)

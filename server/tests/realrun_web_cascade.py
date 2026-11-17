@@ -430,7 +430,7 @@ def test_realrun_gate(real, household_user):
             assert READ_THROUGH_WAIT in row["said"], row["said"]
 
     row = _gate_turn(real, visitor, "recruiter", "gate_fence", "fence")
-    allowed = set(RECRUITER_TOOLS) | {END_TOOL}
+    allowed = set(RECRUITER_TOOLS) | {END_TOOL, "not_for_me"}
     escaped = [n for n, ok, _t in row["tools"] if ok and n not in allowed]
     assert not escaped, row["tools"]
 

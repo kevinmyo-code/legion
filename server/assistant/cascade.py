@@ -466,6 +466,14 @@ FIRST_CLAUSE_WORDS = 14
 _CLAUSE_BREAK = re.compile(r"(?<=[,;:\u2014])\s+")
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def _first_sentence(text: str) -> tuple[str, str]:
+    parts = _SENTENCE_END.split(text, maxsplit=1)
+    return parts[0], parts[1] if len(parts) > 1 else ""
+
+
 def first_clause(sentence: str) -> tuple[str, str]:
     """(what is spoken at once, the rest). A long first sentence is split after its first comma
     that leaves at least four words in front; a short one goes whole."""
@@ -525,7 +533,8 @@ class Speaker:
             # The answer's first clause is spoken as soon as it exists (section 8.2), and with no
             # tag: tags stay off an answer's first sentence (section 9).
             self._first_out = True
-            spoken = self.spoken_text(text, expressive=False)
+            lead, more = _first_sentence(spoken)
+            spoken = f"{speech_tags.untagged(lead)} {more}".strip()
             head, rest = first_clause(spoken)
             self._submit(head)
             if rest:
@@ -714,13 +723,14 @@ class WebDoor:
                 else:
                     result = run_tool(self.request, name, args)
                 ok, outcome, text, guard = not result.is_error, result.outcome, result.text, None
+        call_id = call.id or f"c{len(self.calls) + 1}"
         # Known at once: whatever fails after this, the turn knows the write went through.
         self.calls.append(DoorCall(name, ok, outcome, text, None, None, 0))
         self._audit(outcome, name)
         web_conversation.record_tool(
             self.request,
             self.conversation_id,
-            call_id=call.id or f"c{len(self.calls) + 1}",
+            call_id=call_id,
             name=name,
             args=args,
             started=started,

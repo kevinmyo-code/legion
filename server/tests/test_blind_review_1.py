@@ -287,8 +287,10 @@ def test_stt_network_failure_is_retried_once_then_a_spoken_miss(member, engine):
 
     transport = Flaky()
     real = GeminiSpeech(lambda: "key", stt_model="stt", transport=transport)
+    from tests.test_no_speech import _pcm, _speechlike
+
     with pytest.raises(SpeechFailure):
-        real.transcribe(b"\x10\x40" * 16_000)
+        real.transcribe(_pcm(_speechlike()))
     assert transport.calls == 2
 
     def fail(pcm):

@@ -214,7 +214,10 @@ def test_a_typed_turn_answers_in_text_and_speaks_nothing(member, engine):
     assert "This conversation started" not in sent.system
     assert sent.contents[-1]["parts"][0]["text"].startswith("(Current context, use naturally")
     assert sent.contents[-1]["parts"][-1]["text"] == "Anything on today?"
-    assert {d["name"] for d in sent.declarations} == set(WEB_TOOL_NAMES) | {cascade.END_TOOL}
+    assert {d["name"] for d in sent.declarations} == set(WEB_TOOL_NAMES) | {
+        cascade.END_TOOL,
+        cascade.NOT_FOR_ME_TOOL,
+    }
     assert "behavior" not in sent.declarations[0]
 
 
@@ -349,7 +352,7 @@ def test_a_visitor_is_declared_exactly_its_allowlist(visitor, engine):
     _events(_post(visitor, text="Hello."))
     declared = {d["name"] for d in engine.model.requests[0].declarations}
     # The allowlist, plus the one control every role has (spec 18), which reaches no data.
-    assert declared == set(RECRUITER_TOOLS) | {cascade.END_TOOL}
+    assert declared == set(RECRUITER_TOOLS) | {cascade.END_TOOL, cascade.NOT_FOR_ME_TOOL}
 
 
 @pytest.mark.parametrize(
@@ -497,8 +500,9 @@ def test_a_verbatim_sentence_is_spoken_and_model_money_after_it_is_dropped(
     )
     events = _events(_post(member, audio=PCM))
     said = [s["text"] for s in _of(events, "sentence")]
+    # Shown exactly; said like a person, rounded by code (voice-persona section 1).
     assert said == [words, "Anything else?"]
-    assert engine.speech.spoken[0][0] == words
+    assert engine.speech.spoken[0][0] == "Net cash is about $1,200, as of 9:14 AM Tue Nov 3, 2026."
 
 
 @pytest.mark.parametrize(
@@ -565,8 +569,8 @@ def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch,
     working = kinds.index("working")
     # The filler's line names the tool that started, and its audio comes right after it, before
     # the answer (Kevin, 2026-11-17: fillers say what it is actually doing).
-    assert kinds[working + 1 : working + 3] == ["filler", "audio"]
-    filler = _of(events, "filler")[0]
+    assert kinds[working + 1 : working + 3] == ["filler", "audio"]  # the tool's own line
+    filler = [f for f in _of(events, "filler") if f["tool"]][0]
     assert filler["tool"] == "legion_docs"
     from assistant import fillers as filler_lines
 
