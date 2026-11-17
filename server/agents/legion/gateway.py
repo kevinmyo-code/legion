@@ -46,14 +46,33 @@ _OUTCOMES = {
 }
 
 
+def _rest_schema(schema):
+    """REST's OpenAPI-subset `Schema` takes one `type`: a JSON Schema type list such as
+    ["string", "null"] becomes its non-null type plus `nullable` (REST answered HTTP 400 on the
+    list, measured 2026-11-17)."""
+    if isinstance(schema, list):
+        return [_rest_schema(s) for s in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: _rest_schema(v) for k, v in schema.items()}
+    kind = out.get("type")
+    if isinstance(kind, list):
+        real = [t for t in kind if t != "null"]
+        out["type"] = real[0] if real else "string"
+        if "null" in kind:
+            out["nullable"] = True
+    return out
+
+
 def rest_declarations(tools) -> list[dict]:
-    """The web door's declarations (`assistant.live.function_declarations`) less `behavior`, a Live
-    API field the REST `streamGenerateContent` request does not take (the phone's cascade sends no
-    such field either)."""
+    """The web door's declarations (`assistant.live.function_declarations`) for the REST
+    `streamGenerateContent` request: less `behavior` (a Live-only field; the phone's cascade sends
+    none) and with single-type schemas (`_rest_schema`)."""
     out = []
     for decl in live.function_declarations(tools, web_description):
         decl = dict(decl)
         decl.pop("behavior", None)
+        decl["parameters"] = _rest_schema(decl.get("parameters") or {})
         out.append(decl)
     return out
 

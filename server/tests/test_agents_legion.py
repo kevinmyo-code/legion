@@ -479,3 +479,25 @@ def test_a_trace_keeps_dates_and_masks_id_shaped_numbers():
         redact.redact_args("write_record", {"note": "ssn 123-45-6789"})["note"] == "ssn ###########"
     )
     assert redact.redact_args("x", {"token": "abc"}) == {"token": "[redacted]"}
+
+
+def test_rest_schemas_take_one_type_each():
+    from agents.legion.gateway import _rest_schema
+
+    out = _rest_schema({"type": "object", "properties": {"a": {"type": ["string", "null"]}}})
+    assert out["properties"]["a"] == {"type": "string", "nullable": True}
+
+    def walk(node):
+        if isinstance(node, dict):
+            assert not isinstance(node.get("type"), list), node
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    from agents.legion.gateway import rest_declarations
+    from agents.legion.twins import TWINS
+    from assistant.surface import web_tools
+
+    walk(rest_declarations([*web_tools(), *TWINS.values()]))
