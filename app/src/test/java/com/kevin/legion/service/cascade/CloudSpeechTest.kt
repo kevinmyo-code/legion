@@ -230,6 +230,49 @@ class CloudSpeechTest {
     }
 
     @Test
+    fun `transcription is pinned to English and carries the vocabulary line when there is one`() {
+        val plain = CloudSpeechWire.transcribe(pcm(300)).getJSONObject("systemInstruction").getJSONArray("parts")
+            .getJSONObject(0).getString("text")
+        assertTrue(plain.contains("English"))
+        assertFalse(plain.contains("in the language they speak"))
+        assertFalse(plain.contains("Words he often says"))
+        val hint = SttGuard.hint(listOf("Invented Ranger", "Fit"))
+        val withHint = CloudSpeechWire.transcribe(pcm(300), hint).getJSONObject("systemInstruction")
+            .getJSONArray("parts").getJSONObject(0).getString("text")
+        assertTrue(withHint.endsWith(hint))
+    }
+
+    @Test
+    fun `a request that hangs is abandoned and the same audio asked again once, on a fresh call`() = runBlocking<Unit> {
+        var n = 0
+        val fake = FakeGemini { _, _, onEvent ->
+            if (n++ == 0) awaitCancellation()
+            onEvent(textEv("Clear the codes on the invented truck."))
+            onEvent(usageEv(80, 9))
+            StreamOutcome.Ok
+        }
+        val logs = Collections.synchronizedList(mutableListOf<String>())
+        val stt = GeminiStt(fake, scope, log = { logs.add(it) }, attemptTimeoutMs = 200)
+        val r = withTimeout(3_000) { stt.transcribe(pcm(400)) }
+        assertEquals("Clear the codes on the invented truck.", (r as SttResult.Text).text)
+        assertEquals(2, fake.calls.size)
+        // The same audio both times.
+        assertEquals(fake.calls[0].second.toString(), fake.calls[1].second.toString())
+        assertTrue(logs.any { it.startsWith("stt_cloud_retry after=hung_200") })
+    }
+
+    @Test
+    fun `two hung requests end as a timeout well inside the final deadline`() = runBlocking<Unit> {
+        val fake = FakeGemini { _, _, _ -> awaitCancellation() }
+        val stt = GeminiStt(fake, scope, attemptTimeoutMs = 150)
+        val t0 = System.currentTimeMillis()
+        assertEquals(SttResult.Failed("timeout"), withTimeout(3_000) { stt.transcribe(pcm(400)) })
+        assertTrue(System.currentTimeMillis() - t0 < 1_500)
+        assertEquals(2, fake.calls.size)
+        assertTrue(2 * GeminiStt.ATTEMPT_TIMEOUT_MS < CascadeTimings.CLOUD_STT_FINAL_TIMEOUT_MS)
+    }
+
+    @Test
     fun `closing the cloud voice ends a pending transcription at once`() = runBlocking<Unit> {
         val fake = FakeGemini { _, _, _ -> awaitCancellation() }
         val cloud = CloudSpeech.create(scope, fake)

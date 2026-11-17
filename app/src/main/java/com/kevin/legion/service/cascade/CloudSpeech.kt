@@ -56,12 +56,14 @@ internal class CloudSpeech(
             keepLines: Set<String> = ScriptedLines.KEEP,
             voice: String = CloudSpeechWire.VOICE,
             usage: (CallUsage) -> Unit = {},
+            /** The STT vocabulary line ([SttGuard.hint]), read per request; "" for none. */
+            hint: () -> String = { "" },
         ): CloudSpeech {
             val own = CoroutineScope(
                 parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO,
             )
             return CloudSpeech(
-                stt = GeminiStt(transport, own, meter, log, usage = usage),
+                stt = GeminiStt(transport, own, meter, log, usage = usage, hint = hint),
                 tts = GeminiTts(transport, own, meter, log, keepLines = keepLines, voice = voice, usage = usage),
                 ownScope = own,
             )
@@ -97,15 +99,27 @@ internal object CloudSpeechWire {
     const val INPUT_RATE = 16_000
     const val STT_MAX_OUTPUT_TOKENS = 512
 
+    /**
+     * Pinned to English (2026-11-17: "in the language they speak" let English speech come back as
+     * Spanish and Chinese fragments). [SttGuard] still drops whatever is not plausibly English.
+     */
     const val STT_INSTRUCTION =
-        "You are a speech-to-text engine. Write down exactly what the speaker says in the audio, in the " +
-            "language they speak, with ordinary punctuation. Output only the spoken words: never answer, " +
-            "comment, translate, add quotes or add labels. If there is no intelligible speech, output nothing."
+        "You are a speech-to-text engine for an American English speaker talking to his voice assistant. " +
+            "Write down exactly what he says, in English words, with ordinary punctuation. Never write " +
+            "another language or script: an unclear sound is written as the nearest English words. Output " +
+            "only the spoken words: never answer, comment, translate, add quotes or add labels. If there is " +
+            "no intelligible speech, output nothing."
     private const val STT_ASK = "Transcribe this audio."
 
-    /** The transcription request: the utterance as a WAV, inline. */
-    fun transcribe(pcm16k: ByteArray): JSONObject = JSONObject()
-        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", STT_INSTRUCTION))))
+    /** The transcription request: the utterance as a WAV, inline; [hint] ([SttGuard.hint]) after the rules. */
+    fun transcribe(pcm16k: ByteArray, hint: String = ""): JSONObject = JSONObject()
+        .put(
+            "systemInstruction",
+            JSONObject().put(
+                "parts",
+                JSONArray().put(JSONObject().put("text", if (hint.isBlank()) STT_INSTRUCTION else "$STT_INSTRUCTION $hint")),
+            ),
+        )
         .put(
             "contents",
             JSONArray().put(
@@ -255,6 +269,9 @@ internal class GeminiStt(
     private val capBytes: Int = TurnUtterance.KEEP_CAP_BYTES,
     /** Every request's counts, for the cost audit ([CallUsage]). */
     private val usage: (CallUsage) -> Unit = {},
+    private val hint: () -> String = { "" },
+    /** A request with no answer by now is abandoned and asked again, once, on a fresh call. */
+    private val attemptTimeoutMs: Long = ATTEMPT_TIMEOUT_MS,
 ) : SpeechToText {
     override val endsTurns = false
     private val ids = AtomicInteger(-1)
@@ -269,12 +286,17 @@ internal class GeminiStt(
     suspend fun transcribe(pcm: ByteArray, report: (CallUsage) -> Unit = usage): SttResult {
         val audioMs = pcm.size / BYTES_PER_MS
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
-        val body = CloudSpeechWire.transcribe(pcm)
+        val body = CloudSpeechWire.transcribe(pcm, runCatching(hint).getOrDefault(""))
         val started = now()
-        var (outcome, turn) = attempt(body, audioMs.toLong(), report)
-        if (CloudSpeechWire.worthRetry(outcome)) {
-            log("stt_cloud_retry after=${CloudSpeechWire.token(outcome)}")
-            val again = attempt(body, audioMs.toLong(), report)
+        // 2026-11-17: three of 34 requests hung 10 to 17 s (every good one took 2.4 s or less) and the
+        // turn waited out the 8 s timeout. A request that has not answered in [attemptTimeoutMs] is
+        // abandoned and the same audio asked again on a fresh call, once.
+        val first = withTimeoutOrNull(attemptTimeoutMs) { attempt(body, audioMs.toLong(), report) }
+        var (outcome, turn) = first ?: (StreamOutcome.Network("hung") to StreamedTurn())
+        if (first == null || CloudSpeechWire.worthRetry(outcome)) {
+            log("stt_cloud_retry after=${if (first == null) "hung_$attemptTimeoutMs" else CloudSpeechWire.token(outcome)}")
+            val again = withTimeoutOrNull(attemptTimeoutMs) { attempt(body, audioMs.toLong(), report) }
+                ?: return SttResult.Failed("timeout")
             outcome = again.first
             turn = again.second
         }
@@ -367,6 +389,12 @@ internal class GeminiStt(
 
         /** Under 200 ms of audio is not a request worth paying for: nothing was said. */
         const val MIN_AUDIO_BYTES = 200 * BYTES_PER_MS
+
+        /**
+         * Every answered request on 2026-11-17 took 0.96 to 2.35 s (31 finals, 25 drafts); the three
+         * that hung took 10 s or more. Two tries fit inside [CascadeTimings.CLOUD_STT_FINAL_TIMEOUT_MS].
+         */
+        const val ATTEMPT_TIMEOUT_MS = 3_500L
     }
 }
 
