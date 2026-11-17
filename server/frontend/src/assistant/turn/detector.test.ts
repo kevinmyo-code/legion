@@ -54,7 +54,9 @@ function fakeWorkers(options: { sileroMs?: number; smartMs?: number | null; smar
           if (options.smartMs === null) return { type: 'failed', reason: 'no smart turn here' }
           return { type: 'ready', sileroMs: 0, smartMs: options.smartMs ?? 120, loadMs: 60 }
         case 'window':
-          return { type: 'prob', seq: msg.seq, prob: rms(msg.samples) > 0.02 ? 0.95 : 0.02, ms: 1 }
+          // Speech-like at any real level; the fixtures' syllable troughs (RMS ~0.015) still count,
+          // as they do for Silero, so a pause is only real silence.
+          return { type: 'prob', seq: msg.seq, prob: rms(msg.samples) > 0.005 ? 0.95 : 0.02, ms: 1 }
         case 'check':
           return { type: 'score', checkId: msg.checkId, score: options.smartScore ?? 0.9, ms: 90 }
         default:
@@ -214,8 +216,9 @@ describe('barge-in while the reply plays', () => {
     for (let i = 0; i < 2; i++) {
       detector!.replyStarted()
       await play(detector!, echo(1200), false, true)
-      // A loud burst (a cough, the reply's own peak) that fires, then nothing.
-      await play(detector!, over(320, 6_000), false, true)
+      // A burst over the echo floor (window peaks ~4.1k to 7.5k against a threshold of ~5k), but
+      // under twice it, so not "clearly the user": it fires, then nothing more is said.
+      await play(detector!, over(400, 11_000), false, true)
       await play(detector!, silence(1400), false, true)
       detector!.replyEnded()
       detector!.reset()

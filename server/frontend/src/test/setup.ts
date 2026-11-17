@@ -25,6 +25,8 @@ afterEach(cleanup)
 // because the stub replaces a window property that outlives a single test, and
 // so do the theme class and the stored theme preference.
 beforeEach(() => {
+  // A Node-environment test file (`*.node.test.ts`) has no window: nothing to reset.
+  if (typeof window === 'undefined') return
   stubSurface('family')
   window.localStorage.clear()
   document.documentElement.classList.remove('dark')
@@ -79,4 +81,7 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
  * voice orb draws nothing without one (its state is in words beside it), so a
  * quiet `null` is what a test should see.
  */
-HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext
+// Node-environment test files (`*.node.test.ts`) share this setup and have no DOM at all.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext
+}
