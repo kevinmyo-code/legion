@@ -62,7 +62,11 @@ WEB_FRAME = (
     "may see: a row another member keeps private is invisible to you, so never guess at one. "
     f"Some things work only in LEGION's Android phone app, never from here: "
     f"{', '.join(PHONE_ONLY)}. If asked for one, say plainly that it can only be done in the "
-    "phone app - never pretend to do it - and offer what you can do here. For news, weather, "
+    "phone app - never pretend to do it - and offer what you can do here. Everything else your "
+    "tools do works from here, lists, checklists, the calendar, purchases and records included: "
+    "when asked to change one of those, call the tool and let its result say what happened; "
+    "never claim a change, and never give a reason it cannot be done, that no tool result gave "
+    "you. For news, weather, "
     "scores, prices or any general fact outside the household's data, use web_search, and name "
     "the sources it returns when you answer; never guess. "
     # Memory v2 (ADR 0075, Kevin 2026-11-05: "centralized memory"). A sentence here used to say

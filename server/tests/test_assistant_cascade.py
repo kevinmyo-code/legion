@@ -717,7 +717,8 @@ def test_a_claimed_change_after_a_refused_write_is_not_said(member, engine):
     )
     events = _events(_post(member, text="Look up the fair and add it."))
     said = [s["text"] for s in _of(events, "sentence")]
-    assert said == ["The fair is on Saturday.", cascade.CHANGE_NOT_MADE]
+    # The turn read the web: the true reason, said by code (ADR 0090).
+    assert said == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT]
 
 
 def test_a_real_change_may_be_said(member, engine):
@@ -732,4 +733,56 @@ def test_a_claimed_change_with_no_write_tried_is_not_said(member, engine):
     assert [s["text"] for s in _of(events, "sentence")] == [
         "Nothing is on.",
         cascade.CHANGE_NOT_MADE,
+    ]
+
+
+@pytest.mark.parametrize(
+    "excuse",
+    [
+        "I can't add things to your list here, that works only in the phone app.",
+        "I don't have a tool to add items to your grocery list.",
+        "I couldn't add it because the system held back the write.",
+    ],
+)
+def test_a_false_reason_after_a_web_read_becomes_the_true_one(member, engine, excuse):
+    engine.model = FakeModel(
+        [call("web_search", {"query": "fair date"}), say(f"The fair is on Saturday. {excuse}")]
+    )
+    events = _events(_post(member, text="Look up the fair and add it to my list."))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert said == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT]
+
+
+def test_a_refused_write_after_a_web_read_always_says_why(member, engine):
+    engine.model = FakeModel(
+        [
+            call("web_search", {"query": "fair date"}),
+            call("add_event", {"fields": {"title": "Fair"}}),
+            say("The fair is on Saturday."),
+        ]
+    )
+    events = _events(_post(member, text="Look it up and add it."))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert said == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT]
+
+
+def test_a_cant_find_sentence_after_a_web_read_is_kept(member, engine):
+    engine.model = FakeModel(
+        [call("web_search", {"query": "fair date"}), say("I can't find a date for the fair.")]
+    )
+    events = _events(_post(member, text="When is the fair?"))
+    assert [s["text"] for s in _of(events, "sentence")] == ["I can't find a date for the fair."]
+
+
+def test_a_false_phone_app_reason_for_a_web_tool_is_replaced(member, engine):
+    engine.model = FakeModel([say("I can't add things to your lists here, only in the phone app.")])
+    events = _events(_post(member, text="Add that to my list."))
+    assert [s["text"] for s in _of(events, "sentence")] == [cascade.WEB_CAN]
+
+
+def test_a_true_phone_only_answer_is_kept(member, engine):
+    engine.model = FakeModel([say("Music only works in the phone app, so I can't play it here.")])
+    events = _events(_post(member, text="Play some music."))
+    assert [s["text"] for s in _of(events, "sentence")] == [
+        "Music only works in the phone app, so I can't play it here."
     ]

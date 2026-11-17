@@ -170,6 +170,33 @@ STT_FAILED = "Not answered: the words could not be made out just now."
 # Said instead of a sentence claiming a change no tool made (measured 2026-11-17: after a web
 # search, "I have added that to your grocery list", with the write refused or never tried).
 CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
+# ADR 0090's reason in code, spoken whenever a turn that read outside text does not make a change
+# it was asked for (measured 2026-11-17: the model gave a false reason, "that only works in the
+# phone app", or claimed the change). The person's next message may make it.
+READ_THROUGH_WAIT = (
+    "I haven't changed anything: this turn read text from the web, so changes wait for your next "
+    "message. Ask me again and I'll do it."
+)
+# A sentence of the model's about not making a change: a can't-word and a change-word together.
+_CANT = re.compile(
+    r"\b(can['’]?t|cannot|can not|couldn['’]?t|unable|not able|won['’]?t be able|"
+    r"don['’]?t have (a|the|any) (tool|way)|only (works )?(in|on|from) the "
+    r"(phone|full|mobile|android) app|from here|held back)\b",
+    re.I,
+)
+_CHANGE = re.compile(
+    r"\b(add|added|adding|put|save|saved|change|changed|delete|remove|update|set|create|schedule|"
+    r"log|write|list|calendar|remind|reminder)\b",
+    re.I,
+)
+# The web's own tools change lists, checklists, the calendar and purchases (`assistant.surface`), so
+# "that only works in the phone app" about one of them is never true here (measured 2026-11-17, in
+# a turn with no outside read). Said by code in place of that sentence.
+WEB_CAN = "That can be done from here: tell me exactly what to change and I'll do it."
+_PHONE_APP = re.compile(r"\b(phone|android|mobile|full) app\b", re.I)
+_WEB_TOOLS_WORD = re.compile(
+    r"\b(list|lists|checklist|checklists|calendar|event|events|purchase|purchases)\b", re.I
+)
 TOO_MANY_TOOLS = (
     "Nothing was read or written: this turn already ran as many tool calls as one turn may."
 )
@@ -713,15 +740,29 @@ def _answer(
     sentences = 0
 
     unbacked = 0
+    wait_reason = False
+    web_can = False
+
+    def tainted() -> bool:
+        return read_through.read_third_party(door.request)
 
     def honest(text: str) -> bool:
         """False for a sentence that claims a change when no write went through in this turn
         (`agents.legion.guards.claims_unbacked_outcome`, the runtime's own check, here blocking
         rather than flagging; CLAUDE.md section 7). Measured 2026-11-17: after a web search, the
         model said it had added a date to a list with no write tried at all."""
-        nonlocal unbacked
+        nonlocal unbacked, wait_reason, web_can
         if claims_unbacked_outcome(text, door.actions()):
             unbacked += 1
+            return False
+        if tainted() and _CANT.search(text) and _CHANGE.search(text):
+            # The model's own reason for not changing something in a read-through turn: replaced
+            # by the true one, in code (ADR 0090).
+            wait_reason = True
+            return False
+        if _CANT.search(text) and _PHONE_APP.search(text) and _WEB_TOOLS_WORD.search(text):
+            # A false "only in the phone app" about something the web's own tools do.
+            web_can = True
             return False
         return True
 
@@ -828,8 +869,17 @@ def _answer(
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
-    if unbacked:
+    guard_refused = any(
+        not c.ok and c.text.startswith("Nothing was") and "read outside text" in c.text
+        for c in door.calls
+    )
+    if wait_reason or guard_refused or (unbacked and tainted()):
+        yield say(READ_THROUGH_WAIT)
+    elif unbacked:
         yield say(CHANGE_NOT_MADE)
+    elif web_can:
+        yield say(WEB_CAN)
+    timings["wait_reason"] = int(wait_reason or guard_refused)
     timings["unbacked"] = unbacked
     if failure is not None:
         yield say(failure)
