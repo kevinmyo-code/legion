@@ -1123,6 +1123,7 @@ fun FaultsDrilldownScreen(
     clearEvents: List<CodeClearEvent>,
     descriptions: Map<String, Pair<String, String>>,
     onBack: () -> Unit,
+    onOpenModules: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1169,6 +1170,11 @@ fun FaultsDrilldownScreen(
         Column(Modifier.fillMaxSize()) {
             DeckScreenHeader(title = "Faults", onBack = onBack, accent = AreaAccent.FLEET)
             Hairline()
+            // Every module, not just the engine (2026-11-15): airbag, ABS, body and the rest.
+            androidx.compose.material3.TextButton(
+                onClick = onOpenModules,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            ) { Text("Scan every module (airbag, ABS, body...)") }
             // The codes card's hands path (2026-11-03, ADR 0035): the same card a code question
             // brings up by voice, opened through the same controller.
             if (eventsNewestFirst.isNotEmpty()) {

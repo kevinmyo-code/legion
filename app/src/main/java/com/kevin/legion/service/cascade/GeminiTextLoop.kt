@@ -117,6 +117,8 @@ class GeminiTextLoop(
         val verbatimSpoken: Boolean = false,
         /** Model sentences dropped after that because they carried a money amount ([MoneyFilter]). */
         val moneyDropped: Int = 0,
+        /** Model sentences dropped after a diagnostics verbatim answer: they restated it ([DiagFilter]). */
+        val diagDropped: Int = 0,
     )
 
     @Volatile private var searchRejected = false
@@ -131,7 +133,9 @@ class GeminiTextLoop(
         var fillerContinued = 0
         var fillerAgain = false
         var verbatim = false
+        var verbatimFrom: String? = null
         var moneyDropped = 0
+        var diagDropped = 0
     }
 
     /**
@@ -197,8 +201,13 @@ class GeminiTextLoop(
             var firstSeen = false
             // After a tool ran, a line that may be filler is held back until it is known not to be.
             val held = if (state.toolsRan.isNotEmpty()) FillerTurn.Hold() else null
-            // After the phone spoke a balance itself, no money sentence of the model's is spoken.
-            val money = if (state.verbatim) MoneyFilter() else null
+            // After the phone spoke a balance itself, no money sentence of the model's is spoken; after a
+            // diagnostics answer, no sentence restating its codes, counts or a verdict.
+            val money: SentenceFilter? = when {
+                !state.verbatim -> null
+                state.verbatimFrom == VerbatimSpeech.DIAGNOSTICS -> DiagFilter()
+                else -> MoneyFilter()
+            }
             val outcome = try {
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
@@ -239,7 +248,7 @@ class GeminiTextLoop(
             held?.end()?.let { emit(money?.feed(it) ?: it, state, listener) }
             money?.let {
                 emit(it.flush(), state, listener)
-                state.moneyDropped += it.dropped
+                if (it is DiagFilter) state.diagDropped += it.dropped else state.moneyDropped += it.dropped
             }
             if (turn.blockReason != null) return fail(TextFailure.BLOCKED, state)
             if (turn.error != null && !turn.hasParts()) return fail(TextFailure.MODEL_ERROR, state)
@@ -336,11 +345,13 @@ class GeminiTextLoop(
      */
     private fun speakVerbatim(results: List<AgentProtocol.ToolResult>, state: TurnState, listener: Listener) {
         if (state.verbatim) return
-        val words = results.firstNotNullOfOrNull { VerbatimSpeech.of(it.response) } ?: return
+        val hit = results.firstOrNull { VerbatimSpeech.of(it.response) != null } ?: return
+        val words = VerbatimSpeech.of(hit.response).orEmpty()
         if (state.text.isNotEmpty() && !state.text.last().isWhitespace()) emit(" ", state, listener)
         // A trailing space, so a sentence of the model's after it is never glued on (the result is trimmed).
         emit("$words ", state, listener)
         state.verbatim = true
+        state.verbatimFrom = VerbatimSpeech.fromOf(hit.response)
     }
 
     /** Model text as it is let through: kept for the turn and passed on to be spoken. */
@@ -366,6 +377,7 @@ class GeminiTextLoop(
         fillerAgain = state.fillerAgain,
         verbatimSpoken = state.verbatim,
         moneyDropped = state.moneyDropped,
+        diagDropped = state.diagDropped,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
@@ -380,6 +392,7 @@ class GeminiTextLoop(
         fillerAgain = state.fillerAgain,
         verbatimSpoken = state.verbatim,
         moneyDropped = state.moneyDropped,
+        diagDropped = state.diagDropped,
     )
 
     companion object {

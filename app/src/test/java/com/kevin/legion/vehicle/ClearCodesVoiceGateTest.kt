@@ -89,4 +89,18 @@ class ClearCodesVoiceGateTest {
             "maybe", "don't", "Actually, never mind",
         ).forEach { assertFalse(it, ClearCodesVoiceGate.isExplicitYes(it)) }
     }
+
+    @Test
+    fun `an ask needs his words to ask for a clear, never a read or a scan`() {
+        for (read in listOf("check the codes", "read the codes again", "scan every module", "any fault codes?")) {
+            assertEquals(read, ClearCodesVoiceGate.NOT_ASKED, ClearCodesVoiceGate.notAskedToClear(false, read))
+        }
+        for (ask in listOf("clear the codes", "Can you try to clear the codes?", "erase the codes in every module",
+            "turn off the check engine light", "reset the codes")) {
+            assertNull(ask, ClearCodesVoiceGate.notAskedToClear(false, ask))
+        }
+        assertNull("the yes turn is the yes-check's business", ClearCodesVoiceGate.notAskedToClear(true, "yes, do it"))
+        assertNull("no words (hands path) is not judged here", ClearCodesVoiceGate.notAskedToClear(false, null))
+        assertTrue(ClearCodesVoiceGate.NOT_ASKED.startsWith("Nothing was cleared"))
+    }
 }

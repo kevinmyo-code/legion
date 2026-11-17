@@ -552,6 +552,9 @@ object LiveToolbox {
      * so a write is reported done only when its own result came back `success: true` that turn.
      */
     fun isMutatingCall(name: String, args: JSONObject): Boolean {
+        // 2026-11-16: an unconfirmed clear_codes never sends a clear (it asks, or it reads when his
+        // words only read: readInsteadOfClear), so a successful one is never a write done.
+        if (name == "clear_codes" && !args.optBoolean("confirmed", false)) return false
         val dispatcher = name == "ask_engine" || name in DISPATCHED.keys.map { "ask_$it" }
         return name in MUTATING_TOOLS || (dispatcher && wantsWrite(args))
     }
@@ -620,7 +623,14 @@ object LiveToolbox {
      * LiveToolboxAgentToolTimeoutTest pins the order.
      */
     internal fun agentToolTimeoutMs(name: String): Long =
-        if (name in SPECIALIST_TOOLS) SPECIALIST_TOOL_TIMEOUT_MS else AGENT_TOOL_TIMEOUT_MS
+        if (name in SPECIALIST_TOOLS || name in SLOW_READ_TOOLS) SPECIALIST_TOOL_TIMEOUT_MS else AGENT_TOOL_TIMEOUT_MS
+
+    /**
+     * Reads that talk to the car for longer than a plain PID (2026-11-15): `get_codes` with
+     * `all_modules` waits up to [com.kevin.legion.vehicle.diag.DiagVoice.SCAN_WAIT_MS] for a module
+     * scan. The engine-only read still answers in about a second, so the longer leash costs it nothing.
+     */
+    internal val SLOW_READ_TOOLS = setOf("get_codes")
 
     internal const val AGENT_TOOL_TIMEOUT_MS = 8_000L
     internal const val SPECIALIST_TOOL_TIMEOUT_MS = 32_000L
@@ -887,7 +897,13 @@ object LiveToolbox {
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
-            "get_codes" -> getCodes(context)
+            // 2026-11-15: all_modules reads every module the dongle can reach (DiagVoice), not just
+            // the engine's generic codes; the engine-only read is unchanged.
+            "get_codes" -> if (args.optBoolean("all_modules", false)) {
+                com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
+            } else {
+                getCodes(context)
+            }
             "get_current_time" -> getCurrentTime()
             "diagnose_codes" -> diagnoseCodes(context, args)
             "read_vehicle_sensor" -> readVehicleSensor(context, args)
@@ -931,7 +947,7 @@ object LiveToolbox {
             // made from the question prose - see agentResult's requireMutation doc comment for
             // why this file refused to guess it. Absent or unrecognised reads as a plain read,
             // which is exactly the pre-2026-08-18 behaviour.
-            "ask_fleet" -> fleetNotOnFile(context, args) ?: agentResult(
+            "ask_fleet" -> fleetByCode(context, args) ?: fleetNotOnFile(context, args) ?: agentResult(
                 "Could not reach the fleet specialist. Try again shortly.",
                 requireMutation = wantsWrite(args),
                 lookupName = "fleet lookup",
@@ -1052,7 +1068,23 @@ object LiveToolbox {
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
             "check_readiness" -> checkReadiness()
-            "clear_codes" -> clearCodes(context, args, userText)
+            // 2026-11-15: a module clear (modules named, or the yes to a module question) goes to
+            // DiagVoice and its own yes-check; everything else is the engine's Mode 04 below.
+            // 2026-11-16: an ask needs his words to ask for a clear (ClearCodesVoiceGate.notAskedToClear);
+            // words that only read get the read itself here, never a "call something else" refusal.
+            "clear_codes" -> if (com.kevin.legion.vehicle.ClearCodesVoiceGate
+                    .notAskedToClear(args.optBoolean("confirmed", false), userText) != null
+            ) {
+                readInsteadOfClear(context, userText.orEmpty())
+            } else if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
+                    args.optString("modules"),
+                    args.optBoolean("confirmed", false),
+                )
+            ) {
+                moduleClear(context, args, userText)
+            } else {
+                clearCodes(context, args, userText)
+            }
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
@@ -3971,6 +4003,19 @@ object LiveToolbox {
         return out
     }
 
+    /** `clear_codes` for named modules (DiagVoice): refused in words with no dongle, nothing sent. */
+    private suspend fun moduleClear(context: Context, args: JSONObject, userText: String?): JSONObject =
+        if (!ObdBluetoothManager.isConnected) {
+            result(false, com.kevin.legion.vehicle.diag.DiagScanController.NOT_CONNECTED)
+        } else {
+            com.kevin.legion.vehicle.diag.DiagVoice.clear(
+                context,
+                args.optString("modules").trim(),
+                args.optBoolean("confirmed", false),
+                userText,
+            )
+        }
+
     private suspend fun clearCodes(context: Context, args: JSONObject, userText: String?): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
         val connected = ObdBluetoothManager.isConnected
@@ -3989,8 +4034,15 @@ object LiveToolbox {
         val vehicle = VehicleController.currentVehicle(context)
         val r = DtcClearController.dispatchAndRecord(context, vehicle, confirmed)
         val out = result(success = r.outcome == DtcClearController.ClearOutcome.CLEARED, message = r.message)
+        if (r.outcome == DtcClearController.ClearOutcome.NOT_PARKED) {
+            // Moving or speed unknown: nothing was read or sent. Said by the phone word for word, so no
+            // model sentence ("Cleared.") can follow it into speech (DiagFilter drops one).
+            spokenRead(out, r.message)
+        }
         if (r.outcome == null) {
             // The confirm question: remember it was asked, and tell the model to ask and wait.
+            // A module-clear question left waiting is void now (one question at a time).
+            com.kevin.legion.vehicle.diag.DiagVoice.forget()
             gate.asked(userText)
             out.put("needsConfirmation", true)
                 .put("instruction", com.kevin.legion.vehicle.ClearCodesVoiceGate.ASK_AND_WAIT)
@@ -5081,14 +5133,57 @@ object LiveToolbox {
         }
     }
 
+    /**
+     * What an unconfirmed `clear_codes` does when his words did not ask to clear (2026-11-16, stage 7
+     * fleet eval: refused with "call ask_fleet instead", flash-lite then ended the turn on a filler
+     * line 3 times in 5). The read he asked for runs here and its answer comes back, marked as a read:
+     * a module-scan request gets [com.kevin.legion.vehicle.diag.DiagVoice.scan] (the same function and
+     * the same code-built `say` as ask_fleet's scan), anything else the engine's code read
+     * ([getCodes]). Nothing is cleared and no clear question is asked; no clear command is sent.
+     */
+    internal suspend fun readInsteadOfClear(context: Context, words: String): JSONObject {
+        val read = if (com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(words)) {
+            com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
+        } else {
+            getCodes(context)
+        }
+        return read.put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
+    }
+
+    /**
+     * get_codes' empty answer, scoped to what it read (2026-11-16): one generic read of the engine's
+     * stored codes. Never "everything" or "the car is clear": pending codes and every other module
+     * were not read by it.
+     */
+    internal const val NO_ENGINE_CODES = "No stored engine codes. That is the engine's generic stored-code " +
+        "read only: pending codes and the other modules were not read."
+
+    internal const val ENGINE_CODES_NOT_READ = "The engine's stored-code read (OBD mode 03) got no real answer, so " +
+        "its codes are not known and nothing is known to be clear."
+
+    /**
+     * The engine code read's words, spoken by the phone itself, word for word (stage 7 diagnostics,
+     * 2026-11-17: "No stored engine codes ..." came out as "Clean bill" through the model).
+     */
+    private fun spokenRead(result: JSONObject, words: String): JSONObject =
+        com.kevin.legion.ai.VerbatimSpeech.mark(result, words, com.kevin.legion.ai.VerbatimSpeech.DIAGNOSTICS)
+
+    internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
+        "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
+
     private suspend fun getCodes(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return result(false, "The OBD adapter isn't connected, so I can't read any codes.")
         }
-        val codes = ObdBluetoothManager.getDtcCodes()
+        // 2026-11-16: one Mode 03 read of the engine's stored codes. A reply that is not a real
+        // Mode 03 answer is a failed read and is said as one, never as "no codes".
+        val raw = ObdBluetoothManager.getDtcCodesRaw()
+        val parser = com.kevin.legion.vehicle.ObdResponseParser
+        if (!parser.isValidDtcReply(raw)) return spokenRead(result(false, ENGINE_CODES_NOT_READ), ENGINE_CODES_NOT_READ)
+        val codes = parser.dtcCodes(raw)
         if (codes.isEmpty()) {
             ToolCards.codes(context, ActiveVehicle.connectedCarId(context), codes, emptyMap())
-            return result(true, "No codes stored - everything's clear.")
+            return spokenRead(result(true, NO_ENGINE_CODES), NO_ENGINE_CODES)
         }
 
         val seed = withContext(Dispatchers.IO) { DtcDescriptions.loadSeed(context) }
@@ -5129,7 +5224,8 @@ object LiveToolbox {
             perCode.put(o)
         }
         if (mac != null && stored.isNotEmpty()) VoiceModalController.show(VoiceModalTarget.CODES, mac)
-        return result(true, "${codes.size} code(s) stored: $spoken.").put("codes", perCode)
+        val said = (if (codes.size == 1) "Stored engine code: " else "Stored engine codes: ") + "$spoken."
+        return spokenRead(result(true, "${codes.size} code(s) stored: $spoken.").put("codes", perCode), said)
     }
 
     private suspend fun diagnoseCodes(context: Context, args: JSONObject): JSONObject {
@@ -5200,6 +5296,40 @@ object LiveToolbox {
      * codes. A question that names only a make no car on file has no answer in these records: say
      * so, name the cars there are, and point the answer at general knowledge or a search.
      */
+    /**
+     * The two fleet questions answered by code, never by the fleet helper model (2026-11-16, stage 7
+     * fleet eval):
+     * - a request to clear or erase codes: ask_fleet only reads (its tool list holds no write), so it
+     *   is refused in words that name the car tool's clear_codes, whatever `intent` the model set;
+     * - a module scan ("scan every module", "codes in all modules"): run here through
+     *   [com.kevin.legion.vehicle.diag.DiagVoice.scan], whose `say` is built by code
+     *   ([com.kevin.legion.vehicle.diag.ScanSay]). A scan only reads, so a `record` intent the model set on it is ignored rather than refused (the eval saw
+     *   "can't write" spoken for a scan).
+     * Null for every other question, which goes to the helper as before.
+     */
+    private suspend fun fleetByCode(context: Context, args: JSONObject): JSONObject? {
+        val question = args.optString("question")
+        return when {
+            isFleetClearRequest(question) -> result(false, FLEET_NO_CLEAR)
+            com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(question) ->
+                com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
+            else -> null
+        }
+    }
+
+    /**
+     * A request to clear, not a question about past clears: "clear the codes" is one, "when did I last
+     * clear the codes" and "did the clear take" are code-history reads and stay with the helper.
+     */
+    internal fun isFleetClearRequest(question: String): Boolean =
+        com.kevin.legion.vehicle.ClearCodesVoiceGate.asksToClear(question) && !CLEAR_HISTORY.containsMatchIn(question)
+
+    private val CLEAR_HISTORY =
+        Regex("\\b(when|last|history|ever|did|was|were|been|cleared|how long)\\b", RegexOption.IGNORE_CASE)
+
+    internal const val FLEET_NO_CLEAR = "Nothing was cleared: ask_fleet only reads. Clearing trouble codes is the " +
+        "car tool's clear_codes, which asks him first and clears only after his plain yes."
+
     private suspend fun fleetNotOnFile(context: Context, args: JSONObject): JSONObject? {
         val roster = com.kevin.legion.vehicle.FleetEngineStore.getAll(context)
         val make = VehicleResolver.makeNotOnFile(args.optString("question"), roster) ?: return null

@@ -14,13 +14,28 @@ object VerbatimSpeech {
     const val KEY = "speak_verbatim"
     const val FROM = "verbatim_from"
 
-    /** Start with the balance tool alone (coordinator, 2026-11-17). */
-    val TOOLS: Set<String> = setOf("get_balance")
+    /** The balance tool (stage 7) and the diagnostics reads (stage 7 diagnostics, 2026-11-17). */
+    const val BALANCE = "get_balance"
+    const val DIAGNOSTICS = "get_codes"
+    val TOOLS: Set<String> = setOf(BALANCE, DIAGNOSTICS)
 
     /** The words to speak from a result the cascade received, or null. */
     fun of(response: JSONObject?): String? {
         if (response == null || response.optString(FROM) !in TOOLS) return null
         return response.optString(KEY).trim().takeIf { it.isNotEmpty() }
+    }
+
+    /** Which allowlisted tool made [response]'s words, when [of] would speak them. */
+    fun fromOf(response: JSONObject?): String? = response?.optString(FROM)?.takeIf { of(response) != null }
+
+    /**
+     * Marks [result] to be spoken by the phone as [words], made by [from] (a [TOOLS] name). Blank
+     * words leave it unmarked. Returns [result].
+     */
+    fun mark(result: JSONObject, words: String, from: String): JSONObject {
+        require(from in TOOLS) { "$from is not on the verbatim allowlist" }
+        if (words.isNotBlank()) result.put(KEY, words.trim()).put(FROM, from)
+        return result
     }
 
     /** From a routed tool's raw output (a JSON string), when [tool] may carry it. */

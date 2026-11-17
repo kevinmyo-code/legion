@@ -103,8 +103,9 @@ internal object LiveSurface {
                 Action("unarchive_vehicle", "manage_vehicle", "bring one back", mapOf("action" to "unarchive")),
                 Action(
                     "clear_codes", "clear_codes",
-                    "erase trouble codes, only when asked to clear; first call returns the warning to " +
-                        "recite, $YES",
+                    "erase trouble codes, only when he says clear or erase, never to read or scan them (reading " +
+                        "codes and scanning modules are ask_fleet); modules = scanned modules or all, omit for the " +
+                        "engine; first call returns the warning to recite, $YES",
                 ),
                 Action(
                     "activate_garage", "activate_garage",
@@ -322,8 +323,8 @@ internal object LiveSurface {
             actions = listOf(
                 Action(
                     "ask_fleet", "ask_fleet",
-                    "the cars: which he has, live readings, trouble codes, mileage, specs, recalls, service and " +
-                        "build history; how the car is doing comes only from this",
+                    "the cars: which he has, live readings, trouble codes (scan every module too), mileage, specs, " +
+                        "recalls, service and build history; how the car is doing comes only from this",
                 ),
                 Action(
                     "ask_body", "ask_body",

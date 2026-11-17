@@ -1082,6 +1082,7 @@ internal class CascadeSession(
             if (result.moneyDropped > 0) {
                 LiveLatency.log(LiveLatency.TAG, "reply_money_dropped n=${result.moneyDropped}")
             }
+            if (result.diagDropped > 0) LiveLatency.log(LiveLatency.TAG, "reply_diag_dropped n=${result.diagDropped}")
             if (record.holdLine) {
                 val toolCalled = synchronized(record) { record.toolsRan.isNotEmpty() }
                 val why = CheckInRules.lineRejection(result.text, result.failure != null, toolCalled)

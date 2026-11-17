@@ -15,6 +15,10 @@ import org.json.JSONArray
  */
 object CarCards {
 
+    /** The codes card's note for an empty engine read: what was read, nothing wider (2026-11-16). */
+    const val NO_ENGINE_CODES_NOTE = "No stored engine codes (the engine's generic read only; pending codes and " +
+        "other modules not read)."
+
     /** The car with its next service, as get_next_service computed it. */
     fun service(
         label: String,
@@ -51,7 +55,8 @@ object CarCards {
         zone: ZoneId,
         nowMs: Long = System.currentTimeMillis(),
     ): ConversationCard.Car {
-        val note = if (codes.isEmpty()) "No trouble codes stored." else "Codes as read off the OBD port now."
+        // Scoped to the read (2026-11-16): an empty list is the engine's stored codes only.
+        val note = if (codes.isEmpty()) NO_ENGINE_CODES_NOTE else "Codes as read off the OBD port now."
         // Read off the port by this call: the read is now.
         return car(label, vehicle, zone, mapOf(CarPart.CODES to note), nowMs).copy(
             codes = codes.map { (code, meaning) -> TroubleCode(code, meaning) },

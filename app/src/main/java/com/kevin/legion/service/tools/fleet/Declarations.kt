@@ -77,7 +77,10 @@ internal object Declarations {
                 "ask like 'what's the codes' or 'what codes are stored' - use diagnose_codes instead " +
                 "when the user wants to know what's WRONG or how to fix it. Reads the OBD dongle in " +
                 "the car it is plugged into right now. Cannot answer for any other car.",
-            params = obj(),
+            params = obj(
+                "all_modules" to schema("boolean", "True to read every module (airbag, ABS, body, " +
+                    "transmission...), not just the engine: slow, up to a minute."),
+            ),
             required = listOf(),
         ))
 
@@ -186,6 +189,7 @@ internal object Declarations {
             params = obj(
                 "confirmed" to schema("boolean", "False on the first call to read the codes and get " +
                     "the confirm question. True only after the user answered it with a plain yes."),
+                "modules" to schema("string", "Modules from the last module scan, or all; omit for the engine."),
             ),
             required = listOf("confirmed"),
         ))

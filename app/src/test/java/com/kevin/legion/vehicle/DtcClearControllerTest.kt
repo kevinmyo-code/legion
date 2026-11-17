@@ -65,18 +65,72 @@ class DtcClearControllerTest {
         codeReads: List<String>,
         engineRunning: Boolean = false,
         clearAck: String = "44\r\r",
+        speedKmh: Int? = 0,
     ): Pair<DtcClearController.ClearResult, FakeDtcTransport> {
         val fake = FakeDtcTransport(codeReads, clearAck)
         val result = runBlocking {
-            DtcClearController.clear(
+            DtcClearController.clearIfParked(
                 confirmed = confirmed,
                 engineRunning = engineRunning,
+                readSpeedKmh = { speedKmh },
                 readCodesRaw = { fake.readCodesRaw() },
                 readFreezeFrame = { fake.readFreezeFrame() },
                 sendClearRaw = { fake.sendClearRaw() },
             )
         }
         return result to fake
+    }
+
+    // ------------------------------------------------- parked gate (stage 7 diagnostics, 2026-11-17)
+
+    @Test
+    fun `moving refuses on the confirmed call, reads nothing and sends no clear`() {
+        val (result, fake) = run(confirmed = true, codeReads = emptyList(), speedKmh = 40)
+
+        assertEquals(DtcClearController.ClearOutcome.NOT_PARKED, result.outcome)
+        assertEquals(DtcClearController.MOVING, result.message)
+        assertTrue(result.message.contains("nothing was cleared"))
+        assertFalse("a refusal never sends Mode 04", fake.clearSent)
+    }
+
+    @Test
+    fun `unknown speed refuses on the confirmed call and sends no clear`() {
+        val (result, fake) = run(confirmed = true, codeReads = emptyList(), speedKmh = null)
+
+        assertEquals(DtcClearController.ClearOutcome.NOT_PARKED, result.outcome)
+        assertEquals(DtcClearController.SPEED_UNKNOWN, result.message)
+        assertFalse(fake.clearSent)
+    }
+
+    @Test
+    fun `moving or unknown speed refuses before asking, too`() {
+        for (speed in listOf(5, null)) {
+            val (result, fake) = run(confirmed = false, codeReads = emptyList(), speedKmh = speed)
+            assertEquals(DtcClearController.ClearOutcome.NOT_PARKED, result.outcome)
+            assertFalse(result.message.startsWith("Cleared"))
+            assertFalse(fake.clearSent)
+        }
+    }
+
+    @Test
+    fun `parked with the engine off clears`() {
+        val (result, fake) = run(confirmed = true, codeReads = listOf(TWO_CODES, TWO_CODES, NO_CODES), speedKmh = 0)
+
+        assertEquals(DtcClearController.ClearOutcome.CLEARED, result.outcome)
+        assertTrue(fake.clearSent)
+    }
+
+    @Test
+    fun `parked with the engine running asks with the warning, then clears`() {
+        val (ask, _) = run(confirmed = false, codeReads = listOf(TWO_CODES), engineRunning = true, speedKmh = 0)
+        assertNull(ask.outcome)
+        assertTrue(ask.message.contains("Engine is running"))
+
+        val (result, fake) = run(
+            confirmed = true, codeReads = listOf(TWO_CODES, TWO_CODES, NO_CODES), engineRunning = true, speedKmh = 0,
+        )
+        assertEquals(DtcClearController.ClearOutcome.CLEARED, result.outcome)
+        assertTrue(fake.clearSent)
     }
 
     // ------------------------------------------------------------- the confirmed=false gate
@@ -88,8 +142,11 @@ class DtcClearControllerTest {
         assertNull("the confirm-prompt turn is not yet one of the five ClearOutcome states", result.outcome)
         assertEquals(listOf("P0133", "P0420"), result.codesBefore)
         assertNull(result.codesAfter)
-        assertTrue("the prompt names the actual stored codes", result.message.contains("P0133"))
-        assertTrue(result.message.contains("P0420"))
+        // 2026-11-16: the question is useless as a code reader; the codes stay on the result only.
+        assertFalse("the prompt names no stored code", result.message.contains("P0133"))
+        assertFalse(result.message.contains("P0420"))
+        val count = Regex("\\b(one|two|three)\\b", RegexOption.IGNORE_CASE)
+        assertFalse("nor a count", count.containsMatchIn(result.message))
         assertTrue("the prompt ends by asking", result.message.endsWith("Do you want me to clear?"))
         assertFalse("confirmed=false must NEVER send Mode 04 (D4.1)", fake.clearSent)
     }
