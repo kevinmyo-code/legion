@@ -380,3 +380,70 @@ def test_realrun_one_breath_against_per_sentence(real, monkeypatch):
     }
     real._write({"case": "grouping", **summary, "raw": rows})
     print("GROUPING", summary)
+
+
+# ---- no speech never becomes words (2026-11-17, the Midcon self-talk) ----------------------------
+
+
+def _noise_clips(real) -> dict[str, bytes]:
+    import math
+    import random
+    import struct
+
+    from tests.test_no_speech import NOISE, _pcm
+
+    rate = 16_000
+    rnd = random.Random(9)
+    room = [rnd.gauss(0, 120) + 90 * math.sin(2 * math.pi * 60 * i / rate) for i in range(rate * 2)]
+    tts = real.audio_for("vf_car")
+    count = len(tts) // 2
+    samples = struct.unpack(f"<{count}h", tts[: count * 2])
+    echo = struct.pack(f"<{count}h", *(int(v * 0.05) for v in samples))
+    clips = {"digital_silence": b"\x00\x00" * rate * 2}
+    clips.update({name: _pcm(make()) for name, make in NOISE.items()})
+    clips["room_tone"] = _pcm(room)
+    clips["tts_echo_5pct"] = echo
+    return clips
+
+
+def test_realrun_no_speech_never_becomes_words(real):
+    """8 no-speech clips x 3 runs through the engine's transcriber (gate included) give no text;
+    the same clips sent to the model with the gate skipped show what the gate prevents; 4 real
+    synthesised questions still come back right."""
+    from assistant import speech as speech_module
+
+    rows = []
+    for name, pcm in _noise_clips(real).items():
+        for run in range(3):
+            real.check()
+            heard = real.speech.transcribe(pcm)
+            row = {"clip": name, "run": run, "text": heard.text, "paid": heard.prompt_tokens > 0}
+            if run == 0:
+                # The model alone, gate skipped: what reaching it would have produced.
+                ungated = real.speech._transcribe_once.__func__
+                gate = speech_module.voiced_speech
+                loud = speech_module.LOUDNESS_GATE_RMS
+                try:
+                    speech_module.voiced_speech = lambda _pcm: True
+                    speech_module.LOUDNESS_GATE_RMS = 0
+                    raw = ungated(real.speech, pcm)
+                finally:
+                    speech_module.voiced_speech = gate
+                    speech_module.LOUDNESS_GATE_RMS = loud
+                real.spent += (raw.prompt_tokens * 0.30 + raw.output_tokens * 2.50) / 1e6
+                row["model_alone"] = raw.text
+            rows.append(row)
+            real._write({"case": "no-speech", **row})
+    questions = []
+    for key in ("spend", "car", "vf_docs", "vf_car"):
+        heard = real.speech.transcribe(real.audio_for(key))
+        want = set(re.findall(r"[a-z']+", QUESTIONS[key].lower()))
+        got = set(re.findall(r"[a-z']+", heard.text.lower()))
+        overlap = len(want & got) / max(len(want), 1)
+        questions.append({"key": key, "heard": heard.text, "overlap": round(overlap, 2)})
+        real._write({"case": "question", **questions[-1]})
+    (Path(os.environ.get("REALRUN_OUT", "realrun-out")) / "no-speech.json").write_text(
+        json.dumps({"noise": rows, "questions": questions}, indent=1), encoding="utf-8"
+    )
+    assert all(r["text"] == "" for r in rows), [r for r in rows if r["text"]]
+    assert all(q["overlap"] >= 0.8 for q in questions), questions

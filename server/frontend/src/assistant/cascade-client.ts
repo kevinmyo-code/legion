@@ -187,8 +187,10 @@ export class CascadeClient {
   eotMs: number[] = []
   /** Barge-ins this page has acted on (the browser check reads it). */
   bargeIns = 0
-  /** Sentences the engine judged were not for the assistant (section 10). */
+  /** Sentences the engine judged were not for the assistant (section 10), or no speech at all. */
   ignoredTurns = 0
+  /** The line this turn's own heard words drew, if any. */
+  private heardLineId: number | null = null
   private spokenTurns = 0
   private prepared = false
   // ---- the demo ----
@@ -697,6 +699,7 @@ export class CascadeClient {
     if (input.tour === undefined) this.tourNext = null
     this.strip = { tools: [], costUsd: null }
     this.lastReply = ''
+    this.heardLineId = null
     this.abort?.abort()
     const abort = new AbortController()
     this.abort = abort
@@ -798,7 +801,10 @@ export class CascadeClient {
       }
       case 'heard': {
         const text = typeof data.text === 'string' ? data.text.trim() : ''
-        if (text) this.push({ kind: 'me', text, via: 'spoken', open: false })
+        if (text) {
+          this.push({ kind: 'me', text, via: 'spoken', open: false })
+          this.heardLineId = this.state.lines[this.state.lines.length - 1].id
+        }
         this.noteHeard(text)
         return open
       }
@@ -866,9 +872,12 @@ export class CascadeClient {
         if (typeof data.ignored === 'string') {
           // Not said to the assistant (voice-persona section 10): its words leave the screen, and
           // the page listens again with a fresh window. Unsure shows the cue in `words`.
-          const last = [...this.state.lines].reverse().find((l) => l.kind === 'me')
-          if (last) this.set({ lines: this.state.lines.filter((l) => l.id !== last.id) })
+          // Only this turn's own words: no speech at all ("no_speech") added none.
+          const id = this.heardLineId
+          if (id !== null) this.set({ lines: this.state.lines.filter((l) => l.id !== id) })
           this.ignoredTurns += 1
+          // No speech after a barge-in is the reply's own echo (the self-interrupt count).
+          if (data.ignored === 'no_speech') this.noteHeard('')
         }
         const words = typeof data.words === 'string' ? data.words : ''
         if (words) this.push({ kind: 'sys', text: words })

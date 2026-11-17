@@ -348,10 +348,16 @@ def reserve_cascade_turn(
     return _reserve(cents, cap, "text_calls", now, user)
 
 
-def release_unused(reservation: Reservation, *, rounds_unused: int) -> None:
-    """Give back `rounds_unused` text calls of a cascade turn's reservation. Never more than was
+def release_unused(
+    reservation: Reservation, *, rounds_unused: int, speech_unused: bool = False
+) -> None:
+    """Give back `rounds_unused` text calls of a cascade turn's reservation, and its speech share
+    when no speech was paid for (no voice in the audio: nothing was sent). Never more than was
     reserved, never below zero."""
-    cents = min(max(rounds_unused, 0) * limits().text_call_cents, reservation.cents)
+    cents = max(rounds_unused, 0) * limits().text_call_cents
+    if speech_unused:
+        cents += speech_turn_cents()
+    cents = min(cents, reservation.cents)
     if cents > 0:
         release(Reservation(day=reservation.day, cents=cents, code_id=reservation.code_id))
 

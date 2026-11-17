@@ -971,7 +971,11 @@ def _turn_sse(
         cascade.log.warning("assistant %s", timing)
         if reservation is not None:
             demo_budget.release_unused(
-                reservation, rounds_unused=max(reserved_rounds - report.rounds, 0)
+                reservation,
+                rounds_unused=max(reserved_rounds - report.rounds, 0),
+                # No voice in the audio: no paid speech-to-text and nothing spoken.
+                speech_unused=report.status == "nothing_heard"
+                and not report.timings.get("stt_paid"),
             )
         if held is not None:
             held.release()

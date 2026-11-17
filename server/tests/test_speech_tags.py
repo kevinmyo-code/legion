@@ -1,6 +1,6 @@
 # ruff: noqa: F811 - fixtures imported from the cascade tests
-"""Expression tags and the per-role voice in the web cascade (Kevin, 2026-11-17: "i like neno
-plain. and with tags where possible", then "recruiter demo can stay puck plain").
+"""Expression tags and the per-role voice in the web cascade (Kevin, 2026-11-17: "with tags where
+possible", and "can we go back to puck?" for both roles).
 
 Google is never called: the cascade tests' fakes stand in for the model and speech; a fake
 transport stands in for Google's speech endpoint. Every word here is invented.
@@ -208,10 +208,10 @@ def test_the_opening_is_shown_plain_and_spoken_with_its_tag(visitor, engine):
 # =============================================================================
 
 
-def test_members_speak_in_neno_and_a_visit_in_puck(member, visitor, engine):
+def test_both_roles_speak_in_puck_by_default(member, visitor, engine):
     engine.model = FakeModel([say("Hello.")])
     _events(_post(member, audio=PCM))
-    assert {v for _t, v in engine.speech.spoken} == {"en-us-neno"}
+    assert {v for _t, v in engine.speech.spoken} == {"Puck"}
     engine.speech.spoken.clear()
     engine.model = FakeModel([say("Hello.")])
     _events(_post(visitor, audio=PCM))
@@ -232,7 +232,7 @@ def test_filler_audio_is_kept_per_voice():
 
     audio = cascade.FillerAudio(spawn=lambda work: work())
     audio.warm(Speech(), "Puck", ["Checking the calendar."])
-    assert audio.get("en-us-neno", "Checking the calendar.") is None
+    assert audio.get("Kore", "Checking the calendar.") is None
     assert audio.get("Puck", "Checking the calendar.") == b"Puck"
 
 
@@ -261,14 +261,14 @@ class _Transport:
 
 
 def test_a_refused_voice_falls_back_to_puck_rather_than_silence():
-    transport = _Transport(refused="en-us-neno")
+    transport = _Transport(refused="en-gb-unknown")
     speech = GeminiSpeech(lambda: "key", stt_model="stt", transport=transport)
-    audio = b"".join(speech.speak("Hello.", "en-us-neno", Spoken()))
+    audio = b"".join(speech.speak("Hello.", "en-gb-unknown", Spoken()))
     assert audio
-    assert "en-us-neno" in speech.bad_voices
+    assert "en-gb-unknown" in speech.bad_voices
     # The next sentence goes straight to the fallback, with no refused request first.
     sent = len(transport.bodies)
-    assert b"".join(speech.speak("Again.", "en-us-neno", Spoken()))
+    assert b"".join(speech.speak("Again.", "en-gb-unknown", Spoken()))
     assert len(transport.bodies) == sent + 1
     assert FALLBACK_VOICE == "Puck"
 

@@ -72,6 +72,79 @@ def loudest_100ms(pcm: bytes) -> float:
     return best
 
 
+# Voiced speech, checked on the engine before any paid transcription (2026-11-17: on Midcon,
+# room noise sent to the transcriber came back as invented sentences, and the app answered them).
+# Speech has voiced stretches: periodic at a voice's pitch (80 to 400 Hz) and changing in pitch
+# and loudness as syllables go by. Hiss, white or pink noise and room tone are not periodic; a mains
+# hum is periodic but steady. The page's own detector does this too; this is the check a caller
+# cannot skip. Pure Python on a 4 kHz copy of the loudest few seconds, so it costs tens of ms.
+_VOICED_RATE = 4_000
+_VOICED_FRAME = 160  # 40 ms at 4 kHz
+_VOICED_MIN_LAG, _VOICED_MAX_LAG = 10, 50  # 400 Hz .. 80 Hz
+_VOICED_CORR = 0.45
+_VOICED_MIN_FRAMES = 4  # 160 ms of voicing
+_VOICED_MAX_FRAMES = 75  # the loudest 3 s are enough
+
+
+def _frames_4k(pcm: bytes) -> list[list[float]]:
+    count = len(pcm) // 2
+    samples = struct.unpack(f"<{count}h", pcm[: count * 2])
+    step = INPUT_RATE // _VOICED_RATE
+    # A 4-sample average before keeping every fourth: a crude low-pass, enough for pitch.
+    low = [sum(samples[i : i + step]) / step for i in range(0, count - step + 1, step)]
+    return [
+        low[i : i + _VOICED_FRAME] for i in range(0, len(low) - _VOICED_FRAME + 1, _VOICED_FRAME)
+    ]
+
+
+def _periodicity(frame: list[float]) -> tuple[float, int]:
+    """(the normalised autocorrelation of the strongest pitch PEAK at a voice's lags, its lag).
+    A peak, not just a high value: noise with its power low in pitch (pink noise, room rumble)
+    correlates highly at short lags and falls away, with no peak and no valley before it."""
+    mean = sum(frame) / len(frame)
+    x = [v - mean for v in frame]
+    if sum(v * v for v in x) <= 0:
+        return 0.0, 0
+    n = len(x)
+    corr = {}
+    for lag in range(_VOICED_MIN_LAG - 1, _VOICED_MAX_LAG + 2):
+        a, b = x[: n - lag], x[lag:]
+        num = sum(p * q for p, q in zip(a, b, strict=True))
+        den = (sum(p * p for p in a) * sum(q * q for q in b)) ** 0.5
+        corr[lag] = num / den if den > 0 else 0.0
+    valley = min(corr[lag] for lag in range(_VOICED_MIN_LAG, _VOICED_MAX_LAG + 1))
+    best, best_lag = 0.0, 0
+    for lag in range(_VOICED_MIN_LAG, _VOICED_MAX_LAG + 1):
+        peak = corr[lag] >= corr[lag - 1] and corr[lag] >= corr[lag + 1]
+        if peak and corr[lag] > best and corr[lag] - valley >= 0.3:
+            best, best_lag = corr[lag], lag
+    return best, best_lag
+
+
+def voiced_speech(pcm: bytes) -> bool:
+    """True when the audio has a voice in it: at least 160 ms of voiced frames among its loudest
+    three seconds, whose pitch or loudness moves (a steady hum does not)."""
+    frames = _frames_4k(pcm)
+    if not frames:
+        return False
+    loud = sorted(frames, key=lambda f: sum(v * v for v in f), reverse=True)[:_VOICED_MAX_FRAMES]
+    voiced = []
+    for frame in loud:
+        corr, lag = _periodicity(frame)
+        if corr >= _VOICED_CORR:
+            voiced.append((lag, sum(v * v for v in frame) / len(frame)))
+    if len(voiced) < _VOICED_MIN_FRAMES:
+        return False
+    lags = [lag for lag, _ in voiced]
+    powers = [p for _, p in voiced]
+    mean_lag = sum(lags) / len(lags)
+    lag_spread = (sum((v - mean_lag) ** 2 for v in lags) / len(lags)) ** 0.5
+    mean_p = sum(powers) / len(powers)
+    power_cv = (sum((v - mean_p) ** 2 for v in powers) / len(powers)) ** 0.5 / mean_p
+    # A hum: one pitch, one loudness.
+    return lag_spread >= 1.0 or power_cv >= 0.25
+
+
 def _worth_retry(said: str) -> bool:
     """A dropped request or a server error (the phone's `worthRetry`); a 4xx is not."""
     if "could not be reached" in said or "stopped answering" in said:
@@ -241,6 +314,9 @@ class GeminiSpeech:
     def _transcribe_once(self, pcm: bytes) -> Heard:
         audio_ms = len(pcm) // 32
         if len(pcm) < MIN_AUDIO_BYTES or loudest_100ms(pcm) < LOUDNESS_GATE_RMS:
+            return Heard("", audio_ms, 0)
+        if not voiced_speech(pcm):
+            # Loud enough but no voice in it: never sent, so never invented into words.
             return Heard("", audio_ms, 0)
         started = self._clock()
         text, usage = [], {}

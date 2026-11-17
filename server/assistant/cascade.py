@@ -1027,11 +1027,15 @@ def _answer(
             stt_output_tokens=heard.output_tokens,
         )
         words = heard.text
-        yield ev.Event("heard", {"text": words})
         if not words:
+            # No speech (2026-11-17: room noise must never become a reply). Silence: no reply, no
+            # filler, nothing on screen; the page listens again with a fresh window. Whether a paid
+            # transcription was made is in the timings, for the budget (`views._turn_sse`).
             report.status = "nothing_heard"
-            yield ev.done("nothing_heard", "", False, words=NOTHING_HEARD)
+            timings["stt_paid"] = int(heard.prompt_tokens > 0)
+            yield ev.done("nothing_heard", "", False, ignored="no_speech")
             return
+        yield ev.Event("heard", {"text": words})
     else:
         words = (turn_input.text or "").strip()
         if turn_input.spoken:

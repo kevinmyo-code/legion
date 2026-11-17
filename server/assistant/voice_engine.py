@@ -62,13 +62,14 @@ def engine_for(user) -> str:
 
 
 # The cascade's voice, per role, next to the engine choice (Kevin, 2026-11-17, after auditioning:
-# "i like neno plain", then "recruiter demo can stay puck plain"). Plain: no style direction. The
+# then again: "i dont like that southern voice anymore. can we go back to puck? lively energetic
+# and fast?", and a British voice for Alfred later, not chosen yet). Plain: no style direction. The
 # companion's stored voice is Live's (the fallback engine keeps it); the cascade speaks in these.
 # `LEGION_WEB_TTS_VOICE` / `LEGION_WEB_TTS_VOICE_RECRUITER` override. A name Google refuses is
 # spoken in `speech.FALLBACK_VOICE` (Puck) instead of going silent.
 VOICE_ENV = "LEGION_WEB_TTS_VOICE"
 RECRUITER_VOICE_ENV = "LEGION_WEB_TTS_VOICE_RECRUITER"
-MEMBER_VOICE_DEFAULT = "en-us-neno"
+MEMBER_VOICE_DEFAULT = "Puck"
 RECRUITER_VOICE_DEFAULT = "Puck"
 
 
