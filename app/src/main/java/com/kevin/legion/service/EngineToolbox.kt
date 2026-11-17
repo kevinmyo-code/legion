@@ -858,7 +858,9 @@ object EngineToolbox {
             val token = args.optString("draftToken")
             val draft = takeDraft(token, targetAspectName = aspectName)
                 ?: return result(false, "That draft has expired or I don't recognize it - describe the change again and I'll draft a fresh one. Nothing changed.")
+            // Engine-brain ticket 15: a schema change is written through like a record change.
             return commitUpdateAspect(db, aspect, draft)
+                .also { if (it.optBoolean("success")) RecordStore.schemaChanged() }
         }
         if (description.isBlank()) return result(false, "Tell me what you want to change about \"$aspectName\" and I can draft it.")
 
@@ -898,10 +900,6 @@ object EngineToolbox {
 
     private suspend fun commitUpdateAspect(db: CarDatabase, aspect: Aspect, draft: JSONObject): JSONObject {
         val now = System.currentTimeMillis()
-        return applyUpdateAspect(db, aspect, draft, now).also { if (it.optBoolean("success")) RecordStore.schemaChanged() }
-    }
-
-    private suspend fun applyUpdateAspect(db: CarDatabase, aspect: Aspect, draft: JSONObject, now: Long): JSONObject {
         return when (draft.optString("changeType")) {
             "RENAME_ASPECT" -> {
                 val newName = draft.optString("newAspectName").ifBlank { return result(false, "The draft had no new name. Nothing changed.") }

@@ -35,6 +35,7 @@ import kotlinx.serialization.json.put
  * - **Only user aspects travel** ([userAspectIds]): an aspect a capability plugin seeded (its
  *   fields carry `ownerPluginId`) holds replica copies of rows with typed homes on the engine.
  */
+@Suppress("TooManyFunctions") // an encode and a decode per table and per id-bearing shape
 object HomesRecords {
     const val ASPECT = "aspect"
     const val RECORD_TYPE = "record_type"
@@ -90,7 +91,7 @@ object HomesRecords {
         val recordId: Map<String, Long> = recordGuid.entries.associate { (k, v) -> v to k }
     }
 
-    /** The capability plugins' aspect names (`engine/*/…AspectSeeder.ASPECT_NAME`). Excluded by
+    /** The capability plugins' aspect names (each plugin seeder's `ASPECT_NAME`). Excluded by
      * name too, failing safe: a seeded aspect whose fields predate `ownerPluginId` must not upload
      * its replica rows as his own. The engine refuses these names for a new tracker. */
     val PLUGIN_ASPECT_NAMES: Set<String> = setOf(
@@ -255,17 +256,19 @@ object HomesRecords {
         return out
     }
 
-    private fun storeValue(type: FieldType, value: JsonElement, ids: IdBook): Any? {
-        if (value is JsonNull) return null
-        if (value is JsonArray) return value.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
-        val prim = value as? JsonPrimitive ?: return null
-        return when (type) {
-            FieldType.MONEY_CENTS, FieldType.DATE, FieldType.DATETIME -> prim.contentOrNull?.toDoubleOrNull()?.toLong()
-            FieldType.REFERENCE -> (referenceIn(prim, ids) as? JsonPrimitive)?.longOrNull
-            FieldType.NUMBER, FieldType.RATING -> prim.contentOrNull?.toDoubleOrNull()
-            FieldType.BOOLEAN -> prim.contentOrNull?.toBooleanStrictOrNull()
-            FieldType.MULTI_SELECT_CHOICE -> listOfNotNull(prim.contentOrNull)
-            else -> prim.contentOrNull
-        }
+    private fun storeValue(type: FieldType, value: JsonElement, ids: IdBook): Any? = when (value) {
+        is JsonNull -> null
+        is JsonArray -> value.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+        is JsonPrimitive -> primitiveValue(type, value, ids)
+        else -> null
+    }
+
+    private fun primitiveValue(type: FieldType, prim: JsonPrimitive, ids: IdBook): Any? = when (type) {
+        FieldType.MONEY_CENTS, FieldType.DATE, FieldType.DATETIME -> prim.contentOrNull?.toDoubleOrNull()?.toLong()
+        FieldType.REFERENCE -> (referenceIn(prim, ids) as? JsonPrimitive)?.longOrNull
+        FieldType.NUMBER, FieldType.RATING -> prim.contentOrNull?.toDoubleOrNull()
+        FieldType.BOOLEAN -> prim.contentOrNull?.toBooleanStrictOrNull()
+        FieldType.MULTI_SELECT_CHOICE -> listOfNotNull(prim.contentOrNull)
+        else -> prim.contentOrNull
     }
 }
