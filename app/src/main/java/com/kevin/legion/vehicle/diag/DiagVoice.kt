@@ -1,6 +1,7 @@
 package com.kevin.legion.vehicle.diag
 
 import android.content.Context
+import com.kevin.legion.ai.VerbatimSpeech
 import com.kevin.legion.assistant.cards.ToolCards
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.ClearCodesVoiceGate
@@ -34,8 +35,15 @@ object DiagVoice {
             VehicleController.label(VehicleController.vehicleFor(context, carId))
         }
 
-    /** Scans the car the dongle is in (or reuses a scan of it from the last few minutes) and says what it found. */
-    suspend fun scan(context: Context): JSONObject {
+    /**
+     * Scans the car the dongle is in (or reuses a scan of it from the last few minutes) and says what
+     * it found. Every answer, running and failed included, is spoken by the phone itself (VerbatimSpeech).
+     */
+    suspend fun scan(context: Context): JSONObject = scanResult(context).also { r ->
+        if (!r.has(VerbatimSpeech.KEY)) VerbatimSpeech.mark(r, r.optString("message"), VerbatimSpeech.DIAGNOSTICS)
+    }
+
+    private suspend fun scanResult(context: Context): JSONObject {
         val carId = ActiveVehicle.recordingId(context)
         val recent = DiagScanController.state.value as? DiagScanController.State.Done
         // A scan that stopped (key off, moving) is never reused: it would repeat the stop for minutes.
@@ -52,16 +60,10 @@ object DiagVoice {
             is DiagScanController.State.Running -> JSONObject()
                 .put("success", true)
                 .put("running", true)
-                .put("message", runningWords(s))
+                .put("message", ScanSay.runningWords(s))
             is DiagScanController.State.Failed -> fail(s.words)
             DiagScanController.State.Idle -> fail("No scan ran.")
         }
-    }
-
-    private fun runningWords(s: DiagScanController.State.Running): String {
-        val sofar = s.progress?.let { p -> ": ${p.probed} of ${p.planned} addresses probed, ${p.found} modules so far" }
-        return "The module scan is still running${sofar.orEmpty()}. Nothing is known about the modules yet. " +
-            "The result will be on the Faults screen; ask again in a minute."
     }
 
     private suspend fun done(context: Context, s: DiagScanController.State.Done): JSONObject {

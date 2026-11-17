@@ -481,4 +481,42 @@ class GeminiTextLoopTest {
         assertNull(com.kevin.legion.ai.VerbatimSpeech.fromToolOutput("list_recent_transactions", out))
         assertNull(com.kevin.legion.ai.VerbatimSpeech.fromToolOutput("get_balance", "not json"))
     }
+
+    // --- diagnostics the phone speaks itself (VerbatimSpeech get_codes, stage 7 diagnostics) -------
+
+    private val diagWords = "No stored engine codes. That is the engine's generic stored-code read only: " +
+        "pending codes and the other modules were not read."
+
+    private fun diagTool() = TextToolExecutor { _, _, _ ->
+        JSONObject().put("success", true).put("speak_verbatim", diagWords).put("verbatim_from", "get_codes")
+    }
+
+    @Test
+    fun `a diagnostics read is spoken verbatim and a verdict or code restated after it is dropped`() = runBlocking<Unit> {
+        val t = Scripted(
+            ok(callEv("get_weather")),
+            ok(textEv("Clean bill. "), textEv("P0420 is gone. "), textEv("Want me to scan every module?")),
+        )
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, diagTool(), l)
+        assertNull(r.failure)
+        assertTrue(r.verbatimSpoken)
+        assertEquals(2, r.diagDropped)
+        assertEquals(0, r.moneyDropped)
+        assertEquals("$diagWords Want me to scan every module?", l.text.toString())
+        assertEquals(l.text.toString(), r.text)
+    }
+
+    @Test
+    fun `after a verbatim diagnostics read a filler ends the turn, the words themselves are never dropped`() =
+        runBlocking<Unit> {
+            for (after in listOf("Checking.", "")) {
+                val t = Scripted(ok(callEv("get_weather")), ok(*if (after.isEmpty()) arrayOf<JSONObject>() else arrayOf(textEv(after))))
+                val l = Collect()
+                val r = loop(t).answer(prefix, contents, diagTool(), l)
+                assertNull(after, r.failure)
+                assertEquals(after, 0, r.fillerContinued)
+                assertTrue(after, r.text.startsWith(diagWords))
+            }
+        }
 }

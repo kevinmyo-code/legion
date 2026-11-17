@@ -1,5 +1,6 @@
 package com.kevin.legion.vehicle.diag
 
+import com.kevin.legion.ai.VerbatimSpeech
 import org.json.JSONObject
 
 /**
@@ -16,13 +17,15 @@ object ScanSay {
      */
     internal fun answer(label: String, r: ScanReport, diff: ScanDiff?): JSONObject {
         val text = say(label, r, diff)
-        return JSONObject()
+        val out = JSONObject()
             .put("success", r.stopped == null)
             .put("vehicle", label)
             .put("complete", r.complete)
             .put("say", text)
             .apply { if (r.stopped != null) put("message", text) }
             .put("rule", SAY_RULE + " " + ScanWords.ESTIMATE_RULE)
+        // Spoken by the phone itself, word for word (VerbatimSpeech), never through the model.
+        return VerbatimSpeech.mark(out, text, VerbatimSpeech.DIAGNOSTICS)
     }
 
     /**
@@ -33,7 +36,7 @@ object ScanSay {
     internal fun say(label: String, r: ScanReport, diff: ScanDiff?): String {
         val text = buildString {
             append("$label: ")
-            append(ScanWords.summary(r))
+            append(ScanWords.spoken(r))
             diff?.let { d ->
                 if (d.added.isNotEmpty()) append(" New since the last scan: ${d.added.joinToString()}.")
                 if (d.gone.isNotEmpty()) append(" Gone since the last scan: ${d.gone.joinToString()}.")
@@ -44,9 +47,8 @@ object ScanSay {
     }
 
     /** Rides on every finished scan's result: say it back, never drop what was not reached. */
-    const val SAY_RULE = "Say `say` back in full; only joining words may be your own. Every module it names " +
-        "as not reached or not read must be said, and none of them called clear or fine. Never shorten it to " +
-        "the modules that answered."
+    const val SAY_RULE = "The phone has already said `say` aloud, word for word. Do not repeat it or restate " +
+        "any code, module count or verdict; add only what he asked that it does not answer."
 
     /** The fleet questions answered by a module scan without the fleet helper model ([LiveToolbox] ask_fleet). */
     fun isModuleScanQuestion(question: String): Boolean = SCAN_ASK.containsMatchIn(question)
@@ -57,4 +59,11 @@ object ScanSay {
             "|\\bmodule scan\\b|\\bscan\\b",
         RegexOption.IGNORE_CASE,
     )
+
+    /** What a voice ask hears while the scan is still running: nothing known about the modules yet. */
+    internal fun runningWords(s: DiagScanController.State.Running): String {
+        val sofar = s.progress?.let { p -> ": ${p.probed} of ${p.planned} addresses probed, ${p.found} modules so far" }
+        return "The module scan is still running${sofar.orEmpty()}. Nothing is known about the modules yet. " +
+            "The result will be on the Faults screen; ask again in a minute."
+    }
 }

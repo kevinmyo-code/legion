@@ -22,9 +22,55 @@ object ScanWords {
      * this, and DiagVoiceSayTest fails if a scan with such modules ever produces text without them.
      */
     fun mustSay(r: ScanReport): List<String> {
-        if (r.stopped != null || !r.bus.isCan) return emptyList()
         val unread = r.modules.filter { it.codes.outcome != Outcome.READ }
-        return listOf(UNREACHED) + if (unread.isEmpty()) emptyList() else listOf(NOT_READ_LEAD) + unread.map(::label)
+        return when {
+            r.stopped != null || !r.bus.isCan -> emptyList()
+            unread.isEmpty() -> listOf(UNREACHED)
+            else -> listOf(UNREACHED, NOT_READ_LEAD) + unread.take(SPOKEN_MAX).map(::label)
+        }
+    }
+
+    /** Modules (and codes per module) named aloud before the rest become "and N more on the card". */
+    const val SPOKEN_MAX = 3
+
+    /**
+     * The scan as SPOKEN (2026-11-17, said word for word by the phone, never through the model):
+     * [summary]'s facts in its order, with no status words, at most [SPOKEN_MAX] modules per list
+     * and [SPOKEN_MAX] codes per module, the rest counted honestly as "and N more on the card". The
+     * not-reached line ([UNREACHED]) is said on every CAN scan.
+     */
+    fun spoken(r: ScanReport): String {
+        r.stopped?.let { return it }
+        val faulty = r.modules.filter { m -> m.codes.dtcs.any { it.fault } }
+        val unread = r.modules.filter { it.codes.outcome != Outcome.READ }
+        val engineCodes = r.engine?.let { e ->
+            (e.stored.dtcs + e.pending.dtcs + e.permanent.dtcs).map { d -> d.code }.distinct()
+        }
+        return buildList {
+            add(engineLine(r, engineCodes))
+            if (r.bus.isCan) {
+                val list = capped(faulty) { m ->
+                    label(m) + " (" + capped(m.codes.dtcs.filter { it.fault }.map { it.code }.distinct()) { it } + ")"
+                }
+                add("${r.modules.size} module(s) answered; ${faulty.size} with fault codes" +
+                    (if (faulty.isEmpty()) "" else ": $list") + ".")
+                add(UNREACHED)
+                if (unread.isNotEmpty()) {
+                    val why = capped(unread) { "${label(it)} (${it.codes.detail ?: it.codes.outcome.words})" }
+                    add("$NOT_READ_LEAD $why.")
+                }
+                r.coverage.interrupted?.let { add(it) }
+                if (!r.complete) add("Partial scan: ${r.coverage.probed} of ${r.coverage.planned} addresses probed.")
+            }
+            addAll(r.notes.filterNot { it == ModuleScanner.SECOND_NETWORK_NOTE })
+        }.joinToString(" ")
+    }
+
+    /** [items] named up to [SPOKEN_MAX], then "and N more on the card". */
+    internal fun <T> capped(items: List<T>, name: (T) -> String): String {
+        val shown = items.take(SPOKEN_MAX).joinToString(transform = name)
+        val more = items.size - SPOKEN_MAX
+        return if (more > 0) "$shown, and $more more on the card" else shown
     }
 
     fun summary(r: ScanReport): String {

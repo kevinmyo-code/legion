@@ -78,4 +78,22 @@ class DiagVoiceSayTest {
             assertFalse(q, ScanSay.isModuleScanQuestion(q))
         }
     }
+
+    @Test
+    fun `the scan answer is spoken by the phone itself, the not-reached line word for word`() {
+        val answer = ScanSay.answer("test car", scan(unreachedCar()), null)
+        assertEquals(answer.getString("say"), answer.getString(com.kevin.legion.ai.VerbatimSpeech.KEY))
+        assertEquals("get_codes", answer.getString(com.kevin.legion.ai.VerbatimSpeech.FROM))
+        assertTrue(answer.getString("say").contains("not known to be clear"))
+        assertEquals(answer.getString("say"), com.kevin.legion.ai.VerbatimSpeech.of(answer))
+    }
+
+    @Test
+    fun `a long list is capped honestly as more on the card`() {
+        assertEquals("a, b, c", ScanWords.capped(listOf("a", "b", "c")) { it })
+        assertEquals("a, b, c, and 2 more on the card", ScanWords.capped(listOf("a", "b", "c", "d", "e")) { it })
+        val say = ScanSay.answer("truck", scan(SimCars.canTruck(), "Ford"), null).getString("say")
+        assertFalse("no status words aloud: $say", say.contains("test failed this cycle"))
+        assertTrue(say, say.contains("more on the card"))
+    }
 }

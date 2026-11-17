@@ -11,14 +11,14 @@ package com.kevin.legion.service.cascade
  * number words ("eleven ninety-five", "two thousand", "four four one zero"). One number word alone
  * ("two things due") is not money.
  */
-internal class MoneyFilter {
+internal class MoneyFilter : SentenceFilter {
     private val buf = StringBuilder()
 
-    var dropped = 0
+    override var dropped = 0
         private set
 
     /** Whole sentences that may be spoken; the unfinished tail is held. */
-    fun feed(delta: String): String {
+    override fun feed(delta: String): String {
         buf.append(delta)
         val out = StringBuilder()
         while (true) {
@@ -31,7 +31,7 @@ internal class MoneyFilter {
     }
 
     /** The model is done: the last sentence, unless it carries money. */
-    fun flush(): String {
+    override fun flush(): String {
         val rest = buf.toString()
         buf.setLength(0)
         if (rest.isBlank() || !hasMoney(rest)) return rest

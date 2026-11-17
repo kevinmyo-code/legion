@@ -5156,6 +5156,13 @@ object LiveToolbox {
     internal const val ENGINE_CODES_NOT_READ = "The engine's stored-code read (OBD mode 03) got no real answer, so " +
         "its codes are not known and nothing is known to be clear."
 
+    /**
+     * The engine code read's words, spoken by the phone itself, word for word (stage 7 diagnostics,
+     * 2026-11-17: "No stored engine codes ..." came out as "Clean bill" through the model).
+     */
+    private fun spokenRead(result: JSONObject, words: String): JSONObject =
+        com.kevin.legion.ai.VerbatimSpeech.mark(result, words, com.kevin.legion.ai.VerbatimSpeech.DIAGNOSTICS)
+
     internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
         "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
 
@@ -5167,11 +5174,11 @@ object LiveToolbox {
         // Mode 03 answer is a failed read and is said as one, never as "no codes".
         val raw = ObdBluetoothManager.getDtcCodesRaw()
         val parser = com.kevin.legion.vehicle.ObdResponseParser
-        if (!parser.isValidDtcReply(raw)) return result(false, ENGINE_CODES_NOT_READ)
+        if (!parser.isValidDtcReply(raw)) return spokenRead(result(false, ENGINE_CODES_NOT_READ), ENGINE_CODES_NOT_READ)
         val codes = parser.dtcCodes(raw)
         if (codes.isEmpty()) {
             ToolCards.codes(context, ActiveVehicle.connectedCarId(context), codes, emptyMap())
-            return result(true, NO_ENGINE_CODES)
+            return spokenRead(result(true, NO_ENGINE_CODES), NO_ENGINE_CODES)
         }
 
         val seed = withContext(Dispatchers.IO) { DtcDescriptions.loadSeed(context) }
@@ -5212,7 +5219,8 @@ object LiveToolbox {
             perCode.put(o)
         }
         if (mac != null && stored.isNotEmpty()) VoiceModalController.show(VoiceModalTarget.CODES, mac)
-        return result(true, "${codes.size} code(s) stored: $spoken.").put("codes", perCode)
+        val said = (if (codes.size == 1) "Stored engine code: " else "Stored engine codes: ") + "$spoken."
+        return spokenRead(result(true, "${codes.size} code(s) stored: $spoken.").put("codes", perCode), said)
     }
 
     private suspend fun diagnoseCodes(context: Context, args: JSONObject): JSONObject {
