@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import * as ort from 'onnxruntime-web'
+import type * as Ort from 'onnxruntime-web'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { loadTurnDetector, type TurnDetector } from './detector'
@@ -23,7 +23,10 @@ const here = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 const WINDOW = 512
 const CONTEXT = 64
 
-let session: ort.InferenceSession
+// Loaded only when opted in: importing the runtime starts WebAssembly work that kept a default
+// `vitest run` from exiting (2026-11-17).
+let ort: typeof Ort
+let session: Ort.InferenceSession | undefined
 
 /**
  * Opt-in (`LEGION_SILERO_TEST=1`): the real model in Node is slow to start and once ran away in a
@@ -39,6 +42,7 @@ function within<T>(ms: number, work: Promise<T>): Promise<T> {
 
 beforeAll(async () => {
   if (!RUN) return
+  ort = await import('onnxruntime-web')
   ort.env.wasm.numThreads = 1
   ort.env.wasm.proxy = false
   session = await within(
@@ -75,12 +79,12 @@ class InProcessSilero {
 
   async prob(samples: Float32Array): Promise<number> {
     this.input.set(samples, CONTEXT)
-    const result = await session.run({
+    const result = await session!.run({
       input: new ort.Tensor('float32', this.input.slice(), [1, CONTEXT + WINDOW]),
       state: new ort.Tensor('float32', this.state, [2, 1, 128]),
       sr: new ort.Tensor('int64', BigInt64Array.from([16000n]), []),
     })
-    const names = session.outputNames
+    const names = session!.outputNames
     this.state = Float32Array.from(result[names[1]].data as Float32Array)
     this.input.copyWithin(0, WINDOW, WINDOW + CONTEXT)
     return (result[names[0]].data as Float32Array)[0]

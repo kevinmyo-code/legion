@@ -115,7 +115,8 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   const session = useDemoSession(true)
   const me = useMe()
   const recruiter = session.data?.role === 'recruiter'
-  const member = me.data?.signedIn === true
+  // A visit's own session is signed in too: a member is someone signed in who is not a visitor.
+  const member = me.data?.signedIn === true && !recruiter
 
   // When the visit runs out, ask again, so the page goes back to the code box
   // instead of showing an assistant that will refuse.

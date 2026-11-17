@@ -31,7 +31,15 @@ class FakeTransport:
 
 
 # Half a second at about -20 dBFS: over the loudness gate (spec 3).
-LOUD_HALF_SECOND = b"\xe8\x0c" * 8000
+# Half a second of a synthetic voice: loud enough for the loudness gate, and voiced, so the
+# engine's voiced-speech check (`speech.voiced_speech`, 2026-11-17) lets it through.
+def _voiced_half_second() -> bytes:
+    from tests.test_no_speech import _pcm, _speechlike
+
+    return _pcm(_speechlike(0.5))
+
+
+LOUD_HALF_SECOND = _voiced_half_second()
 
 
 def _text(text):

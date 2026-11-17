@@ -168,8 +168,8 @@ describe('/try', () => {
     const engine = createEngine({ signedIn: false })
     setAudioFactory(() => new FakeAudio())
     const { router } = renderApp('/try?code=stale', engine, 'family')
-    expect(router.history.location.href).not.toContain('stale')
     const orb = await screen.findByRole('button', { name: /^Talk to / })
+    await waitFor(() => expect(router.history.location.href).not.toContain('stale'))
     await act(async () => {
       fireEvent.click(orb)
       await settle()
