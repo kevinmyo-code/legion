@@ -53,6 +53,9 @@ sealed class AgentResult {
         val text: String,
         val mutatingToolsCalled: List<String> = emptyList(),
         val truncated: Boolean = false,
+        /** Words a routed tool asked the phone to speak itself ([VerbatimSpeech]), and that tool's name. */
+        val verbatim: String? = null,
+        val verbatimFrom: String? = null,
     ) : AgentResult()
     object RateLimited : AgentResult()   // 429
     object KeyInvalid : AgentResult()    // 400+API_KEY_INVALID, 401, 403

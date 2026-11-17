@@ -1077,6 +1077,11 @@ internal class CascadeSession(
             // A tool turn that ended on filler was asked once more ([FillerTurn]): counts only.
             if (result.fillerContinued > 0) LiveLatency.log(LiveLatency.TAG, "reply_filler_continued n=1")
             if (result.fillerAgain) LiveLatency.log(LiveLatency.TAG, "reply_filler_again n=1")
+            // A balance said by the phone itself (VerbatimSpeech); model money sentences dropped after it.
+            if (result.verbatimSpoken) LiveLatency.log(LiveLatency.TAG, "reply_verbatim n=1")
+            if (result.moneyDropped > 0) {
+                LiveLatency.log(LiveLatency.TAG, "reply_money_dropped n=${result.moneyDropped}")
+            }
             if (record.holdLine) {
                 val toolCalled = synchronized(record) { record.toolsRan.isNotEmpty() }
                 val why = CheckInRules.lineRejection(result.text, result.failure != null, toolCalled)

@@ -39,7 +39,7 @@ class NetCashVoiceTest {
         assertEquals("today at 12:10 AM", NetCashVoice.asOfPhrase(at(2026, 11, 17, 0, 10), justAfterMidnight, zone))
         assertEquals("yesterday at 11:50 PM", NetCashVoice.asOfPhrase(at(2026, 11, 16, 23, 50), justAfterMidnight, zone))
         assertEquals("yesterday at 12:00 PM", NetCashVoice.asOfPhrase(at(2026, 11, 16, 12, 0), justAfterMidnight, zone))
-        assertEquals("on Nov 14 at 9:12 AM", NetCashVoice.asOfPhrase(at(2026, 11, 14, 9, 12), justAfterMidnight, zone))
+        assertEquals("Nov 14 at 9:12 AM", NetCashVoice.asOfPhrase(at(2026, 11, 14, 9, 12), justAfterMidnight, zone))
     }
 
     @Test
@@ -91,10 +91,48 @@ class NetCashVoiceTest {
     }
 
     @Test
-    fun `the rule forbids arithmetic and other day words`() {
+    fun `the rule says the figures were already said and must not be restated`() {
         val r = NetCashVoice.RULE
-        for (w in listOf("never add", "subtract, round", "as_of phrase exactly", "stale", "missing", "no total")) {
+        for (w in listOf("ALREADY been said", "Do not", "restate any amount", "never add, subtract, round")) {
             assertTrue(w, r.contains(w))
         }
+    }
+
+    @Test
+    fun `the spoken answer is made by code, amounts in words, one as-of phrase`() {
+        val now = at(2026, 11, 16, 21, 29)
+        val v = NetCashVoice.voice(FinanceRead.Fresh(body(iso(2026, 11, 16, 21, 4))), now, zone)
+        assertEquals(
+            "Net cash is two thousand one hundred thirty-one dollars and seventy-five cents, as of today at 9:04 PM.",
+            v.speech,
+        )
+        val stale = NetCashVoice.voice(FinanceRead.Fresh(body(iso(2026, 11, 14, 9, 12))), now, zone)
+        assertEquals(
+            "Net cash is two thousand one hundred thirty-one dollars and seventy-five cents, as of Nov 14 at 9:12 AM. " +
+                "That figure is over a day old.",
+            stale.speech,
+        )
+        val low = NetCashVoice.voice(FinanceRead.Fresh(body(iso(2026, 11, 16, 21, 4)).copy(netCents = -4_500)), now, zone)
+        assertEquals("Net cash is below zero: minus forty-five dollars, as of today at 9:04 PM.", low.speech)
+        val saved = NetCashVoice.voice(FinanceRead.Saved(body(iso(2026, 11, 16, 21, 4)), 0L, "Saved 3 hours ago."), now, zone)
+        assertTrue(saved.speech.endsWith(NetCashVoice.SAVED_SPEECH))
+    }
+
+    @Test
+    fun `the missing and ledger sentences name the account digit by digit and no net figure`() {
+        val missing = body(iso(2026, 11, 16, 21, 4)).copy(
+            available = false,
+            netCents = null,
+            missing = listOf(NetCashMissingWire("card", "Travel Card", "4410", "the bank sent no balance for this card")),
+        )
+        val v = NetCashVoice.voice(FinanceRead.Fresh(missing), at(2026, 11, 16, 21, 29), zone)
+        assertEquals("There is no net cash figure: Travel Card ending four four one zero has no balance from the bank.", v.speech)
+        assertFalse(v.speech.contains("dollars"))
+        assertEquals(NetCashVoice.NO_READ_SPEECH, NetCashVoice.voice(FinanceRead.Unavailable("x"), at(2026, 11, 16, 21, 29), zone).speech)
+        assertEquals(
+            "BOFA CARD ending seven eight two three: minus one thousand one hundred ninety-five dollars and fifty-five cents.",
+            NetCashVoice.ledgerSpeech("BOFA CARD ****7823", -119_555, "USD"),
+        )
+        assertEquals("BOFA CARD ending four four one zero: no balance on file.", NetCashVoice.ledgerSpeech("BOFA CARD ****4410", null, "USD"))
     }
 }

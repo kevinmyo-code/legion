@@ -540,12 +540,18 @@ class SubAgent internal constructor(
         val mutated = calls.zip(runs)
             .filter { (call, run) -> run.output != null && call.name in mutatingToolNames }
             .map { it.first.name }
+        // Only a tool on VerbatimSpeech.TOOLS may hand the phone words to speak itself.
+        val verbatim = calls.zip(runs).firstNotNullOfOrNull { (call, run) ->
+            VerbatimSpeech.fromToolOutput(call.name, run.output)?.let { it to call.name }
+        }
         return if (runs.all { it.output == null }) {
             AgentResult.Failed
         } else {
             AgentResult.Success(
                 frameRouteResults(question, calls.map { it.name }.zip(runs.map { it.response })),
                 mutatingToolsCalled = mutated,
+                verbatim = verbatim?.first,
+                verbatimFrom = verbatim?.second,
             )
         }
     }

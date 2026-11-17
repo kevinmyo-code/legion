@@ -4,6 +4,7 @@ import com.kevin.legion.ai.AgentProtocol
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.GeminiRest
 import com.kevin.legion.ai.RestOutcome
+import com.kevin.legion.ai.VerbatimSpeech
 import com.kevin.legion.ai.WebReadMark
 import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.TextFailure
@@ -112,6 +113,10 @@ class GeminiTextLoop(
          */
         val fillerContinued: Int = 0,
         val fillerAgain: Boolean = false,
+        /** A tool's own words were spoken verbatim this turn ([VerbatimSpeech]). */
+        val verbatimSpoken: Boolean = false,
+        /** Model sentences dropped after that because they carried a money amount ([MoneyFilter]). */
+        val moneyDropped: Int = 0,
     )
 
     @Volatile private var searchRejected = false
@@ -125,6 +130,8 @@ class GeminiTextLoop(
         var usage = Usage()
         var fillerContinued = 0
         var fillerAgain = false
+        var verbatim = false
+        var moneyDropped = 0
     }
 
     /**
@@ -190,10 +197,15 @@ class GeminiTextLoop(
             var firstSeen = false
             // After a tool ran, a line that may be filler is held back until it is known not to be.
             val held = if (state.toolsRan.isNotEmpty()) FillerTurn.Hold() else null
+            // After the phone spoke a balance itself, no money sentence of the model's is spoken.
+            val money = if (state.verbatim) MoneyFilter() else null
             val outcome = try {
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
-                    turn.onEvent(ev) { delta -> emit(held?.feed(delta) ?: delta, state, listener) }
+                    turn.onEvent(ev) { delta ->
+                        val t = held?.feed(delta) ?: delta
+                        emit(money?.feed(t) ?: t, state, listener)
+                    }
                     if (!firstSeen && turn.text.length + turn.calls.size > before) {
                         firstSeen = true
                         listener.onFirstPart(round, now() - sentAt)
@@ -224,7 +236,11 @@ class GeminiTextLoop(
             }
             meter(prefix.model, turn.usage)
             state.usage = state.usage.plus(turn.usage, cacheName != null)
-            held?.end()?.let { emit(it, state, listener) }
+            held?.end()?.let { emit(money?.feed(it) ?: it, state, listener) }
+            money?.let {
+                emit(it.flush(), state, listener)
+                state.moneyDropped += it.dropped
+            }
             if (turn.blockReason != null) return fail(TextFailure.BLOCKED, state)
             if (turn.error != null && !turn.hasParts()) return fail(TextFailure.MODEL_ERROR, state)
             if (turn.grounded && !state.readThrough) {
@@ -234,8 +250,11 @@ class GeminiTextLoop(
             val calls = turn.calls
             if (calls.isEmpty() || force) {
                 // A tool turn that ended on filler: never said as the answer; asked once more, tool-free.
-                val fillerOnly = held?.filler == true ||
-                    (held != null && turn.text.isBlank() && FillerTurn.isFillerOnly(state.text.toString()))
+                // Not after a verbatim answer: that turn already said what was asked, so it just ends.
+                val fillerOnly = !state.verbatim && (
+                    held?.filler == true ||
+                        (held != null && turn.text.isBlank() && FillerTurn.isFillerOnly(state.text.toString()))
+                    )
                 if (fillerOnly && state.fillerContinued == 0) {
                     state.fillerContinued = 1
                     toolFree = true
@@ -256,6 +275,7 @@ class GeminiTextLoop(
             val results = coroutineScope {
                 calls.map { call -> async { runOne(call, executor, listener, state) } }.awaitAll()
             }
+            speakVerbatim(results, state, listener)
             val nudge = if (round + 1 >= maxRounds) "Answer now with what you have." else null
             contents.put(AgentProtocol.functionResponseContent(results, nudge))
         }
@@ -309,6 +329,20 @@ class GeminiTextLoop(
         AgentProtocol.ToolResult(call.name, call.id, response)
     }
 
+    /**
+     * A result on [VerbatimSpeech.TOOLS] carries words the phone speaks itself: passed straight on to
+     * be spoken (and so to the transcript and the audit lines, which see what is spoken), never
+     * through the model. Once per turn.
+     */
+    private fun speakVerbatim(results: List<AgentProtocol.ToolResult>, state: TurnState, listener: Listener) {
+        if (state.verbatim) return
+        val words = results.firstNotNullOfOrNull { VerbatimSpeech.of(it.response) } ?: return
+        if (state.text.isNotEmpty() && !state.text.last().isWhitespace()) emit(" ", state, listener)
+        // A trailing space, so a sentence of the model's after it is never glued on (the result is trimmed).
+        emit("$words ", state, listener)
+        state.verbatim = true
+    }
+
     /** Model text as it is let through: kept for the turn and passed on to be spoken. */
     private fun emit(text: String, state: TurnState, listener: Listener) {
         if (text.isEmpty()) return
@@ -330,6 +364,8 @@ class GeminiTextLoop(
         usage = state.usage,
         fillerContinued = state.fillerContinued,
         fillerAgain = state.fillerAgain,
+        verbatimSpoken = state.verbatim,
+        moneyDropped = state.moneyDropped,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
@@ -342,6 +378,8 @@ class GeminiTextLoop(
         usage = state.usage,
         fillerContinued = state.fillerContinued,
         fillerAgain = state.fillerAgain,
+        verbatimSpoken = state.verbatim,
+        moneyDropped = state.moneyDropped,
     )
 
     companion object {
