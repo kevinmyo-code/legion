@@ -43,9 +43,10 @@ export interface AudioIO {
   play(pcm: Int16Array, rate: number): void
   /**
    * Open the playback side only, inside a tap (Safari plays nothing a tap did not unlock): for an
-   * answer to a tapped question when the microphone is not open. Optional; a fake may skip it.
+   * answer to a tapped question when the microphone is not open; `onPlaying` reports playback until
+   * the microphone opens and brings its own handlers. Optional; a fake may skip it.
    */
-  unlock?(): void
+  unlock?(onPlaying?: (playing: boolean) => void): void
   /** Drop everything queued and stop what is sounding (an interruption). */
   flush(): void
   /** Everything: mic, playback, contexts. Safe to call twice. */

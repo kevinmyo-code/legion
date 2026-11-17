@@ -10,6 +10,7 @@ import { DAY_CARD, SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
 import type { DemoContent, DemoMedia } from '@/api/demo'
 import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
+import { QUESTION_CHIPS, RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
 
 /**
  * The recruiter section (recruiter-demo ticket 07): the code box on `/login`,
@@ -136,21 +137,44 @@ describe('/try', () => {
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
   })
 
-  test('a direct link enters once, and the code leaves the address bar; ref stays', async () => {
+  test('a direct link opens on the orb with no gate; the tap enters, once; the code leaves the address bar', async () => {
     const engine = createEngine({ signedIn: false })
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
     const { router } = renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    expect(screen.getByText(STAGE_LINE)).toBeInTheDocument()
+    expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
+    // Nothing is entered until the tap (Kevin, 2026-11-17: entering happens on that tap).
+    expect(engine.demo.enterBodies).toEqual([])
+    expect(router.state.location.search).toEqual({ ref: 'acme' })
+    expect(router.history.location.href).not.toContain('code=')
+    await act(async () => {
+      fireEvent.click(orb)
+      await settle()
+    })
     expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
-    expect(router.state.location.search).toEqual({ ref: 'acme' })
-    expect(router.state.location.href).not.toContain('OPEN-SESAME')
-    expect(router.history.location.href).not.toContain('code=')
+    expect(engine.demo.funnel).toEqual(expect.arrayContaining(['page_load:acme', 'orb_tap:acme']))
+    // The stage stays above the page: chips, the tour, typing, and the ask.
+    expect(screen.getByRole('button', { name: 'Take the one-minute tour' })).toBeInTheDocument()
+    for (const chip of QUESTION_CHIPS) expect(screen.getByRole('button', { name: chip })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /^Type to / })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'His resume (PDF)' })).toBeInTheDocument()
   })
 
-  test('a direct link with a wrong code strips it too and says why in words', async () => {
+  test('a direct link with a wrong code says why in words at the tap, and falls back to the code box', async () => {
     const engine = createEngine({ signedIn: false })
+    setAudioFactory(() => new FakeAudio())
     const { router } = renderApp('/try?code=stale', engine, 'family')
-    expect(await screen.findByRole('alert')).toHaveTextContent(WRONG_CODE)
     expect(router.history.location.href).not.toContain('stale')
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    await act(async () => {
+      fireEvent.click(orb)
+      await settle()
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent(WRONG_CODE)
     expect(screen.getByLabelText('Access code')).toBeInTheDocument()
   })
 
@@ -735,7 +759,13 @@ describe('/try: a per-company ref (Kevin, 2026-11-05)', () => {
     ['%26%26', undefined],
   ])('?ref=%s enters with %s, so a hand-made link never blocks the visit', async (raw, sent) => {
     const engine = createEngine({ signedIn: false })
+    setAudioFactory(() => new FakeAudio())
     renderApp(`/try?code=OPEN-SESAME&ref=${raw}`, engine, 'family')
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    await act(async () => {
+      fireEvent.click(orb)
+      await settle()
+    })
     expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([sent ? { code: 'OPEN-SESAME', ref: sent } : { code: 'OPEN-SESAME' }])
   })

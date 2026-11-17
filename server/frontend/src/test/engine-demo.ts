@@ -54,6 +54,8 @@ export interface DemoState {
   session: DemoSession | null
   /** The page; null answers 404 ("not set up"). */
   content: DemoContent | null
+  /** Funnel steps counted (`POST /api/demo/funnel`), as `event:ref`. */
+  funnel?: string[]
 }
 
 export function defaultDemo(): DemoState {
@@ -92,6 +94,12 @@ export function handleDemo(
     const expires = new Date(Date.now() + 2 * 3_600_000).toISOString()
     d.session = { role: 'recruiter', expires_at: expires, ref: ref ?? '' }
     return { status: 201, body: { token: 'visitor-token', expires_at: expires, ref: ref ?? '' } }
+  }
+
+  if (method === 'POST' && pathname === '/api/demo/funnel') {
+    const { event, ref } = (body ?? {}) as { event?: string; ref?: string }
+    ;(d.funnel ??= []).push(`${event}:${ref ?? ''}`)
+    return { status: 204 }
   }
 
   if (method === 'GET' && pathname === '/api/demo/session') {

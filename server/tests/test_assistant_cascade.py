@@ -564,9 +564,15 @@ def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch,
     events = _events(_post(member, audio=PCM))
     kinds = _kinds(events)
     working = kinds.index("working")
-    # The filler's audio comes right after the slow tool is announced, before the answer.
-    assert kinds[working + 1] == "audio"
-    assert kinds.index("sentence") > working + 1
+    # The filler's line names the tool that started, and its audio comes right after it, before
+    # the answer (Kevin, 2026-11-17: fillers say what it is actually doing).
+    assert kinds[working + 1 : working + 3] == ["filler", "audio"]
+    filler = _of(events, "filler")[0]
+    assert filler["tool"] == "legion_docs"
+    from assistant import fillers as filler_lines
+
+    assert filler["text"] in filler_lines.lines_for("legion_docs")
+    assert kinds.index("sentence") > working + 2
 
 
 def test_no_reply_at_all_says_so_in_the_phones_words(member, engine):

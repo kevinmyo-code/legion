@@ -132,11 +132,9 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
     // The link carries the code: the page opens on the orb, and the tap enters (voice-first).
     return (
       <VoiceFirstVisit
-        code={linkCode}
         refTag={refTag}
         entered={recruiter}
         expiresAt={recruiter ? session.data?.expires_at : undefined}
-        onFailed={setLinkError}
         enter={async () => {
           const result = await enterDemo(linkCode, refTag)
           if (!result.ok) {
@@ -265,14 +263,26 @@ function VoiceFirstVisit({
   expiresAt,
   enter,
 }: {
-  code: string
   refTag?: string
   entered: boolean
   expiresAt?: string
-  onFailed: (message: string) => void
   enter: () => Promise<boolean>
 }) {
-  const voiceFirst = useMemo(() => ({ prepare: enter, funnelRef: refTag ?? '', sessionMinutes: 5 }), [enter, refTag])
+  // A browser that already holds a visit (a reload) is not entered again by the tap.
+  const enteredRef = useRef(entered)
+  const enterRef = useRef(enter)
+  useEffect(() => {
+    enteredRef.current = entered
+    enterRef.current = enter
+  }, [entered, enter])
+  const voiceFirst = useMemo(
+    () => ({
+      prepare: () => (enteredRef.current ? Promise.resolve(true) : enterRef.current()),
+      funnelRef: refTag ?? '',
+      sessionMinutes: 5,
+    }),
+    [refTag],
+  )
   return (
     <AssistantProvider
       voiceFirst={voiceFirst}
@@ -296,7 +306,7 @@ function VisitorBody({ expiresAt }: { expiresAt?: string }) {
   return (
     <Shell assistant dock={false}>
       <VoiceStage content={loaded} />
-      {loaded ? <Sections content={loaded} access={access} /> : access}
+      {loaded ? <Sections content={loaded} access={access} ask={false} /> : access}
     </Shell>
   )
 }
@@ -333,7 +343,6 @@ function RecruiterPage({ mode, expiresAt, refTag }: { mode: 'visitor' | 'preview
     body = <Sections content={content.data.content} access={access} />
   }
 
-  const loaded = content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
     <AssistantProvider
       funnelRef={mode === 'visitor' ? (refTag ?? '') : undefined}
@@ -342,14 +351,13 @@ function RecruiterPage({ mode, expiresAt, refTag }: { mode: 'visitor' | 'preview
       sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
       copy={mode === 'visitor' ? VISITOR_COPY : PREVIEW_COPY}
     >
-      <Shell assistant dock={mode !== 'visitor'}>
+      <Shell assistant>
         {mode === 'preview' && (
           <p role="note" className="rc-note">
             Preview. This is what a visitor with the access code sees; the assistant here is still yours.{' '}
             <Link to="/">Back to your app</Link>
           </p>
         )}
-        {mode === 'visitor' && <VoiceStage content={loaded} />}
         {body}
       </Shell>
     </AssistantProvider>
@@ -387,7 +395,7 @@ function propertiesHeading(count: number): string {
   return count === 1 ? 'One property' : `${word} properties`
 }
 
-function Sections({ content, access }: { content: DemoContent; access: ReactNode }) {
+function Sections({ content, access, ask = true }: { content: DemoContent; access: ReactNode; ask?: boolean }) {
   const { hero, look_for: lookFor, work, experience, links, assets, phone, legion } = content
   const name = content.name?.trim() || 'LEGION'
   const hasPhone = phone !== undefined && phone.clips.length > 0
@@ -416,7 +424,8 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
             {hero.title}
           </h1>
           <p className="rc-lead">{hero.lead}</p>
-          <AskPrompt />
+          {/* The voice-first page has its stage above: no second way in. */}
+          {ask && <AskPrompt />}
           {hero.facts.length > 0 && (
             <p className="rc-dateline">
               {/* One dateline: the facts run on, a middle dot before each but the first (CSS). */}

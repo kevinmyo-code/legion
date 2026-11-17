@@ -1,0 +1,328 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { CascadeClient, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
+import { pcm16ToBase64 } from './pcm'
+import type { SseEvent } from './sse'
+import { BargeInGate } from './turn/barge-in-gate'
+import type { TurnDetector, TurnHandlers } from './turn/detector'
+import { FakeAudio, settle } from '../test/fake-live'
+
+/**
+ * The browser's turn-taking wired into the conversation (the phone's barge-in, self-trigger guard,
+ * speculation), and the demo's tour, funnel, prepare-in-the-tap and live strip. The detector is a
+ * stand-in whose handlers the test calls; `turn/detector.test.ts` covers the detector itself.
+ */
+
+async function* stream(events: SseEvent[]): AsyncGenerator<SseEvent> {
+  for (const event of events) {
+    await Promise.resolve()
+    yield event
+  }
+}
+
+/** A turn still streaming: its audio has started and the engine is still at work. */
+async function* hanging(events: SseEvent[]): AsyncGenerator<SseEvent> {
+  yield* stream(events)
+  await new Promise(() => {})
+}
+
+const AUDIO: SseEvent = { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([1, 2])), rate: 24000 } }
+
+function spoken(text: string, extra: Record<string, unknown> = {}, before: SseEvent[] = []): TurnStart {
+  return {
+    ok: true,
+    events: stream([
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } },
+      ...before,
+      { type: 'sentence', data: { text } },
+      AUDIO,
+      { type: 'done', data: { status: 'done', ...extra } },
+    ]),
+  }
+}
+
+class StubDetector implements TurnDetector {
+  readonly kind = 'models' as const
+  readonly smartAvailable = true
+  readonly loadMs = 10
+  readonly sileroMs = 1
+  readonly smartMs = 100
+  readonly gate = new BargeInGate()
+  handlers: TurnHandlers | null = null
+  pushes: { listening: boolean; playing: boolean }[] = []
+  replies = { started: 0, ended: 0 }
+  resets = 0
+  setHandlers(h: TurnHandlers | null) {
+    this.handlers = h
+  }
+  push(_chunk: Int16Array, listening: boolean, playing: boolean) {
+    this.pushes.push({ listening, playing })
+  }
+  replyStarted() {
+    this.replies.started++
+  }
+  replyEnded() {
+    this.replies.ended++
+  }
+  reset() {
+    this.resets++
+  }
+  dispose() {}
+  fire() {
+    this.handlers?.onBargeIn({ type: 'fire', prob: 0.9, level: 20000, echoFloor: 5000, threshold: 7500, sustainMs: 256 })
+  }
+}
+
+function build(answers: TurnStart[], options: { prepare?: () => Promise<boolean>; transcript?: string | null } = {}) {
+  const audio = new FakeAudio()
+  const requests: TurnRequest[] = []
+  const signals: AbortSignal[] = []
+  const funnel: FunnelEvent[] = []
+  const transcribeSignals: AbortSignal[] = []
+  const detector = new StubDetector()
+  const deps: CascadeDeps = {
+    startTurn: vi.fn(async (request: TurnRequest, signal: AbortSignal) => {
+      requests.push(request)
+      signals.push(signal)
+      return answers.shift() ?? spoken('Fine.')
+    }),
+    audio: () => audio,
+    now: () => Date.now(),
+    utcOffsetMinutes: () => 0,
+    turnDetector: async () => detector,
+    transcribe: vi.fn(async (_audio: Int16Array, signal: AbortSignal) => {
+      transcribeSignals.push(signal)
+      return options.transcript === undefined ? 'How is it built' : options.transcript
+    }),
+    funnel: (event) => funnel.push(event),
+  }
+  const client = new CascadeClient(deps, {
+    companionName: 'Alfred',
+    sessionMinutes: null,
+    endOnHidden: () => false,
+    ...(options.prepare ? { prepare: options.prepare } : {}),
+  })
+  client.attach()
+  return { client, audio, requests, signals, funnel, detector, transcribeSignals, deps }
+}
+
+/** Open: tap, greeting played and drained, listening with the models loaded. */
+async function open(t: ReturnType<typeof build>) {
+  await t.client.startVoice()
+  await settle()
+  t.audio.handlers?.onPlaying(false)
+  await settle()
+}
+
+const UTTERANCE = new Int16Array(16000)
+
+describe('the models in the conversation', () => {
+  it('loads the models after the first tap and tells the gate when a reply plays', async () => {
+    const t = build([spoken('Hello.')])
+    await t.client.startVoice()
+    await settle()
+    expect(t.detector.handlers).not.toBeNull()
+    expect(t.client.fullDuplex).toBe(true)
+    expect(t.detector.replies.started).toBe(1)
+    t.audio.handlers?.onPlaying(false)
+    expect(t.detector.replies.ended).toBe(1)
+    // Every chunk reaches the models; while the reply plays it is marked as playback.
+    t.audio.handlers?.onPlaying(true)
+    t.audio.handlers?.onChunk(new Int16Array(320))
+    expect(t.detector.pushes.at(-1)).toEqual({ listening: true, playing: true })
+  })
+
+  it('a barge-in stops the reply at once, cancels the engine turn, and listens', async () => {
+    const t = build([spoken('Hello.'), { ok: true, events: hanging([{ type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }, AUDIO]) }])
+    await open(t)
+    // A turn is in flight and its audio playing.
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests).toHaveLength(2)
+    const flushes = t.audio.flushes
+    t.detector.fire()
+    expect(t.audio.flushes).toBe(flushes + 1)
+    expect(t.signals[1].aborted).toBe(true)
+    expect(t.client.getState().mic).toBe('on')
+    expect(t.client.bargeIns).toBe(1)
+    // What they said over it is the next turn.
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests).toHaveLength(3)
+  })
+
+  it('two barge-ins that heard nothing new switch to half-duplex without a word', async () => {
+    const t = build([
+      spoken('Hello.'),
+      spoken('A long answer.'),
+      { ok: true, events: stream([{ type: 'turn', data: { conversation_id: 'c-1', turn: 2 } }, { type: 'heard', data: { text: '' } }, { type: 'done', data: { status: 'done' } }]) },
+      spoken('Another long answer.'),
+      { ok: true, events: stream([{ type: 'turn', data: { conversation_id: 'c-1', turn: 4 } }, { type: 'heard', data: { text: 'another long answer' } }, { type: 'done', data: { status: 'done' } }]) },
+    ])
+    await open(t)
+    for (let i = 0; i < 2; i++) {
+      t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+      await settle()
+      t.audio.handlers?.onPlaying(true)
+      t.detector.fire()
+      t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+      await settle()
+      t.audio.handlers?.onPlaying(false)
+      await settle()
+    }
+    expect(t.client.fullDuplex).toBe(false)
+    const said = t.client.getState().lines.filter((l) => l.kind === 'sys').map((l) => l.text)
+    expect(said.join(' ')).not.toMatch(/duplex|interrupt/i)
+    // Talked over now: nothing happens.
+    const before = t.client.bargeIns
+    t.audio.handlers?.onPlaying(true)
+    t.detector.fire()
+    expect(t.client.bargeIns).toBe(before)
+  })
+
+  it('a real question after a barge-in is not counted against it', async () => {
+    const t = build([
+      spoken('Hello.'),
+      spoken('A long answer.'),
+      { ok: true, events: stream([{ type: 'turn', data: { conversation_id: 'c-1', turn: 2 } }, { type: 'heard', data: { text: 'What about the car?' } }, { type: 'done', data: { status: 'done' } }]) },
+    ])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    t.audio.handlers?.onPlaying(true)
+    t.detector.fire()
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.detector.gate.selfInterrupts).toBe(0)
+    expect(t.client.fullDuplex).toBe(true)
+  })
+})
+
+describe('speculation (early transcript at 300 ms of silence)', () => {
+  it('sends the early words as a spoken turn when nothing was said after them', async () => {
+    const t = build([spoken('Hello.')])
+    await open(t)
+    t.detector.handlers?.onStart()
+    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests[1]).toMatchObject({ text: 'How is it built', spoken: true })
+    expect(t.requests[1].audio).toBeUndefined()
+    expect(t.client.eotMs).toEqual([704])
+  })
+
+  it('throws the early words away when speech resumes, and sends the audio', async () => {
+    const t = build([spoken('Hello.')])
+    await open(t)
+    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onResumed()
+    expect(t.transcribeSignals[0].aborted).toBe(true)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests[1].audio).toBeDefined()
+    expect(t.requests[1].text).toBeUndefined()
+  })
+
+  it('falls back to the audio when the early transcript failed', async () => {
+    const t = build([spoken('Hello.')], { transcript: null })
+    await open(t)
+    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests[1].audio).toBeDefined()
+  })
+})
+
+describe('the demo', () => {
+  it('enters the visit inside the opening tap before asking for the greeting', async () => {
+    let enter: (ok: boolean) => void = () => {}
+    const prepare = vi.fn(() => new Promise<boolean>((resolve) => (enter = resolve)))
+    const t = build([spoken('Hi.')], { prepare })
+    void t.client.startVoice()
+    await settle()
+    expect(prepare).toHaveBeenCalledTimes(1)
+    expect(t.requests).toHaveLength(0)
+    expect(t.funnel).toEqual(['orb_tap'])
+    enter(true)
+    await settle()
+    expect(t.requests[0].greet).toBe(true)
+  })
+
+  it('a failed entry asks for nothing and closes the mic', async () => {
+    const t = build([], { prepare: async () => false })
+    await t.client.startVoice()
+    await settle()
+    expect(t.requests).toHaveLength(0)
+    expect(t.client.getState().mic).toBe('off')
+  })
+
+  it('plays the tour beat by beat and counts its start and finish', async () => {
+    const t = build([
+      spoken('Hi.'),
+      spoken('Beat one.', { tour: { beat: 0, next: 1 } }),
+      spoken('Beat two.', { tour: { beat: 1, next: null } }),
+    ])
+    await open(t)
+    t.client.startTour()
+    await settle()
+    expect(t.requests[1].tour).toBe(0)
+    t.audio.handlers?.onPlaying(false)
+    await settle()
+    expect(t.requests[2].tour).toBe(1)
+    t.audio.handlers?.onPlaying(false)
+    await settle()
+    expect(t.requests).toHaveLength(3)
+    expect(t.funnel).toEqual(['orb_tap', 'tour_started', 'tour_finished'])
+  })
+
+  it('something said during the tour goes with the beat, so "skip" and "stop" steer it', async () => {
+    const t = build([spoken('Hi.'), spoken('Beat one.', { tour: { beat: 0, next: 1 } })])
+    await open(t)
+    t.client.startTour()
+    await settle()
+    t.audio.handlers?.onPlaying(true)
+    t.detector.fire()
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests.at(-1)).toMatchObject({ tour: 1 })
+  })
+
+  it('counts the first word heard and the third turn', async () => {
+    const heard = (text: string) => spoken('Ok.', {}, [{ type: 'heard', data: { text } }])
+    const t = build([spoken('Hi.'), heard('one'), heard('two'), heard('three')])
+    await open(t)
+    for (let i = 0; i < 3; i++) {
+      t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+      await settle()
+      t.audio.handlers?.onPlaying(false)
+      await settle()
+    }
+    expect(t.funnel.filter((e) => e === 'first_word')).toHaveLength(1)
+    expect(t.funnel.filter((e) => e === 'turns_3')).toHaveLength(1)
+  })
+
+  it('fills the live strip from the filler, the tool and the turn cost', async () => {
+    const t = build([
+      spoken('Hi.'),
+      spoken('Clear day.', { cost_usd: 0.0021 }, [
+        { type: 'working', data: { tool: 'list_events' } },
+        { type: 'filler', data: { tool: 'list_events', text: 'Checking the calendar.' } },
+        { type: 'tool', data: { name: 'list_events', ok: true, ms: 412 } },
+      ]),
+    ])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.client.strip.tools).toEqual([{ tool: 'list_events', ms: 412, filler: 'Checking the calendar.' }])
+    expect(t.client.strip.costUsd).toBe(0.0021)
+  })
+
+  it('a tapped question is answered aloud without opening the microphone', async () => {
+    const t = build([spoken('He builds things.')])
+    expect(t.client.ask('Tell me about Kevin.')).toBe(true)
+    await settle()
+    expect(t.requests[0]).toMatchObject({ text: 'Tell me about Kevin.', spoken: true })
+    expect(t.audio.micOpen).toBe(false)
+    expect(t.audio.played).toHaveLength(1)
+  })
+})

@@ -182,7 +182,8 @@ export function createWebAudio(): AudioIO {
 
     stopMic,
 
-    unlock() {
+    unlock(onPlaying) {
+      if (!handlers && onPlaying) handlers = { onChunk: () => {}, onMicLost: () => {}, onPlaying }
       ensurePlayback()
     },
 

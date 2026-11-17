@@ -8165,3 +8165,10 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Then, the same day (Kevin):** *"same voice behavior across everything. midcon demo and legion"*, *"keep listening unless user says stop or taps to close"*, *"context aware spoken greetings on open too"*, *"the exact same legion cloud pipeline, par the wakeword"*. So: cascade is the default for every role (Live is the fallback behind the switch), the phone's conversation window, stop phrases, fillers and failure lines, a spoken greeting on open, and the phone's explicit prompt cache.
 - **Open for Kevin:** the 1.2 s end-of-speech silence window.
 - ADR 0102.
+
+## 2026-11-17 - The demo goes voice-first; the phone's turn-taking runs in the browser (Kevin)
+
+- **Why:** about 30 page loads and one entry since 2026-11-06; the one outside visitor heard a 16 s opening and left after two turns.
+- **Built (branch `feat/demo-voice-first`, not shipped):** the phone's Silero + Smart Turn turn-taking and barge-in gate in the browser (onnxruntime-web), early transcripts, a voice-first `/try` link (orb, tap enters, five-second opening, chips, captions, typing, tour, ask card, live strip), funnel counts, and fillers that name the tool that started (all voices).
+- **Open for Kevin:** whether `/try` should open to anyone without a code; whether a code-box or returning visitor should also get the voice-first stage (built for the link only).
+- ADR 0103.

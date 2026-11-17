@@ -164,7 +164,10 @@ class LinePicker:
         if not options:
             return None
         with self._lock:
-            fresh = [o for o in options if o != self._last] or options
+            fresh = [o for o in options if o != self._last]
+            if not fresh:
+                # The only line in hand was the last one said: nothing, rather than a repeat.
+                return None
             line = self._choose(fresh)
             self._last = line
             return line

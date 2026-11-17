@@ -177,11 +177,15 @@ export class CascadeClient {
   private speechStarted = false
   /** The reply that was playing when the person talked over it, for the echo check. */
   private bargedOver: string | null = null
+  /** The gate's own verdict already counted this barge-in as the reply's echo. */
+  private bargeCounted = false
   private lastReply = ''
   private spec: { abort: AbortController; result: Promise<string | null>; samples: number } | null = null
   /** When the person's last utterance ended, and how long the silence that ended it was. */
   private turnEndedAt: number | null = null
   eotMs: number[] = []
+  /** Barge-ins this page has acted on (the browser check reads it). */
+  bargeIns = 0
   private spokenTurns = 0
   private prepared = false
   // ---- the demo ----
@@ -376,6 +380,7 @@ export class CascadeClient {
           onEnd: (audio, _reason, silenceMs) => this.onTurnEnd(audio, silenceMs),
           onBargeIn: () => this.onBargeIn(),
           onVerdict: (v) => {
+            if (v.selfInterrupt) this.bargeCounted = true
             if (v.nowDisabled) this.halfDuplex = true
           },
         })
@@ -395,7 +400,7 @@ export class CascadeClient {
     if (beat === 0) this.deps.funnel?.('tour_started')
     try {
       const audio = (this.audioIO ??= this.deps.audio())
-      audio.unlock?.()
+      audio.unlock?.((playing) => this.onPlaying(playing))
     } catch {
       // No audio here: the tour still shows and captions.
     }
@@ -413,7 +418,7 @@ export class CascadeClient {
     if (!text || this.state.phase === 'ended') return false
     try {
       const audio = (this.audioIO ??= this.deps.audio())
-      audio.unlock?.()
+      audio.unlock?.((playing) => this.onPlaying(playing))
     } catch {
       // No audio here: the answer still comes as text.
     }
@@ -571,6 +576,8 @@ export class CascadeClient {
   private onBargeIn() {
     if (!this.voiceOpen || (!this.playing && !this.awaiting) || !this.fullDuplex) return
     this.bargedOver = this.lastReply
+    this.bargeCounted = false
+    this.bargeIns += 1
     this.cutReply('barge_in')
     this.listen(true)
     this.speechStarted = true
@@ -873,7 +880,7 @@ export class CascadeClient {
     }
     const over = this.bargedOver
     this.bargedOver = null
-    if (over === null || !this.detector) return
+    if (over === null || !this.detector || this.bargeCounted) return
     const words = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
     const reply = over.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ')
     // Nothing heard, or only what the assistant was saying: the barge-in was its own voice. Two of
@@ -924,6 +931,7 @@ export class CascadeClient {
     this.turnGeneration += 1
     this.afterReply = null
     this.awaiting = false
+    if (this.playing) this.detector?.replyEnded()
     this.playing = false
     this.audioIO?.flush()
     const open = [...this.state.lines].reverse().find((l) => l.kind === 'ai' && l.open)
