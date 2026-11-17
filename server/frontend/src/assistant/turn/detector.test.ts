@@ -17,7 +17,10 @@ import { SILENCE_MS } from '../endpointer'
 class FakeWorker {
   onmessage: ((e: MessageEvent<FromWorker>) => void) | null = null
   terminated = false
-  constructor(private readonly answer: (msg: ToWorker) => FromWorker | null) {}
+  private readonly answer: (msg: ToWorker) => FromWorker | null
+  constructor(answer: (msg: ToWorker) => FromWorker | null) {
+    this.answer = answer
+  }
   postMessage(msg: ToWorker) {
     const reply = this.answer(msg)
     if (reply) queueMicrotask(() => this.onmessage?.({ data: reply } as MessageEvent<FromWorker>))

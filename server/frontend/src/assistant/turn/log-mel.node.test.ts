@@ -1,4 +1,4 @@
-/// <reference types="node" />
+// @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -18,15 +18,21 @@ function fixture(name: string): Buffer {
   return readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)))
 }
 
+// Read through a DataView: little-endian whatever the platform, and whatever the Buffer's offset.
 function audio(): Float32Array {
   const b = fixture('golden_short.pcm')
-  const pcm = new Int16Array(b.buffer, b.byteOffset, b.byteLength / 2)
-  return Float32Array.from(pcm, (v) => v / 32768)
+  const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const out = new Float32Array(b.byteLength / 2)
+  for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768
+  return out
 }
 
 function features(): Float32Array {
   const b = fixture('golden_short.f32')
-  return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))
+  const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const out = new Float32Array(b.byteLength / 4)
+  for (let i = 0; i < out.length; i++) out[i] = view.getFloat32(i * 4, true)
+  return out
 }
 
 function maxAbsDiff(a: Float32Array, b: Float32Array): number {

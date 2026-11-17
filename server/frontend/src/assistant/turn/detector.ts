@@ -122,13 +122,12 @@ class ModelDetector implements TurnDetector {
   private turnKey = 0
   private disposed = false
 
-  constructor(
-    private readonly vad: WorkerLike,
-    private readonly smart: WorkerLike | null,
-    loadMs: number,
-    sileroMs: number,
-    smartMs: number | null,
-  ) {
+  private readonly vad: WorkerLike
+  private readonly smart: WorkerLike | null
+
+  constructor(vad: WorkerLike, smart: WorkerLike | null, loadMs: number, sileroMs: number, smartMs: number | null) {
+    this.vad = vad
+    this.smart = smart
     this.loadMs = loadMs
     this.sileroMs = sileroMs
     this.smartMs = smartMs

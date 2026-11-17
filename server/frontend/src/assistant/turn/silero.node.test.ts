@@ -1,10 +1,9 @@
-/// <reference types="node" />
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import * as ort from 'onnxruntime-web'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { loadTurnDetector, type TurnDetector } from './detector'
 import { chunks, concat, silence } from './fixtures'
@@ -26,10 +25,31 @@ const CONTEXT = 64
 
 let session: ort.InferenceSession
 
+/**
+ * Opt-in (`LEGION_SILERO_TEST=1`): the real model in Node is slow to start and once ran away in a
+ * CI sandbox (2026-11-17: a node process at 100% CPU for 8 minutes). The phone's golden test and the
+ * headless browser check cover the model; this is for a person checking the web port by hand. Every
+ * step has a hard timeout and the session is released.
+ */
+const RUN = process.env.LEGION_SILERO_TEST === '1'
+
+function within<T>(ms: number, work: Promise<T>): Promise<T> {
+  return Promise.race([work, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`over ${ms} ms`)), ms))])
+}
+
 beforeAll(async () => {
+  if (!RUN) return
   ort.env.wasm.numThreads = 1
-  session = await ort.InferenceSession.create(new Uint8Array(readFileSync(here('../../../public/turn/silero_vad_v6_2.onnx'))))
-}, 60_000)
+  ort.env.wasm.proxy = false
+  session = await within(
+    30_000,
+    ort.InferenceSession.create(new Uint8Array(readFileSync(here('../../../public/turn/silero_vad_v6_2.onnx')))),
+  )
+}, 40_000)
+
+afterAll(async () => {
+  await session?.release()
+})
 
 function golden(): Int16Array {
   const b = readFileSync(here('./__fixtures__/golden_short.pcm'))
@@ -82,7 +102,7 @@ class InProcessSilero {
   }
 }
 
-describe('Silero VAD v6.2 on onnxruntime-web', () => {
+describe.skipIf(!RUN)('Silero VAD v6.2 on onnxruntime-web', () => {
   it('matches the phone golden per window', async () => {
     const want: number[] = JSON.parse(readFileSync(here('./__fixtures__/golden.json'), 'utf8')).silero_short
     const pcm = golden()
@@ -96,7 +116,7 @@ describe('Silero VAD v6.2 on onnxruntime-web', () => {
   }, 60_000)
 })
 
-describe('the detector on real Silero (Smart Turn absent: silence only)', () => {
+describe.skipIf(!RUN)('the detector on real Silero (Smart Turn absent: silence only)', () => {
   let workers: InProcessSilero[]
 
   async function load(): Promise<TurnDetector> {

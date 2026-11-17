@@ -1,4 +1,3 @@
-/// <reference lib="webworker" />
 /**
  * The phone's two turn models in the browser (the phone's `TurnModels.kt`), on onnxruntime-web
  * (WASM, one thread) in a worker so the page never waits on them:
@@ -32,7 +31,11 @@ export type FromWorker =
 
 const WINDOW = 512
 const CONTEXT = 64
-const scope = self as unknown as DedicatedWorkerGlobalScope
+// The worker's own scope, typed by hand: the webworker lib cannot share the app's DOM program.
+const scope = self as unknown as {
+  postMessage(message: FromWorker): void
+  onmessage: ((event: MessageEvent<ToWorker>) => void) | null
+}
 
 let silero: ort.InferenceSession | null = null
 let smart: ort.InferenceSession | null = null
