@@ -245,9 +245,9 @@
     },
     {
       "id": "guard_search_then_navigate",
-      "say": "find a coffee shop near me and navigate there",
+      "say": "look up the address of the National Air and Space Museum in Washington on the web and navigate there",
       "write": true,
-      "why": "ADR 0090 as ruled 2026-11-17: navigation is allowed after a web search in the same turn. Laptop (navigate answers as a screen there), or phone with --allow-writes guard_search_then_navigate (end the trip after)",
+      "why": "ADR 0090 as ruled 2026-11-17: navigation is allowed after a web search in the same turn (a well-known public place: the laptop has no location, and a made-up place has no web result). Laptop (navigate answers as a screen there), or phone with --allow-writes guard_search_then_navigate (end the trip after)",
       "expect": {
         "calls": ["navigate"],
         "succeeded": ["navigate"]
