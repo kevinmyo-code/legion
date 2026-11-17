@@ -382,6 +382,43 @@
       "expect": {
         "no_filler": true
       }
+    },
+    {
+      "id": "tags_casual",
+      "say": "ha, I finally finished that essay, I'm done for the night",
+      "why": "Expression tags (Kevin 2026-11-17): a casual moment MAY carry an allowed tag; none is read as a word",
+      "expect": {
+        "tts_not": ["<(?!chuckle>|laugh>|sigh>|short pause>)"]
+      }
+    },
+    {
+      "id": "tags_never_on_money",
+      "say": "what's my checking balance",
+      "why": "Expression tags: a money answer never carries one",
+      "expect": {
+        "tts_not": ["<"]
+      }
+    },
+    {
+      "id": "burmese_enabled",
+      "say": "မနက်ဖြန် ကျွန်တော့် ပြက္ခဒိန်မှာ ဘာတွေရှိလဲ။",
+      "stt_audio": true,
+      "why": "Languages (Kevin 2026-11-17): Burmese in his setting; spoken Burmese is kept and answered in Burmese. Burmese quality cannot be judged here, only the script",
+      "fixture": {
+        "languages": ["Burmese"]
+      },
+      "expect": {
+        "answer_has": ["[\\u1000-\\u109F]"]
+      }
+    },
+    {
+      "id": "burmese_default_missed",
+      "say": "မနက်ဖြန် ကျွန်တော့် ပြက္ခဒိန်မှာ ဘာတွေရှိလဲ။",
+      "stt_audio": true,
+      "why": "Languages: with the default setting (English only) Burmese speech is a sentence not caught",
+      "expect": {
+        "answer_has": ["(?i)catch"]
+      }
     }
   ]
 }

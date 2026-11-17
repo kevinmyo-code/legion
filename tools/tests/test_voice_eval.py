@@ -284,3 +284,14 @@ def test_the_holding_line_is_checked_against_the_tool_that_started():
     assert not any("holding line" in f for f in ve.score_case(case, bare[0], phone=True).failures)
     quiet = {"id": "filler_fleet", "say": "x", "expect": {"no_filler": True}}
     assert any("holding line was said" in f for f in ve.score_case(quiet, runs[0], phone=False).failures)
+
+
+def test_a_tag_in_the_answer_or_on_a_money_line_fails():
+    case = {"id": "tags_never_on_money", "say": "balance", "expect": {"tts_not": ["<"]}}
+    lines = case_lines("tags_never_on_money", "balance", [], "You have forty dollars.")
+    tagged = lines[:-4] + [L("LIVE_TEST", 'tts text="You have forty dollars. <chuckle>"')] + lines[-4:]
+    _, runs = parse(tagged)
+    assert any("handed" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+    spoken = case_lines("tags_never_on_money", "balance", [], "You have forty dollars <chuckle>.")
+    _, runs = parse(spoken)
+    assert any("expression tag" in f for f in ve.score_case(case, runs[0], phone=True).failures)

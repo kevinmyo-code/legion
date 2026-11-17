@@ -23,7 +23,11 @@ import com.kevin.legion.service.cascade.GeminiTts
 import com.kevin.legion.service.cascade.ScriptedLines
 import com.kevin.legion.service.cascade.SttGuard
 import com.kevin.legion.service.cascade.SttResult
+import com.kevin.legion.service.cascade.CloudSpeechWire
+import com.kevin.legion.service.cascade.SentenceSplitter
+import com.kevin.legion.service.cascade.SpokenLanguages
 import com.kevin.legion.service.cascade.ToolFillers
+import com.kevin.legion.service.cascade.TtsTags
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.vehicle.AdapterBinding
 import com.kevin.legion.vehicle.DongleCarController
@@ -50,6 +54,8 @@ internal data class EvalCase(
     val write: Boolean,
     val dongle: String? = null,
     val sttAudio: Boolean = false,
+    /** The languages besides English he has in Settings for this case ([SpokenLanguages]). */
+    val languages: List<String> = emptyList(),
 )
 
 /** Reads the shared case files (`tools/voice_eval/cases.json` and any private ones). */
@@ -66,6 +72,9 @@ internal object VoiceEvalCases {
                 turns,
                 c.optBoolean("write", false),
                 dongle = c.optJSONObject("fixture")?.optString("dongle")?.takeIf { it.isNotBlank() },
+                languages = c.optJSONObject("fixture")?.optJSONArray("languages")?.let { a ->
+                    (0 until a.length()).map { a.getString(it) }
+                }.orEmpty(),
                 sttAudio = c.optBoolean("stt_audio", false),
             )
         }
@@ -126,12 +135,18 @@ internal class VoiceEvalHarness(
             },
         )
         val history = mutableListOf<ChatTurn>()
+        val languages = listOf(SpokenLanguages.ENGLISH) + case.languages.mapNotNull { SpokenLanguages.byName(it) }
+        var current = SpokenLanguages.ENGLISH
         val started = now()
         for (said in case.turns) {
-            val heardRaw = if (case.sttAudio) transcribeSpoken(said) else said
+            val heardRaw = if (case.sttAudio) {
+                transcribeSpoken(said, SpokenLanguages.sttInstruction(languages, current))
+            } else {
+                said
+            }
             // The session's gate on what the transcriber wrote ([SttGuard]): a transcript it does not
             // believe never reaches the model; the missed line is said instead.
-            val verdict = SttGuard.verdict(heardRaw, 0L)
+            val verdict = SttGuard.verdict(heardRaw, 0L, accepted = languages)
             if (verdict is SttGuard.Verdict.Drop) {
                 audit.user(heardRaw, final = true)
                 out(LiveLatency.TAG, "stt_rejected reason=${verdict.reason} chars=${heardRaw.length}")
@@ -143,17 +158,33 @@ internal class VoiceEvalHarness(
                 continue
             }
             val heard = (verdict as SttGuard.Verdict.Keep).text
+            // The session's language rule (CascadeSession.followLanguage), cloud voice.
+            val asked = SpokenLanguages.request(heard, languages)
+            if (asked is SpokenLanguages.Switch.NotInSettings) {
+                audit.user(heard, final = true)
+                val line = SpokenLanguages.notInSettingsLine(asked.name)
+                audit.assistant(line, readThrough = false)
+                out(TEST_TAG, "heard text=${LiveAudit.quote(line)}")
+                audit.turnComplete()
+                continue
+            }
+            ((asked as? SpokenLanguages.Switch.To)?.language ?: SpokenLanguages.writtenIn(heard, languages))?.let {
+                if (it != current) out(TEST_TAG, "language_switch to=${it.name}")
+                current = it
+            }
             audit.user(heard, final = true)
             val t0 = now()
             var firstMs = -1L
             var fillerSaid = false
+            val raw = StringBuilder()
             val result = loop.answer(
                 prefix,
-                CascadePrompt.contents(history, heard, preamble),
+                CascadePrompt.contents(history, heard, preamble + SpokenLanguages.turnNote(current)),
                 executor(audit, heard),
                 object : GeminiTextLoop.Listener {
                     override fun onText(delta: String) {
                         if (firstMs < 0) firstMs = now() - t0
+                        raw.append(delta)
                     }
 
                     override fun onReadThrough(source: String) = audit.readThrough(source)
@@ -180,6 +211,12 @@ internal class VoiceEvalHarness(
             // What would be heard, even when the record redacts it (made-up data only): the scorer
             // reads this line first (2026-11-17, ADR 0090 guard cases score the spoken answer).
             out(TEST_TAG, "heard text=${LiveAudit.quote(said)}")
+            // What the cloud voice would be handed, tags and all ([TtsTags], as ReplySpeaker applies them).
+            val budget = TtsTags.Budget()
+            val splitter = SentenceSplitter()
+            val toVoice = (splitter.feed(raw.toString()) + listOfNotNull(splitter.flush()))
+                .joinToString(" ") { TtsTags.forSpeech(it, budget) }
+            out(TEST_TAG, "tts text=${LiveAudit.quote(toVoice)}")
             audit.turnComplete()
             out(
                 LiveLatency.TAG,
@@ -211,7 +248,7 @@ internal class VoiceEvalHarness(
      * [text] spoken by the cloud voice (Gemini TTS, 24 kHz) and heard back by the cloud transcriber
      * (16 kHz), as a spoken turn is: proves the transcriber's English pinning on real audio.
      */
-    private suspend fun transcribeSpoken(text: String): String {
+    private suspend fun transcribeSpoken(text: String, instruction: String): String {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
             val tts = GeminiTts(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.TTS, m, u).line()) })
@@ -220,10 +257,11 @@ internal class VoiceEvalHarness(
             withTimeoutOrNull(STT_AUDIO_TIMEOUT_MS) { for (f in clip.frames) pcm24.write(f) }
             val pcm16 = downsample24to16(pcm24.toByteArray())
             val stt = GeminiStt(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.STT, m, u).line()) },
-                log = { out(LiveLatency.TAG, it) })
+                log = { out(LiveLatency.TAG, it) }, instruction = { instruction })
             val r = stt.transcribe(pcm16)
             val heard = (r as? SttResult.Text)?.text.orEmpty()
-            out(TEST_TAG, "stt_audio audio_ms=${pcm16.size / 32} result=${if (r is SttResult.Text) "text" else r.toString()}")
+            out(TEST_TAG, "stt_audio audio_ms=${pcm16.size / 32} result=${if (r is SttResult.Text) "text" else r.toString()} " +
+                "voice=${CloudSpeechWire.VOICE} sent=${LiveAudit.quote(text)} heard=${LiveAudit.quote(heard)}")
             return heard
         } finally {
             scope.cancel()
