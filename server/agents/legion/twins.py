@@ -437,10 +437,13 @@ READ_LIST = EngineTool(
 
 # Engine-brain ticket 03 adds the homes' tools (`homes/tools.py`): goals, pending transactions,
 # advice and raises, the phone's Room-only data now on the engine. Kept out of the registry alike.
+from homes.records_tools import RECORD_TOOLS  # noqa: E402
 from homes.tools import HOME_TOOLS  # noqa: E402
 
 TWINS: dict[str, EngineTool] = {
     READ_CALENDAR.name: READ_CALENDAR,
     READ_LIST.name: READ_LIST,
     **{tool.name: tool for tool in HOME_TOOLS},
+    # Ticket 15: the user-aspect records tools (`homes/records_tools.py`).
+    **{tool.name: tool for tool in RECORD_TOOLS},
 }

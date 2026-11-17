@@ -154,6 +154,15 @@ RECRUITER_DENIED: dict[str, str] = {
     "homes.views.PendingTransactionBatchView": _PHONE_HOMES,
     "homes.views.ProactiveRaiseViewSet": _PHONE_HOMES,
     "homes.views.ProactiveRaiseBatchView": _PHONE_HOMES,
+    # engine-brain ticket 15: the trackers a member authored on the household's own phone.
+    "homes.records.UserAspectViewSet": _PHONE_HOMES,
+    "homes.records.UserAspectBatchView": _PHONE_HOMES,
+    "homes.records.UserRecordTypeViewSet": _PHONE_HOMES,
+    "homes.records.UserRecordTypeBatchView": _PHONE_HOMES,
+    "homes.records.UserFieldDefViewSet": _PHONE_HOMES,
+    "homes.records.UserFieldDefBatchView": _PHONE_HOMES,
+    "homes.records.UserRecordViewSet": _PHONE_HOMES,
+    "homes.records.UserRecordBatchView": _PHONE_HOMES,
     # body (ruling 3) and memory
     "api.body.BodyweightLogViewSet": _BODY,
     "api.body.MealLogViewSet": _BODY,

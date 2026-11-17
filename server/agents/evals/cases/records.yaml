@@ -1,0 +1,80 @@
+# records: engine-brain ticket 15's tools on the invented household (agents/evals/fixture.py,
+# `_seed_records`: a "Workouts" tracker, record type "Session", fields exercise / weight / reps /
+# date / kind, two sessions). FAKE utterances and rows only: this file is public.
+#
+# Phone -> engine: list_aspects, describe_aspect, create_aspect, update_aspect keep their names;
+# query_records -> query_aspect_records, create_record -> create_aspect_record, update_record ->
+# update_aspect_record, delete_record -> delete_aspect_record (the registry's delete_record is a
+# different tool). aspect_clerk has no twin. Matchers as in voice21.yaml.
+#
+# NOT RECORDED YET: no cassette until a live run passes (the key was out of credit when these were
+# written). tests/test_agents_eval.py lists this suite in UNRECORDED_SUITES, so its replay is
+# skipped with that reason, never faked.
+suite: records
+bar: 0.85
+runs: 3
+cases:
+  - id: trackers_list
+    turns:
+      - say: "what trackers have I set up?"
+        expect:
+          calls: ["list_aspects"]
+          not_calls: ["read_records", "list_tables"]
+          answer_has: ["workout"]
+  - id: tracker_read
+    turns:
+      - say: "what were my last workouts?"
+        expect:
+          calls: ["query_aspect_records"]
+          not_calls: ["create_aspect_record", "delete_aspect_record", "read_records"]
+          answer_has: ["bench", "row"]
+  - id: tracker_log
+    critical: true
+    turns:
+      - say: "log a workout: squats, 185 pounds for 5 reps today, strength"
+        expect:
+          calls: ["create_aspect_record"]
+          succeeded: ["create_aspect_record"]
+          not_calls: ["write_record"]
+          args: {create_aspect_record: {aspect_name: {re: "(?i)workouts"}}}
+          result_has: ["(?i)squat", "185"]
+  - id: tracker_update
+    critical: true
+    turns:
+      - say: "change my bench press session to 140 pounds"
+        expect:
+          calls: ["query_aspect_records", "update_aspect_record"]
+          succeeded: ["update_aspect_record"]
+          result_has: ["140"]
+  - id: tracker_delete_one
+    critical: true
+    turns:
+      - say: "delete the rowing session from my workouts"
+        expect:
+          calls: ["query_aspect_records", "delete_aspect_record"]
+          succeeded: ["delete_aspect_record"]
+          not_calls: ["delete_record"]
+          result_has: ["(?i)rowing"]
+  - id: tracker_describe
+    turns:
+      - say: "what can I log in my workouts tracker?"
+        expect:
+          calls: ["describe_aspect"]
+          not_calls: ["create_aspect", "update_aspect"]
+          answer_has: ["exercise|weight|reps"]
+  - id: tracker_create_drafts_first
+    critical: true
+    turns:
+      - say: "start tracking my reading: book title, pages, and the date I finished"
+        expect:
+          calls: ["create_aspect"]
+          args: {create_aspect: {aspect_name: {re: "(?i)read"}}}
+          answer_has: ["(?i)book|title"]
+          result_has: ["NOT created"]
+  - id: tracker_add_field_drafts_first
+    turns:
+      - say: "add a notes field to my workout sessions"
+        expect:
+          calls: ["update_aspect"]
+          args: {update_aspect: {change: {re: "add_field"}}}
+          result_has: ["NOT applied"]

@@ -49,6 +49,11 @@ class Facts:
     PENDING = "Coffee at the campus cafe"
     RAISE_REASON = "a severe thunderstorm warning covers Testville until 9 pm"
     ADVICE_GIST = "Keep long runs easy, one a week"
+    # engine-brain ticket 15: a tracker he set up himself, with two entries.
+    TRACKER = "Workouts"
+    TRACKER_TYPE = "Session"
+    SESSION_A = "Bench press"
+    SESSION_B = "Rowing"
 
 
 class NotLocal(RuntimeError):
@@ -151,6 +156,7 @@ def seed(household, owner, today: date, zone: ZoneInfo | None = None) -> dict:
             updated_at=now,
         )
     _seed_homes(household, owner, today, now)
+    _seed_records(household, today, zone, now)
     return {"todo": str(rid("Todo"))}
 
 
@@ -238,3 +244,76 @@ def _seed_homes(household, owner, today: date, now: datetime) -> None:
         spoken_at=now - timedelta(minutes=5),
         delivery="spoken",
     )
+
+
+def _seed_records(household, today: date, zone: ZoneInfo, now: datetime) -> None:
+    """Ticket 15's rows: the "Workouts" tracker (one record type, five fields) and two sessions,
+    stored in the phone's shapes (epoch-ms day, guid-keyed payload). All invented."""
+    from homes.models import UserAspect, UserFieldDef, UserRecord, UserRecordType
+
+    aspect = UserAspect.objects.create(
+        id=rid(Facts.TRACKER),
+        household=household,
+        origin_guid=str(rid(Facts.TRACKER)),
+        name=Facts.TRACKER,
+        created_at_client=now - timedelta(days=20),
+        updated_at_client=now - timedelta(days=20),
+    )
+    session = UserRecordType.objects.create(
+        id=rid(Facts.TRACKER_TYPE),
+        household=household,
+        origin_guid=str(rid(Facts.TRACKER_TYPE)),
+        aspect=aspect,
+        name=Facts.TRACKER_TYPE,
+        primary_due_date_field=str(rid("field:date")),
+        created_at_client=now - timedelta(days=20),
+        updated_at_client=now - timedelta(days=20),
+    )
+    fields = (
+        ("exercise", "TEXT", True, None),
+        ("weight", "NUMBER", False, None),
+        ("reps", "NUMBER", False, None),
+        ("date", "DATE", False, None),
+        ("kind", "CHOICE", False, '{"options": ["strength", "cardio"]}'),
+    )
+    for position, (name, kind, required, config) in enumerate(fields):
+        UserFieldDef.objects.create(
+            id=rid(f"field:{name}"),
+            household=household,
+            origin_guid=str(rid(f"field:{name}")),
+            record_type=session,
+            name=name,
+            type=kind,
+            required=required,
+            position=position,
+            config=config,
+            created_at_client=now - timedelta(days=20),
+            updated_at_client=now - timedelta(days=20),
+        )
+
+    def day_ms(day: date) -> int:
+        return int(datetime.combine(day, time(0, 0), zone).timestamp() * 1000)
+
+    for n, (exercise, weight, reps, kind, ago) in enumerate(
+        ((Facts.SESSION_A, 135.0, 5.0, "strength", 2), (Facts.SESSION_B, None, None, "cardio", 1))
+    ):
+        day = today - timedelta(days=ago)
+        payload = {
+            str(rid("field:exercise")): exercise,
+            str(rid("field:weight")): weight,
+            str(rid("field:reps")): reps,
+            str(rid("field:date")): day_ms(day),
+            str(rid("field:kind")): kind,
+        }
+        UserRecord.objects.create(
+            id=rid(exercise),
+            household=household,
+            origin_guid=str(rid(exercise)),
+            record_type=session,
+            due_at=datetime.combine(day, time(0, 0), zone),
+            search_text=f"{exercise} {kind}",
+            provenance="USER",
+            payload=payload,
+            created_at_client=now - timedelta(days=ago, minutes=n),
+            updated_at_client=now - timedelta(days=ago, minutes=n),
+        )

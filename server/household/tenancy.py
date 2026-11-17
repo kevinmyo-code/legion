@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# A hundred and six names (count it with len(); this line was stale five times before).
+# A hundred and ten names (count it with len(); this line was stale five times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -227,6 +227,12 @@ TENANT_TABLES: tuple[str, ...] = (
     "advisor_advice",
     "pending_transactions",
     "proactive_raises",
+    # engine-brain ticket 15: user-aspect records (the phone's aspect engine), shared in the
+    # household like every hand-made row; parents before children (`homes/models.py`).
+    "user_aspects",
+    "user_record_types",
+    "user_field_defs",
+    "user_records",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -321,6 +327,10 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "advisor_advice",
         "pending_transactions",
         "proactive_raises",
+        "user_aspects",
+        "user_record_types",
+        "user_field_defs",
+        "user_records",
     }
 )
 

@@ -28,6 +28,11 @@ Which tool, for the usual questions:
   out); list_pending_transactions and clear_pending_transaction by `pending_id`. Those rows are his
   word, unverified: say so.
 - "Why did you say that?" about something you raised on your own: why_did_you_say_that.
+- His own trackers (workouts, reading, anything he set up himself): list_aspects, then
+  describe_aspect for the field names before a write; query_aspect_records finds entries and their
+  `record_id`; create_aspect_record, update_aspect_record and delete_aspect_record write them. A new
+  tracker or a change to one is create_aspect or update_aspect: draft first, read it back, and
+  confirm only after he says yes. These are never read_records, write_record or delete_record.
 - Never call a tool to answer what the time is: the context line has it.
 
 After a tool answers, say what it found. If a read found nothing, say so; if a tool failed or was
