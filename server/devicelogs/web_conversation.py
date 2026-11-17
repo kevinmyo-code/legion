@@ -412,7 +412,12 @@ def record_lines(request, conversation_id, stamped: list[tuple]) -> None:
 CUT_OFF_NOTE = "(They spoke over this reply and stopped it here.)"
 
 
-def history(row: DeviceLog, *, max_turns: int, opened_line: str = "") -> tuple[list[dict], int]:
+_WRITE_DONE = re.compile(r" tool_result id=\S+ name=(?P<name>\S+) success=true ")
+
+
+def history(
+    row: DeviceLog, *, max_turns: int, opened_line: str = "", writes: frozenset[str] = frozenset()
+) -> tuple[list[dict], int]:
     """(the last `max_turns` exchanges as model contents, how many user turns the record holds).
 
     Only engine-written words: the person's as `user`, the reply as `model`, in time order. Tool
@@ -423,7 +428,20 @@ def history(row: DeviceLog, *, max_turns: int, opened_line: str = "") -> tuple[l
     body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
     turns: list[dict] = []
     users = 0
+
+    def note(words: str) -> None:
+        if turns and turns[-1]["role"] == "model":
+            turns[-1]["parts"][0]["text"] += " " + words
+        else:
+            turns.append({"role": "model", "parts": [{"text": words}]})
+
     for text in body:
+        done = _WRITE_DONE.search(text) if writes else None
+        if done is not None and done.group("name") in writes:
+            # A change that went through is part of the history even when its reply never reached
+            # the page (a hang-up mid-turn, finding 5), so a repeated ask is not made twice.
+            note(f"(Done: {done.group('name')}.)")
+            continue
         if "interrupted source=" in text:
             # The person talked over the reply: the model is told, so the next answer picks up
             # what they said instead of finishing or repeating this one (voice-persona section 8).

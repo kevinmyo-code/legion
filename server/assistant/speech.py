@@ -222,6 +222,23 @@ class GeminiSpeech:
         yield from _events(self._transport.lines(url, self._headers(), data, timeout))
 
     def transcribe(self, pcm: bytes) -> Heard:
+        """The words. A dropped request or a server error is tried once more; then it is a
+        `SpeechFailure`, which the turn says aloud as a miss (finding 8)."""
+        try:
+            return self._transcribe_once(pcm)
+        except SpeechFailure:
+            raise
+        except ModelFailure as exc:
+            if not _worth_retry(str(exc)):
+                raise SpeechFailure("stt_failed") from None
+        try:
+            return self._transcribe_once(pcm)
+        except SpeechFailure:
+            raise
+        except ModelFailure:
+            raise SpeechFailure("stt_unreachable") from None
+
+    def _transcribe_once(self, pcm: bytes) -> Heard:
         audio_ms = len(pcm) // 32
         if len(pcm) < MIN_AUDIO_BYTES or loudest_100ms(pcm) < LOUDNESS_GATE_RMS:
             return Heard("", audio_ms, 0)

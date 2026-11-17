@@ -106,6 +106,11 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # LEGION_WEB_VOICE / LEGION_WEB_VOICE_RECRUITER = live|cascade: the web assistant's voice engine for
 #   members and for demo visits (ADR 0102; unset is the code default, cascade). The rollback to Live
 #   is one of these in `.env` and a deploy.
+# The cascade's production knobs (blind review 2026-11-17, finding 12), each optional, unset is the
+#   code default: LEGION_WEB_TEXT_MODEL (the cascade's text model), LEGION_WEB_TTS_VOICE and
+#   LEGION_WEB_TTS_VOICE_RECRUITER (en-us-neno, Puck), LEGION_DEMO_TURN_SLOTS (demo turns at once
+#   across the engine, 2), LEGION_DEMO_COST_PER_SPEECH_TURN_USD and LEGION_DEMO_COST_PER_TEXT_CALL_USD
+#   (the demo budget's per-turn reserve), LEGION_ASSISTANT_TURN_RATE and LEGION_ASSISTANT_TURN_IP_RATE.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -117,6 +122,10 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_SCHEDULER_SA", "LEGION_TICK_AUDIENCE", "LEGION_MODELS",
     "LEGION_MEMBER_DAILY_CAP", "LEGION_MEMBER_MINT_COST_USD",
     "LEGION_WEB_VOICE", "LEGION_WEB_VOICE_RECRUITER",
+    "LEGION_WEB_TEXT_MODEL", "LEGION_WEB_TTS_VOICE", "LEGION_WEB_TTS_VOICE_RECRUITER",
+    "LEGION_DEMO_TURN_SLOTS", "LEGION_DEMO_COST_PER_SPEECH_TURN_USD",
+    "LEGION_DEMO_COST_PER_TEXT_CALL_USD", "LEGION_ASSISTANT_TURN_RATE",
+    "LEGION_ASSISTANT_TURN_IP_RATE",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because

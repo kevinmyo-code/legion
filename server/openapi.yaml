@@ -380,6 +380,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The engine refused its own pack, so none was sent.
+  /api/assistant/robotic:
+    post:
+      operationId: api_assistant_robotic_create
+      description: |-
+        The `robotic` marker's hands path (voice-persona section 8): a thumbs-down on a reply that
+        sounded robotic. The caller's own conversation record gets the turn number; no words are
+        sent or kept. The spoken path is "that sounded robotic" (`cascade.is_robotic_remark`).
+      summary: Mark a reply as sounding robotic (the turn number only)
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantRoboticRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantRoboticRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantRoboticRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not this caller's conversation.
   /api/assistant/session:
     get:
       operationId: api_assistant_session_retrieve
@@ -495,6 +534,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: Too many calls; nothing ran.
+  /api/assistant/transcribe:
+    post:
+      operationId: api_assistant_transcribe_create
+      description: |-
+        Speech to text only, for the page's early start (the phone's speculation, `Speculation.kt`,
+        adapted): at about 300 ms of silence the page sends what was said so far, and when the turn
+        ends with no more speech it sends the words to `POST /api/assistant/turn` as `text` with
+        `spoken`. If the person speaks again the transcript is thrown away. Nothing is answered here,
+        no tool runs and nothing is recorded; a demo visit's budget is charged one speech share.
+      summary: Transcribe what has been said so far (no answer, nothing stored)
+      tags:
+      - assistant
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantTranscribeRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantTranscript'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: This caller is on live voice.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too long.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many, or over budget.
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The words could not be had.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No Gemini key on this server.
   /api/assistant/turn:
     post:
       operationId: api_assistant_turn_create
@@ -5115,6 +5217,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The visit's demo household could not be seeded. Nothing created.
+  /api/demo/funnel:
+    post:
+      operationId: api_demo_funnel_create
+      description: |-
+        One step of the demo happened (`demo.funnel`). Anonymous (a page load comes before any
+        visit), throttled per address, and it stores a count only.
+      summary: 'Count one step of the demo (a count only: no visitor, no words)'
+      tags:
+      - demo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoFunnel'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DemoFunnel'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DemoFunnel'
+        required: true
+      security:
+      - {}
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/demo/session:
     get:
       operationId: api_demo_session_retrieve
@@ -13966,6 +14106,21 @@ components:
           type: string
         result_prefix:
           type: string
+    AssistantRoboticRequest:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+          description: The caller's own conversation.
+        turn:
+          type: integer
+          maximum: 10000
+          minimum: 0
+          description: The reply's turn.
+      required:
+      - conversation_id
+      - turn
     AssistantSession:
       type: object
       properties:
@@ -14118,6 +14273,28 @@ components:
       - outcome
       - response
       - text
+    AssistantTranscribeRequest:
+      type: object
+      properties:
+        audio:
+          type: string
+          format: uri
+          description: 'What has been said so far: raw 16-bit little-endian mono PCM
+            at 16 kHz, at most 28 seconds. Never stored.'
+      required:
+      - audio
+    AssistantTranscript:
+      type: object
+      properties:
+        text:
+          type: string
+          description: The words; empty for none.
+        ms:
+          type: integer
+          description: How long the transcription took.
+      required:
+      - ms
+      - text
     AssistantTurnRequest:
       type: object
       properties:
@@ -14148,6 +14325,19 @@ components:
           nullable: true
           description: As for `POST /api/assistant/session`; read when a conversation
             starts.
+        spoken:
+          type: boolean
+          default: false
+          description: 'With `text`: the page transcribed the utterance early (`POST
+            /api/assistant/transcribe`) and the answer is spoken, as for `audio`.'
+        tour:
+          type: integer
+          maximum: 20
+          minimum: 0
+          nullable: true
+          description: 'A demo visit''s one-minute tour: the beat to play (from 0).
+            With `audio`, what was said during the tour: ''skip'' plays this beat,
+            ''stop'' ends the tour, anything else is a question and the tour ends.'
         greet:
           type: boolean
           default: false
@@ -17037,6 +17227,17 @@ components:
           pattern: ^[A-Za-z0-9_.-]{1,64}$
       required:
       - code
+    DemoFunnel:
+      type: object
+      properties:
+        event:
+          $ref: '#/components/schemas/EventEnum'
+        ref:
+          type: string
+          default: ''
+          maxLength: 64
+      required:
+      - event
     DemoRefusal:
       type: object
       properties:
@@ -17539,6 +17740,24 @@ components:
       - provenance
       - title
       - updated_at
+    EventEnum:
+      enum:
+      - page_load
+      - orb_tap
+      - first_word
+      - turns_3
+      - tour_started
+      - tour_finished
+      - resume_opened
+      type: string
+      description: |-
+        * `page_load` - page_load
+        * `orb_tap` - orb_tap
+        * `first_word` - first_word
+        * `turns_3` - turns_3
+        * `tour_started` - tour_started
+        * `tour_finished` - tour_finished
+        * `resume_opened` - resume_opened
     EventSkip:
       type: object
       properties:

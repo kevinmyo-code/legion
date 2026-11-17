@@ -755,13 +755,15 @@ def test_a_claimed_change_with_no_write_tried_is_not_said(member, engine):
         "I couldn't add it because the system held back the write.",
     ],
 )
-def test_a_false_reason_after_a_web_read_becomes_the_true_one(member, engine, excuse):
+def test_a_reason_after_a_web_read_with_no_write_tried_is_kept(member, engine, excuse):
+    # Blind review findings 4 and 10: no sentence of the model's is swapped for code's on a
+    # regex; with no write attempted and refused, its own words stand.
     engine.model = FakeModel(
         [call("web_search", {"query": "fair date"}), say(f"The fair is on Saturday. {excuse}")]
     )
     events = _events(_post(member, text="Look up the fair and add it to my list."))
     said = [s["text"] for s in _of(events, "sentence")]
-    assert said == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT]
+    assert said == ["The fair is on Saturday.", excuse]
 
 
 def test_a_refused_write_after_a_web_read_always_says_why(member, engine):
@@ -785,10 +787,15 @@ def test_a_cant_find_sentence_after_a_web_read_is_kept(member, engine):
     assert [s["text"] for s in _of(events, "sentence")] == ["I can't find a date for the fair."]
 
 
-def test_a_false_phone_app_reason_for_a_web_tool_is_replaced(member, engine):
-    engine.model = FakeModel([say("I can't add things to your lists here, only in the phone app.")])
-    events = _events(_post(member, text="Add that to my list."))
-    assert [s["text"] for s in _of(events, "sentence")] == [cascade.WEB_CAN]
+def test_a_phone_app_sentence_is_never_replaced_by_a_promise(member, engine):
+    # Finding 4: the old rewrite turned a true alarm answer into "I'll do it".
+    line = (
+        "Alarms only work in the phone app, so I can't set one here, but I can add a calendar "
+        "event."
+    )
+    engine.model = FakeModel([say(line)])
+    events = _events(_post(member, text="Set an alarm for seven."))
+    assert [s["text"] for s in _of(events, "sentence")] == [line]
 
 
 def test_a_true_phone_only_answer_is_kept(member, engine):
@@ -799,20 +806,26 @@ def test_a_true_phone_only_answer_is_kept(member, engine):
     ]
 
 
-def test_a_browser_that_hangs_up_cancels_the_turn(member, engine):
-    engine.model = FakeModel([call("list_events", {}), say("Never said.")])
-    response = _post(member, text="What's on?")
+def test_a_browser_that_hangs_up_before_a_write_stops_it_from_running(member, engine):
+    # Finding 5, not vacuous: the model's first round chose a write; the browser hangs up when
+    # the write is announced, after a model round and before the change is made.
+    from checklists.models import Checklist
+
+    before = Checklist.objects.count()
+    engine.model = FakeModel([call("create_checklist", {"name": "Never made"}), say("Made it.")])
+    response = _post(member, text="Make a list called never made.")
     stream = iter(response.streaming_content)
     first = next(stream)
-    assert b"event: turn" in first
-    # The browser hangs up: the server's generator is closed mid-stream.
-    response._iterator.close()
     conversation = json.loads(first.decode().split("data: ")[1])["conversation_id"]
+    seen = b""
+    while b"event: working" not in seen:
+        seen += next(stream)
+    assert len(engine.model.requests) == 1  # a model round ran
+    response._iterator.close()
+    assert Checklist.objects.count() == before
     record = _record(conversation)
     assert "cascade_turn status=cancelled" in record
     assert "interrupted source=barge_in" in record
-    # The model was never asked for the round after the tool.
-    assert len(engine.model.requests) <= 1
 
 
 @pytest.mark.parametrize(

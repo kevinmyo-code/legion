@@ -49,6 +49,7 @@ from demo.models import DemoCode, DemoFunnelDay, DemoVisit
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
+from legion.client_ip import ClientIpThrottleMixin
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,9 @@ DemoEnterResponse = inline_serializer(
 )
 
 
-class DemoEnterThrottle(ScopedRateThrottle):
-    """Per IP: `ScopedRateThrottle` keys an anonymous request on its address."""
+class DemoEnterThrottle(ClientIpThrottleMixin, ScopedRateThrottle):
+    """Per IP: `ScopedRateThrottle` keys an anonymous request on its address, here the one a caller
+    cannot choose (`legion.client_ip`)."""
 
 
 class DemoEnterView(APIView):
@@ -210,7 +212,7 @@ def _make_visitor(household: Household, ref: str, expires_at):
 # =============================================================================
 
 
-class DemoFunnelThrottle(ScopedRateThrottle):
+class DemoFunnelThrottle(ClientIpThrottleMixin, ScopedRateThrottle):
     """Per address: anyone may count a step, so nobody may count many."""
 
 

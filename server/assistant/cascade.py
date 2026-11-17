@@ -71,6 +71,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from django.db import DatabaseError, transaction
+
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
 from agents.runtime import events as ev
@@ -126,6 +128,9 @@ VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances"})
 CACHED_MICRO_USD_PER_TOKEN_X100 = 3
 # How long the turn waits for the next sentence's speech before it gives up on it.
 TTS_WAIT_S = 20.0
+# The longest a whole turn may hold its server thread, speech included (finding 1): speech-to-text
+# (12 s), the rounds (`LIMITS`), and what is left of the speech is cut here.
+TURN_WALL_S = 60.0
 
 # The phone's `CascadePrompt.VOICE_CLAUSE` (spec 11), verbatim: added to the cached prefix.
 VOICE_CLAUSE = (
@@ -185,6 +190,53 @@ FILLERS = ("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.
 
 # The phone's `end_conversation` (spec 18): the description and the sign-off instruction, with
 # "he" made "they" (the web serves every member and a visitor).
+# Knowing when it is being spoken to (voice-persona section 10, Kevin 2026-11-17: "yes all four").
+# A third outcome besides answering and calling a tool: the sentence was not for the assistant
+# (a visitor turning to someone else). A no-data control like `end_conversation`.
+NOT_FOR_ME_TOOL = "not_for_me"
+NOT_FOR_ME_DECLARATION = {
+    "name": NOT_FOR_ME_TOOL,
+    "description": (
+        "Call this, and say nothing, when what you just heard was clearly NOT said to you: someone "
+        "talking to another person in the room, a remark about you or your voice to someone else, "
+        "a phone call, the TV. Judge from the sentence and the last exchange. Never call it when "
+        "they ask you something, answer your question, or say your name."
+    ),
+    "parameters": {"type": "object", "properties": {}},
+}
+NOT_FOR_ME_RESPONSE = "Not for you: say nothing."
+NAMED_RESPONSE = "They said your name: it was for you. Answer them."
+# What the page shows (never says) when it is not sure the sentence was for it (section 10.4).
+UNSURE_CUE = "Were you talking to me? Say my name or tap to go on."
+_SECOND_PERSON = re.compile(
+    r"\b(you|your|can you|could you|would you|will you|tell me|show me|what's|what is|how much|"
+    r"when is|when's|where is|is there|do i|did i|have i|please)\b",
+    re.I,
+)
+
+
+def addressed_signals(words: str, companion_name: str, last_reply: str) -> dict[str, bool]:
+    """Section 10.3's signals that code can read from the words: the assistant's name, a reply to
+    its own question, and a request or question put to it. (A second voice and speech over the
+    assistant's own are the phone's; the web has no enrolled voice.)"""
+    name = (companion_name or "").strip()
+    return {
+        "named": bool(name) and bool(re.search(rf"\b{re.escape(name)}\b", words or "", re.I)),
+        "answers_question": (last_reply or "").rstrip().endswith("?"),
+        "second_person": bool(_SECOND_PERSON.search(words or "")),
+    }
+
+
+def addressed_decision(signals: dict[str, bool], model_says_not: bool) -> str:
+    """`addressed`, `unsure` or `not_addressed`, combined by code; the model's judgement is one
+    input. The name always gets through."""
+    if signals.get("named") or not model_says_not:
+        return "addressed"
+    if signals.get("answers_question") or signals.get("second_person"):
+        return "unsure"
+    return "not_addressed"
+
+
 END_TOOL = "end_conversation"
 END_DECLARATION = {
     "name": END_TOOL,
@@ -229,9 +281,7 @@ NO_TEXT = "No written reply came back for that."
 NOTHING_CHANGED = " Nothing was changed."
 NOTHING_HEARD = "Nothing heard, so nothing was asked."
 STT_FAILED = "Not answered: the words could not be made out just now."
-# Said instead of a sentence claiming a change no tool made (measured 2026-11-17: after a web
-# search, "I have added that to your grocery list", with the write refused or never tried).
-CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
+MISSED_LINE = "Didn't catch that, say it again?"
 # ADR 0090's reason in code, spoken whenever a turn that read outside text does not make a change
 # it was asked for (measured 2026-11-17: the model gave a false reason, "that only works in the
 # phone app", or claimed the change). The person's next message may make it.
@@ -239,25 +289,15 @@ READ_THROUGH_WAIT = (
     "I haven't changed anything: this turn read text from the web, so changes wait for your next "
     "message. Ask me again and I'll do it."
 )
-# A sentence of the model's about not making a change: a can't-word and a change-word together.
-_CANT = re.compile(
-    r"\b(can['’]?t|cannot|can not|couldn['’]?t|unable|not able|won['’]?t be able|"
-    r"don['’]?t have (a|the|any) (tool|way)|only (works )?(in|on|from) the "
-    r"(phone|full|mobile|android) app|from here|held back)\b",
-    re.I,
-)
-_CHANGE = re.compile(
-    r"\b(add|added|adding|put|save|saved|change|changed|delete|remove|update|set|create|schedule|"
-    r"log|write|list|calendar|remind|reminder)\b",
-    re.I,
-)
-# The web's own tools change lists, checklists, the calendar and purchases (`assistant.surface`), so
-# "that only works in the phone app" about one of them is never true here (measured 2026-11-17, in
-# a turn with no outside read). Said by code in place of that sentence.
-WEB_CAN = "That can be done from here: tell me exactly what to change and I'll do it."
-_PHONE_APP = re.compile(r"\b(phone|android|mobile|full) app\b", re.I)
-_WEB_TOOLS_WORD = re.compile(
-    r"\b(list|lists|checklist|checklists|calendar|event|events|purchase|purchases)\b", re.I
+# Said after a claimed change that no write backed and none went through by the end of the turn.
+CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
+# The same, when a write did go through in this turn (a claim made before its own call).
+CHANGE_MADE = "That change went through."
+# ADR 0090 after a write in this turn was refused because the turn read outside text, but an
+# earlier write in the same turn went through (finding 3): what happened, not "nothing".
+READ_THROUGH_WAIT_AFTER_WRITE = (
+    "The first change went through. The next one waits for your next message, because this turn "
+    "read text from the web. Ask me again and I'll do it."
 )
 TOO_MANY_TOOLS = (
     "Nothing was read or written: this turn already ran as many tool calls as one turn may."
@@ -330,6 +370,10 @@ def is_filler(sentence: str) -> bool:
 # ---- fillers kept in memory (spec 22) ----------------------------------------------------------
 
 
+# How long a filler line whose speech failed waits before it is asked for again.
+FILLER_RETRY_S = 600.0
+
+
 class FillerAudio:
     """Each filler line's audio per voice, kept in this process once made. A line is said only from
     memory; a missing one is fetched in the background for next time (the phone's rule: a filler
@@ -338,6 +382,9 @@ class FillerAudio:
     def __init__(self, spawn: Callable[[Callable[[], None]], None] | None = None):
         self._audio: dict[tuple[str, str], bytes] = {}
         self._fetching: set[tuple[str, str]] = set()
+        # A line whose speech failed is not asked for again for a while (finding 6: with speech
+        # failing, every spoken turn re-sent the whole set).
+        self._failed: dict[tuple[str, str], float] = {}
         self._lock = threading.Lock()
         self._last: str | None = None
         self._spawn = spawn or (lambda work: threading.Thread(target=work, daemon=True).start())
@@ -346,8 +393,11 @@ class FillerAudio:
         lines = fillers.all_lines() if lines is None else lines
         missing = []
         with self._lock:
+            now = time.monotonic()
             for line in lines:
                 key = (voice, line)
+                if now - self._failed.get(key, -FILLER_RETRY_S) < FILLER_RETRY_S:
+                    continue
                 if key not in self._audio and key not in self._fetching:
                     self._fetching.add(key)
                     missing.append(line)
@@ -364,6 +414,8 @@ class FillerAudio:
                     self._fetching.discard((voice, line))
                     if audio:
                         self._audio[(voice, line)] = audio
+                    else:
+                        self._failed[(voice, line)] = time.monotonic()
 
         self._spawn(fetch)
         return len(missing)
@@ -404,6 +456,9 @@ class _Job:
 # as one request) or "sentence" (one request per sentence, the phone's old shape). Kept as a
 # constant while the two are measured against each other (section 8.3); the loser goes.
 SPEECH_GROUPING = "breath"
+# Speech requests one turn may make: what `LEGION_DEMO_COST_PER_SPEECH_TURN_USD` (one cent by
+# default) covers with retries: about 12 sentences grouped into these (finding 6).
+MAX_TTS_REQUESTS = 6
 GROUP_SENTENCES = 3
 GROUP_CHARS = 400
 # A first sentence longer than this many words has its first clause spoken on its own.
@@ -438,6 +493,8 @@ class Speaker:
         self.started_at = clock()
         self.first_audio_ms: int | None = None
         self.total_ms = 0
+        # The whole turn, speech included, ends by this time (finding 1).
+        self.deadline = self.started_at + TURN_WALL_S
         self._pool = ThreadPoolExecutor(max_workers=2) if enabled else None
         # The person asked for exact figures this turn: nothing is rounded when spoken.
         self.exact = False
@@ -447,6 +504,8 @@ class Speaker:
         self.grouping = SPEECH_GROUPING
         self._first_out = False
         self._pending: list[str] = []
+        self.requests = 0
+        self.skipped = 0
 
     def spoken_text(self, text: str, expressive: bool = False) -> str:
         """What goes to speech for `text`: its figures rounded like a person says them
@@ -481,6 +540,11 @@ class Speaker:
             self._pending = []
 
     def _submit(self, spoken: str) -> None:
+        if self.requests >= MAX_TTS_REQUESTS:
+            # What the turn's speech reserve covers (finding 6); the rest is shown, not said.
+            self.skipped += 1
+            return
+        self.requests += 1
         job = _Job(spoken, queue.Queue(), Spoken(), threading.Event())
         self.jobs.append(job)
         self._pool.submit(self._run, job)
@@ -512,8 +576,10 @@ class Speaker:
     def _take(self, block: bool) -> Iterator[ev.Event]:
         while self.jobs:
             head = self.jobs[0]
+            # Never past the turn's own deadline, however many sentences are still queued.
+            wait = min(TTS_WAIT_S, max(self.deadline - self.clock(), 0.05))
             try:
-                item = head.chunks.get(timeout=TTS_WAIT_S) if block else head.chunks.get_nowait()
+                item = head.chunks.get(timeout=wait) if block else head.chunks.get_nowait()
             except queue.Empty:
                 if block:
                     head.cancelled.set()
@@ -571,6 +637,9 @@ class WebDoor:
         self.recruiter = is_recruiter(self.user)
         self.calls: list[DoorCall] = []
         self.end_requested = False
+        # Section 10: the model said the sentence was not for it, and the code-read signals.
+        self.not_for_me = False
+        self.addressed: dict[str, bool] = {}
         self._tools = None
         self._declarations = None
         read_through.set_turn(request, conversation_id, turn)
@@ -582,22 +651,34 @@ class WebDoor:
 
     def declarations(self, spec=None) -> list[dict]:
         if self._declarations is None:
-            self._declarations = [*rest_declarations(list(self.tools().values())), END_DECLARATION]
+            self._declarations = [
+                *rest_declarations(list(self.tools().values())),
+                END_DECLARATION,
+                NOT_FOR_ME_DECLARATION,
+            ]
         return self._declarations
 
     def is_slow(self, name: str) -> bool:
         # The runtime says `working` before a slow tool; the web's slow list is the fillers'
         # (a tool whose line goes out at its start), which covers the runtime's own SLOW_TOOLS.
-        return fillers.is_slow(name) or name in SLOW_TOOLS
+        # A write is "slow" too: the runtime then yields before running it, and a browser that has
+        # hung up is noticed there, before the change is made (finding 5).
+        tool = self.tools().get(name)
+        return fillers.is_slow(name) or name in SLOW_TOOLS or bool(tool is not None and tool.writes)
 
     def _audit(self, outcome: str, name: str) -> None:
-        AssistantCall.objects.create(
-            household=household_of(self.request),
-            user=self.user,
-            kind=AssistantCall.TOOL,
-            tool=name[:200],
-            outcome=outcome,
-        )
+        try:
+            with transaction.atomic():
+                AssistantCall.objects.create(
+                    household=household_of(self.request),
+                    user=self.user,
+                    kind=AssistantCall.TOOL,
+                    tool=name[:200],
+                    outcome=outcome,
+                )
+        except DatabaseError:
+            # The tool has run; a failed audit row must not turn its result into an error.
+            log.warning("assistant cascade: audit row failed", exc_info=True)
 
     def call(self, state, spec, call: ToolCall, deadline_s: float) -> ToolOutcome:
         started = datetime.now(UTC)
@@ -606,6 +687,15 @@ class WebDoor:
         result = None
         if len(self.calls) >= MAX_TOOL_CALLS:
             ok, outcome, text, guard = False, Outcome.REFUSED, TOO_MANY_TOOLS, "limit"
+        elif name == NOT_FOR_ME_TOOL:
+            self.not_for_me = True
+            named = self.addressed.get("named", False)
+            ok, outcome, text, guard = (
+                True,
+                Outcome.OK,
+                (NAMED_RESPONSE if named else NOT_FOR_ME_RESPONSE),
+                None,
+            )
         elif name == END_TOOL:
             # A control, not a data tool: the page closes the conversation after the sign-off.
             self.end_requested = True
@@ -622,6 +712,8 @@ class WebDoor:
                 else:
                     result = run_tool(self.request, name, args)
                 ok, outcome, text, guard = not result.is_error, result.outcome, result.text, None
+        # Known at once: whatever fails after this, the turn knows the write went through.
+        self.calls.append(DoorCall(name, ok, outcome, text, None, None, 0))
         self._audit(outcome, name)
         web_conversation.record_tool(
             self.request,
@@ -641,7 +733,7 @@ class WebDoor:
             said = (result.structured or {}).get(SPEAK_VERBATIM)
             verbatim = said.strip() if isinstance(said, str) and said.strip() else None
         ms = int((time.monotonic() - clock) * 1000)
-        self.calls.append(DoorCall(name, ok, outcome, text, card, verbatim, ms))
+        self.calls[-1] = DoorCall(name, ok, outcome, text, card, verbatim, ms)
         tool = self.tools().get(name)
         return ToolOutcome(
             name=name,
@@ -705,8 +797,25 @@ class TurnReport:
     rounds: int = 0
     status: str = "done"
     heard: str = ""
+    door: object | None = None
     said: list[str] = field(default_factory=list)
     timings: dict = field(default_factory=dict)
+
+
+class CountingModel:
+    """Counts every model call started (each `stream`), so a cancelled or retried round is
+    billed to the budget like any other (finding 6)."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.calls = 0
+
+    def stream(self, req):
+        self.calls += 1
+        return self.inner.stream(req)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
 
 
 def context_note(context: str) -> str:
@@ -786,6 +895,8 @@ def run_turn(
     t0 = clock()
     timings = report.timings
     filler_audio = filler_audio or FILLER_AUDIO
+    counted = CountingModel(model)
+    model = counted
     speak = (
         turn_input.audio is not None
         or turn_input.greet
@@ -795,6 +906,7 @@ def run_turn(
     system = cached_system(system)
     yield ev.Event("turn", {"conversation_id": str(conversation_id), "turn": turn})
     door = WebDoor(request, conversation_id, turn)
+    report.door = door
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
     if speak:
         # The filler lines' audio, fetched while the floor is theirs (spec 22).
@@ -854,6 +966,7 @@ def run_turn(
             speech,
             clock,
             filler_audio,
+            companion_name,
         )
     finally:
         speaker.close()
@@ -866,6 +979,10 @@ def run_turn(
             tts_failed=sum(1 for s in speaker.done if s.failed),
             turn_ms=int((clock() - t0) * 1000),
         )
+        # Every model call that was started counts, even one a hang-up cut short or a cache retry
+        # sent twice (finding 6): billed rounds are never handed back to the budget.
+        report.rounds = max(report.rounds, counted.calls)
+        _meter_speech(request, timings)
 
 
 def _answer(
@@ -883,6 +1000,7 @@ def _answer(
     speech,
     clock,
     filler_audio,
+    companion_name="",
 ):
     timings = report.timings
     t0 = clock()
@@ -895,6 +1013,9 @@ def _answer(
         except SpeechFailure as exc:
             timings["stt_failed"] = str(exc)
             report.status = "stt_failed"
+            # The miss is said like a person (voice-persona section 5), and shown.
+            speaker.add(MISSED_LINE)
+            yield from speaker.drain()
             yield ev.error(STT_FAILED)
             return
         timings.update(
@@ -915,12 +1036,24 @@ def _answer(
             yield ev.Event("heard", {"text": words})
     report.heard = words
     speaker.exact = spoken_figures.wants_exact(words)
-    web_conversation.record_lines(
-        request,
-        conversation_id_of(door),
-        [web_conversation.engine_user_line(datetime.now(UTC), words, typed=not speak)],
-    )
+    heard_at = datetime.now(UTC)
+    user_recorded = False
+
+    def record_user() -> None:
+        """The person's words go into the record once it is clear they were for the assistant
+        (section 10: a sentence that was not keeps nothing but a count)."""
+        nonlocal user_recorded
+        if user_recorded:
+            return
+        user_recorded = True
+        web_conversation.record_lines(
+            request,
+            conversation_id_of(door),
+            [web_conversation.engine_user_line(heard_at, words, typed=not speak)],
+        )
+
     if is_robotic_remark(words):
+        record_user()
         # "That sounded robotic": the turn before is marked for rework, by its number only
         # (voice-persona section 8). Nothing else is kept and no model is asked.
         mark_robotic(request, conversation_id_of(door), door.turn - 1, source="voice")
@@ -940,6 +1073,10 @@ def _answer(
             timings["ack"] = 1
             yield ev.Event("filler", {"tool": "", "text": speech_tags.untagged(line)})
             yield speaker.audio_event(audio, filler=True)
+    last_reply = next(
+        (c["parts"][0].get("text", "") for c in reversed(history) if c.get("role") == "model"), ""
+    )
+    door.addressed = addressed_signals(words, companion_name, last_reply)
     # 2. The loop.
     parts = []
     if context:
@@ -953,7 +1090,7 @@ def _answer(
         version=1,
         model=model_name,
         prompt="",
-        tools=(*door.tools(), END_TOOL),
+        tools=(*door.tools(), END_TOOL, NOT_FOR_ME_TOOL),
         limits=LIMITS,
     )
     rounds: list[dict] = []
@@ -976,31 +1113,19 @@ def _answer(
         return line
 
     unbacked = 0
-    wait_reason = False
-    web_can = False
+    # Claims of a change not yet backed when said: held until the turn ends, then said if a write
+    # backed them by then, else dropped (finding 3: a claim streamed before its own call).
+    held_claims: list[tuple[str, str]] = []
 
     def tainted() -> bool:
         return read_through.read_third_party(door.request)
 
     def honest(text: str) -> bool:
-        """False for a sentence that claims a change when no write went through in this turn
-        (`agents.legion.guards.claims_unbacked_outcome`, the runtime's own check, here blocking
-        rather than flagging; CLAUDE.md section 7). Measured 2026-11-17: after a web search, the
-        model said it had added a date to a list with no write tried at all."""
-        nonlocal unbacked, wait_reason, web_can
-        if claims_unbacked_outcome(text, door.actions()):
-            unbacked += 1
-            return False
-        if tainted() and _CANT.search(text) and _CHANGE.search(text):
-            # The model's own reason for not changing something in a read-through turn: replaced
-            # by the true one, in code (ADR 0090).
-            wait_reason = True
-            return False
-        if _CANT.search(text) and _PHONE_APP.search(text) and _WEB_TOOLS_WORD.search(text):
-            # A false "only in the phone app" about something the web's own tools do.
-            web_can = True
-            return False
-        return True
+        """False for a sentence that claims a change when no write has gone through in this turn
+        yet (`agents.legion.guards.claims_unbacked_outcome`, the runtime's own check; CLAUDE.md
+        section 7). Such a sentence is held and decided at the end of the turn. Nothing else is
+        rewritten from the model's words (findings 4 and 10): when in doubt its sentence stays."""
+        return not claims_unbacked_outcome(text, door.actions())
 
     def say(text: str, tagged: str | None = None):
         """`text` is what is shown, stored and checked (no tags, ever); `tagged` is a model
@@ -1042,6 +1167,12 @@ def _answer(
                     line = yield from filler(event.data["tool"])
                     filler_said = line is not None
                 continue
+            if event.type == "tool" and door.calls[-1].name == NOT_FOR_ME_TOOL:
+                if not door.addressed.get("named"):
+                    # Not for it (section 10): no reply, no tool, no filler. The loop stops here.
+                    break
+                continue
+            record_user()
             if event.type == "tool":
                 done = door.calls[-1]
                 payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
@@ -1083,13 +1214,19 @@ def _answer(
                 if verbatim_said and has_money(text):
                     money_dropped += 1
                     continue
-                if sentences >= MAX_SPOKEN_SENTENCES or not honest(text):
+                if sentences >= MAX_SPOKEN_SENTENCES:
+                    continue
+                if not honest(text):
+                    held_claims.append((text, tagged))
                     continue
                 yield say(text, tagged)
                 continue
             yield event
     finally:
         loop.close()
+        if not door.not_for_me:
+            # A turn cut short before its first event still keeps what was asked.
+            record_user()
         report.rounds = len(rounds)
         timings.update(
             rounds=len(rounds),
@@ -1106,6 +1243,10 @@ def _answer(
         )
         _meter(request, model_name, rounds)
 
+    if door.not_for_me and not door.addressed.get("named"):
+        yield from _not_for_me(request, door, speaker, report, timings)
+        return
+    record_user()
     report.status = result.status if result is not None else "cancelled"
     failure = _failure_words(result, door)
     if (
@@ -1126,6 +1267,7 @@ def _answer(
             if not text or is_filler(text) or (verbatim_said and has_money(text)):
                 continue
             if not honest(text):
+                held_claims.append((text, tagged))
                 continue
             yield say(text, tagged)
         report.rounds = len(rounds)
@@ -1135,13 +1277,23 @@ def _answer(
         not c.ok and c.text.startswith("Nothing was") and "read outside text" in c.text
         for c in door.calls
     )
-    if wait_reason or guard_refused or (unbacked and tainted()):
-        yield say(READ_THROUGH_WAIT)
+    # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
+    for text, tagged in held_claims:
+        if honest(text):
+            yield say(text, tagged)
+        else:
+            unbacked += 1
+    wrote = door.wrote()
+    if guard_refused:
+        yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)
     elif unbacked:
-        yield say(CHANGE_NOT_MADE)
-    elif web_can:
-        yield say(WEB_CAN)
-    timings["wait_reason"] = int(wait_reason or guard_refused)
+        if wrote:
+            yield say(CHANGE_MADE)
+        elif tainted():
+            yield say(READ_THROUGH_WAIT)
+        else:
+            yield say(CHANGE_NOT_MADE)
+    timings["wait_reason"] = int(guard_refused)
     timings["unbacked"] = unbacked
     if failure is not None:
         yield say(failure)
@@ -1163,6 +1315,29 @@ def _answer(
         end=door.end_requested,
         **extra,
     )
+
+
+def _not_for_me(request, door, speaker, report, timings):
+    """The sentence was not for the assistant, or it is not sure (section 10). Nothing is said and
+    nothing is stored beyond a count; unsure shows a cue on screen. The page listens again with a
+    fresh window. Logged with the turn number and the signals, never the words."""
+    decision = addressed_decision(door.addressed, model_says_not=True)
+    report.status = decision
+    report.said.clear()
+    timings["addressed"] = 0 if decision == "not_addressed" else 1
+    signals = " ".join(f"{k}={int(v)}" for k, v in sorted(door.addressed.items()))
+    now = datetime.now(UTC)
+    line = web_conversation.line(
+        now,
+        web_conversation.TID_ENGINE,
+        web_conversation.AUDIT,
+        f"addressed decision={decision} turn={door.turn} {signals}",
+    )
+    web_conversation.record_lines(request, door.conversation_id, [(now, line)])
+    log.warning("assistant addressed decision=%s turn=%d %s", decision, door.turn, signals)
+    yield from speaker.drain()
+    extra = {"words": UNSURE_CUE} if decision == "unsure" else {}
+    yield ev.done(decision, "", False, ignored=decision, **extra)
 
 
 def _ask_again(model, model_name, system, messages, door, rounds) -> list[str]:
@@ -1272,6 +1447,7 @@ def _greet(
     t0 = clock()
     history = turn_input.greeting_history or {}
     kind, prompt, text = "scripted", None, ""
+    block = ""
     if door.recruiter:
         later = bool(turn_input.preface)
         text = web_greeting.ack_line() if later else web_greeting.recruiter_hello(companion_name)
@@ -1296,6 +1472,11 @@ def _greet(
     rounds: list[dict] = []
     if prompt is not None:
         text = _one_call(model, model_name, system, context, prompt, door, rounds, clock)
+        if text and not greeting_is_honest(text, block):
+            # The greeting goes through the answers' checks (finding 7): a figure the facts do not
+            # hold, or a claimed change, and the scripted line is said instead.
+            report.timings["greeting_refused"] = 1
+            text = ""
         if not text:
             kind, text = "scripted", web_greeting.ack_line()
     report.rounds = len(rounds)
@@ -1329,6 +1510,30 @@ def _greet(
             filler_audio.warm(speaker.speech, speaker.voice, [spoken_as])
     yield from speaker.drain()
     yield ev.done("greeting", text, False)
+
+
+_AMOUNT = re.compile(r"\$\s?(\d[\d,]*)(?:\.(\d{1,2}))?")
+
+
+def _amounts(text: str) -> set[int]:
+    """Dollar amounts written with a $ sign, as cents."""
+    out = set()
+    for whole, part in _AMOUNT.findall(text or ""):
+        out.add(int(whole.replace(",", "")) * 100 + int((part or "0").ljust(2, "0")))
+    return out
+
+
+def greeting_is_honest(text: str, facts: str) -> bool:
+    """A model-worded greeting may state only the figures its facts block holds (exactly, or as
+    code would round them for speech), and claims no change: the honesty rules of an answer."""
+    if claims_unbacked_outcome(text, []):
+        return False
+    said = _amounts(text)
+    if not said:
+        return not has_money(text) or bool(_amounts(facts))
+    known = _amounts(facts)
+    allowed = known | {spoken_figures.rounded_cents(c) for c in known}
+    return said <= allowed
 
 
 def _one_call(model, model_name, system, context, prompt, door, rounds, clock) -> str:
@@ -1376,6 +1581,16 @@ def _meter(request, model_name: str, rounds: list[dict]) -> None:
     spend. A recruiter is metered by the demo budget instead and writes none."""
     if not member_cap.applies_to(request.user):
         return
+    try:
+        with transaction.atomic():
+            _meter_rows(request, model_name, rounds)
+    except DatabaseError:
+        # The turn has happened (a write may have gone through); a failed meter row must not turn
+        # it into "nothing was changed" (finding 2).
+        log.warning("assistant cascade: meter rows failed", exc_info=True)
+
+
+def _meter_rows(request, model_name: str, rounds: list[dict]) -> None:
     for row in rounds:
         prompt, out = row.get("prompt_tokens") or 0, row.get("output_tokens") or 0
         cached = min(row.get("cached_tokens") or 0, prompt)
@@ -1395,6 +1610,41 @@ def _meter(request, model_name: str, rounds: list[dict]) -> None:
             usage={"prompt_tokens": prompt, "output_tokens": out, "total_tokens": prompt + out},
             cost_estimate_micro_usd=cost,
         )
+
+
+def _meter_speech(request, timings: dict) -> None:
+    """A member's speech-to-text and text-to-speech as `llm_usage` rows too (finding 12), so their
+    daily cap sees all of a spoken turn. Estimates, at `tools/voice_prices.json`'s prices."""
+    if not member_cap.applies_to(request.user):
+        return
+
+    def g(key: str) -> int:
+        value = timings.get(key)
+        return value if isinstance(value, int) and value > 0 else 0
+
+    parts = (
+        ("stt", g("stt_prompt_tokens"), g("stt_output_tokens"), PRICE_TEXT_IN, PRICE_TEXT_OUT),
+        ("tts", g("tts_prompt_tokens"), g("tts_output_tokens"), PRICE_TTS_IN, PRICE_TTS_OUT),
+    )
+    try:
+        with transaction.atomic():
+            for model, prompt, out, price_in, price_out in parts:
+                if not (prompt or out):
+                    continue
+                llm_client.record(
+                    household=household_of(request),
+                    feature=FEATURE,
+                    model=model,
+                    user=request.user,
+                    usage={
+                        "prompt_tokens": prompt,
+                        "output_tokens": out,
+                        "total_tokens": prompt + out,
+                    },
+                    cost_estimate_micro_usd=int(prompt * price_in + out * price_out) + 1,
+                )
+    except DatabaseError:
+        log.warning("assistant cascade: speech meter rows failed", exc_info=True)
 
 
 # USD per million tokens, from `tools/voice_prices.json` (read 2026-11-15). ESTIMATES: what the

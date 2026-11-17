@@ -55,6 +55,12 @@ from tests.test_assistant import KEY, _start, _tool, google  # noqa: F401 - fixt
 
 pytestmark = pytest.mark.django_db
 
+@pytest.fixture(autouse=True)
+def _web_voice_engine(both_web_engines):
+    """Blind review finding 11: this suite runs on both web voice engines."""
+    return both_web_engines
+
+
 
 # =============================================================================
 # Fixtures

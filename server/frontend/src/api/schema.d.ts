@@ -192,6 +192,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/robotic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a reply as sounding robotic (the turn number only)
+         * @description The `robotic` marker's hands path (voice-persona section 8): a thumbs-down on a reply that
+         *     sounded robotic. The caller's own conversation record gets the turn number; no words are
+         *     sent or kept. The spoken path is "that sounded robotic" (`cascade.is_robotic_remark`).
+         */
+        post: operations["api_assistant_robotic_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assistant/session": {
         parameters: {
             query?: never;
@@ -221,6 +243,30 @@ export interface paths {
         put?: never;
         /** Run one tool call from a live conversation, as the signed-in member */
         post: operations["api_assistant_tool_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe what has been said so far (no answer, nothing stored)
+         * @description Speech to text only, for the page's early start (the phone's speculation, `Speculation.kt`,
+         *     adapted): at about 300 ms of silence the page sends what was said so far, and when the turn
+         *     ends with no more speech it sends the words to `POST /api/assistant/turn` as `text` with
+         *     `spoken`. If the person speaks again the transcript is thrown away. Nothing is answered here,
+         *     no tool runs and nothing is recorded; a demo visit's budget is charged one speech share.
+         */
+        post: operations["api_assistant_transcribe_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2225,6 +2271,27 @@ export interface paths {
         put?: never;
         /** Enter the recruiter demo with the shared invite code */
         post: operations["api_demo_enter_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/funnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count one step of the demo (a count only: no visitor, no words)
+         * @description One step of the demo happened (`demo.funnel`). Anonymous (a page load comes before any
+         *     visit), throttled per address, and it stores a count only.
+         */
+        post: operations["api_demo_funnel_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5979,6 +6046,15 @@ export interface components {
             description?: string;
             result_prefix?: string;
         };
+        AssistantRoboticRequest: {
+            /**
+             * Format: uuid
+             * @description The caller's own conversation.
+             */
+            conversation_id: string;
+            /** @description The reply's turn. */
+            turn: number;
+        };
         AssistantSession: {
             /** @description The ephemeral token's full name (`auth_tokens/...`). Pass it as the `access_token` query parameter on `ws_url`. One conversation; the setup it carries is locked, so the browser's own `setup` message is ignored. */
             token: string;
@@ -6052,6 +6128,19 @@ export interface components {
             /** @description What the screen draws beside the transcript, built by the engine from the tool's own rows (`engine_mcp/cards.py`): `card` is bars, timeline, car, steps, checklist, diagram, resume, readings, status_list or trend. Absent when the tool has none. Never sent to Gemini: `response` is the whole of what the browser forwards. */
             card?: unknown;
         };
+        AssistantTranscribeRequest: {
+            /**
+             * Format: uri
+             * @description What has been said so far: raw 16-bit little-endian mono PCM at 16 kHz, at most 28 seconds. Never stored.
+             */
+            audio: string;
+        };
+        AssistantTranscript: {
+            /** @description The words; empty for none. */
+            text: string;
+            /** @description How long the transcription took. */
+            ms: number;
+        };
         AssistantTurnRequest: {
             /**
              * Format: uri
@@ -6069,6 +6158,13 @@ export interface components {
             utc_offset_minutes?: number | null;
             /** @description As for `POST /api/assistant/session`; read when a conversation starts. */
             client_now_ms?: number | null;
+            /**
+             * @description With `text`: the page transcribed the utterance early (`POST /api/assistant/transcribe`) and the answer is spoken, as for `audio`.
+             * @default false
+             */
+            spoken: boolean;
+            /** @description A demo visit's one-minute tour: the beat to play (from 0). With `audio`, what was said during the tour: 'skip' plays this beat, 'stop' ends the tour, anything else is a question and the tour ends. */
+            tour?: number | null;
             /**
              * @description The greeting on open, spoken: no `audio` or `text` with it. A member's is built from their greeting facts; a demo visit's is scripted.
              * @default false
@@ -7369,6 +7465,11 @@ export interface components {
             /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
             ref?: string;
         };
+        DemoFunnel: {
+            event: components["schemas"]["EventEnum"];
+            /** @default  */
+            ref: string;
+        };
         DemoRefusal: {
             /** @description What did not happen, in words. Show it. */
             detail: string;
@@ -7594,6 +7695,17 @@ export interface components {
             /** @description For a suggestion, the members who pinned it ("I want to go"), oldest pin first. Always [] for anything else. A wish, never a plan: nothing that counts plans reads it. Read-only; pin with POST /api/events/{id}/pins, unpin with DELETE /api/events/{id}/pins/mine. */
             readonly pinned_by: components["schemas"]["PinnedBy"][];
         };
+        /**
+         * @description * `page_load` - page_load
+         *     * `orb_tap` - orb_tap
+         *     * `first_word` - first_word
+         *     * `turns_3` - turns_3
+         *     * `tour_started` - tour_started
+         *     * `tour_finished` - tour_finished
+         *     * `resume_opened` - resume_opened
+         * @enum {string}
+         */
+        EventEnum: "page_load" | "orb_tap" | "first_word" | "turns_3" | "tour_started" | "tour_finished" | "resume_opened";
         EventSkip: {
             /** Format: uuid */
             readonly id: string;
@@ -12163,6 +12275,48 @@ export interface operations {
             };
         };
     };
+    api_assistant_robotic_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantRoboticRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantRoboticRequest"];
+                "multipart/form-data": components["schemas"]["AssistantRoboticRequest"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not this caller's conversation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_assistant_session_retrieve: {
         parameters: {
             query?: never;
@@ -12286,6 +12440,83 @@ export interface operations {
             };
             /** @description Too many calls; nothing ran. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_transcribe_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["AssistantTranscribeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantTranscript"];
+                };
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description This caller is on live voice. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too long. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many, or over budget. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The words could not be had. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No Gemini key on this server. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16640,6 +16871,46 @@ export interface operations {
             };
             /** @description The visit's demo household could not be seeded. Nothing created. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_funnel_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoFunnel"];
+                "application/x-www-form-urlencoded": components["schemas"]["DemoFunnel"];
+                "multipart/form-data": components["schemas"]["DemoFunnel"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

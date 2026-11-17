@@ -50,7 +50,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from assistant import cascade, live, read_through, voice_engine
+from assistant import cascade, live, read_through, turn_slots, voice_engine
 from assistant.companions import companion_for
 from assistant.models import AssistantCall
 from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES, RECRUITER_OPENER
@@ -60,11 +60,12 @@ from demo import budget as demo_budget
 from devicelogs import web_conversation
 from engine_mcp import cards
 from engine_mcp.models import Outcome
-from engine_mcp.tools import run_engine_tool, run_tool
+from engine_mcp.tools import TOOLS_BY_NAME, run_engine_tool, run_tool
 from household.models import is_recruiter
 from household.permissions import IsHouseholdMember
 from household.tenancy import household_of
 from ingest.statements import gemini_key
+from legion.client_ip import ClientIpThrottleMixin
 from llm import cap as member_cap
 
 ASSISTANT_TAGS = ["assistant"]
@@ -219,8 +220,9 @@ SessionResponse = inline_serializer(
 
 
 CASCADE_ONLY = (
-    "Nothing was started. This assistant answers through the engine's own voice pipeline here "
-    "(POST /api/assistant/turn), so no live voice token is minted."
+    "Nothing was started: this page is out of date. Reload it to talk; the assistant now answers "
+    "through the engine's own voice pipeline (POST /api/assistant/turn), so no live voice token is "
+    "minted."
 )
 LIVE_ONLY = (
     "Nothing was answered. This assistant uses live voice here (POST /api/assistant/session), "
@@ -781,6 +783,15 @@ MAX_PREFACE_CHARS = 400
 
 TIME_LIMIT = "Nothing was answered. This demo conversation reached its time limit; start a new one."
 TURN_FAILED = "Not answered: the engine hit an error answering that. Nothing was changed."
+# The same error after a change went through (finding 2): what did happen, not "nothing".
+TURN_FAILED_AFTER_WRITE = (
+    "The answer was cut short by an error on the engine, but the change you asked for went "
+    "through. Check it before asking again."
+)
+# The tools that change something: a change that went through stays in the history (finding 5).
+WRITE_TOOLS = frozenset(name for name, tool in TOOLS_BY_NAME.items() if tool.writes)
+# Past this the conversation continues in a fresh record (finding 9); the cap is 5 MiB.
+RECORD_ROLLOVER_BYTES = 4 * 1024 * 1024
 # The turn a conversation's opening greeting answers, in its history (`web_conversation.history`).
 OPENED_LINE = "(They opened the assistant.)"
 
@@ -789,7 +800,7 @@ class AssistantTurnThrottle(_PerMemberThrottle):
     scope = "assistant_turn"
 
 
-class AssistantTurnIpThrottle(SimpleRateThrottle):
+class AssistantTurnIpThrottle(ClientIpThrottleMixin, SimpleRateThrottle):
     """A recruiter's visit is a fresh user every time, so its turns are also counted per IP
     address. Members are not counted here."""
 
@@ -908,6 +919,7 @@ def _turn_sse(
     reservation,
     reserved_rounds,
     companion_name="",
+    held=None,
 ):
     report = cascade.TurnReport()
     spoken = turn_input.audio is not None or turn_input.greet
@@ -939,7 +951,8 @@ def _turn_sse(
     except Exception:  # noqa: BLE001 - the stream must end in words, always
         cascade.log.warning("assistant cascade: turn failed", exc_info=True)
         report.status = "failed"
-        yield cascade.ev.error(TURN_FAILED).sse()
+        wrote = report.door is not None and report.door.wrote()
+        yield cascade.ev.error(TURN_FAILED_AFTER_WRITE if wrote else TURN_FAILED).sse()
     finally:
         if turn is not None:
             # Closes the loop and the speech now, not whenever the generator is collected.
@@ -960,6 +973,8 @@ def _turn_sse(
             demo_budget.release_unused(
                 reservation, rounds_unused=max(reserved_rounds - report.rounds, 0)
             )
+        if held is not None:
+            held.release()
 
 
 def _greeting_history(raw: str | None) -> dict:
@@ -1095,6 +1110,10 @@ class AssistantTurnView(_AssistantView):
 
         if member_cap.over_cap(request.user):
             return _refuse(request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS)
+        # One turn in flight per caller, and a small cap on demo turns engine-wide (finding 1).
+        held, busy, busy_status = turn_slots.acquire(request.user)
+        if held is None:
+            return _refuse(request, busy, busy_status)
         reservation = None
         # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
         reserved_rounds = (
@@ -1110,12 +1129,17 @@ class AssistantTurnView(_AssistantView):
                 user=request.user,
             )
             if reservation is None:
+                held.release()
                 return _refuse(
                     request,
                     demo_budget.used_up_message(request.user, "text"),
                     status.HTTP_429_TOO_MANY_REQUESTS,
                 )
 
+        if row is not None and row.raw_bytes > RECORD_ROLLOVER_BYTES:
+            # A full record would freeze the turn number (finding 9): the conversation goes on in a
+            # new record, and the page learns its id from the first event.
+            row = None
         if row is None:
             row = web_conversation.start(
                 request,
@@ -1126,6 +1150,7 @@ class AssistantTurnView(_AssistantView):
             row,
             max_turns=cascade.HISTORY_TURNS,
             opened_line=RECRUITER_OPENER if is_recruiter(request.user) else OPENED_LINE,
+            writes=WRITE_TOOLS,
         )
         system, context, companion = system_prompt_parts_for(
             request.user,
@@ -1156,9 +1181,12 @@ class AssistantTurnView(_AssistantView):
                 reservation,
                 reserved_rounds,
                 companion.name,
+                held,
             ),
             content_type="text/event-stream",
         )
+        # The slot goes back however the stream ends, even when it never started.
+        response._resource_closers.append(held.release)
         response["Cache-Control"] = "no-cache, no-store"
         response["X-Accel-Buffering"] = "no"
         return response

@@ -18,9 +18,9 @@ environment override, for the day one is wanted, is one variable per role:
 - `LEGION_WEB_VOICE` = `live` | `cascade`: household members.
 - `LEGION_WEB_VOICE_RECRUITER` = `live` | `cascade`: recruiter demo visits.
 
-Neither reaches Cloud Run until its name is added to `deploy/cloudrun/_common.py`'s pass-through
-list; until then the code default is what runs. Any other value is ignored (the default holds),
-so a typo never switches a role to an engine nobody chose.
+Both are in `deploy/cloudrun/_common.py`'s optional pass-through list: set in `.env`, they reach
+Cloud Run on the next deploy; unset, the code default runs. Any other value is ignored (the default
+holds), so a typo never switches a role to an engine nobody chose.
 
 The choice is enforced, not advised: `POST /api/assistant/session` mints no Live token for a
 caller whose engine is `cascade` (409), and `POST /api/assistant/turn` runs no turn for a caller

@@ -187,6 +187,8 @@ export class CascadeClient {
   eotMs: number[] = []
   /** Barge-ins this page has acted on (the browser check reads it). */
   bargeIns = 0
+  /** Sentences the engine judged were not for the assistant (section 10). */
+  ignoredTurns = 0
   private spokenTurns = 0
   private prepared = false
   // ---- the demo ----
@@ -861,6 +863,13 @@ export class CascadeClient {
         return open
       }
       case 'done': {
+        if (typeof data.ignored === 'string') {
+          // Not said to the assistant (voice-persona section 10): its words leave the screen, and
+          // the page listens again with a fresh window. Unsure shows the cue in `words`.
+          const last = [...this.state.lines].reverse().find((l) => l.kind === 'me')
+          if (last) this.set({ lines: this.state.lines.filter((l) => l.id !== last.id) })
+          this.ignoredTurns += 1
+        }
         const words = typeof data.words === 'string' ? data.words : ''
         if (words) this.push({ kind: 'sys', text: words })
         return open
