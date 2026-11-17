@@ -183,7 +183,8 @@ def test_the_speaker_speaks_code_lines_plain_and_figures_rounded():
     assert sorted(said) == sorted(
         [
             "Groceries were about $2,330.",
-            "<chuckle> Fine, then we can look at the rest of it. <sigh> Fine again, then we can look at the rest of it.",
+            "<chuckle> Fine, then we can look at the rest of it. "
+            "<sigh> Fine again, then we can look at the rest of it.",
         ]
     )
 
