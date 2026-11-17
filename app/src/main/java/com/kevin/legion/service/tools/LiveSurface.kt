@@ -89,14 +89,16 @@ internal object LiveSurface {
                 ),
                 Action(
                     "register_vehicle", "register_vehicle",
-                    "THIS car is year make model; overwrites the active car",
+                    "THIS car is a year make model not on file yet",
                 ),
                 Action("add_vehicle", "manage_vehicle", "another car he owns", mapOf("action" to "add")),
                 Action("correct_vehicle", "manage_vehicle", "fix a saved car's details", mapOf("action" to "correct")),
                 Action("rename_vehicle", "manage_vehicle", "nickname a car (name)", mapOf("action" to "rename")),
                 // 2026-11-15: called for "which cars do I have"; a read is ask_fleet.
                 Action(
-                    "switch_vehicle", "manage_vehicle", "select the car he names; never to list cars",
+                    "switch_vehicle", "manage_vehicle",
+                    "the car he names: selects it, and is the OBD adapter's car (this is the X, the adapter " +
+                        "is in the X, reassign the adapter to X); never to list cars",
                     mapOf("action" to "switch"),
                 ),
                 Action("archive_vehicle", "manage_vehicle", "sold or gone", mapOf("action" to "archive")),

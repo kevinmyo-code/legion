@@ -33,6 +33,10 @@ class DongleCarControllerTest {
     private val suvVin = "9Z8Y7X6W5V4U3T2S1"
     private val newVin = "FAKECARVXN0000003"
 
+    /** Two made-up car fingerprints ([CarFingerprint.of]): protocol, then 0100 bitmask lines. */
+    private val printA = "p6|4100BE3EB811"
+    private val printB = "p2|41009818A010"
+
     @Before
     fun setUp() {
         RoomTestReset.resetCarDatabaseSingleton()
@@ -59,8 +63,8 @@ class DongleCarControllerTest {
         }
     }
 
-    private suspend fun connect(read: VinResponse.Result): DongleCar =
-        DongleCarController.onConnected(context, mac) { read }
+    private suspend fun connect(read: VinResponse.Result, print: String? = printA): DongleCar =
+        DongleCarController.onConnected(context, mac, print) { read }
 
     private suspend fun sample(vehicleId: String, ts: Long) =
         db.odbSampleDao().insert(
@@ -85,7 +89,7 @@ class DongleCarControllerTest {
         assertEquals("car:truck", d.pickOverridden)
         assertEquals("car:suv", ActiveVehicle.recordingId(context))
         assertEquals("car:suv", ActiveVehicle.current(context))
-        assertEquals("car:suv", DongleCarController.lastConfirmed(context, mac))
+        assertEquals("car:suv", DongleCarController.recognised(context, printA))
         assertEquals("car:suv", ActiveVehicle.lastConnected(context))
     }
 
@@ -205,7 +209,7 @@ class DongleCarControllerTest {
         val out = DongleCarController.answer(context, "car:truck")
         assertTrue(out.message, out.ok)
         assertEquals(1, db.odbSampleDao().totalCount("car:truck"))
-        assertEquals("car:truck", DongleCarController.lastConfirmed(context, mac))
+        assertEquals("car:truck", DongleCarController.recognised(context, printA))
         assertEquals("", specVin("car:hybrid")) // no VIN to write
     }
 
@@ -217,7 +221,7 @@ class DongleCarControllerTest {
         DongleCarController.onDisconnected(context, at = longAgo())
         DongleCarController.resetForTest() // a new process, a later drive
 
-        val d = DongleCarController.onConnected(context, mac) { VinResponse.Result.Unreadable("garbage") }
+        val d = DongleCarController.onConnected(context, mac, printA) { VinResponse.Result.Unreadable("garbage") }
         assertEquals(DongleCar.OnCar(mac, "car:truck", null, DongleCar.Basis.ASSUMED), d)
         assertEquals("car:truck", ActiveVehicle.recordingId(context))
         val window = DongleCarController.heldWindow(context)!!
@@ -246,7 +250,7 @@ class DongleCarControllerTest {
         assertEquals(1, db.odbSampleDao().totalCount("car:truck"))
         assertEquals(1, db.driveReassignmentDao().getAll().size)
         assertNull(DongleCarController.heldWindow(context))
-        assertEquals("car:suv", DongleCarController.lastConfirmed(context, mac))
+        assertEquals("car:suv", DongleCarController.recognised(context, printA))
     }
 
     @Test
@@ -284,7 +288,7 @@ class DongleCarControllerTest {
     @Test
     fun `a failed or slow VIN read still decides, as no VIN`() = runBlocking {
         seed()
-        val d = DongleCarController.onConnected(context, mac) { throw java.io.IOException("socket closed") }
+        val d = DongleCarController.onConnected(context, mac, printA) { throw java.io.IOException("socket closed") }
         assertTrue(d is DongleCar.Held)
     }
 
@@ -376,7 +380,7 @@ class DongleCarControllerTest {
         assertTrue(out.message, out.ok)
         assertEquals(1, db.odbSampleDao().totalCount("car:suv"))
         assertNull(DongleCarController.heldWindow(context))
-        assertEquals("car:suv", DongleCarController.lastConfirmed(context, mac))
+        assertEquals("car:suv", DongleCarController.recognised(context, printA))
     }
 
     @Test
@@ -458,5 +462,63 @@ class DongleCarControllerTest {
         assertEquals(truckVin, specVin("car:hybrid"))
         assertEquals("", specVin("car:truck"))
         assertEquals("car:hybrid", ActiveVehicle.recordingId(context))
+    }
+
+    // ---- one adapter, moved between cars (Kevin, 2026-11-17) ------------------------------------
+
+    @Test
+    fun `fingerprint - learned when he names the car, then the car is recognised on reconnect`() = runBlocking {
+        seed()
+        val first = connect(VinResponse.Result.NoData, printA)
+        assertTrue(first is DongleCar.Held)
+        assertTrue(DongleCarController.answer(context, "car:truck").ok)
+        assertEquals("car:truck", DongleCarController.recognised(context, printA))
+        DongleCarController.onDisconnected(context, at = longAgo())
+        assertEquals(null, DongleCarController.state.value)
+        val again = connect(VinResponse.Result.NoData, printA) as DongleCar.OnCar
+        assertEquals("car:truck", again.carId)
+        assertEquals(DongleCar.Basis.ASSUMED, again.basis)
+    }
+
+    @Test
+    fun `fingerprint - two cars swapped back and forth are told apart, and an unknown print is asked`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData, printA)
+        DongleCarController.answer(context, "car:truck")
+        DongleCarController.onDisconnected(context, at = longAgo())
+        connect(VinResponse.Result.NoData, printB)
+        DongleCarController.answer(context, "car:suv")
+        DongleCarController.onDisconnected(context, at = longAgo())
+        assertEquals("car:truck", (connect(VinResponse.Result.NoData, printA) as DongleCar.OnCar).carId)
+        DongleCarController.onDisconnected(context, at = longAgo())
+        assertEquals("car:suv", (connect(VinResponse.Result.NoData, printB) as DongleCar.OnCar).carId)
+        DongleCarController.onDisconnected(context, at = longAgo())
+        // A car that answers like neither, or gives no print at all: unknown, he is asked.
+        assertTrue(connect(VinResponse.Result.NoData, "p3|4100FFFFFFFF") is DongleCar.Held)
+        DongleCarController.onDisconnected(context, at = longAgo())
+        assertTrue(connect(VinResponse.Result.NoData, null) is DongleCar.Held)
+    }
+
+    @Test
+    fun `fingerprint - his correction wins and moves the print to the car he named`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData, printA)
+        DongleCarController.answer(context, "car:truck")
+        DongleCarController.onDisconnected(context, at = longAgo())
+        assertEquals("car:truck", (connect(VinResponse.Result.NoData, printA) as DongleCar.OnCar).carId)
+        assertTrue(DongleCarController.answer(context, "car:suv").ok)
+        assertEquals("car:suv", DongleCarController.recognised(context, printA))
+        assertEquals(null, CarFingerprint.all(context)["car:truck"])
+    }
+
+    @Test
+    fun `fingerprint - a quick reconnect to a car that answers differently is a new connection`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData, printA)
+        DongleCarController.answer(context, "car:truck")
+        DongleCarController.onDisconnected(context)
+        // Seconds later, plugged into another car: nothing of the truck's binding carries over.
+        val moved = connect(VinResponse.Result.NoData, printB)
+        assertTrue(moved is DongleCar.Held)
     }
 }

@@ -30,7 +30,7 @@ class DongleCarTest {
 
     @Test
     fun `a VIN on one car makes that car the connected car`() {
-        val d = DongleCar.decide(mac, vin(suvVin), cars, lastConfirmedForDongle = "car:truck", selectedId = null)
+        val d = DongleCar.decide(mac, vin(suvVin), cars, fingerprintCar = "car:truck", selectedId = null)
         assertEquals(OnCar(mac, "car:suv", suvVin, Basis.VIN), d)
         assertEquals("car:suv", d.recordingId)
     }
@@ -57,7 +57,7 @@ class DongleCarTest {
 
     @Test
     fun `an unknown VIN is held under a pending id keyed by the VIN, never a guess`() {
-        val d = DongleCar.decide(mac, vin(newVin), cars, lastConfirmedForDongle = "car:truck", selectedId = "car:truck")
+        val d = DongleCar.decide(mac, vin(newVin), cars, fingerprintCar = "car:truck", selectedId = "car:truck")
         assertEquals(Held(mac, newVin, HeldReason.UNKNOWN_VIN), d)
         assertEquals("pending:vin:$newVin", d.recordingId)
         assertTrue(DongleCar.isPending(d.recordingId))
@@ -72,10 +72,10 @@ class DongleCarTest {
     }
 
     @Test
-    fun `no VIN assumes the last car confirmed for this dongle`() {
+    fun `no VIN assumes the one car whose fingerprint matched`() {
         for (r in listOf(VinResponse.Result.NoData, VinResponse.Result.NoResponse,
             VinResponse.Result.Unsupported, VinResponse.Result.Unreadable("garbage"))) {
-            val d = DongleCar.decide(mac, r, cars, lastConfirmedForDongle = "car:truck", selectedId = "car:suv")
+            val d = DongleCar.decide(mac, r, cars, fingerprintCar = "car:truck", selectedId = "car:suv")
             assertEquals(OnCar(mac, "car:truck", null, Basis.ASSUMED), d)
         }
     }
@@ -89,11 +89,16 @@ class DongleCarTest {
     }
 
     @Test
-    fun `an earlier answer naming a car no longer on file is not assumed`() {
+    fun `a fingerprint naming a car no longer on file is not assumed`() {
         val d = DongleCar.decide(
-            mac, VinResponse.Result.NoData, cars, lastConfirmedForDongle = "car:sold", selectedId = null,
+            mac, VinResponse.Result.NoData, cars, fingerprintCar = "car:sold", selectedId = null,
         )
         assertEquals(Held(mac, null, HeldReason.NO_VIN), d)
+    }
+
+    @Test
+    fun `one car on file is not assumed without a fingerprint, the adapter moves between cars`() {
+        assertEquals(Held(mac, null, HeldReason.NO_VIN), DongleCar.decide(mac, VinResponse.Result.NoData, listOf(noVinCar), null, null))
     }
 
     @Test

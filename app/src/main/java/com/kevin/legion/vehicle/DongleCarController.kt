@@ -48,7 +48,6 @@ import java.util.concurrent.ConcurrentHashMap
 object DongleCarController {
     private const val TAG = "DongleCar"
     private const val PREFS = "dongle_car"
-    private const val KEY_LAST_CAR = "last_car:"
     private const val KEY_HELD_CAR = "held_car"
     private const val KEY_HELD_FROM = "held_from"
     private const val KEY_HELD_MAC = "held_mac"
@@ -58,6 +57,7 @@ object DongleCarController {
     private const val KEY_ASKED = "asked"
     private const val KEY_OVERRIDE_SAID = "override_said"
     private const val KEY_SESSION_ANSWERED = "session_answered"
+    private const val KEY_SESSION_FP = "session_fp"
 
     /** Whole VIN read, retry included: two 5 s command timeouts plus slack. */
     internal const val VIN_READ_BUDGET_MS = 12_000L
@@ -110,12 +110,23 @@ object DongleCarController {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** The car Kevin last confirmed (or a VIN proved) for the dongle at [mac], or null. */
-    fun lastConfirmed(context: Context, mac: String): String? =
-        prefs(context).getString(KEY_LAST_CAR + mac, null)?.takeIf { it.isNotBlank() }
+    /**
+     * This connection's car fingerprint ([CarFingerprint]), null when the car gave none. Nothing is
+     * remembered about the adapter itself: one adapter moves between cars (Kevin, 2026-11-17).
+     */
+    @Volatile private var connectionPrint: String? = null
 
-    private fun rememberCar(context: Context, mac: String, carId: String) {
-        if (mac.isNotBlank()) prefs(context).edit().putString(KEY_LAST_CAR + mac, carId).apply()
+    /** The car on file whose learned fingerprint is exactly [fp], or null (none, several, or no print). */
+    fun recognised(context: Context, fp: String?): String? =
+        CarFingerprint.match(CarFingerprint.all(context), fp, CarFingerprint.all(context).keys)
+
+    /**
+     * The car this connection is (a VIN proved it or he said so): its fingerprint is learned for that
+     * car, and only that car, so the next connect recognises it. The old per-adapter "last car"
+     * (`last_car:<mac>`) is no longer written or read.
+     */
+    private fun rememberCar(context: Context, carId: String) {
+        CarFingerprint.save(context, carId, connectionPrint)
         ActiveVehicle.rememberConnected(context, carId)
     }
 
@@ -126,7 +137,14 @@ object DongleCarController {
      * recorded. [readVin] is bounded here as well as per command; any failure is "no VIN", so a
      * bad read can never keep the connection from coming up.
      */
-    suspend fun onConnected(context: Context, mac: String, readVin: suspend () -> VinResponse.Result): DongleCar {
+    suspend fun onConnected(
+        context: Context,
+        mac: String,
+        /** What the car answered at the handshake ([CarFingerprint.of]); null: none. */
+        fingerprint: String? = null,
+        readVin: suspend () -> VinResponse.Result,
+    ): DongleCar {
+        connectionPrint = fingerprint
         val vinResult = boundedRead(readVin)
         vinRetried = false
         val decision = mutex.withLock { decideAndApply(context, mac, vinResult) }
@@ -152,7 +170,9 @@ object DongleCarController {
         val p = prefs(context)
         val previousId = p.getString(KEY_SESSION_ID, null)
         val blip = recentlyDisconnected(p.getLong(KEY_DISCONNECTED_AT, 0L), now)
-        val continues = blip && previousId != null &&
+        // A reconnect to a car that answers differently is the adapter moved, never the same drive.
+        val samePrint = p.getString(KEY_SESSION_FP, null) == connectionPrint
+        val continues = blip && samePrint && previousId != null &&
             DongleCar.sessionKey(previousId) == DongleCar.sessionKey(decision.recordingId)
         // A Bluetooth blip after Kevin answered is the same answer, not a fresh assumption.
         val answeredThisSession = continues && p.getBoolean(KEY_SESSION_ANSWERED, false)
@@ -190,6 +210,7 @@ object DongleCarController {
         if (decision is Held && decision.vin == null) decision = decision.copy(since = sessionFrom)
         val p = prefs(context)
         val edit = p.edit().putString(KEY_SESSION_ID, decision.recordingId).putLong(KEY_SESSION_FROM, sessionFrom)
+            .putString(KEY_SESSION_FP, connectionPrint)
         if (newSession) {
             // A new session closes the previous assumed window: its samples may upload now.
             edit.remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC).putBoolean(KEY_SESSION_ANSWERED, false)
@@ -207,7 +228,7 @@ object DongleCarController {
         }
         edit.apply()
         if (decision is OnCar) {
-            if (decision.basis == Basis.VIN) rememberCar(context, decision.mac, decision.carId)
+            if (decision.basis == Basis.VIN) rememberCar(context, decision.carId)
             else ActiveVehicle.rememberConnected(context, decision.carId)
         }
         _state.value = decision
@@ -457,7 +478,7 @@ object DongleCarController {
                     _state.value = OnCar(subject.mac, carId, (subject as? OnCar)?.vin, Basis.ANSWER)
                 }
                 if (isLive || settlesWindow) {
-                    rememberCar(context, subject.mac, carId)
+                    rememberCar(context, carId)
                     prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC)
                         .putBoolean(KEY_SESSION_ANSWERED, true).apply()
                 }
@@ -479,7 +500,7 @@ object DongleCarController {
                 val windowStart = if (settlesWindow) window?.second else null
                 val fromMs = if (plan.asCorrection) windowStart ?: sessionFrom else null
                 val moved = moveData(context, plan.fromId, carId, fromMs, System.currentTimeMillis())
-                rememberCar(context, subject.mac, carId)
+                rememberCar(context, carId)
                 if (isLive || settlesWindow) {
                     prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC).apply()
                 }
@@ -655,7 +676,14 @@ object DongleCarController {
         mac: String,
         vinResult: VinResponse.Result,
         cars: List<DongleCar.CarVin>,
-    ): DongleCar = DongleCar.decide(mac, vinResult, cars, lastConfirmed(context, mac), ActiveVehicle.selected(context))
+    ): DongleCar {
+        val prints = CarFingerprint.all(context)
+        val byPrint = CarFingerprint.match(prints, connectionPrint, cars.map { it.carId }.toSet())
+        return DongleCar.decide(mac, vinResult, cars, byPrint, ActiveVehicle.selected(context))
+    }
+
+    /** The binding is the connection's and only on file while it lasts ([state]); a test reads the print. */
+    internal fun connectionPrintForTest(): String? = connectionPrint
 
     private fun DongleCar.isAssumed(): Boolean = this is OnCar && basis == Basis.ASSUMED
 
@@ -666,6 +694,7 @@ object DongleCarController {
 
     /** Test seam: forget this process's state. */
     internal fun resetForTest() {
+        connectionPrint = null
         _state.value = null
         _conflict.value = null
         tripMiles.clear()

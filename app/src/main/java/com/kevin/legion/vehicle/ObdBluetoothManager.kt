@@ -130,6 +130,11 @@ object ObdBluetoothManager {
     @Volatile var connectedDeviceAddress: String? = null
         private set
 
+    /** Test seam (the laptop voice eval's made-up adapter): an address with no transport behind it. */
+    internal fun setConnectedAddressForTest(address: String?) {
+        connectedDeviceAddress = address
+    }
+
     /**
      * Infinite loop maintaining the OBD-II connection, reconnecting as needed.
      * When [DebugSettings.obdEmulatorEnabled] is on, connects to the ELM327
@@ -679,7 +684,11 @@ object ObdBluetoothManager {
         // the VIN is read once per connect, before anything is recorded (TelemetryRecorder waits for
         // this decision). Bounded and never throws: a dongle that cannot read the VIN still connects.
         val resolvedBefore = ActiveVehicle.current(context.applicationContext)
-        val dongleCar = DongleCarController.onConnected(context.applicationContext, address) { readVinForAttribution() }
+        // No VIN on older cars: what this car answered above is its fingerprint ([CarFingerprint]).
+        val print = CarFingerprint.of(protocolCode, supported0100)
+        val dongleCar = DongleCarController.onConnected(context.applicationContext, address, print) {
+            readVinForAttribution()
+        }
         if (transport == null) {
             // The link died during the VIN read; disconnect() already ran, before the decision.
             DongleCarController.onDisconnected(context.applicationContext)

@@ -862,6 +862,30 @@ object LiveToolbox {
         // has no turn to read it from. Only clear_codes' yes-check reads it (2026-11-05).
         userText: String? = null,
     ): JSONObject? {
+        val response = dispatchTool(context, name, args, touchedReadThroughToolThisTurn, userText)
+        // The adapter's car is unknown: a live-car read still runs (its readings are held, not filed),
+        // and its result carries the one ask, once a conversation ([AdapterBinding], 2026-11-17).
+        if (response != null && name in CATEGORY_A_TOOLS && name != "clear_codes" &&
+            response.optString("error") != "adapter_car_unknown"
+        ) {
+            val car = com.kevin.legion.vehicle.DongleCarController.state.value
+            val labels = if (car is com.kevin.legion.vehicle.DongleCar.OnCar) {
+                com.kevin.legion.vehicle.DongleCarController.labels(context)
+            } else {
+                emptyMap()
+            }
+            com.kevin.legion.vehicle.AdapterBinding.noteFor(car, labels)?.let { response.put("adapter_car", it) }
+        }
+        return response
+    }
+
+    private suspend fun dispatchTool(
+        context: Context,
+        name: String,
+        args: JSONObject,
+        touchedReadThroughToolThisTurn: Boolean,
+        userText: String?,
+    ): JSONObject? {
         // Live cost diet (2026-11-10): an action tool's call runs as the tool it stands for. The
         // voice and typed paths resolve before they get here; this keeps any other caller honest.
         LiveSurface.resolve(name, args).let { r ->
@@ -1076,6 +1100,16 @@ object LiveToolbox {
                     .notAskedToClear(args.optBoolean("confirmed", false), userText) != null
             ) {
                 readInsteadOfClear(context, userText.orEmpty())
+            } else if (com.kevin.legion.vehicle.AdapterBinding.clearRefusal(
+                    com.kevin.legion.vehicle.DongleCarController.state.value,
+                ) != null
+            ) {
+                result(
+                    false,
+                    com.kevin.legion.vehicle.AdapterBinding.clearRefusal(
+                        com.kevin.legion.vehicle.DongleCarController.state.value,
+                    ).orEmpty(),
+                )
             } else if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
                     args.optString("modules"),
                     args.optBoolean("confirmed", false),
@@ -1522,6 +1556,14 @@ object LiveToolbox {
             // contradictory refusal here would just be confusing.
             return null
         }
+        // The adapter's car is unknown (held under a pending id): never "plugged into the a car you
+        // haven't named yet", and never a dead end: the refusal says how to name it (2026-11-17).
+        if (com.kevin.legion.vehicle.DongleCar.isPending(connectedId)) {
+            return JSONObject()
+                .put("success", false)
+                .put("error", "adapter_car_unknown")
+                .put("message", com.kevin.legion.vehicle.AdapterBinding.unknownCarRefusal(requested))
+        }
         val connectedVehicle = VehicleController.vehicleFor(context, connectedId)
         // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's own
         // doc. This used to hand-roll the same name-then-spec-then-placeholder precedence
@@ -1539,7 +1581,8 @@ object LiveToolbox {
             .put(
                 "message",
                 "The OBD adapter's plugged into the $connectedLabel right now, not that one - I can " +
-                    "only read live data for the car it's actually in.",
+                    "only read live data for the car it's actually in. If he says the adapter is in the " +
+                    "$requested now, that is car switch_vehicle vehicle=$requested.",
             )
     }
 
@@ -5096,12 +5139,15 @@ object LiveToolbox {
         code: String,
         seed: Map<String, Pair<String, String>>,
         info: Map<String, Pair<String, String>>,
+        /** The AI label as heard: the short spoken form, or null once it was said ([SpokenCarLines]). */
+        aiLabel: String? = "(${DtcMeanings.AI_LABEL})",
     ): String {
         val name = info[code]?.first
         return when {
             name == null -> code
             code in seed -> "$code, $name"
-            else -> "$code, $name (${DtcMeanings.AI_LABEL})"
+            aiLabel == null -> "$code, $name"
+            else -> "$code, $name $aiLabel".trimEnd()
         }
     }
 
@@ -5161,6 +5207,10 @@ object LiveToolbox {
     internal const val ENGINE_CODES_NOT_READ = "The engine's stored-code read (OBD mode 03) got no real answer, so " +
         "its codes are not known and nothing is known to be clear."
 
+    /** [ENGINE_CODES_NOT_READ] as heard: the same claim without the parenthesis read aloud (2026-11-17). */
+    internal const val ENGINE_CODES_NOT_READ_SPOKEN = "The engine's code read got no real answer, so its codes " +
+        "are not known and nothing is known to be clear."
+
     /**
      * The engine code read's words, spoken by the phone itself, word for word (stage 7 diagnostics,
      * 2026-11-17: "No stored engine codes ..." came out as "Clean bill" through the model).
@@ -5179,7 +5229,9 @@ object LiveToolbox {
         // Mode 03 answer is a failed read and is said as one, never as "no codes".
         val raw = ObdBluetoothManager.getDtcCodesRaw()
         val parser = com.kevin.legion.vehicle.ObdResponseParser
-        if (!parser.isValidDtcReply(raw)) return spokenRead(result(false, ENGINE_CODES_NOT_READ), ENGINE_CODES_NOT_READ)
+        if (!parser.isValidDtcReply(raw)) {
+            return spokenRead(result(false, ENGINE_CODES_NOT_READ), ENGINE_CODES_NOT_READ_SPOKEN)
+        }
         val codes = parser.dtcCodes(raw)
         if (codes.isEmpty()) {
             ToolCards.codes(context, ActiveVehicle.connectedCarId(context), codes, emptyMap())
@@ -5199,6 +5251,11 @@ object LiveToolbox {
         GlanceCardController.show(glance)
         lookUpUnknownCodes(context, codes, seed, learned, glance)
         val spoken = codes.joinToString("; ") { spokenCode(it, seed, info) }
+        // Heard: the AI label in its short form, at most once a conversation (2026-11-17: the whole
+        // parenthesis was read aloud on every answer). The result and the screen keep it whole.
+        val aiCodes = codes.any { it !in seed && info[it] != null }
+        val heardLabel = if (aiCodes && SpokenCarLines.sayAiLabel()) SpokenCarLines.AI_LABEL_SPOKEN else null
+        val heardCodes = codes.joinToString("; ") { spokenCode(it, seed, info, heardLabel) }
         // Each live code's freeze frame (2026-11-03): the snapshot saved with the newest stored
         // event that carries the code. Mode 02 is not re-read here - ten more PID round trips
         // inside an 8 s tool budget - and the stored frame is the ECU's same latched snapshot.
@@ -5224,7 +5281,7 @@ object LiveToolbox {
             perCode.put(o)
         }
         if (mac != null && stored.isNotEmpty()) VoiceModalController.show(VoiceModalTarget.CODES, mac)
-        val said = (if (codes.size == 1) "Stored engine code: " else "Stored engine codes: ") + "$spoken."
+        val said = (if (codes.size == 1) "Stored engine code: " else "Stored engine codes: ") + "$heardCodes."
         return spokenRead(result(true, "${codes.size} code(s) stored: $spoken.").put("codes", perCode), said)
     }
 
