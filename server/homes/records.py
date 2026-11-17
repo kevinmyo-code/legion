@@ -25,11 +25,8 @@ from __future__ import annotations
 
 import json
 
-from django.db.models.functions import Now
-from rest_framework import serializers, status
-from rest_framework.response import Response
+from rest_framework import serializers
 
-from api.sync import save_or_400
 from api.synced import SyncedModelViewSet, choice_error
 from homes.models import (
     RECORD_PROVENANCES,
@@ -38,7 +35,13 @@ from homes.models import (
     UserRecord,
     UserRecordType,
 )
-from homes.views import _batch_schema, _BatchView, _blank_ok, _ManagedSerializer
+from homes.views import (
+    ManagedTombstoneViewSet,
+    _batch_schema,
+    _BatchView,
+    _blank_ok,
+    _ManagedSerializer,
+)
 
 
 class GuidParentField(serializers.SlugRelatedField):
@@ -198,7 +201,9 @@ class UserRecordSerializer(_ClientClocks):
         return value
 
 
-class _RecordsViewSet(SyncedModelViewSet):
+class _RecordsViewSet(ManagedTombstoneViewSet):
+    """`ManagedTombstoneViewSet`: a DELETE stamps `updated_at` so the `?since=` feed carries it."""
+
     aspect = "records"
     parent_field: str = ""
 
@@ -206,22 +211,6 @@ class _RecordsViewSet(SyncedModelViewSet):
     def decorate(cls, queryset):
         # The batch compares each row's parent: one join, not one query per row.
         return queryset.select_related(cls.parent_field) if cls.parent_field else queryset
-
-    def destroy(self, request, identity):
-        """Sets the tombstone AND stamps `updated_at` (no trigger on a Django-managed home), so
-        the `?since=` feed carries the removal. Idempotent: a second DELETE is still 204."""
-        instance = self._lookup(identity)
-        if instance is None:
-            return self._not_found(identity)
-        if instance.deleted_at is None:
-            instance.deleted_at = Now()
-            instance.updated_at = Now()
-            _saved, error = save_or_400(
-                lambda: instance.save(update_fields=["deleted_at", "updated_at"])
-            )
-            if error is not None:
-                return error
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class UserAspectViewSet(_RecordsViewSet):

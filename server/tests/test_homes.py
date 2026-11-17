@@ -410,3 +410,63 @@ def test_a_write_tool_refuses_in_a_tainted_turn(req, household_a):
     out = run_engine_tool(req, ht.SET_GOAL, {"statement": "x", "aspect": "bio"})
     assert out.is_error
     assert not Goal.objects.exists()
+
+
+# -- tombstones reach the ?since feed (found building ticket 15) --------------------------------
+
+
+ADVICE = {
+    "aspect": "bio",
+    "question_text": "q",
+    "gist": "Test gist",
+    "advice_text": "a",
+    "given_at": "2026-03-02T09:00:00Z",
+}
+
+
+@pytest.mark.parametrize(
+    "prefix,body",
+    [
+        ("/api/advisor/advice/", ADVICE),
+        ("/api/ledger/pending/", PENDING),
+    ],
+)
+def test_a_rest_delete_shows_up_in_the_since_feed(auth_client, prefix, body):
+    """A DELETE must move `updated_at`, or a client reading `?since=` never learns the row went.
+    Advice and pending rows are Django-managed (no trigger), so their DELETE stamps it itself.
+    (Goals are the legacy table, whose `touch_updated_at` trigger stamps it; inside pytest's one
+    transaction the trigger's `now()` is the transaction start, so it cannot be shown here.)"""
+    made = auth_client.put(f"{prefix}t-1/", body, format="json")
+    assert made.status_code == 200, made.data
+    cursor = _after(made.data)
+    assert auth_client.delete(f"{prefix}t-1/").status_code == 204
+    changed = auth_client.get(prefix, {"since": cursor}).data["results"]
+    gone = [r for r in changed if r["origin_guid"] == "t-1"]
+    assert gone and gone[0]["deleted_at"] is not None
+
+
+def _after(row) -> str:
+    from datetime import timedelta
+
+    stamp = datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
+    return (stamp + timedelta(microseconds=1)).isoformat()
+
+
+def test_the_tools_tombstones_and_closes_show_up_in_the_since_feed(req, auth_client, household_a):
+    """`clear_pending_transaction` and `close_goal` change rows the phone pulls by `?since=`."""
+    PendingTransaction.objects.create(
+        household=household_a,
+        origin_guid="p-since",
+        logged_at=_at(2),
+        **{k: v for k, v in PENDING.items() if k != "logged_at"},
+    )
+    _goal(household_a, "g-since", "Test goal", 9, _at(1))
+    # A cursor just past each row's own stamp: only a change that moved `updated_at` comes back.
+    pending_cursor = _after(auth_client.get("/api/ledger/pending/").data["results"][0])
+    goal_cursor = _after(auth_client.get("/api/body/goals/").data["results"][0])
+    assert not ht.CLEAR_PENDING.handler(req, {"pending_id": "p-since"}).is_error
+    assert not ht.CLOSE_GOAL.handler(req, {"goal_id": "g-since", "status": "achieved"}).is_error
+    pending = auth_client.get("/api/ledger/pending/", {"since": pending_cursor}).data["results"]
+    assert [r["origin_guid"] for r in pending if r["deleted_at"]] == ["p-since"]
+    goals = auth_client.get("/api/body/goals/", {"since": goal_cursor}).data["results"]
+    assert [r["status"] for r in goals if r["origin_guid"] == "g-since"] == ["achieved"]

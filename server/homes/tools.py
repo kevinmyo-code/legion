@@ -210,7 +210,10 @@ def _close_goal(request, args):
         return refused(f"Nothing was written. That goal is already {current.status}, not active.")
     current.status = status
     current.closed_at = reg._now()
-    current.save(update_fields=["status", "closed_at"])
+    # Stamped here too, not only by the legacy table's trigger, so the phone's `?since=` pull
+    # sees the close wherever the trigger is missing (ticket 15 review).
+    current.updated_at = current.closed_at
+    current.save(update_fields=["status", "closed_at", "updated_at"])
     return ok(
         f'Committed: the goal "{current.statement}" is now {status}.',
         structured={"goal_id": current.origin_guid, "status": status},

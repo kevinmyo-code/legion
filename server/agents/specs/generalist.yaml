@@ -2,8 +2,9 @@ name: generalist
 version: 4
 # Every registry tool the web assistant has today (assistant.surface.WEB_TOOL_NAMES), plus the
 # engine twins of the phone's day reads, (ticket 03) of its goal, pending-transaction, advice
-# and why-did-you-say-that tools, and (ticket 15) of its aspect-engine records tools. tests/test_agents_specs.py fails when the registry
-# gains a tool this list does not classify.
+# and why-did-you-say-that tools, and (ticket 15) of its aspect-engine records tools.
+# tests/test_agents_legion.py (test_the_generalist_carries_todays_engine_surface_and_the_twins)
+# fails when the registry gains a tool this list does not classify.
 aspects: []
 model: gemini-3.5-flash-lite
 prompt: generalist.md

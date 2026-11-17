@@ -29,10 +29,11 @@ from django.db.models.functions import Now
 from django.urls import path
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.sync import save_or_400
 from api.synced import (
     SyncedModelViewSet,
     SyncedSerializer,
@@ -198,7 +199,28 @@ class ProactiveRaiseSerializer(_ManagedSerializer):
 # -- viewsets ------------------------------------------------------------------------------------
 
 
-class _PrivateViewSet(SyncedModelViewSet):
+class ManagedTombstoneViewSet(SyncedModelViewSet):
+    """A Django-managed home has no `touch_updated_at` trigger, so the generic DELETE (which saves
+    only `deleted_at`) would leave `updated_at` alone and the `?since=` feed would never carry the
+    removal to another client. This DELETE stamps both. Idempotent: a second DELETE is still 204.
+    (Found building ticket 15; stage 2's advice and pending tables had the gap.)"""
+
+    def destroy(self, request, identity):
+        instance = self._lookup(identity)
+        if instance is None:
+            return self._not_found(identity)
+        if instance.deleted_at is None:
+            instance.deleted_at = Now()
+            instance.updated_at = Now()
+            _saved, error = save_or_400(
+                lambda: instance.save(update_fields=["deleted_at", "updated_at"])
+            )
+            if error is not None:
+                return error
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class _PrivateViewSet(ManagedTombstoneViewSet):
     """Every read through `visible()` (ADR 0052): a member sees only their own rows."""
 
     def queryset(self):
@@ -223,7 +245,7 @@ class AdvisorAdviceViewSet(_PrivateViewSet):
     serializer_class = AdvisorAdviceSerializer
 
 
-class PendingTransactionViewSet(SyncedModelViewSet):
+class PendingTransactionViewSet(ManagedTombstoneViewSet):
     aspect = "ledger"
     table = "pending_transactions"
     url_segment = "pending"
