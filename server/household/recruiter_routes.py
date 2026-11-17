@@ -116,6 +116,7 @@ RECRUITER_READ_ONLY: dict[str, str] = {
 
 _BANK = "linking or syncing a bank (Plaid) reaches an outside account"
 _BODY = "the body aspect (health, food, sleep, workouts) is not part of the demo"
+_PHONE_HOMES = "what Alfred said and was told on the household's own phone is not part of the demo"
 _MEMORY = "the assistant's memory of a household member is not part of the demo"
 _UPLOAD = "uploading documents (Drive, ingestion) is not part of the demo"
 _DEVICE = "it reaches a device or an account outside the household's own rows"
@@ -143,6 +144,16 @@ RECRUITER_DENIED: dict[str, str] = {
     "household.households.InviteListCreateView": _SETTINGS,
     "household.households.InviteDetailView": _SETTINGS,
     "household.households.MemberDetailView": _SETTINGS,
+    # engine-brain ticket 03: the phone's homes. Goals are body (ruling 3); advice and raises are
+    # what Alfred said to a member on a phone, and pending transactions are spoken from one.
+    "homes.views.GoalViewSet": _BODY,
+    "homes.views.GoalBatchView": _BODY,
+    "homes.views.AdvisorAdviceViewSet": _PHONE_HOMES,
+    "homes.views.AdvisorAdviceBatchView": _PHONE_HOMES,
+    "homes.views.PendingTransactionViewSet": _PHONE_HOMES,
+    "homes.views.PendingTransactionBatchView": _PHONE_HOMES,
+    "homes.views.ProactiveRaiseViewSet": _PHONE_HOMES,
+    "homes.views.ProactiveRaiseBatchView": _PHONE_HOMES,
     # body (ruling 3) and memory
     "api.body.BodyweightLogViewSet": _BODY,
     "api.body.MealLogViewSet": _BODY,

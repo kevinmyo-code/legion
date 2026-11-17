@@ -104,6 +104,9 @@ urlpatterns = [
     # engine-brain ticket 02 (ADR 0095, 0100): the engine's agent turn, DARK (off unless
     # LEGION_AGENTS_TURN=on; never for a recruiter), and ticket 01's SSE probe.
     path("api/agents/", include("agents.urls")),
+    # engine-brain ticket 03 (ADR 0095): goals, advisor advice, pending transactions and proactive
+    # raises, homes for what lived only on the phone. Under `api/` beside `api.urls`.
+    path("api/", include("homes.urls")),
     # backend-etl ticket 01: how current each scheduled feed is, in words.
     # Top level rather than under `api/ingest/`, because it is read by every
     # surface that shows a feed, not by the ingest commit path.

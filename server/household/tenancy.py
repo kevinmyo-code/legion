@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# A hundred and three names (count it with len(); this line was stale five times before).
+# A hundred and six names (count it with len(); this line was stale five times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -221,6 +221,12 @@ TENANT_TABLES: tuple[str, ...] = (
     "agents_checkpoint",
     "agents_model_call",
     "agents_tool_call",
+    # engine-brain ticket 03 (ADR 0095): homes for what lived only on the phone. Advice and raises
+    # are always private to their member (`OWNER_PATHS`); a pending transaction is shared like
+    # every ledger row (`homes/models.py`).
+    "advisor_advice",
+    "pending_transactions",
+    "proactive_raises",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -312,6 +318,9 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "agents_checkpoint",
         "agents_model_call",
         "agents_tool_call",
+        "advisor_advice",
+        "pending_transactions",
+        "proactive_raises",
     }
 )
 
@@ -511,6 +520,9 @@ OWNER_PATHS: dict[str, str] = {
     "agents_checkpoint": "owner_user",
     "agents_model_call": "owner_user",
     "agents_tool_call": "owner_user",
+    # engine-brain ticket 03: advice and raises are always one member's (`homes/models.py`).
+    "advisor_advice": "owner_user",
+    "proactive_raises": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

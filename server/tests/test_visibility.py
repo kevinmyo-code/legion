@@ -888,3 +888,68 @@ def test_the_database_refuses_an_agent_row_owned_by_a_non_member(household_a, ke
     row = AgentConversation.objects.create(household=household_a, owner_user=kevin, client="x")
     with pytest.raises(IntegrityError), transaction.atomic():
         AgentConversation.objects.filter(pk=row.pk).update(owner_user=user_b)
+
+
+# =============================================================================
+# Engine homes (engine-brain ticket 03): advice and raises are private to their member
+# =============================================================================
+
+_ADVICE = {
+    "aspect": "body",
+    "question_text": "secret question",
+    "gist": "secret gist",
+    "advice_text": "secret advice",
+    "outcome": "pending",
+    "given_at": "2026-01-02T03:04:05Z",
+}
+_RAISE = {
+    "rule_id": "secret_rule",
+    "category": "timing",
+    "reason": "secret reason",
+    "spoken_at": "2026-01-02T03:04:05Z",
+    "declined": False,
+    "delivery": "spoken",
+}
+
+
+def test_advice_and_raises_are_private_to_their_member(kevin, kevin_client, mia, mia_client):
+    """`advisor_advice` and `proactive_raises` carry `owner_user`, never null (`OWNER_PATHS`):
+    the list, the batch door, a PUT on the same identity and the agent tools all hand a member
+    only their own rows. Made-up rows."""
+    from agents.evals.runner import member_request
+    from homes.models import AdvisorAdvice, ProactiveRaise
+    from homes.tools import RECENT_ADVICE, WHY_DID_YOU_SAY_THAT
+
+    assert kevin_client.put("/api/advisor/advice/adv-1/", _ADVICE, format="json").status_code == 200
+    assert kevin_client.put("/api/proactive/raises/r-1/", _RAISE, format="json").status_code == 200
+    for prefix in ("/api/advisor/advice/", "/api/proactive/raises/"):
+        assert len(kevin_client.get(prefix).data["results"]) == 1
+        assert mia_client.get(prefix).data["results"] == []
+    assert AdvisorAdvice.objects.get().owner_user_id == kevin.pk
+    assert ProactiveRaise.objects.get().owner_user_id == kevin.pk
+    # Mia naming Kevin's identity does not reach his row: hers would be a second row, which the
+    # household-unique identity refuses, in words, without touching his.
+    taken = mia_client.put("/api/advisor/advice/adv-1/", {**_ADVICE, "gist": "x"}, format="json")
+    assert taken.status_code == 400
+    assert AdvisorAdvice.objects.get().gist == "secret gist"
+    batch = mia_client.post("/api/proactive/raises/batch/", {"rows": []}, format="json")
+    assert batch.data["engine_count"] == 0
+    mias = member_request(mia)
+    assert "secret" not in RECENT_ADVICE.handler(mias, {}).text
+    assert "secret" not in WHY_DID_YOU_SAY_THAT.handler(mias, {}).text
+    assert "secret" in WHY_DID_YOU_SAY_THAT.handler(member_request(kevin), {}).text
+
+
+def test_the_database_refuses_advice_or_a_raise_owned_by_a_non_member(household_a, user_b):
+    from homes.models import AdvisorAdvice, ProactiveRaise
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        AdvisorAdvice.objects.create(
+            household=household_a, owner_user=user_b, origin_guid="g", aspect="a",
+            question_text="q", gist="g", advice_text="t", given_at="2026-01-01T00:00:00Z",
+        )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ProactiveRaise.objects.create(
+            household=household_a, owner_user=user_b, origin_guid="g", rule_id="r",
+            category="c", reason="x", spoken_at="2026-01-01T00:00:00Z",
+        )

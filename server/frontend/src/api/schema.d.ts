@@ -4,6 +4,77 @@
  */
 
 export interface paths {
+    "/api/advisor/advice/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `?since=<iso>` (tombstones included) and `?active=1` (live rows
+         *     only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+         *     feed, and `?active=1` alone is every live row since the epoch.
+         *
+         *     A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+         *     holds that rule for the whole API and quotes the phone-side cursor
+         *     comment it comes from.
+         */
+        get: operations["api_advisor_advice_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/advisor/advice/{identity}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT <table>/<identity>/`. Idempotent by construction: the
+         *     identity comes from the URL, so a retry cannot make a second row.
+         *     200 whether the row was created or updated - the caller asked for
+         *     the row to exist in this state and it does, and which of the two
+         *     happened is not something a retrying client can act on.
+         */
+        put: operations["api_advisor_advice_update"];
+        post?: never;
+        /**
+         * @description `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+         *     stays, because a phone that has not synced since still needs to
+         *     learn the row is gone. Idempotent - a second delete is still a 204,
+         *     matching `EventsBackend.softDelete`'s own contract.
+         */
+        delete: operations["api_advisor_advice_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/advisor/advice/batch/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Upsert up to 500 advisor_advice rows by origin_guid in one request (the phone's one-time backfill). Idempotent: a retry doubles nothing. */
+        post: operations["advisor_advisor_advice_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/probe/sse": {
         parameters: {
             query?: never;
@@ -1014,6 +1085,77 @@ export interface paths {
         put?: never;
         /** @description Swaps `exercise` for `to` (one of its listed alternatives) or for the next alternative. Kept on the programme; a running workout changes too if that exercise has no ticked set. The new exercise's target comes from the rules (calibration if new). */
         post: operations["api_body_coach_workout_swap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/goals/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `?since=<iso>` (tombstones included) and `?active=1` (live rows
+         *     only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+         *     feed, and `?active=1` alone is every live row since the epoch.
+         *
+         *     A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+         *     holds that rule for the whole API and quotes the phone-side cursor
+         *     comment it comes from.
+         */
+        get: operations["api_body_goals_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/goals/{identity}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT <table>/<identity>/`. Idempotent by construction: the
+         *     identity comes from the URL, so a retry cannot make a second row.
+         *     200 whether the row was created or updated - the caller asked for
+         *     the row to exist in this state and it does, and which of the two
+         *     happened is not something a retrying client can act on.
+         */
+        put: operations["api_body_goals_update"];
+        post?: never;
+        /**
+         * @description `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+         *     stays, because a phone that has not synced since still needs to
+         *     learn the row is gone. Idempotent - a second delete is still a 204,
+         *     matching `EventsBackend.softDelete`'s own contract.
+         */
+        delete: operations["api_body_goals_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/body/goals/batch/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Upsert up to 500 goals rows by origin_guid in one request (the phone's one-time backfill). Idempotent: a retry doubles nothing. */
+        post: operations["body_goals_batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3869,6 +4011,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/pending/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `?since=<iso>` (tombstones included) and `?active=1` (live rows
+         *     only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+         *     feed, and `?active=1` alone is every live row since the epoch.
+         *
+         *     A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+         *     holds that rule for the whole API and quotes the phone-side cursor
+         *     comment it comes from.
+         */
+        get: operations["api_ledger_pending_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/pending/{identity}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT <table>/<identity>/`. Idempotent by construction: the
+         *     identity comes from the URL, so a retry cannot make a second row.
+         *     200 whether the row was created or updated - the caller asked for
+         *     the row to exist in this state and it does, and which of the two
+         *     happened is not something a retrying client can act on.
+         */
+        put: operations["api_ledger_pending_update"];
+        post?: never;
+        /**
+         * @description `DELETE <table>/<identity>/`. Sets the tombstone column; the row
+         *     stays, because a phone that has not synced since still needs to
+         *     learn the row is gone. Idempotent - a second delete is still a 204,
+         *     matching `EventsBackend.softDelete`'s own contract.
+         */
+        delete: operations["api_ledger_pending_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/pending/batch/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Upsert up to 500 pending_transactions rows by origin_guid in one request (the phone's one-time backfill). Idempotent: a retry doubles nothing. */
+        post: operations["ledger_pending_transactions_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/spend": {
         parameters: {
             query?: never;
@@ -4744,6 +4957,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/proactive/raises/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description `?since=<iso>` (tombstones included) and `?active=1` (live rows
+         *     only). They compose: `?active=1&since=<iso>` is a live-rows-changed
+         *     feed, and `?active=1` alone is every live row since the epoch.
+         *
+         *     A missing `since` means EVERYTHING, never nothing - `api/sync.parse_since`
+         *     holds that rule for the whole API and quotes the phone-side cursor
+         *     comment it comes from.
+         */
+        get: operations["api_proactive_raises_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proactive/raises/{identity}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description `PUT <table>/<identity>/`. Idempotent by construction: the
+         *     identity comes from the URL, so a retry cannot make a second row.
+         *     200 whether the row was created or updated - the caller asked for
+         *     the row to exist in this state and it does, and which of the two
+         *     happened is not something a retrying client can act on.
+         */
+        put: operations["api_proactive_raises_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proactive/raises/batch/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Upsert up to 500 proactive_raises rows by origin_guid in one request (the phone's one-time backfill). Idempotent: a retry doubles nothing. */
+        post: operations["proactive_proactive_raises_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/procedures/": {
         parameters: {
             query?: never;
@@ -5256,6 +5534,34 @@ export interface components {
          * @enum {string}
          */
         ActivityLevelEnum: "sedentary" | "light" | "moderate" | "very";
+        /**
+         * @description A Django-managed home: no `touch_updated_at` trigger, so an update stamps `updated_at`
+         *     itself, and a private table's new row belongs to the member who wrote it.
+         */
+        AdvisorAdvice: {
+            /** Format: uuid */
+            readonly id: string;
+            origin_guid: string;
+            aspect: string;
+            question_text: string;
+            gist: string;
+            advice_text: string;
+            proposal_json?: string | null;
+            outcome?: string;
+            /** Format: date-time */
+            given_at: string;
+            /** Format: date-time */
+            resolved_at?: string | null;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: date-time */
+            readonly deleted_at: string | null;
+        };
+        AdvisorAdviceBatch: {
+            rows: components["schemas"]["AdvisorAdvice"][];
+        };
         /**
          * @description * `matches` - matches
          *     * `differs` - differs
@@ -7061,6 +7367,58 @@ export interface components {
             action_url: string | null;
         };
         /**
+         * @description Base for every serializer this viewset drives.
+         *
+         *     Two behaviours, both ticket 04's own text:
+         *
+         *     1. **Unknown fields are refused, never dropped.** "A limb sending a
+         *        column the server does not know is a version skew, and it says so
+         *        with a 400 naming the field, never a silent drop." A phone one
+         *        release ahead, writing a column this server has never heard of,
+         *        must be told - a silent drop would look exactly like a successful
+         *        write and lose the value.
+         *     2. **The server facts are the server's.** `id`, `provenance`,
+         *        `created_at`, `updated_at` and `deleted_at` are read-only on every
+         *        subclass; `deleted_at` moves only via DELETE, `updated_at` only via
+         *        the `touch_updated_at` trigger.
+         *
+         *     Subclasses set `Meta.model` / `Meta.fields` and, where the table's
+         *     `provenance` column is not the shared `USER` default,
+         *     `default_provenance`.
+         */
+        Goal: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: int64 */
+            lineage_id: number;
+            aspect: string;
+            statement: string;
+            /** Format: double */
+            target_value?: number | null;
+            unit?: string | null;
+            metric_key?: string | null;
+            /** Format: date-time */
+            deadline_epoch?: string | null;
+            /** @default active */
+            status: string;
+            supersedes_guid?: string | null;
+            /** Format: date-time */
+            closed_at?: string | null;
+            /** Format: date-time */
+            created_at_client: string;
+            readonly provenance: components["schemas"]["ProvenanceEnum"];
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: date-time */
+            readonly deleted_at: string | null;
+            origin_guid: string;
+        };
+        GoalBatch: {
+            rows: components["schemas"]["Goal"][];
+        };
+        /**
          * @description * `facts` - facts
          *     * `empty` - empty
          *     * `unreadable` - unreadable
@@ -7137,6 +7495,17 @@ export interface components {
             /** @description Always "error" on a 503. */
             db: string;
             detail: string;
+        };
+        HomesBatchResult: {
+            received: number;
+            created: number;
+            updated: number;
+            unchanged: number;
+            failed: {
+                [key: string]: unknown;
+            }[];
+            engine_count: number;
+            says: string;
         };
         /**
          * @description `GET`/`PATCH /api/households/me` - the household resource itself.
@@ -8362,6 +8731,16 @@ export interface components {
          * @enum {string}
          */
         OutcomeEnum: "ok" | "refused" | "failed" | "throttled";
+        PagedAdvisorAdvice: {
+            results: components["schemas"]["AdvisorAdvice"][];
+            /**
+             * Format: date-time
+             * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
+             */
+            next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
+        };
         PagedBodyweightLog: {
             results: components["schemas"]["BodyweightLog"][];
             /**
@@ -8496,6 +8875,16 @@ export interface components {
              */
             next: string | null;
         };
+        PagedGoal: {
+            results: components["schemas"]["Goal"][];
+            /**
+             * Format: date-time
+             * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
+             */
+            next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
+        };
         PagedGroceryStaple: {
             results: components["schemas"]["GroceryStaple"][];
             /**
@@ -8614,8 +9003,28 @@ export interface components {
             /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
             next_after: string | null;
         };
+        PagedPendingTransaction: {
+            results: components["schemas"]["PendingTransaction"][];
+            /**
+             * Format: date-time
+             * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
+             */
+            next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
+        };
         PagedPlace: {
             results: components["schemas"]["Place"][];
+            /**
+             * Format: date-time
+             * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
+             */
+            next: string | null;
+            /** @description The last row's id on a full page: hand it back as `?after=` beside `?since=<next>`. Null exactly when `next` is null. */
+            next_after: string | null;
+        };
+        PagedProactiveRaise: {
+            results: components["schemas"]["ProactiveRaise"][];
             /**
              * Format: date-time
              * @description Cursor for the next page: hand it back as `?since=`. Null means this was the last page.
@@ -8923,6 +9332,33 @@ export interface components {
             action: string;
             after: string;
         };
+        /**
+         * @description A Django-managed home: no `touch_updated_at` trigger, so an update stamps `updated_at`
+         *     itself, and a private table's new row belongs to the member who wrote it.
+         */
+        PendingTransaction: {
+            /** Format: uuid */
+            readonly id: string;
+            origin_guid: string;
+            account_id: string;
+            currency: string;
+            /** Format: date */
+            txn_date: string;
+            description: string;
+            /** @description Signed integer cents, negative for money out. His own spoken word, never verified by a bank: every surface says so. */
+            amount_cents: number;
+            /** Format: date-time */
+            logged_at: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: date-time */
+            readonly deleted_at: string | null;
+        };
+        PendingTransactionBatch: {
+            rows: components["schemas"]["PendingTransaction"][];
+        };
         PinnedBy: {
             /**
              * Format: uuid
@@ -9003,6 +9439,29 @@ export interface components {
             laptop_health?: boolean;
             /** Format: time */
             morning_time: string;
+        };
+        /**
+         * @description A Django-managed home: no `touch_updated_at` trigger, so an update stamps `updated_at`
+         *     itself, and a private table's new row belongs to the member who wrote it.
+         */
+        ProactiveRaise: {
+            /** Format: uuid */
+            readonly id: string;
+            origin_guid: string;
+            rule_id: string;
+            category: string;
+            reason: string;
+            /** Format: date-time */
+            spoken_at: string;
+            declined?: boolean;
+            delivery?: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+        };
+        ProactiveRaiseBatch: {
+            rows: components["schemas"]["ProactiveRaise"][];
         };
         /**
          * @description * `phone` - Phone
@@ -10841,6 +11300,133 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    api_advisor_advice_list: {
+        parameters: {
+            query?: {
+                /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
+                active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
+                /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedAdvisorAdvice"];
+                };
+            };
+        };
+    };
+    api_advisor_advice_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdvisorAdvice"];
+                "application/x-www-form-urlencoded": components["schemas"]["AdvisorAdvice"];
+                "multipart/form-data": components["schemas"]["AdvisorAdvice"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdvisorAdvice"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    api_advisor_advice_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done. Soft-deleted (the tombstone row stays so an unsynced client learns of it). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    advisor_advisor_advice_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdvisorAdviceBatch"];
+                "application/x-www-form-urlencoded": components["schemas"]["AdvisorAdviceBatch"];
+                "multipart/form-data": components["schemas"]["AdvisorAdviceBatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomesBatchResult"];
+                };
+            };
+            /** @description Nothing was written; the reason in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     api_agents_probe_sse: {
         parameters: {
             query?: never;
@@ -12791,6 +13377,133 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Detail"];
                 };
+            };
+        };
+    };
+    api_body_goals_list: {
+        parameters: {
+            query?: {
+                /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
+                active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
+                /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedGoal"];
+                };
+            };
+        };
+    };
+    api_body_goals_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Goal"];
+                "application/x-www-form-urlencoded": components["schemas"]["Goal"];
+                "multipart/form-data": components["schemas"]["Goal"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Goal"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    api_body_goals_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done. Soft-deleted (the tombstone row stays so an unsynced client learns of it). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    body_goals_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalBatch"];
+                "application/x-www-form-urlencoded": components["schemas"]["GoalBatch"];
+                "multipart/form-data": components["schemas"]["GoalBatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomesBatchResult"];
+                };
+            };
+            /** @description Nothing was written; the reason in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -18739,6 +19452,133 @@ export interface operations {
             };
         };
     };
+    api_ledger_pending_list: {
+        parameters: {
+            query?: {
+                /** @description Narrows the feed to live rows (`deleted_at is null`). Composes with `since`. Anything else, `0` and `false` included, means the narrowing was not asked for and tombstones stay in - a caller who cannot be understood sees too much, never silently nothing. */
+                active?: "1" | "on" | "true" | "yes";
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
+                /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedPendingTransaction"];
+                };
+            };
+        };
+    };
+    api_ledger_pending_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PendingTransaction"];
+                "application/x-www-form-urlencoded": components["schemas"]["PendingTransaction"];
+                "multipart/form-data": components["schemas"]["PendingTransaction"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingTransaction"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    api_ledger_pending_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done. Soft-deleted (the tombstone row stays so an unsynced client learns of it). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such row. Nothing was changed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    ledger_pending_transactions_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PendingTransactionBatch"];
+                "application/x-www-form-urlencoded": components["schemas"]["PendingTransactionBatch"];
+                "multipart/form-data": components["schemas"]["PendingTransactionBatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomesBatchResult"];
+                };
+            };
+            /** @description Nothing was written; the reason in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     api_ledger_spend_retrieve: {
         parameters: {
             query?: {
@@ -20436,6 +21276,101 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Detail"];
                 };
+            };
+        };
+    };
+    api_proactive_raises_list: {
+        parameters: {
+            query?: {
+                /** @description Keyset tiebreak: the `next_after` from the previous page, sent together with `since=<next>`. Returns rows strictly after that position in `(cursor, id)` order, so a page of rows sharing one timestamp cannot re-serve itself. Omitted or unparsable means no tiebreak: the inclusive `since` read, exactly as before (api/sync.paginate_keyset). */
+                after?: string;
+                /** @description ISO-8601 UTC watermark. Returns rows with `updated_at >= since`, tombstones included, oldest first. **Omitted or unparsable means EVERYTHING, never nothing** (api/sync.parse_since), so a fresh client's first pull is the whole table. Hand back the `next` cursor from the previous page, or `server_time` from GET /api/changes; both are already `Z`-suffixed so they need no extra encoding. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagedProactiveRaise"];
+                };
+            };
+        };
+    };
+    api_proactive_raises_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's `origin_guid`. */
+                identity: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProactiveRaise"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProactiveRaise"];
+                "multipart/form-data": components["schemas"]["ProactiveRaise"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProactiveRaise"];
+                };
+            };
+            /** @description The write was refused and NOTHING was written. Two body shapes occur and both are JSON objects: `{"detail": "..."}` for an unknown field, a database refusal or a hand-written check, and `{"<field>": ["..."]}` for a field-level validation error. Both carry text meant to be shown to a person. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    proactive_proactive_raises_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProactiveRaiseBatch"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProactiveRaiseBatch"];
+                "multipart/form-data": components["schemas"]["ProactiveRaiseBatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomesBatchResult"];
+                };
+            };
+            /** @description Nothing was written; the reason in words. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

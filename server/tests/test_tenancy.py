@@ -1032,6 +1032,57 @@ def test_agent_traces_are_scoped_by_household(household_a, household_b, househol
     assert "alpha-agent" not in json.dumps(model_b.requests[0].contents)
 
 
+_HOME_ROWS = {
+    "/api/body/goals/": {
+        "lineage_id": 7,
+        "aspect": "body",
+        "statement": "alpha-goal",
+        "created_at_client": "2026-01-02T03:04:05Z",
+    },
+    "/api/advisor/advice/": {
+        "aspect": "body",
+        "question_text": "alpha-q",
+        "gist": "alpha-gist",
+        "advice_text": "alpha-advice",
+        "given_at": "2026-01-02T03:04:05Z",
+    },
+    "/api/ledger/pending/": {
+        "account_id": "alpha-card",
+        "currency": "USD",
+        "txn_date": "2026-01-02",
+        "description": "alpha-coffee",
+        "amount_cents": -650,
+        "logged_at": "2026-01-02T03:04:05Z",
+    },
+    "/api/proactive/raises/": {
+        "rule_id": "alpha-rule",
+        "category": "timing",
+        "reason": "alpha-reason",
+        "spoken_at": "2026-01-02T03:04:05Z",
+        "delivery": "spoken",
+    },
+}
+
+
+@pytest.mark.parametrize("prefix", list(_HOME_ROWS))
+def test_engine_homes_are_scoped_by_household(token_a, token_b, prefix):
+    """engine-brain ticket 03: goals, advice, pending transactions and raises. B never sees A's
+    row, in the list or through the batch door; B's PUT on A's identity makes B's own row; B's
+    DELETE of A's identity is a 404 and A's row stays."""
+    body = _HOME_ROWS[prefix]
+    assert token_a.put(f"{prefix}shared-guid/", body, format="json").status_code == 200
+    assert token_b.get(prefix).data["results"] == []
+    batch = token_b.post(f"{prefix}batch/", {"rows": []}, format="json")
+    assert batch.status_code == 200 and batch.data["engine_count"] == 0
+    mine = token_b.put(f"{prefix}shared-guid/", body, format="json")
+    assert mine.status_code == 200
+    assert len(token_a.get(prefix).data["results"]) == 1
+    assert len(token_b.get(prefix).data["results"]) == 1
+    if prefix != "/api/proactive/raises/":
+        token_b.delete(f"{prefix}shared-guid/")
+        assert token_a.get(f"{prefix}?active=1").data["results"][0]["deleted_at"] is None
+
+
 def test_every_registered_table_has_a_leak_test():
     """The generation, made real.
 

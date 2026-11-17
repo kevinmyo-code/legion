@@ -214,6 +214,10 @@ INSTALLED_APPS = [
     # (`public.agents_*`, private to their member) and the eval runner. DARK: the turn endpoint
     # refuses unless LEGION_AGENTS_TURN=on.
     "agents",
+    # engine-brain ticket 03 (ADR 0095): engine homes for what lived only on the phone - goals'
+    # REST door, advisor advice and proactive raises (private to their member) and voice-logged
+    # pending transactions (`public.advisor_advice`, `pending_transactions`, `proactive_raises`).
+    "homes",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
