@@ -92,6 +92,22 @@ CASES = [
 ]
 
 
+def _cents_in(text: str) -> list[int]:
+    """Dollar amounts written with a $ sign, as integer cents ("$2,333.61" -> 233361)."""
+    out = []
+    for whole, part in re.findall(r"\$\s?(\d[\d,]*)(?:\.(\d{2}))?", text or ""):
+        out.append(int(whole.replace(",", "")) * 100 + int(part or 0))
+    return out
+
+
+def _amounts_in(text: str) -> list[int]:
+    """Amounts in a tool's own words, "$2,333.61" or "2333.61 USD" alike, as integer cents."""
+    found = set(_cents_in(text))
+    for whole, part in re.findall(r"(?<![\d.])(\d[\d,]*)\.(\d{2})(?![\d])", text or ""):
+        found.add(int(whole.replace(",", "")) * 100 + int(part))
+    return sorted(found)
+
+
 def _cost(t: dict) -> float:
     g = lambda k: max(int(t.get(k, 0) or 0), 0)  # noqa: E731
     text_in = g("prompt_tokens") - g("cached_tokens") + g("stt_prompt_tokens")
@@ -240,7 +256,7 @@ class Run:
             "cost_usd": round(cost, 5),
             "spent_usd": round(self.spent, 4),
         }
-        if reply and re.search(r"\d|\$", said):
+        if reply and (re.search(r"\d|\$", said) or "money" in case or "spend" in case):
             back = self.speech.transcribe(_to_16k(reply))
             self.spent += (
                 back.prompt_tokens * PRICE["text_in"] + back.output_tokens * PRICE["text_out"]
@@ -248,6 +264,11 @@ class Run:
             row["heard_back"] = back.text
             row["figures_said"] = re.findall(r"\d[\d,.]*", said)
             row["figures_heard"] = re.findall(r"\d[\d,.]*", back.text)
+            # Every dollar amount heard, and every one the tools returned, as cents.
+            row["money_heard"] = _cents_in(back.text)
+            row["money_from_tools"] = sorted(
+                {c for k, d in events if k == "tool" for c in _amounts_in(d["text"])}
+            )
         self.note_greeting(row["greeting"])
         self._write(row)
         return row, cid
@@ -415,9 +436,15 @@ def test_realrun_gate(real, household_user):
 
     row = _gate_turn(real, visitor, "recruiter", "gate_money", "spend")
     assert row.get("said"), row
-    if row.get("figures_said"):
-        norm = lambda xs: sorted(x.strip(",.") for x in xs)  # noqa: E731
-        assert norm(row["figures_said"]) == norm(row["figures_heard"]), row
+    # The reply's audio, transcribed back: every dollar amount heard is one a tool returned, to the
+    # cent (none made up or re-worded wrongly by the model or the voice).
+    heard = row.get("money_heard") or []
+    assert heard, ("no amount heard in a spending answer", row.get("heard_back"))
+    tools = row["money_from_tools"]
+    dollars = {round(c / 100) for c in tools}
+    # Exact to the cent, or the same amount said in whole dollars; anything else is a wrong figure.
+    stray = [c for c in heard if c not in tools and not (c % 100 == 0 and c // 100 in dollars)]
+    assert not stray, (stray, row.get("heard_back"))
 
     row = _gate_turn(real, visitor, "recruiter", "gate_stop", "stop")
     assert (row.get("done") or {}).get("end") is True, row
