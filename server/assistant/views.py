@@ -837,6 +837,25 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
         allow_null=True,
         help_text="As for `POST /api/assistant/session`; read when a conversation starts.",
     )
+    spoken = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text=(
+            "With `text`: the page transcribed the utterance early (`POST "
+            "/api/assistant/transcribe`) and the answer is spoken, as for `audio`."
+        ),
+    )
+    tour = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=0,
+        max_value=20,
+        help_text=(
+            "A demo visit's one-minute tour: the beat to play (from 0). With `audio`, what was "
+            "said during the tour: 'skip' plays this beat, 'stop' ends the tour, anything else is "
+            "a question and the tour ends."
+        ),
+    )
     greet = serializers.BooleanField(
         required=False,
         default=False,
@@ -888,6 +907,7 @@ def _turn_sse(
     voice,
     reservation,
     reserved_rounds,
+    companion_name="",
 ):
     report = cascade.TurnReport()
     spoken = turn_input.audio is not None or turn_input.greet
@@ -903,6 +923,7 @@ def _turn_sse(
             system=system,
             context=context,
             voice=voice,
+            companion_name=companion_name,
             model_name=voice_engine.text_model(),
             model=model,
             speech=speech,
@@ -1019,13 +1040,26 @@ class AssistantTurnView(_AssistantView):
         data = body.validated_data
         upload, text = data.get("audio"), (data.get("text") or "").strip()
         greet = bool(data.get("greet"))
+        tour_beat = data.get("tour")
+        if tour_beat is not None and not is_recruiter(request.user):
+            return _refuse(
+                request,
+                "Nothing was answered. The tour is the demo's.",
+                status.HTTP_400_BAD_REQUEST,
+            )
         if greet and (upload is not None or text):
             return _refuse(
                 request,
                 "Nothing was answered. A greeting carries no `audio` or `text`.",
                 status.HTTP_400_BAD_REQUEST,
             )
-        if not greet and (upload is None) == (not text):
+        if tour_beat is not None and text:
+            return _refuse(
+                request,
+                "Nothing was answered. A tour beat carries no `text`.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        if not greet and tour_beat is None and (upload is None) == (not text):
             return _refuse(
                 request,
                 "Nothing was answered. Send one utterance as `audio` or one `text`.",
@@ -1063,11 +1097,16 @@ class AssistantTurnView(_AssistantView):
             return _refuse(request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS)
         reservation = None
         # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
-        reserved_rounds = 1 if greet else cascade.MAX_ROUNDS + 1
+        reserved_rounds = (
+            1 if greet else 0 if tour_beat is not None and audio is None else cascade.MAX_ROUNDS + 1
+        )
         if demo_budget.counts(request.user):
             reservation = demo_budget.reserve_cascade_turn(
                 rounds=reserved_rounds,
-                spoken=greet or audio is not None,
+                spoken=greet
+                or audio is not None
+                or bool(data.get("spoken"))
+                or tour_beat is not None,
                 user=request.user,
             )
             if reservation is None:
@@ -1100,6 +1139,8 @@ class AssistantTurnView(_AssistantView):
             preface=(data.get("preface") or "").strip() or None,
             greet=greet,
             greeting_history=_greeting_history(data.get("greeting_history")),
+            spoken=bool(data.get("spoken")) and bool(text),
+            tour_beat=tour_beat,
         )
         response = StreamingHttpResponse(
             _turn_sse(
@@ -1113,9 +1154,110 @@ class AssistantTurnView(_AssistantView):
                 companion.voice_name,
                 reservation,
                 reserved_rounds,
+                companion.name,
             ),
             content_type="text/event-stream",
         )
         response["Cache-Control"] = "no-cache, no-store"
         response["X-Accel-Buffering"] = "no"
         return response
+
+
+# =============================================================================
+# POST /api/assistant/transcribe (the phone's speculation, adapted)
+# =============================================================================
+
+
+class AssistantTranscribeRequestSerializer(serializers.Serializer):
+    audio = serializers.FileField(
+        allow_empty_file=False,
+        help_text=(
+            "What has been said so far: raw 16-bit little-endian mono PCM at 16 kHz, at most "
+            f"{MAX_UTTERANCE_SECONDS} seconds. Never stored."
+        ),
+    )
+
+
+TranscribeResponse = inline_serializer(
+    name="AssistantTranscript",
+    fields={
+        "text": serializers.CharField(allow_blank=True, help_text="The words; empty for none."),
+        "ms": serializers.IntegerField(help_text="How long the transcription took."),
+    },
+)
+
+
+class AssistantTranscribeView(_AssistantView):
+    """Speech to text only, for the page's early start (the phone's speculation, `Speculation.kt`,
+    adapted): at about 300 ms of silence the page sends what was said so far, and when the turn
+    ends with no more speech it sends the words to `POST /api/assistant/turn` as `text` with
+    `spoken`. If the person speaks again the transcript is thrown away. Nothing is answered here,
+    no tool runs and nothing is recorded; a demo visit's budget is charged one speech share."""
+
+    throttle_classes = [AssistantTurnThrottle, AssistantTurnIpThrottle]
+    audit_kind = AssistantCall.SESSION
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        tags=ASSISTANT_TAGS,
+        operation_id="api_assistant_transcribe_create",
+        summary="Transcribe what has been said so far (no answer, nothing stored)",
+        request={"multipart/form-data": AssistantTranscribeRequestSerializer},
+        responses={
+            200: TranscribeResponse,
+            400: OpenApiResponse(DetailSerializer, description="The body did not fit."),
+            409: OpenApiResponse(DetailSerializer, description="This caller is on live voice."),
+            413: OpenApiResponse(DetailSerializer, description="Too long."),
+            429: OpenApiResponse(DetailSerializer, description="Too many, or over budget."),
+            502: OpenApiResponse(DetailSerializer, description="The words could not be had."),
+            503: OpenApiResponse(DetailSerializer, description="No Gemini key on this server."),
+        },
+    )
+    def post(self, request):
+        if voice_engine.engine_for(request.user) != voice_engine.CASCADE:
+            return _refuse(request, LIVE_ONLY, status.HTTP_409_CONFLICT)
+        body = AssistantTranscribeRequestSerializer(data=request.data)
+        if not body.is_valid():
+            return _refuse(
+                request,
+                f"Nothing was transcribed. The request did not fit: {body.errors}",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        upload = body.validated_data["audio"]
+        if upload.size > MAX_AUDIO_BYTES:
+            return _refuse(
+                request,
+                "Nothing was transcribed: too long.",
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        if gemini_key() is None:
+            return _refuse(request, KEY_ABSENT, status.HTTP_503_SERVICE_UNAVAILABLE)
+        if member_cap.over_cap(request.user):
+            return _refuse(request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS)
+        if demo_budget.counts(request.user):
+            reserved = demo_budget.reserve_cascade_turn(rounds=0, spoken=True, user=request.user)
+            if reserved is None:
+                return _refuse(
+                    request,
+                    demo_budget.used_up_message(request.user, "text"),
+                    status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+        audio = upload.read(MAX_AUDIO_BYTES)
+        audio = audio[: len(audio) - len(audio) % 2]
+        _model, speech = _cascade_clients()
+        try:
+            heard = speech.transcribe(audio)
+        except Exception:  # noqa: BLE001 - said in words; the page falls back to the full turn
+            cascade.log.warning("assistant transcribe failed", exc_info=True)
+            return _refuse(
+                request, "Nothing was transcribed just now.", status.HTTP_502_BAD_GATEWAY
+            )
+        _audit(request, AssistantCall.SESSION, Outcome.OK)
+        cascade.log.warning(
+            "assistant transcribe audio_ms=%d stt_ms=%d prompt=%d out=%d",
+            heard.audio_ms,
+            heard.ms,
+            heard.prompt_tokens,
+            heard.output_tokens,
+        )
+        return Response({"text": heard.text, "ms": heard.ms}, headers={"Cache-Control": "no-store"})

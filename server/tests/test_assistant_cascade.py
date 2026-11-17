@@ -634,11 +634,14 @@ def test_a_greeting_past_its_deadline_is_the_scripted_line(member, engine, monke
     assert greeting["text"] in web_greeting.ACK_LINES
 
 
-def test_a_visitor_greeting_is_scripted_and_asks_no_model(visitor, engine):
+def test_a_visitor_greeting_is_scripted_and_asks_no_model(visitor, visitor_user, engine):
     from assistant import web_greeting
 
     events = _events(_post(visitor, greet="true"))
-    assert _of(events, "greeting")[0]["text"] == web_greeting.RECRUITER_HELLO
+    from assistant.companions import companion_for
+
+    name = companion_for(visitor_user).name
+    assert _of(events, "greeting")[0]["text"] == web_greeting.recruiter_hello(name)
     assert engine.model.requests == []
     assert _of(events, "audio")
     # Its history then opens with the demo's opener line, as the prompt expects.

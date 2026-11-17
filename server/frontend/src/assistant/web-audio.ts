@@ -182,6 +182,10 @@ export function createWebAudio(): AudioIO {
 
     stopMic,
 
+    unlock() {
+      ensurePlayback()
+    },
+
     play(pcm, rate) {
       const context = ensurePlayback()
       const buffer = context.createBuffer(1, pcm.length, rate)

@@ -632,6 +632,8 @@ REST_FRAMEWORK = {
         # identity yet). Every recruiter shares one code, so this is what stops
         # one address guessing at it. Same per-process LocMemCache caveat.
         "demo_enter": os.environ.get("LEGION_DEMO_ENTER_RATE", "").strip() or "10/hour",
+        # The demo's funnel counts (`demo.funnel`): anonymous, so per IP; a page sends a handful.
+        "demo_funnel": "120/hour",
     },
 }
 

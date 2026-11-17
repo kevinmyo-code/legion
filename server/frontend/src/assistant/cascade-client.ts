@@ -3,6 +3,7 @@ import { asCard, mergeCar, type Card } from '@/components/assistant/cards/types'
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { Endpointer } from './endpointer'
+import type { TurnDetector } from './turn/detector'
 import type { AssistantState, Line, Notice } from './live-client'
 import { base64ToPcm16 } from './pcm'
 import type { SseEvent } from './sse'
@@ -42,6 +43,10 @@ import type { SseEvent } from './sse'
 export interface TurnRequest {
   audio?: Int16Array
   text?: string
+  /** `text` came from an early transcript of speech: answered aloud. */
+  spoken?: boolean
+  /** The demo tour's beat to play. */
+  tour?: number
   greet?: boolean
   greetingHistory?: GreetingHistory
   conversationId: string | null
@@ -69,6 +74,29 @@ export interface CascadeDeps {
   record?: RecordTransport
   /** The greeting caps' store (spec 27). Absent keeps them for this page only. */
   greetingStore?: { load(): string | null; save(value: string): void }
+  /**
+   * The phone's turn models (Silero + Smart Turn, `turn/detector.ts`), loaded after the first tap.
+   * Absent, or resolving null, keeps the energy threshold and half-duplex.
+   */
+  turnDetector?: () => Promise<TurnDetector | null>
+  /** An early transcript of what has been said so far (`POST /api/assistant/transcribe`). */
+  transcribe?: (audio: Int16Array, signal: AbortSignal) => Promise<string | null>
+  /** One step of the demo for its funnel counts (`POST /api/demo/funnel`). */
+  funnel?: (event: FunnelEvent) => void
+}
+
+export type FunnelEvent = 'orb_tap' | 'first_word' | 'turns_3' | 'tour_started' | 'tour_finished' | 'resume_opened'
+
+/** What the live strip shows while it talks (the demo): the tool, how long, the turn's cost. */
+export interface StripEntry {
+  tool: string
+  ms: number | null
+  filler?: string
+}
+
+export interface StripState {
+  tools: StripEntry[]
+  costUsd: number | null
 }
 
 export interface CascadeOptions {
@@ -82,6 +110,11 @@ export interface CascadeOptions {
   /** As `LiveOptions`: the sentence a conversation ends with at its time limit. */
   sessionLimit?: () => string | null
   endOnHidden: () => boolean
+  /**
+   * Awaited once, after the opening tap has opened the audio and before the greeting is asked for:
+   * the demo enters its visit here, so the tap that unlocks the audio is the tap that enters.
+   */
+  prepare?: () => Promise<boolean>
 }
 
 export const CONVERSATION_CLOSED = 'Conversation closed'
@@ -128,13 +161,32 @@ export class CascadeClient {
   private playing = false
   private awaiting = false
   /** After the reply: close (end_conversation) or listen again once playback drains. */
-  private afterReply: 'listen' | 'close' | null = null
+  private afterReply: 'listen' | 'close' | 'tour' | null = null
   private greeted = false
   private lastAsked: string | null = null
   private limitTimer: ReturnType<typeof setTimeout> | null = null
   private replyFrom: number | null = null
   private spokenTurn = false
   private memoryHistory: string | null = null
+  // ---- the phone's turn-taking (turn/detector.ts) ----
+  private detector: TurnDetector | null = null
+  private detectorAsked = false
+  /** Barge-in is off for this conversation (two self-interrupts, or no models). */
+  private halfDuplex = false
+  /** Speech has started in the current listening window (the models said so). */
+  private speechStarted = false
+  /** The reply that was playing when the person talked over it, for the echo check. */
+  private bargedOver: string | null = null
+  private lastReply = ''
+  private spec: { abort: AbortController; result: Promise<string | null>; samples: number } | null = null
+  /** When the person's last utterance ended, and how long the silence that ended it was. */
+  private turnEndedAt: number | null = null
+  eotMs: number[] = []
+  private spokenTurns = 0
+  private prepared = false
+  // ---- the demo ----
+  private tourNext: number | null = null
+  strip: StripState = { tools: [], costUsd: null }
 
   private readonly deps: CascadeDeps
   private readonly options: CascadeOptions
@@ -235,7 +287,7 @@ export class CascadeClient {
     this.stopListening()
     this.push({ kind: 'me', text, via: 'typed', open: false })
     if (wasSpeaking) this.push({ kind: 'sys', text: 'Stopped speaking because you typed.' })
-    void this.turn({ text }, false)
+    void this.afterPrepare(() => this.turn({ text }, false))
     return true
   }
 
@@ -268,7 +320,9 @@ export class CascadeClient {
     }
     // The greeting goes now, in the tap, while the mic permission settles.
     this.voiceOpen = true
-    void this.turn({ greet: true }, true)
+    this.deps.funnel?.('orb_tap')
+    this.loadDetector()
+    void this.greetAfterPrepare()
     return opened.then(
       () => {
         if (generation !== this.micGeneration) return
@@ -282,6 +336,110 @@ export class CascadeClient {
         this.set({ mic: 'off', notice: micNotice(kind) })
       },
     )
+  }
+
+  private async greetAfterPrepare() {
+    if (this.options.prepare && !this.prepared) {
+      this.awaiting = true
+      this.refresh()
+      let ok = false
+      try {
+        ok = await this.options.prepare()
+      } catch {
+        ok = false
+      }
+      this.awaiting = false
+      if (!ok) {
+        this.voiceOpen = false
+        this.micGeneration += 1
+        this.audioIO?.stopMic()
+        this.set({ mic: 'off' })
+        return
+      }
+      this.prepared = true
+    }
+    void this.turn({ greet: true }, true)
+  }
+
+  /** The phone's turn models, once per page, after the first tap (the page stays light before). */
+  private loadDetector() {
+    if (this.detectorAsked || !this.deps.turnDetector) return
+    this.detectorAsked = true
+    void this.deps.turnDetector().then(
+      (detector) => {
+        if (!detector) return
+        this.detector = detector
+        detector.setHandlers({
+          onStart: () => this.onSpeechStart(),
+          onEarly: (audio) => this.onEarly(audio),
+          onResumed: () => this.dropSpec(),
+          onEnd: (audio, _reason, silenceMs) => this.onTurnEnd(audio, silenceMs),
+          onBargeIn: () => this.onBargeIn(),
+          onVerdict: (v) => {
+            if (v.nowDisabled) this.halfDuplex = true
+          },
+        })
+      },
+      () => {},
+    )
+  }
+
+  /** Barge-in is live: the models are loaded and this conversation has not fallen back. */
+  get fullDuplex(): boolean {
+    return this.detector !== null && !this.halfDuplex && !this.detector.gate.disabled
+  }
+
+  /** The demo's one-minute tour: plays beat `beat` (from 0), driven by the engine. */
+  startTour(beat = 0) {
+    if (this.state.phase === 'ended') return
+    if (beat === 0) this.deps.funnel?.('tour_started')
+    try {
+      const audio = (this.audioIO ??= this.deps.audio())
+      audio.unlock?.()
+    } catch {
+      // No audio here: the tour still shows and captions.
+    }
+    this.cutReply('barge_in')
+    this.stopListening()
+    void this.afterPrepare(() => this.turn({ tour: beat }, true))
+  }
+
+  /**
+   * A tapped question answered aloud, for someone who cannot talk (the demo's chips). Call it from
+   * the tap: it opens the playback side there (Safari) without opening the microphone.
+   */
+  ask(raw: string): boolean {
+    const text = raw.trim()
+    if (!text || this.state.phase === 'ended') return false
+    try {
+      const audio = (this.audioIO ??= this.deps.audio())
+      audio.unlock?.()
+    } catch {
+      // No audio here: the answer still comes as text.
+    }
+    this.cutReply('barge_in')
+    this.stopListening()
+    // The engine says it back as `heard`, which draws the line.
+    void this.afterPrepare(() => this.turn({ text, spoken: true }, true))
+    return true
+  }
+
+  private async afterPrepare(then: () => Promise<void> | void) {
+    if (this.options.prepare && !this.prepared) {
+      this.awaiting = true
+      this.refresh()
+      let ok = false
+      try {
+        ok = await this.options.prepare()
+      } catch {
+        ok = false
+      }
+      this.awaiting = false
+      this.refresh()
+      if (!ok) return
+      this.prepared = true
+    }
+    await then()
   }
 
   /** A tap while listening closes the conversation (spec 21); while it speaks, it interrupts. */
@@ -327,12 +485,16 @@ export class CascadeClient {
   // ---- listening -----------------------------------------------------------
 
   /** Start the follow-up window: the mic's audio counts from now (spec 14). */
-  private listen() {
+  private listen(keepTurn = false) {
     if (!this.voiceOpen) return
     this.afterReply = null
     this.listening = true
     this.endpointer = new Endpointer()
     this.chunks = []
+    if (!keepTurn) {
+      this.speechStarted = false
+      this.detector?.reset()
+    }
     this.set({ mic: 'on', phase: this.state.phase === 'idle' ? 'live' : this.state.phase })
   }
 
@@ -340,13 +502,78 @@ export class CascadeClient {
     this.listening = false
     this.endpointer = null
     this.chunks = []
+    this.speechStarted = false
+    this.dropSpec()
     if (this.state.mic === 'on') this.set({ mic: 'off' })
   }
 
   private onPlaying(playing: boolean) {
+    if (playing !== this.playing) {
+      if (playing) this.detector?.replyStarted()
+      else this.detector?.replyEnded()
+    }
     this.playing = playing
     if (!playing && !this.awaiting) this.replyDrained()
     this.refresh()
+  }
+
+  // ---- the models' turn-taking ----------------------------------------------
+
+  private onSpeechStart() {
+    if (!this.listening) return
+    this.speechStarted = true
+  }
+
+  /** The phone's speculation: at 300 ms of silence, transcribe what was said so far. */
+  private onEarly(audio: Int16Array) {
+    if (!this.listening || !this.deps.transcribe) return
+    this.dropSpec()
+    const abort = new AbortController()
+    this.spec = {
+      abort,
+      samples: audio.length,
+      result: this.deps.transcribe(audio, abort.signal).catch(() => null),
+    }
+  }
+
+  private dropSpec() {
+    this.spec?.abort.abort()
+    this.spec = null
+  }
+
+  /** The models ended the turn: send it, with the early transcript when nothing was said since. */
+  private onTurnEnd(audio: Int16Array, silenceMs: number) {
+    if (!this.listening) return
+    const spec = this.spec
+    this.spec = null
+    this.eotMs.push(silenceMs)
+    this.turnEndedAt = this.deps.now()
+    this.listening = false
+    this.endpointer = null
+    this.chunks = []
+    this.speechStarted = false
+    if (this.state.mic === 'on') this.set({ mic: 'off' })
+    void this.sendTurn(audio, spec)
+  }
+
+  private async sendTurn(audio: Int16Array, spec: { result: Promise<string | null> } | null) {
+    if (spec) {
+      const text = await spec.result
+      if (text && text.trim()) {
+        void this.turn({ text: text.trim(), spoken: true }, true)
+        return
+      }
+    }
+    void this.turn({ audio }, true)
+  }
+
+  /** Talked over: the reply stops at once, the engine's turn is cancelled, and this is a turn. */
+  private onBargeIn() {
+    if (!this.voiceOpen || (!this.playing && !this.awaiting) || !this.fullDuplex) return
+    this.bargedOver = this.lastReply
+    this.cutReply('barge_in')
+    this.listen(true)
+    this.speechStarted = true
   }
 
   /** The reply has played to its end: listen again, or close if it was the sign-off. */
@@ -355,11 +582,32 @@ export class CascadeClient {
     this.afterReply = null
     if (next === 'close') this.close(true)
     else if (next === 'listen') this.listen()
+    else if (next === 'tour' && this.tourNext !== null) {
+      const beat = this.tourNext
+      void this.turn({ tour: beat }, true)
+    }
   }
 
   private onChunk(pcm: Int16Array, generation: number) {
+    if (generation !== this.micGeneration) return
+    if (this.detector) {
+      // The models hear everything; while the reply plays only the barge-in gate listens, and only
+      // in full duplex. Half-duplex: nothing heard while the assistant speaks is kept (spec 19).
+      this.detector.push(pcm, this.listening, this.playing && this.fullDuplex)
+      if (!this.listening || !this.endpointer) return
+      // The energy endpointer still runs the follow-up window (spec 14, 15) and the length cap.
+      const verdict = this.endpointer.push(pcm)
+      if (verdict === 'lapsed' && !this.speechStarted) this.close(true)
+      else if (verdict === 'max') {
+        this.detector.reset()
+        this.chunks.push(pcm)
+        this.sendUtterance()
+      } else this.chunks.push(pcm)
+      if (!this.speechStarted && this.chunks.length > PREROLL_CHUNKS) this.chunks.shift()
+      return
+    }
     // Half-duplex: audio heard while the assistant thinks or speaks is never kept (spec 19).
-    if (generation !== this.micGeneration || !this.listening || !this.endpointer) return
+    if (!this.listening || !this.endpointer) return
     const verdict = this.endpointer.push(pcm)
     this.chunks.push(pcm)
     if (!this.endpointer.heardSpeech && this.chunks.length > PREROLL_CHUNKS) this.chunks.shift()
@@ -427,7 +675,17 @@ export class CascadeClient {
     return greet ? undefined : opening || undefined
   }
 
-  private async turn(input: { audio?: Int16Array; text?: string; greet?: boolean }, spoken: boolean) {
+  private async turn(
+    input: { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number },
+    spoken: boolean,
+  ) {
+    if (input.audio && input.tour === undefined && this.tourNext !== null) {
+      // Said during the tour: the engine hears "skip" and "stop", or answers a question.
+      input = { ...input, tour: this.tourNext }
+    }
+    if (input.tour === undefined) this.tourNext = null
+    this.strip = { tools: [], costUsd: null }
+    this.lastReply = ''
     this.abort?.abort()
     const abort = new AbortController()
     this.abort = abort
@@ -465,10 +723,18 @@ export class CascadeClient {
     }
     let open: number | null = null
     let end = false
+    let tourNext: number | null = null
+    const touring = input.tour !== undefined
     try {
       for await (const event of start.events) {
         if (generation !== this.turnGeneration) return
         if (event.type === 'done' && event.data.end === true) end = true
+        if (event.type === 'done') {
+          const tour = event.data.tour as { next?: number | null } | undefined
+          tourNext = typeof tour?.next === 'number' ? tour.next : null
+          if (typeof event.data.cost_usd === 'number') this.strip = { ...this.strip, costUsd: event.data.cost_usd }
+          if (touring && tour && tourNext === null) this.deps.funnel?.('tour_finished')
+        }
         open = this.onEvent(event, open, startedConversation)
       }
     } catch {
@@ -480,8 +746,13 @@ export class CascadeClient {
         this.awaiting = false
         this.abort = null
         void this.record?.flush()
+        this.tourNext = tourNext
         if (end) {
           this.afterReply = 'close'
+          if (!this.playing) this.replyDrained()
+        } else if (tourNext !== null) {
+          // The next beat plays once this one has been heard; the mic listens meanwhile (barge-in).
+          this.afterReply = 'tour'
           if (!this.playing) this.replyDrained()
         } else {
           this.settle(spoken)
@@ -516,6 +787,14 @@ export class CascadeClient {
       case 'heard': {
         const text = typeof data.text === 'string' ? data.text.trim() : ''
         if (text) this.push({ kind: 'me', text, via: 'spoken', open: false })
+        this.noteHeard(text)
+        return open
+      }
+      case 'filler': {
+        const tool = typeof data.tool === 'string' ? data.tool : ''
+        const said = typeof data.text === 'string' ? data.text : ''
+        this.strip = { ...this.strip, tools: [...this.strip.tools, { tool, ms: null, filler: said }] }
+        this.refresh()
         return open
       }
       case 'greeting': {
@@ -525,6 +804,13 @@ export class CascadeClient {
       case 'tool': {
         this.closeAi(open, false)
         const name = typeof data.name === 'string' ? data.name : 'a tool'
+        const ms = typeof data.ms === 'number' ? data.ms : null
+        const known = this.strip.tools.findIndex((t) => t.tool === name && t.ms === null)
+        const tools = [...this.strip.tools]
+        if (known >= 0) tools[known] = { ...tools[known], ms }
+        else tools.push({ tool: name, ms })
+        this.strip = { ...this.strip, tools }
+        if (name === 'show_resume' && data.ok === true) this.deps.funnel?.('resume_opened')
         if (name === 'end_conversation') return null
         const ok = data.ok === true
         const text = typeof data.text === 'string' ? data.text : ''
@@ -540,6 +826,7 @@ export class CascadeClient {
       case 'sentence': {
         const text = typeof data.text === 'string' ? data.text : ''
         if (!text) return open
+        this.lastReply = `${this.lastReply} ${text}`.trim()
         if (this.replyFrom !== null) {
           const ms = Math.max(this.deps.now() - this.replyFrom, 0)
           this.replyFrom = null
@@ -574,6 +861,25 @@ export class CascadeClient {
       }
       default:
         return open
+    }
+  }
+
+  /** A turn was heard: the demo's funnel, and whether a barge-in was only the reply's echo. */
+  private noteHeard(text: string) {
+    if (text) {
+      this.spokenTurns += 1
+      if (this.spokenTurns === 1) this.deps.funnel?.('first_word')
+      if (this.spokenTurns === 3) this.deps.funnel?.('turns_3')
+    }
+    const over = this.bargedOver
+    this.bargedOver = null
+    if (over === null || !this.detector) return
+    const words = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+    const reply = over.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ')
+    // Nothing heard, or only what the assistant was saying: the barge-in was its own voice. Two of
+    // those and this conversation listens half-duplex, without a word about it.
+    if (!words || (words.length >= 4 && reply.includes(words))) {
+      if (this.detector.gate.countSelfInterrupt()) this.halfDuplex = true
     }
   }
 

@@ -41,14 +41,27 @@ HELLO = "hello"
 MAX_AVOID_CHARS = 80
 MAX_AVOID_LINES = 3
 
-# The demo's scripted hello: what `assistant.prompt.RECRUITER_FRAME` asks the model to say at the
-# start, said by code so a visitor's open costs no model call.
-RECRUITER_HELLO = (
-    "Hi, I'm Kevin's assistant. This is LEGION running on a made-up household, and this "
-    "conversation may be recorded to improve the assistant. You could ask what the household "
-    "spent on groceries, when the car is due for service, what's on the calendar, or about Kevin "
-    "himself. What would you like to try?"
+# The demo's opening (Kevin, 2026-11-17: the first ten seconds lost the one outside visitor to a
+# 16 s hello). About five seconds: who is speaking, one thing to ask, and the recording notice as
+# one short clause (Kevin's 2026-11-03 ruling: say conversations are recorded to improve the
+# assistant; never the word "train"). The full notice stays on screen by the mic. Spoken from code,
+# word for word, and kept in memory once made so it starts inside the tap.
+RECRUITER_OPENING = (
+    "Hi, I'm {who}. Ask me about him, or take the one-minute tour. This chat is recorded to "
+    "improve me."
 )
+
+
+def recruiter_hello(name: str = "") -> str:
+    """The opening in the companion's own name (never a name written into copy)."""
+    name = (name or "").strip()
+    return RECRUITER_OPENING.format(
+        who=f"{name}, Kevin's assistant" if name else "Kevin's assistant"
+    )
+
+
+RECRUITER_HELLO = recruiter_hello()
+
 
 _LABELS = {
     "ended_events": "Calendar events that ended in the last 24 hours",

@@ -45,7 +45,7 @@ from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
 from demo.briefing import seed_visit_procedures
-from demo.models import DemoCode, DemoVisit
+from demo.models import DemoCode, DemoFunnelDay, DemoVisit
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
@@ -56,13 +56,9 @@ DEMO_TAGS = ["demo"]
 VISIT_LENGTH = timedelta(hours=2)
 
 WRONG_CODE = "That invite code is not right. Nothing was created; check the code and try again."
-RETIRED_CODE = (
-    "That invite code has been retired. Nothing was created; ask for the current one."
-)
+RETIRED_CODE = "That invite code has been retired. Nothing was created; ask for the current one."
 DOOR_CLOSED = "The demo is closed right now. Nothing was created."
-SEED_FAILED = (
-    "The demo could not be set up just now. Nothing was created; try again in a moment."
-)
+SEED_FAILED = "The demo could not be set up just now. Nothing was created; try again in a moment."
 TOO_MANY = (
     "Too many tries from this network in a short time. Nothing was created; wait a while "
     "and try again."
@@ -199,9 +195,7 @@ def _make_visitor(household: Household, ref: str, expires_at):
     user = User.objects.create_user(email=f"visitor-{uuid.uuid4().hex[:16]}@demo.invalid")
     user.set_unusable_password()
     user.save(update_fields=["password"])
-    HouseholdMember.objects.create(
-        user=user, household=household, role=HouseholdMember.RECRUITER
-    )
+    HouseholdMember.objects.create(user=user, household=household, role=HouseholdMember.RECRUITER)
     token, raw_key = DeviceToken.issue(
         user,
         f"Demo visit ({ref})" if ref else "Demo visit",
@@ -209,3 +203,46 @@ def _make_visitor(household: Household, ref: str, expires_at):
         expires_at=expires_at,
     )
     return user, token, raw_key
+
+
+# =============================================================================
+# POST /api/demo/funnel
+# =============================================================================
+
+
+class DemoFunnelThrottle(ScopedRateThrottle):
+    """Per address: anyone may count a step, so nobody may count many."""
+
+
+class DemoFunnelSerializer(serializers.Serializer):
+    event = serializers.ChoiceField(choices=list(DemoFunnelDay.EVENTS))
+    ref = serializers.CharField(required=False, allow_blank=True, max_length=64, default="")
+
+
+class DemoFunnelView(APIView):
+    """One step of the demo happened (`demo.funnel`). Anonymous (a page load comes before any
+    visit), throttled per address, and it stores a count only."""
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [DemoFunnelThrottle]
+    throttle_scope = "demo_funnel"
+
+    @extend_schema(
+        tags=["demo"],
+        operation_id="api_demo_funnel_create",
+        summary="Count one step of the demo (a count only: no visitor, no words)",
+        request=DemoFunnelSerializer,
+        responses={204: None, 400: DetailSerializer, 429: DetailSerializer},
+    )
+    def post(self, request):
+        from demo import funnel
+
+        body = DemoFunnelSerializer(data=request.data)
+        if not body.is_valid():
+            return Response(
+                {"detail": f"Nothing was counted: {body.errors}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        funnel.count(body.validated_data["event"], body.validated_data.get("ref"))
+        return Response(status=status.HTTP_204_NO_CONTENT)

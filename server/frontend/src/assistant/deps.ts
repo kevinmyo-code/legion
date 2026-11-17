@@ -2,7 +2,8 @@ import { api, csrfToken } from '@/api/client'
 import { asCard } from '@/components/assistant/cards/types'
 
 import type { AudioIO } from './audio'
-import type { CascadeDeps, TurnRequest, TurnStart } from './cascade-client'
+import type { CascadeDeps, FunnelEvent, TurnRequest, TurnStart } from './cascade-client'
+import type { TurnDetector } from './turn/detector'
 import type { RecordEvent, RecordTransport } from './conversation-record'
 import type { LiveDeps, Notice, SessionResult, ToolContext, ToolResult } from './live-client'
 import { readSse } from './sse'
@@ -195,6 +196,8 @@ export function turnForm(request: TurnRequest): FormData {
     form.append('audio', new Blob([bytes], { type: 'application/octet-stream' }), 'utterance.pcm')
   }
   if (request.text) form.append('text', request.text)
+  if (request.spoken && request.text) form.append('spoken', 'true')
+  if (request.tour !== undefined) form.append('tour', String(request.tour))
   if (request.greet) {
     form.append('greet', 'true')
     if (request.greetingHistory) form.append('greeting_history', JSON.stringify(request.greetingHistory))
@@ -213,6 +216,8 @@ async function startTurn(request: TurnRequest, signal: AbortSignal): Promise<Tur
     body: {
       ...(request.text ? { text: request.text } : {}),
       greet: Boolean(request.greet),
+      spoken: Boolean(request.spoken),
+      ...(request.tour !== undefined ? { tour: request.tour } : {}),
       conversation_id: request.conversationId,
       utc_offset_minutes: request.utcOffsetMinutes,
       ...(request.preface ? { preface: request.preface } : {}),
@@ -232,9 +237,53 @@ async function startTurn(request: TurnRequest, signal: AbortSignal): Promise<Tur
   return { ok: false, status: response.status, detail }
 }
 
-export function createCascadeDeps(): CascadeDeps {
+/** The phone's turn models, after the first tap: two workers, the site's own model files. */
+async function loadTurnModels(): Promise<TurnDetector | null> {
+  try {
+    const { loadTurnDetector } = await import('./turn/detector')
+    return await loadTurnDetector({
+      makeWorker: () => new Worker(new URL('./turn/turn.worker.ts', import.meta.url), { type: 'module' }),
+      sileroUrl: '/turn/silero_vad_v6_2.onnx',
+      smartUrl: '/turn/smart-turn-v3.2-cpu.onnx',
+    })
+  } catch {
+    return null
+  }
+}
+
+/** What has been said so far, transcribed early; null when it could not be had. */
+async function transcribe(audio: Int16Array, signal: AbortSignal): Promise<string | null> {
+  const form = new FormData()
+  const bytes = new Uint8Array(audio.byteLength)
+  bytes.set(new Uint8Array(audio.buffer, audio.byteOffset, audio.byteLength))
+  form.append('audio', new Blob([bytes], { type: 'application/octet-stream' }), 'so-far.pcm')
+  try {
+    const { data } = await api.POST('/api/assistant/transcribe', {
+      body: { audio: '' },
+      bodySerializer: () => form,
+      signal,
+    })
+    return data ? data.text : null
+  } catch {
+    return null
+  }
+}
+
+/** One step of the demo for its funnel counts. Fire and forget; a count lost is no harm. */
+export function postFunnel(event: FunnelEvent | 'page_load', ref: string | undefined) {
+  try {
+    void api.POST('/api/demo/funnel', { body: { event, ref: ref ?? '' } })
+  } catch {
+    // Counting never gets in the way.
+  }
+}
+
+export function createCascadeDeps(options: { funnelRef?: string } = {}): CascadeDeps {
   return {
     startTurn,
+    turnDetector: loadTurnModels,
+    transcribe,
+    ...(options.funnelRef !== undefined ? { funnel: (event) => postFunnel(event, options.funnelRef) } : {}),
     audio: (): AudioIO => {
       if (audioFactory) return audioFactory()
       if (!webAudio) throw new Error('The audio code has not loaded yet.')

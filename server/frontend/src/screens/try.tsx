@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import {
   DEMO_SESSION_KEY,
@@ -21,6 +21,8 @@ import { RESUME_ALT } from '@/components/assistant/cards/resume'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { useSurface } from '@/lib/surface'
+import { postFunnel } from '@/assistant/deps'
+import { VoiceStage } from '@/components/demo/voice-stage'
 import { PhoneSection } from '@/screens/try-phone'
 
 /**
@@ -95,28 +97,22 @@ const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)', voiceFirs
 export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [entering, setEntering] = useState(code !== undefined)
+  // The link's code, kept for the orb's tap (voice-first, Kevin 2026-11-17): the visit is entered
+  // by the tap that opens the audio, not on load. It leaves the address bar at once, so it is never
+  // in the history or a copied URL.
+  const [linkCode] = useState(code)
   const [linkError, setLinkError] = useState<string | null>(null)
-  const started = useRef(false)
+  const counted = useRef(false)
 
-  // The resume's direct link. Submitted once (a double effect must not spend
-  // two of the per-IP tries), and the code leaves the address bar before the
-  // answer is back, so it is never in the history or a copied URL.
   useEffect(() => {
-    if (code === undefined || started.current) return
-    started.current = true
-    void navigate({ to: '/try', search: refTag ? { ref: refTag } : {}, replace: true })
-    void enterDemo(code, refTag).then(async (result) => {
-      if (result.ok) {
-        await queryClient.invalidateQueries()
-      } else {
-        setLinkError(result.message)
-      }
-      setEntering(false)
-    })
-  }, [code, refTag, navigate, queryClient])
+    if (!counted.current) {
+      counted.current = true
+      postFunnel('page_load', refTag)
+    }
+    if (code !== undefined) void navigate({ to: '/try', search: refTag ? { ref: refTag } : {}, replace: true })
+  }, [code, refTag, navigate])
 
-  const session = useDemoSession(!entering)
+  const session = useDemoSession(true)
   const me = useMe()
   const recruiter = session.data?.role === 'recruiter'
   const member = me.data?.signedIn === true
@@ -132,18 +128,40 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
     return () => clearTimeout(timer)
   }, [expiresAt, queryClient])
 
-  if (entering || session.isPending || me.isPending) {
+  if (linkCode !== undefined && !member && !linkError) {
+    // The link carries the code: the page opens on the orb, and the tap enters (voice-first).
+    return (
+      <VoiceFirstVisit
+        code={linkCode}
+        refTag={refTag}
+        entered={recruiter}
+        expiresAt={recruiter ? session.data?.expires_at : undefined}
+        onFailed={setLinkError}
+        enter={async () => {
+          const result = await enterDemo(linkCode, refTag)
+          if (!result.ok) {
+            setLinkError(result.message)
+            return false
+          }
+          await queryClient.invalidateQueries()
+          return true
+        }}
+      />
+    )
+  }
+
+  if (session.isPending || me.isPending) {
     return (
       <Shell>
         <p role="status" className="rc-status">
-          {entering ? 'Opening the demo…' : 'Checking your access…'}
+          Checking your access…
         </p>
       </Shell>
     )
   }
 
   if (recruiter) {
-    return <RecruiterPage mode="visitor" expiresAt={session.data?.expires_at} />
+    return <RecruiterPage mode="visitor" expiresAt={session.data?.expires_at} refTag={refTag} />
   }
   if (member) {
     return <RecruiterPage mode="preview" />
@@ -227,7 +245,54 @@ function expiryWords(iso: string | undefined): string | null {
   return `Your demo access lasts until ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`
 }
 
-function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expiresAt?: string }) {
+/**
+ * A visit opened from a link with its code (voice-first, Kevin 2026-11-17): one provider for the
+ * whole page, so the tap on the orb that enters the visit and unlocks the audio is the same
+ * conversation that then runs. Before the tap: the orb and its line. After: the page below it.
+ */
+function VoiceFirstVisit({
+  refTag,
+  entered,
+  expiresAt,
+  enter,
+}: {
+  code: string
+  refTag?: string
+  entered: boolean
+  expiresAt?: string
+  onFailed: (message: string) => void
+  enter: () => Promise<boolean>
+}) {
+  const voiceFirst = useMemo(() => ({ prepare: enter, funnelRef: refTag, sessionMinutes: 5 }), [enter, refTag])
+  return (
+    <AssistantProvider
+      voiceFirst={voiceFirst}
+      continueTurn={CONTINUE_TURN}
+      sessionLimit={VISITOR_SESSION_ENDED}
+      copy={VISITOR_COPY}
+    >
+      {entered ? <VisitorBody expiresAt={expiresAt} /> : (
+        <Shell assistant>
+          <VoiceStage />
+        </Shell>
+      )}
+    </AssistantProvider>
+  )
+}
+
+function VisitorBody({ expiresAt }: { expiresAt?: string }) {
+  const content = useDemoContent(true)
+  const access = <AccessNote expiry={expiryWords(expiresAt)} />
+  const loaded = content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
+  return (
+    <Shell assistant>
+      <VoiceStage content={loaded} />
+      {loaded ? <Sections content={loaded} access={access} /> : access}
+    </Shell>
+  )
+}
+
+function RecruiterPage({ mode, expiresAt, refTag }: { mode: 'visitor' | 'preview'; expiresAt?: string; refTag?: string }) {
   const content = useDemoContent(true)
   // The way into the app is a visitor's only (ticket 13): a member's preview
   // has no copy of the household to send them to, and no visit to run out.
@@ -259,8 +324,10 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
     body = <Sections content={content.data.content} access={access} />
   }
 
+  const loaded = content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
     <AssistantProvider
+      funnelRef={mode === 'visitor' ? refTag : undefined}
       openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}
       continueTurn={mode === 'visitor' ? CONTINUE_TURN : undefined}
       sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
@@ -273,6 +340,7 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
             <Link to="/">Back to your app</Link>
           </p>
         )}
+        {mode === 'visitor' && <VoiceStage content={loaded} />}
         {body}
       </Shell>
     </AssistantProvider>

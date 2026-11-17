@@ -59,9 +59,9 @@ one `cascade_turn` line on the record and in the log, numbers only, never words.
 from __future__ import annotations
 
 import base64
+import dataclasses
 import logging
 import queue
-import random
 import re
 import threading
 import time
@@ -93,7 +93,7 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
-from assistant import read_through, web_greeting
+from assistant import fillers, read_through, tour, web_greeting
 from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
@@ -135,7 +135,8 @@ VOICE_CLAUSE = (
     "detail. When a tool will take a moment, a few words first are fine."
 )
 
-# The phone's `ScriptedLines.FILLERS` (spec 22).
+# The phone's `ScriptedLines.FILLERS` (spec 22): what a reply that opens with only these is
+# stripped of. What the web says while a tool runs is per tool (`assistant/fillers.py`).
 FILLERS = ("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.")
 
 # The phone's `end_conversation` (spec 18): the description and the sign-off instruction, with
@@ -296,7 +297,8 @@ class FillerAudio:
         self._last: str | None = None
         self._spawn = spawn or (lambda work: threading.Thread(target=work, daemon=True).start())
 
-    def warm(self, speech, voice: str, lines=FILLERS) -> int:
+    def warm(self, speech, voice: str, lines=None) -> int:
+        lines = fillers.all_lines() if lines is None else lines
         missing = []
         with self._lock:
             for line in lines:
@@ -321,20 +323,23 @@ class FillerAudio:
         self._spawn(fetch)
         return len(missing)
 
-    def pick(self, voice: str, choose=random.choice) -> tuple[str, bytes] | None:
-        """A line in memory, never the last one said; None when none is in hand."""
+    def get(self, voice: str, line: str) -> bytes | None:
         with self._lock:
-            ready = [
-                line for line in FILLERS if (voice, line) in self._audio and line != self._last
-            ]
-            if not ready:
-                return None
-            line = choose(ready)
-            self._last = line
-            return line, self._audio[(voice, line)]
+            return self._audio.get((voice, line))
+
+    def pick(self, voice: str, tool: str) -> tuple[str, bytes] | None:
+        """One of `tool`'s lines that is in memory, never the last line said; None when the tool
+        is silent or none of its lines is in hand yet."""
+        with self._lock:
+            ready = [line for line in fillers.lines_for(tool) if (voice, line) in self._audio]
+        line = LINES.pick(ready)
+        if line is None:
+            return None
+        return line, self._audio[(voice, line)]
 
 
 FILLER_AUDIO = FillerAudio()
+LINES = fillers.LinePicker()
 
 
 # ---- speech, two sentences at a time (spec 5) --------------------------------------------------
@@ -388,12 +393,14 @@ class Speaker:
             self.total_ms += int((time.monotonic() - started) * 1000)
             job.chunks.put(_END)
 
-    def audio_event(self, chunk: bytes) -> ev.Event:
+    def audio_event(self, chunk: bytes, filler: bool = False) -> ev.Event:
         if self.first_audio_ms is None:
             self.first_audio_ms = int((self.clock() - self.started_at) * 1000)
-        return ev.Event(
-            "audio", {"pcm": base64.b64encode(chunk).decode("ascii"), "rate": OUTPUT_RATE}
-        )
+        data = {"pcm": base64.b64encode(chunk).decode("ascii"), "rate": OUTPUT_RATE}
+        if filler:
+            # The page may drop a filler that has not started once the answer's audio is ready.
+            data["filler"] = True
+        return ev.Event("audio", data)
 
     def _take(self, block: bool) -> Iterator[ev.Event]:
         while self.jobs:
@@ -441,6 +448,7 @@ class DoorCall:
     text: str
     card: dict | None = None
     verbatim: str | None = None
+    ms: int = 0
 
 
 class WebDoor:
@@ -469,7 +477,9 @@ class WebDoor:
         return self._declarations
 
     def is_slow(self, name: str) -> bool:
-        return name in SLOW_TOOLS
+        # The runtime says `working` before a slow tool; the web's slow list is the fillers'
+        # (a tool whose line goes out at its start), which covers the runtime's own SLOW_TOOLS.
+        return fillers.is_slow(name) or name in SLOW_TOOLS
 
     def _audit(self, outcome: str, name: str) -> None:
         AssistantCall.objects.create(
@@ -521,7 +531,8 @@ class WebDoor:
         if ok and result is not None and name in VERBATIM_TOOLS:
             said = (result.structured or {}).get(SPEAK_VERBATIM)
             verbatim = said.strip() if isinstance(said, str) and said.strip() else None
-        self.calls.append(DoorCall(name, ok, outcome, text, card, verbatim))
+        ms = int((time.monotonic() - clock) * 1000)
+        self.calls.append(DoorCall(name, ok, outcome, text, card, verbatim, ms))
         tool = self.tools().get(name)
         return ToolOutcome(
             name=name,
@@ -564,6 +575,11 @@ class TurnInput:
     # What the page remembers for the greeting's caps (spec 27): today's lead kinds, the last
     # kind, the last hellos.
     greeting_history: dict | None = None
+    # A text turn the page transcribed early and sends as spoken (the phone's speculation, spec
+    # 33 adapted): answered aloud like an utterance, recorded as spoken.
+    spoken: bool = False
+    # The one-minute tour (`assistant/tour.py`): the beat to play, or None.
+    tour_beat: int | None = None
 
 
 @dataclass
@@ -622,21 +638,27 @@ def run_turn(
     speech: GeminiSpeech,
     report: TurnReport,
     clock: Callable[[], float] = time.monotonic,
-    fillers: FillerAudio | None = None,
+    filler_audio: FillerAudio | None = None,
+    companion_name: str = "",
 ) -> Iterator[ev.Event]:
     """Yields the turn's events. Fills `report` as it goes, so a caller that stops reading (the
     browser hung up) still knows what happened."""
     t0 = clock()
     timings = report.timings
-    fillers = fillers or FILLER_AUDIO
-    speak = turn_input.audio is not None or turn_input.greet
+    filler_audio = filler_audio or FILLER_AUDIO
+    speak = (
+        turn_input.audio is not None
+        or turn_input.greet
+        or turn_input.spoken
+        or turn_input.tour_beat is not None
+    )
     system = cached_system(system)
     yield ev.Event("turn", {"conversation_id": str(conversation_id), "turn": turn})
     door = WebDoor(request, conversation_id, turn)
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
     if speak:
         # The filler lines' audio, fetched while the floor is theirs (spec 22).
-        fillers.warm(speech, voice)
+        filler_audio.warm(speech, voice)
     try:
         if turn_input.greet:
             yield from _greet(
@@ -650,8 +672,33 @@ def run_turn(
                 model_name,
                 model,
                 clock,
+                filler_audio,
+                companion_name,
             )
             return
+        if turn_input.tour_beat is not None:
+            words = None
+            if turn_input.audio is not None:
+                # Said during the tour: "skip" and "stop" steer it; anything else is a question.
+                try:
+                    heard = speech.transcribe(turn_input.audio)
+                except SpeechFailure as exc:
+                    timings["stt_failed"] = str(exc)
+                    report.status = "stt_failed"
+                    yield ev.error(STT_FAILED)
+                    return
+                timings.update(stt_ms=heard.ms, audio_ms=heard.audio_ms)
+                timings.update(
+                    stt_prompt_tokens=heard.prompt_tokens, stt_output_tokens=heard.output_tokens
+                )
+                words = heard.text
+                yield ev.Event("heard", {"text": words})
+            if words is None or tour.is_skip(words) or tour.is_stop(words):
+                yield from _tour(request, door, speaker, report, turn_input.tour_beat, words)
+                return
+            turn_input = dataclasses.replace(
+                turn_input, audio=None, text=words, spoken=True, tour_beat=None
+            )
         yield from _answer(
             request,
             turn_input,
@@ -666,7 +713,7 @@ def run_turn(
             model,
             speech,
             clock,
-            fillers,
+            filler_audio,
         )
     finally:
         speaker.close()
@@ -695,7 +742,7 @@ def _answer(
     model,
     speech,
     clock,
-    fillers,
+    filler_audio,
 ):
     timings = report.timings
     t0 = clock()
@@ -724,6 +771,8 @@ def _answer(
             return
     else:
         words = (turn_input.text or "").strip()
+        if turn_input.spoken:
+            yield ev.Event("heard", {"text": words})
     report.heard = words
     web_conversation.record_lines(
         request,
@@ -754,6 +803,16 @@ def _answer(
     no_answer = False
     money_dropped = 0
     sentences = 0
+
+    def filler(tool: str):
+        picked = filler_audio.pick(voice, tool)
+        if picked is None:
+            return None
+        line, audio = picked
+        timings["filler_line"] = line
+        yield ev.Event("filler", {"tool": tool, "text": line})
+        yield speaker.audio_event(audio, filler=True)
+        return line
 
     unbacked = 0
     wait_reason = False
@@ -809,20 +868,32 @@ def _answer(
                 result = stop.value
                 break
             if event.type == "working":
+                # A slow tool has started: its own line, from memory, before it runs.
                 yield event
                 if speak and sentences == 0 and not filler_said:
-                    picked = fillers.pick(voice)
-                    if picked is not None:
-                        filler_said = True
-                        yield speaker.audio_event(picked[1])
+                    line = yield from filler(event.data["tool"])
+                    filler_said = line is not None
                 continue
             if event.type == "tool":
                 done = door.calls[-1]
                 payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
                 payload["text"] = done.text
+                payload["ms"] = done.ms
                 if done.card is not None:
                     payload["card"] = done.card
                 yield ev.Event("tool", payload)
+                waited = (clock() - t0) * 1000
+                if (
+                    speak
+                    and sentences == 0
+                    and not filler_said
+                    and not fillers.is_slow(done.name)
+                    and waited >= fillers.FAST_AFTER_MS
+                ):
+                    # A fast tool returned and nothing has been said yet: its line fills the
+                    # model's next round. Never once an answer has started.
+                    line = yield from filler(done.name)
+                    filler_said = line is not None
                 if done.verbatim and not verbatim_said:
                     verbatim_said = True
                     yield say(done.verbatim)
@@ -905,11 +976,17 @@ def _answer(
     if not door.end_requested and is_stop_utterance(words):
         door.end_requested = True
         timings["stop_phrase"] = 1
+    extra = {}
+    if door.recruiter:
+        # The demo's live strip (recruiter only): what this turn is estimated to have cost.
+        extra["cost_usd"] = round(turn_cost_usd(timings, speaker.done), 5)
+        extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
     yield ev.done(
         report.status,
         " ".join(report.said).strip(),
         door.wrote(),
         end=door.end_requested,
+        **extra,
     )
 
 
@@ -950,7 +1027,64 @@ def conversation_id_of(door: WebDoor):
     return door.conversation_id
 
 
-def _greet(request, turn_input, door, speaker, report, system, context, model_name, model, clock):
+def _tour(request, door, speaker, report, beat: int, words: str | None):
+    """One beat of the one-minute tour (`assistant/tour.py`): its visual through the tool door,
+    its sentence from code. Skips beats with nothing to show; "stop" ends the tour."""
+    report.status = "tour"
+    if words is not None and tour.is_stop(words):
+        report.said.append(tour.STOPPED_LINE)
+        speaker.add(tour.STOPPED_LINE)
+        yield ev.Event("sentence", {"text": tour.STOPPED_LINE})
+        yield from speaker.drain()
+        yield ev.done("tour", tour.STOPPED_LINE, False, tour={"beat": beat, "next": None})
+        return
+    beats = tour.beats_for(request.user) if door.recruiter else []
+    index = beat
+    said = ""
+    while index < len(beats):
+        said, ran = tour.run_beat(door, beats[index])
+        done = door.calls[-1] if beats[index].tool and door.calls else None
+        if done is not None and ran:
+            payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome, "ms": done.ms}
+            payload["text"] = done.text
+            if done.card is not None:
+                payload["card"] = done.card
+            yield ev.Event("tool", payload)
+        if ran and said:
+            break
+        index += 1
+    nxt = index + 1 if index + 1 < len(beats) else None
+    if index >= len(beats):
+        said, nxt = tour.END_LINE, None
+    report.said.append(said)
+    report.timings["sentences"] = 1
+    speaker.add(said)
+    yield ev.Event("sentence", {"text": said})
+    yield from speaker.drain()
+    if nxt is None and said != tour.END_LINE:
+        report.said.append(tour.END_LINE)
+        speaker.add(tour.END_LINE)
+        yield ev.Event("sentence", {"text": tour.END_LINE})
+        yield from speaker.drain()
+    yield ev.done(
+        "tour", " ".join(report.said), False, tour={"beat": index, "next": nxt, "of": len(beats)}
+    )
+
+
+def _greet(
+    request,
+    turn_input,
+    door,
+    speaker,
+    report,
+    system,
+    context,
+    model_name,
+    model,
+    clock,
+    filler_audio=None,
+    companion_name="",
+):
     """The greeting on open (spec 25 to 29): Spoken (a lead topic), Hello (nothing to raise) or
     Scripted (a recruiter's visit, or the model past its deadline or failing)."""
     t0 = clock()
@@ -958,7 +1092,7 @@ def _greet(request, turn_input, door, speaker, report, system, context, model_na
     kind, prompt, text = "scripted", None, ""
     if door.recruiter:
         later = bool(turn_input.preface)
-        text = web_greeting.ack_line() if later else web_greeting.RECRUITER_HELLO
+        text = web_greeting.ack_line() if later else web_greeting.recruiter_hello(companion_name)
     else:
         from greeting import facts
 
@@ -995,8 +1129,16 @@ def _greet(request, turn_input, door, speaker, report, system, context, model_na
     )
     _meter(request, model_name, rounds)
     yield ev.Event("greeting", {"kind": kind, "text": text})
-    speaker.add(text)
     yield ev.Event("sentence", {"text": text})
+    cached = filler_audio.get(speaker.voice, text) if filler_audio and kind == "scripted" else None
+    if cached and speaker.enabled:
+        # A scripted line made before: it starts at once (the demo's opening, in the tap).
+        report.timings["greeting_cached"] = 1
+        yield speaker.audio_event(cached)
+    else:
+        speaker.add(text)
+        if filler_audio is not None and kind == "scripted" and speaker.enabled:
+            filler_audio.warm(speaker.speech, speaker.voice, [text])
     yield from speaker.drain()
     yield ev.done("greeting", text, False)
 
@@ -1065,6 +1207,37 @@ def _meter(request, model_name: str, rounds: list[dict]) -> None:
             usage={"prompt_tokens": prompt, "output_tokens": out, "total_tokens": prompt + out},
             cost_estimate_micro_usd=cost,
         )
+
+
+# USD per million tokens, from `tools/voice_prices.json` (read 2026-11-15). ESTIMATES: what the
+# live strip shows and what the reports quote, never a bill.
+PRICE_TEXT_IN = 0.30
+PRICE_TEXT_CACHED = 0.03
+PRICE_TEXT_OUT = 2.50
+PRICE_TTS_IN = 0.50
+PRICE_TTS_OUT = 9.00
+
+
+def turn_cost_usd(timings: dict, spoken: list | None = None) -> float:
+    """A turn's estimated cost: speech-to-text, the text rounds (cached input at the cached
+    rate) and the speech made. `spoken` is the speaker's per-sentence stats, when the turn has not
+    yet folded them into `timings`."""
+
+    def g(key: str) -> int:
+        value = timings.get(key)
+        return value if isinstance(value, int) and value > 0 else 0
+
+    tts_in = sum(s.prompt_tokens for s in spoken) if spoken is not None else g("tts_prompt_tokens")
+    tts_out = sum(s.output_tokens for s in spoken) if spoken is not None else g("tts_output_tokens")
+    cached = min(g("cached_tokens"), g("prompt_tokens"))
+    usd = (
+        (g("prompt_tokens") - cached + g("stt_prompt_tokens")) * PRICE_TEXT_IN
+        + cached * PRICE_TEXT_CACHED
+        + (g("output_tokens") + g("stt_output_tokens")) * PRICE_TEXT_OUT
+        + tts_in * PRICE_TTS_IN
+        + tts_out * PRICE_TTS_OUT
+    )
+    return usd / 1_000_000
 
 
 def timing_line(report: TurnReport, *, spoken: bool) -> str:

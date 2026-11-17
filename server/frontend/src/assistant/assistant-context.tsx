@@ -88,8 +88,9 @@ export function useCompanionRead() {
  * Which engine this caller's assistant runs on (ADR 0102), and what the cascade needs to know.
  * The server decides per role; the other engine's door refuses.
  */
-export function useAssistantEngine() {
+export function useAssistantEngine(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ['assistant', 'engine'],
     queryFn: async () => {
       const { data, response } = await api.GET('/api/assistant/session')
@@ -110,6 +111,7 @@ export function AssistantProvider({
   sessionLimit,
   copy,
   defaultOpen = false,
+  voiceFirst,
 }: {
   children: ReactNode
   deps?: LiveDeps
@@ -129,6 +131,12 @@ export function AssistantProvider({
    * full-screen sheet, which must never pop up on its own.
    */
   defaultOpen?: boolean
+  /**
+   * The demo's voice-first door (Kevin, 2026-11-17): the conversation is the engine's cascade from
+   * the first tap, before any visit exists to ask which engine; `prepare` enters the visit inside
+   * that tap, and `funnelRef` tags the page's funnel counts.
+   */
+  voiceFirst?: { prepare: () => Promise<boolean>; funnelRef?: string; sessionMinutes?: number | null }
 }) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
@@ -151,10 +159,20 @@ export function AssistantProvider({
   useEffect(() => {
     limitRef.current = sessionLimit
   }, [sessionLimit])
-  const engine = useAssistantEngine()
-  const [client, setClient] = useState<AssistantClient>(
-    () =>
-      new LiveClient(deps ?? createLiveDeps(), {
+  const engine = useAssistantEngine(!voiceFirst)
+  const voiceFirstRef = useRef(voiceFirst)
+  const [client, setClient] = useState<AssistantClient>(() =>
+    voiceFirstRef.current
+      ? new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef: voiceFirstRef.current.funnelRef }), {
+          companionName: null,
+          sessionMinutes: voiceFirstRef.current.sessionMinutes ?? null,
+          endOnHidden: () => surfaceRef.current === 'family',
+          openingTurn: () => openingRef.current ?? null,
+          continueTurn: () => continueRef.current ?? null,
+          sessionLimit: () => limitRef.current ?? null,
+          prepare: () => voiceFirstRef.current!.prepare(),
+        })
+      : new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',
         openingTurn: () => openingRef.current ?? null,
         continueTurn: () => continueRef.current ?? null,
