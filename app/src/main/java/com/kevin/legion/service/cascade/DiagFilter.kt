@@ -9,8 +9,8 @@ package com.kevin.legion.service.cascade
  *
  * Dropped ([restatesResult]): a trouble code (P0420, "P zero four two zero", "p 0 4 2 0"), a module
  * count ("seven modules", "3 module(s)"), or a verdict word: clear, cleared, clean, fine, healthy,
- * ok / okay, all good, no problems / issues, nothing wrong. Anything else may pass ("Want me to look
- * one of them up?").
+ * ok / okay, all good, no problems / issues, nothing wrong; or a bare scripted filler line ("Checking.").
+ * Anything else may pass ("Want me to look one of them up?").
  */
 internal class DiagFilter : SentenceFilter {
     private val buf = StringBuilder()
@@ -41,7 +41,7 @@ internal class DiagFilter : SentenceFilter {
     companion object {
         private const val SPOKEN_DIGITS = "zero|oh|one|two|three|four|five|six|seven|eight|nine"
         private val CODE = Regex(
-            "\\b[pcbu]\\s?-?[0-3][0-9a-f]{3}\\b|\\b[pcbu](\\s+[0-9a-f]){4}\\b|\\b[pcbu]\\s+($SPOKEN_DIGITS)\\b",
+            "\\b[pcbu][\\s-]?[0-3][0-9a-f]{3}\\b|\\b[pcbu]([\\s-]+[0-9a-f]){4}\\b|\\b[pcbu][\\s-]+($SPOKEN_DIGITS)\\b",
             RegexOption.IGNORE_CASE,
         )
         private val COUNT = Regex(
@@ -54,8 +54,10 @@ internal class DiagFilter : SentenceFilter {
             RegexOption.IGNORE_CASE,
         )
 
+        /** Also a bare scripted filler line said after the answer ("... (Bank 1). Checking."). */
         fun restatesResult(sentence: String): Boolean =
-            CODE.containsMatchIn(sentence) || COUNT.containsMatchIn(sentence) || VERDICT.containsMatchIn(sentence)
+            CODE.containsMatchIn(sentence) || COUNT.containsMatchIn(sentence) || VERDICT.containsMatchIn(sentence) ||
+                LeadingFiller.core(sentence) in LeadingFiller.CORES
     }
 }
 

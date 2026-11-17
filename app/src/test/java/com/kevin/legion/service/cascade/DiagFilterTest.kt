@@ -14,6 +14,7 @@ class DiagFilterTest {
             "Clean bill.", "The engine's clear.", "All good.", "Nothing wrong there.", "It's fine.",
             "Seven modules answered.", "3 module(s) answered.", "P0420 is still there.",
             "P zero four two zero again.", "p 0 4 2 0.", "Looks healthy.", "No problems.",
+            "One stored code, P-zero-four-twenty, for catalyst efficiency.", "Checking.", "On it.",
         )) {
             assertTrue(s, DiagFilter.restatesResult(s))
         }
