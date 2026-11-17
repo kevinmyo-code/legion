@@ -72,6 +72,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
+from agents.legion.guards import claims_unbacked_outcome
 from agents.runtime import events as ev
 from agents.runtime.budget import BudgetUsed, LoopLimits
 from agents.runtime.loop import (
@@ -166,6 +167,9 @@ NO_TEXT = "No written reply came back for that."
 NOTHING_CHANGED = " Nothing was changed."
 NOTHING_HEARD = "Nothing heard, so nothing was asked."
 STT_FAILED = "Not answered: the words could not be made out just now."
+# Said instead of a sentence claiming a change no tool made (measured 2026-11-17: after a web
+# search, "I have added that to your grocery list", with the write refused or never tried).
+CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
 TOO_MANY_TOOLS = (
     "Nothing was read or written: this turn already ran as many tool calls as one turn may."
 )
@@ -486,6 +490,17 @@ class WebDoor:
             ms=int((time.monotonic() - clock) * 1000),
         )
 
+    def actions(self) -> list[dict]:
+        tools = self.tools()
+        return [
+            {
+                "name": c.name,
+                "writes": bool(getattr(tools.get(c.name), "writes", False)),
+                "ok": c.ok,
+            }
+            for c in self.calls
+        ]
+
     def wrote(self) -> bool:
         tools = self.tools()
         return any(c.ok and getattr(tools.get(c.name), "writes", False) for c in self.calls)
@@ -693,8 +708,22 @@ def _answer(
     verbatim_said = False
     filler_said = False
     filler_dropped = 0
+    no_answer = False
     money_dropped = 0
     sentences = 0
+
+    unbacked = 0
+
+    def honest(text: str) -> bool:
+        """False for a sentence that claims a change when no write went through in this turn
+        (`agents.legion.guards.claims_unbacked_outcome`, the runtime's own check, here blocking
+        rather than flagging; CLAUDE.md section 7). Measured 2026-11-17: after a web search, the
+        model said it had added a date to a list with no write tried at all."""
+        nonlocal unbacked
+        if claims_unbacked_outcome(text, door.actions()):
+            unbacked += 1
+            return False
+        return True
 
     def say(text: str):
         nonlocal sentences, first_sentence
@@ -744,15 +773,17 @@ def _answer(
             if event.type == "sentence":
                 text = event.data["text"]
                 if text == NO_ANSWER_WORDS:
-                    # The runtime's line for a turn with no words: the phone's own (spec 31).
-                    text = NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED)
+                    # The runtime's line for a turn with no words. Held: after tools, the turn is
+                    # asked once more (below); else the phone's own line is said (spec 31).
+                    no_answer = True
+                    continue
                 if sentences == 0 and is_filler(text):
                     filler_dropped += 1
                     continue
                 if verbatim_said and has_money(text):
                     money_dropped += 1
                     continue
-                if sentences >= MAX_SPOKEN_SENTENCES:
+                if sentences >= MAX_SPOKEN_SENTENCES or not honest(text):
                     continue
                 yield say(text)
                 continue
@@ -782,18 +813,24 @@ def _answer(
         and result is not None
         and result.status == "done"
         and sentences == 0
-        and filler_dropped
+        and (filler_dropped or no_answer)
         and door.calls
         and not door.end_requested
     ):
-        # Spec 23: the tools ran and the answer was only filler. Asked once more, tool-free, with
-        # the phone's note; whatever it says is the answer.
+        # Spec 23: the tools ran and the answer was only filler, or nothing at all (measured
+        # 2026-11-17: a write refused after a web search left the last round empty, and the person
+        # heard neither the search's answer nor the refusal). Asked once more, tool-free, with the
+        # phone's note; whatever it says is the answer.
         for text in _ask_again(model, model_name, system, state.messages, door, rounds):
-            if not is_filler(text) and not (verbatim_said and has_money(text)):
-                yield say(text)
+            if is_filler(text) or (verbatim_said and has_money(text)) or not honest(text):
+                continue
+            yield say(text)
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
+    if unbacked:
+        yield say(CHANGE_NOT_MADE)
+    timings["unbacked"] = unbacked
     if failure is not None:
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
@@ -978,6 +1015,7 @@ def timing_line(report: TurnReport, *, spoken: bool) -> str:
         "sentences",
         "verbatim",
         "money_dropped",
+        "unbacked",
         "filler",
         "tts_first_audio_ms",
         "tts_ms",

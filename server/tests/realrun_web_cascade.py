@@ -40,7 +40,7 @@ from ingest.statements import GEMINI_KEY_ENV, gemini_key
 from tests.test_assistant import browser
 
 REAL_WEB_SEARCH = web_search._transport
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.live_model]
 
 OUT = Path(os.environ.get("REALRUN_OUT", "realrun-out"))
 BUDGET = float(os.environ.get("REALRUN_BUDGET_USD", "0.60"))
@@ -66,6 +66,11 @@ QUESTIONS = {
     "agents": "How does Kevin work with coding agents?",
     "search": "Search the web for the date of the next total solar eclipse in North America.",
     "add_that": "Add that to my list.",
+    "search_and_add": (
+        "Look up the date of the next total solar eclipse in North America on the web, and add "
+        "it to my groceries list."
+    ),
+    "add_plain": "Add bread to the groceries list.",
     "followup": "And how many items is that?",
     "stop": "That will be all, thanks.",
 }
@@ -79,6 +84,8 @@ CASES = [
     ("arch", ["arch"]),
     ("agents", ["agents"]),
     ("search_then_add", ["search", "add_that"]),
+    ("search_and_add", ["search_and_add"]),
+    ("add_plain", ["add_plain"]),
     ("stop", ["stop"]),
     ("noise", ["@noise"]),
 ]
@@ -128,6 +135,19 @@ class Run:
         OUT.mkdir(parents=True, exist_ok=True)
         self.log = (OUT / "turns.jsonl").open("a", encoding="utf-8")
 
+    greeting_history = {"today": [], "last": None, "hellos": []}
+
+    def note_greeting(self, greeting: dict | None) -> None:
+        """What the page keeps for the greeting's caps (cascade-client.ts `noteGreeting`)."""
+        if not greeting or greeting.get("kind") in (None, "scripted"):
+            return
+        h = self.greeting_history
+        if greeting["kind"] == "hello":
+            h["hellos"] = [*h["hellos"], greeting["text"]][-3:]
+        else:
+            h["today"].append(greeting["kind"])
+        h["last"] = greeting["kind"]
+
     def audio_for(self, key: str) -> bytes:
         if key == "@noise":
             # Room hiss: quiet random samples, under the loudness gate.
@@ -160,6 +180,7 @@ class Run:
             fields["text"] = text
         if greet:
             fields["greet"] = "true"
+            fields["greeting_history"] = json.dumps(self.greeting_history)
         if cid:
             fields["conversation_id"] = cid
         fields["utc_offset_minutes"] = "-360"
@@ -226,6 +247,7 @@ class Run:
             row["heard_back"] = back.text
             row["figures_said"] = re.findall(r"\d[\d,.]*", said)
             row["figures_heard"] = re.findall(r"\d[\d,.]*", back.text)
+        self.note_greeting(row["greeting"])
         self._write(row)
         return row, cid
 
@@ -283,6 +305,9 @@ def real(monkeypatch, settings):
 def _member(household_user):
     household_user.first_name = "Sam"
     household_user.save(update_fields=["first_name"])
+    household = household_user.household
+    household.timezone = "America/Chicago"
+    household.save(update_fields=["timezone"])
     client = browser(household_user)
     # Invented rows: an event today, a groceries list.
     from tests.test_assistant import _tool

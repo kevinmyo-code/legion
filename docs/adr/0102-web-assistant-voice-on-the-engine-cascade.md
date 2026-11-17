@@ -12,7 +12,7 @@ tags: [adr]
 
 **The web assistant has two voice engines, chosen by the server per role.** `live` is Gemini Live with a locked token the engine mints ([[0056-the-household-key-serves-the-web-assistant]], `server/assistant/live.py`). `cascade` is the phone's cloud voice shape on the engine: speech-to-text, a text model with the web assistant's tools, text-to-speech.
 - Default in code: **`cascade` for every role** (Kevin, 2026-11-17: *"same voice behavior across everything"*). Live stays whole behind the switch as the fallback for any role.
-- Override: `LEGION_WEB_VOICE` (members) and `LEGION_WEB_VOICE_RECRUITER` (visits), `live` or `cascade`. Neither reaches Cloud Run until its name is added to the deploy pass-through list. Rollback is one variable.
+- Override: `LEGION_WEB_VOICE` (members) and `LEGION_WEB_VOICE_RECRUITER` (visits), `live` or `cascade`. The deploy scripts pass either one when it is set in `.env`. Rollback is one variable and a deploy.
 - Each engine's door refuses a caller on the other engine (409), so the choice is enforced, not advised.
 
 ## Context
@@ -26,6 +26,8 @@ Kevin, 2026-11-17: *"recruiter demo > can it [go] to our current cloud pipeline 
 - **The recruiter's fence is unchanged**: same tools, same refusals, same isolation, because it is the same code. No mail tool exists on either door. The one addition, for every role, is `end_conversation`, a control the page acts on that reaches no data.
 - **ADR 0090 holds** by the door's own guard: one HTTP request is one turn, and a third-party read flags the request before it runs, so a write after it in the same turn refuses in words.
 - **Speech shapes are the phone's working code** (`CloudSpeech.kt`): speech-to-text on the cascade's text model with the utterance inline as WAV (not `gemini-3.5-transcribe`, which the phone left for price), and text-to-speech on `gemini-3.8-flash-tts` in the companion's voice, with the phone's one retry on the older voice shape.
+- **No claimed change without a change**: a sentence that claims an outcome ("I added ...") when no write succeeded in the turn is not said; the turn says plainly that nothing was changed instead (the runtime's own `claims_unbacked_outcome`, used here to block, not only to flag). Measured on the first real run: after a web search, the model claimed it had added a date to a list. A turn whose tools ran but whose answer came back empty or filler-only is asked once more without tools (the phone's note).
+- **Rollback is one `.env` line and a deploy**: the deploy scripts pass `LEGION_WEB_VOICE` and `LEGION_WEB_VOICE_RECRUITER` when set.
 - **Money is spoken by code** where a tool already writes the sentence: `account_balances` carries its net cash sentence as `speak_verbatim` ([[0094-net-cash]]). It is spoken as written, and the model's own money sentences after it in that turn are dropped. Every other figure is still the model's wording of a code-written result, as on Live.
 - **History is the conversation record's own engine-written lines** (the last eight exchanges). No new table, and a browser upload can never become the assistant's words.
 - **What a recruiter's turn stores** is the existing visit conversation record (`DeviceLog`, no household, `demo_visitor`, 30 days, read only on the engine): the visitor's words as transcribed or typed, the reply's words, each tool call with its arguments and trimmed result, and one timing line of numbers. No audio, ever. Plus the existing audit rows (`AssistantCall`: who, when, which tool, outcome).

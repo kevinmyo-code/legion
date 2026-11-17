@@ -389,7 +389,7 @@ def test_a_visitors_record_is_a_visit_record_with_no_household(visitor, engine):
 def test_a_visitor_turn_reserves_its_worst_case_and_gives_back_unused_rounds(visitor, engine):
     _events(_post(visitor, text="Hello."))
     day = DemoBudgetDay.objects.get()
-    # Four rounds reserved at one cent each, three not used and given back.
+    # Five rounds reserved at a cent each (four plus the ask again), four unused and given back.
     assert day.reserved_cents == 1
     assert day.text_calls == 1
 
@@ -453,8 +453,9 @@ def test_one_utterance_or_one_text_and_nothing_else(member, engine, fields):
 def test_a_turn_runs_at_most_the_round_cap(member, engine):
     engine.model = FakeModel([call("list_events", {}) for _ in range(6)])
     _events(_post(member, text="Loop."))
-    assert len(engine.model.requests) == cascade.MAX_ROUNDS
-    # The last round may not call a tool.
+    # The loop's rounds, the last tool-free, then at most one tool-free ask again (spec 23).
+    assert len(engine.model.requests) == cascade.MAX_ROUNDS + 1
+    assert engine.model.requests[cascade.MAX_ROUNDS - 1].allow_tools is False
     assert engine.model.requests[-1].allow_tools is False
 
 
@@ -689,3 +690,46 @@ def test_a_filler_only_answer_after_a_tool_is_asked_once_more_without_tools(memb
 )
 def test_filler_lines_match_the_phones_rule(line, filler):
     assert cascade.is_filler(line) is filler
+
+
+def test_an_empty_answer_after_a_tool_is_asked_once_more(member, engine):
+    empty = [*say("")[2:]]
+    engine.model = FakeModel([call("list_events", {}), empty, say("Nothing is on today.")])
+    events = _events(_post(member, text="Anything?"))
+    assert [s["text"] for s in _of(events, "sentence")] == ["Nothing is on today."]
+    assert engine.model.requests[-1].contents[-1]["parts"][0]["text"] == cascade.FILLER_NOTE
+
+
+def test_a_visitor_greeting_keeps_its_speech_reservation(visitor, engine, settings):
+    _events(_post(visitor, greet="true"))
+    day = DemoBudgetDay.objects.get()
+    # One text call reserved and not used (the demo hello is scripted), speech kept: one cent.
+    assert day.reserved_cents == 1
+
+
+def test_a_claimed_change_after_a_refused_write_is_not_said(member, engine):
+    engine.model = FakeModel(
+        [
+            call("web_search", {"query": "fair date"}),
+            call("add_event", {"fields": {"title": "Fair"}}),
+            say("The fair is on Saturday. I have added it to your calendar."),
+        ]
+    )
+    events = _events(_post(member, text="Look up the fair and add it."))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert said == ["The fair is on Saturday.", cascade.CHANGE_NOT_MADE]
+
+
+def test_a_real_change_may_be_said(member, engine):
+    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added it.")])
+    events = _events(_post(member, text="Add the fair."))
+    assert [s["text"] for s in _of(events, "sentence")] == ["Added it."]
+
+
+def test_a_claimed_change_with_no_write_tried_is_not_said(member, engine):
+    engine.model = FakeModel([call("list_events", {}), say("Nothing is on. I added a reminder.")])
+    events = _events(_post(member, text="Anything?"))
+    assert [s["text"] for s in _of(events, "sentence")] == [
+        "Nothing is on.",
+        cascade.CHANGE_NOT_MADE,
+    ]

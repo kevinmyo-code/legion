@@ -877,7 +877,18 @@ def _cascade_clients():
     )
 
 
-def _turn_sse(request, turn_input, row_id, history, turn_no, system, context, voice, reservation):
+def _turn_sse(
+    request,
+    turn_input,
+    row_id,
+    history,
+    turn_no,
+    system,
+    context,
+    voice,
+    reservation,
+    reserved_rounds,
+):
     report = cascade.TurnReport()
     spoken = turn_input.audio is not None
     try:
@@ -916,7 +927,7 @@ def _turn_sse(request, turn_input, row_id, history, turn_no, system, context, vo
         cascade.log.warning("assistant %s", timing)
         if reservation is not None:
             demo_budget.release_unused(
-                reservation, rounds_unused=cascade.MAX_ROUNDS - report.rounds
+                reservation, rounds_unused=max(reserved_rounds - report.rounds, 0)
             )
 
 
@@ -1041,9 +1052,11 @@ class AssistantTurnView(_AssistantView):
         if member_cap.over_cap(request.user):
             return _refuse(request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS)
         reservation = None
+        # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
+        reserved_rounds = 1 if greet else cascade.MAX_ROUNDS + 1
         if demo_budget.counts(request.user):
             reservation = demo_budget.reserve_cascade_turn(
-                rounds=1 if greet else cascade.MAX_ROUNDS,
+                rounds=reserved_rounds,
                 spoken=greet or audio is not None,
                 user=request.user,
             )
@@ -1089,6 +1102,7 @@ class AssistantTurnView(_AssistantView):
                 context,
                 companion.voice_name,
                 reservation,
+                reserved_rounds,
             ),
             content_type="text/event-stream",
         )
