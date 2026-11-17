@@ -47,8 +47,8 @@ MAX_AVOID_LINES = 3
 # assistant; never the word "train"). The full notice stays on screen by the mic. Spoken from code,
 # word for word, and kept in memory once made so it starts inside the tap.
 RECRUITER_OPENING = (
-    "Hi, I'm {who}. Ask me about him, or take the one-minute tour. This chat is recorded to "
-    "improve me."
+    "Hi, I'm {who}. Ask me about him, or take the one-minute tour. <short pause> This chat is "
+    "recorded to improve me."
 )
 
 

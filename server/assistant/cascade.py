@@ -93,7 +93,7 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
-from assistant import fillers, read_through, tour, web_greeting
+from assistant import fillers, read_through, speech_tags, tour, web_greeting
 from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
@@ -172,7 +172,8 @@ def is_stop_utterance(words: str) -> bool:
 
 
 END_INSTRUCTION = (
-    "Sign off now with one dry line in your own register, about this conversation, then "
+    "Sign off now with one dry line in your own register (a <chuckle> before it is fine), "
+    "about this conversation, then "
     "stop. The conversation ends when you finish speaking."
 )
 
@@ -370,11 +371,18 @@ class Speaker:
         self.first_audio_ms: int | None = None
         self.total_ms = 0
         self._pool = ThreadPoolExecutor(max_workers=2) if enabled else None
+        # Expression tags left in this reply (`speech_tags`): two at most.
+        self.tags = speech_tags.Budget()
 
-    def add(self, text: str) -> None:
+    def spoken_text(self, text: str, expressive: bool = False) -> str:
+        """What goes to speech for `text`: its allowed tags only when `expressive` (a model
+        sentence or a code line written with one), every tag removed otherwise."""
+        return speech_tags.for_speech(text, self.tags, expressive=expressive)
+
+    def add(self, text: str, expressive: bool = False) -> None:
         if not self.enabled:
             return
-        job = _Job(text, queue.Queue(), Spoken(), threading.Event())
+        job = _Job(self.spoken_text(text, expressive), queue.Queue(), Spoken(), threading.Event())
         self.jobs.append(job)
         self._pool.submit(self._run, job)
 
@@ -607,7 +615,7 @@ def context_note(context: str) -> str:
 
 def cached_system(body: str) -> str:
     """What is cached: the prompt's stable body plus the phone's voice clause (spec 9, 11)."""
-    return f"{body.strip()}\n\n{VOICE_CLAUSE}"
+    return f"{body.strip()}\n\n{VOICE_CLAUSE} {speech_tags.PROMPT_LINE}"
 
 
 def _failure_words(result, door: WebDoor) -> str | None:
@@ -841,13 +849,17 @@ def _answer(
             return False
         return True
 
-    def say(text: str):
+    def say(text: str, tagged: str | None = None):
+        """`text` is what is shown, stored and checked (no tags, ever); `tagged` is a model
+        sentence as written, its allowed tags kept for speech only (`speech_tags`). Code lines
+        (verbatim figures, refusals, failures) pass no `tagged` and are spoken plain."""
         nonlocal sentences, first_sentence
+        text = speech_tags.strip(text)
         sentences += 1
         report.said.append(text)
         if first_sentence is None:
             first_sentence = int((clock() - t0) * 1000)
-        speaker.add(text)
+        speaker.add(tagged if tagged is not None else text, expressive=tagged is not None)
         return ev.Event("sentence", {"text": text})
 
     loop = run_loop(
@@ -899,7 +911,11 @@ def _answer(
                     yield say(done.verbatim)
                 continue
             if event.type == "sentence":
-                text = event.data["text"]
+                tagged = event.data["text"]
+                # Every check below reads the sentence without its tags (`speech_tags`).
+                text = speech_tags.strip(tagged)
+                if not text:
+                    continue
                 if text == NO_ANSWER_WORDS:
                     # The runtime's line for a turn with no words. Held: after tools, the turn is
                     # asked once more (below); else the phone's own line is said (spec 31).
@@ -913,7 +929,7 @@ def _answer(
                     continue
                 if sentences >= MAX_SPOKEN_SENTENCES or not honest(text):
                     continue
-                yield say(text)
+                yield say(text, tagged)
                 continue
             yield event
     finally:
@@ -949,10 +965,13 @@ def _answer(
         # 2026-11-17: a write refused after a web search left the last round empty, and the person
         # heard neither the search's answer nor the refusal). Asked once more, tool-free, with the
         # phone's note; whatever it says is the answer.
-        for text in _ask_again(model, model_name, system, state.messages, door, rounds):
-            if is_filler(text) or (verbatim_said and has_money(text)) or not honest(text):
+        for tagged in _ask_again(model, model_name, system, state.messages, door, rounds):
+            text = speech_tags.strip(tagged)
+            if not text or is_filler(text) or (verbatim_said and has_money(text)):
                 continue
-            yield say(text)
+            if not honest(text):
+                continue
+            yield say(text, tagged)
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
@@ -1032,11 +1051,13 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
     its sentence from code. Skips beats with nothing to show; "stop" ends the tour."""
     report.status = "tour"
     if words is not None and tour.is_stop(words):
-        report.said.append(tour.STOPPED_LINE)
-        speaker.add(tour.STOPPED_LINE)
-        yield ev.Event("sentence", {"text": tour.STOPPED_LINE})
+        report.said.append(speech_tags.strip(tour.STOPPED_LINE))
+        speaker.add(tour.STOPPED_LINE, expressive=True)
+        yield ev.Event("sentence", {"text": speech_tags.strip(tour.STOPPED_LINE)})
         yield from speaker.drain()
-        yield ev.done("tour", tour.STOPPED_LINE, False, tour={"beat": beat, "next": None})
+        yield ev.done(
+            "tour", speech_tags.strip(tour.STOPPED_LINE), False, tour={"beat": beat, "next": None}
+        )
         return
     beats = tour.beats_for(request.user) if door.recruiter else []
     index = beat
@@ -1056,15 +1077,17 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
     nxt = index + 1 if index + 1 < len(beats) else None
     if index >= len(beats):
         said, nxt = tour.END_LINE, None
-    report.said.append(said)
+    # Only the tour's own code lines may carry a tag; words from the content never do.
+    shown = speech_tags.strip(said)
+    report.said.append(shown)
     report.timings["sentences"] = 1
-    speaker.add(said)
-    yield ev.Event("sentence", {"text": said})
+    speaker.add(said, expressive=said in tour.CODE_LINES)
+    yield ev.Event("sentence", {"text": shown})
     yield from speaker.drain()
     if nxt is None and said != tour.END_LINE:
-        report.said.append(tour.END_LINE)
-        speaker.add(tour.END_LINE)
-        yield ev.Event("sentence", {"text": tour.END_LINE})
+        report.said.append(speech_tags.strip(tour.END_LINE))
+        speaker.add(tour.END_LINE, expressive=True)
+        yield ev.Event("sentence", {"text": speech_tags.strip(tour.END_LINE)})
         yield from speaker.drain()
     yield ev.done(
         "tour", " ".join(report.said), False, tour={"beat": index, "next": nxt, "of": len(beats)}
@@ -1118,6 +1141,7 @@ def _greet(
             kind, text = "scripted", web_greeting.ack_line()
     report.rounds = len(rounds)
     report.status = "greeting"
+    tagged, text = text, speech_tags.strip(text)
     report.said.append(text)
     report.timings.update(
         rounds=len(rounds),
@@ -1130,15 +1154,20 @@ def _greet(
     _meter(request, model_name, rounds)
     yield ev.Event("greeting", {"kind": kind, "text": text})
     yield ev.Event("sentence", {"text": text})
-    cached = filler_audio.get(speaker.voice, text) if filler_audio and kind == "scripted" else None
+    # What is spoken, tags and all; also the line's key in memory, with the voice (`FillerAudio`).
+    spoken_as = speaker.spoken_text(tagged, expressive=True)
+    cached = (
+        filler_audio.get(speaker.voice, spoken_as) if filler_audio and kind == "scripted" else None
+    )
     if cached and speaker.enabled:
         # A scripted line made before: it starts at once (the demo's opening, in the tap).
         report.timings["greeting_cached"] = 1
         yield speaker.audio_event(cached)
     else:
-        speaker.add(text)
+        if speaker.enabled:
+            speaker.add(spoken_as, expressive=True)
         if filler_audio is not None and kind == "scripted" and speaker.enabled:
-            filler_audio.warm(speaker.speech, speaker.voice, [text])
+            filler_audio.warm(speaker.speech, speaker.voice, [spoken_as])
     yield from speaker.drain()
     yield ev.done("greeting", text, False)
 

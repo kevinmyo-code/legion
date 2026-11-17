@@ -181,8 +181,7 @@ export class CascadeClient {
   private bargeCounted = false
   private lastReply = ''
   private spec: { abort: AbortController; result: Promise<string | null>; samples: number } | null = null
-  /** When the person's last utterance ended, and how long the silence that ended it was. */
-  private turnEndedAt: number | null = null
+  /** The silence that ended each utterance the models ended (the browser check reads it). */
   eotMs: number[] = []
   /** Barge-ins this page has acted on (the browser check reads it). */
   bargeIns = 0
@@ -552,7 +551,6 @@ export class CascadeClient {
     const spec = this.spec
     this.spec = null
     this.eotMs.push(silenceMs)
-    this.turnEndedAt = this.deps.now()
     this.listening = false
     this.endpointer = null
     this.chunks = []

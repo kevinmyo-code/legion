@@ -15,8 +15,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 
 from agents.runtime.model import FakeModel, call, say
+from assistant import voice_engine
 from assistant import cascade, fillers, tour, web_greeting
 from assistant.companions import companion_for
+from assistant.speech_tags import strip
 from assistant.surface import RECRUITER_TOOLS, WEB_TOOL_NAMES
 from demo import funnel
 from demo.models import DemoBudgetDay, DemoFunnelDay
@@ -39,7 +41,7 @@ pytestmark = pytest.mark.django_db
 
 def _warm(monkeypatch, engine, user):
     audio = cascade.FillerAudio(spawn=lambda work: work())
-    audio.warm(engine.speech, companion_for(user).voice_name)
+    audio.warm(engine.speech, voice_engine.voice_for(user))
     monkeypatch.setattr(cascade, "FILLER_AUDIO", audio)
     monkeypatch.setattr(cascade, "LINES", fillers.LinePicker())
     engine.speech.spoken.clear()
@@ -235,7 +237,7 @@ def test_an_early_transcript_is_answered_aloud_without_transcribing_again(member
 
 
 def test_the_opening_is_short_names_the_tour_and_the_recording_and_never_says_train():
-    line = web_greeting.recruiter_hello("Alfred")
+    line = strip(web_greeting.recruiter_hello("Alfred"))
     assert len(line.split()) <= 22
     assert "tour" in line and "recorded" in line
     assert "train" not in line.lower()
@@ -281,7 +283,7 @@ def test_the_tour_plays_from_loaded_content_and_ends_with_the_ask(visitor, engin
     load_fake(tmp_path)
     said, tools, dones = _walk_tour(visitor, engine)
     assert said[0] == "Lorem ipsum lead."  # the content's own words, none written in code
-    assert said[-1] == tour.END_LINE
+    assert said[-1] == strip(tour.END_LINE)
     assert "show_resume" in tools
     assert 2 <= len(dones) <= 6
     # No model wrote a word of it.
@@ -291,14 +293,14 @@ def test_the_tour_plays_from_loaded_content_and_ends_with_the_ask(visitor, engin
 def test_a_tour_with_no_content_skips_the_beats_with_nothing_to_show(visitor, engine):
     said, _tools, _dones = _walk_tour(visitor, engine)
     assert "Lorem ipsum lead." not in said
-    assert said[-1] == tour.END_LINE
+    assert said[-1] == strip(tour.END_LINE)
 
 
 def test_stop_said_during_the_tour_ends_it(visitor, engine, tmp_path):
     load_fake(tmp_path)
     engine.speech.heard = "stop"
     events = _events(_post(visitor, tour=1, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == [tour.STOPPED_LINE]
+    assert [s["text"] for s in _of(events, "sentence")] == [strip(tour.STOPPED_LINE)]
     assert _of(events, "done")[0]["tour"]["next"] is None
 
 

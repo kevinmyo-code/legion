@@ -61,5 +61,23 @@ def engine_for(user) -> str:
     return _read(MEMBER_ENV, MEMBER_DEFAULT)
 
 
+# The cascade's voice, per role, next to the engine choice (Kevin, 2026-11-17, after auditioning:
+# "i like neno plain", then "recruiter demo can stay puck plain"). Plain: no style direction. The
+# companion's stored voice is Live's (the fallback engine keeps it); the cascade speaks in these.
+# `LEGION_WEB_TTS_VOICE` / `LEGION_WEB_TTS_VOICE_RECRUITER` override. A name Google refuses is
+# spoken in `speech.FALLBACK_VOICE` (Puck) instead of going silent.
+VOICE_ENV = "LEGION_WEB_TTS_VOICE"
+RECRUITER_VOICE_ENV = "LEGION_WEB_TTS_VOICE_RECRUITER"
+MEMBER_VOICE_DEFAULT = "en-us-neno"
+RECRUITER_VOICE_DEFAULT = "Puck"
+
+
+def voice_for(user) -> str:
+    """The cascade's text-to-speech voice for this caller's role."""
+    if is_recruiter(user):
+        return os.environ.get(RECRUITER_VOICE_ENV, "").strip() or RECRUITER_VOICE_DEFAULT
+    return os.environ.get(VOICE_ENV, "").strip() or MEMBER_VOICE_DEFAULT
+
+
 def text_model() -> str:
     return os.environ.get(TEXT_MODEL_ENV, "").strip() or TEXT_MODEL_DEFAULT

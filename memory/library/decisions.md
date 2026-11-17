@@ -8170,5 +8170,6 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 - **Why:** about 30 page loads and one entry since 2026-11-06; the one outside visitor heard a 16 s opening and left after two turns.
 - **Built (branch `feat/demo-voice-first`, not shipped):** the phone's Silero + Smart Turn turn-taking and barge-in gate in the browser (onnxruntime-web), early transcripts, a voice-first `/try` link (orb, tap enters, five-second opening, chips, captions, typing, tour, ask card, live strip), funnel counts, and fillers that name the tool that started (all voices).
+- **Voice, after auditioning (Kevin):** *"i like neno plain. and with tags where possible"*, then *"recruiter demo can stay puck plain"* and *"with tags where possible ofc"*. The cascade's voice is per role: members `en-us-neno`, the demo `Puck`. Both plain, with expression tags (`<chuckle>`, `<laugh>`, `<sigh>`, `<short pause>`) on a few code lines and rarely from the model. Tags are spoken only and never shown, stored or checked.
 - **Open for Kevin:** whether `/try` should open to anyone without a code; whether a code-box or returning visitor should also get the voice-first stage (built for the link only).
 - ADR 0103.

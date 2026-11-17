@@ -1151,7 +1151,8 @@ class AssistantTurnView(_AssistantView):
                 turn_no,
                 system,
                 context,
-                companion.voice_name,
+                # Per role, not the companion's stored voice (that one is Live's): ADR 0103.
+                voice_engine.voice_for(request.user),
                 reservation,
                 reserved_rounds,
                 companion.name,

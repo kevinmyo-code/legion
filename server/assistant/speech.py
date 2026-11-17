@@ -130,6 +130,10 @@ def transcribe_body(pcm: bytes) -> dict:
     }
 
 
+# What a refused voice name is spoken in instead (the phone's own voice).
+FALLBACK_VOICE = "Puck"
+
+
 def speak_body(text: str, voice: str, *, legacy_voice: bool) -> dict:
     shape = {"prebuiltVoiceConfig": {"voiceName": voice}} if legacy_voice else {"voice": voice}
     return {
@@ -203,6 +207,8 @@ class GeminiSpeech:
         self._api = api
         self._clock = clock or time.monotonic
         self._legacy_voice = False
+        # Voices Google refused by name (HTTP 400 in both shapes): spoken in FALLBACK_VOICE instead.
+        self.bad_voices: set[str] = set()
 
     def _headers(self) -> dict:
         key = self._key()
@@ -248,6 +254,8 @@ class GeminiSpeech:
         started = self._clock()
         sent = 0
         retried = False
+        if voice in self.bad_voices:
+            voice = FALLBACK_VOICE
         while True:
             try:
                 for chunk in self._speak_once(text, voice, spoken, started):
@@ -261,6 +269,12 @@ class GeminiSpeech:
                 if "400" in said and not self._legacy_voice:
                     # Google refused the 3.8 voice shape: the older one, for the rest of the turn.
                     self._legacy_voice = True
+                elif "400" in said and voice != FALLBACK_VOICE:
+                    # Refused in both shapes: the voice's name (a bad name is a 400, never silently
+                    # replaced). Said in the fallback voice rather than not at all (Kevin,
+                    # 2026-11-17: "fall back to Puck on a voice error rather than going silent").
+                    self.bad_voices.add(voice)
+                    voice = FALLBACK_VOICE
                 elif _worth_retry(said) and not retried:
                     retried = True
                 else:

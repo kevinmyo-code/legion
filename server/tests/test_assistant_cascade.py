@@ -15,6 +15,7 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from agents.runtime.model import FakeModel, ModelFailure, call, say
+from assistant import voice_engine
 from assistant import cascade, read_through, views
 from assistant.models import AssistantCall
 from assistant.speech import Heard
@@ -555,7 +556,7 @@ def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch,
     from assistant.companions import companion_for
 
     fillers = cascade.FillerAudio(spawn=lambda work: work())
-    fillers.warm(engine.speech, companion_for(household_user).voice_name)
+    fillers.warm(engine.speech, voice_engine.voice_for(household_user))
     monkeypatch.setattr(cascade, "FILLER_AUDIO", fillers)
     engine.speech.spoken.clear()
     engine.model = FakeModel(
@@ -647,7 +648,10 @@ def test_a_visitor_greeting_is_scripted_and_asks_no_model(visitor, visitor_user,
     from assistant.companions import companion_for
 
     name = companion_for(visitor_user).name
-    assert _of(events, "greeting")[0]["text"] == web_greeting.recruiter_hello(name)
+    from assistant.speech_tags import strip
+
+    # Shown without its expression tag; spoken with it.
+    assert _of(events, "greeting")[0]["text"] == strip(web_greeting.recruiter_hello(name))
     assert engine.model.requests == []
     assert _of(events, "audio")
     # Its history then opens with the demo's opener line, as the prompt expects.

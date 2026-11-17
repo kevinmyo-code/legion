@@ -28,8 +28,12 @@ LIVE_LINE = (
     "engine tools the assistant uses on Kevin's phone."
 )
 RESUME_LINE = "And that's his one-page resume. To talk to him, his contact details are on it."
-END_LINE = "That's the tour. Ask me anything else, or open the resume to get in touch."
-STOPPED_LINE = "Okay, tour stopped. Ask me anything."
+# The tour's lighter lines carry an expression tag (`assistant/speech_tags.py`): spoken as a sound,
+# never shown, stored or checked.
+END_LINE = "That's the tour. <short pause> Ask me anything else, or open the resume to get in touch."
+STOPPED_LINE = "<chuckle> Okay, tour stopped. Ask me anything."
+# The tour's own code lines: the only tour sentences that may carry a tag.
+CODE_LINES = frozenset({LIVE_LINE, RESUME_LINE, END_LINE, STOPPED_LINE})
 
 _SKIP = re.compile(
     r"^\W*(skip|next|go on|keep going|carry on|continue)(\s+(it|that|please))*\W*$", re.I
