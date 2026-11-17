@@ -358,4 +358,76 @@ class GeminiTextLoopTest {
         assertTrue(toolFinished.isCompleted)
         assertTrue(job.isCancelled)
     }
+
+    // --- a tool turn that ends on filler (FillerTurn, 2026-11-16) --------------------------------
+
+    private fun mode(b: JSONObject): String? =
+        b.optJSONObject("toolConfig")?.optJSONObject("functionCallingConfig")?.optString("mode")
+
+    @Test
+    fun `a tool turn that ends on filler is never spoken as the answer and is asked once more, tool-free`() = runBlocking<Unit> {
+        val t = Scripted(
+            ok(callEv("get_weather")),
+            ok(textEv("Checking "), textEv("the modules.")),
+            ok(textEv("Two modules answered; the one at seven sixty did not.")),
+        )
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, okTool, l)
+        assertNull(r.failure)
+        assertEquals(1, r.fillerContinued)
+        assertFalse(r.fillerAgain)
+        assertEquals(3, t.bodies.size)
+        // Never handed to the voice: the listener got only the answer.
+        assertEquals("Two modules answered; the one at seven sixty did not.", l.text.toString())
+        assertEquals("Two modules answered; the one at seven sixty did not.", r.text)
+        val last = t.bodies[2]
+        assertEquals("NONE", mode(last))
+        val c = last.getJSONArray("contents")
+        assertEquals("model", c.getJSONObject(c.length() - 2).getString("role"))
+        assertEquals(FillerTurn.NOTE, c.getJSONObject(c.length() - 1).getJSONArray("parts").getJSONObject(0).getString("text"))
+    }
+
+    @Test
+    fun `filler twice ends on the failure line and never loops`() = runBlocking<Unit> {
+        val t = Scripted(ok(callEv("get_weather")), ok(textEv("Let me look.")), ok(textEv("Checking.")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, okTool, l)
+        assertEquals(TextFailure.NO_TEXT, r.failure)
+        assertTrue(r.fillerAgain)
+        assertEquals(1, r.fillerContinued)
+        assertEquals(3, t.bodies.size) // the tool round, the filler round, ONE continuation
+        assertEquals("", l.text.toString())
+        assertTrue(r.failureWords!!.startsWith(TextFailure.NO_TEXT.lead))
+    }
+
+    @Test
+    fun `a leading filler before the tool and an empty last round is asked once more`() = runBlocking<Unit> {
+        val t = Scripted(ok(textEv("Checking."), callEv("get_weather")), ok(), ok(textEv("It is mild.")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, okTool, l)
+        assertNull(r.failure)
+        assertEquals(1, r.fillerContinued)
+        assertEquals(3, t.bodies.size)
+        // The speaker drops the leading "Checking." (LeadingFiller); the answer follows it.
+        assertEquals("It is mild.", LeadingFiller.strip(r.text))
+    }
+
+    @Test
+    fun `filler with no tool, content after a tool, or filler before more content goes as it is`() = runBlocking<Unit> {
+        // No tool called: "On it." is the whole reply and is said.
+        val a = Scripted(ok(textEv("On it.")))
+        val ra = loop(a).answer(prefix, contents, okTool, Collect())
+        assertEquals("On it.", ra.text)
+        assertEquals(0, ra.fillerContinued)
+        assertEquals(1, a.bodies.size)
+        // After a tool, a line with content is said, streamed, no extra round.
+        for (line in listOf("Looking good.", "On it, timer set.", "Checking: two codes.", "Checking. It is mild.")) {
+            val t = Scripted(ok(callEv("get_weather")), ok(textEv(line)))
+            val l = Collect()
+            val r = loop(t).answer(prefix, contents, okTool, l)
+            assertEquals(line, 0, r.fillerContinued)
+            assertEquals(line, 2, t.bodies.size)
+            assertEquals(line, line, l.text.toString())
+        }
+    }
 }

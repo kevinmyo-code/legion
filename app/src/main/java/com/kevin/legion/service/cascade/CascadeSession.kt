@@ -1074,6 +1074,9 @@ internal class CascadeSession(
                     listenerFor(record, reply),
                 )
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
+            // A tool turn that ended on filler was asked once more ([FillerTurn]): counts only.
+            if (result.fillerContinued > 0) LiveLatency.log(LiveLatency.TAG, "reply_filler_continued n=1")
+            if (result.fillerAgain) LiveLatency.log(LiveLatency.TAG, "reply_filler_again n=1")
             if (record.holdLine) {
                 val toolCalled = synchronized(record) { record.toolsRan.isNotEmpty() }
                 val why = CheckInRules.lineRejection(result.text, result.failure != null, toolCalled)
@@ -1083,7 +1086,8 @@ internal class CascadeSession(
                     return
                 }
             }
-            val text = if (!record.holdLine && result.failure != null && !reply.anyText) {
+            // Filler twice after a tool: the failure line is said even after words already heard.
+            val text = if (!record.holdLine && result.failure != null && (!reply.anyText || result.fillerAgain)) {
                 result.failureWords ?: result.failure.lead
             } else {
                 null
@@ -1092,6 +1096,10 @@ internal class CascadeSession(
             when {
                 // The check-in line passed: said whole, as written.
                 record.holdLine -> reply.say(result.text.trim())
+                text != null && !quiet && reply.anyText -> {
+                    reply.text(" $text")
+                    reply.finishText()
+                }
                 text != null && !quiet -> reply.say(text)
                 else -> reply.finishText()
             }

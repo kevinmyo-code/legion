@@ -106,6 +106,12 @@ class GeminiTextLoop(
         val toolsRan: List<String>,
         val readThrough: Boolean,
         val usage: Usage,
+        /**
+         * The turn's tool round ended on filler only and was asked once more ([FillerTurn]): 0 or 1.
+         * With [fillerAgain] the second answer was filler too, and the turn failed as [TextFailure.NO_TEXT].
+         */
+        val fillerContinued: Int = 0,
+        val fillerAgain: Boolean = false,
     )
 
     @Volatile private var searchRejected = false
@@ -117,6 +123,8 @@ class GeminiTextLoop(
         val toolsRan = mutableListOf<String>()
         var readThrough = false
         var usage = Usage()
+        var fillerContinued = 0
+        var fillerAgain = false
     }
 
     /**
@@ -165,10 +173,12 @@ class GeminiTextLoop(
         for (i in 0 until initial.length()) contents.put(initial.get(i))
         var cacheBroken = false
         var round = 0
+        // The one extra round after a filler-only answer ([FillerTurn]) is tool-free.
+        var toolFree = false
         while (true) {
             round++
             val prefix = if (searchRejected) basePrefix.copy(search = false) else basePrefix
-            val force = round > maxRounds
+            val force = round > maxRounds || toolFree
             val cacheName = if (!force && !cacheBroken && !searchRejected) cache?.peek(prefix) else null
             val body = if (cacheName != null) {
                 CascadeRequests.cached(cacheName, contents)
@@ -178,13 +188,12 @@ class GeminiTextLoop(
             val turn = StreamedTurn()
             val sentAt = now()
             var firstSeen = false
+            // After a tool ran, a line that may be filler is held back until it is known not to be.
+            val held = if (state.toolsRan.isNotEmpty()) FillerTurn.Hold() else null
             val outcome = try {
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
-                    turn.onEvent(ev) { delta ->
-                        state.text.append(delta)
-                        listener.onText(delta)
-                    }
+                    turn.onEvent(ev) { delta -> emit(held?.feed(delta) ?: delta, state, listener) }
                     if (!firstSeen && turn.text.length + turn.calls.size > before) {
                         firstSeen = true
                         listener.onFirstPart(round, now() - sentAt)
@@ -215,6 +224,7 @@ class GeminiTextLoop(
             }
             meter(prefix.model, turn.usage)
             state.usage = state.usage.plus(turn.usage, cacheName != null)
+            held?.end()?.let { emit(it, state, listener) }
             if (turn.blockReason != null) return fail(TextFailure.BLOCKED, state)
             if (turn.error != null && !turn.hasParts()) return fail(TextFailure.MODEL_ERROR, state)
             if (turn.grounded && !state.readThrough) {
@@ -223,6 +233,20 @@ class GeminiTextLoop(
             }
             val calls = turn.calls
             if (calls.isEmpty() || force) {
+                // A tool turn that ended on filler: never said as the answer; asked once more, tool-free.
+                val fillerOnly = held?.filler == true ||
+                    (held != null && turn.text.isBlank() && FillerTurn.isFillerOnly(state.text.toString()))
+                if (fillerOnly && state.fillerContinued == 0) {
+                    state.fillerContinued = 1
+                    toolFree = true
+                    contents.put(turn.modelContent().takeIf { turn.hasParts() } ?: fillerModelContent(state))
+                    contents.put(FillerTurn.noteContent())
+                    continue
+                }
+                if (fillerOnly) {
+                    state.fillerAgain = true
+                    return fail(TextFailure.NO_TEXT, state)
+                }
                 return if (state.text.isBlank()) fail(TextFailure.NO_TEXT, state) else reply(state)
             }
             // A draft waits here for its turn to be confirmed: no tool is announced or run on a guess.
@@ -285,6 +309,17 @@ class GeminiTextLoop(
         AgentProtocol.ToolResult(call.name, call.id, response)
     }
 
+    /** Model text as it is let through: kept for the turn and passed on to be spoken. */
+    private fun emit(text: String, state: TurnState, listener: Listener) {
+        if (text.isEmpty()) return
+        state.text.append(text)
+        listener.onText(text)
+    }
+
+    /** The model's empty last round as history: its earlier filler text, so the note follows a model turn. */
+    private fun fillerModelContent(state: TurnState) = JSONObject().put("role", "model")
+        .put("parts", JSONArray().put(JSONObject().put("text", state.text.toString().trim().ifEmpty { "..." })))
+
     private fun reply(state: TurnState) = Result(
         text = state.text.toString().trim(),
         failure = null,
@@ -293,6 +328,8 @@ class GeminiTextLoop(
         toolsRan = state.toolsRan.toList(),
         readThrough = state.readThrough,
         usage = state.usage,
+        fillerContinued = state.fillerContinued,
+        fillerAgain = state.fillerAgain,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
@@ -303,6 +340,8 @@ class GeminiTextLoop(
         toolsRan = state.toolsRan.toList(),
         readThrough = state.readThrough,
         usage = state.usage,
+        fillerContinued = state.fillerContinued,
+        fillerAgain = state.fillerAgain,
     )
 
     companion object {
