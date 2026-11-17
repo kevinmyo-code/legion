@@ -585,4 +585,36 @@ class GeminiTextLoopTest {
                 assertTrue(after, r.text.startsWith(diagWords))
             }
         }
+
+    // --- a filler after a finished answer (2026-11-17 phone logs) -------------------------------
+
+    @Test
+    fun `a wait line after real content is never spoken, in the same round or a later one`() = runBlocking<Unit> {
+        // One round, no tool: the answer, then a wait line.
+        val a = Scripted(ok(textEv("I missed that. "), textEv("Give me a second with that.")))
+        val la = Collect()
+        val ra = loop(a).answer(prefix, contents, okTool, la)
+        assertEquals("I missed that. ", la.text.toString())
+        assertEquals("I missed that.", ra.text)
+        assertEquals(1, ra.trailingFillerDropped)
+        // A verbatim answer, then the model's own "Just a second." in the next round.
+        val b = Scripted(ok(callEv("get_weather")), ok(textEv("Just a second.")))
+        val lb = Collect()
+        val rb = loop(b).answer(prefix, contents, diagTool(), lb)
+        assertNull(rb.failure)
+        assertEquals(diagWords, rb.text)
+        assertEquals(0, rb.fillerContinued)
+    }
+
+    @Test
+    fun `a reply that only waits, or opens with a wait before content, is left as it was`() = runBlocking<Unit> {
+        val a = Scripted(ok(textEv("Just a second.")))
+        val la = Collect()
+        assertEquals("Just a second.", loop(a).answer(prefix, contents, okTool, la).text)
+        val b = Scripted(ok(textEv("Hang on. "), textEv("It is mild today.")))
+        val lb = Collect()
+        val rb = loop(b).answer(prefix, contents, okTool, lb)
+        assertEquals("Hang on. It is mild today.", lb.text.toString())
+        assertEquals(0, rb.trailingFillerDropped)
+    }
 }

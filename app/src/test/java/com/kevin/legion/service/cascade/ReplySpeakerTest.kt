@@ -92,6 +92,7 @@ class ReplySpeakerTest {
         val heard = Collections.synchronizedList(mutableListOf<String>())
         var firstAudio = 0
         var fillerAudio = 0
+        var fillerPlayed = 0
         suspend fun play(pcm: ByteArray): Boolean {
             heard.add(String(pcm))
             return true
@@ -106,6 +107,7 @@ class ReplySpeakerTest {
         onFirstAudio = { _, filler -> if (filler) ear.fillerAudio++ else ear.firstAudio++ },
         onClipStarted = {},
         normalise = { it },
+        onFillerPlayed = { ear.fillerPlayed++ },
     )
 
     @Test
@@ -211,6 +213,19 @@ class ReplySpeakerTest {
     }
 
     @Test
+    fun `a filler that played whole before the answer says so once, so half-duplex can listen again`() = runBlocking<Unit> {
+        val voice = FakeVoice()
+        val ear = Ear()
+        val s = speaker(voice, ear)
+        assertTrue(s.filler("One moment."))
+        withTimeout(2_000) { while (ear.fillerPlayed == 0) delay(5) }
+        s.text("Invented answer.")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(1, ear.fillerPlayed)
+    }
+
+    @Test
     fun `a filler whose audio comes after the answer's text is dropped unheard`() = runBlocking<Unit> {
         // Every frame is late: the answer's text is in before the filler's first audio.
         val voice = FakeVoice(frameDelayMs = 150)
@@ -236,11 +251,9 @@ class ReplySpeakerTest {
             assertFalse(name, ScriptedLines.fillerDue(listOf(name), anyText = false, fillerPlayed = false))
         }
         assertTrue(ScriptedLines.fillerDue(listOf("phone", "look_up"), anyText = false, fillerPlayed = false))
-        assertTrue(ScriptedLines.fillerNow(due = true, inHand = true, bargeIn = true))
-        assertFalse("a line not in memory is skipped and warmed", ScriptedLines.fillerNow(due = true, inHand = false, bargeIn = true))
-        assertFalse(ScriptedLines.fillerNow(due = false, inHand = true, bargeIn = true))
-        // Half-duplex does not listen while a filler counts as playing: his words would be lost.
-        assertFalse(ScriptedLines.fillerNow(due = true, inHand = true, bargeIn = false))
+        assertTrue(ScriptedLines.fillerNow(due = true, inHand = true))
+        assertFalse("a line not in memory is skipped and warmed", ScriptedLines.fillerNow(due = true, inHand = false))
+        assertFalse(ScriptedLines.fillerNow(due = false, inHand = true))
     }
 
     @Test

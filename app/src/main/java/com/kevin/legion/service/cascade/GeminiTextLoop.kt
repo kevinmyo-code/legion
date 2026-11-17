@@ -67,6 +67,12 @@ class GeminiTextLoop(
         /** The model asked for tools this round (before they run). */
         fun onToolCalls(names: List<String>) {}
 
+        /**
+         * The same round's calls with their arguments, as they start (after [onToolCalls]): what the
+         * tool-aware holding line ([ToolFillers]) is chosen from.
+         */
+        fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {}
+
         /** One tool finished. [writeDone] is true only for a write that came back `success: true`. */
         fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {}
 
@@ -120,6 +126,8 @@ class GeminiTextLoop(
         val moneyDropped: Int = 0,
         /** Model sentences dropped after a diagnostics verbatim answer: they restated it ([DiagFilter]). */
         val diagDropped: Int = 0,
+        /** Filler-only sentences dropped after real content ([TrailingFiller]). */
+        val trailingFillerDropped: Int = 0,
     )
 
     @Volatile private var searchRejected = false
@@ -137,6 +145,7 @@ class GeminiTextLoop(
         var verbatimFrom: String? = null
         var moneyDropped = 0
         var diagDropped = 0
+        var trailingFillerDropped = 0
     }
 
     /**
@@ -209,12 +218,14 @@ class GeminiTextLoop(
                 state.verbatimFrom == VerbatimSpeech.DIAGNOSTICS -> DiagFilter()
                 else -> MoneyFilter()
             }
+            // A filler-only sentence after real content is never spoken ([TrailingFiller]).
+            val trail = TrailingFiller { hasContent(state) }
+            fun pass(t: String) = emit(trail.feed(money?.feed(t) ?: t), state, listener)
             val outcome = try {
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
                     turn.onEvent(ev) { delta ->
-                        val t = held?.feed(delta) ?: delta
-                        emit(money?.feed(t) ?: t, state, listener)
+                        pass(held?.feed(delta) ?: delta)
                     }
                     if (!firstSeen && turn.text.length + turn.calls.size > before) {
                         firstSeen = true
@@ -246,11 +257,13 @@ class GeminiTextLoop(
             }
             meter(prefix.model, turn.usage)
             state.usage = state.usage.plus(turn.usage, cacheName != null)
-            held?.end()?.let { emit(money?.feed(it) ?: it, state, listener) }
+            held?.end()?.let { pass(it) }
             money?.let {
-                emit(it.flush(), state, listener)
+                emit(trail.feed(it.flush()), state, listener)
                 if (it is DiagFilter) state.diagDropped += it.dropped else state.moneyDropped += it.dropped
             }
+            emit(trail.flush(), state, listener)
+            state.trailingFillerDropped += trail.dropped
             if (turn.blockReason != null) return fail(TextFailure.BLOCKED, state)
             if (turn.error != null && !turn.hasParts()) return fail(TextFailure.MODEL_ERROR, state)
             if (turn.grounded && !state.readThrough) {
@@ -282,6 +295,7 @@ class GeminiTextLoop(
             hold?.invoke()
             contents.put(turn.modelContent())
             listener.onToolCalls(calls.map { it.name })
+            listener.onToolsStarting(calls.map { it.name to it.args })
             val results = coroutineScope {
                 calls.map { call -> async { runOne(call, executor, listener, state) } }.awaitAll()
             }
@@ -357,6 +371,12 @@ class GeminiTextLoop(
         state.verbatimFrom = VerbatimSpeech.fromOf(hit.response)
     }
 
+    /** Something real was said this turn: text that is not only filler. */
+    private fun hasContent(state: TurnState): Boolean {
+        val t = state.text.toString()
+        return t.isNotBlank() && !FillerTurn.isFillerOnly(t) && !TrailingFiller.isFiller(t)
+    }
+
     /** Model text as it is let through: kept for the turn and passed on to be spoken. */
     private fun emit(text: String, state: TurnState, listener: Listener) {
         if (text.isEmpty()) return
@@ -381,6 +401,7 @@ class GeminiTextLoop(
         verbatimSpoken = state.verbatim,
         moneyDropped = state.moneyDropped,
         diagDropped = state.diagDropped,
+        trailingFillerDropped = state.trailingFillerDropped,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
@@ -396,6 +417,7 @@ class GeminiTextLoop(
         verbatimSpoken = state.verbatim,
         moneyDropped = state.moneyDropped,
         diagDropped = state.diagDropped,
+        trailingFillerDropped = state.trailingFillerDropped,
     )
 
     companion object {

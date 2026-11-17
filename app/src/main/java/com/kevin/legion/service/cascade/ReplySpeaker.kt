@@ -51,6 +51,11 @@ internal class ReplySpeaker(
     private val normalise: (String) -> String = { SpokenText.forSpeech(it) },
     /** The reply's own leading filler sentence was dropped ([LeadingFiller]); logged as a count. */
     private val onFillerDropped: () -> Unit = {},
+    /**
+     * A scripted filler's audio was all handed to the player and nothing of the answer has played
+     * yet. Half-duplex reopens the mic from here until the answer starts (2026-11-17).
+     */
+    private val onFillerPlayed: () -> Unit = {},
 ) {
     sealed interface Outcome {
         data object Played : Outcome
@@ -258,6 +263,7 @@ internal class ReplySpeaker(
             for (pcm in clip.frames) {
                 if (interrupted || !play(pcm)) return Outcome.Interrupted
             }
+            if (isFiller && !anyAudio && !interrupted) onFillerPlayed()
             when (val o = clip.outcome()) {
                 is TtsOutcome.Failed ->
                     return if (interrupted) Outcome.Interrupted else Outcome.Failed("tts_${o.reason}")
