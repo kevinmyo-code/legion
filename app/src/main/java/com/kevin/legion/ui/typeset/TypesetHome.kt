@@ -1,3 +1,4 @@
+@file:Suppress("TooManyFunctions") // the front page: one composable per line of it, the net cash line the twelfth
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.kevin.legion.ui.typeset

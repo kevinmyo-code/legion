@@ -270,7 +270,7 @@ class CascadeWiringTest {
         val answer = bodyOf(session(), "answerTurn")
         assertTrue(answer.contains("\"reply_filler_continued n=1\""))
         assertTrue(answer.contains("\"reply_filler_again n=1\""))
-        assertTrue(answer.contains("(!reply.anyText || result.fillerAgain)"))
+        assertTrue(answer.contains("val sayFailure = !reply.anyText || result.fillerAgain"))
     }
 
     @Test

@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures: invented wire rows read best on one line
+
 package com.kevin.legion.finance
 
 import com.kevin.legion.backend.engine.EngineFailure

@@ -25,7 +25,9 @@ import java.util.Locale
  */
 object NetCashText {
     /** Older than this, the figure says so in words. */
-    val STALE: Duration = Duration.ofHours(24)
+    val STALE: Duration = Duration.ofHours(STALE_HOURS)
+
+    private const val STALE_HOURS = 24L
 
     private val CLOCK = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
     private val DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
@@ -142,8 +144,7 @@ object NetCashText {
 
     /** The 30-day line as a trend card, drawn by the cards' own chart; null with fewer than two points. */
     fun trend(body: NetCashWire, floorCents: Long?): ConversationCard.Trend? {
-        val history = body.history ?: return null
-        if (history.points.size < 2) return null
+        val history = body.history?.takeIf { it.points.size >= 2 } ?: return null
         val currency = body.currency ?: "USD"
         val usd = currency == "USD"
         fun value(cents: Long): BigDecimal = if (usd) BigDecimal.valueOf(cents) else BigDecimal.valueOf(cents, 2)
@@ -159,7 +160,11 @@ object NetCashText {
     fun trendNote(body: NetCashWire): String {
         val history = body.history ?: return ""
         val start = FinanceText.parseDay(history.start)
-        val from = if (history.short && start != null) " The bank feed reaches back to ${FinanceText.day(start)}." else ""
+        val from = if (history.short && start != null) {
+            " The bank feed reaches back to ${FinanceText.day(start)}."
+        } else {
+            ""
+        }
         return "Past days are posted figures only; pending charges are counted in today's point.$from"
     }
 
@@ -174,8 +179,10 @@ object NetCashText {
         val pending = body.pendingCents?.takeIf { it != 0L }
             ?.let { " Of which pending at the bank: ${FinanceText.exact(it, body.currency ?: "USD")}." }.orEmpty()
         val saved = m.savedNote?.let { " This is the last known figure: $it" }.orEmpty()
-        return "Net cash now: ${m.figure} (${body.currency ?: "USD"}), ${m.line.replaceFirstChar { it.lowercase() }}. " +
-            "That is checking minus everything owed on every linked card, pending charges counted as spent.$pending$saved"
+        val asOf = m.line.replaceFirstChar { it.lowercase() }
+        return "Net cash now: ${m.figure} (${body.currency ?: "USD"}), $asOf. " +
+            "That is checking minus everything owed on every linked card, " +
+            "pending charges counted as spent.$pending$saved"
     }
 
     const val LABEL = "net cash"

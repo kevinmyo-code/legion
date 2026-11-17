@@ -1087,7 +1087,8 @@ internal class CascadeSession(
                 }
             }
             // Filler twice after a tool: the failure line is said even after words already heard.
-            val text = if (!record.holdLine && result.failure != null && (!reply.anyText || result.fillerAgain)) {
+            val sayFailure = !reply.anyText || result.fillerAgain
+            val text = if (!record.holdLine && result.failure != null && sayFailure) {
                 result.failureWords ?: result.failure.lead
             } else {
                 null

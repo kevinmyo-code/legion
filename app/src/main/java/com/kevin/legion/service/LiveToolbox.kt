@@ -2693,6 +2693,8 @@ object LiveToolbox {
         }
     }
 
+    // One exit each: no ledger with a net cash figure, no ledger, the balances (ADR 0094 added the first).
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     private suspend fun getLedgerBalance(context: Context, account: String): JSONObject {
         val allBalances = LedgerController.accountBalances(context)
         // account is free-text from the driver's speech, not a stored key, so

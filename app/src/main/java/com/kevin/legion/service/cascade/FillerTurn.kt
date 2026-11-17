@@ -70,9 +70,7 @@ internal object FillerTurn {
      */
     fun mayBeFiller(partial: String): Boolean {
         val s = partial.trimStart().lowercase()
-        if (s.isEmpty()) return true
-        if (s.length > HOLD_MAX_CHARS) return false
-        return OPENERS.any { o -> o.startsWith(s) || s.startsWith(o) }
+        return s.isEmpty() || (s.length <= HOLD_MAX_CHARS && OPENERS.any { o -> o.startsWith(s) || s.startsWith(o) })
     }
 
     /** [partial] has a finished sentence with more text after it: content follows, so it all goes. */
@@ -106,15 +104,15 @@ internal object FillerTurn {
         }
 
         /** The round is over: the held text if it was not filler, else "" and [filler] is set. */
-        fun end(): String {
-            if (decided) return ""
-            if (isFillerOnly(buf.toString())) {
+        fun end(): String = when {
+            decided -> ""
+            isFillerOnly(buf.toString()) -> {
                 decided = true
                 filler = true
                 buf.setLength(0)
-                return ""
+                ""
             }
-            return release()
+            else -> release()
         }
 
         private fun release(): String {
