@@ -151,8 +151,13 @@ def test_an_error_after_a_write_says_the_write_went_through(member, engine, monk
 
 
 def test_a_failed_audit_row_does_not_fail_a_write(member, engine, monkeypatch):
+    create = cascade.AssistantCall.objects.create
+
     def broken(*a, **k):
-        raise DatabaseError("audit table locked")
+        # Only the tool door's audit row fails; the turn's own session row still writes.
+        if k.get("kind") == cascade.AssistantCall.TOOL:
+            raise DatabaseError("audit table locked")
+        return create(*a, **k)
 
     monkeypatch.setattr(cascade.AssistantCall.objects, "create", broken)
     engine.model = FakeModel([call("create_checklist", {"name": "Hardware"}), say("Made it.")])
