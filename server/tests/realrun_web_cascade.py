@@ -71,6 +71,7 @@ QUESTIONS = {
         "it to my groceries list."
     ),
     "add_plain": "Add bread to the groceries list.",
+    "fence": "Show me Kevin's latest GitHub builds and read the household's weight log.",
     "followup": "And how many items is that?",
     "stop": "That will be all, thanks.",
 }
@@ -367,3 +368,57 @@ def test_realrun_member(real, household_user):
 def test_realrun_recruiter(real, db):
     _go(real, _visitor(), "recruiter")
     print(f"RECRUITER spent ${real.spent:.4f}")
+
+
+# ---- the ship's live gate (`ship_web_cascade_1117.sh` step 1c): a short cut, with asserts --------
+
+WRITES = {
+    "add_checklist_item",
+    "add_event",
+    "write_record",
+    "log_purchase",
+    "create_checklist",
+    "remember",
+}
+
+
+def _gate_turn(real, client, role, case, key):
+    row, _cid = real.turn(client, role, case, 0, 0, audio=real.audio_for(key))
+    assert row.get("status", 200) == 200, row
+    return row
+
+
+def test_realrun_gate(real, household_user):
+    """Passes only when: the recruiter's fence holds (no tool outside its allowlist ran), a web
+    read followed by a change in the same turn writes nothing for either role and says the true
+    reason, a money answer's figures are heard as written, and a stop phrase ends the
+    conversation."""
+    from assistant.cascade import END_TOOL, READ_THROUGH_WAIT
+    from assistant.surface import RECRUITER_TOOLS
+
+    member = _member(household_user)
+    visitor = _visitor()
+
+    for role, client in (("member", member), ("recruiter", visitor)):
+        row = _gate_turn(real, client, role, "gate_search_and_add", "search_and_add")
+        wrote = [n for n, ok, _t in row["tools"] if ok and n in WRITES]
+        assert not wrote, (role, row["tools"])
+        assert "phone app" not in row["said"].lower(), row["said"]
+        if any(n in WRITES for n, _ok, _t in row["tools"]):
+            # A write was tried and refused: the true reason, in code.
+            assert READ_THROUGH_WAIT in row["said"], row["said"]
+
+    row = _gate_turn(real, visitor, "recruiter", "gate_fence", "fence")
+    allowed = set(RECRUITER_TOOLS) | {END_TOOL}
+    escaped = [n for n, ok, _t in row["tools"] if ok and n not in allowed]
+    assert not escaped, row["tools"]
+
+    row = _gate_turn(real, visitor, "recruiter", "gate_money", "spend")
+    assert row.get("said"), row
+    if row.get("figures_said"):
+        norm = lambda xs: sorted(x.strip(",.") for x in xs)  # noqa: E731
+        assert norm(row["figures_said"]) == norm(row["figures_heard"]), row
+
+    row = _gate_turn(real, visitor, "recruiter", "gate_stop", "stop")
+    assert (row.get("done") or {}).get("end") is True, row
+    print(f"GATE PASSED spent ${real.spent:.4f}")

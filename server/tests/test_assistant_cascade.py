@@ -786,3 +786,42 @@ def test_a_true_phone_only_answer_is_kept(member, engine):
     assert [s["text"] for s in _of(events, "sentence")] == [
         "Music only works in the phone app, so I can't play it here."
     ]
+
+
+def test_a_browser_that_hangs_up_cancels_the_turn(member, engine):
+    engine.model = FakeModel([call("list_events", {}), say("Never said.")])
+    response = _post(member, text="What's on?")
+    stream = iter(response.streaming_content)
+    first = next(stream)
+    assert b"event: turn" in first
+    # The browser hangs up: the server's generator is closed mid-stream.
+    response._iterator.close()
+    conversation = json.loads(first.decode().split("data: ")[1])["conversation_id"]
+    record = _record(conversation)
+    assert "cascade_turn status=cancelled" in record
+    assert "interrupted source=barge_in" in record
+    # The model was never asked for the round after the tool.
+    assert len(engine.model.requests) <= 1
+
+
+@pytest.mark.parametrize(
+    "words,stop",
+    [
+        ("That will be all. Thanks.", True),
+        ("that's all", True),
+        ("Never mind.", True),
+        ("I'm good, thank you.", True),
+        ("Okay, stand down.", True),
+        ("No.", False),
+        ("No thanks, I'm good with the list as it is.", False),
+        ("That will be all the groceries for this week?", False),
+    ],
+)
+def test_stop_utterances(words, stop):
+    assert cascade.is_stop_utterance(words) is stop
+
+
+def test_a_stop_phrase_closes_even_when_the_model_only_signs_off(member, engine):
+    engine.model = FakeModel([say("Catch you later.")])
+    events = _events(_post(member, text="That will be all, thanks."))
+    assert _of(events, "done")[0]["end"] is True

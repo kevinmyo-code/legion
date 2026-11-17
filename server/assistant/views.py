@@ -890,10 +890,11 @@ def _turn_sse(
     reserved_rounds,
 ):
     report = cascade.TurnReport()
-    spoken = turn_input.audio is not None
+    spoken = turn_input.audio is not None or turn_input.greet
+    turn = None
     try:
         model, speech = _cascade_clients()
-        for event in cascade.run_turn(
+        turn = cascade.run_turn(
             request,
             turn_input,
             conversation_id=row_id,
@@ -906,13 +907,22 @@ def _turn_sse(
             model=model,
             speech=speech,
             report=report,
-        ):
+        )
+        for event in turn:
             yield event.sse()
+    except GeneratorExit:
+        # The browser hung up (an interrupt aborts the request): no further round, tool call or
+        # speech starts, and the record says the turn was cut.
+        report.status = "cancelled"
+        raise
     except Exception:  # noqa: BLE001 - the stream must end in words, always
         cascade.log.warning("assistant cascade: turn failed", exc_info=True)
         report.status = "failed"
         yield cascade.ev.error(TURN_FAILED).sse()
     finally:
+        if turn is not None:
+            # Closes the loop and the speech now, not whenever the generator is collected.
+            turn.close()
         now = datetime.now(UTC)
         lines = []
         said = " ".join(report.said).strip()

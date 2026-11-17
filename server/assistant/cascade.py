@@ -154,6 +154,22 @@ END_DECLARATION = {
     ),
     "parameters": {"type": "object", "properties": {}},
 }
+# The stop phrases `end_conversation` names, as whole utterances (Kevin, 2026-11-17: "keep listening
+# unless user says stop"). Measured in a real browser: the model signed off ("Catch you later") on
+# "That will be all, thanks" without calling the tool, so the page kept listening. Only an
+# utterance that is nothing but one of these closes by itself; a plain "no" never does.
+_STOP_UTTERANCE = re.compile(
+    r"^\W*(ok(ay)?[, ]+)?(that('?s| is| will be) all|never ?mind|i'?m good|nothing( else)?|go away|"
+    r"go to sleep|stand down|that will do|we'?re done|i'?m done)"
+    r"([,.!]*\s+(thanks?( you)?|thank you|for now|alfred))*\W*$",
+    re.I,
+)
+
+
+def is_stop_utterance(words: str) -> bool:
+    return bool(_STOP_UTTERANCE.match((words or "").strip()))
+
+
 END_INSTRUCTION = (
     "Sign off now with one dry line in your own register, about this conversation, then "
     "stop. The conversation ends when you finish speaking."
@@ -886,6 +902,9 @@ def _answer(
     elif sentences == 0 and not door.end_requested:
         yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
     yield from speaker.drain()
+    if not door.end_requested and is_stop_utterance(words):
+        door.end_requested = True
+        timings["stop_phrase"] = 1
     yield ev.done(
         report.status,
         " ".join(report.said).strip(),
