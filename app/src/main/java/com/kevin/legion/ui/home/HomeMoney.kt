@@ -10,6 +10,7 @@ import com.kevin.legion.finance.BudgetsWire
 import com.kevin.legion.finance.FinanceController
 import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.finance.FinanceText
+import com.kevin.legion.finance.NetCashWire
 import com.kevin.legion.finance.SafeToSpendWire
 import com.kevin.legion.finance.noteOrNull
 import com.kevin.legion.finance.valueOrNull
@@ -17,6 +18,7 @@ import com.kevin.legion.ui.money.BudgetBoardModel
 import com.kevin.legion.ui.money.budgetBoard
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +33,8 @@ data class HomeMoneyUiState(
     val loading: Boolean = true,
     val today: LocalDate = LocalDate.now(),
     val budgets: FinanceRead<BudgetsWire>? = null,
+    /** Net cash (ADR 0094): the Typeset front page's big number. Null while loading. */
+    val netCash: FinanceRead<NetCashWire>? = null,
 )
 
 /** The safe-to-spend line: the figure, until when, the top-up when one is needed, and any note. */
@@ -111,8 +115,15 @@ class HomeMoneyViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val budgets = finance.budgets(YearMonth.now())
-            _state.value = HomeMoneyUiState(loading = false, today = LocalDate.now(), budgets = budgets)
+            // Both from the normal bank sync's stored figures: no extra bank call (ADR 0094).
+            val budgets = async { finance.budgets(YearMonth.now()) }
+            val cash = async { finance.netCash() }
+            _state.value = HomeMoneyUiState(
+                loading = false,
+                today = LocalDate.now(),
+                budgets = budgets.await(),
+                netCash = cash.await(),
+            )
         }
     }
 

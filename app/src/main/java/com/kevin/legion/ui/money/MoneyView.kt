@@ -76,6 +76,8 @@ data class MoneyViewCallbacks(
     val onSetCurrency: (String) -> Unit = {},
     /** The pager settled on a month: the host moves its picked month, which reloads that month. */
     val onPageMonth: (YearMonth) -> Unit = {},
+    /** The low-cash floor in cents, or null to clear it (ADR 0094). */
+    val onSetFloor: (Long?) -> Unit = {},
 )
 
 /** What the host knows about the page that is not the engine's: the ledger side. */
@@ -244,6 +246,10 @@ private fun MonthPage(
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
     ) {
+        // Net cash first on today's month (Kevin, 2026-11-16, ADR 0094): it is about now.
+        if (month == YearMonth.from(state.today)) {
+            NetCashSection(state.netCash, state.floorCents, callbacks.onSetFloor)
+        }
         if (MoneySections.SHOW_HOUSEHOLD) {
             if (month == YearMonth.from(state.today)) SafeSection(state)
             ThisMonthSection(

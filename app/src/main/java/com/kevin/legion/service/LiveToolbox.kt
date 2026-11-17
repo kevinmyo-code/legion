@@ -2704,7 +2704,18 @@ object LiveToolbox {
             account.isBlank() || balance.accountId.contains(account, ignoreCase = true) ||
                 sameCard(balance.accountId, account)
         }
+        // ADR 0094 (Kevin, 2026-11-16): asked how much he has, the answer LEADS with net cash and
+        // its as-of time. The engine's figure through the one FinanceController HOME and the Money
+        // screen read (ADR 0035), its saved copy offline; never summed here. Only when no account
+        // was named: "the 7823 card" asks about that card.
+        val cash = if (account.isBlank()) com.kevin.legion.finance.FinanceController.forApp(context).netCash() else null
+        val cashLead = cash?.let {
+            com.kevin.legion.finance.NetCashText.spoken(it, java.time.Instant.now(), java.time.ZoneId.systemDefault())
+        }
         if (matched.isEmpty()) {
+            if (cashLead != null && cash?.valueOrNull?.netCents != null) {
+                return JSONObject().put("success", true).put("say_first", cashLead)
+            }
             return result(success = false, message = "No ledger accounts on file yet - import a statement first.")
         }
         // Fetched once, filtered per account below by the same suffix+currency
@@ -2759,7 +2770,11 @@ object LiveToolbox {
             }
             balances.put(b.accountId, entry)
         }
-        return JSONObject().put("success", true).put("balances", balances)
+        val answer = JSONObject().put("success", true)
+        // First key, so the model reads it first; the per-account figures below leave out the
+        // bank's pending charges, which net cash counts.
+        cashLead?.let { answer.put("say_first", it) }
+        return answer.put("balances", balances)
     }
 
     /**

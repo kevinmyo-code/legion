@@ -12,4 +12,5 @@ urlpatterns = [
         "safe-to-spend", figure_views.SafeToSpendView.as_view(), name="finance-safe-to-spend"
     ),
     path("budgets", figure_views.BudgetsView.as_view(), name="finance-budgets"),
+    path("net-cash", figure_views.NetCashView.as_view(), name="finance-net-cash"),
 ]

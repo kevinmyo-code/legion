@@ -5223,6 +5223,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: An SGD figure needs a stored USD/SGD rate and none is on file.
+  /api/finance/net-cash:
+    get:
+      operationId: api_finance_net_cash_retrieve
+      description: 'Net cash right now: the linked checking account minus what is
+        owed on every linked card, charges pending at the bank counted as spent, from
+        the last bank sync, with its as-of time and a 30-day posted-basis line. No
+        net figure when any part is missing (ADR 0094).'
+      tags:
+      - finance
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetCash'
+          description: ''
   /api/finance/networth:
     get:
       operationId: api_finance_networth_retrieve
@@ -18020,6 +18039,165 @@ components:
         * `guaranteed` - guaranteed
         * `impossible` - impossible
         * `nothing_left` - nothing_left
+    NetCash:
+      type: object
+      properties:
+        available:
+          type: boolean
+          description: False when there is no net figure; `reason` says why.
+        reason:
+          type: string
+          nullable: true
+        net_cents:
+          type: integer
+          nullable: true
+          description: Checking minus every card owed, pending counted as spent.
+        currency:
+          type: string
+          nullable: true
+        as_of:
+          type: string
+          format: date-time
+          nullable: true
+          description: The OLDER of the parts' as-of times. Staleness is the reader's
+            call.
+        pending_cents:
+          type: integer
+          nullable: true
+          description: Of which pending.
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetCashPart'
+        missing:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetCashMissing'
+        history:
+          allOf:
+          - $ref: '#/components/schemas/NetCashHistory'
+          nullable: true
+      required:
+      - as_of
+      - available
+      - currency
+      - history
+      - missing
+      - net_cents
+      - parts
+      - pending_cents
+      - reason
+    NetCashHistory:
+      type: object
+      properties:
+        basis:
+          type: string
+          description: 'posted: past days are posted figures only; the last point
+            is the headline, pending included.'
+        start:
+          type: string
+          format: date
+          description: The line's first day.
+        end:
+          type: string
+          format: date
+          description: The headline's as-of day, the line's last point.
+        short:
+          type: boolean
+          description: 'True when the bank feed reaches back fewer than 30 days: say
+            from when.'
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetCashPoint'
+      required:
+      - basis
+      - end
+      - points
+      - short
+      - start
+    NetCashMissing:
+      type: object
+      properties:
+        role:
+          type: string
+          description: checking | card.
+        label:
+          type: string
+        mask:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          description: Why its balance is not usable, in words.
+      required:
+      - label
+      - mask
+      - reason
+      - role
+    NetCashPart:
+      type: object
+      properties:
+        role:
+          type: string
+          description: checking | card.
+        label:
+          type: string
+          description: The bank's own name for the account.
+        mask:
+          type: string
+          description: The account's last four digits.
+        currency:
+          type: string
+        balance_cents:
+          type: integer
+          description: 'What this account adds to net cash, pending counted: a card
+            is negative.'
+        basis:
+          type: string
+          description: 'bank_available: the bank''s own available balance, which nets
+            pending. current_plus_pending: the bank''s current balance plus its pending
+            rows.'
+        bank_current_cents:
+          type: integer
+          nullable: true
+          description: Plaid's current as stored; for a card, what is owed, positive.
+        bank_available_cents:
+          type: integer
+          nullable: true
+        pending_cents:
+          type: integer
+          description: The account's pending bank-feed rows, ledger sign (charges
+            negative).
+        pending_count:
+          type: integer
+        as_of:
+          type: string
+          format: date-time
+          description: When the bank stated this balance.
+      required:
+      - as_of
+      - balance_cents
+      - bank_available_cents
+      - bank_current_cents
+      - basis
+      - currency
+      - label
+      - mask
+      - pending_cents
+      - pending_count
+      - role
+    NetCashPoint:
+      type: object
+      properties:
+        'on':
+          type: string
+          format: date
+        net_cents:
+          type: integer
+      required:
+      - net_cents
+      - 'on'
     NetWorth:
       type: object
       properties:

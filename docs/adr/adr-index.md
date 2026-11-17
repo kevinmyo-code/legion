@@ -98,6 +98,7 @@ Format and the test for whether something deserves an ADR:
 | 0091 | [[0091-alfred-greets-from-your-real-day\|Alfred greets like a person, from facts about your real day]] | accepted | 2026-11-13 | - |
 | 0092 | [[0092-phone-voice-is-a-cascade-live-retired\|The phone's voice is a cascade; Gemini Live is retired]] | accepted | 2026-11-15 | - |
 | 0093 | [[0093-voice-agenda-block-is-a-bounded-push-exception\|Today's agenda rides in the voice turn: a bounded exception to pull-based tools]] | accepted | 2026-11-16 | - |
+| 0094 | [[0094-net-cash\|Net cash: checking minus every card, pending counted as spent]] | accepted | 2026-11-16 | - |
 
 ## Superseded
 
