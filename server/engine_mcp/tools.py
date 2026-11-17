@@ -1342,10 +1342,14 @@ def _account_balances(request, args) -> ToolResult:
             # ADR 0057: the bank's feed is fact, said plainly. It brings
             # transactions, and the engine keeps no balance from it.
             latest = a["latest_activity_on"]
+            # A linked account with no transaction on file yet (stage 7, 2026-11-16: a card whose
+            # bank sent no current balance and no rows raised TypeError here, and the whole tool
+            # answered "Nothing was read").
+            seen = f"latest {_long_date(latest)}" if latest is not None else "none on file yet"
             said.append(
-                f"the bank's own feed supplies this account's transactions (latest "
-                f"{_long_date(latest)}), but the engine stores no balance for it, so no balance "
-                f"can be stated. Check the bank's app for it."
+                f"the bank's own feed supplies this account's transactions ({seen}), but the "
+                f"engine stores no balance for it, so no balance can be stated. Check the bank's "
+                f"app for it."
             )
         else:
             said.append("no statement on file, so no balance can be stated; never state one.")
