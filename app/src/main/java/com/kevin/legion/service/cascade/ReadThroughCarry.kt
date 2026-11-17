@@ -13,12 +13,19 @@ internal class ReadThroughCarry {
     private var pending = false
 
     /**
-     * Called as each turn starts. True when this turn is the one after a read-through opener and
-     * so starts marked. [openerMarked] is this turn's own opener mark (false for his own words).
+     * Called as each turn starts. True when this turn is a reply to a read-through opener and so
+     * starts marked. An opener ([fromUser] false) replaces the carry with its own mark
+     * ([openerMarked]). His turn does not use it up: [answered] does, so a reply that is cut off
+     * or merged into his next words before it is answered still starts marked when it runs again.
      */
     fun startTurn(fromUser: Boolean, openerMarked: Boolean): Boolean {
         val carried = pending
-        pending = !fromUser && openerMarked
-        return carried
+        if (!fromUser) pending = openerMarked
+        return carried && fromUser
+    }
+
+    /** His turn got an answer: the carry is spent. */
+    fun answered() {
+        pending = false
     }
 }

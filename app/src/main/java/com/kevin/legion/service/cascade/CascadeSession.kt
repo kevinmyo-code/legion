@@ -43,7 +43,6 @@ import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.WakePhrases
 import com.kevin.legion.service.conversationlog.ConversationLog
-import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.BargeInGate
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.EndOfTurnPolicy
@@ -1352,10 +1351,9 @@ internal class CascadeSession(
         // Before anything can run: his next words must never carry a write into a second run.
         if (CascadeRules.isWrite(name, args)) record.writeCalled = true
         val id = "c${toolSeq.incrementAndGet()}"
-        // Logged as the tool it stands for, as Live logs it, so a folded mail or brief result is
-        // redacted (2026-11-17, CLAUDE.md §7); `via` keeps the called name.
-        val resolved = LiveSurface.resolve(name, args)
-        audit.toolCall(id, resolved.name, false, resolved.args.toString(), via = name.takeIf { it != resolved.name })
+        // Logged under the called name (the eval scorer reads `day/read_calendar`); LiveAudit judges
+        // redaction on the tool it stands for, so a folded mail or brief result is redacted.
+        audit.toolCall(id, name, false, args.toString())
         toolsInFlight.incrementAndGet()
         followUpEventAsync(FollowUpWindow.Event.ToolCall)
         if (!speaking) host.phase(Phase.THINKING, "Working...")
@@ -1386,7 +1384,7 @@ internal class CascadeSession(
         audit.toolResult(
             LiveAudit.ToolResult(
                 id = id,
-                name = resolved.name,
+                name = name,
                 success = response.optBoolean("success", !response.has("error")),
                 ms = System.currentTimeMillis() - started,
                 async = false,
@@ -1702,6 +1700,7 @@ internal class CascadeSession(
         fromUser: Boolean = true,
     ) {
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
+        if (fromUser && said.isNotBlank()) readThroughCarry.answered()
         // A read-through reply (mail, web) is never kept as history or in the record in clear.
         val kept = if (readThrough) LiveAudit.REDACTED else said
         if (said.isNotBlank()) history.add(ChatTurn(fromUser = false, text = kept))

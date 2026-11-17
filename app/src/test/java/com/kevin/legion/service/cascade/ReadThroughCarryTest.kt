@@ -12,7 +12,18 @@ class ReadThroughCarryTest {
         val c = ReadThroughCarry()
         assertFalse("the opener is marked by its own flag", c.startTurn(fromUser = false, openerMarked = true))
         assertTrue("his reply to it", c.startTurn(fromUser = true, openerMarked = false))
+        c.answered()
         assertFalse("the turn after that is clean", c.startTurn(fromUser = true, openerMarked = false))
+    }
+
+    @Test
+    fun `a reply cut off or merged before it was answered is still carried when it runs again`() {
+        val c = ReadThroughCarry()
+        c.startTurn(fromUser = false, openerMarked = true)
+        assertTrue(c.startTurn(fromUser = true, openerMarked = false))
+        assertTrue("not answered yet", c.startTurn(fromUser = true, openerMarked = false))
+        c.answered()
+        assertFalse(c.startTurn(fromUser = true, openerMarked = false))
     }
 
     @Test

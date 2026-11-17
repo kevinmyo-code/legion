@@ -382,15 +382,14 @@ class CascadeWiringTest {
     }
 
     @Test
-    fun `the cascade marks on the resolved call, logs the resolved tool and keeps an opener or carry mark`() {
+    fun `the cascade marks on the resolved call and keeps an opener or carry mark`() {
         val s = session()
         assertTrue(s.contains("isReadThrough = CascadeRules::isReadThrough,"))
         val exec = bodyOf(s, "executorFor")
-        val resolveAt = exec.indexOf("LiveSurface.resolve(name, args)")
-        assertTrue(resolveAt >= 0)
-        assertTrue(resolveAt < exec.indexOf("audit.toolCall(id, resolved.name"))
-        assertTrue(exec.contains("name = resolved.name,"))
+        // Logged under the called name with its args; LiveAudit redacts on the resolved call (LiveAuditTest).
+        assertTrue(exec.contains("audit.toolCall(id, name, false, args.toString())"))
         assertTrue(exec.contains("readThrough || record.startMarked,"))
+        assertTrue(bodyOf(s, "recordTurn").contains("if (fromUser && said.isNotBlank()) readThroughCarry.answered()"))
         val answer = bodyOf(s, "answerTurn")
         val carryAt = answer.indexOf("readThroughCarry.startTurn(record.fromUser, record.startMarked)")
         assertTrue("the carry is taken as a turn starts", carryAt >= 0)
