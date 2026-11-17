@@ -123,7 +123,16 @@ sealed interface LiveEvent {
     /** A turn-taking change the person should be told about in words, once (fallbacks, barge-in off). */
     data class TurnNotice(val text: String) : LiveEvent
     /** Gemini wants a local tool run; reply via [GeminiLiveSession.sendToolResponse]. */
-    data class ToolCall(val id: String, val name: String, val args: JSONObject) : LiveEvent
+    data class ToolCall(
+        val id: String,
+        val name: String,
+        val args: JSONObject,
+        /**
+         * ADR 0090: this call is itself a read-through tool and the turn was clean before it, so
+         * the turn's mark is its own (an `email` draft or a `browser` open must not refuse itself).
+         */
+        val ownMarkOnly: Boolean = false,
+    ) : LiveEvent
     /** Live transcript of what Zero is saying this turn (debug subtitle), accumulated. */
     data class Subtitle(val text: String) : LiveEvent
     /**
@@ -2098,7 +2107,9 @@ class GeminiLiveSession(
             // once dispatch returns - captureEpisodicTurn (below) checks this on turnComplete,
             // which can land before the owner's own dispatch/response round trip finishes in
             // some orderings, and the exclusion must hold regardless of that race.
-            if (isEpisodicExcludedTool(name)) markReadThrough(name)
+            val markedBefore = mailToolCalledThisTurn
+            val ownMark = isEpisodicExcludedTool(name)
+            if (ownMark) markReadThrough(name)
             // 2026-09-07: flagged for the same reason and at the same moment - what matters is
             // that the model ASKED for a tool, which is already proof this turn did something,
             // whatever the dispatch later returns.
@@ -2117,6 +2128,7 @@ class GeminiLiveSession(
                 id = call.optString("id"),
                 name = name,
                 args = args,
+                ownMarkOnly = ownMark && !markedBefore,
             ))
         }
         if (stillChecking.hasPending()) startNudgeTicker()

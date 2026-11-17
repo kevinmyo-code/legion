@@ -189,10 +189,15 @@ class TextChatEngine(
         executor: TextToolExecutor,
         state: TurnState,
     ): JSONObject {
-        if (isReadThrough(call.name)) {
+        // ADR 0090: the executor is handed the mark as it stood before this call's OWN mark, so a
+        // read-through tool that also acts (email, browser) does not refuse itself.
+        val markedBefore = state.readThrough
+        val ownMark = isReadThrough(call.name)
+        if (ownMark) {
             state.readThrough = true
             onReadThrough(call.name, null)
         }
+        val readThroughNow = if (ownMark) markedBefore else state.readThrough
         var confirmedOutcome = false
         // Round 3: web text a sub-agent behind this call got back (ask_fleet's web_lookup) makes the
         // rest of the turn read-through too, exactly as a read-through tool does.
@@ -200,7 +205,7 @@ class TextChatEngine(
         val response = try {
             withContext(webRead) {
                 withTimeoutOrNull(toolTimeoutMs(call.name)) {
-                    executor.run(call.name, call.args, state.readThrough)
+                    executor.run(call.name, call.args, readThroughNow)
                 }
             }?.also { confirmedOutcome = it.has("success") }
                 ?: JSONObject().put("success", false).put("message", "That took too long and timed out.")

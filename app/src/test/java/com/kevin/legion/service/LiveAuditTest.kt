@@ -19,6 +19,33 @@ class LiveAuditTest {
     private fun result(id: String, name: String, response: String, async: Boolean = false) =
         LiveAudit.ToolResult(id, name, success = true, ms = 1042, async = async, sent = true, responseJson = response)
 
+    // 2026-11-17 (ADR 0090 gap 1, CLAUDE.md sec 7): the cascade logs the folded name the model
+    // called; the result and the reply are still redacted, judged on the tool the call stands for.
+    @Test
+    fun `a folded mail or brief call is redacted under the name the model called`() {
+        val folded = listOf(
+            "look_up" to """{"domain":"ask_mail","question":"newest"}""",
+            "day" to """{"action":"get_sitrep"}""",
+            "day" to """{"action":"track_package"}""",
+            "day" to """{"action":"flight_status"}""",
+        )
+        folded.forEachIndexed { i, (name, args) ->
+            lines.clear()
+            audit.turnComplete()
+            audit.toolCall("f$i", name, async = false, argsJson = args)
+            audit.toolResult(result("f$i", name, """{"success":true,"text":"An invented mail body"}"""))
+            audit.assistant("An invented mail body, read aloud", readThrough = false)
+            val called = lines.any { it.startsWith("tool_call") && it.contains("name=$name") }
+            assertTrue("$name $args: the tool line keeps the called name", called)
+            assertFalse("$name $args: no content may survive: $lines", lines.any { it.contains("invented mail body") })
+        }
+        lines.clear()
+        audit.turnComplete()
+        audit.toolCall("c1", "day", async = false, argsJson = """{"action":"read_calendar"}""")
+        audit.toolResult(result("c1", "day", """{"success":true,"events":"An invented dentist"}"""))
+        assertTrue("a calendar read stays in clear", lines.any { it.contains("An invented dentist") })
+    }
+
     @Test
     fun `every line format`() {
         audit.sessionStart("gemini-3.8-live", setOf("ask_goals", "ask_body"))

@@ -79,7 +79,7 @@ class SpeculationTest {
             cache = null,
             classify = { AgentResult.Failed },
             isMutating = { name, _ -> name == "add_item" },
-            isReadThrough = { false },
+            isReadThrough = { _, _ -> false },
             meter = { model, u -> hold.add(CallUsage.of(CallUsage.LLM, model, u)) },
             discarded = { model, u, chars -> hold.add(CallUsage.of(CallUsage.LLM, model, u, chars = chars, discarded = true)) },
         )

@@ -1,6 +1,8 @@
 package com.kevin.legion.service
 
 import com.kevin.legion.service.conversationlog.ConversationLog
+import com.kevin.legion.service.tools.LiveSurface
+import org.json.JSONObject
 
 /**
  * The conversation audit log (async-lookups ticket 05, 2026-10-28, Kevin: "cant u like record what
@@ -37,6 +39,11 @@ internal class LiveAudit(
     @Volatile var enabled = false
 
     private val toolNames = HashMap<String, String>()
+
+    // Ids of calls whose result is redacted because the call stands for a read-through tool under
+    // a folded name (`look_up` with `domain: ask_mail`, `day` with `get_sitrep`): the result line
+    // carries only the called name (2026-11-17, ADR 0090 gap 1, CLAUDE.md §7).
+    private val readThroughIds = HashSet<String>()
     private var readThroughToolThisTurn = false
     private var redactionLoggedThisTurn = false
     private val readThroughLoggedThisTurn = HashSet<String>()
@@ -49,6 +56,7 @@ internal class LiveAudit(
     @Synchronized
     fun sessionStart(model: String, asyncSet: Set<String>, pack: String? = null) {
         toolNames.clear()
+        readThroughIds.clear()
         resetTurn()
         val async = asyncSet.sorted().joinToString(",").ifEmpty { "none" }
         val packToken = pack?.let { " pack=${token(it)}" }.orEmpty()
@@ -81,7 +89,11 @@ internal class LiveAudit(
     @Synchronized
     fun toolCall(id: String, name: String, async: Boolean, argsJson: String, via: String? = null) {
         toolNames[id] = name
-        if (isReadThroughTool(name)) readThroughToolThisTurn = true
+        val args = runCatching { JSONObject(argsJson) }.getOrNull() ?: JSONObject()
+        if (isReadThroughTool(name) || isReadThroughTool(LiveSurface.resolve(name, args).name)) {
+            readThroughToolThisTurn = true
+            readThroughIds.add(id)
+        }
         // ADR 0086: an email's body never reaches this log; EmailToolbox.redactArgs keeps its length.
         val logged = EmailToolbox.redactArgs(name, argsJson)
         // `via` (live cost diet, 2026-11-10): the action tool the model called when [name] is the
@@ -108,7 +120,8 @@ internal class LiveAudit(
     @Synchronized
     fun toolResult(result: ToolResult) {
         toolNames.remove(result.id)
-        val body = if (isReadThroughTool(result.name)) quote(REDACTED) else json(result.responseJson)
+        val folded = readThroughIds.remove(result.id)
+        val body = if (folded || isReadThroughTool(result.name)) quote(REDACTED) else json(result.responseJson)
         emit(
             "tool_result id=${token(result.id)} name=${token(result.name)} success=${result.success} " +
                 "ms=${result.ms} scheduling=${if (result.async) "WHEN_IDLE" else "none"} " +

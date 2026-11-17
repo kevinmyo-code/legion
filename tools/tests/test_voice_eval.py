@@ -257,3 +257,11 @@ def test_a_relative_day_word_is_scored_as_the_date_it_means():
     assert ve.arg_ok("tomorrow", {"lte": "{today+1}"}, DAY) and ve.arg_ok("tomorrow", {"gte": "{today+1}"}, DAY)
     assert not ve.arg_ok("tomorrow", {"lte": "{today}"}, DAY)
     assert ve.arg_ok("Today", "{today}", DAY)
+
+
+def test_heard_line_replaces_a_redacted_answer():
+    lines = case_lines("guard", "read my newest email", [], "[redacted: third-party content]", end=False)
+    lines.insert(-1, L("LIVE_TEST", 'heard text="Nothing was saved; ask me again."'))
+    lines.append(L("LIVE_TEST", "case_end id=guard ms=1500"))
+    _, runs = parse(lines)
+    assert runs[0].turns[0].answer == "Nothing was saved; ask me again."

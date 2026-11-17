@@ -37,6 +37,7 @@ data class SpooledBatch(val file: File, val id: String, val startMs: Long, val e
  * Every public method is `@Synchronized`: appends come from the spool's writer thread, seals and
  * reads from the uploader.
  */
+@Suppress("TooManyFunctions") // the spool's whole surface; rewrite() is the one-off ADR 0090 cleanup
 class ConversationSpool(
     private val dir: File,
     private val maxTotalBytes: Long = DEFAULT_MAX_TOTAL_BYTES,
@@ -118,6 +119,25 @@ class ConversationSpool(
         batch.file.delete()
     }
 
+    /**
+     * Passes every waiting line, oldest batch first and `current.log` last, through [line], and
+     * returns how many it changed. With [write] the changed files are rewritten in place (same names,
+     * so a batch keeps its window); without it nothing on disk changes. For the one-off ADR 0090
+     * cleanup.
+     */
+    @Synchronized
+    fun rewrite(write: Boolean, line: (String) -> String): Int {
+        var changed = 0
+        for (file in pending().map { it.file } + listOf(current).filter { it.exists() }) {
+            val before = file.readLines()
+            val after = before.map(line)
+            val n = before.indices.count { before[it] != after[it] }
+            changed += n
+            if (write && n > 0) file.writeText(after.joinToString(separator = NEWLINE, postfix = NEWLINE))
+        }
+        return changed
+    }
+
     @Synchronized
     fun totalBytes(): Long = (if (current.exists()) current.length() else 0L) +
         (pendingDir.listFiles()?.sumOf { it.length() } ?: 0L)
@@ -158,6 +178,7 @@ class ConversationSpool(
         const val DEFAULT_MAX_TOTAL_BYTES = 4L * 1024 * 1024
         const val DEFAULT_SEAL_AT_BYTES = 512L * 1024
         private const val NAME_PARTS = 3
+        private const val NEWLINE = "\n"
         private const val TRIM_TO_PERCENT = 75
         private const val PERCENT = 100
 

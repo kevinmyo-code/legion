@@ -222,7 +222,10 @@ def test_list_and_describe_say_an_empty_result_is_real_then_read_the_shape(req, 
     assert "real empty result" in rt.LIST_ASPECTS.handler(req, {}).text
     UserAspect.objects.update(archived=False)
     listed = rt.LIST_ASPECTS.handler(req, {}).structured
-    assert listed == {"aspects": [{"name": "Hikes", "record_types": ["Hike"]}]}
+    fields = ["trail", "miles", "day", "parking", "mood"]
+    assert listed == {
+        "aspects": [{"name": "Hikes", "record_types": [{"name": "Hike", "fields": fields}]}]
+    }
     shape = rt.DESCRIBE_ASPECT.handler(req, {"aspect_name": "HIKES"}).structured
     fields = shape["record_types"][0]["fields"]
     assert [f["name"] for f in fields] == ["trail", "miles", "day", "parking", "mood"]
@@ -577,3 +580,49 @@ def test_the_batch_takes_exactly_what_the_phone_sends(auth_client):
         again = auth_client.post(f"/api/records/{prefix}/batch/", {"rows": [row]}, format="json")
         assert again.data["unchanged"] == 1, (prefix, again.data)
     assert UserRecord.objects.get().payload == {"pf": None, "phone_field:9": "kept"}
+
+
+# -- fewer hops: forgiving names, a catalogue on a miss, one entry by a search phrase ------------
+
+
+def test_names_are_forgiving_and_one_record_type_needs_no_name(req, hikes):
+    _create(req, trail="Test ridge")
+    for aspect, kind in (
+        ("hikes", "Hike"),
+        ("my hikes tracker", ""),
+        ("Hike", "hikes"),
+        ("Hkes", ""),
+    ):
+        out = rt.QUERY_ASPECT_RECORDS.handler(
+            req, {"aspect_name": aspect, "record_type_name": kind}
+        )
+        assert not out.is_error and out.structured["count"] == 1, (aspect, kind, out.text)
+
+
+def test_a_miss_names_his_trackers_types_and_fields(req, hikes):
+    out = rt.QUERY_ASPECT_RECORDS.handler(req, {"aspect_name": "Gardening"})
+    assert out.is_error
+    assert "Hikes > Hike (trail, miles, day, parking, mood)" in out.text
+
+
+def test_one_entry_is_changed_or_trashed_by_a_search_phrase(req, hikes):
+    _create(req, trail="Test ridge", mood="good")
+    _create(req, trail="Test creek", mood="tired")
+    changed = rt.UPDATE_ASPECT_RECORD.handler(
+        req, {"aspect_name": "hikes", "search_text": "the ridge hike", "fields": {"miles": 7}}
+    )
+    assert not changed.is_error, changed.text
+    ridge = UserRecord.objects.get(payload__contains={"f-1": "Test ridge"})
+    assert ridge.payload["f-2"] == 7.0
+    both = rt.UPDATE_ASPECT_RECORD.handler(
+        req, {"aspect_name": "hikes", "search_text": "test", "fields": {"miles": 1}}
+    )
+    assert both.is_error and "2 Hike entries match" in both.text
+    gone = rt.DELETE_ASPECT_RECORD.handler(req, {"aspect_name": "hikes", "search_text": "creek"})
+    assert not gone.is_error and "Test creek" in gone.text
+    assert UserRecord.objects.get(payload__contains={"f-1": "Test creek"}).trashed_at is not None
+    # Several matches never trash at once: they are counted first, as a set.
+    _create(req, trail="Test creek two")
+    _create(req, trail="Test creek three")
+    asked = rt.DELETE_ASPECT_RECORD.handler(req, {"aspect_name": "hikes", "search_text": "creek"})
+    assert asked.structured["committed"] is False and asked.structured["matched"] == 2

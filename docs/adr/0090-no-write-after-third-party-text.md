@@ -27,6 +27,28 @@ not run ... they can simply ask again").
 - **Phone:** `/mcp` carries no turn, so `AskEngine` refuses a write once an engine third-party tool
   answered within the same ask; a Live turn already marked read-through sends nothing at all.
 
+## Amendment 2026-11-17: the phone guard, "Block lasting + outbound" (Kevin)
+
+Kevin's ruling, by question dialog: **"Block lasting + outbound": after an outside read refuse only
+things that last or leave the phone; still allow navigation, timers, music, volume, screens and
+reading more of a web page.**
+
+- **Phone:** one guard before every resolved tool call on every path (Live, the cascade on cloud
+  or laptop voice, typed chat), `ReadThroughWriteGuard` in `LiveSessionController.runTool`. In a
+  marked turn a call runs if it is a read (`ToolReads`) or on the allow-after-read list
+  (navigation, clock, music, volume, books, screens, the camera look, answering a ringing call, and
+  the browser's `read`, `scroll`, `back` and `close`). Everything else is refused in words:
+  memories, watches, records and `aspect_clerk`, to-dos, logs, goals and proposals, mail drafts and
+  sends, calls, the garage, Claude work, `ask_engine`, app installs, lasting settings, and a browser
+  `open`, `click` or `type` (an address can carry text out in its query string). Deny by default:
+  a test fails on any tool the model can reach that is not classified.
+- Phone taint sources: mail (including the folded `look_up`/`day` calls), the brief, parcel and
+  flight lookups, web pages and search grounding, `ask_engine`'s third-party tools, a camera look,
+  and the turn after a read-through raise (wake brief, `mail_reply` line). Calendar invites from
+  others, the agenda block and Claude task results are not sources; that waits for a ruling.
+- **Known difference:** the engine's `guards.py` stays stricter for now and refuses every write
+  after third-party text, the allowed ones included. Not changed on this ruling.
+
 ## Context
 
 A security review of `server/` (2026-11-12) traced a path from a public GitHub issue title, through

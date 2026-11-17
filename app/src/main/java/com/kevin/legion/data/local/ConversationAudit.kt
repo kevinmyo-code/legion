@@ -227,6 +227,13 @@ interface ConversationAuditDao {
     @Query("SELECT COUNT(*) FROM conversation_audit")
     suspend fun count(): Int
 
+    /**
+     * Blanks [ids]' content with [marker] and marks them redacted: the one-off ADR 0090 cleanup
+     * ([com.kevin.legion.service.ReadThroughCleanup]), run only from Kevin's button. Returns rows changed.
+     */
+    @Query("UPDATE conversation_audit SET content = :marker, redacted = 1 WHERE id IN (:ids)")
+    suspend fun redactContent(ids: List<Long>, marker: String): Int
+
     /** How many rows sit past the upload watermark - the number
      *  [com.kevin.legion.backend.ConversationAuditReconcile.pendingSummary] puts in front of a
      *  person. Counts rows, never bytes: "how much evidence is not backed up" is a count question. */

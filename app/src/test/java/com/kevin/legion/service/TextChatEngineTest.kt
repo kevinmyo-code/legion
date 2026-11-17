@@ -60,6 +60,7 @@ class TextChatEngineTest {
         maxRounds: Int = TextChatEngine.MAX_ROUNDS,
         toolTimeoutMs: Long = 10_000,
         classify: (RestOutcome.HttpError) -> AgentResult = { AgentResult.Failed },
+        readThrough: (String) -> Boolean = { it == "ask_mail" },
     ): TextChatEngine {
         val queue = ArrayDeque(replies.toList())
         return TextChatEngine(
@@ -69,7 +70,7 @@ class TextChatEngineTest {
             },
             classify = classify,
             isMutating = { name, _ -> name.startsWith("log_") || name == "remember" },
-            isReadThrough = { it == "ask_mail" },
+            isReadThrough = readThrough,
             toolTimeoutMs = { toolTimeoutMs },
             maxRounds = maxRounds,
             onReadThrough = { source, tool -> marks += source to tool },
@@ -159,8 +160,21 @@ class TextChatEngineTest {
             listOf("BASE"), emptyList(), "remember what that email said", decls, executor(),
         )
         assertTrue(r.readThroughTouched)
-        assertEquals(listOf("ask_mail" to true, "remember" to true), calls.map { it.first to it.third })
+        // ADR 0090 (2026-11-17): a call is handed the mark as it stood before its OWN mark.
+        assertEquals(listOf("ask_mail" to false, "remember" to true), calls.map { it.first to it.third })
         assertEquals(listOf("ask_mail" to null), marks)
+    }
+
+    @Test
+    fun `a read-through tool that also acts is not handed its own mark, only an earlier one`() = runTest {
+        val selfMarking = { name: String -> name == "ask_mail" || name == "email" }
+        engine(call("email"), text("Drafted."), readThrough = selfMarking)
+            .answer(listOf("B"), emptyList(), "email an invented friend hi", decls, executor())
+        assertEquals(listOf("email" to false), calls.map { it.first to it.third })
+        calls.clear()
+        engine(call("ask_mail"), call("email"), text("Not drafted."), readThrough = selfMarking)
+            .answer(listOf("B"), emptyList(), "read it and reply", decls, executor())
+        assertEquals(listOf("ask_mail" to false, "email" to true), calls.map { it.first to it.third })
     }
 
     /**

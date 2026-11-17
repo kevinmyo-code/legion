@@ -3,11 +3,11 @@ package com.kevin.legion.voiceeval
 import android.content.Context
 import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.CoachRouting
-import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
 import com.kevin.legion.service.LiveSessionController
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.cascade.CallUsage
 import com.kevin.legion.service.cascade.CascadeLines
@@ -79,7 +79,7 @@ internal class VoiceEvalHarness(
             transport = transport,
             cache = cache,
             isMutating = LiveToolbox::isMutatingCall,
-            isReadThrough = { GeminiLiveSession.isEpisodicExcludedTool(it) },
+            isReadThrough = CascadeRules::isReadThrough,
             toolTimeoutMs = { CascadeSession.TOOL_BACKSTOP_MS },
             meter = { model, usage -> out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage).line()) },
             discarded = { model, usage, chars ->
@@ -111,6 +111,9 @@ internal class VoiceEvalHarness(
                 result.text
             }
             audit.assistant(said, readThrough = result.readThrough)
+            // What would be heard, even when the record redacts it (made-up data only): the scorer
+            // reads this line first (2026-11-17, ADR 0090 guard cases score the spoken answer).
+            out(TEST_TAG, "heard text=${LiveAudit.quote(said)}")
             audit.turnComplete()
             out(
                 LiveLatency.TAG,
@@ -153,7 +156,11 @@ internal class VoiceEvalHarness(
             return JSONObject().put("success", false).put("message", "That only works on the Live voice engine.")
         }
         val (resolved, resolvedArgs) = LiveSurface.resolve(name, args)
+        // ADR 0090: the controller's one write guard, in the same place.
+        ReadThroughWriteGuard.refusal(resolved, resolvedArgs, readThrough)?.let { return it }
         val response = when (resolved) {
+            // No Gmail on the laptop: the made-up inbox ([VoiceEvalFixture.mailAnswer]).
+            in VoiceEvalFixture.MAIL_TOOLS -> VoiceEvalFixture.mailAnswer()
             "show_agenda_modal" -> CoachRouting.agendaRefusal(userText)
                 ?.let { JSONObject().put("success", false).put("message", it) }
                 ?: screenOnly()
@@ -171,7 +178,10 @@ internal class VoiceEvalHarness(
     companion object {
         const val TEST_TAG = "LIVE_TEST"
 
-        /** Tools whose whole effect is a screen (LiveSessionController owns them). */
-        val SCREEN_TOOLS = setOf("show_saved_places", "import_receipt", "show_generated_view")
+        /**
+         * Tools whose whole effect is a screen (LiveSessionController owns them). `navigate` opens the
+         * map and asks the route service, neither of which exists on the laptop.
+         */
+        val SCREEN_TOOLS = setOf("show_saved_places", "import_receipt", "show_generated_view", "navigate")
     }
 }

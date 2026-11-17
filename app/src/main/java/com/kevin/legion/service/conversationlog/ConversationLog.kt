@@ -217,6 +217,9 @@ object ConversationLog {
     /** "Send now": waits for queued lines, seals, sends, ignoring the backoff. */
     suspend fun sendNow(): SendOutcome = uploadNow(manual = true) ?: SendOutcome.NothingToSend
 
+    /** [ConversationSpool.rewrite] on the phone's spool; 0 when the log was never set up. */
+    fun rewriteSpool(write: Boolean, line: (String) -> String): Int = spool?.rewrite(write, line) ?: 0
+
     private suspend fun uploadNow(manual: Boolean): SendOutcome? {
         val up = uploader
         val rec = recorder

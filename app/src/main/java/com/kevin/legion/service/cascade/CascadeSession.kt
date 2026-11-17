@@ -240,6 +240,7 @@ internal class CascadeSession(
     @Volatile private var speaking = false
     private val history = mutableListOf<ChatTurn>()
     private var carry = ""
+    private val readThroughCarry = ReadThroughCarry()
     private var turn: TurnRecord? = null
     private var dismissAfterReply = false
     private var answeredOnce = false
@@ -274,6 +275,12 @@ internal class CascadeSession(
         val writesDone = mutableListOf<String>()
         @Volatile var readThrough = false
         @Volatile var fillerPlayed = false
+
+        /**
+         * Marked before any tool ran (ADR 0090): a read-through opener, or the turn after one
+         * ([ReadThroughCarry]). Unlike [readThrough], a tool's own mark never sets it.
+         */
+        @Volatile var startMarked = false
 
         /** A write tool was called this turn (set as it starts, before it can run). */
         @Volatile var writeCalled = false
@@ -790,6 +797,7 @@ internal class CascadeSession(
 
     private fun promptRecord(o: CascadeOpener) = TurnRecord(o.prompt, fromUser = false).also {
         it.readThrough = o.readThrough
+        it.startMarked = o.readThrough
         it.holdLine = o.checkIn != null && checkInStep == CheckInStep.LINE
     }
 
@@ -1043,6 +1051,12 @@ internal class CascadeSession(
         drafted: SpeculativeAnswer? = null,
     ) {
         turn = record
+        // ADR 0090 gap 5: the turn after a read-through opener starts marked, as on Live.
+        if (readThroughCarry.startTurn(record.fromUser, record.startMarked)) {
+            record.startMarked = true
+            record.readThrough = true
+            audit.readThrough(GeminiLiveSession.READ_THROUGH_CARRY)
+        }
         val seq = turnSeq.getAndIncrement()
         val pfx = try {
             awaitPrompt()
@@ -1337,6 +1351,8 @@ internal class CascadeSession(
         // Before anything can run: his next words must never carry a write into a second run.
         if (CascadeRules.isWrite(name, args)) record.writeCalled = true
         val id = "c${toolSeq.incrementAndGet()}"
+        // Logged under the called name (the eval scorer reads `day/read_calendar`); LiveAudit judges
+        // redaction on the tool it stands for, so a folded mail or brief result is redacted.
         audit.toolCall(id, name, false, args.toString())
         toolsInFlight.incrementAndGet()
         followUpEventAsync(FollowUpWindow.Event.ToolCall)
@@ -1356,7 +1372,8 @@ internal class CascadeSession(
                 else -> host.runTool(
                     name,
                     args,
-                    readThrough || record.readThrough,
+                    // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
+                    readThrough || record.startMarked,
                     if (record.fromUser) record.heard else "",
                     seq,
                 )
@@ -1683,6 +1700,7 @@ internal class CascadeSession(
         fromUser: Boolean = true,
     ) {
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
+        if (fromUser && said.isNotBlank()) readThroughCarry.answered()
         // A read-through reply (mail, web) is never kept as history or in the record in clear.
         val kept = if (readThrough) LiveAudit.REDACTED else said
         if (said.isNotBlank()) history.add(ChatTurn(fromUser = false, text = kept))
@@ -1802,7 +1820,7 @@ internal class CascadeSession(
         // A speak-only line makes one round: no cache (a peek would start a create it never uses).
         cache = cache.takeIf { listens },
         isMutating = CascadeRules::isWrite,
-        isReadThrough = { GeminiLiveSession.isEpisodicExcludedTool(it) },
+        isReadThrough = CascadeRules::isReadThrough,
         toolTimeoutMs = { TOOL_BACKSTOP_MS },
         meter = { model, usage ->
             meter(model, usage)

@@ -89,7 +89,8 @@ class GeminiTextLoopTest {
         cache = cache,
         classify = { e -> if (e.code == 429) AgentResult.RateLimited else AgentResult.Failed },
         isMutating = { name, _ -> name == "add_item" },
-        isReadThrough = { it == "ask_mail" },
+        // The production predicate: what the cascade model actually sends is a folded call.
+        isReadThrough = CascadeRules::isReadThrough,
         maxRounds = maxRounds,
     )
 
@@ -248,13 +249,78 @@ class GeminiTextLoopTest {
         assertEquals(listOf("add_item"), r.toolsRan)
     }
 
+    /** One functionCall part with real arguments, as the cascade model sends a folded action tool. */
+    private fun foldedEv(name: String, args: JSONObject) = JSONObject().put(
+        "candidates",
+        JSONArray().put(
+            JSONObject().put(
+                "content",
+                JSONObject().put("role", "model").put(
+                    "parts",
+                    JSONArray().put(JSONObject().put("functionCall", JSONObject().put("name", name).put("args", args).put("id", "f-$name"))),
+                ),
+            ),
+        ),
+    )
+
+    private val newestMail = JSONObject().put("domain", "ask_mail").put("question", "read my newest email")
+
+    private class Seen : TextToolExecutor {
+        val calls = Collections.synchronizedList(mutableListOf<Pair<String, Boolean>>())
+        override suspend fun run(name: String, args: JSONObject, readThrough: Boolean): JSONObject {
+            calls.add(name to readThrough)
+            return JSONObject().put("success", true)
+        }
+    }
+
+    // ADR 0090 gap 1 (2026-11-17): the old test called the unfolded name `ask_mail`, which the
+    // cascade model never sends, so it passed while production missed every folded mail read.
     @Test
-    fun `a read-through tool marks the turn`() = runBlocking<Unit> {
-        val t = Scripted(ok(callEv("ask_mail")), ok(textEv("You have mail.")))
+    fun `a folded mail read marks the turn, as the cascade model sends it`() = runBlocking<Unit> {
+        val t = Scripted(ok(foldedEv("look_up", newestMail)), ok(textEv("You have mail.")))
         val l = Collect()
         val r = loop(t).answer(prefix, contents, okTool, l)
         assertTrue(r.readThrough)
-        assertEquals(listOf("ask_mail"), l.readThrough)
+        assertEquals(listOf("look_up"), l.readThrough)
+    }
+
+    @Test
+    fun `a folded brief, parcel or flight read marks the turn`() = runBlocking<Unit> {
+        for (action in listOf("get_sitrep", "track_package", "flight_status")) {
+            val t = Scripted(ok(foldedEv("day", JSONObject().put("action", action))), ok(textEv("Here it is.")))
+            val r = loop(t).answer(prefix, contents, okTool, Collect())
+            assertTrue("day $action", r.readThrough)
+        }
+    }
+
+    @Test
+    fun `a folded calendar read leaves the turn clean`() = runBlocking<Unit> {
+        val args = JSONObject().put("action", "read_calendar").put("from", "today").put("to", "today")
+        val t = Scripted(ok(foldedEv("day", args)), ok(textEv("A clear day.")))
+        val r = loop(t).answer(prefix, contents, okTool, Collect())
+        assertFalse(r.readThrough)
+    }
+
+    @Test
+    fun `a write after a folded mail read is handed the mark`() = runBlocking<Unit> {
+        val remember = JSONObject().put("action", "remember").put("text", "an invented fact from the mail")
+        val t = Scripted(ok(foldedEv("look_up", newestMail)), ok(foldedEv("memory", remember)), ok(textEv("Not kept.")))
+        val seen = Seen()
+        loop(t).answer(prefix, contents, seen, Collect())
+        assertEquals(listOf("look_up" to false, "memory" to true), seen.calls)
+    }
+
+    // A read-through tool that also acts (email reads mail for the recipient; browser opens a
+    // page) must not refuse itself: it is handed the mark as it stood before its own.
+    @Test
+    fun `a tool's own mark is not handed to it, a mark from an earlier read is`() = runBlocking<Unit> {
+        val draft = JSONObject().put("action", "draft").put("to", "someone@example.invalid").put("subject", "x").put("body", "y")
+        val first = Seen()
+        loop(Scripted(ok(foldedEv("email", draft)), ok(textEv("Drafted.")))).answer(prefix, contents, first, Collect())
+        assertEquals(listOf("email" to false), first.calls)
+        val after = Seen()
+        loop(Scripted(ok(foldedEv("look_up", newestMail)), ok(foldedEv("email", draft)), ok(textEv("Not drafted.")))).answer(prefix, contents, after, Collect())
+        assertEquals(listOf("look_up" to false, "email" to true), after.calls)
     }
 
     @Test
