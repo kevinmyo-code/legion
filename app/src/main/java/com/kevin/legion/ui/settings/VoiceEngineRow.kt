@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.service.cascade.CascadeSession
 import com.kevin.legion.service.cascade.CascadeTimings
+import com.kevin.legion.service.cascade.CloudSpeechWire
 import com.kevin.legion.service.cascade.LaptopProbe
 import com.kevin.legion.service.cascade.LaptopVoiceConfig
 import com.kevin.legion.service.cascade.SpokenLanguages
@@ -65,6 +66,9 @@ fun VoiceEngineRow() {
     var result by remember { mutableStateOf<String?>(null) }
     var last by remember { mutableStateOf(VoiceEngineSettings.lastStatus(context)) }
     var speed by remember { mutableStateOf(VoiceEngineSettings.speechSpeed(context)) }
+    var voice by remember { mutableStateOf(VoiceEngineSettings.cloudVoice(context)) }
+    var voiceField by remember { mutableStateOf("") }
+    var voiceNote by remember { mutableStateOf<String?>(null) }
     var spoken by remember { mutableStateOf(SpokenLanguages.load(context).map { it.name }.toSet()) }
 
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
@@ -76,7 +80,7 @@ fun VoiceEngineRow() {
             )
             Text(
                 "Cloud: Gemini hears you, Gemini with tools answers on the phone, and Gemini speaks " +
-                    "in the Neno voice. Laptop pipeline: the same, with speech on your laptop; " +
+                    "in the voice below. Laptop pipeline: the same, with speech on your laptop; " +
                     "when the laptop cannot be used it runs on Cloud. Applies from the next conversation.",
                 style = LegionType.stamp,
                 color = sem.faint,
@@ -107,6 +111,51 @@ fun VoiceEngineRow() {
                 steps = SPEED_STEPS,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // 2026-11-17: the cloud voice, Puck or a Gemini voice id, tried once before it is kept.
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Cloud voice: $voice",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            OutlinedTextField(
+                value = voiceField,
+                onValueChange = { voiceField = it },
+                label = { Text("Voice id (e.g. Puck, or a library id)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row {
+                DeckButton(
+                    text = "Use this voice",
+                    enabled = voiceField.isNotBlank(),
+                    onClick = {
+                        val wanted = voiceField.trim()
+                        voiceNote = "Trying $wanted..."
+                        scope.launch {
+                            if (VoiceEngineSettings.testVoice(wanted)) {
+                                VoiceEngineSettings.setCloudVoice(context, wanted)
+                                voice = wanted
+                                voiceField = ""
+                                voiceNote = "Now using $wanted from the next conversation."
+                            } else {
+                                voiceNote = "$wanted did not work, so the voice stays $voice."
+                            }
+                        }
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                DeckButton(
+                    text = "Back to Puck",
+                    enabled = voice != CloudSpeechWire.VOICE,
+                    onClick = {
+                        VoiceEngineSettings.setCloudVoice(context, CloudSpeechWire.VOICE)
+                        voice = CloudSpeechWire.VOICE
+                        voiceNote = null
+                    },
+                )
+            }
+            voiceNote?.let { Text(it, style = LegionType.stamp, color = sem.faint) }
             // 2026-11-17: the languages he speaks. English always; each conversation starts in English
             // and switches when he asks ("speak Burmese"). Cloud voice only.
             Spacer(Modifier.height(4.dp))

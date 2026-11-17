@@ -100,15 +100,15 @@ class CloudSpeechTest {
     }
 
     @Test
-    fun `the voice request asks for audio in Neno, in the 3_8 shape or the older one`() {
-        assertEquals("en-us-neno", CloudSpeechWire.VOICE)
+    fun `the voice request asks for audio in Puck, in the 3_8 shape or the older one`() {
+        assertEquals("Puck", CloudSpeechWire.VOICE)
         val now = CloudSpeechWire.speak("Invented line.", legacyVoice = false)
         val cfg = now.getJSONObject("generationConfig")
         assertEquals("AUDIO", cfg.getJSONArray("responseModalities").getString(0))
-        assertEquals("en-us-neno", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
+        assertEquals("Puck", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
         val old = CloudSpeechWire.speak("Invented line.", legacyVoice = true)
         assertEquals(
-            "en-us-neno",
+            "Puck",
             old.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
                 .getJSONObject("prebuiltVoiceConfig").getString("voiceName"),
         )
@@ -237,7 +237,7 @@ class CloudSpeechTest {
         assertTrue(plain.contains("English"))
         assertFalse(plain.contains("in the language they speak"))
         assertFalse(plain.contains("Words he often says"))
-        val hint = SttGuard.hint(listOf("Invented Ranger", "Fit"))
+        val hint = SttGuard.hint()
         val withHint = CloudSpeechWire.transcribe(pcm(300), hint).getJSONObject("systemInstruction")
             .getJSONArray("parts").getJSONObject(0).getString("text")
         assertTrue(withHint.endsWith(hint))
@@ -294,6 +294,23 @@ class CloudSpeechTest {
         // The kept clip is filed under the voice that spoke it.
         assertTrue(kept.keys.single().contains("|Puck|"))
         assertTrue(tts.performsTags)
+    }
+
+    @Test
+    fun `a voice id is kept only if Google speaks a test line in it`() = runBlocking<Unit> {
+        val fake = FakeGemini { _, body, onEvent ->
+            val v = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
+                .optString("voice")
+            if (v == "en-gb-invented") {
+                onEvent(audioEv(byteArrayOf(1, 2)))
+                StreamOutcome.Ok
+            } else {
+                StreamOutcome.HttpError(400, "invalid argument")
+            }
+        }
+        assertTrue(VoiceEngineSettings.testVoice("en-gb-invented", fake))
+        assertFalse("a bad id fails, never falls back to Puck", VoiceEngineSettings.testVoice("en-gb-nope", fake))
+        assertFalse("nothing odd is sent", VoiceEngineSettings.testVoice("a b; c", fake))
     }
 
     @Test

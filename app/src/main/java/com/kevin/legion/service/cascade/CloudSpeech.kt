@@ -91,14 +91,13 @@ internal object CloudSpeechWire {
     const val TTS_MODEL = "gemini-3.8-flash-tts"
 
     /**
-     * Neno (Kevin, 2026-11-17, after auditioning: "i like neno plain. and with tags where possible"):
-     * the extended-library voice `en-us-neno`, in the same request shape (verified 200). Plain: no style
-     * direction (our shape cannot carry one). The cloud voice no longer follows the companion's Live
-     * voice setting.
+     * The default cloud voice: Puck, the voice Live spoke in (Kevin, 2026-11-17: Neno was auditioned
+     * and dropped; a British voice is being chosen). Settings > Voice engine > Voice sets another by
+     * its id ([VoiceEngineSettings.cloudVoice]); the cloud voice no longer follows the Live voice setting.
      */
-    const val VOICE = "en-us-neno"
+    const val VOICE = "Puck"
 
-    /** If Google refuses [VOICE] by name (a 400), the conversation goes on in Puck, never silent. */
+    /** If Google refuses the chosen voice by name (a 400), the conversation goes on in Puck, never silent. */
     const val FALLBACK_VOICE = "Puck"
 
     /** Gemini TTS streams headerless 16-bit PCM, 24 kHz mono, by default (speech-generation doc). */
@@ -109,13 +108,23 @@ internal object CloudSpeechWire {
     /**
      * Pinned to English (2026-11-17: "in the language they speak" let English speech come back as
      * Spanish and Chinese fragments). [SttGuard] still drops whatever is not plausibly English.
+     *
+     * No-speech audio (2026-11-17, real-model run, `.legion/reports/phone-voice-fixes-1117pm/`): with
+     * "if there is no intelligible speech, output nothing" flash-lite invented a command on 20 of 21
+     * silence/noise/hum clips ("Set a timer for five minutes."). Told that the audio may hold no voice,
+     * never to guess, and to answer [NO_SPEECH] instead: 0 of 21. [cleanTranscript] turns that into "".
+     * No examples here, ever: a transcriber writes examples back as speech.
      */
     const val STT_INSTRUCTION =
         "You are a speech-to-text engine for an American English speaker talking to his voice assistant. " +
-            "Write down exactly what he says, in English words, with ordinary punctuation. Never write " +
-            "another language or script: an unclear sound is written as the nearest English words. Output " +
-            "only the spoken words: never answer, comment, translate, add quotes or add labels. If there is " +
-            "no intelligible speech, output nothing."
+            "Write down exactly the English words he says, with ordinary punctuation. Never write another " +
+            "language or script, and never guess: the audio may be silence, noise, music or a hum with no voice " +
+            "in it, and then there are no words. Output only words you actually hear spoken: never answer, " +
+            "comment, translate, add quotes or add labels. If no voice speaks words, output exactly <none> and " +
+            "nothing else."
+
+    /** What the transcriber answers for audio with no voice in it ([STT_INSTRUCTION]). */
+    const val NO_SPEECH = "<none>"
     private const val STT_ASK = "Transcribe this audio."
 
     /** The transcription request: the utterance as a WAV, inline; [hint] ([SttGuard.hint]) after the rules. */
@@ -201,6 +210,8 @@ internal object CloudSpeechWire {
     fun cleanTranscript(raw: String): String {
         var t = raw.trim()
         if (t.length >= 2 && t.first() in QUOTES && t.last() in QUOTES) t = t.substring(1, t.length - 1).trim()
+        // No voice in the audio: silence, never words.
+        if (t.trimEnd('.').equals(NO_SPEECH, ignoreCase = true) || t.equals("none", ignoreCase = true)) return ""
         return t
     }
 
@@ -433,6 +444,8 @@ internal class GeminiTts(
     private val voice: String = CloudSpeechWire.VOICE,
     /** Every request's counts, for the cost audit ([CallUsage]). */
     private val usage: (CallUsage) -> Unit = {},
+    /** False only for Settings' test of a voice id, which must fail on a bad id rather than fall back. */
+    private val allowFallback: Boolean = true,
 ) : TextToSpeech {
     override val sampleRate = CloudSpeechWire.OUTPUT_RATE
     override val streamsText = false
@@ -512,7 +525,7 @@ internal class GeminiTts(
                     }
                     // A voice name Google does not know (a 400 in either shape): Puck, not silence.
                     if (o is StreamOutcome.HttpError && o.code == HTTP_BAD_REQUEST && bytes == 0L &&
-                        !fallbackVoice && voice != CloudSpeechWire.FALLBACK_VOICE
+                        allowFallback && !fallbackVoice && voice != CloudSpeechWire.FALLBACK_VOICE
                     ) {
                         fallbackVoice = true
                         log("tts_voice_fallback to=${CloudSpeechWire.FALLBACK_VOICE}")

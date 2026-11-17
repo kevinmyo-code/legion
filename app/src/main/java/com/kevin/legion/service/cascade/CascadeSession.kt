@@ -120,7 +120,7 @@ internal class CascadeSession(
     private val micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
     /** The cloud voice, in the companion's own voice (a fake in a test). */
     private val cloudSpeech: (CoroutineScope, (CallUsage) -> Unit) -> SpeechBackend = { parent, usage ->
-        defaultCloudSpeech(parent, CloudSpeechWire.VOICE, usage)
+        defaultCloudSpeech(parent, VoiceEngineSettings.cloudVoice(context), usage)
     },
     /** Whether the cloud voice can start at all: it runs on the key Kevin pasted in Settings. */
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
@@ -1035,7 +1035,13 @@ internal class CascadeSession(
                         "stt_rejected reason=${v.reason} chars=${stt.text.length} audio_ms=${stt.audioMs ?: -1}",
                     )
                     discardDraftOf(u, "stt_rejected")
-                    missedWords(Handover.Moment.LostWords, v.reason, u.backend.kind, spokenFallback = true)
+                    if (v.reason in SttGuard.SILENT_REASONS) {
+                        // Nothing real was said (noise, an echo, the hint read back): silence. No line,
+                        // no filler; the follow-up window starts over in full.
+                        backToListening()
+                    } else {
+                        missedWords(Handover.Moment.LostWords, v.reason, u.backend.kind, spokenFallback = true)
+                    }
                     return
                 }
             }
@@ -1707,7 +1713,8 @@ internal class CascadeSession(
      * paid for and nothing can fail before he speaks.
      */
     private fun playCue() {
-        val cue = ListenCue.next(ctx, CloudSpeechWire.VOICE)
+        // The bundled cues are Puck: another voice plays the earcon until they are re-rendered in it.
+        val cue = ListenCue.next(ctx, VoiceEngineSettings.cloudVoice(ctx))
         val p = player ?: return
         LiveLatency.log(LiveLatency.TAG, "listen_cue ${cue.label} (cascade)")
         turnJob = scope.launch(loop) {
