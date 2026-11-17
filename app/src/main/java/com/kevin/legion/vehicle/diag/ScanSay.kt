@@ -52,8 +52,9 @@ object ScanSay {
     fun isModuleScanQuestion(question: String): Boolean = SCAN_ASK.containsMatchIn(question)
 
     private val SCAN_ASK = Regex(
-        "\\b(every|all|each|any)\\b[\\w ]{0,16}\\b(modules?|computers?|ecus?|controllers?)\\b" +
-            "|\\bmodule scan\\b|\\bscan (all|every|each) ",
+        // "scan" alone is a module scan here: ask_fleet and clear_codes reach this only with car words.
+        "\\b(every|all|each|any|the|my)\\b[\\w ]{0,16}\\b(modules?|computers?|ecus?|controllers?)\\b" +
+            "|\\bmodule scan\\b|\\bscan\\b",
         RegexOption.IGNORE_CASE,
     )
 }

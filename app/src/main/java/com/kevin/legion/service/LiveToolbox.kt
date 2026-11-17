@@ -553,6 +553,9 @@ object LiveToolbox {
      * so a write is reported done only when its own result came back `success: true` that turn.
      */
     fun isMutatingCall(name: String, args: JSONObject): Boolean {
+        // 2026-11-16: an unconfirmed clear_codes never sends a clear (it asks, or it reads when his
+        // words only read: readInsteadOfClear), so a successful one is never a write done.
+        if (name == "clear_codes" && !args.optBoolean("confirmed", false)) return false
         val dispatcher = name == "ask_engine" || name in DISPATCHED.keys.map { "ask_$it" }
         return name in MUTATING_TOOLS || (dispatcher && wantsWrite(args))
     }
@@ -1068,19 +1071,21 @@ object LiveToolbox {
             "check_readiness" -> checkReadiness()
             // 2026-11-15: a module clear (modules named, or the yes to a module question) goes to
             // DiagVoice and its own yes-check; everything else is the engine's Mode 04 below.
-            // 2026-11-16: an ask needs his words to ask for a clear (ClearCodesVoiceGate.notAskedToClear).
-            "clear_codes" -> com.kevin.legion.vehicle.ClearCodesVoiceGate
-                .notAskedToClear(args.optBoolean("confirmed", false), userText)
-                ?.let { result(false, it) }
-                ?: if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
-                        args.optString("modules"),
-                        args.optBoolean("confirmed", false),
-                    )
-                ) {
-                    moduleClear(context, args, userText)
-                } else {
-                    clearCodes(context, args, userText)
-                }
+            // 2026-11-16: an ask needs his words to ask for a clear (ClearCodesVoiceGate.notAskedToClear);
+            // words that only read get the read itself here, never a "call something else" refusal.
+            "clear_codes" -> if (com.kevin.legion.vehicle.ClearCodesVoiceGate
+                    .notAskedToClear(args.optBoolean("confirmed", false), userText) != null
+            ) {
+                readInsteadOfClear(context, userText.orEmpty())
+            } else if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
+                    args.optString("modules"),
+                    args.optBoolean("confirmed", false),
+                )
+            ) {
+                moduleClear(context, args, userText)
+            } else {
+                clearCodes(context, args, userText)
+            }
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
@@ -5086,6 +5091,26 @@ object LiveToolbox {
             GlanceCardController.replace(glance.shownAt, glance.sourceTool) { it.copy(rows = rows) }
         }
     }
+
+    /**
+     * What an unconfirmed `clear_codes` does when his words did not ask to clear (2026-11-16, stage 7
+     * fleet eval: refused with "call ask_fleet instead", flash-lite then ended the turn on a filler
+     * line 3 times in 5). The read he asked for runs here and its answer comes back, marked as a read:
+     * a module-scan request gets [com.kevin.legion.vehicle.diag.DiagVoice.scan] (the same function and
+     * the same code-built `say` as ask_fleet's scan), anything else the engine's code read
+     * ([getCodes]). Nothing is cleared and no clear question is asked; no clear command is sent.
+     */
+    internal suspend fun readInsteadOfClear(context: Context, words: String): JSONObject {
+        val read = if (com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(words)) {
+            com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
+        } else {
+            getCodes(context)
+        }
+        return read.put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
+    }
+
+    internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
+        "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
 
     private suspend fun getCodes(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {

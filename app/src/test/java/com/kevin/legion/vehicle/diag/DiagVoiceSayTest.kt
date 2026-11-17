@@ -70,6 +70,7 @@ class DiagVoiceSayTest {
         for (q in listOf(
             "scan every module", "scan every module for codes", "any codes in any module?",
             "check all the modules", "read the codes in every computer", "do a module scan",
+            "check the modules", "scan the truck",
         )) {
             assertTrue(q, ScanSay.isModuleScanQuestion(q))
         }
