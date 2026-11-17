@@ -32,10 +32,10 @@ class DiagVoiceSayTest {
     }
 
     private fun assertSaysAll(r: ScanReport) {
-        val answer = DiagVoice.answer("test car", r, null)
+        val answer = ScanSay.answer("test car", r, null)
         val say = answer.getString("say")
         for (line in ScanWords.mustSay(r)) assertTrue("say lacks \"$line\": $say", line in say)
-        assertTrue(answer.getString("rule"), answer.getString("rule").startsWith(DiagVoice.SAY_RULE))
+        assertTrue(answer.getString("rule"), answer.getString("rule").startsWith(ScanSay.SAY_RULE))
         assertFalse("the per-module JSON no longer rides on the voice result", answer.has("scan"))
     }
 
@@ -47,7 +47,7 @@ class DiagVoiceSayTest {
         assertTrue(must.toString(), ScanWords.NOT_READ_LEAD in must)
         assertTrue(must.toString(), must.any { "760" in it })
         assertSaysAll(r)
-        val say = DiagVoice.answer("test car", r, null).getString("say")
+        val say = ScanSay.answer("test car", r, null).getString("say")
         assertTrue(say, "760" in say)
     }
 
@@ -62,7 +62,7 @@ class DiagVoiceSayTest {
     fun `a pre-CAN car needs no CAN line and still says the rest are not known to be clear`() {
         val r = scan(SimCars.preCan(BusKind.ISO_9141))
         assertEquals(emptyList<String>(), ScanWords.mustSay(r))
-        assertTrue(DiagVoice.answer("test car", r, null).getString("say").contains("not known to be clear"))
+        assertTrue(ScanSay.answer("test car", r, null).getString("say").contains("not known to be clear"))
     }
 
     @Test
@@ -71,10 +71,10 @@ class DiagVoiceSayTest {
             "scan every module", "scan every module for codes", "any codes in any module?",
             "check all the modules", "read the codes in every computer", "do a module scan",
         )) {
-            assertTrue(q, DiagVoice.isModuleScanQuestion(q))
+            assertTrue(q, ScanSay.isModuleScanQuestion(q))
         }
         for (q in listOf("any fault codes?", "check the codes", "read the codes again", "what's the coolant temp")) {
-            assertFalse(q, DiagVoice.isModuleScanQuestion(q))
+            assertFalse(q, ScanSay.isModuleScanQuestion(q))
         }
     }
 }

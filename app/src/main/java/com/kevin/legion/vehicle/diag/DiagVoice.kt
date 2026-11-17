@@ -77,57 +77,8 @@ object DiagVoice {
                 JSONObject().put("code", c).put("meaning", d.words).put("source", d.source)
             },
         )
-        return answer(label, s.report, diff).put("meanings", meanings)
+        return ScanSay.answer(label, s.report, diff).put("meanings", meanings)
     }
-
-    /**
-     * The voice result of a finished scan (2026-11-16, stage 7 fleet eval). The words are built here,
-     * by code ([say]), and handed back in `say` with [SAY_RULE]; no model composes them from the
-     * per-module JSON any more (that is what dropped the unanswered module). The per-module detail
-     * lives on the status_list card and the Faults screen.
-     */
-    internal fun answer(label: String, r: ScanReport, diff: ScanDiff?): JSONObject {
-        val text = say(label, r, diff)
-        return JSONObject()
-            .put("success", r.stopped == null)
-            .put("vehicle", label)
-            .put("complete", r.complete)
-            .put("say", text)
-            .apply { if (r.stopped != null) put("message", text) }
-            .put("rule", SAY_RULE + " " + ScanWords.ESTIMATE_RULE)
-    }
-
-    /**
-     * The spoken answer for [r], built by code: the car, [ScanWords.summary], what changed since the
-     * last scan. Checked against [ScanWords.mustSay]: a required line the summary somehow lacks is
-     * appended, so the not-reached line can never be missing from `say`.
-     */
-    internal fun say(label: String, r: ScanReport, diff: ScanDiff?): String {
-        val text = buildString {
-            append("$label: ")
-            append(ScanWords.summary(r))
-            diff?.let { d ->
-                if (d.added.isNotEmpty()) append(" New since the last scan: ${d.added.joinToString()}.")
-                if (d.gone.isNotEmpty()) append(" Gone since the last scan: ${d.gone.joinToString()}.")
-            }
-        }
-        val missing = ScanWords.mustSay(r).filterNot { it in text }
-        return if (missing.isEmpty()) text else text + " " + missing.joinToString(" ")
-    }
-
-    /** Rides on every finished scan's result: say it back, never drop what was not reached. */
-    const val SAY_RULE = "Say `say` back in full; only joining words may be your own. Every module it names " +
-        "as not reached or not read must be said, and none of them called clear or fine. Never shorten it to " +
-        "the modules that answered."
-
-    /** The fleet questions answered by a module scan without the fleet helper model ([LiveToolbox] ask_fleet). */
-    fun isModuleScanQuestion(question: String): Boolean = SCAN_ASK.containsMatchIn(question)
-
-    private val SCAN_ASK = Regex(
-        "\\b(every|all|each|any)\\b[\\w ]{0,16}\\b(modules?|computers?|ecus?|controllers?)\\b" +
-            "|\\bmodule scan\\b|\\bscan (all|every|each) ",
-        RegexOption.IGNORE_CASE,
-    )
 
     /**
      * True when a `clear_codes` call is a module clear: it names modules, or it is the confirmed

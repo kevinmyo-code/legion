@@ -5212,8 +5212,8 @@ object LiveToolbox {
      * - a request to clear or erase codes: ask_fleet only reads (its tool list holds no write), so it
      *   is refused in words that name the car tool's clear_codes, whatever `intent` the model set;
      * - a module scan ("scan every module", "codes in all modules"): run here through
-     *   [com.kevin.legion.vehicle.diag.DiagVoice.scan], whose `say` is built by code. A scan only
-     *   reads, so a `record` intent the model set on it is ignored rather than refused (the eval saw
+     *   [com.kevin.legion.vehicle.diag.DiagVoice.scan], whose `say` is built by code
+     *   ([com.kevin.legion.vehicle.diag.ScanSay]). A scan only reads, so a `record` intent the model set on it is ignored rather than refused (the eval saw
      *   "can't write" spoken for a scan).
      * Null for every other question, which goes to the helper as before.
      */
@@ -5221,7 +5221,7 @@ object LiveToolbox {
         val question = args.optString("question")
         return when {
             isFleetClearRequest(question) -> result(false, FLEET_NO_CLEAR)
-            com.kevin.legion.vehicle.diag.DiagVoice.isModuleScanQuestion(question) ->
+            com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(question) ->
                 com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
             else -> null
         }
