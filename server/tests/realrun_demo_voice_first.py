@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import time
+from pathlib import Path
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -59,6 +61,10 @@ def _stream(response, started):
                 chunk = base64.b64decode(data["pcm"])
                 audio_bytes += len(chunk)
                 if not data.get("filler"):
+                    if not pcm:
+                        events.append(
+                            ("_answer_audio_ms", int((time.monotonic() - started) * 1000))
+                        )
                     pcm += chunk
                 data = {"filler": bool(data.get("filler"))}
             events.append((kind, data))
@@ -87,6 +93,7 @@ def _post(real, client, label, **fields):
         "tools": [(d["name"], d["ok"], d.get("ms")) for k, d in events if k == "tool"],
         "said": " ".join(d["text"] for k, d in events if k == "sentence"),
         "first_audio_ms_wall": first_audio,
+        "first_answer_audio_ms": next((d for k, d in events if k == "_answer_audio_ms"), None),
         "reply_audio_ms": audio_bytes // 48,
         "wall_ms": int((time.monotonic() - started) * 1000),
         "cost_usd": done.get("cost_usd"),
@@ -213,3 +220,163 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
     response.close()
     real._write({"case": "hang_up", "closed_after_ms": int((time.monotonic() - started) * 1000)})
     print(f"VOICE-FIRST spent ${real.spent:.4f}")
+
+
+# ---- section 8.5: the utterance's audio straight to the text model (an experiment, not shipped) --
+
+AUDIO_CASES = ("spend", "today", "car", "kevin", "arch", "vf_car", "vf_docs", "vf_spend")
+TRANSCRIPT_ASK = (
+    "(First write what they said, word for word, inside square brackets on its own line, then "
+    "answer.)"
+)
+
+
+def _wav16k(pcm: bytes) -> bytes:
+    import struct
+
+    rate = 16_000
+    header = b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVE"
+    header += b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    return header + b"data" + struct.pack("<I", len(pcm)) + pcm
+
+
+def _first_round(model, req):
+    """(first event ms, tool called or None, text, usage) for one model round."""
+    from agents.runtime.model import TextDelta, ToolCallEvent, Usage
+
+    started = time.monotonic()
+    first, tool, text, usage = None, None, "", Usage()
+    for item in model.stream(req):
+        if first is None and isinstance(item, TextDelta | ToolCallEvent):
+            first = int((time.monotonic() - started) * 1000)
+        if isinstance(item, ToolCallEvent) and tool is None:
+            tool = item.name
+        elif isinstance(item, TextDelta):
+            text += item.text
+        elif isinstance(item, Usage):
+            usage = item
+    return first, tool, text, usage
+
+
+def test_realrun_audio_in_experiment(real, household_user, monkeypatch):
+    """Transcript-in (today's pipeline: speech-to-text, then the text model) against audio-in
+    (the utterance's audio as the user part), on the standing cases, as a member. Writes one row
+    per case: tool chosen each way, time to first model event, the speech-to-text time saved,
+    the estimated cost each way, and whether a transcript came back with the audio-in answer."""
+    import dataclasses
+
+    from assistant import views
+    from tests.realrun_web_cascade import PRICE, _member
+
+    client = _member(household_user)
+    captured = []
+    real_clients = views._cascade_clients
+
+    class Recording:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def stream(self, req):
+            captured.append(req)
+            yield from self.inner.stream(req)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+    def clients():
+        model, speech = real_clients()
+        return Recording(model), speech
+
+    monkeypatch.setattr(views, "_cascade_clients", clients)
+    rows = []
+    for key in AUDIO_CASES:
+        real.check()
+        audio = real.audio_for(key)
+        captured.clear()
+        started = time.monotonic()
+        stt = real.speech.transcribe(audio)
+        stt_ms = int((time.monotonic() - started) * 1000)
+        real.spent += (
+            stt.prompt_tokens * PRICE["text_in"] + stt.output_tokens * PRICE["text_out"]
+        ) / 1e6
+        # The pipeline's first round, built by the real turn (text in), then sent again three ways.
+        _post(real, client, f"audio-in-base-{key}", text=stt.text, spoken="true")
+        if not captured:
+            continue
+        base = captured[0]
+        model, _speech = real_clients()
+        user = base.contents[-1]
+        audio_part = {
+            "inlineData": {
+                "mimeType": "audio/wav",
+                "data": base64.b64encode(_wav16k(audio)).decode(),
+            }
+        }
+        text_parts = [p for p in user["parts"][:-1]]
+        variants = {
+            "transcript_in": base,
+            "audio_in": dataclasses.replace(
+                base,
+                contents=[
+                    *base.contents[:-1],
+                    {"role": "user", "parts": [*text_parts, audio_part]},
+                ],
+            ),
+            "audio_in_with_transcript": dataclasses.replace(
+                base,
+                contents=[
+                    *base.contents[:-1],
+                    {"role": "user", "parts": [*text_parts, audio_part, {"text": TRANSCRIPT_ASK}]},
+                ],
+            ),
+        }
+        row = {"case": key, "heard": stt.text, "stt_ms": stt_ms}
+        for name, req in variants.items():
+            first, tool, text, usage = _first_round(model, req)
+            cached = min(usage.cached_tokens, usage.prompt_tokens)
+            cost = (
+                (usage.prompt_tokens - cached) * PRICE["text_in"]
+                + cached * PRICE["text_cached"]
+                + usage.output_tokens * PRICE["text_out"]
+            ) / 1e6
+            real.spent += cost
+            row[name] = {
+                "first_event_ms": first,
+                "tool": tool,
+                "text": text[:160],
+                "prompt_tokens": usage.prompt_tokens,
+                "cost_usd": round(cost, 6),
+            }
+        row["transcript_in"]["cost_usd"] = round(
+            row["transcript_in"]["cost_usd"]
+            + (stt.prompt_tokens * PRICE["text_in"] + stt.output_tokens * PRICE["text_out"]) / 1e6,
+            6,
+        )
+        row["same_tool"] = row["audio_in"]["tool"] == row["transcript_in"]["tool"]
+        row["transcript_returned"] = "[" in row["audio_in_with_transcript"]["text"]
+        rows.append(row)
+        real._write({"case": f"audio-in-{key}", **{k: v for k, v in row.items() if k != "heard"}})
+    (Path(os.environ.get("REALRUN_OUT", "realrun-out")) / "audio-in.json").write_text(
+        json.dumps(rows, indent=1), encoding="utf-8"
+    )
+    print(f"AUDIO-IN spent ${real.spent:.4f}")
+
+
+def test_realrun_one_breath_against_per_sentence(real, monkeypatch):
+    """Section 8.3: first audio with the reply spoken as its first words then one request, against
+    one request per sentence, on the same questions, alternating so neither gets the warm cache."""
+    load_and_visit = _visitor()
+    rows = {"breath": [], "sentence": []}
+    for key in ("vf_docs", "vf_car", "spend", "arch"):
+        for mode in ("breath", "sentence", "sentence", "breath"):
+            monkeypatch.setattr(cascade, "SPEECH_GROUPING", mode)
+            row = _post(real, load_and_visit, f"grouping-{mode}-{key}", audio=real.audio_for(key))
+            rows[mode].append(row["first_answer_audio_ms"])
+    import statistics
+
+    summary = {
+        mode: {"median_first_audio_ms": statistics.median([v for v in vals if v is not None])}
+        for mode, vals in rows.items()
+    }
+    real._write({"case": "grouping", **summary, "raw": rows})
+    print("GROUPING", summary)

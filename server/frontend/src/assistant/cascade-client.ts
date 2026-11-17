@@ -81,6 +81,8 @@ export interface CascadeDeps {
   turnDetector?: () => Promise<TurnDetector | null>
   /** An early transcript of what has been said so far (`POST /api/assistant/transcribe`). */
   transcribe?: (audio: Int16Array, signal: AbortSignal) => Promise<string | null>
+  /** The `robotic` marker's tap: this reply's turn number, nothing else (`POST /api/assistant/robotic`). */
+  robotic?: (conversationId: string, turn: number) => Promise<boolean>
   /** One step of the demo for its funnel counts (`POST /api/demo/funnel`). */
   funnel?: (event: FunnelEvent) => void
 }
@@ -190,6 +192,8 @@ export class CascadeClient {
   // ---- the demo ----
   private tourNext: number | null = null
   strip: StripState = { tools: [], costUsd: null }
+  /** The last reply's turn number, for the robotic marker. */
+  private lastTurn: number | null = null
 
   private readonly deps: CascadeDeps
   private readonly options: CascadeOptions
@@ -778,6 +782,7 @@ export class CascadeClient {
     const data = event.data
     switch (event.type) {
       case 'turn': {
+        if (typeof data.turn === 'number') this.lastTurn = data.turn
         const id = typeof data.conversation_id === 'string' ? data.conversation_id : null
         if (id && id !== this.conversationId) {
           this.conversationId = id
@@ -798,6 +803,8 @@ export class CascadeClient {
       case 'filler': {
         const tool = typeof data.tool === 'string' ? data.tool : ''
         const said = typeof data.text === 'string' ? data.text : ''
+        // The acknowledgement (no tool) is speech only, not a step the engine took.
+        if (!tool) return open
         this.strip = { ...this.strip, tools: [...this.strip.tools, { tool, ms: null, filler: said }] }
         this.refresh()
         return open
@@ -867,6 +874,13 @@ export class CascadeClient {
       default:
         return open
     }
+  }
+
+  /** "That sounded robotic", by tap: marks the last reply's turn. False when there is none. */
+  markRobotic(): boolean {
+    if (!this.deps.robotic || this.conversationId === null || this.lastTurn === null) return false
+    void this.deps.robotic(this.conversationId, this.lastTurn)
+    return true
   }
 
   /** A turn was heard: the demo's funnel, and whether a barge-in was only the reply's echo. */

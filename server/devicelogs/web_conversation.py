@@ -409,6 +409,9 @@ def record_lines(request, conversation_id, stamped: list[tuple]) -> None:
         log.warning("conversation record: could not write a cascade turn", exc_info=True)
 
 
+CUT_OFF_NOTE = "(They spoke over this reply and stopped it here.)"
+
+
 def history(row: DeviceLog, *, max_turns: int, opened_line: str = "") -> tuple[list[dict], int]:
     """(the last `max_turns` exchanges as model contents, how many user turns the record holds).
 
@@ -421,6 +424,14 @@ def history(row: DeviceLog, *, max_turns: int, opened_line: str = "") -> tuple[l
     turns: list[dict] = []
     users = 0
     for text in body:
+        if "interrupted source=" in text:
+            # The person talked over the reply: the model is told, so the next answer picks up
+            # what they said instead of finishing or repeating this one (voice-persona section 8).
+            if turns and turns[-1]["role"] == "model":
+                said = turns[-1]["parts"][0]
+                if not said["text"].endswith(CUT_OFF_NOTE):
+                    said["text"] += " " + CUT_OFF_NOTE
+            continue
         match = _ENGINE_TURN.match(text)
         if match is None:
             continue

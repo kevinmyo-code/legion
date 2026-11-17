@@ -1262,3 +1262,42 @@ class AssistantTranscribeView(_AssistantView):
             heard.output_tokens,
         )
         return Response({"text": heard.text, "ms": heard.ms}, headers={"Cache-Control": "no-store"})
+
+
+class AssistantRoboticRequestSerializer(serializers.Serializer):
+    conversation_id = serializers.UUIDField(help_text="The caller's own conversation.")
+    turn = serializers.IntegerField(min_value=0, max_value=10_000, help_text="The reply's turn.")
+
+
+class AssistantRoboticView(_AssistantView):
+    """The `robotic` marker's hands path (voice-persona section 8): a thumbs-down on a reply that
+    sounded robotic. The caller's own conversation record gets the turn number; no words are
+    sent or kept. The spoken path is "that sounded robotic" (`cascade.is_robotic_remark`)."""
+
+    throttle_classes = [AssistantTurnThrottle, AssistantTurnIpThrottle]
+    audit_kind = AssistantCall.SESSION
+
+    @extend_schema(
+        tags=ASSISTANT_TAGS,
+        operation_id="api_assistant_robotic_create",
+        summary="Mark a reply as sounding robotic (the turn number only)",
+        request=AssistantRoboticRequestSerializer,
+        responses={
+            204: None,
+            400: OpenApiResponse(DetailSerializer, description="The body did not fit."),
+            404: OpenApiResponse(DetailSerializer, description="Not this caller's conversation."),
+        },
+    )
+    def post(self, request):
+        body = AssistantRoboticRequestSerializer(data=request.data)
+        if not body.is_valid():
+            return _refuse(
+                request, f"Nothing was marked. {body.errors}", status.HTTP_400_BAD_REQUEST
+            )
+        conversation = body.validated_data["conversation_id"]
+        if web_conversation.owned(request, conversation) is None:
+            return _refuse(
+                request, "Nothing was marked: no such conversation.", status.HTTP_404_NOT_FOUND
+            )
+        cascade.mark_robotic(request, conversation, body.validated_data["turn"], source="tap")
+        return Response(status=status.HTTP_204_NO_CONTENT)

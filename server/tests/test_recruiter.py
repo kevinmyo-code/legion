@@ -406,11 +406,13 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
     2026-11-17) is the demo's cascade voice: the same tool fence as the tool door
     (`tests/test_assistant_cascade.py`). The transcribe door (2026-11-17) is its early
     speech-to-text: it answers nothing, runs no tool and is charged to the demo budget
-    (`tests/test_demo_voice_first.py`)."""
+    (`tests/test_demo_voice_first.py`). The robotic door marks a turn number on the visitor's own
+    record (`tests/test_sounding_human.py`)."""
     opened = {p for p, c in ROUTES if _guarded(c) and getattr(c, "allows_recruiter", False)}
     assert opened == {
         "/api/assistant/companion",
         "/api/assistant/conversation",
+        "/api/assistant/robotic",
         "/api/assistant/session",
         "/api/assistant/tool",
         "/api/assistant/transcribe",

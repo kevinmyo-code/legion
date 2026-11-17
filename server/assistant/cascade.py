@@ -135,6 +135,50 @@ VOICE_CLAUSE = (
     "detail. When a tool will take a moment, a few words first are fine."
 )
 
+# "That sounded robotic" (voice-persona section 8): the turn before it is marked for rework.
+_ROBOTIC = re.compile(
+    r"\b(that|this|you|it)\s+(sounded|sounds|sound|was|is)\s+(so\s+|really\s+|very\s+)?"
+    r"(robotic|like a robot|like an ai|like a machine|fake)\b",
+    re.I,
+)
+ROBOTIC_ACK = "Noted. I'll get that one looked at."
+ACK_TOOL = fillers.ACK_TOOL
+_SMALL_TALK = re.compile(
+    r"^\W*(hi|hey|hello|thanks|thank you|cheers|ok|okay|cool|great|nice|bye|good ?bye|"
+    r"good (morning|evening|night)|yes|no|yeah|nope|sure)\b",
+    re.I,
+)
+
+
+def is_robotic_remark(words: str | None) -> bool:
+    return bool(_ROBOTIC.search(words or ""))
+
+
+def needs_work(words: str | None) -> bool:
+    """A turn that is clearly a request needing a look (an acknowledgement goes first), not small
+    talk or a sign-off."""
+    text = (words or "").strip()
+    if len(text.split()) < 4 or _SMALL_TALK.match(text) or is_stop_utterance(text):
+        return False
+    return True
+
+
+def mark_robotic(request, conversation_id, turn: int, *, source: str) -> None:
+    """The `robotic` marker: the conversation's own record gets the turn number, and the log the
+    ids. No words."""
+    now = datetime.now(UTC)
+    line = web_conversation.line(
+        now,
+        web_conversation.TID_ENGINE,
+        web_conversation.AUDIT,
+        f"robotic turn={turn} source={source}",
+    )
+    web_conversation.record_lines(request, conversation_id, [(now, line)])
+    log.warning(
+        "assistant robotic conversation=%s turn=%d source=%s", conversation_id, turn, source
+    )
+
+
 # The phone's `ScriptedLines.FILLERS` (spec 22): what a reply that opens with only these is
 # stripped of. What the web says while a tool runs is per tool (`assistant/fillers.py`).
 FILLERS = ("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.")
@@ -356,6 +400,30 @@ class _Job:
     cancelled: threading.Event
 
 
+# How a reply goes to speech (`Speaker`): "breath" (the first clause alone, the rest of each round
+# as one request) or "sentence" (one request per sentence, the phone's old shape). Kept as a
+# constant while the two are measured against each other (section 8.3); the loser goes.
+SPEECH_GROUPING = "breath"
+GROUP_SENTENCES = 3
+GROUP_CHARS = 400
+# A first sentence longer than this many words has its first clause spoken on its own.
+FIRST_CLAUSE_WORDS = 14
+_CLAUSE_BREAK = re.compile(r"(?<=[,;:\u2014])\s+")
+
+
+def first_clause(sentence: str) -> tuple[str, str]:
+    """(what is spoken at once, the rest). A long first sentence is split after its first comma
+    that leaves at least four words in front; a short one goes whole."""
+    words = sentence.split()
+    if len(words) <= FIRST_CLAUSE_WORDS:
+        return sentence, ""
+    for match in _CLAUSE_BREAK.finditer(sentence):
+        head = sentence[: match.start()].strip()
+        if len(head.split()) >= 4 and len(sentence[match.end() :].split()) >= 3:
+            return head, sentence[match.end() :].strip()
+    return sentence, ""
+
+
 class Speaker:
     """Each sentence goes to speech the moment it is whole, at most two at once; audio comes out
     in sentence order. `ready()` hands over what has arrived without waiting; `drain()` waits."""
@@ -373,6 +441,12 @@ class Speaker:
         self._pool = ThreadPoolExecutor(max_workers=2) if enabled else None
         # The person asked for exact figures this turn: nothing is rounded when spoken.
         self.exact = False
+        # "One breath per reply" (voice-persona section 8.3): the first words go to speech alone
+        # and at once; what follows in the same round is one request, so its intonation carries
+        # across sentences. `SPEECH_GROUPING` "sentence" is the old one-request-per-sentence.
+        self.grouping = SPEECH_GROUPING
+        self._first_out = False
+        self._pending: list[str] = []
 
     def spoken_text(self, text: str, expressive: bool = False) -> str:
         """What goes to speech for `text`: its figures rounded like a person says them
@@ -384,7 +458,30 @@ class Speaker:
     def add(self, text: str, expressive: bool = False) -> None:
         if not self.enabled:
             return
-        job = _Job(self.spoken_text(text, expressive), queue.Queue(), Spoken(), threading.Event())
+        spoken = self.spoken_text(text, expressive)
+        if self.grouping == "sentence":
+            self._submit(spoken)
+            return
+        if not self._first_out:
+            # The answer's first clause is spoken as soon as it exists (section 8.2).
+            self._first_out = True
+            head, rest = first_clause(spoken)
+            self._submit(head)
+            if rest:
+                self._pending.append(rest)
+            return
+        self._pending.append(spoken)
+        if len(self._pending) >= GROUP_SENTENCES or sum(map(len, self._pending)) >= GROUP_CHARS:
+            self.flush()
+
+    def flush(self) -> None:
+        """Speak what is held as one request (the round ended, or enough is held)."""
+        if self._pending:
+            self._submit(" ".join(self._pending))
+            self._pending = []
+
+    def _submit(self, spoken: str) -> None:
+        job = _Job(spoken, queue.Queue(), Spoken(), threading.Event())
         self.jobs.append(job)
         self._pool.submit(self._run, job)
 
@@ -438,6 +535,7 @@ class Speaker:
         yield from self._take(block=False)
 
     def drain(self) -> Iterator[ev.Event]:
+        self.flush()
         yield from self._take(block=True)
 
     def close(self) -> None:
@@ -469,6 +567,7 @@ class WebDoor:
         self.request = request
         self.user = request.user
         self.conversation_id = conversation_id
+        self.turn = turn
         self.recruiter = is_recruiter(self.user)
         self.calls: list[DoorCall] = []
         self.end_requested = False
@@ -627,10 +726,28 @@ PERSONA_NOTE = (
 )
 
 
+# Taught by example, not adjectives (section 8.1). Invented content, for the shape only.
+SPOKEN_EXAMPLES = (
+    "How replies sound (invented examples, for the shape only; never use their facts): "
+    '"What\'s due this week?" -> "Three things. The stats quiz Thursday night is the big one." '
+    '"How much did we spend on groceries last month?" -> "$412.38, a bit under the month before." '
+    '"Is the car due for anything?" -> "An oil change, in about 600 miles. Want it on the '
+    'calendar?" '
+    '"How does the router work?" -> "Short version: it reads the question and hands it to one '
+    'specialist. Want the long one?" '
+    '"Thanks!" -> "Anytime." '
+    "Answer first, short clauses, fragments are fine, never read labels or brackets aloud, never "
+    "more than three items, never repeat the question."
+)
+
+
 def cached_system(body: str) -> str:
     """What is cached: the prompt's stable body plus the phone's voice clause (spec 9, 11), how
     it talks, and the sound tags it may use."""
-    return f"{body.strip()}\n\n{VOICE_CLAUSE} {PERSONA_NOTE} {speech_tags.PROMPT_LINE}"
+    return (
+        f"{body.strip()}\n\n{VOICE_CLAUSE} {PERSONA_NOTE} {SPOKEN_EXAMPLES} "
+        f"{speech_tags.PROMPT_LINE}"
+    )
 
 
 def _failure_words(result, door: WebDoor) -> str | None:
@@ -803,6 +920,26 @@ def _answer(
         conversation_id_of(door),
         [web_conversation.engine_user_line(datetime.now(UTC), words, typed=not speak)],
     )
+    if is_robotic_remark(words):
+        # "That sounded robotic": the turn before is marked for rework, by its number only
+        # (voice-persona section 8). Nothing else is kept and no model is asked.
+        mark_robotic(request, conversation_id_of(door), door.turn - 1, source="voice")
+        report.status = "robotic"
+        report.said.append(ROBOTIC_ACK)
+        speaker.add(ROBOTIC_ACK)
+        yield ev.Event("sentence", {"text": ROBOTIC_ACK})
+        yield from speaker.drain()
+        yield ev.done("robotic", ROBOTIC_ACK, False)
+        return
+    if speak and needs_work(words):
+        # First sound within about a second (section 8.2): a short acknowledgement from memory
+        # while the model's first round runs. Never the same one twice running.
+        picked = filler_audio.pick(voice, ACK_TOOL)
+        if picked is not None:
+            line, audio = picked
+            timings["ack"] = 1
+            yield ev.Event("filler", {"tool": "", "text": speech_tags.untagged(line)})
+            yield speaker.audio_event(audio, filler=True)
     # 2. The loop.
     parts = []
     if context:
@@ -895,6 +1032,9 @@ def _answer(
             except StopIteration as stop:
                 result = stop.value
                 break
+            if event.type != "sentence":
+                # A round ended (a tool is next, or the turn): what it said goes to speech now.
+                speaker.flush()
             if event.type == "working":
                 # A slow tool has started: its own line, from memory, before it runs.
                 yield event

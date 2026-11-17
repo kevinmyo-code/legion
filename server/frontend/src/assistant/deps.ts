@@ -278,9 +278,20 @@ export function postFunnel(event: FunnelEvent | 'page_load', ref: string | undef
   }
 }
 
+/** The robotic marker's tap: the turn number on the caller's own conversation record. */
+async function robotic(conversationId: string, turn: number): Promise<boolean> {
+  try {
+    const { response } = await api.POST('/api/assistant/robotic', { body: { conversation_id: conversationId, turn } })
+    return response.status === 204
+  } catch {
+    return false
+  }
+}
+
 export function createCascadeDeps(options: { funnelRef?: string } = {}): CascadeDeps {
   return {
     startTurn,
+    robotic,
     turnDetector: loadTurnModels,
     transcribe,
     ...(options.funnelRef !== undefined ? { funnel: (event) => postFunnel(event, options.funnelRef) } : {}),

@@ -26,6 +26,13 @@ tags: [adr]
   - Code enforces the rules whatever the model writes: unknown tags are removed. No tag goes on a sentence with a figure, date or time, a refusal or error, or a question confirming a change, nor on verbatim, failure or notice lines.
   - Tags exist only on the text sent to speech. Captions, the conversation record, the next turn's history, logs, the funnel, the strip and the figure and honesty checks see the text without them.
 - **How it talks:** one prompt note (`cascade.PERSONA_NOTE`) asks for a friendly, quick, slightly dry colleague: one sentence unless asked, contractions, occasional lead-ins, small talk that never delays the answer, and every figure written exactly.
+- **Sounding human** (voice-persona section 8, Kevin: *"yes to all 6"*):
+  - The cached prompt carries a few spoken-style example exchanges with invented content (`cascade.SPOKEN_EXAMPLES`).
+  - A turn that clearly needs a look gets a short acknowledgement from memory at once (`fillers.ACK`, never twice running); the tool line follows when a tool starts.
+  - A long first sentence has its first clause spoken on its own. The rest of each round goes to speech as one request (`SPEECH_GROUPING = "breath"`), kept only if its first audio is no more than about 150 ms behind per-sentence speech.
+  - After a barge-in, the next turn's history marks the cut-off reply (`web_conversation.CUT_OFF_NOTE`), so the answer picks up what was said instead of finishing the old one.
+  - Audio straight to the text model is measured in the real-model harness only. It is not shipped.
+- **The `robotic` marker:** saying "that sounded robotic", or tapping "Sounded robotic" on the demo strip (`POST /api/assistant/robotic`), puts the turn number on the caller's own conversation record and in the log. No words are kept.
 - **Pace stays 1.0x in the page.** Pitch-kept speed-up of streamed PCM needs a time-stretch (WSOLA) in an AudioWorklet; that is not a small change, so it is left for its own build.
 - **Funnel counts** (`demo.DemoFunnelDay`, migration `demo/0009`, additive) are per day, ref and step, counts only, pruned with visitor retention. `manage.py demo_funnel` prints them.
 

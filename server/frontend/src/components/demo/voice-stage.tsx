@@ -39,6 +39,7 @@ function money(usd: number | null): string {
 export function VoiceStage({ content, error }: { content?: DemoContent | null; error?: string | null }) {
   const { client, state, name } = useAssistant()
   const [draft, setDraft] = useState('')
+  const [marked, setMarked] = useState(false)
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
   const mode = orbMode(state)
@@ -106,12 +107,22 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         )}
         {sys && sys.kind === 'sys' && <p className="text-muted-foreground italic">{sys.text}</p>}
       </div>
-      {cascade && cascade.strip.tools.length > 0 && (
+      {cascade && (cascade.strip.tools.length > 0 || cascade.strip.costUsd !== null) && (
         <p data-stage="strip" className="font-mono text-xs text-muted-foreground">
           {cascade.strip.tools
             .map((t) => `${t.tool}${t.ms !== null ? ` ${t.ms} ms` : ''}`)
             .join(' · ')}
           {cascade.strip.costUsd !== null && ` · this turn ~${money(cascade.strip.costUsd)} (estimate)`}
+          {' · '}
+          <button
+            type="button"
+            data-stage="robotic"
+            className="underline"
+            disabled={marked}
+            onClick={() => setMarked(cascade.markRobotic())}
+          >
+            {marked ? 'Marked, thanks' : 'Sounded robotic'}
+          </button>
         </p>
       )}
       <div data-stage="chips" className="flex max-w-[34rem] flex-wrap justify-center gap-2">

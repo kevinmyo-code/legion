@@ -126,13 +126,18 @@ SILENT: frozenset[str] = frozenset(
 
 FALLBACK = ("Working on it.", "One moment.")
 
+# The acknowledgement said at once when a turn clearly needs a look (voice-persona section 8.2),
+# before any tool starts. It claims nothing: it says a look is coming, not that one ran.
+ACK_TOOL = "__ack__"
+ACK = ("Yeah, one sec.", "Sure, one sec.", "<breath> Okay.", "Mm, one sec.")
+
 
 def all_lines() -> tuple[str, ...]:
     seen: dict[str, None] = {}
     for _slow, lines in FILLERS.values():
         for line in lines:
             seen[line] = None
-    for line in FALLBACK:
+    for line in (*FALLBACK, *ACK):
         seen[line] = None
     return tuple(seen)
 
@@ -144,6 +149,8 @@ def is_slow(tool: str) -> bool:
 def lines_for(tool: str) -> tuple[str, ...]:
     """The lines for a tool that has started, or () when it is deliberately silent. An unmapped
     tool (one added later) gets the honest fallback."""
+    if tool == ACK_TOOL:
+        return ACK
     if tool in SILENT:
         return ()
     found = FILLERS.get(tool)
