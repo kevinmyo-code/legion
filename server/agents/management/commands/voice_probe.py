@@ -31,8 +31,10 @@ import time
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
+from agents.legion.gateway import rest_declarations
 from agents.legion.specs import spec as spec_named
 from agents.legion.turn import cost_of, system_for
+from agents.legion.twins import TWINS
 from agents.runtime.model import (
     GeminiClient,
     ModelFailure,
@@ -40,8 +42,7 @@ from agents.runtime.model import (
     PartEvent,
     Usage,
 )
-from assistant import live
-from assistant.surface import web_description, web_tools
+from assistant.surface import web_tools
 from ingest.statements import gemini_key
 
 QUESTION = "Reply with the single word: ok."
@@ -101,7 +102,7 @@ class Command(BaseCommand):
             raise CommandError("LEGION_GEMINI_KEY is not set in this environment; nothing sent.")
         spec = spec_named("generalist")
         system = system_for(spec, None)
-        declarations = live.function_declarations(web_tools(), web_description)
+        declarations = rest_declarations([*web_tools(), *TWINS.values()])
         client = GeminiClient(key=gemini_key)
         contents = [{"role": "user", "parts": [{"text": QUESTION}]}]
         total_cost = 0

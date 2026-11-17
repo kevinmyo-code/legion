@@ -46,6 +46,18 @@ _OUTCOMES = {
 }
 
 
+def rest_declarations(tools) -> list[dict]:
+    """The web door's declarations (`assistant.live.function_declarations`) less `behavior`, a Live
+    API field the REST `streamGenerateContent` request does not take (the phone's cascade sends no
+    such field either)."""
+    out = []
+    for decl in live.function_declarations(tools, web_description):
+        decl = dict(decl)
+        decl.pop("behavior", None)
+        out.append(decl)
+    return out
+
+
 def model_response(ok: bool, text: str) -> dict:
     """The web door's shape (`assistant.views._forward`), so both brains read results alike."""
     return {"success": ok, "message": text}
@@ -70,7 +82,7 @@ class LegionGateway:
     def declarations(self, spec) -> list[dict]:
         tools = self.tools()
         chosen = [tools[name] for name in spec.tools if name in tools]
-        return live.function_declarations(chosen, web_description)
+        return rest_declarations(chosen)
 
     def is_slow(self, name: str) -> bool:
         return name in SLOW_TOOLS

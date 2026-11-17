@@ -15,8 +15,8 @@ for a phone-like network (or on Wi-Fi for a second row). Stdlib only; prints tim
 - **sse**: `GET /api/agents/probe/sse` (a member's device token from `--token-file` or
   `LEGION_TOKEN_FILE`; the file is read, never printed): arrival gaps of its five events, sent
   200 ms apart. Pass bar: every gap within 50 ms of 200 ms (no buffering in front of Django).
-- **turn-off**: `POST /api/agents/turn` with no credentials must answer 404 "switched off" while
-  `LEGION_AGENTS_TURN` is unset.
+- **turn-off**: `POST /api/agents/turn` with a member's token (`--token-file`) must answer 404
+  "switched off" while `LEGION_AGENTS_TURN` is unset (with no token: 401/403, auth comes first).
 
 Not measured here: the phone's own `turn_post_ms` / `first_event_ms` lines and a warm request at
 wake (a phone change, ticket 04).
@@ -113,10 +113,17 @@ def sse(base: str, token_file: str) -> int:
     return 0
 
 
-def turn_off(base: str) -> int:
-    _, status, data = ttfb(
-        base, "/api/agents/turn", "POST", {"Content-Type": "application/json"}, b"{}"
-    )
+def turn_off(base: str, token_file: str) -> int:
+    headers = {"Content-Type": "application/json"}
+    if token_file and os.path.isfile(token_file):
+        with open(token_file, encoding="utf-8") as fh:
+            headers["Authorization"] = f"Token {fh.read().strip()}"
+    else:
+        print("turn_off: no --token-file; only the anonymous refusal (401/403) can be seen")
+    _, status, data = ttfb(base, "/api/agents/turn", "POST", headers, b'{"transcript": "probe"}')
+    if "Authorization" not in headers:
+        print(f"turn_off: HTTP {status} (anonymous)")
+        return 0 if status in (401, 403) else 1
     off = status == 404 and b"switched off" in data
     print(f"turn_off: HTTP {status} -> {'REFUSED as off' if off else 'NOT the off refusal'}")
     return 0 if off else 1
@@ -133,7 +140,7 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     base = a.base.rstrip("/")
     if a.turn_off:
-        return turn_off(base)
+        return turn_off(base, a.token_file)
     if a.sse:
         return sse(base, a.token_file)
     return hop(base, a.n, a.cold)

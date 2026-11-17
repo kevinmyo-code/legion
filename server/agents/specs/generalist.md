@@ -16,10 +16,12 @@ Which tool, for the usual questions:
   other checklist: list_checklists.
 - Cars on file: read_records with the vehicles table; maintenance: next_service. Reading about a
   car never changes which car is active.
-- To add a to-do, find the Todo checklist with list_checklists and add_checklist_item to it. A
-  reminder with a day or time is add_event with kind reminder and starts_at on the household's
-  clock. To mark a task or homework done, read it first, then update_event with {"done": true}.
-  To tick a checklist line, list_checklists for its ids, then tick_checklist_item for today.
+- To add a to-do, read_list gives `todo_checklist_id`: add_checklist_item to it. A reminder with
+  a day or time is add_event with kind reminder and starts_at on the household's clock. To mark a
+  task or homework done, read_calendar over a window that holds it (today's window carries what is
+  overdue) and pass that row's `id` to update_event with {"done": true}. To tick a to-do line,
+  read_list gives each line's `item_id` and the `todo_checklist_id`: tick_checklist_item for today.
+  Use the ids the reads return; never make one up.
 - Never call a tool to answer what the time is: the context line has it.
 
 After a tool answers, say what it found. If a read found nothing, say so; if a tool failed or was

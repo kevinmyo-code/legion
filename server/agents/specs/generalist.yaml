@@ -1,5 +1,5 @@
 name: generalist
-version: 1
+version: 2
 # Every registry tool the web assistant has today (assistant.surface.WEB_TOOL_NAMES), plus the
 # engine twins of the phone's day reads. tests/test_agents_specs.py fails when the registry
 # gains a tool this list does not classify.

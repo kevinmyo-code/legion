@@ -54,6 +54,8 @@ class DueInput:
     source: str
     recurring: bool
     when_label: str
+    # The row's id, so a follow-up write (`update_event`) can name it.
+    id: str = ""
 
 
 @dataclass(frozen=True)
@@ -201,6 +203,7 @@ def _input(event, zone) -> DueInput | None:
         source=source,
         recurring=source == TODO and event.repeat_kind is not None,
         when_label=_label(event.starts_at, event.all_day, zone),
+        id=str(event.id),
     )
 
 
@@ -256,6 +259,7 @@ def _read_calendar(request, args) -> object:
     out_rows = []
     for e in window:
         row = {
+            "id": str(e.id),
             "title": e.title,
             "start": _label(e.starts_at, e.all_day, zone),
             "end": _label(e.ends_at or e.starts_at, e.all_day, zone),
@@ -275,6 +279,7 @@ def _read_calendar(request, args) -> object:
         "says": says(summary),
         "open_items": [
             {
+                "id": e.item.id,
                 "title": e.item.title,
                 "due": due_when(e.item, today),
                 "source": e.item.source,
@@ -319,7 +324,7 @@ def _read_list(request, args) -> object:
     )
     items = []
     for e in reminders:
-        row = {"text": e.title, "done": bool(e.done)}
+        row = {"id": str(e.id), "text": e.title, "done": bool(e.done)}
         if e.starts_at is None:
             row["due"] = "no date set"
         else:
@@ -366,7 +371,7 @@ def _read_list(request, args) -> object:
             )
         )
         lines = [
-            i.text
+            {"item_id": str(i.id), "text": i.text}
             for i in ChecklistItem.objects.filter(checklist=todo, deleted_at__isnull=True).order_by(
                 "sort_order", "created_at"
             )
@@ -374,6 +379,7 @@ def _read_list(request, args) -> object:
         ]
         if lines:
             out[TODO_KEY] = lines
+            out["todo_checklist_id"] = str(todo.id)
     if not items and TODO_KEY not in out:
         out["message"] = "No reminders and no open to-dos. That is a real empty result."
     return ok(json.dumps(out, ensure_ascii=False), structured=out)
@@ -391,7 +397,8 @@ READ_CALENDAR = EngineTool(
         "due Sunday', 'what's due for school this week', not only for 'what's on my "
         "calendar'.** A `due` block comes first: everything due in the window from calendar "
         "tasks and dated reminders, overdue ones marked, done ones only counted; answer what is "
-        "due from `due.says`. Undated reminders are `read_list`, checklists `list_checklists`. "
+        "due from `due.says`. Every row and open item carries its `id`: pass it to update_event "
+        "to mark a task done. Undated reminders are `read_list`, checklists `list_checklists`. "
         "Read-only."
     ),
     input_schema={
@@ -418,8 +425,10 @@ READ_LIST = EngineTool(
     title="Reminders and the to-do list",
     description=(
         "Read back the open REMINDERS - each with the day or place that triggers it, soonest "
-        "first - and the open lines of the Todo checklist under `todo_list`. Use for 'what "
-        "reminders do I have', 'what's on my to-do list'. What's due is read_calendar."
+        "first - and the open lines of the Todo checklist under `todo_list` (each "
+        "with its `item_id`, and `todo_checklist_id`: what tick_checklist_item and "
+        "add_checklist_item need). Use for 'what reminders do I have', 'what's on my to-do "
+        "list'. What's due is read_calendar."
     ),
     input_schema={"type": "object", "properties": {}, "additionalProperties": False},
     handler=_read_list,

@@ -22,7 +22,9 @@ ARG_CHARS = 200
 MAIL_STUB = "A mail tool ran. Its content is never stored (ADR 0099)."
 # Stage 4's tools (`mail_*`, `gmail_*`, `read_mail`, `send_mail`, `draft_mail`).
 _MAIL = re.compile(r"(^|_)(mail|gmail|email|inbox)(_|$)", re.IGNORECASE)
-_ID_SHAPED = re.compile(r"\d[\d -]{6,}\d")
+# Nine or more digits, spaces or dashes between them allowed (an SSN, an account number), never a
+# YYYY-MM-DD date (a calendar read's window must stay readable in its trace).
+_ID_SHAPED = re.compile(r"(?<![\d-])(?!\d{4}-\d{2}-\d{2}(?!\d))\d(?:[ -]?\d){8,}(?![\d-])")
 _SECRET_KEYS = re.compile(r"(token|secret|password|key|passport|ssn|account_number)", re.I)
 
 

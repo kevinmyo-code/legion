@@ -148,6 +148,7 @@ def test_read_calendar_says_what_is_due_today_with_overdue_first(seeded):
     assert "HIST 101 reading quiz (due today, Tue Mar 10, 2026 23:59, calendar)" in due["says"]
     assert "Call the landlord (due today, Tue Mar 10, 2026 18:00, todo)" in due["says"]
     assert "1 already done." in due["says"]
+    assert due["open_items"][0]["id"] == str(fixture.rid("MATH 110 homework 7"))
     assert out["window"] == "today (Tue 2026-03-10)"
     # Open tasks first, then the events; reminders are not calendar rows.
     assert {r["title"] for r in out["events"][:2]} == {
@@ -185,7 +186,10 @@ def test_read_list_reads_reminders_and_the_todo_lines(seeded):
     texts = [i["text"] for i in out["items"]]
     assert texts == ["Call the landlord", "Renew the car registration"]
     assert out["items"][0]["due"] == "today, Tue Mar 10, 2026 18:00"
-    assert out["todo_list"] == ["Buy printer ink", "Return library book"]
+    assert [line["text"] for line in out["todo_list"]] == ["Buy printer ink", "Return library book"]
+    assert out["todo_list"][0]["item_id"] == str(fixture.rid("Buy printer ink"))
+    assert out["todo_checklist_id"] == str(fixture.rid("Todo"))
+    assert out["items"][0]["id"] == str(fixture.rid("Call the landlord"))
 
 
 def test_the_twins_never_read_another_members_private_reminder(seeded, household_a):
@@ -460,3 +464,18 @@ def test_retention_prunes_checkpoints_at_7_days_content_at_30_and_rows_at_90(see
     )
     assert retention.prune(timezone.now() + dt.timedelta(days=91))["turns"] == 1
     assert not AgentModelCall.objects.exists()
+
+
+def test_rest_declarations_carry_no_live_only_field(seeded):
+    decls = LegionGateway(member_request(seeded)).declarations(specs.spec("generalist"))
+    assert decls and all("behavior" not in d for d in decls)
+    assert {d["name"] for d in decls} >= {"read_calendar", "read_list", "update_event"}
+
+
+def test_a_trace_keeps_dates_and_masks_id_shaped_numbers():
+    args = redact.redact_args("read_calendar", {"from": "2026-03-11", "to": "2026-03-12"})
+    assert args == {"from": "2026-03-11", "to": "2026-03-12"}
+    assert (
+        redact.redact_args("write_record", {"note": "ssn 123-45-6789"})["note"] == "ssn ###########"
+    )
+    assert redact.redact_args("x", {"token": "abc"}) == {"token": "[redacted]"}

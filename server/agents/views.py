@@ -2,9 +2,11 @@
 
 - `POST /api/agents/turn`: one turn, answered as Server-Sent Events (`agents/runtime/events.py`):
   `turn`, then `sentence`s as they are ready, `working` and `tool` as tools run, and `done`.
-  **Refused unless `LEGION_AGENTS_TURN=on`** (`agents/legion/flags.py`), before authentication,
-  so with the switch off (the default) nothing is read, written or sent to a model. Never for a
-  recruiter (`household.recruiter_routes` denies the route; the turn's own route refuses again).
+  **Refused unless `LEGION_AGENTS_TURN=on`** (`agents/legion/flags.py`): right after
+  authentication and the household fence, before anything else, so with the switch off (the
+  default) a member gets 404 "switched off" and nothing is read, written or sent to a model.
+  Never for a recruiter (`household.recruiter_routes` denies the route; the turn's own route
+  refuses again).
   Device token or session, as the member: every tool runs under their `visible()`.
 - `POST /api/agents/turn/<id>/cancel`: marks the member's own turn cancelled; the loop checks it
   between rounds and before every tool call (plan section 4.2).
@@ -95,9 +97,11 @@ class AgentTurnView(_AgentsView):
     throttle_classes = [AgentTurnThrottle]
 
     def initial(self, request, *args, **kwargs):
+        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
+        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
+        super().initial(request, *args, **kwargs)
         if not flags.turn_enabled():
             raise exceptions.NotFound(OFF_WORDS)
-        super().initial(request, *args, **kwargs)
 
     @extend_schema(
         tags=AGENTS_TAGS,
@@ -125,9 +129,11 @@ class AgentTurnView(_AgentsView):
 
 class AgentCancelView(_AgentsView):
     def initial(self, request, *args, **kwargs):
+        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
+        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
+        super().initial(request, *args, **kwargs)
         if not flags.turn_enabled():
             raise exceptions.NotFound(OFF_WORDS)
-        super().initial(request, *args, **kwargs)
 
     @extend_schema(
         tags=AGENTS_TAGS,

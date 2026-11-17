@@ -1,7 +1,7 @@
 """engine-brain ticket 02: the dark turn endpoint and ticket 01's SSE probe.
 
-- Off by default: `POST /api/agents/turn` answers 404 "switched off" before authentication, so
-  with LEGION_AGENTS_TURN unset nothing is read, written or sent to a model.
+- Off by default: after authentication, `POST /api/agents/turn` answers a member 404 "switched
+  off", so with LEGION_AGENTS_TURN unset nothing is read, written or sent to a model.
 - On: one turn streams as Server-Sent Events, as the member, under their own rows.
 - A recruiter is refused whatever the switch says.
 """
@@ -48,16 +48,17 @@ def fake_model(monkeypatch):
     return holder
 
 
-def test_the_turn_is_off_by_default_even_without_credentials(monkeypatch):
+def test_a_stranger_is_refused_at_authentication_like_any_route(monkeypatch):
     monkeypatch.delenv(TURN_ENV, raising=False)
     response = APIClient().post("/api/agents/turn", {"transcript": "hi"}, format="json")
-    assert response.status_code == 404 and response.data["detail"] == OFF_WORDS
+    assert response.status_code in (401, 403)
+    assert not AgentTurn.objects.exists()
 
 
 def test_the_turn_is_off_for_a_member_too_and_nothing_is_written(auth_client, monkeypatch):
     monkeypatch.delenv(TURN_ENV, raising=False)
     response = auth_client.post("/api/agents/turn", {"transcript": "what's due"}, format="json")
-    assert response.status_code == 404
+    assert response.status_code == 404 and response.data["detail"] == OFF_WORDS
     assert not AgentTurn.objects.exists()
 
 

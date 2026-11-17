@@ -121,7 +121,8 @@ class AgentTurn(_Owned):
     cost_micro_usd = models.BigIntegerField(default=0)
     graph_version = models.TextField(default="")
     # This turn's own history items, model-format (the next turn's context): the user's words,
-    # model turns verbatim (thought signatures kept), tool results trimmed and redacted.
+    # model turns verbatim (thought signatures kept), tool results as the model saw them, a mail
+    # tool's replaced by a stub (`redact.history_for_storage`). The per-call trace row is trimmed.
     history = models.JSONField(default=list)
 
     class Meta:
