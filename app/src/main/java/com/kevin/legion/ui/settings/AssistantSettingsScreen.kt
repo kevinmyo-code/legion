@@ -417,6 +417,9 @@ fun AssistantSettingsScreen(
                         testTurns = on
                     },
                 )
+                // ADR 0090 cleanup (2026-11-17): blanking only from here, after a confirm.
+                Spacer(Modifier.height(8.dp))
+                ReadThroughCleanupRow()
 
                 // Command-center ticket 09: the app can now say what it does, and where the
                 // button for it is - see ui/help/VoiceGuideScreen.kt.

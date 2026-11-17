@@ -451,6 +451,8 @@ class MainActivity : ComponentActivity() {
         // maybeAutoRun doc comment.
         com.kevin.legion.backend.ObdSampleReconcile.maybeAutoRun(applicationContext)
         com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun(applicationContext)
+        // ADR 0090 cleanup: counts only, once after the update; blanking is Kevin's button.
+        com.kevin.legion.service.ReadThroughCleanup.maybeDryRunOnce(applicationContext)
         // live-sync ticket "give LEGION's pantry and ledger transactions a pull": both tables
         // measured at zero rows restored on a wiped phone despite the server holding 7 and 3
         // respectively. Neither has a live write path this pull needs to wait on - ledger has none
