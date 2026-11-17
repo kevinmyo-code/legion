@@ -20,7 +20,7 @@ class TurnState:
     conversation_id: str
     seq: int
     household_id: str
-    member_id: int
+    member_id: str
     client: str
     transcript: str
     client_facts: dict = field(default_factory=dict)

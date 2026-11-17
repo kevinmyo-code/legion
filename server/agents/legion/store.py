@@ -12,6 +12,7 @@ third-party tool (fail closed, ADR 0090).
 
 from __future__ import annotations
 
+import json
 import logging
 
 from django.db import DatabaseError, transaction
@@ -55,7 +56,7 @@ class TurnStore:
     # The graph's checkpointer.
     @_safe("checkpoint")
     def save(self, state, node: str, step: int, events) -> None:
-        raw = state.to_json()
+        raw = json.loads(json.dumps(state.to_json(), default=str))
         raw["messages"] = redact.history_for_storage(raw.get("messages") or [])
         AgentCheckpoint.objects.create(
             turn=self.turn,

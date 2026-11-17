@@ -155,6 +155,7 @@ def run_turn(
     history: list[dict] = []
     for earlier in conversation.turns.filter(seq__lt=seq).order_by("seq"):
         history.extend(earlier.history or [])
+    conversation.refresh_from_db(fields=["pending_confirm"])
     pending = conversation.pending_confirm
     if pending and int(pending.get("until_seq", 0)) < seq:
         pending = None
@@ -167,7 +168,7 @@ def run_turn(
         conversation_id=str(conversation.pk),
         seq=seq,
         household_id=str(conversation.household_id),
-        member_id=conversation.owner_user_id,
+        member_id=str(conversation.owner_user_id),
         client=conversation.client,
         transcript=transcript,
         client_facts={"history_from": len(history)},

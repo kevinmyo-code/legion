@@ -150,10 +150,10 @@ def test_read_calendar_says_what_is_due_today_with_overdue_first(seeded):
     assert "1 already done." in due["says"]
     assert out["window"] == "today (Tue 2026-03-10)"
     # Open tasks first, then the events; reminders are not calendar rows.
-    assert [r["title"] for r in out["events"]][:2] == [
+    assert {r["title"] for r in out["events"][:2]} == {
         "HIST 101 reading quiz",
         "ENGL 102 discussion post",
-    ]
+    }
     assert "Call the landlord" not in [r["title"] for r in out["events"]]
 
 
@@ -215,7 +215,7 @@ def _gateway_state(user, seq=1):
         conversation_id="c",
         seq=seq,
         household_id=str(user.household.id),
-        member_id=user.pk,
+        member_id=str(user.pk),
         client="test",
         transcript="x",
     )

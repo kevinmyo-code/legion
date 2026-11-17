@@ -44,7 +44,9 @@ def prune(now: datetime.datetime | None = None) -> dict[str, int]:
         .update(transcript="", final_text="", history=[])
     )
     # Everything else of a turn past 90 days (its model calls go with it, CASCADE).
-    out["turns"] = AgentTurn.objects.filter(created_at__lt=metric_cutoff).delete()[0]
+    out["turns"] = (
+        AgentTurn.objects.filter(created_at__lt=metric_cutoff).delete()[1].get("agents.AgentTurn", 0)
+    )
     out["conversations"] = AgentConversation.objects.filter(
         last_turn_at__lt=content_cutoff, turns__isnull=True
     ).delete()[0]
