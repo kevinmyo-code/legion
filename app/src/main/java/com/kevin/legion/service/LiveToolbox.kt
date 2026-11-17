@@ -72,7 +72,6 @@ import com.kevin.legion.calendar.DueReader
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.nextAppointmentId
-import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
@@ -2119,22 +2118,16 @@ object LiveToolbox {
         // (`2026-09-14T04:59Z` = Sunday 23:59 in Houston), so [activeByKindInLocalWindow] buckets
         // them onto the correct local day already. Canvas writes an 11:59pm local deadline as
         // `04:59Z the next day`; the storage handles it. Only the `kind` filter was wrong.
-        val dao = CarDatabase.getDatabase(context).eventDao()
-        val events = (
-            dao.activeByKindInLocalWindow(EventKind.EVENT, startMs, endMs, zone) +
-                dao.activeByKindInLocalWindow(EventKind.TASK, startMs, endMs, zone)
-            ).sortedBy { it.startsAt ?: Long.MAX_VALUE }
+        // One read for the tool and the voice agenda block (ADR 0093, 2026-11-16): the block is what
+        // this tool returns for today.
+        val read = com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone)
+        val events = read.events
         ToolCards.publish(PhoneCards.calendar(events, zone, startMs))
         // 2026-11-15: "Quiet on the calendar for today" over two open assignments. Everything due,
         // from BOTH places a due date lives (calendar tasks and dated to-dos, overdue too), is
         // summed up in Kotlin ahead of the rows ([DueReader]), and the
         // rows put open tasks first, so the answer is the first thing in the result.
-        val due = DueReader.read(
-            context,
-            java.time.Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate(),
-            java.time.Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate(),
-            zone,
-        )
+        val due = read.due
         val arr = JSONArray()
         for (event in openTasksFirst(events)) {
             val eventStart = event.startsAt ?: continue

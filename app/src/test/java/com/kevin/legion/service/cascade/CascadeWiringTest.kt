@@ -237,6 +237,30 @@ class CascadeWiringTest {
     }
 
     @Test
+    fun `the model's own leading filler is dropped where speech and the transcript meet`() {
+        val s = session()
+        assertTrue(bodyOf(s, "newSpeaker").contains("onFillerDropped = { LiveLatency.log(LiveLatency.TAG, \"reply_filler_dropped n=1\") }"))
+        val answer = bodyOf(s, "answerTurn")
+        assertTrue(answer.contains("reply.spoken().ifBlank { LeadingFiller.strip(result.text) }"))
+        assertTrue(answer.contains("text ?: LeadingFiller.strip(result.text)"))
+    }
+
+    @Test
+    fun `the agenda is the tool's own read of today, bounded, and ages out at turn time`() {
+        val s = session()
+        // One source of truth (2026-11-16): the block reads what day read_calendar reads, no pack.
+        val load = bodyOf(s, "loadAgenda")
+        assertTrue(load.contains("withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone) }"))
+        assertFalse(load.contains("GreetingFactory"))
+        val toolbox = File(sourceRoot(), "service/LiveToolbox.kt").readText()
+        assertTrue(toolbox.contains("com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone)"))
+        // The 30-minute and other-day rule is checked for every turn, not only at open.
+        assertTrue(bodyOf(s, "agendaNow").contains("AgendaBlock.current("))
+        // The greeting never waits for the agenda: it does not wait for the preamble at all.
+        assertTrue(s.contains("awaitPrompt(liveContextWaitMs = 0)"))
+    }
+
+    @Test
     fun `writes are judged on the tool a call stands for, and marked before they run`() {
         val s = session()
         assertTrue(bodyOf(s, "newTextLoop").contains("isMutating = CascadeRules::isWrite"))

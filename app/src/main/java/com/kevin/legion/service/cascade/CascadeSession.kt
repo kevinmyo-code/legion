@@ -20,7 +20,8 @@ import com.kevin.legion.data.local.record
 import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.greeting.GreetingBudget
-import com.kevin.legion.greeting.GreetingFactory
+import com.kevin.legion.backend.EventKind
+import com.kevin.legion.calendar.CalendarWindowRead
 import com.kevin.legion.greeting.GreetingOpening
 import com.kevin.legion.greeting.GreetingPlan
 import com.kevin.legion.service.FollowUpWindow
@@ -183,6 +184,9 @@ internal class CascadeSession(
 
     /** Today's agenda as read at open ([AgendaBlock]), for his turns only; "" when none is given. */
     @Volatile private var agendaRead = ""
+
+    /** When [agendaRead] was read (0 when it is an "unavailable" line): it ages out after 30 min. */
+    @Volatile private var agendaReadAtMs = 0L
 
     /** When this conversation first called a write: the agenda read before it is withdrawn. */
     @Volatile private var agendaChangedAt: LocalTime? = null
@@ -473,7 +477,7 @@ internal class CascadeSession(
             }
         }
         preambleReady = scope.async(Dispatchers.IO) {
-            // Today's agenda, beside the live context (it waits for the pack at most AGENDA_WAIT_MS).
+            // Today's agenda, beside the live context: the phone's own read, bounded by AGENDA_WAIT_MS.
             val agenda = async { loadAgenda() }
             val split = base.await()
             val t = System.currentTimeMillis()
@@ -485,37 +489,53 @@ internal class CascadeSession(
     }
 
     /**
-     * Today's agenda for his turns (voice quick wins C, 2026-11-16), from the greeting pack the phone
-     * keeps; a fetch already running is waited for up to [AGENDA_WAIT_MS]. "" for a test
-     * conversation or one with an opener (a proactive line states only its own facts).
+     * Today's agenda for his turns (voice quick wins C, ADR 0093): the phone's own read of today,
+     * the same one `day read_calendar` makes ([CalendarWindowRead.today]), no network. Runs beside
+     * the live context inside `preambleReady`, bounded by [AGENDA_WAIT_MS]; the greeting never waits
+     * for it. "" for a test conversation or one with an opener (a proactive line or a check-in
+     * states only its own facts).
      */
-    @Suppress("TooGenericExceptionCaught", "SwallowedException") // no pack is said in words, never a failed open
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // no read is said in words, never a failed open
     private suspend fun loadAgenda(): String {
         if (test != null || opener != null) return ""
         val t = System.currentTimeMillis()
+        val zone = ZoneId.systemDefault()
         val block = try {
-            val cache = GreetingFactory.cache(ctx)
-            val cached = cache.usable() ?: run {
-                withTimeoutOrNull(AGENDA_WAIT_MS) { cache.refresh("agenda").await() }
-                cache.usable()
+            val read = withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone) }
+            if (read == null) {
+                AgendaBlock.unavailable(AgendaBlock.NOT_READ_IN_TIME)
+            } else {
+                agendaReadAtMs = read.readAtMs
+                AgendaBlock.render(agendaSnapshot(read), zone)
             }
-            cached?.let { AgendaBlock.render(it, ZoneId.systemDefault()) } ?: AgendaBlock.unavailable()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             LiveLatency.log(LiveLatency.TAG, "agenda_unavailable reason=${e.javaClass.simpleName}")
-            AgendaBlock.unavailable()
+            AgendaBlock.unavailable(AgendaBlock.READ_FAILED)
         }
         LiveLatency.log(LiveLatency.TAG, "open_agenda_ms=${System.currentTimeMillis() - t} chars=${block.length}")
         return block
     }
 
-    /** The agenda as his next turn sees it: as read, or withdrawn once something was changed. */
-    private fun agendaNow(): String {
-        val read = agendaRead
-        if (read.isEmpty()) return ""
-        return agendaChangedAt?.let { AgendaBlock.withdrawn(it) } ?: read
-    }
+    /** The tool's read as the block takes it: events only (tasks are in its due summary). */
+    private fun agendaSnapshot(read: CalendarWindowRead) = AgendaBlock.Snapshot(
+        events = read.events.filter { it.kind == EventKind.EVENT && it.startsAt != null }.map {
+            val start = it.startsAt ?: 0L
+            AgendaBlock.AgendaEvent(it.title, start, it.endsAt ?: start, it.allDay, it.location)
+        },
+        due = read.due,
+        readAtMs = read.readAtMs,
+    )
+
+    /** The agenda as his next turn sees it: as read, withdrawn after a write, or aged out. */
+    private fun agendaNow(): String = AgendaBlock.current(
+        agendaRead,
+        agendaReadAtMs,
+        agendaChangedAt,
+        System.currentTimeMillis(),
+        ZoneId.systemDefault(),
+    )
 
     /** His turns' preamble: the shared one plus the agenda ([CascadePrompt.withAgenda]). */
     private fun turnPreamble(): String = CascadePrompt.withAgenda(preamble, agendaNow())
@@ -1082,7 +1102,7 @@ internal class CascadeSession(
                 // reply goes again, whole, on the next voice; nothing is asked of the model twice.
                 // If no voice can say it, the answer and what was done still reach the panel and
                 // the record before the conversation ends.
-                val words = text ?: result.text
+                val words = text ?: LeadingFiller.strip(result.text)
                 val unsaid = { recordTurn(heard, withWrites(words, record), record.readThrough, seq, record.fromUser) }
                 val again = revoice(voice, failed.reason, heardMoment(heard, record), words, unsaid) ?: return
                 reply = again
@@ -1093,7 +1113,8 @@ internal class CascadeSession(
                     return
                 }
             }
-            val said = reply.spoken().ifBlank { result.text }
+            // Without the model's own leading "Checking.", as the speaker dropped it ([LeadingFiller]).
+            val said = reply.spoken().ifBlank { LeadingFiller.strip(result.text) }
             val kept = if (outcome == ReplySpeaker.Outcome.Interrupted) withWrites(reply.spoken(), record) else said
             recordTurn(heard, kept, record.readThrough, seq, record.fromUser)
             answeredOnce = true
@@ -1418,6 +1439,8 @@ internal class CascadeSession(
                 // The voice sheet and the talk strip read the caption, as for Live's subtitles.
                 CompanionPhase.setCaption(text.takeLast(CAPTION_CHARS))
             },
+            // Count only, never the words.
+            onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
         ).also { speaker = it }
     }
 
@@ -2315,8 +2338,8 @@ internal class CascadeSession(
         /** The filler lines as the voice is handed them ([ReplySpeaker] normalises the same way). */
         private val FILLERS_SPOKEN = ScriptedLines.FILLERS.map { SpokenText.forSpeech(it) }
 
-        /** How long the agenda waits for a pack fetch already running, beside the live context. */
-        private const val AGENDA_WAIT_MS = 1_500L
+        /** How long the phone's own read of today may take at open (normally well under 100 ms). */
+        private const val AGENDA_WAIT_MS = 1_000L
 
         /** The longest a check-in's closer may take to say before the conversation just ends. */
         private const val CLOSER_MAX_MS = 6_000L
