@@ -40,6 +40,7 @@ object HomesSync {
     internal const val PREFS = "engine_homes"
     private const val KEY_DONE = "backfill_done_"
     internal const val PAGE = 200
+    private const val MAX_REFUSED_LOGGED = 20
     private const val MIN_INTERVAL_MS = 30 * 60_000L
     private const val RAISE_RECONCILE_MS = 30L * 24 * 60 * 60_000L
 
@@ -69,12 +70,14 @@ object HomesSync {
         val failed: Int,
         val engine: Int,
         val complete: Boolean,
+        val refused: List<String> = emptyList(),
     ) {
         val clean: Boolean get() = complete && failed == 0 && sent == room
 
         fun line(first: Boolean): String =
             "homes_backfill table=${table.key} first=$first room=$room sent=$sent created=$created " +
-                "updated=$updated unchanged=$unchanged failed=$failed engine=$engine complete=$complete"
+                "updated=$updated unchanged=$unchanged failed=$failed engine=$engine complete=$complete" +
+                (if (refused.isEmpty()) "" else " refused=${refused.take(MAX_REFUSED_LOGGED).joinToString(";")}")
     }
 
     /** Sends [rows] in pages; stops at the first page the engine did not answer. Pure over [backend]. */
@@ -96,6 +99,7 @@ object HomesSync {
                 unchanged = report.unchanged + answer.unchanged,
                 failed = report.failed + answer.failed,
                 engine = answer.engineCount,
+                refused = report.refused + answer.refused,
             )
         }
         return report
@@ -125,8 +129,8 @@ object HomesSync {
         // Pull BEFORE the push: a goal the engine closed (or a pending row it cleared) reaches Room
         // first, so the batch below re-sends the newer row instead of overwriting it with Room's
         // older copy.
-        HomesPull.goals(context, backend)
-        HomesPull.pending(context, backend)
+        Log.i(TAG, HomesPull.goals(context, backend).line(HomeTable.GOALS))
+        Log.i(TAG, HomesPull.pending(context, backend).line(HomeTable.PENDING))
         val reports = HomeTable.entries.map { table ->
             val first = !prefs.getBoolean(KEY_DONE + table.key, false)
             val rows = roomRows(context, table, full = first, now = now)
@@ -135,7 +139,15 @@ object HomesSync {
             if (first && report.clean) prefs.edit().putBoolean(KEY_DONE + table.key, true).apply()
             report
         }
-        fleetBackend(context)?.let { Log.i(TAG, pushServiceRecords(context, it)) }
+        val fleet = fleetBackend(context)
+        Log.i(
+            TAG,
+            if (fleet == null) {
+                "homes_backfill table=service_history skipped=fleet_not_on_the_engine"
+            } else {
+                pushServiceRecords(context, fleet)
+            },
+        )
         return reports
     }
 

@@ -133,6 +133,8 @@ def test_homes_covers_every_ticket_03_tool():
         "close_goal",
         "log_pending_transaction",
         "list_pending_transactions",
+        "clear_pending_transaction",
+        "recent_advice",
         "why_did_you_say_that",
     } <= called
     assert suite["runs"] == 3 and 0 < suite["bar"] <= 1

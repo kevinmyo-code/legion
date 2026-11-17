@@ -63,10 +63,42 @@ def test_goal_put_is_an_upsert_and_delete_a_tombstone(auth_client):
     assert feed[0]["deleted_at"] is not None
 
 
-def test_a_goal_status_outside_the_set_is_refused_naming_it(auth_client):
-    bad = auth_client.put("/api/body/goals/g-2/", {**GOAL, "status": "paused"}, format="json")
-    assert bad.status_code == 400
-    assert "paused" in str(bad.data)
+def test_blank_text_and_any_goal_status_are_kept_not_refused(auth_client):
+    """Room's columns are free TEXT: a refused row would never reach the engine, and its table
+    would never backfill cleanly. Only identity, money and the delivery set are checked."""
+    odd = {**GOAL, "status": "paused", "unit": "", "statement": ""}
+    assert auth_client.put("/api/body/goals/g-2/", odd, format="json").status_code == 200
+    blank_raise = {**RAISE, "reason": "", "category": ""}
+    assert (
+        auth_client.put("/api/proactive/raises/r-2/", blank_raise, format="json").status_code == 200
+    )
+    blank_advice = {
+        "aspect": "",
+        "question_text": "",
+        "gist": "",
+        "advice_text": "",
+        "outcome": "",
+        "given_at": "2026-03-01T10:00:00Z",
+    }
+    assert (
+        auth_client.put("/api/advisor/advice/a-2/", blank_advice, format="json").status_code == 200
+    )
+
+
+def test_goal_batch_updates_a_goal_the_engine_already_holds(auth_client):
+    """The legacy `goals` table's update path (bulk_update on a `managed = False` table with an
+    enum column) on real shapes: a row re-sent changed, and one re-sent unchanged."""
+    rows = [
+        {**GOAL, "origin_guid": "u-1"},
+        {**GOAL, "origin_guid": "u-2", "statement": "Swim 2 km"},
+    ]
+    auth_client.post("/api/body/goals/batch/", {"rows": rows}, format="json")
+    rows[0] = {**rows[0], "status": "achieved", "closed_at": "2026-03-09T10:00:00Z"}
+    out = auth_client.post("/api/body/goals/batch/", {"rows": rows}, format="json").data
+    assert (out.get("created"), out.get("updated"), out.get("unchanged")) == (0, 1, 1), out
+    row = Goal.objects.get(origin_guid="u-1")
+    assert row.status == "achieved" and row.closed_at is not None
+    assert row.provenance == "USER"
 
 
 def test_an_unknown_field_is_refused_never_dropped(auth_client):
@@ -328,6 +360,26 @@ def test_list_and_clear_pending(req, household_a):
     assert PendingTransaction.objects.get().deleted_at is not None
     assert "real empty result" in ht.LIST_PENDING.handler(req, {}).text
     assert ht.CLEAR_PENDING.handler(req, {"pending_id": "p-1"}).is_error
+
+
+def test_the_tools_never_reach_another_households_rows(household_a, household_b, user_b):
+    """ADR 0045 through the agent tools: household B naming A's goal or pending id reads and
+    changes nothing of A's."""
+    _goal(household_a, "a-goal", "Alpha secret goal", 1, _at(1))
+    PendingTransaction.objects.create(
+        household=household_a,
+        origin_guid="a-pend",
+        logged_at=_at(2),
+        **{k: v for k, v in PENDING.items() if k != "logged_at"},
+    )
+    theirs = member_request(user_b)
+    assert "Alpha" not in ht.LIST_GOALS.handler(theirs, {"include_closed": True}).text
+    assert "Bagel" not in ht.LIST_PENDING.handler(theirs, {}).text
+    assert ht.CLOSE_GOAL.handler(theirs, {"goal_id": "a-goal", "status": "achieved"}).is_error
+    assert ht.CLEAR_PENDING.handler(theirs, {"pending_id": "a-pend"}).is_error
+    assert ht.SET_GOAL.handler(theirs, {"statement": "x", "revises_goal_id": "a-goal"}).is_error
+    assert Goal.objects.get(origin_guid="a-goal").status == "active"
+    assert PendingTransaction.objects.get(origin_guid="a-pend").deleted_at is None
 
 
 def test_why_did_you_say_that_reads_the_newest_raise(req, household_a, household_user):

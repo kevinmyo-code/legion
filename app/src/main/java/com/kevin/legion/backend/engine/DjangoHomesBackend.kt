@@ -4,6 +4,7 @@ import com.kevin.legion.backend.HomeTable
 import com.kevin.legion.backend.HomesBackend
 import com.kevin.legion.backend.HomesBatchResult
 import com.kevin.legion.backend.HomesFromEngine
+import com.kevin.legion.backend.HomesRows
 import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -35,13 +36,19 @@ class DjangoHomesBackend(private val http: EngineHttp) : HomesBackend {
                 http.post("${table.path}batch/", body.toString()).getOrThrow().body,
             ).jsonObject
             fun count(key: String) = answer[key]?.jsonPrimitive?.int ?: 0
+            val refused = answer["failed"]?.jsonArray.orEmpty().map { entry ->
+                val item = entry.jsonObject
+                val fields = (item["detail"] as? JsonObject)?.keys.orEmpty().sorted().joinToString(",")
+                "${HomesFromEngine.textOf(item, HomesRows.ORIGIN_GUID) ?: "no-id"}:$fields"
+            }
             HomesBatchResult(
                 received = count("received"),
                 created = count("created"),
                 updated = count("updated"),
                 unchanged = count("unchanged"),
-                failed = answer["failed"]?.jsonArray?.size ?: 0,
+                failed = refused.size,
                 engineCount = count("engine_count"),
+                refused = refused,
             )
         }
 

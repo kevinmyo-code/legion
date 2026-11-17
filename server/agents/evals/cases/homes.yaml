@@ -54,3 +54,18 @@ cases:
         expect:
           calls: ["why_did_you_say_that"]
           answer_has: ["thunderstorm|storm|weather"]
+  - id: pending_clear
+    critical: true
+    turns:
+      - say: "the coffee at the campus cafe went through at the bank, clear that pending one"
+        expect:
+          calls: ["clear_pending_transaction"]
+          succeeded: ["clear_pending_transaction"]
+          result_has: ["Coffee at the campus cafe"]
+  - id: advice_read
+    turns:
+      - say: "what did the advisor tell me about training for the 10k?"
+        expect:
+          calls: ["recent_advice"]
+          not_calls: ["set_goal", "close_goal"]
+          answer_has: ["easy|long run|slow"]

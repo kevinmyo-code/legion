@@ -43,6 +43,7 @@ class DjangoHomesBackendTest {
         assertEquals(1, result.unchanged)
         assertEquals(1, result.failed)
         assertEquals(7, result.engineCount)
+        assertEquals(listOf("x:"), result.refused)
     }
 
     @Test

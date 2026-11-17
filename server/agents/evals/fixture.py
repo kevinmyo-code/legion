@@ -220,7 +220,7 @@ def _seed_homes(household, owner, today: date, now: datetime) -> None:
         household=household,
         owner_user=owner,
         origin_guid=str(rid(Facts.ADVICE_GIST)),
-        aspect="body",
+        aspect="bio",
         question_text="How should I train for the 10k?",
         gist=Facts.ADVICE_GIST,
         advice_text="Build up slowly: three short runs and one easy long run each week.",

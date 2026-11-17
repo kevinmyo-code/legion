@@ -546,7 +546,16 @@ RECENT_ADVICE = EngineTool(
         "Read the advice the advisor gave him lately, per aspect, with what became of each "
         "proposal. Read-only."
     ),
-    input_schema=_obj({"aspect": {"type": "string"}}),
+    input_schema=_obj(
+        {
+            "aspect": {
+                "type": "string",
+                "enum": [*GOAL_AREAS, "home"],
+                "description": "Leave out for every aspect. bio = body; log = notes; fleet = the "
+                "cars; cred = money; home = the advice across all of them.",
+            }
+        }
+    ),
     handler=_recent_advice,
     writes=False,
 )

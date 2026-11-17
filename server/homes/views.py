@@ -36,14 +36,12 @@ from rest_framework.views import APIView
 from api.synced import (
     SyncedModelViewSet,
     SyncedSerializer,
-    blank_error,
     choice_error,
     synced_paths,
 )
 from homes.models import (
     CURRENCIES,
     DELIVERIES,
-    GOAL_STATUSES,
     AdvisorAdvice,
     PendingTransaction,
     ProactiveRaise,
@@ -56,10 +54,10 @@ BATCH_MAX = 500
 PENDING_AMOUNT_MAX_CENTS = 100_000_000
 
 
-def _not_blank(field: str, value: str) -> str:
-    if not str(value).strip():
-        raise blank_error(field)
-    return value
+def _blank_ok(*fields: str) -> dict:
+    """The phone's Room columns are free TEXT, so a blank value is a value: refusing it would leave
+    that row off the engine and its table never cleanly backfilled."""
+    return {field: {"allow_blank": True} for field in fields}
 
 
 class _ManagedSerializer(SyncedSerializer):
@@ -81,7 +79,8 @@ class _ManagedSerializer(SyncedSerializer):
 
 
 class GoalSerializer(SyncedSerializer):
-    status = serializers.CharField(required=False, default="active")
+    # No choice check: a goal's status is free TEXT on the phone too (`Goal.status`).
+    status = serializers.CharField(required=False, default="active", allow_blank=True)
 
     class Meta:
         model = Goal
@@ -105,17 +104,7 @@ class GoalSerializer(SyncedSerializer):
             "origin_guid",
         ]
         read_only_fields = ["id", "provenance", "created_at", "updated_at", "deleted_at"]
-
-    def validate_aspect(self, value: str) -> str:
-        return _not_blank("aspect", value)
-
-    def validate_statement(self, value: str) -> str:
-        return _not_blank("statement", value)
-
-    def validate_status(self, value: str) -> str:
-        if value not in GOAL_STATUSES:
-            raise choice_error("status", value, GOAL_STATUSES)
-        return value
+        extra_kwargs = _blank_ok("aspect", "statement", "unit", "metric_key", "supersedes_guid")
 
 
 class AdvisorAdviceSerializer(_ManagedSerializer):
@@ -137,12 +126,9 @@ class AdvisorAdviceSerializer(_ManagedSerializer):
             "deleted_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "deleted_at"]
-
-    def validate_aspect(self, value: str) -> str:
-        return _not_blank("aspect", value)
-
-    def validate_outcome(self, value: str) -> str:
-        return _not_blank("outcome", value)
+        extra_kwargs = _blank_ok(
+            "aspect", "question_text", "gist", "advice_text", "proposal_json", "outcome"
+        )
 
 
 class PendingTransactionSerializer(_ManagedSerializer):
@@ -169,12 +155,7 @@ class PendingTransactionSerializer(_ManagedSerializer):
             "deleted_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "deleted_at"]
-
-    def validate_account_id(self, value: str) -> str:
-        return _not_blank("account_id", value)
-
-    def validate_description(self, value: str) -> str:
-        return _not_blank("description", value)
+        extra_kwargs = _blank_ok("account_id", "description")
 
     def validate_currency(self, value: str) -> str:
         if value not in CURRENCIES:
@@ -206,9 +187,7 @@ class ProactiveRaiseSerializer(_ManagedSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
-
-    def validate_rule_id(self, value: str) -> str:
-        return _not_blank("rule_id", value)
+        extra_kwargs = _blank_ok("rule_id", "category", "reason")
 
     def validate_delivery(self, value: str) -> str:
         if value not in DELIVERIES:

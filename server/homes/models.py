@@ -33,7 +33,6 @@ from household.tenancy_sql import household_unique_name
 
 CURRENCIES: tuple[str, ...] = ("SGD", "USD")
 DELIVERIES: tuple[str, ...] = ("spoken", "notified", "rung")
-GOAL_STATUSES: tuple[str, ...] = ("active", "achieved", "abandoned")
 
 
 class AdvisorAdvice(models.Model):

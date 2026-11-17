@@ -35,6 +35,9 @@ data class HomesBatchResult(
     val unchanged: Int,
     val failed: Int,
     val engineCount: Int,
+    /** Each refused row as `<origin_guid>:<field>,<field>`: its id and the fields the engine named,
+     * never a value, so it can go in a log line. */
+    val refused: List<String> = emptyList(),
 )
 
 /** The engine side of the homes. One implementation talks to Django; tests use a fake. */
