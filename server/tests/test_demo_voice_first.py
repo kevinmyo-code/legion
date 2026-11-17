@@ -105,14 +105,15 @@ def test_a_fast_tool_gets_its_line_after_it_returns_once_the_wait_is_long(
     monkeypatch.setattr(fillers, "FAST_AFTER_MS", 0)
     engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
     events = _events(_post(member, audio=PCM))
-    kinds = _kinds(events)
-    assert kinds.index("tool") < kinds.index("filler") < kinds.index("sentence")
-    filler = _of(events, "filler")[0]
+    # The tool's own line (the acknowledgement before it has no tool).
+    order = [k if k != "filler" or d["tool"] else "ack" for k, d in events]
+    assert order.index("tool") < order.index("filler") < order.index("sentence")
+    filler = [f for f in _of(events, "filler") if f["tool"]][0]
     assert filler["tool"] == "list_events"
     assert filler["text"] in fillers.lines_for("list_events")
     # The filler's audio is flagged, so the page can tell it from the answer.
     flagged = [data for kind, data in events if kind == "audio" and data.get("filler")]
-    assert len(flagged) == 1
+    assert len(flagged) == 2  # the acknowledgement and the tool's line
 
 
 def test_a_fast_tool_that_returns_quickly_gets_no_line(member, engine, monkeypatch, household_user):
@@ -120,7 +121,7 @@ def test_a_fast_tool_that_returns_quickly_gets_no_line(member, engine, monkeypat
     monkeypatch.setattr(fillers, "FAST_AFTER_MS", 10_000_000)
     engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
     events = _events(_post(member, audio=PCM))
-    assert _of(events, "filler") == []
+    assert [f for f in _of(events, "filler") if f["tool"]] == []
 
 
 def test_a_write_is_silent_and_two_tools_get_one_line(member, engine, monkeypatch, household_user):
@@ -134,7 +135,7 @@ def test_a_write_is_silent_and_two_tools_get_one_line(member, engine, monkeypatc
         ]
     )
     events = _events(_post(member, audio=PCM))
-    assert [f["tool"] for f in _of(events, "filler")] == ["list_events"]
+    assert [f["tool"] for f in _of(events, "filler") if f["tool"]] == ["list_events"]
 
 
 def test_a_typed_turn_gets_no_filler(member, engine, monkeypatch, household_user):

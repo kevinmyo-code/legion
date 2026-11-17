@@ -128,8 +128,12 @@ def test_sentence_grouping_is_the_old_one_request_each(monkeypatch):
 
 
 def test_a_round_ending_in_a_tool_speaks_what_it_held(member, engine):
+    # One round that speaks and then calls a tool, then the answer.
     engine.model = FakeModel(
-        [say("Let me check. And the list too."), call("list_events", {}), say("All clear.")]
+        [
+            say("Right. Checking that and the list too.")[:2] + call("list_events", {}),
+            say("All clear."),
+        ]
     )
     _events(_post(member, audio=PCM))
     said = [text for text, _voice in engine.speech.spoken]

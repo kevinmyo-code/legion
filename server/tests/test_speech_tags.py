@@ -87,9 +87,12 @@ def test_the_scripted_lines_carry_only_allowed_tags():
     for line in (web_greeting.recruiter_hello("Alfred"), *tour.CODE_LINES):
         for tag in speech_tags._TAG.findall(line):
             assert f"<{tag}>" in speech_tags.ALLOWED, line
-    # Fillers and the failure lines carry none.
-    for line in fillers.all_lines():
-        assert not speech_tags.has_tag(line)
+    # Tool fillers and the failure lines carry none; an acknowledgement may carry an allowed one.
+    for _slow, lines in fillers.FILLERS.values():
+        assert not any(speech_tags.has_tag(line) for line in lines)
+    for line in fillers.ACK:
+        for tag in speech_tags._TAG.findall(line):
+            assert f"<{tag}>" in speech_tags.ALLOWED
     for line in (cascade.NOT_ANSWERED_MODEL, cascade.NOT_ANSWERED_TIMEOUT, cascade.NO_TEXT):
         assert not speech_tags.has_tag(line)
 
@@ -97,8 +100,8 @@ def test_the_scripted_lines_carry_only_allowed_tags():
 def test_the_model_is_told_the_tags_once():
     system = cascade.cached_system("Body.")
     assert system.count(speech_tags.PROMPT_LINE) == 1
-    for tag in speech_tags.ALLOWED:
-        assert tag in speech_tags.PROMPT_LINE
+    for tag in speech_tags._TAG.findall(speech_tags.PROMPT_LINE):
+        assert f"<{tag}>" in speech_tags.ALLOWED
     assert "long pause" not in speech_tags.PROMPT_LINE
     assert cascade.PERSONA_NOTE in system
 
@@ -154,8 +157,9 @@ def test_the_speaker_speaks_code_lines_plain_and_figures_rounded():
     speaker.close()
     said = [text for text, _voice in speech.spoken]
     # Two speak at once, so the order they reach speech is not fixed.
+    # The first words alone, the rest of the round as one request; a tag per sentence.
     assert sorted(said) == sorted(
-        ["Groceries were about $2,330.", "<chuckle> Fine.", "<sigh> Fine again."]
+        ["Groceries were about $2,330.", "<chuckle> Fine. <sigh> Fine again."]
     )
 
 
@@ -231,7 +235,7 @@ class _Transport:
 
 def test_a_refused_voice_falls_back_to_puck_rather_than_silence():
     transport = _Transport(refused="en-us-neno")
-    speech = GeminiSpeech(lambda: "key", transport=transport)
+    speech = GeminiSpeech(lambda: "key", stt_model="stt", transport=transport)
     audio = b"".join(speech.speak("Hello.", "en-us-neno", Spoken()))
     assert audio
     assert "en-us-neno" in speech.bad_voices
