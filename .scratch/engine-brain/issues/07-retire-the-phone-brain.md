@@ -5,9 +5,9 @@ title: "Retire the phone brain: the phone becomes a thin limb"
 type: build
 status: open
 size: M
-blockers: ["03", "05", "06"]
-blocked-by: ["[[03-engine-homes-for-room-only-data]]", "[[05-mail-on-the-engine]]", "[[06-specialists-router-and-router-run-reads]]"]
-open-blockers: 3
+blockers: ["03", "05", "06", "15"]
+blocked-by: ["[[03-engine-homes-for-room-only-data]]", "[[05-mail-on-the-engine]]", "[[06-specialists-router-and-router-run-reads]]", "[[15-engine-homes-user-aspect-records]]"]
+open-blockers: 4
 ready: false
 tags: [ticket]
 ---

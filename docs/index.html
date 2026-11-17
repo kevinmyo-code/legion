@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>444 tickets open</h1>
+<h1>445 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
 <p class="lede">Across 63 maps. <b>13 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 116 are waiting on another ticket first. <b>244 are already built</b> and owe nothing but a run on the phone. 14 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">444</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">70</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n">445</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">71</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">244</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">116</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">13</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">173</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">174</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">14</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -222,6 +222,31 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
+<h2>engine-brain</h2>
+<span class="counts"><span class="k">15</span> open<span class="sep">&middot;</span><span class="k mint">4</span> ready<span class="sep">&middot;</span><span class="k amber">11</span> blocked<span class="sep">&middot;</span><span class="dim">of 16 tickets</span></span>
+<span class="bar"><i style="flex:4"></i><b style="flex:11"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">Measure: the engine hop, Gemini from the engine, SSE through Cloud Run, Postgres, cold start, warm at wake</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">Runtime and evals, dark: the agent package, graph, guards, traces, eval runner, day read twins</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">Engine homes for Room-only data before the phone loop goes</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">15</span><span class="body"><span class="tt">Engine homes for user-aspect records (split from 03)</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">The switch: limb contract, relay, SSE turns, per-member flag</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #03</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Mail on the engine: read, draft, send with the safeguards</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Specialists, code router and router-run reads</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Retire the phone brain: the phone becomes a thin limb</span></span><span class="chip c-build">build</span><span class="state">waiting on #03, #05, #06, #15</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">Engine-native write twins; the relay shrinks to device tools</span></span><span class="chip c-build">build</span><span class="state">waiting on #07</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">Derived knowledge: five baselines and the change log; the greeting picker moves to the engine</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Procedures: router-direct starts and the device step</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Telemetry: the phone relays the OBD stream to the engine</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">First scheduled agent: the evening due sweep</span></span><span class="chip c-build">build</span><span class="state">waiting on #09</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">13</span><span class="body"><span class="tt">Web assistant onto the engine&#x27;s turn endpoint</span></span><span class="chip c-build">build</span><span class="state">waiting on #07</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Head unit as a thin limb</span></span><span class="chip c-build">build</span><span class="state">waiting on #13</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
 <h2>memory-and-vault</h2>
 <span class="counts"><span class="k">15</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">11</span> built<span class="sep">&middot;</span><span class="k amber">3</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
 <span class="bar"><i style="flex:11"></i><b style="flex:4"></b></span>
@@ -242,30 +267,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">Worker: memory tools on the Alienware only</span></span><span class="chip c-build">build</span><span class="state">waiting on #02</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Acceptance run</span></span><span class="chip c-test">test</span><span class="state">waiting on #08, #09, #10, #11, #12, #13</span></li>
 <li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">15</span><span class="body"><span class="tt">Vault entry from the web desk (write-only)</span><span class="det">parked by Kevin 2026-11-05: later, not important now</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
-<h2>engine-brain</h2>
-<span class="counts"><span class="k">14</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k amber">11</span> blocked<span class="sep">&middot;</span><span class="dim">of 15 tickets</span></span>
-<span class="bar"><i style="flex:3"></i><b style="flex:11"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">Measure: the engine hop, Gemini from the engine, SSE through Cloud Run, Postgres, cold start, warm at wake</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">Runtime and evals, dark: the agent package, graph, guards, traces, eval runner, day read twins</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">Engine homes for Room-only data before the phone loop goes</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">The switch: limb contract, relay, SSE turns, per-member flag</span></span><span class="chip c-build">build</span><span class="state">waiting on #02, #03</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Mail on the engine: read, draft, send with the safeguards</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Specialists, code router and router-run reads</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Retire the phone brain: the phone becomes a thin limb</span></span><span class="chip c-build">build</span><span class="state">waiting on #03, #05, #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">08</span><span class="body"><span class="tt">Engine-native write twins; the relay shrinks to device tools</span></span><span class="chip c-build">build</span><span class="state">waiting on #07</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">09</span><span class="body"><span class="tt">Derived knowledge: five baselines and the change log; the greeting picker moves to the engine</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">10</span><span class="body"><span class="tt">Procedures: router-direct starts and the device step</span></span><span class="chip c-build">build</span><span class="state">waiting on #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Telemetry: the phone relays the OBD stream to the engine</span></span><span class="chip c-build">build</span><span class="state">waiting on #04</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">First scheduled agent: the evening due sweep</span></span><span class="chip c-build">build</span><span class="state">waiting on #09</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">13</span><span class="body"><span class="tt">Web assistant onto the engine&#x27;s turn endpoint</span></span><span class="chip c-build">build</span><span class="state">waiting on #07</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">14</span><span class="body"><span class="tt">Head unit as a thin limb</span></span><span class="chip c-build">build</span><span class="state">waiting on #13</span></li>
 </ul>
 </section>
 <section class="map">

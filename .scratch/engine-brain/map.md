@@ -41,7 +41,7 @@ He says "what do I have today and can I afford lunch".
 |---|---|
 | 01 | Measure |
 | 02 | Runtime and evals, dark |
-| 03 | Engine homes for Room-only data |
+| 03 | Engine homes for Room-only data (records split to 15) |
 | 04 | The switch: limb contract, relay, per-member flag |
 | 05 | Mail on the engine (Kevin grants consent once) |
 | 06 | Specialists, router, router-run reads |
@@ -53,6 +53,7 @@ He says "what do I have today and can I afford lunch".
 | 12 | Evening due sweep |
 | 13 | Web on the engine |
 | 14 | Head unit as a thin limb |
+| 15 | Engine homes for user-aspect records (split from 03) |
 
 ## Not in this map
 - On-phone or cloud-hosted voice (dropped).

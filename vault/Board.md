@@ -57,6 +57,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/engine-brain/map\|engine-brain]] | [[01-measure\|01]] | build | Measure: the engine hop, Gemini from the engine, SSE through Cloud Run, Postgres, cold start, warm at wake |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[02-runtime-and-evals\|02]] | build | Runtime and evals, dark: the agent package, graph, guards, traces, eval runner, day read twins |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[03-engine-homes-for-room-only-data\|03]] | build | Engine homes for Room-only data before the phone loop goes |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[15-engine-homes-user-aspect-records\|15]] | build | Engine homes for user-aspect records (split from 03) |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -321,7 +322,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/engine-brain/map\|engine-brain]] | [[04-limb-contract-relay-and-switch\|04]] | build | The switch: limb contract, relay, SSE turns, per-member flag  waiting on [[02-runtime-and-evals\|02]], [[03-engine-homes-for-room-only-data\|03]] |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[05-mail-on-the-engine\|05]] | build | Mail on the engine: read, draft, send with the safeguards  waiting on [[04-limb-contract-relay-and-switch\|04]] |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[06-specialists-router-and-router-run-reads\|06]] | build | Specialists, code router and router-run reads  waiting on [[04-limb-contract-relay-and-switch\|04]] |
-| [[.scratch/engine-brain/map\|engine-brain]] | [[07-retire-the-phone-brain\|07]] | build | Retire the phone brain: the phone becomes a thin limb  waiting on [[03-engine-homes-for-room-only-data\|03]], [[05-mail-on-the-engine\|05]], [[06-specialists-router-and-router-run-reads\|06]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[07-retire-the-phone-brain\|07]] | build | Retire the phone brain: the phone becomes a thin limb  waiting on [[03-engine-homes-for-room-only-data\|03]], [[05-mail-on-the-engine\|05]], [[06-specialists-router-and-router-run-reads\|06]], [[15-engine-homes-user-aspect-records\|15]] |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[08-engine-native-writes\|08]] | build | Engine-native write twins; the relay shrinks to device tools  waiting on [[07-retire-the-phone-brain\|07]] |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[09-derived-knowledge\|09]] | build | Derived knowledge: five baselines and the change log; the greeting picker moves to the engine  waiting on [[06-specialists-router-and-router-run-reads\|06]] |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[10-procedures-device-step\|10]] | build | Procedures: router-direct starts and the device step  waiting on [[06-specialists-router-and-router-run-reads\|06]] |
@@ -510,7 +511,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
-| [[.scratch/engine-brain/map\|engine-brain]] | 15 | 14 | [[.scratch/engine-brain/engine-brain.canvas\|open]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | 16 | 15 | [[.scratch/engine-brain/engine-brain.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | 26 | 21 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
