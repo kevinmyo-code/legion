@@ -430,4 +430,55 @@ class GeminiTextLoopTest {
             assertEquals(line, line, l.text.toString())
         }
     }
+
+    // --- a balance the phone speaks itself (VerbatimSpeech, stage 7) -----------------------------
+
+    private fun verbatimTool(from: String) = TextToolExecutor { _, _, _ ->
+        JSONObject().put("success", true)
+            .put("speak_verbatim", "Net cash is forty-five dollars, as of today at 9:04 PM.")
+            .put("verbatim_from", from)
+    }
+
+    @Test
+    fun `a balance result is spoken verbatim and the model's money sentences after it are dropped`() = runBlocking<Unit> {
+        val t = Scripted(ok(callEv("get_weather")), ok(textEv("You have \$45.00. "), textEv("Your quiz is due tonight.")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, verbatimTool("get_balance"), l)
+        assertNull(r.failure)
+        assertTrue(r.verbatimSpoken)
+        assertEquals(1, r.moneyDropped)
+        assertEquals("Net cash is forty-five dollars, as of today at 9:04 PM. Your quiz is due tonight.", l.text.toString())
+        assertEquals(l.text.toString(), r.text)
+    }
+
+    @Test
+    fun `after a verbatim balance a filler or a repeat ends the turn cleanly, no extra round`() = runBlocking<Unit> {
+        for (after in listOf("Checking.", "Net cash is forty-five dollars, as of today at 9:04 PM.", "")) {
+            val t = Scripted(ok(callEv("get_weather")), ok(*if (after.isEmpty()) arrayOf<JSONObject>() else arrayOf(textEv(after))))
+            val l = Collect()
+            val r = loop(t).answer(prefix, contents, verbatimTool("get_balance"), l)
+            assertNull(after, r.failure)
+            assertEquals(after, 2, t.bodies.size)
+            assertEquals(after, 0, r.fillerContinued)
+            assertEquals(after, "Net cash is forty-five dollars, as of today at 9:04 PM.", l.text.toString().trim())
+            assertEquals(after, "Net cash is forty-five dollars, as of today at 9:04 PM.", r.text)
+        }
+    }
+
+    @Test
+    fun `only a tool on the allowlist may have its words spoken`() = runBlocking<Unit> {
+        val t = Scripted(ok(callEv("get_weather")), ok(textEv("It is mild.")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, verbatimTool("add_item"), l)
+        assertFalse(r.verbatimSpoken)
+        assertEquals("It is mild.", l.text.toString())
+    }
+
+    @Test
+    fun `a routed balance lifts its words only from the allowlisted tool`() {
+        val out = JSONObject().put("success", true).put("speak_verbatim", "Said.").put("verbatim_from", "get_balance").toString()
+        assertEquals("Said.", com.kevin.legion.ai.VerbatimSpeech.fromToolOutput("get_balance", out))
+        assertNull(com.kevin.legion.ai.VerbatimSpeech.fromToolOutput("list_recent_transactions", out))
+        assertNull(com.kevin.legion.ai.VerbatimSpeech.fromToolOutput("get_balance", "not json"))
+    }
 }

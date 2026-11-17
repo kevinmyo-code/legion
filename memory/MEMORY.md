@@ -48,8 +48,9 @@ counted twice) and whether the floor follows him to the web.
 - **Laptop only:** the laptop voice service restart for `stt.maybe_end` (stage 3 report steps).
 
 **In flight (2026-11-16):** `ship/stage7-diag-1116` (OBD module scan and clear, Room v80; not
-ready: the unreached-module case failed when a turn ended on filler, which stage 7's extra round
-addresses; needs a rerun after merging dev). The stage 7 report lists every gate.
+ready: the unreached-module case failed when a turn ended on filler. Stage 7's extra round is
+tool-free, so such a turn now ends in a plain "could not" instead of silence, but the scan still does
+not run: the branch needs its own fix and a rerun after merging dev). The stage 7 report lists every gate.
 
 **Open, Kevin to rule (carried):** the four OBD VIN rulings; cards gaps (grade letter ticks, a done
 flag for the due-today strip); greeting hellos repeating two opens apart; weather in the agenda.
