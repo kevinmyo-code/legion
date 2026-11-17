@@ -271,5 +271,26 @@ def write_cassette(recorded: dict, path: Path | None = None) -> Path:
     return path
 
 
+def keep_recording(
+    result: SuiteResult,
+    recorded: dict | None,
+    *,
+    only: set[str] | None = None,
+    secret: str | None = None,
+    path: Path | None = None,
+) -> Path | None:
+    """`LEGION_AGENT_EVAL_RECORD=1`'s one door: writes the cassette ONLY for a whole live run
+    that passed. A failing run, a spend stop or an `only` subset returns None and the cassette
+    already on disk stays byte-for-byte as it was (stage 2 found a failing live run had
+    overwritten `voice21.json`: replay would then have graded a broken run as the reference).
+    `secret` (the key) must not appear in the recording; if it does, nothing is written."""
+    if recorded is None or only or result.stopped or not result.ok:
+        return None
+    recorded["graded"] = {c.id: [not r["reasons"] for r in c.runs] for c in result.cases}
+    if secret and secret in json.dumps(recorded):
+        raise ValueError("the recording holds the key; nothing was written")
+    return write_cassette(recorded, path)
+
+
 def read_cassette(suite: str) -> dict:
     return json.loads((CASSETTES / f"{suite}.json").read_text(encoding="utf-8"))

@@ -6,7 +6,7 @@
   must grade exactly as it did when recorded live, and the suite must still meet its bar.
 - **Live** (`test_voice21_live`): real Gemini, skipped unless `LEGION_AGENT_EVAL_LIVE=1` and
   `LEGION_GEMINI_KEY_FILE` names a key file (never printed). Run by the laptop ship script on a
-  throwaway Postgres; `LEGION_AGENT_EVAL_RECORD=1` rewrites the cassette;
+  throwaway Postgres; `LEGION_AGENT_EVAL_RECORD=1` rewrites the cassette, only when the run passed;
   `LEGION_AGENT_EVAL_REPORT` names a scorecard file outside the repo.
 """
 
@@ -140,9 +140,40 @@ def test_homes_covers_every_ticket_03_tool():
     assert suite["runs"] == 3 and 0 < suite["bar"] <= 1
 
 
+# Suites written but not yet recorded live: their replay is skipped with this reason, never
+# faked. `records` (ticket 15) was written while the Gemini key was out of credit (HTTP 402);
+# recording it is the ship's live gate. An explicit list, so a deleted cassette of a recorded
+# suite still fails loudly instead of skipping.
+UNRECORDED_SUITES = {
+    "records": "not recorded yet: ticket 15's live run is DEFERRED (key out of credit)"
+}
+SUITES = sorted(p.stem for p in runner.CASES.glob("*.yaml"))
+
+
+def test_every_suite_is_recorded_or_named_unrecorded():
+    for name in SUITES:
+        has_cassette = (runner.CASSETTES / f"{name}.json").exists()
+        assert has_cassette != (name in UNRECORDED_SUITES), name
+
+
+def test_records_covers_every_ticket_15_tool():
+    suite = runner.load_suite("records")
+    called = set()
+    for case in suite["cases"]:
+        for turn in case["turns"]:
+            for entry in turn["expect"].get("calls", []):
+                called.update(entry.split("|"))
+    from homes.records_tools import RECORD_TOOLS
+
+    assert {t.name for t in RECORD_TOOLS} <= called
+    assert suite["runs"] == 3 and 0 < suite["bar"] <= 1
+
+
 @pytest.mark.django_db
-@pytest.mark.parametrize("name", ["voice21", "homes"])
+@pytest.mark.parametrize("name", SUITES)
 def test_suite_replays_from_its_cassette_and_grades_as_recorded(name, household_user, household_a):
+    if name in UNRECORDED_SUITES:
+        pytest.skip(UNRECORDED_SUITES[name])
     cassette = runner.read_cassette(name)
     suite = runner.load_suite(name)
     result, _ = runner.run_suite(suite, household_user, household_a, cassette=cassette)
@@ -153,7 +184,7 @@ def test_suite_replays_from_its_cassette_and_grades_as_recorded(name, household_
     assert result.rate >= result.bar, "\n".join(result.lines())
 
 
-@pytest.mark.parametrize("name", ["voice21", "homes"])
+@pytest.mark.parametrize("name", [n for n in SUITES if n not in UNRECORDED_SUITES])
 def test_the_cassette_holds_model_output_only(name):
     raw = (runner.CASSETTES / f"{name}.json").read_text(encoding="utf-8")
     for marker in ("x-goog-api-key", "generativelanguage.googleapis.com", "AIza", "Authorization"):
@@ -200,10 +231,85 @@ def test_voice21_live(household_user, household_a):
             "\n".join(lines) + "\n\n" + json.dumps(detail, indent=1, ensure_ascii=False),
             encoding="utf-8",
         )
-    if os.environ.get("LEGION_AGENT_EVAL_RECORD") and not only and not result.stopped:
-        recorded["graded"] = {c.id: [not r["reasons"] for r in c.runs] for c in result.cases}
-        text = json.dumps(recorded)
-        assert key not in text
-        runner.write_cassette(recorded)
+    if os.environ.get("LEGION_AGENT_EVAL_RECORD"):
+        # Only a whole passing run is kept (`runner.keep_recording`); a failing one never
+        # overwrites the cassette already on disk.
+        runner.keep_recording(result, recorded, only=only, secret=key)
     print("\n".join(lines))
     assert result.ok, "\n".join(lines)
+
+
+# =============================================================================
+# The record guard (stage 2's finding: a failing live run overwrote voice21.json)
+# =============================================================================
+
+
+class _Answers:
+    """A stand-in for the live model: every round answers `text`, no tool call."""
+
+    def __init__(self, text):
+        self.text = text
+
+    def stream(self, req):
+        from agents.runtime import model as m
+
+        yield from m.say(self.text)
+
+
+_GUARD_SUITE = {
+    "suite": "guard",
+    "bar": 1.0,
+    "runs": 1,
+    "cases": [
+        {"id": "hello", "turns": [{"say": "say hello", "expect": {"answer_has": ["hello"]}}]}
+    ],
+}
+
+
+@pytest.mark.django_db
+def test_a_failing_live_run_never_overwrites_the_cassette(household_user, household_a, tmp_path):
+    path = tmp_path / "guard.json"
+    path.write_text('{"kept": true}' + chr(10), encoding="utf-8")
+    before = path.read_bytes()
+    result, recorded = runner.run_suite(
+        _GUARD_SUITE, household_user, household_a, live_model=_Answers("goodbye")
+    )
+    assert not result.ok
+    assert runner.keep_recording(result, recorded, path=path) is None
+    assert path.read_bytes() == before
+
+
+@pytest.mark.django_db
+def test_a_passing_live_run_writes_the_cassette(household_user, household_a, tmp_path):
+    path = tmp_path / "guard.json"
+    path.write_text('{"kept": true}' + chr(10), encoding="utf-8")
+    result, recorded = runner.run_suite(
+        _GUARD_SUITE, household_user, household_a, live_model=_Answers("hello there")
+    )
+    assert result.ok
+    assert runner.keep_recording(result, recorded, path=path) == path
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert written["graded"] == {"hello": [True]}
+    assert written["runs"]["hello"]
+
+
+@pytest.mark.django_db
+def test_a_subset_or_a_spend_stop_never_writes(household_user, household_a, tmp_path):
+    path = tmp_path / "guard.json"
+    result, recorded = runner.run_suite(
+        _GUARD_SUITE, household_user, household_a, live_model=_Answers("hello")
+    )
+    assert runner.keep_recording(result, recorded, only={"hello"}, path=path) is None
+    result.stopped = "spend stop"
+    assert runner.keep_recording(result, recorded, path=path) is None
+    assert not path.exists()
+
+
+def test_a_recording_holding_the_key_is_never_written(tmp_path):
+    result = runner.SuiteResult("guard", 0.0, [])  # a passing (empty) run
+    path = tmp_path / "guard.json"
+    with pytest.raises(ValueError):
+        runner.keep_recording(
+            result, {"suite": "guard", "runs": {"x": "AIzaFAKE"}}, secret="AIzaFAKE", path=path
+        )
+    assert not path.exists()
