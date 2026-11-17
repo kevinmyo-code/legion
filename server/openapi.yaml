@@ -4,6 +4,90 @@ info:
   version: 0.1.0
   description: The engine. One Django server, every limb a client of it.
 paths:
+  /api/agents/probe/sse:
+    get:
+      operationId: api_agents_probe_sse
+      summary: Five events 200 ms apart, to measure streaming through Cloud Run
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: 'text/event-stream: probe x5'
+  /api/agents/turn:
+    post:
+      operationId: api_agents_turn_create
+      summary: 'One agent turn, answered as Server-Sent Events (dark: off unless switched
+        on)'
+      tags:
+      - agents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TurnRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TurnRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TurnRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: 'text/event-stream: turn, sentence, tool, done'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The agent turn is switched off.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No Gemini key on this engine.
+  /api/agents/turn/{turn_id}/cancel:
+    post:
+      operationId: api_agents_turn_cancel
+      summary: Cancel the member's own running turn
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/assistant/companion:
     get:
       operationId: api_assistant_companion_retrieve
@@ -15051,6 +15135,16 @@ components:
           maxLength: 500
       required:
       - name
+    ClientEnum:
+      enum:
+      - phone
+      - web
+      - headunit
+      type: string
+      description: |-
+        * `phone` - phone
+        * `web` - web
+        * `headunit` - headunit
     CodeClearEvent:
       type: object
       description: |-
@@ -23166,6 +23260,22 @@ components:
       - day
       - trend_lbs
       - weight_lbs
+    TurnRequest:
+      type: object
+      properties:
+        transcript:
+          type: string
+          maxLength: 4000
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+        client:
+          allOf:
+          - $ref: '#/components/schemas/ClientEnum'
+          default: phone
+      required:
+      - transcript
     UntilReasonEnum:
       enum:
       - next_income

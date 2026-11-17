@@ -4,6 +4,57 @@
  */
 
 export interface paths {
+    "/api/agents/probe/sse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Five events 200 ms apart, to measure streaming through Cloud Run */
+        get: operations["api_agents_probe_sse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** One agent turn, answered as Server-Sent Events (dark: off unless switched on) */
+        post: operations["api_agents_turn_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/turn/{turn_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel the member's own running turn */
+        post: operations["api_agents_turn_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assistant/companion": {
         parameters: {
             query?: never;
@@ -6491,6 +6542,13 @@ export interface components {
             params?: string | null;
         };
         /**
+         * @description * `phone` - phone
+         *     * `web` - web
+         *     * `headunit` - headunit
+         * @enum {string}
+         */
+        ClientEnum: "phone" | "web" | "headunit";
+        /**
          * @description Field-for-field `RemoteCodeClearEvent` / `CodeClearEventUpload`: the
          *     outcome of one Mode 04 clear-codes send.
          *
@@ -10344,6 +10402,13 @@ export interface components {
             /** Format: double */
             trend_lbs: number;
         };
+        TurnRequest: {
+            transcript: string;
+            /** Format: uuid */
+            conversation_id?: string | null;
+            /** @default phone */
+            client: components["schemas"]["ClientEnum"];
+        };
         /**
          * @description * `next_income` - next_income
          *     * `30_days` - 30_days
@@ -10776,6 +10841,103 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    api_agents_probe_sse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description text/event-stream: probe x5 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    api_agents_turn_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TurnRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["TurnRequest"];
+                "multipart/form-data": components["schemas"]["TurnRequest"];
+            };
+        };
+        responses: {
+            /** @description text/event-stream: turn, sentence, tool, done */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The agent turn is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No Gemini key on this engine. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_assistant_companion_retrieve: {
         parameters: {
             query?: never;
