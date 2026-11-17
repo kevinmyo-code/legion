@@ -185,6 +185,16 @@ object NetCashText {
             "pending charges counted as spent.$pending$saved"
     }
 
+    /**
+     * Rides beside `say_first` in `get_balance`'s result (stage 7 money gate, 2026-11-16: flash-lite
+     * gave the figure without its time 3 of 3, and left the missing card unnamed 3 of 3). Result text,
+     * not a tool description, so the setup payload is unchanged.
+     */
+    const val SAY_RULE = "Asked how much he has, say say_first first and whole: the net cash figure with its " +
+        "'as of' time, and 'over a day old' when it says so; or, when it says there is no figure, name the " +
+        "account it says is missing and give no total. Never add the balances below into a total yourself: " +
+        "they leave out pending charges."
+
     const val LABEL = "net cash"
     const val NO_FIGURE = "No figure"
 }

@@ -2717,6 +2717,7 @@ object LiveToolbox {
         if (matched.isEmpty()) {
             if (cashLead != null && cash?.valueOrNull?.netCents != null) {
                 return JSONObject().put("success", true).put("say_first", cashLead)
+                    .put("rule", com.kevin.legion.finance.NetCashText.SAY_RULE)
             }
             return result(success = false, message = "No ledger accounts on file yet - import a statement first.")
         }
@@ -2775,7 +2776,10 @@ object LiveToolbox {
         val answer = JSONObject().put("success", true)
         // First key, so the model reads it first; the per-account figures below leave out the
         // bank's pending charges, which net cash counts.
-        cashLead?.let { answer.put("say_first", it) }
+        cashLead?.let {
+            answer.put("say_first", it)
+            answer.put("rule", com.kevin.legion.finance.NetCashText.SAY_RULE)
+        }
         return answer.put("balances", balances)
     }
 

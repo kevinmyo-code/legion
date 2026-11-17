@@ -42,6 +42,14 @@ class NetCashTextTest {
     )
 
     @Test
+    fun `the rule beside say_first asks for the as-of time, the missing account and no sum of its own`() {
+        val r = NetCashText.SAY_RULE
+        for (w in listOf("say_first first", "'as of' time", "over a day old", "missing", "no total", "Never add")) {
+            assertTrue(w, r.contains(w))
+        }
+    }
+
+    @Test
     fun `a fresh figure says its as-of time and is not flagged`() {
         val m = NetCashText.model(FinanceRead.Fresh(body), floorCents = null, now = now, zone = zone)
         assertTrue(m.hasFigure)
