@@ -181,7 +181,12 @@ specifically so the earlier loss cannot repeat. Commit map and ticket changes li
 
 Kotlin + Compose, single `app` module, Room as the phone's replica, a cascade voice (speech-to-text,
 a Gemini text model with tools, text-to-speech; Gemini Live retired on the phone, ADR 0092),
-and the household's Django engine over Postgres as the system of record (§7, ADR 0044). **Read
+and the household's Django engine over Postgres as the system of record (§7, ADR 0044). **Alfred's
+brain moves to the engine (Kevin, 2026-11-17, ADR 0095):** the prompt, the router, the specialist
+agents (ADR 0096) and the model-plus-tools loop run on the engine; the phone is a thin limb (ADR
+0098) that keeps wake word, speech-to-text, text-to-speech, barge-in, the crisis pre-check, the
+confirm UI, phone-only tools through the relay and the ID vault, with **no fallback brain**. Until
+the switch ships (`.scratch/engine-brain/`), the phone's cascade loop still answers. **Read
 `build.gradle.kts` and `gradle/libs.versions.toml` for what is actually in the build** - a list
 here would be wrong within a month, and has been.
 
@@ -373,7 +378,10 @@ here.
 - **Pull-based tools always.** New domains default to tools/sub-agents, not pre-injected context.
   **One bounded exception (Kevin, 2026-11-16, ADR 0093):** the voice cascade carries today's
   remaining events and the next 24 h of due work in his turns, withdrawn on the first write. No
-  other domain may cite it.
+  other domain may cite it. **Router-run reads count as pulled (Kevin, 2026-11-17, ADR 0097):** on
+  the engine, code may run the one read a question plainly asks for before the model's first
+  round, recorded as a tool call of that turn. Reads only; once they answer turns, the agenda block
+  retires.
 - **Lean Room migrations.** Copy generated SQL verbatim, additive only, no destructive fallback.
 - **The household hosts its own server; nothing Kevin-hosted for strangers.** AMENDED 2026-09-08
   (Kevin, ADR 0045): one engine may hold more than one household, and Kevin's engine holding
@@ -409,6 +417,13 @@ here.
   exclusion lives in `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` and is applied at the write sites rather
   than being a habit each new feature has to remember. Proposed in
   `.scratch/google-account-integration/issues/07-*.md` point 6 and accepted verbatim.
+  **AMENDED 2026-11-17 (Kevin, ADR 0099): the engine may read, draft and send his mail**
+  (*"can we give the engine access to my mail? read write draft send"*). Still read-through:
+  mail content is never stored on the engine either (not in turn state, checkpoints, traces, eval
+  candidates, memory, baselines or changes; a trace says only that a mail tool ran). Nothing acts in
+  a turn that read mail; a send needs a read-back of recipient, subject and gist and his yes in a
+  later turn; never from a scheduled agent, never over `/mcp`, never for a recruiter; the token lives
+  in Secret Manager. The Claude worker gets none of it; its carve-out below is unchanged.
 
   **CARVE-OUT 2026-09-01 (Kevin): a recording Kevin deliberately starts does not fall under this
   rule.** Asked directly whether it binds a recorded meeting: *"drop 7 entirely. we can keep all
@@ -436,7 +451,9 @@ here.
   read outside text (web search, the brief's news, GitHub titles anyone can write) may still read,
   but every write tool refuses in words and the change waits for the person's next message.
   `EngineTool.writes` is required, so no tool escapes the classification; the engine guards its own
-  doors (`read_through.write_refusal`) and the phone guards each `ask_engine` call.
+  doors (`read_through.write_refusal`) and the phone guards each `ask_engine` call. On the engine
+  brain the taint lives in the turn's state and every write, engine or relayed, passes one guard
+  (ADR 0098, ADR 0100).
 - **Memory lives on the engine, private to the member it is about (Kevin, 2026-11-05, ADR 0075).**
   *"centralized memory"*. One store (`member_memories`) for the phone, the web and the Claude
   worker on the Alienware (*"claude can write too."*); never a recruiter, never the work laptop.
@@ -528,7 +545,8 @@ here.
 - [ ] A write path? It is a Django endpoint first and a Kotlin caller second (ADR 0044). The phone
       never writes Postgres directly. An integrity rule that must hold even if Django has a bug is
       SQL shipped by a Django migration; a business rule lives in Django once, never also in Kotlin.
-- [ ] Server down? The phone still reads from Room, queues the write, and says so in words.
+- [ ] Server down? The phone still reads from Room, queues the write, and says so in words. Voice
+      says it cannot reach the engine and answers nothing else (ADR 0095).
 - [ ] New table, view or report? Scoped by household at the one choke point, listed in
       `household.tenancy.TENANT_TABLES`, and covered by the tenancy leak test (ADR 0045). A table
       that can hold private rows reads through `visible()` and is covered by `test_visibility.py`

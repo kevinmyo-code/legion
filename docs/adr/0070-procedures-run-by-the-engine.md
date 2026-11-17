@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-03
+amended: 2026-11-17
 decided-by: Kevin
 source: "[[decisions#2026-11-03 - Procedures: compiled multi-step answers, run by the engine (Kevin)]]"
 tags: [adr]
@@ -9,6 +10,8 @@ tags: [adr]
 # 70. Procedures: compiled multi-step answers, run by the engine
 
 ## Standing
+
+**AMENDED 2026-11-17 by [[0096-agent-graph-router-and-specialists]]:** a seventh step kind, `device` (a relayed phone read, reads only), and the router may start a procedure in code.
 
 **A recurring multi-step answer ("how's the car", "money", the morning briefing) is a procedure:
 a versioned DAG of steps stored in Postgres and run by the Django engine, reached by every client

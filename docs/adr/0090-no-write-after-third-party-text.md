@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-13
+amended: 2026-11-17
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-13 - Release and deploy from GitHub, no laptop; injection guard (Kevin)]]"
@@ -10,6 +11,8 @@ tags: [adr]
 # 90. No write tool runs in a turn that read third-party text
 
 ## Standing
+
+**AMENDED 2026-11-17 by [[0098-limbs-device-contract-and-relay]] and [[0099-engine-mail-read-draft-send]]:** on the engine, taint is carried in the turn's state; mail reads and relayed read-through tools taint the turn, and relayed writes are refused on the engine and checked again on the limb.
 
 **A turn that read outside text may keep reading, but every write tool refuses in words, and the
 change waits for the person's next message.** Outside text is what a third-party tool returns:

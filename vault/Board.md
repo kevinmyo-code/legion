@@ -54,6 +54,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/django-engine/map\|django-engine]] | [[17-conversation-audit-uploads-are-dead\|17]] | build | Conversation-audit uploads have been failing since the tenancy migration |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[01-measure\|01]] | build | Measure: the engine hop, Gemini from the engine, SSE through Cloud Run, Postgres, cold start, warm at wake |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[02-runtime-and-evals\|02]] | build | Runtime and evals, dark: the agent package, graph, guards, traces, eval runner, day read twins |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[03-engine-homes-for-room-only-data\|03]] | build | Engine homes for Room-only data before the phone loop goes |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[04-adr-0035-amendment\|04]] | decision | Amend ADR 0035: where a hands path is allowed to live |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[06-what-the-pc-surface-constrains\|06]] | grilling | What the PC surface constrains, and what it does not |
@@ -315,6 +318,17 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/django-engine/map\|django-engine]] | [[10-cutover\|10]] | build | Cutover: one evening, counted, reversible for thirty days  waiting on [[03-the-gate-in-python\|03]], [[04-domain-api-and-changes-feed\|04]], [[05-media-photos-and-audio\|05]], [[09-android-http-backends\|09]] |
 | [[.scratch/django-engine/map\|django-engine]] | [[11-fresh-clone-end-to-end\|11]] | test | Fresh clone, end to end: the clone-and-run test in its new shape  waiting on [[10-cutover\|10]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[04-limb-contract-relay-and-switch\|04]] | build | The switch: limb contract, relay, SSE turns, per-member flag  waiting on [[02-runtime-and-evals\|02]], [[03-engine-homes-for-room-only-data\|03]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[05-mail-on-the-engine\|05]] | build | Mail on the engine: read, draft, send with the safeguards  waiting on [[04-limb-contract-relay-and-switch\|04]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[06-specialists-router-and-router-run-reads\|06]] | build | Specialists, code router and router-run reads  waiting on [[04-limb-contract-relay-and-switch\|04]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[07-retire-the-phone-brain\|07]] | build | Retire the phone brain: the phone becomes a thin limb  waiting on [[03-engine-homes-for-room-only-data\|03]], [[05-mail-on-the-engine\|05]], [[06-specialists-router-and-router-run-reads\|06]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[08-engine-native-writes\|08]] | build | Engine-native write twins; the relay shrinks to device tools  waiting on [[07-retire-the-phone-brain\|07]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[09-derived-knowledge\|09]] | build | Derived knowledge: five baselines and the change log; the greeting picker moves to the engine  waiting on [[06-specialists-router-and-router-run-reads\|06]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[10-procedures-device-step\|10]] | build | Procedures: router-direct starts and the device step  waiting on [[06-specialists-router-and-router-run-reads\|06]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[11-telemetry-obd-via-phone\|11]] | build | Telemetry: the phone relays the OBD stream to the engine  waiting on [[04-limb-contract-relay-and-switch\|04]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[12-evening-due-sweep\|12]] | build | First scheduled agent: the evening due sweep  waiting on [[09-derived-knowledge\|09]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[13-web-on-the-engine\|13]] | build | Web assistant onto the engine's turn endpoint  waiting on [[07-retire-the-phone-brain\|07]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[14-headunit-thin-limb\|14]] | build | Head unit as a thin limb  waiting on [[13-web-on-the-engine\|13]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[11-the-phone-bridges-engine-tools\|11]] | build | The phone bridges engine tools into its Live session  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[12-oauth-for-third-party-clients\|12]] | build | OAuth for third-party clients  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[04-energy-calculator\|04]] | build | Engine: the energy estimate  waiting on [[03-body-profile\|03]] |
@@ -496,6 +510,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | 15 | 14 | [[.scratch/engine-brain/engine-brain.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | 26 | 21 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |

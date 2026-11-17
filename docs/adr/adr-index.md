@@ -74,9 +74,9 @@ Format and the test for whether something deserves an ADR:
 | 0067 | [[0067-claude-session-on-the-laptops\|Claude session: Alfred hands tasks to Claude Code on Kevin's laptops]] | accepted | 2026-10-29 | 2026-11-10 |
 | 0068 | [[0068-recruiter-role-narrows-only\|Recruiter is a third household role, and it only narrows]] | amended | 2026-11-02 | 2026-11-02 |
 | 0069 | [[0069-each-recruiter-visit-gets-its-own-household\|Each recruiter visit gets its own household, and only there may a gated row be deleted]] | accepted | 2026-11-02 | - |
-| 0070 | [[0070-procedures-run-by-the-engine\|Procedures: compiled multi-step answers, run by the engine]] | accepted | 2026-11-03 | - |
+| 0070 | [[0070-procedures-run-by-the-engine\|Procedures: compiled multi-step answers, run by the engine]] | accepted | 2026-11-03 | 2026-11-17 |
 | 0071 | [[0071-voice-browser\|LEGION has its own browser, and Alfred drives it by voice]] | accepted | 2026-11-03 | - |
-| 0072 | [[0072-alfred-pack-and-self-update\|Alfred's wording comes from the engine; the phone updates itself, and asks first]] | accepted | 2026-11-05 | - |
+| 0072 | [[0072-alfred-pack-and-self-update\|Alfred's wording comes from the engine; the phone updates itself, and asks first]] | accepted | 2026-11-05 | 2026-11-17 |
 | 0073 | [[0073-household-finance\|Household finance: layers, internal transfers, floors and estimates]] | accepted | 2026-11-05 | - |
 | 0074 | [[0074-alfred-builds-alfred\|Alfred builds Alfred: one yes ships a change]] | accepted | 2026-11-05 | - |
 | 0075 | [[0075-memory-lives-on-the-engine\|Memory lives on the engine, private to the member it is about]] | accepted | 2026-11-05 | - |
@@ -90,14 +90,21 @@ Format and the test for whether something deserves an ADR:
 | 0083 | [[0083-standing-watches\|Standing watches: typed rules on the engine, said once on the phone]] | accepted | 2026-11-10 | - |
 | 0084 | [[0084-alfred-looks-through-the-phone-camera\|Alfred looks through the phone camera, parked, and what he sees is an estimate he never keeps]] | accepted | 2026-11-10 | - |
 | 0085 | [[0085-open-loops-are-proposed-never-asserted\|Open loops are proposed from his own words, never asserted, and nothing is tracked without his yes]] | accepted | 2026-11-10 | - |
-| 0086 | [[0086-alfred-drafts-email-kevin-sends\|Alfred drafts email in Kevin's Gmail; it sends only on Kevin's own "send"]] | accepted | 2026-11-10 | - |
-| 0087 | [[0087-live-surface-diet-and-scripted-opening\|The Live tool surface is a budget; a tap opens the mic with a scripted line]] | accepted | 2026-11-10 | - |
+| 0086 | [[0086-alfred-drafts-email-kevin-sends\|Alfred drafts email in Kevin's Gmail; it sends only on Kevin's own "send"]] | accepted | 2026-11-10 | 2026-11-17 |
+| 0087 | [[0087-live-surface-diet-and-scripted-opening\|The Live tool surface is a budget; a tap opens the mic with a scripted line]] | accepted | 2026-11-10 | 2026-11-17 |
 | 0088 | [[0088-simple-commands-on-the-phone\|Simple commands are done on the phone; everything else goes to Alfred unchanged]] | accepted | 2026-11-10 | - |
 | 0089 | [[0089-receipts-retired\|Receipt photos are retired]] | accepted | 2026-11-12 | - |
-| 0090 | [[0090-no-write-after-third-party-text\|No write tool runs in a turn that read third-party text]] | accepted | 2026-11-13 | - |
+| 0090 | [[0090-no-write-after-third-party-text\|No write tool runs in a turn that read third-party text]] | accepted | 2026-11-13 | 2026-11-17 |
 | 0091 | [[0091-alfred-greets-from-your-real-day\|Alfred greets like a person, from facts about your real day]] | accepted | 2026-11-13 | - |
-| 0092 | [[0092-phone-voice-is-a-cascade-live-retired\|The phone's voice is a cascade; Gemini Live is retired]] | accepted | 2026-11-15 | - |
-| 0093 | [[0093-voice-agenda-block-is-a-bounded-push-exception\|Today's agenda rides in the voice turn: a bounded exception to pull-based tools]] | accepted | 2026-11-16 | - |
+| 0092 | [[0092-phone-voice-is-a-cascade-live-retired\|The phone's voice is a cascade; Gemini Live is retired]] | accepted | 2026-11-15 | 2026-11-17 |
+| 0093 | [[0093-voice-agenda-block-is-a-bounded-push-exception\|Today's agenda rides in the voice turn: a bounded exception to pull-based tools]] | accepted | 2026-11-16 | 2026-11-17 |
+| 0095 | [[0095-alfreds-brain-runs-on-the-engine\|Alfred's model loop runs on the engine; the phone is a thin limb]] | accepted | 2026-11-17 | - |
+| 0096 | [[0096-agent-graph-router-and-specialists\|The agent graph: a code router, a specialist per domain, a generalist for misses]] | accepted | 2026-11-17 | - |
+| 0097 | [[0097-router-run-reads\|Router-run reads: code may run the read a question plainly asks for]] | accepted | 2026-11-17 | - |
+| 0098 | [[0098-limbs-device-contract-and-relay\|Limbs: one device contract, and a relay for what only a device can do]] | accepted | 2026-11-17 | - |
+| 0099 | [[0099-engine-mail-read-draft-send\|The engine reads, drafts and sends Kevin's mail, read-through only]] | accepted | 2026-11-17 | - |
+| 0100 | [[0100-agent-runtime-traces-and-eval-gates\|The agent runtime is a reusable package; traces and eval suites gate every release]] | accepted | 2026-11-17 | - |
+| 0101 | [[0101-derived-knowledge-baselines-and-changes\|Derived knowledge: baselines and changes, computed by code, never raw data in memory]] | accepted | 2026-11-17 | - |
 
 ## Superseded
 
