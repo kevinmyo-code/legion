@@ -103,6 +103,17 @@ class HomesRowsTest {
         assertEquals(JsonPrimitive(false), raise["declined"])
     }
 
+    @Test
+    fun aClaudeTaskResultIsNotCopiedIntoTheRaiseTheEngineKeeps() {
+        val row = ProactiveRaiseRow(
+            ruleId = "claude_task_result_41", category = "claude_tasks", reason = "Your test order ships Friday",
+            spokenAt = dayMs,
+        )
+        val sent = HomesRows.raise(row)["reason"].toString()
+        assertTrue(sent.contains("Claude task 41"))
+        assertFalse(sent.contains("ships"))
+    }
+
     // -- the backfill's paging ------------------------------------------------------------------
 
     private class FakeBackend(private val failOnCall: Int = -1) : HomesBackend {

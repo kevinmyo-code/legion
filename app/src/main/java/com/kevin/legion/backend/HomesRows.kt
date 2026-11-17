@@ -100,11 +100,23 @@ object HomesRows {
         }
     }
 
+    /** A Claude task's result text already lives on the engine with its task, kept 30 days (ADR
+     * 0067), and may answer from his mail (CLAUDE.md section 7's carve-out). The raise row the
+     * engine keeps names the task instead of holding a second, longer-lived copy of that text. */
+    private const val CLAUDE_RESULT_RULE = "claude_task_result_"
+
     fun raise(row: ProactiveRaiseRow): JsonObject = buildJsonObject {
         put(ORIGIN_GUID, raiseGuid(row.ruleId, row.spokenAt))
         put("rule_id", row.ruleId)
         put("category", row.category)
-        put("reason", row.reason)
+        put(
+            "reason",
+            if (row.ruleId.startsWith(CLAUDE_RESULT_RULE)) {
+                "Claude task ${row.ruleId.removePrefix(CLAUDE_RESULT_RULE)} finished; its result is with the task"
+            } else {
+                row.reason
+            },
+        )
         put("spoken_at", iso(row.spokenAt))
         put("declined", row.declined)
         put("delivery", row.delivery)
