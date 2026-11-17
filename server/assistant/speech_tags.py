@@ -85,11 +85,19 @@ def has_tag(text: str) -> bool:
     return bool(_TAG.search(text or ""))
 
 
+# Section 9 (measured): a tag on a short line stretched a five-word sign-off from 2.3 s to 4-5 s.
+MIN_TAGGED_WORDS = 8
+# A reply that reads out a list gets no tag (Kevin's one "too much" vote, section 11).
+_LIST = re.compile(r"(,[^,]+){2,}\band\b|\b(first|second|third)\b.*\b(then|and)\b", re.I)
+
+
 def casual(plain: str) -> bool:
-    """A sentence a tag may go on: no figure, date or time, not a refusal, not a confirmation of
-    a change (`voice-persona-1117.md` section 3)."""
+    """A sentence a tag may go on: at least eight words, no figure, date or time, not a list, not
+    a refusal, not a confirmation of a change (`voice-persona-1117.md` sections 3, 9 and 11)."""
     return not (
-        _FIGURE.search(plain)
+        len(plain.split()) < MIN_TAGGED_WORDS
+        or _LIST.search(plain)
+        or _FIGURE.search(plain)
         or _DATE.search(plain)
         or _REFUSAL.search(plain)
         or (plain.rstrip().endswith("?") and _CHANGE.search(plain))

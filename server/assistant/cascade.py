@@ -522,8 +522,10 @@ class Speaker:
             self._submit(spoken)
             return
         if not self._first_out:
-            # The answer's first clause is spoken as soon as it exists (section 8.2).
+            # The answer's first clause is spoken as soon as it exists (section 8.2), and with no
+            # tag: tags stay off an answer's first sentence (section 9).
             self._first_out = True
+            spoken = self.spoken_text(text, expressive=False)
             head, rest = first_clause(spoken)
             self._submit(head)
             if rest:

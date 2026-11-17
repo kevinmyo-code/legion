@@ -42,18 +42,36 @@ def test_strip_removes_every_tag_and_tidies_the_spaces():
 
 
 def test_only_allowed_tags_are_spoken_and_long_pause_is_not_one():
-    assert speech_tags.for_speech("Well <long pause> then.") == "Well then."
-    assert speech_tags.for_speech("Well <applause> then.") == "Well then."
-    assert speech_tags.for_speech("Well <scream> then.") == "Well then."
-    assert speech_tags.for_speech("Well <SIGH> then.") == "Well <sigh> then."
-    assert speech_tags.for_speech("Well <throat-clearing> then.") == "Well <throat-clearing> then."
+    rest = "then we can look at the rest of it."
+    assert speech_tags.for_speech(f"Well <long pause> {rest}") == f"Well {rest}"
+    assert speech_tags.for_speech(f"Well <applause> {rest}") == f"Well {rest}"
+    assert speech_tags.for_speech(f"Well <scream> {rest}") == f"Well {rest}"
+    assert speech_tags.for_speech(f"Well <SIGH> {rest}") == f"Well <sigh> {rest}"
+    assert speech_tags.for_speech(f"Well <throat-clearing> {rest}") == (
+        f"Well <throat-clearing> {rest}"
+    )
     assert "<long pause>" not in speech_tags.ALLOWED
 
 
 def test_one_tag_a_sentence_and_no_cap_a_reply():
-    assert speech_tags.for_speech("<chuckle> Fine, <laugh> fine.") == "<chuckle> Fine, fine."
-    said = [speech_tags.for_speech(f"<sigh> Line {word}.") for word in ("one", "two", "three")]
-    assert said == ["<sigh> Line one.", "<sigh> Line two.", "<sigh> Line three."]
+    assert speech_tags.for_speech(
+        "<chuckle> Fine, <laugh> fine, then we can look at the rest of it."
+    ) == ("<chuckle> Fine, fine, then we can look at the rest of it.")
+    said = [
+        speech_tags.for_speech(f"<sigh> Line {w}, then we can look at the rest of it.")
+        for w in ("one", "two", "three")
+    ]
+    assert said == [
+        f"<sigh> Line {w}, then we can look at the rest of it." for w in ("one", "two", "three")
+    ]
+
+
+def test_no_tag_on_a_short_line_or_a_list():
+    # Section 9: a tag on a five-word line stretched it to twice its length.
+    assert speech_tags.for_speech("<chuckle> Enjoy your evening.") == "Enjoy your evening."
+    # Section 11: the reply that read out a list was "too much" with tags.
+    line = "<sigh> You have milk, eggs, bread and two kinds of cheese on there."
+    assert not speech_tags.has_tag(speech_tags.for_speech(line))
 
 
 @pytest.mark.parametrize(
@@ -74,7 +92,8 @@ def test_a_figure_date_time_refusal_or_confirmation_keeps_no_tag(sentence):
 
 
 def test_a_casual_question_may_keep_its_tag():
-    assert speech_tags.for_speech("<chuckle> Long week?") == "<chuckle> Long week?"
+    line = "<chuckle> Long week at the office for you, was it?"
+    assert speech_tags.for_speech(line) == line
 
 
 def test_a_code_line_that_is_not_expressive_is_spoken_plain():
@@ -112,14 +131,17 @@ def test_the_model_is_told_the_tags_once():
 
 
 def test_a_model_tag_is_spoken_but_never_shown_stored_or_sent_back(member, engine):
-    engine.model = FakeModel([say("<chuckle> The calendar is empty. <laugh> Enjoy it.")])
+    engine.model = FakeModel(
+        [say("<chuckle> The calendar is empty. <laugh> Enjoy the quiet evening while it lasts.")]
+    )
     events = _events(_post(member, audio=PCM))
     shown = [s["text"] for s in _of(events, "sentence")]
     assert shown and not any("<" in s for s in shown)
     done = _of(events, "done")[0]
     assert "<" not in done.get("final_text", "")
     spoken = [text for text, _voice in engine.speech.spoken]
-    assert sum(speech_tags.has_tag(t) for t in spoken) == 2  # one per sentence, no cap
+    # Never on an answer's first sentence (section 9); one on the second.
+    assert sum(t.count("<") for t in spoken) == 1
     # The record (and so the next turn's history) holds the words without tags.
     from tests.test_assistant_cascade import _record
 
@@ -151,23 +173,27 @@ def test_the_speaker_speaks_code_lines_plain_and_figures_rounded():
     speech = FakeSpeech()
     speaker = cascade.Speaker(speech, "Puck", enabled=True)
     speaker.add("<chuckle> Groceries were $2,333.61.")  # a verbatim line
-    speaker.add("<chuckle> Fine.", expressive=True)
-    speaker.add("<sigh> Fine again.", expressive=True)
+    speaker.add("<chuckle> Fine, then we can look at the rest of it.", expressive=True)
+    speaker.add("<sigh> Fine again, then we can look at the rest of it.", expressive=True)
     list(speaker.drain())
     speaker.close()
     said = [text for text, _voice in speech.spoken]
     # Two speak at once, so the order they reach speech is not fixed.
     # The first words alone, the rest of the round as one request; a tag per sentence.
     assert sorted(said) == sorted(
-        ["Groceries were about $2,330.", "<chuckle> Fine. <sigh> Fine again."]
+        [
+            "Groceries were about $2,330.",
+            "<chuckle> Fine, then we can look at the rest of it. <sigh> Fine again, then we can look at the rest of it.",
+        ]
     )
 
 
 def test_the_tour_shows_its_lines_plain_and_speaks_their_tag(visitor, engine):
     engine.speech.heard = "stop"
     events = _events(_post(visitor, tour=0, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == [speech_tags.untagged(tour.STOPPED_LINE)]
-    assert any("<chuckle>" in t for t, _v in engine.speech.spoken)
+    assert [s["text"] for s in _of(events, "sentence")] == [tour.STOPPED_LINE]
+    # Too short for a tag (section 9): said plain.
+    assert not any("<" in t for t, _v in engine.speech.spoken)
 
 
 def test_the_opening_is_shown_plain_and_spoken_with_its_tag(visitor, engine):

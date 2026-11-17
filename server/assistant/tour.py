@@ -33,7 +33,7 @@ RESUME_LINE = "And that's his one-page resume. To talk to him, his contact detai
 END_LINE = (
     "That's the tour. <short pause> Ask me anything else, or open the resume to get in touch."
 )
-STOPPED_LINE = "<chuckle> Okay, tour stopped. Ask me anything."
+STOPPED_LINE = "Okay, tour stopped. Ask me anything."
 # The tour's own code lines: the only tour sentences that may carry a tag.
 CODE_LINES = frozenset({LIVE_LINE, RESUME_LINE, END_LINE, STOPPED_LINE})
 

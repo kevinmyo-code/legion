@@ -317,6 +317,46 @@ describe('the demo', () => {
     expect(t.client.strip.costUsd).toBe(0.0021)
   })
 
+  it('a sentence that was not for it leaves the screen and the page listens again', async () => {
+    const t = build([
+      spoken('Hi.'),
+      {
+        ok: true,
+        events: stream([
+          { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } },
+          { type: 'heard', data: { text: 'Wow, listen to that voice.' } },
+          { type: 'done', data: { status: 'not_addressed', ignored: 'not_addressed' } },
+        ]),
+      },
+    ])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    const mine = t.client.getState().lines.filter((l) => l.kind === 'me')
+    expect(mine).toEqual([])
+    expect(t.client.ignoredTurns).toBe(1)
+    expect(t.client.getState().mic).toBe('on')
+  })
+
+  it('an unsure sentence shows the cue', async () => {
+    const t = build([
+      spoken('Hi.'),
+      {
+        ok: true,
+        events: stream([
+          { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } },
+          { type: 'heard', data: { text: 'Can you believe this?' } },
+          { type: 'done', data: { status: 'unsure', ignored: 'unsure', words: 'Were you talking to me? Say my name or tap to go on.' } },
+        ]),
+      },
+    ])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    const sys = t.client.getState().lines.filter((l) => l.kind === 'sys').map((l) => l.text)
+    expect(sys).toContain('Were you talking to me? Say my name or tap to go on.')
+  })
+
   it('a tapped question is answered aloud without opening the microphone', async () => {
     const t = build([spoken('He builds things.')])
     expect(t.client.ask('Tell me about Kevin.')).toBe(true)
