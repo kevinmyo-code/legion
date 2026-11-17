@@ -258,7 +258,7 @@ object LedgerController {
         )
         writeTransaction(context, row)
         // Engine-brain ticket 03: the engine home (`pending_transactions`), keyed by this row's syncId.
-        com.kevin.legion.backend.HomesSync.pendingLogged(context, row)
+        com.kevin.legion.backend.HomesWriteThrough.pendingLogged(context, row)
     }
 
     /** Every voice-logged pending row, most recently logged first - `list_pending_transactions`'s read. */
@@ -282,7 +282,7 @@ object LedgerController {
         val syncId = dao.pendingRows().firstOrNull { it.id == id }?.syncId
         val removed = dao.deletePendingById(id) > 0
         // Engine-brain ticket 03: clear the engine's copy too (queued if the engine is unreachable).
-        if (removed && syncId != null) com.kevin.legion.backend.HomesSync.pendingCleared(context, syncId)
+        if (removed && syncId != null) com.kevin.legion.backend.HomesWriteThrough.pendingCleared(context, syncId)
         return removed
     }
 

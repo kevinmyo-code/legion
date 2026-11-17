@@ -63,7 +63,7 @@ class HomesRowsTest {
             txnDate = dayMs, description = "Bagel", amountCents = -425, lineRef = "voice:p-1",
             ingestMethod = IngestMethod.UNRECONCILED, syncId = "p-1", pendingLoggedAt = dayMs,
         )
-        val back = HomesRows.pendingFromEngine(HomesRows.pending(pending)!!)!!
+        val back = HomesFromEngine.pending(HomesRows.pending(pending)!!)!!
         assertEquals(pending.copy(id = 0), back)
     }
 
@@ -80,7 +80,7 @@ class HomesRowsTest {
             put("updated_at", "2026-01-02T00:00:00Z")
             put("deleted_at", "2026-01-03T00:00:00Z")
         }
-        val goal = HomesRows.goalFromEngine(row, supersedesId = 5L)!!
+        val goal = HomesFromEngine.goal(row, supersedesId = 5L)!!
         assertEquals("g-2", goal.syncId)
         assertEquals(99L, goal.lineageId)
         assertEquals(5L, goal.supersedesId)
@@ -91,10 +91,14 @@ class HomesRowsTest {
     @Test
     fun adviceAndRaisesMapTheirColumns() {
         val advice = HomesRows.advice(
-            AdvisorAdvice(aspect = "bio", questionText = "q", gist = "g", adviceText = "a", createdAt = dayMs, syncId = "a-1"),
+            AdvisorAdvice(
+                aspect = "bio", questionText = "q", gist = "g", adviceText = "a", createdAt = dayMs, syncId = "a-1",
+            ),
         )
         assertEquals(JsonPrimitive("pending"), advice["outcome"])
-        val raise = HomesRows.raise(ProactiveRaiseRow(ruleId = "r", category = "timing", reason = "why", spokenAt = dayMs))
+        val raise = HomesRows.raise(
+            ProactiveRaiseRow(ruleId = "r", category = "timing", reason = "why", spokenAt = dayMs),
+        )
         assertEquals(JsonPrimitive(HomesRows.raiseGuid("r", dayMs)), raise["origin_guid"])
         assertEquals(JsonPrimitive(false), raise["declined"])
     }
@@ -114,7 +118,8 @@ class HomesRowsTest {
 
         override suspend fun delete(table: HomeTable, guid: String) = Result.success(Unit)
 
-        override suspend fun changedSince(table: HomeTable, sinceIso: String?) = Result.success(emptyList<JsonObject>())
+        override suspend fun changedSince(table: HomeTable, sinceIso: String?) =
+            Result.success(emptyList<JsonObject>())
     }
 
     private fun rows(n: Int) = List(n) { buildJsonObject { put("origin_guid", "r-$it") } }

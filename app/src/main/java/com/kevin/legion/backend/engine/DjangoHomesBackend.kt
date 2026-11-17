@@ -3,7 +3,7 @@ package com.kevin.legion.backend.engine
 import com.kevin.legion.backend.HomeTable
 import com.kevin.legion.backend.HomesBackend
 import com.kevin.legion.backend.HomesBatchResult
-import com.kevin.legion.backend.HomesRows
+import com.kevin.legion.backend.HomesFromEngine
 import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * [HomesBackend] over the engine's homes routes (`server/homes/views.py`, engine-brain ticket 03):
  * the generic synced shape per table (`GET ?since=`, `PUT`/`DELETE <origin_guid>/`) plus
  * `POST <table>/batch/` for the one-time backfill. Rows travel as [JsonObject]s built by
- * [HomesRows], so a table's wire shape lives in one place.
+ * `HomesRows`, so a table's wire shape lives in one place.
  */
 class DjangoHomesBackend(private val http: EngineHttp) : HomesBackend {
 
@@ -25,7 +25,7 @@ class DjangoHomesBackend(private val http: EngineHttp) : HomesBackend {
         http = http,
         path = table.path,
         rowSerializer = JsonObject.serializer(),
-        idOf = { HomesRows.guidOf(it).orEmpty() },
+        idOf = { HomesFromEngine.guidOf(it).orEmpty() },
     )
 
     override suspend fun batch(table: HomeTable, rows: List<JsonObject>): Result<HomesBatchResult> =

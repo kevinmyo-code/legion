@@ -319,7 +319,7 @@ object ProactiveBus {
         )
         val rowId = dao.insert(raised)
         // Engine-brain ticket 03: the engine's copy, so its `why_did_you_say_that` can answer.
-        com.kevin.legion.backend.HomesSync.raiseRecorded(context, raised)
+        com.kevin.legion.backend.HomesWriteThrough.raiseRecorded(context, raised)
 
         when (route) {
             ProactiveDelivery.Route.SPEAK -> {
@@ -427,6 +427,6 @@ object ProactiveBus {
      */
     suspend fun markDeclined(context: Context, ruleId: String) {
         CarDatabase.getDatabase(context).proactiveRaiseDao().markDeclined(ruleId)
-        com.kevin.legion.backend.HomesSync.raiseDeclined(context, ruleId)
+        com.kevin.legion.backend.HomesWriteThrough.raiseDeclined(context, ruleId)
     }
 }

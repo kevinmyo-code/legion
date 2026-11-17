@@ -31,7 +31,7 @@ class DjangoHomesBackendTest {
                    "failed": [{"origin_guid": "x", "detail": "no"}], "engine_count": 7, "says": "..."}""",
             )
         }
-        val rows = listOf(buildJsonObject { put("origin_guid", "p-1") }, buildJsonObject { put("origin_guid", "p-2") })
+        val rows = listOf("p-1", "p-2").map { guid -> buildJsonObject { put("origin_guid", guid) } }
 
         val result = backend(engine).batch(HomeTable.PENDING, rows).getOrThrow()
 
@@ -47,11 +47,15 @@ class DjangoHomesBackendTest {
 
     @Test
     fun `a clear of a row the engine never held is done, an unreachable engine is not`() = runBlocking {
-        val gone = EngineTestSupport.RecordingEngine { json("""{"detail": "Nothing was changed."}""", HttpStatusCode.NotFound) }
+        val gone = EngineTestSupport.RecordingEngine {
+            json("""{"detail": "Nothing was changed."}""", HttpStatusCode.NotFound)
+        }
         assertTrue(backend(gone).delete(HomeTable.PENDING, "p-1").isSuccess)
         assertTrue(gone.requests.single().url.encodedPath.endsWith("/api/ledger/pending/p-1/"))
 
-        val broken = EngineTestSupport.RecordingEngine { json("""{"detail": "boom"}""", HttpStatusCode.InternalServerError) }
+        val broken = EngineTestSupport.RecordingEngine {
+            json("""{"detail": "boom"}""", HttpStatusCode.InternalServerError)
+        }
         assertTrue(backend(broken).delete(HomeTable.PENDING, "p-1").isFailure)
     }
 }

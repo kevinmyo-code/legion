@@ -122,7 +122,7 @@ object GoalController {
             // LastAspectsWriteThrough's own class doc.
             val stored = LastAspectsWriteThrough.addGoal(context, goal)
             mirrorWeightGoal(context, stored)
-            com.kevin.legion.backend.HomesSync.goalLineageChanged(context, stored.lineageId)
+            com.kevin.legion.backend.HomesWriteThrough.goalLineageChanged(context, stored.lineageId)
             return SetOutcome.Created(stored)
         }
 
@@ -146,7 +146,7 @@ object GoalController {
         // live-sync ticket: write-through, same reasoning as the Created branch above.
         val stored = LastAspectsWriteThrough.addGoal(context, revision)
         mirrorWeightGoal(context, stored)
-        com.kevin.legion.backend.HomesSync.goalLineageChanged(context, stored.lineageId)
+        com.kevin.legion.backend.HomesWriteThrough.goalLineageChanged(context, stored.lineageId)
         return SetOutcome.Revised(stored, target)
     }
 
@@ -221,6 +221,6 @@ object GoalController {
         // LastAspectsWriteThrough.closeGoal's own doc comment.
         LastAspectsWriteThrough.closeGoal(context, lineageId, status, closedAt)
         // Engine-brain ticket 03: the engine home is `public.goals` through Django.
-        com.kevin.legion.backend.HomesSync.goalLineageChanged(context, lineageId)
+        com.kevin.legion.backend.HomesWriteThrough.goalLineageChanged(context, lineageId)
     }
 }
