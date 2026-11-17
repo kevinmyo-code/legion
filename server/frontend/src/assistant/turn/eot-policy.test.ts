@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { BASE_MS, CAP_MS, EARLY_MS, EndOfTurnPolicy, GATE_MS, WINDOW_MS, type Action } from './eot-policy'
+
+// Fails fast, with its name, if anything hangs.
+vi.setConfig({ testTimeout: 10_000 })
 
 // The phone's EndOfTurnPolicyTest.kt, ported case for case, plus the web's speculation point.
 const speech = 0.9

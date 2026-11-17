@@ -3,11 +3,14 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import type * as Ort from 'onnxruntime-web'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { loadTurnDetector, type TurnDetector } from './detector'
 import { chunks, concat, silence } from './fixtures'
 import type { FromWorker, ToWorker } from './turn.worker'
+
+// Fails fast, with its name, if anything hangs.
+vi.setConfig({ testTimeout: 10_000 })
 
 /**
  * The real Silero VAD v6.2 (the site's own `public/turn/` copy) on onnxruntime-web, in Node:

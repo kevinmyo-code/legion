@@ -7,6 +7,9 @@ import { BargeInGate } from './turn/barge-in-gate'
 import type { TurnDetector, TurnHandlers } from './turn/detector'
 import { FakeAudio, settle } from '../test/fake-live'
 
+// Fails fast, with its name, if anything hangs.
+vi.setConfig({ testTimeout: 10_000 })
+
 /**
  * The browser's turn-taking wired into the conversation (the phone's barge-in, self-trigger guard,
  * speculation), and the demo's tour, funnel, prepare-in-the-tap and live strip. The detector is a

@@ -2,9 +2,12 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { N_FRAMES, N_MELS, WhisperLogMel } from './log-mel'
+
+// Fails fast, with its name, if anything hangs.
+vi.setConfig({ testTimeout: 10_000 })
 
 /**
  * The browser's Smart Turn features against Hugging Face's WhisperFeatureExtractor, on the phone's

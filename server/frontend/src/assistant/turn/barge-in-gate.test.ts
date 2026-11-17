@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   BargeInGate,
@@ -13,6 +13,9 @@ import {
   peakLevel,
   type GateEvent,
 } from './barge-in-gate'
+
+// Fails fast, with its name, if anything hangs.
+vi.setConfig({ testTimeout: 10_000 })
 
 // The phone's BargeInGateTest.kt, ported case for case (A25 numbers kept).
 const windows = SUSTAIN_WINDOWS

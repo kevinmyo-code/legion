@@ -137,6 +137,7 @@ class ModelDetector implements TurnDetector {
     }
     if (smart) {
       smart.onmessage = (e) => {
+        if (this.disposed) return
         if (e.data.type === 'score') this.act(this.policy.onCheckResult(e.data.checkId, e.data.score))
         else if (e.data.type === 'check-failed') this.act(this.policy.onCheckFailed(e.data.checkId))
       }
@@ -234,6 +235,7 @@ class ModelDetector implements TurnDetector {
   }
 
   private act(actions: Action[]) {
+    if (this.disposed) return
     for (const a of actions) {
       if (a.type === 'start') {
         if (!this.turn) this.beginTurn()

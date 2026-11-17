@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { BASE_MS, EARLY_MS } from './eot-policy'
 import { loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
@@ -22,8 +22,16 @@ class FakeWorker {
     this.answer = answer
   }
   postMessage(msg: ToWorker) {
+    if (this.terminated) return
     const reply = this.answer(msg)
-    if (reply) queueMicrotask(() => this.onmessage?.({ data: reply } as MessageEvent<FromWorker>))
+    if (!reply) return
+    // A Smart Turn check answers after a real model's time, on a timer: answered at once (a
+    // microtask), a "not done" score asks again at once, forever, and nothing else ever runs.
+    const deliver = () => {
+      if (!this.terminated) this.onmessage?.({ data: reply } as MessageEvent<FromWorker>)
+    }
+    if (msg.type === 'check') setTimeout(deliver, 5)
+    else queueMicrotask(deliver)
   }
   terminate() {
     this.terminated = true
@@ -93,9 +101,19 @@ async function play(detector: TurnDetector, pcm: Int16Array, listening: boolean,
   }
 }
 
+// Every test here fails fast, with its name, if anything hangs.
+vi.setConfig({ testTimeout: 10_000 })
+
+const opened: TurnDetector[] = []
+afterEach(() => {
+  // Nothing outlives its test: no worker, no timer.
+  while (opened.length) opened.pop()!.dispose()
+})
+
 async function load(options: Parameters<typeof fakeWorkers>[0] = {}) {
   const { makeWorker, made } = fakeWorkers(options)
   const detector = await loadTurnDetector({ makeWorker, sileroUrl: '/turn/s.onnx', smartUrl: '/turn/t.onnx' }, 1000)
+  if (detector) opened.push(detector)
   return { detector, made }
 }
 
