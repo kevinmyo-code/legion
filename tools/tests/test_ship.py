@@ -86,6 +86,15 @@ def test_every_passed_switch_is_read_by_the_server():
         assert name in SERVER_READS or name in switches, f"{name} is passed but nothing reads it"
 
 
+def test_the_web_voice_switch_is_passed_only_when_set():
+    """ADR 0102: the web assistant's engine is a code default (cascade); the rollback to Live is one
+    `.env` line per role, passed to Cloud Run only when it is set."""
+    for name in ("LEGION_WEB_VOICE", "LEGION_WEB_VOICE_RECRUITER"):
+        assert name in _common.OPTIONAL_PLAIN_ENV_VARS
+        assert name in SERVER_READS
+        assert name not in _common.PLAIN_ENV_VARS
+
+
 def test_flags_yaml_rejects_unquoted_booleans():
     with pytest.raises(ship.Stop):
         ship.load_flags("flags:\n  LEGION_X: on\n")

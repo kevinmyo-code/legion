@@ -212,9 +212,9 @@ def test_a_typed_turn_answers_in_text_and_speaks_nothing(member, engine):
     # in the turn, never in the cached prefix.
     sent = engine.model.requests[0]
     assert "This conversation started" not in sent.system
-    assert sent.contents[-1]["parts"][0]["text"].startswith("[Context, not said by the person:")
+    assert sent.contents[-1]["parts"][0]["text"].startswith("(Current context, use naturally")
     assert sent.contents[-1]["parts"][-1]["text"] == "Anything on today?"
-    assert {d["name"] for d in sent.declarations} == set(WEB_TOOL_NAMES)
+    assert {d["name"] for d in sent.declarations} == set(WEB_TOOL_NAMES) | {cascade.END_TOOL}
     assert "behavior" not in sent.declarations[0]
 
 
@@ -662,3 +662,30 @@ def test_quiet_audio_is_not_sent_for_transcription():
     quiet = b"\x05\x00" * 16_000
     heard = GeminiSpeech(lambda: "k", stt_model="m", transport=NoNetwork()).transcribe(quiet)
     assert heard.text == ""
+
+
+def test_a_filler_only_answer_after_a_tool_is_asked_once_more_without_tools(member, engine):
+    engine.model = FakeModel(
+        [call("list_events", {}), say("Checking now."), say("Your day is clear.")]
+    )
+    events = _events(_post(member, text="Anything today?"))
+    assert [s["text"] for s in _of(events, "sentence")] == ["Your day is clear."]
+    again = engine.model.requests[2]
+    assert again.allow_tools is False
+    assert again.contents[-1]["parts"][0]["text"] == cascade.FILLER_NOTE
+
+
+@pytest.mark.parametrize(
+    "line,filler",
+    [
+        ("Checking now.", True),
+        ("Looking into it.", True),
+        ("One moment.", True),
+        ("Looking good.", False),
+        ("On it, timer set.", False),
+        ("Checking: two codes.", False),
+        ("", False),
+    ],
+)
+def test_filler_lines_match_the_phones_rule(line, filler):
+    assert cascade.is_filler(line) is filler

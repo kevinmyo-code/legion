@@ -77,6 +77,7 @@ from agents.runtime.budget import BudgetUsed, LoopLimits
 from agents.runtime.loop import (
     BUDGET_WORDS,
     MODEL_WORDS,
+    NO_ANSWER_WORDS,
     TIMEOUT_WORDS,
     LoopHooks,
     SentenceSplitter,
@@ -192,8 +193,45 @@ def has_money(sentence: str) -> bool:
     return any(_number_word(a) and _number_word(b) for a, b in zip(words, words[1:], strict=False))
 
 
+# The phone's `FillerTurn` (spec 23): a line of at most four words that opens with a filler opener
+# and, after it, only a word that keeps it filler ("Checking now.", "Looking into it.").
+FILLER_OPENERS = (
+    "checking",
+    "looking",
+    "let me look",
+    "let me check",
+    "one moment",
+    "just a moment",
+    "on it",
+    "hold on",
+)
+FILLER_TAIL_START = frozenset(
+    "now into at up for the that this it your those on over through please again".split()
+)
+FILLER_MAX_WORDS = 4
+# The phone's `FillerTurn.NOTE`, with "him" made "them".
+FILLER_NOTE = (
+    "(System note: the lookup is finished. Give them the answer now, from the tool results "
+    "above, in plain words. If it could not be done or the results do not say, tell them that "
+    "plainly. Do not say you are checking or looking.)"
+)
+
+
 def is_filler(sentence: str) -> bool:
-    return sentence.strip().lower() in {f.lower() for f in FILLERS}
+    """True when `sentence` is nothing but filler. Blank is not filler."""
+    core = re.sub(r"[.!?…]+$", "", sentence.strip().lower()).strip()
+    if not core:
+        return False
+    if any(c in ",;:" or c.isdigit() for c in core):
+        return False
+    words = core.split()
+    if len(words) > FILLER_MAX_WORDS:
+        return False
+    opener = next((o for o in FILLER_OPENERS if core == o or core.startswith(o + " ")), None)
+    if opener is None:
+        return False
+    tail = core[len(opener) :].strip()
+    return not tail or tail.split()[0] in FILLER_TAIL_START
 
 
 # ---- fillers kept in memory (spec 22) ----------------------------------------------------------
@@ -654,6 +692,7 @@ def _answer(
     first_sentence = None
     verbatim_said = False
     filler_said = False
+    filler_dropped = 0
     money_dropped = 0
     sentences = 0
 
@@ -704,7 +743,11 @@ def _answer(
                 continue
             if event.type == "sentence":
                 text = event.data["text"]
+                if text == NO_ANSWER_WORDS:
+                    # The runtime's line for a turn with no words: the phone's own (spec 31).
+                    text = NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED)
                 if sentences == 0 and is_filler(text):
+                    filler_dropped += 1
                     continue
                 if verbatim_said and has_money(text):
                     money_dropped += 1
@@ -734,6 +777,23 @@ def _answer(
 
     report.status = result.status if result is not None else "cancelled"
     failure = _failure_words(result, door)
+    if (
+        failure is None
+        and result is not None
+        and result.status == "done"
+        and sentences == 0
+        and filler_dropped
+        and door.calls
+        and not door.end_requested
+    ):
+        # Spec 23: the tools ran and the answer was only filler. Asked once more, tool-free, with
+        # the phone's note; whatever it says is the answer.
+        for text in _ask_again(model, model_name, system, state.messages, door, rounds):
+            if not is_filler(text) and not (verbatim_said and has_money(text)):
+                yield say(text)
+        report.rounds = len(rounds)
+        timings["rounds"] = len(rounds)
+        _meter(request, model_name, rounds[-1:])
     if failure is not None:
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
@@ -745,6 +805,39 @@ def _answer(
         door.wrote(),
         end=door.end_requested,
     )
+
+
+def _ask_again(model, model_name, system, messages, door, rounds) -> list[str]:
+    """One tool-free round after a filler-only answer (spec 23). [] on any failure."""
+    req = ModelRequest(
+        model=model_name,
+        system=system,
+        contents=[*messages, {"role": "user", "parts": [{"text": FILLER_NOTE}]}],
+        declarations=door.declarations(),
+        allow_tools=False,
+        timeout_s=LIMITS.round_timeout_s,
+    )
+    splitter = SentenceSplitter()
+    out: list[str] = []
+    usage = Usage()
+    try:
+        for item in model.stream(req):
+            if isinstance(item, TextDelta):
+                out.extend(splitter.feed(item.text))
+            elif isinstance(item, Usage):
+                usage = item
+    except ModelFailure:
+        return []
+    finally:
+        rounds.append(
+            {
+                "prompt_tokens": usage.prompt_tokens,
+                "cached_tokens": usage.cached_tokens,
+                "output_tokens": usage.output_tokens,
+            }
+        )
+    out.extend(splitter.flush())
+    return out
 
 
 def conversation_id_of(door: WebDoor):

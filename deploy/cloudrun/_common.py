@@ -103,6 +103,9 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 #   defaults).
 # LEGION_MEMBER_DAILY_CAP: a member's daily web-assistant spend cap in USD (unset or 0 is off;
 #   suggested 3). LEGION_MEMBER_MINT_COST_USD: what one member Live mint is counted as (unset 0.50).
+# LEGION_WEB_VOICE / LEGION_WEB_VOICE_RECRUITER = live|cascade: the web assistant's voice engine for
+#   members and for demo visits (ADR 0102; unset is the code default, cascade). The rollback to Live
+#   is one of these in `.env` and a deploy.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -113,6 +116,7 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_SKIP_MIGRATE", "LEGION_CONN_MAX_AGE", "GOOGLE_CLOUD_PROJECT", "LEGION_CSP",
     "LEGION_SCHEDULER_SA", "LEGION_TICK_AUDIENCE", "LEGION_MODELS",
     "LEGION_MEMBER_DAILY_CAP", "LEGION_MEMBER_MINT_COST_USD",
+    "LEGION_WEB_VOICE", "LEGION_WEB_VOICE_RECRUITER",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because

@@ -30,6 +30,10 @@ class FakeTransport:
             yield f"data: {json.dumps(event)}".encode()
 
 
+# Half a second at about -20 dBFS: over the loudness gate (spec 3).
+LOUD_HALF_SECOND = b"\xe8\x0c" * 8000
+
+
 def _text(text):
     return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
 
@@ -54,7 +58,7 @@ def test_transcription_sends_the_phones_request_and_cleans_quotes():
     fake = FakeTransport(
         [_text('"Add milk'), _text(' to the list."'), {"usageMetadata": {"promptTokenCount": 9}}]
     )
-    heard = _speech(fake).transcribe(b"\x00\x00" * 8000)
+    heard = _speech(fake).transcribe(LOUD_HALF_SECOND)
     assert heard.text == "Add milk to the list."
     assert heard.audio_ms == 500 and heard.prompt_tokens == 9
     sent = fake.sent[0]
@@ -78,7 +82,7 @@ def test_too_little_audio_is_not_sent():
 def test_a_transcription_error_is_a_speech_failure():
     fake = FakeTransport([{"error": {"code": 500}}])
     with pytest.raises(SpeechFailure):
-        _speech(fake).transcribe(b"\x00\x00" * 8000)
+        _speech(fake).transcribe(LOUD_HALF_SECOND)
 
 
 def test_speech_strips_a_wav_header_and_keeps_whole_samples():
@@ -103,17 +107,30 @@ def test_a_400_before_audio_retries_once_with_the_legacy_voice_shape():
     }
 
 
-def test_a_server_error_is_a_speech_failure_and_not_retried():
-    fake = FakeTransport(ModelFailure("Gemini answered HTTP 503"))
+def test_a_server_error_is_retried_once_before_audio_then_fails():
+    fake = FakeTransport(
+        ModelFailure("Gemini answered HTTP 503"), ModelFailure("Gemini answered HTTP 503")
+    )
     with pytest.raises(SpeechFailure):
         b"".join(_speech(fake).speak("Hi.", "Puck", Spoken()))
-    assert len(fake.sent) == 1
+    assert len(fake.sent) == 2
+
+
+def test_a_server_error_then_audio_plays():
+    fake = FakeTransport(ModelFailure("Gemini answered HTTP 503"), [_audio(b"\x01\x00")])
+    assert b"".join(_speech(fake).speak("Hi.", "Puck", Spoken())) == b"\x01\x00"
+
+
+def test_hiss_is_not_sent_for_transcription():
+    fake = FakeTransport()
+    assert _speech(fake).transcribe(b"\x05\x00" * 16_000).text == ""
+    assert fake.sent == []
 
 
 def test_no_key_is_a_failure_and_nothing_is_sent():
     fake = FakeTransport()
     with pytest.raises(SpeechFailure):
-        GeminiSpeech(lambda: None, stt_model="m", transport=fake).transcribe(b"\x00" * 8000)
+        GeminiSpeech(lambda: None, stt_model="m", transport=fake).transcribe(LOUD_HALF_SECOND)
     assert fake.sent == []
 
 
