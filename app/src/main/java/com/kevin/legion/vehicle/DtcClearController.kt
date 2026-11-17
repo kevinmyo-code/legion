@@ -31,11 +31,11 @@ object DtcClearController {
     val voiceGate = ClearCodesVoiceGate()
 
     /**
-     * D2's five states, exhaustive. `Command sent?`: NOTHING_TO_CLEAR/REFUSED = no,
-     * CLEARED/RETURNED/UNVERIFIED = yes - see [recordOutcome] for why only the latter three ever
-     * earn a [CodeClearEvent] row.
+     * D2's five states plus NOT_PARKED (2026-11-17), exhaustive. `Command sent?`:
+     * NOTHING_TO_CLEAR/REFUSED/NOT_PARKED = no, CLEARED/RETURNED/UNVERIFIED = yes - see
+     * [recordOutcome] for why only the latter three ever earn a [CodeClearEvent] row.
      */
-    enum class ClearOutcome { NOTHING_TO_CLEAR, CLEARED, RETURNED, UNVERIFIED, REFUSED }
+    enum class ClearOutcome { NOTHING_TO_CLEAR, CLEARED, RETURNED, UNVERIFIED, REFUSED, NOT_PARKED }
 
     /**
      * What [clear] hands back to either surface - the one shared shape, so voice and the UI
@@ -170,6 +170,39 @@ object DtcClearController {
         message = "The car is not answering. I have not sent anything.",
     )
 
+    /**
+     * The parked gate in front of [clear], and the entry every real clear goes through: the voice
+     * tool and the Faults screen (both via [dispatchAndRecord], ADR 0035) and the module clearer's
+     * engine target. Speed (Mode 01 PID 0D) is read first on every call, the ask included: above
+     * zero or not given refuses with [ClearOutcome.NOT_PARKED] before anything else is read or sent
+     * (stage 7 diagnostics, 2026-11-17: a clear of either kind refuses while moving or when the
+     * speed is unknown). The engine running stays a warning on the ask, not a refusal (D4.5).
+     */
+    suspend fun clearIfParked(
+        confirmed: Boolean,
+        engineRunning: Boolean,
+        readSpeedKmh: suspend () -> Int?,
+        readCodesRaw: suspend () -> String,
+        readFreezeFrame: suspend () -> Map<String, Double>,
+        sendClearRaw: suspend () -> String,
+    ): ClearResult = notParked(readSpeedKmh())
+        ?: clear(confirmed, engineRunning, readCodesRaw, readFreezeFrame, sendClearRaw)
+
+    /** Fails closed: a clear is a write, so a speed the car did not give is not "parked". */
+    private fun notParked(speedKmh: Int?): ClearResult? {
+        val words = when {
+            speedKmh == null -> SPEED_UNKNOWN
+            speedKmh > 0 -> MOVING
+            else -> return null
+        }
+        return ClearResult(ClearOutcome.NOT_PARKED, emptyList(), null, "", "", words)
+    }
+
+    /** Said word for word by the phone (VerbatimSpeech) on the voice path, shown as-is on the screen. */
+    const val MOVING = "The car is moving, so nothing was cleared and nothing was sent. Clear codes only when parked."
+    const val SPEED_UNKNOWN = "The car did not give its speed, so it is not known to be parked. Nothing was " +
+        "cleared and nothing was sent; park with the key at ON and ask again."
+
     private fun nothingToClear() = ClearResult(
         outcome = ClearOutcome.NOTHING_TO_CLEAR,
         codesBefore = emptyList(),
@@ -217,9 +250,10 @@ object DtcClearController {
      */
     suspend fun dispatchAndRecord(context: Context, vehicle: Vehicle, confirmed: Boolean): ClearResult {
         val engineRunning = (ObdBluetoothManager.getRpm() ?: 0) > 0
-        val result = clear(
+        val result = clearIfParked(
             confirmed = confirmed,
             engineRunning = engineRunning,
+            readSpeedKmh = { ObdBluetoothManager.getSpeedKmh() },
             readCodesRaw = { ObdBluetoothManager.getDtcCodesRaw() },
             readFreezeFrame = { ObdBluetoothManager.getFreezeFrame() },
             sendClearRaw = { ObdBluetoothManager.clearDtcCodes() },

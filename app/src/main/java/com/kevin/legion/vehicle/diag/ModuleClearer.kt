@@ -16,6 +16,7 @@ enum class ClearOutcome(val words: String) {
     NOTHING("nothing stored when re-read just before, so nothing was sent"),
     REFUSED("the module refused the clear"),
     NO_ANSWER("the module did not answer the clear"),
+    NOT_PARKED("not sent: the car was not known to be parked"),
 }
 
 @Serializable
@@ -82,9 +83,10 @@ class ModuleClearer(private val link: DiagLink, private val bus: BusKind) {
     }
 
     private suspend fun engine(t: ClearTarget): Pair<ClearResult, DtcClearController.ClearResult> {
-        val tx = DtcClearController.clear(
+        val tx = DtcClearController.clearIfParked(
             confirmed = true,
             engineRunning = false,
+            readSpeedKmh = { GenericPid.speedKmh(link.send("010D", TIMEOUT_MS)) },
             readCodesRaw = { link.send("03", TIMEOUT_MS) },
             readFreezeFrame = { ObdBluetoothManager.readFreezeFrame { cmd -> link.send(cmd, TIMEOUT_MS) } },
             sendClearRaw = { link.send("04", TIMEOUT_MS) },
@@ -94,6 +96,7 @@ class ModuleClearer(private val link: DiagLink, private val bus: BusKind) {
             DtcClearController.ClearOutcome.RETURNED -> ClearOutcome.RETURNED
             DtcClearController.ClearOutcome.UNVERIFIED -> ClearOutcome.UNVERIFIED
             DtcClearController.ClearOutcome.NOTHING_TO_CLEAR -> ClearOutcome.NOTHING
+            DtcClearController.ClearOutcome.NOT_PARKED -> ClearOutcome.NOT_PARKED
             DtcClearController.ClearOutcome.REFUSED, null -> ClearOutcome.NO_ANSWER
         }
         return ClearResult(t, outcome, tx.codesBefore, tx.codesAfter, tx.message, tx.ackRaw) to tx

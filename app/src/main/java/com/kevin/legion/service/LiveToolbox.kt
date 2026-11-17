@@ -4034,6 +4034,11 @@ object LiveToolbox {
         val vehicle = VehicleController.currentVehicle(context)
         val r = DtcClearController.dispatchAndRecord(context, vehicle, confirmed)
         val out = result(success = r.outcome == DtcClearController.ClearOutcome.CLEARED, message = r.message)
+        if (r.outcome == DtcClearController.ClearOutcome.NOT_PARKED) {
+            // Moving or speed unknown: nothing was read or sent. Said by the phone word for word, so no
+            // model sentence ("Cleared.") can follow it into speech (DiagFilter drops one).
+            spokenRead(out, r.message)
+        }
         if (r.outcome == null) {
             // The confirm question: remember it was asked, and tell the model to ask and wait.
             // A module-clear question left waiting is void now (one question at a time).
