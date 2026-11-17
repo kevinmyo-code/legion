@@ -24,6 +24,11 @@ export interface ToolFixture {
 
 export interface AssistantState {
   companionName: string
+  /**
+   * Which voice engine `GET /api/assistant/session` names (ADR 0102). The engine's default is
+   * `cascade`; these tests were written for the Live path and pin `live`, as the server suite does.
+   */
+  engine: 'live' | 'cascade'
   /** A forced reply for the mint ("no key", throttled). */
   mint: Reply | null
   /** Tool answers by tool name. A name that is absent is refused as the real engine refuses an unknown one. */
@@ -44,6 +49,7 @@ export interface AssistantState {
 export function defaultAssistant(): AssistantState {
   return {
     companionName: 'Dorothy',
+    engine: 'live',
     mint: null,
     tools: {},
     minted: 0,
@@ -73,6 +79,21 @@ export function handleAssistant(
     return {
       status: 200,
       body: { name: a.companionName, persona: 'dorothy', voice_name: 'Kore', custom_register: false, stored: true },
+    }
+  }
+
+  if (method === 'GET' && pathname === '/api/assistant/session') {
+    return {
+      status: 200,
+      body: {
+        engine: a.engine,
+        companion_name: a.companionName,
+        voice_name: 'Kore',
+        input_audio_rate: 16000,
+        output_audio_rate: 24000,
+        max_utterance_seconds: 28,
+        session_minutes: a.sessionMs < 30 * 60_000 ? Math.round(a.sessionMs / 60_000) : null,
+      },
     }
   }
 

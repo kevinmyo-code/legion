@@ -133,7 +133,13 @@ describe('CascadeClient', () => {
   })
 
   it('sends an utterance after the silence window and listens again after the answer', async () => {
-    const { client, audio, requests } = build([greeting(), { ok: true, events: stream(reply('Added.')) }])
+    const spoken: SseEvent[] = [
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } },
+      { type: 'sentence', data: { text: 'Added.' } },
+      { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([4])), rate: 24000 } },
+      { type: 'done', data: { status: 'done' } },
+    ]
+    const { client, audio, requests } = build([greeting(), { ok: true, events: stream(spoken) }])
     await open(client, audio)
     feed(audio, QUIET, 400)
     feed(audio, LOUD, 400)

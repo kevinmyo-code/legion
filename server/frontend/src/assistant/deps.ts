@@ -189,7 +189,9 @@ export function createLiveDeps(): LiveDeps {
 export function turnForm(request: TurnRequest): FormData {
   const form = new FormData()
   if (request.audio) {
-    const bytes = new Uint8Array(request.audio.buffer, request.audio.byteOffset, request.audio.byteLength)
+    // A copy on its own ArrayBuffer: a Blob takes no SharedArrayBuffer-backed view.
+    const bytes = new Uint8Array(request.audio.byteLength)
+    bytes.set(new Uint8Array(request.audio.buffer, request.audio.byteOffset, request.audio.byteLength))
     form.append('audio', new Blob([bytes], { type: 'application/octet-stream' }), 'utterance.pcm')
   }
   if (request.text) form.append('text', request.text)
@@ -210,7 +212,7 @@ async function startTurn(request: TurnRequest, signal: AbortSignal): Promise<Tur
     // The typed fields for the contract; the form (with the utterance as a file) is what is sent.
     body: {
       ...(request.text ? { text: request.text } : {}),
-      ...(request.greet ? { greet: true } : {}),
+      greet: Boolean(request.greet),
       conversation_id: request.conversationId,
       utc_offset_minutes: request.utcOffsetMinutes,
       ...(request.preface ? { preface: request.preface } : {}),
