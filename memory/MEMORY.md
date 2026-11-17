@@ -22,35 +22,33 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-11-16 (stage 7 integration, laptop)
+## Where we stopped - 2026-11-17 (stage 7 diagnostics, laptop)
 
-**Live (2026-11-16 evening):** stage 6. `dev` == `main` == `79c43bee`, engine revision
-`legion-00085-mp4` (stage 4's; stages 5 and 6 changed no server file), phone OTA **263202025**.
-In it: stage 5 (voice routing, casual greeting, filler on slow tools, today's agenda in his turns,
-ADR 0092/0093) and stage 6 (listening check-ins, on by default; "Only my voice" scoring in the
-background with its switch off; each wake kept when "Save every wake attempt" is on; the Typeset
-work-apps line; the laptop voice p039). **None of stages 3 to 6 has run on the phone.**
+**Live (2026-11-17):** stage 7 net cash. `dev` == `main` == `bc248a09`, engine revision
+`legion-00086-jvr`, phone OTA **263210628**. In it: stages 5 and 6 (voice routing, today's agenda in
+his turns, listening check-ins, "Only my voice" scoring with its switch off) and stage 7 net cash
+(ADR 0094: net cash on Home and Money; balances read out word for word by the phone through
+`speak_verbatim`; the agenda block with overdue; one more round after a filler-only tool turn).
+**None of stages 3 to 7 has run on the phone.**
 
-**Stage 7 = branch `ship/stage7-netcash-1116`** (gated; ships only when Kevin runs its ship
-script): `feat/agenda-block-overdue` (the agenda block is the phone's own `day read_calendar` read
-of today, overdue included; the model's own leading "Checking." dropped), `feat/net-cash` (ADR
-0094: `GET /api/finance/net-cash`, the engine tool and `get_balance` lead with it, the big number on
-Home, the working, 30-day line and floor on Money), and one more model round when a tool turn ends
-on filler only. ENGINE + web types + phone; no migration. Never on a phone or real bank data.
+**Stage 7 diagnostics = branch `ship/stage7-diag-1116`** (gated; ships only when Kevin runs
+`ship_stage7_diag_1116.sh`): PHONE ONLY, no server file. "Scan every module" (every module the
+dongle reaches, a status-list scan card, modules not reached said to be not known to be clear), the
+engine code read that says exactly what it read, clears only on his yes and only in the engine range
+(speed and RPM must be known), and diagnostics answers spoken word for word by the phone (`get_codes`
+on the verbatim allowlist; DiagFilter drops a model sentence restating a code or calling the car
+clean). Room v79 to v80 (`diag_scans`, additive): a rollback is a forward build that keeps v80.
+Gated on a simulated car only; **never tried on a car or a phone.**
 
 **Owed by Kevin (2026-11-16):** use the phone after stages 1 to 7: tap + a few asks incl. one tool,
 wake word, a barge-in, a car Bluetooth drive, a check-in answered and one ignored; Home's net cash
-against the bank app; the OBD dongle's brand and model. Rule on: the speaker model's weights licence
+against the bank app; the OBD dongle's brand and model; after stage 7 diagnostics, one parked
+"scan every module" and "any fault codes?" on a real car. Rule on: the speaker model's weights licence
 (it ships inside the APK since stage 6); net cash's card `limit` (store it so pending is never
 counted twice) and whether the floor follows him to the web.
 - **Cloud voice known gaps (2026-11-15):** the camera look refuses in words; a navigation turn cue
   can overlap a reply; finished Claude-task notes are not offered into an open conversation.
 - **Laptop only:** the laptop voice service restart for `stt.maybe_end` (stage 3 report steps).
-
-**In flight (2026-11-16):** `ship/stage7-diag-1116` (OBD module scan and clear, Room v80; not
-ready: the unreached-module case failed when a turn ended on filler. Stage 7's extra round is
-tool-free, so such a turn now ends in a plain "could not" instead of silence, but the scan still does
-not run: the branch needs its own fix and a rerun after merging dev). The stage 7 report lists every gate.
 
 **Open, Kevin to rule (carried):** the four OBD VIN rulings; cards gaps (grade letter ticks, a done
 flag for the due-today strip); greeting hellos repeating two opens apart; weather in the agenda.
