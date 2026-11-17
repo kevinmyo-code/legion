@@ -22,43 +22,37 @@ The defence is not writing it better. It is **writing down only what nothing els
 **Every line here carries the date it was true.** A dated claim can be weighed; an undated one gets
 believed.
 
-## Where we stopped - 2026-11-16 (stage 5 integration, laptop)
+## Where we stopped - 2026-11-16 (stage 7 integration, laptop)
 
-**Live before stage 5 (2026-11-16):** stage 4. `dev` == `main` == `d31ba333`, engine revision
-`legion-00085-mp4`, phone OTA **263200900** (visual cards). Stages 1 to 3 are in it.
+**Live (2026-11-16 evening):** stage 6. `dev` == `main` == `79c43bee`, engine revision
+`legion-00085-mp4` (stage 4's; stages 5 and 6 changed no server file), phone OTA **263202025**.
+In it: stage 5 (voice routing, casual greeting, filler on slow tools, today's agenda in his turns,
+ADR 0092/0093) and stage 6 (listening check-ins, on by default; "Only my voice" scoring in the
+background with its switch off; each wake kept when "Save every wake attempt" is on; the Typeset
+work-apps line; the laptop voice p039). **None of stages 3 to 6 has run on the phone.**
 
-**Stage 5 = branch `ship/stage5-1116`** (built and gated, shipped only when Kevin runs its ship
-script): `fix/voice-routing` (to-do list vs reminders by any door, local dates and "today/tomorrow"
-words for the calendar, overdue said plainly, no car switch on a read), `feat/greeting-casual` (one
-casual line; money only over cap, once a day, no figures; place on arrival; a model hello on laptop
-and cloud when nothing is due), `feat/voice-quick-wins` (filler on slow tools, five lines; today's
-agenda in his turns, ADR 0093, narrowed by a model gate so only calendar-only questions skip the
-lookup; no queue behind a lookup), `docs/retire-live` (ADR 0092). Phone only
-unless the stage 5 report says otherwise. None of it has run on the phone.
+**Stage 7 = branch `ship/stage7-netcash-1116`** (gated; ships only when Kevin runs its ship
+script): `feat/agenda-block-overdue` (the agenda block is the phone's own `day read_calendar` read
+of today, overdue included; the model's own leading "Checking." dropped), `feat/net-cash` (ADR
+0094: `GET /api/finance/net-cash`, the engine tool and `get_balance` lead with it, the big number on
+Home, the working, 30-day line and floor on Money), and one more model round when a tool turn ends
+on filler only. ENGINE + web types + phone; no migration. Never on a phone or real bank data.
 
-**Owed by Kevin (carried, 2026-11-15, still true 2026-11-16):** use the phone after stages 1 to 3: tap
-+ a few asks incl. one tool, wake word, a barge-in, a car Bluetooth drive, Settings shows Cloud
-selected; the OBD dongle's brand and model (decides whether the second CAN network is reachable).
+**Owed by Kevin (2026-11-16):** use the phone after stages 1 to 7: tap + a few asks incl. one tool,
+wake word, a barge-in, a car Bluetooth drive, a check-in answered and one ignored; Home's net cash
+against the bank app; the OBD dongle's brand and model. Rule on: the speaker model's weights licence
+(it ships inside the APK since stage 6); net cash's card `limit` (store it so pending is never
+counted twice) and whether the floor follows him to the web.
 - **Cloud voice known gaps (2026-11-15):** the camera look refuses in words; a navigation turn cue
-  can overlap a reply; finished Claude-task notes are not offered into an open conversation; no
-  resume-music nudge. If Kevin says Cloud is bad: forward-build `fix/install-in-car` (`1a35aa16`,
-  Live kept) with a higher versionCode, then revert on dev.
-- **Laptop only:** restart the laptop voice service for `stt.maybe_end` (steps in the stage 3
-  integration report, needs Kevin's OK; laptop `maybe_end` drafts are still uncapped); read the
-  phone's uploaded logs and price them (`tools/phone_audit_engine.py`, `tools/voice_cost.py`).
+  can overlap a reply; finished Claude-task notes are not offered into an open conversation.
+- **Laptop only:** the laptop voice service restart for `stt.maybe_end` (stage 3 report steps).
 
-**In flight, each on its own pushed branch (read the branch log first; state 2026-11-16):**
-| Branch | What | State 2026-11-16 |
-|---|---|---|
-| `feat/listening-checkins` | opt-in saved voice turns beside the wake samples; wake enrol verdict per engine | on `0742a48a`, not integrated |
-| `feat/obd-diagnostics` | module discovery, all-module code read/clear, per-make extras by VIN, code descriptions | `98f20112`; Room v79 -> v80; never run on a car |
+**In flight (2026-11-16):** `ship/stage7-diag-1116` (OBD module scan and clear, Room v80; not
+ready: the unreached-module case failed when a turn ended on filler, which stage 7's extra round
+addresses; needs a rerun after merging dev). The stage 7 report lists every gate.
 
-**Open, Kevin to rule (carried from 2026-11-15):** the voice-fast opening line (a prefetch / b prefer
-cached / c disk); the four OBD VIN rulings (no voice answer after disconnect, no expiry on an
-unanswered connection, refused switch returns success, VIN retry pause); cards gaps (grade letter
-ticks need a grading scheme source; due-today strip needs a done flag). New 2026-11-16: whether
-greeting hellos may repeat a phrasing two opens apart; Bluetooth gets no filler (keeps the merge);
-weather in the agenda needs an engine change.
+**Open, Kevin to rule (carried):** the four OBD VIN rulings; cards gaps (grade letter ticks, a done
+flag for the due-today strip); greeting hellos repeating two opens apart; weather in the agenda.
 
 **Kevin's standing word (2026-11-15):** build the queue and ship it in stages at Claude's judgment,
 each stage only when its gates are green. A phone stage can also ship from GitHub (Actions, Release
