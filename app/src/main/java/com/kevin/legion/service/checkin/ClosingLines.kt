@@ -20,11 +20,11 @@ import kotlin.random.Random
 object ClosingLines {
     val LINES: List<String> = listOf(
         "Very good. I'll get out of your way.",
-        "Another time, then.",
+        "Another time, then. <short pause>",
         "Quite all right. As you were.",
         "No matter. Carry on.",
         "Understood. I'll leave you to it.",
-        "Right. I'll make myself scarce.",
+        "Right. <chuckle> I'll make myself scarce.",
     )
 
     /** Any line but [last]. */

@@ -39,7 +39,7 @@ class ListenCueTest {
 
     @Test
     fun `the clips' voice is data in the list, so a re-render in another voice needs no code`() {
-        assertEquals("Puck", ListenCue.parseVoice(linesJson()))
+        assertEquals("en-us-neno", ListenCue.parseVoice(linesJson()))
         assertEquals("local-voice-1", ListenCue.parseVoice("""{"voice":"local-voice-1","lines":[]}"""))
         assertEquals("Puck", ListenCue.parseVoice("""{"lines":[]}"""))
     }

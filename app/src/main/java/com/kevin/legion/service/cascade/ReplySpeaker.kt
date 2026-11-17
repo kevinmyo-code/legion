@@ -69,6 +69,12 @@ internal class ReplySpeaker(
 
     /** Drops a leading "Checking." the model wrote itself, before anything is spoken or logged. */
     private val lead = LeadingFiller()
+
+    /** This reply's tag allowance ([TtsTags]); a voice that does not perform them gets none. */
+    private val tagBudget = TtsTags.Budget(if (tts.performsTags) TtsTags.MAX_PER_REPLY else 0)
+
+    /** Holds a tag split across streamed deltas, for the voice that streams text (it never gets tags). */
+    private val tagHold = TagHold()
     private var stream: StreamingSpeechClip? = null
     private var streamChars = 0
     private var streaming = tts.streamsText
@@ -106,7 +112,9 @@ internal class ReplySpeaker(
         if (text.isEmpty()) return
         anyText = true
         if (streaming) {
-            chunker.feed(text)?.let { appendStreamed(speakable(it)) }
+            val bare = tagHold.feed(text)
+            if (bare.isEmpty()) return
+            chunker.feed(bare)?.let { appendStreamed(speakable(it)) }
         } else {
             splitter.feed(text).forEach { enqueue(it) }
         }
@@ -117,6 +125,7 @@ internal class ReplySpeaker(
         if (interrupted) return
         speakText(lead.flush())
         if (streaming) {
+            tagHold.flush().takeIf { it.isNotEmpty() }?.let { chunker.feed(it) }
             chunker.flush()?.let { appendStreamed(speakable(it)) }
             stream?.finish()
         } else {
@@ -144,14 +153,14 @@ internal class ReplySpeaker(
      * whole clip starts sooner on Kyutai (~0.75 s against ~1.0 s streamed, 11-10), and a kept
      * scripted line plays from memory ([LaptopVoiceConnection]'s keepLines).
      */
-    fun say(line: String) {
+    fun say(line: String, tagsAllowed: Boolean = false) {
         if (!interrupted && line.isNotBlank() && line.length <= SAY_WHOLE_CHARS) {
             anyText = true
-            enqueue(line)
+            enqueue(line, plain = !tagsAllowed)
             queue.close()
             return
         }
-        text(line)
+        text(if (tagsAllowed) line else TtsTags.strip(line))
         finishText()
     }
 
@@ -173,8 +182,9 @@ internal class ReplySpeaker(
     }
 
     /** What was heard: whole clips whose audio started. */
-    fun spoken(): String =
-        synchronized(started) { started.filterNot { it in fillers }.joinToString(" ") { it.text.trim() } }.trim()
+    fun spoken(): String = TtsTags.strip(
+        synchronized(started) { started.filterNot { it in fillers }.joinToString(" ") { it.text.trim() } }.trim(),
+    )
 
     /**
      * Into the current streamed clip; a clip that would pass [STREAM_CHAR_CAP] is finished and the
@@ -204,9 +214,14 @@ internal class ReplySpeaker(
         return if (core.isEmpty()) chunk else lead + core + trail
     }
 
-    private fun enqueue(sentence: String) {
-        val line = normalise(sentence)
-        if (line.isBlank()) return
+    /**
+     * One sentence to the voice. Tags ([TtsTags]) only for a voice that performs them, within this
+     * reply's allowance, never on a [plain] line (a scripted error or failure) or a figure or bad news.
+     */
+    private fun enqueue(sentence: String, plain: Boolean = false) {
+        val tagged = if (tts.performsTags) TtsTags.forSpeech(sentence, tagBudget, plain) else TtsTags.strip(sentence)
+        val line = normalise(tagged)
+        if (TtsTags.strip(line).isBlank()) return
         queue.trySend(tts.speak(line))
     }
 
@@ -251,7 +266,8 @@ internal class ReplySpeaker(
                 continue
             }
             synchronized(started) { started.add(clip) }
-            if (!isFiller) onClipStarted(clip.text)
+            // Captions, the audit and history see the words only, never a tag.
+            if (!isFiller) onClipStarted(TtsTags.strip(clip.text))
             if (isFiller && !anyFillerAudio && !anyAudio) {
                 anyFillerAudio = true
                 onFirstAudio(clip.text, true)
@@ -296,6 +312,28 @@ internal class ReplySpeaker(
             }
             if (!play(first)) return
             for (pcm in clip.frames) if (interrupted || !play(pcm)) return
+        }
+    }
+
+    /** Streamed text with every tag removed, a tag split across deltas held until it closes. */
+    private class TagHold {
+        private val held = StringBuilder()
+
+        fun feed(delta: String): String {
+            held.append(delta)
+            val s = held.toString()
+            val open = s.lastIndexOf('<')
+            // An unclosed "<" near the end may be a tag still arriving: hold from there.
+            val cut = if (open >= 0 && s.indexOf('>', open) < 0 && s.length - open <= MAX_TAG) open else s.length
+            held.setLength(0)
+            held.append(s, cut, s.length)
+            return TtsTags.strip(s.substring(0, cut))
+        }
+
+        fun flush(): String = TtsTags.strip(held.toString()).also { held.setLength(0) }
+
+        private companion object {
+            const val MAX_TAG = 24
         }
     }
 

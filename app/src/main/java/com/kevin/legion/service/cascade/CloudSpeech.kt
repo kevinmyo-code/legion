@@ -58,12 +58,14 @@ internal class CloudSpeech(
             usage: (CallUsage) -> Unit = {},
             /** The STT vocabulary line ([SttGuard.hint]), read per request; "" for none. */
             hint: () -> String = { "" },
+            /** The STT instruction ([SpokenLanguages.sttInstruction]), read per request. */
+            instruction: () -> String = { CloudSpeechWire.STT_INSTRUCTION },
         ): CloudSpeech {
             val own = CoroutineScope(
                 parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO,
             )
             return CloudSpeech(
-                stt = GeminiStt(transport, own, meter, log, usage = usage, hint = hint),
+                stt = GeminiStt(transport, own, meter, log, usage = usage, hint = hint, instruction = instruction),
                 tts = GeminiTts(transport, own, meter, log, keepLines = keepLines, voice = voice, usage = usage),
                 ownScope = own,
             )
@@ -89,10 +91,15 @@ internal object CloudSpeechWire {
     const val TTS_MODEL = "gemini-3.8-flash-tts"
 
     /**
-     * Puck, the voice Live spoke in; the session passes the companion's own voice setting (Live's
-     * 30 voice names are Gemini TTS's prebuilt voices), so the cloud voice sounds like Live did.
+     * Neno (Kevin, 2026-11-17, after auditioning: "i like neno plain. and with tags where possible"):
+     * the extended-library voice `en-us-neno`, in the same request shape (verified 200). Plain: no style
+     * direction (our shape cannot carry one). The cloud voice no longer follows the companion's Live
+     * voice setting.
      */
-    const val VOICE = "Puck"
+    const val VOICE = "en-us-neno"
+
+    /** If Google refuses [VOICE] by name (a 400), the conversation goes on in Puck, never silent. */
+    const val FALLBACK_VOICE = "Puck"
 
     /** Gemini TTS streams headerless 16-bit PCM, 24 kHz mono, by default (speech-generation doc). */
     const val OUTPUT_RATE = 24_000
@@ -112,12 +119,12 @@ internal object CloudSpeechWire {
     private const val STT_ASK = "Transcribe this audio."
 
     /** The transcription request: the utterance as a WAV, inline; [hint] ([SttGuard.hint]) after the rules. */
-    fun transcribe(pcm16k: ByteArray, hint: String = ""): JSONObject = JSONObject()
+    fun transcribe(pcm16k: ByteArray, hint: String = "", instruction: String = STT_INSTRUCTION): JSONObject = JSONObject()
         .put(
             "systemInstruction",
             JSONObject().put(
                 "parts",
-                JSONArray().put(JSONObject().put("text", if (hint.isBlank()) STT_INSTRUCTION else "$STT_INSTRUCTION $hint")),
+                JSONArray().put(JSONObject().put("text", if (hint.isBlank()) instruction else "$instruction $hint")),
             ),
         )
         .put(
@@ -270,6 +277,8 @@ internal class GeminiStt(
     /** Every request's counts, for the cost audit ([CallUsage]). */
     private val usage: (CallUsage) -> Unit = {},
     private val hint: () -> String = { "" },
+    /** The instruction for his languages and the conversation's ([SpokenLanguages.sttInstruction]). */
+    private val instruction: () -> String = { CloudSpeechWire.STT_INSTRUCTION },
     /** A request with no answer by now is abandoned and asked again, once, on a fresh call. */
     private val attemptTimeoutMs: Long = ATTEMPT_TIMEOUT_MS,
 ) : SpeechToText {
@@ -286,7 +295,11 @@ internal class GeminiStt(
     suspend fun transcribe(pcm: ByteArray, report: (CallUsage) -> Unit = usage): SttResult {
         val audioMs = pcm.size / BYTES_PER_MS
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
-        val body = CloudSpeechWire.transcribe(pcm, runCatching(hint).getOrDefault(""))
+        val body = CloudSpeechWire.transcribe(
+            pcm,
+            runCatching(hint).getOrDefault(""),
+            runCatching(instruction).getOrDefault(CloudSpeechWire.STT_INSTRUCTION),
+        )
         val started = now()
         // 2026-11-17: three of 34 requests hung 10 to 17 s (every good one took 2.4 s or less) and the
         // turn waited out the 8 s timeout. A request that has not answered in [attemptTimeoutMs] is
@@ -429,6 +442,13 @@ internal class GeminiTts(
     /** Flipped once if Google refuses the 3.8 voice shape; the rest of the conversation uses the other. */
     @Volatile private var legacyVoice = false
 
+    /** Flipped once if Google refuses the voice by name: the rest of the conversation is in Puck. */
+    @Volatile private var fallbackVoice = false
+
+    private val voiceNow: String get() = if (fallbackVoice) CloudSpeechWire.FALLBACK_VOICE else voice
+
+    override val performsTags = true
+
     override fun speak(text: String): SpeechClip {
         val clip = Clip(ids.addAndGet(2), text)
         val key = keyOf(text)
@@ -439,7 +459,7 @@ internal class GeminiTts(
                 clip.push(cached)
                 clip.finish(TtsOutcome.Done(cached.size.toLong() / BYTES_PER_MS, 0))
             }
-            else -> clip.start(key)
+            else -> clip.start()
         }
         return clip
     }
@@ -456,7 +476,7 @@ internal class GeminiTts(
         var asked = 0
         for (text in lines.distinct()) {
             if (text.isBlank() || text !in keepLines || kept[keyOf(text)] != null) continue
-            Clip(ids.addAndGet(2), text).start(keyOf(text))
+            Clip(ids.addAndGet(2), text).start()
             asked++
         }
         if (asked > 0) log("tts_warm lines=$asked")
@@ -478,7 +498,7 @@ internal class GeminiTts(
         private var firstAudioMs: Long? = null
         private val whole = ByteArrayOutputStream()
 
-        fun start(key: String) {
+        fun start() {
             job = scope.launch {
                 gate.withPermit {
                     if (outcome.isCompleted) return@withPermit
@@ -488,6 +508,14 @@ internal class GeminiTts(
                     if (shapeRefused && !legacyVoice && bytes == 0L) {
                         legacyVoice = true
                         log("tts_voice_shape legacy=true")
+                        o = request(asked)
+                    }
+                    // A voice name Google does not know (a 400 in either shape): Puck, not silence.
+                    if (o is StreamOutcome.HttpError && o.code == HTTP_BAD_REQUEST && bytes == 0L &&
+                        !fallbackVoice && voice != CloudSpeechWire.FALLBACK_VOICE
+                    ) {
+                        fallbackVoice = true
+                        log("tts_voice_fallback to=${CloudSpeechWire.FALLBACK_VOICE}")
                         o = request(asked)
                     }
                     // One retry for a dropped request or a server error, only before any audio
@@ -504,7 +532,8 @@ internal class GeminiTts(
                                 if (bytes == 0L) {
                                     TtsOutcome.Failed("no_audio")
                                 } else {
-                                    if (text in keepLines) kept[key] = synchronized(whole) { whole.toByteArray() }
+                                    // Filed under the voice that actually spoke it (a fallback may have changed it).
+                                    if (text in keepLines) kept[keyOf(text)] = synchronized(whole) { whole.toByteArray() }
                                     TtsOutcome.Done(bytes / BYTES_PER_MS, firstAudioMs)
                                 }
                         },
@@ -526,7 +555,7 @@ internal class GeminiTts(
                 defaultOut = "AUDIO",
             )
             val o = try {
-                transport.stream(CloudSpeechWire.TTS_MODEL, CloudSpeechWire.speak(text, legacyVoice, voice)) { ev ->
+                transport.stream(CloudSpeechWire.TTS_MODEL, CloudSpeechWire.speak(text, legacyVoice, voiceNow)) { ev ->
                     ev.optJSONObject("usageMetadata")?.let { usage = it }
                     for (data in CloudSpeechWire.audioParts(ev)) {
                         val pcm = CloudSpeechWire.unbase64(data) ?: continue
@@ -594,7 +623,8 @@ internal class GeminiTts(
         override suspend fun outcome(): TtsOutcome = outcome.await()
     }
 
-    private fun keyOf(text: String) = "cloud|${CloudSpeechWire.TTS_MODEL}|$voice|$sampleRate|$text"
+    // The voice actually speaking is in the key: a Puck clip is never replayed as Neno, or the reverse.
+    private fun keyOf(text: String) = "cloud|${CloudSpeechWire.TTS_MODEL}|$voiceNow|$sampleRate|$text"
 
     companion object {
         /** 24 kHz PCM16 mono. */
@@ -602,6 +632,8 @@ internal class GeminiTts(
 
         /** The sentence playing and the next one; more would only queue at Google. */
         const val MAX_PARALLEL = 2
+
+        private const val HTTP_BAD_REQUEST = 400
 
         /** The scripted lines' audio: in memory, and on disk across app starts ([KeptLineAudio]). */
         private val KEPT: MutableMap<String, ByteArray> get() = KeptLineAudio.SHARED

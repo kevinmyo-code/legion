@@ -70,7 +70,7 @@ internal class TrailingFiller(private val contentBefore: () -> Boolean) : Senten
     private fun hasContent() = content || contentBefore()
 
     companion object {
-        private const val ENDS = ".!?…"
+        private const val ENDS = ".!?…။。！？"
 
         /** Past this many characters an unfinished sentence is no longer held. */
         private const val HOLD_MAX_CHARS = 60
@@ -88,9 +88,10 @@ internal class TrailingFiller(private val contentBefore: () -> Boolean) : Senten
 
         /** A sentence that only asks him to wait ([FillerTurn.isFillerOnly], or a wait line). */
         fun isFiller(sentence: String): Boolean {
-            val core = LeadingFiller.core(sentence)
+            val bare = TtsTags.strip(sentence)
+            val core = LeadingFiller.core(bare)
             if (core.isEmpty()) return false
-            return FillerTurn.isFillerOnly(sentence) || core in OTHER || WAIT.matches(core)
+            return FillerTurn.isFillerOnly(bare) || core in OTHER || WAIT.matches(core)
         }
 
         /** The unfinished sentence [partial] could still be a filler line. */

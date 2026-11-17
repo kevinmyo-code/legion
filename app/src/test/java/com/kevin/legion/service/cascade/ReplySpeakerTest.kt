@@ -111,6 +111,37 @@ class ReplySpeakerTest {
     )
 
     @Test
+    fun `tags reach only a voice that performs them, never the caption or the transcript`() = runBlocking<Unit> {
+        val captions = Collections.synchronizedList(mutableListOf<String>())
+        for (performs in listOf(true, false)) {
+            captions.clear()
+            val voice = object : TextToSpeech by FakeVoice() {
+                val asked = Collections.synchronizedList(mutableListOf<String>())
+                override val performsTags = performs
+                override fun speak(text: String): SpeechClip {
+                    asked.add(text)
+                    return FakeVoice().speak(text)
+                }
+            }
+            val s = ReplySpeaker(
+                tts = voice, scope = scope, play = { true }, firstFrameTimeoutMs = 500,
+                onFirstAudio = { _, _ -> }, onClipStarted = { captions.add(it) }, normalise = { it },
+            )
+            s.text("That was a good one <chuckle>. ")
+            s.text("You owe 12 <sigh> dollars. ")
+            s.text("Done for tonight <long pause>.")
+            s.finishText()
+            assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+            val toVoice = voice.asked.joinToString(" ")
+            assertEquals(performs, toVoice.contains("<chuckle>"))
+            assertFalse(toVoice.contains("<sigh>"))
+            assertFalse(toVoice.contains("<long pause>"))
+            assertTrue(captions.none { it.contains('<') })
+            assertFalse(s.spoken().contains('<'))
+        }
+    }
+
+    @Test
     fun `sentences are spoken one clip each, in order`() = runBlocking<Unit> {
         val voice = FakeVoice()
         val ear = Ear()

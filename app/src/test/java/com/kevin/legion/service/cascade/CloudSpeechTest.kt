@@ -100,14 +100,15 @@ class CloudSpeechTest {
     }
 
     @Test
-    fun `the voice request asks for audio in Puck, in the 3_8 shape or the older one`() {
+    fun `the voice request asks for audio in Neno, in the 3_8 shape or the older one`() {
+        assertEquals("en-us-neno", CloudSpeechWire.VOICE)
         val now = CloudSpeechWire.speak("Invented line.", legacyVoice = false)
         val cfg = now.getJSONObject("generationConfig")
         assertEquals("AUDIO", cfg.getJSONArray("responseModalities").getString(0))
-        assertEquals("Puck", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
+        assertEquals("en-us-neno", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
         val old = CloudSpeechWire.speak("Invented line.", legacyVoice = true)
         assertEquals(
-            "Puck",
+            "en-us-neno",
             old.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
                 .getJSONObject("prebuiltVoiceConfig").getString("voiceName"),
         )
@@ -270,6 +271,29 @@ class CloudSpeechTest {
         assertTrue(System.currentTimeMillis() - t0 < 1_500)
         assertEquals(2, fake.calls.size)
         assertTrue(2 * GeminiStt.ATTEMPT_TIMEOUT_MS < CascadeTimings.CLOUD_STT_FINAL_TIMEOUT_MS)
+    }
+
+    @Test
+    fun `a voice Google refuses by name falls back to Puck, never silence, and its clips are keyed by voice`() = runBlocking<Unit> {
+        val voices = Collections.synchronizedList(mutableListOf<String>())
+        val fake = FakeGemini { _, body, onEvent ->
+            val vc = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
+            val v = vc.optString("voice").ifEmpty { vc.optJSONObject("prebuiltVoiceConfig")?.optString("voiceName").orEmpty() }
+            voices.add(v)
+            if (v == "en-us-neno") {
+                StreamOutcome.HttpError(400, "invalid argument")
+            } else {
+                onEvent(audioEv(byteArrayOf(1, 2)))
+                StreamOutcome.Ok
+            }
+        }
+        val kept = ConcurrentHashMap<String, ByteArray>()
+        val tts = GeminiTts(fake, scope, keepLines = setOf("Listening."), kept = kept, voice = "en-us-neno")
+        assertArrayEquals(byteArrayOf(1, 2), collect(tts.speak("Listening.")))
+        assertEquals("Puck", voices.last())
+        // The kept clip is filed under the voice that spoke it.
+        assertTrue(kept.keys.single().contains("|Puck|"))
+        assertTrue(tts.performsTags)
     }
 
     @Test
