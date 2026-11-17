@@ -35,7 +35,8 @@ his turns, listening check-ins, "Only my voice" scoring with its switch off) and
 `ship_stage7_diag_1116.sh`): PHONE ONLY, no server file. "Scan every module" (every module the
 dongle reaches, a status-list scan card, modules not reached said to be not known to be clear), the
 engine code read that says exactly what it read, clears only on his yes and only in the engine range
-(speed and RPM must be known), and diagnostics answers spoken word for word by the phone (`get_codes`
+(every clear refuses while moving or with no speed, `DtcClearController.clearIfParked`; a module
+clear also needs the engine off), and diagnostics answers spoken word for word by the phone (`get_codes`
 on the verbatim allowlist; DiagFilter drops a model sentence restating a code or calling the car
 clean). Room v79 to v80 (`diag_scans`, additive): a rollback is a forward build that keeps v80.
 Gated on a simulated car only; **never tried on a car or a phone.**
