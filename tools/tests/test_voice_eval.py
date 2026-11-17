@@ -265,3 +265,22 @@ def test_heard_line_replaces_a_redacted_answer():
     lines.append(L("LIVE_TEST", "case_end id=guard ms=1500"))
     _, runs = parse(lines)
     assert runs[0].turns[0].answer == "Nothing was saved; ask me again."
+
+
+def test_the_holding_line_is_checked_against_the_tool_that_started():
+    case = {"id": "filler_fleet", "say": "how is the truck doing",
+            "expect": {"calls": ["ask/ask_fleet"], "filler_has": ["car specialist"]}}
+    lines = case_lines("filler_fleet", "how is the truck doing",
+                       [("ask", {"domain": "ask_fleet", "question": "how is the truck"}, '{"success":true}')],
+                       "Battery is fine.")
+    with_line = lines[:4] + [L("LIVE_TEST", 'filler at=start text="Asking the car specialist."')] + lines[4:]
+    _, runs = parse(with_line)
+    assert runs[0].turns[0].fillers == ["Asking the car specialist."]
+    assert ve.score_case(case, runs[0], phone=False).passed
+    _, bare = parse(lines)
+    v = ve.score_case(case, bare[0], phone=False)
+    assert any("holding line" in f for f in v.failures)
+    # The phone logs no words for it, so the check is laptop only.
+    assert not any("holding line" in f for f in ve.score_case(case, bare[0], phone=True).failures)
+    quiet = {"id": "filler_fleet", "say": "x", "expect": {"no_filler": True}}
+    assert any("holding line was said" in f for f in ve.score_case(quiet, runs[0], phone=False).failures)
