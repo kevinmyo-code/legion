@@ -388,8 +388,9 @@ class GeminiTextLoop(
     private fun fillerModelContent(state: TurnState) = JSONObject().put("role", "model")
         .put("parts", JSONArray().put(JSONObject().put("text", state.text.toString().trim().ifEmpty { "..." })))
 
+    // The result is what is stored and compared (history, records, checks): never a tag ([TtsTags]).
     private fun reply(state: TurnState) = Result(
-        text = state.text.toString().trim(),
+        text = TtsTags.strip(state.text.toString()).trim(),
         failure = null,
         failureWords = null,
         writesDone = state.writesDone.toList(),
@@ -405,7 +406,7 @@ class GeminiTextLoop(
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
-        text = state.text.toString().trim(),
+        text = TtsTags.strip(state.text.toString()).trim(),
         failure = failure,
         failureWords = TextChatEngine.failureWords(failure, state.writesDone, state.writesUnconfirmed),
         writesDone = state.writesDone.toList(),

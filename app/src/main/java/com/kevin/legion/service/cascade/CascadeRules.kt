@@ -180,7 +180,9 @@ object CascadePrompt {
         "Spoken output: what you write is read aloud by a separate voice, as you write it. Write plain " +
             "spoken sentences only: no markdown, lists, headings, emoji, links or symbols. Write numbers, " +
             "money, times and units the way you would say them. Answer in one short sentence unless he " +
-            "asks for more, and say each thing once. When a tool will take a moment, a few words first are fine."
+            "asks for more, and say each thing once. When a tool will take a moment, a few words first are fine. " +
+            "Now and then, in a casual moment only, one of <chuckle>, <laugh>, <sigh> or <short pause> may go " +
+            "in a sentence; never with figures, codes or bad news."
 
     data class Split(val cacheable: String, val volatile: String)
 

@@ -15,6 +15,12 @@ internal object SttHintStore {
     @Volatile var line: String = SttGuard.hint(emptyList())
         private set
 
+    /**
+     * The transcriber's instruction for the conversation now ([SpokenLanguages.sttInstruction]); the
+     * session sets it at open and on a language switch. One conversation at a time on the phone.
+     */
+    @Volatile var instruction: String = CloudSpeechWire.STT_INSTRUCTION
+
     /** The names in [line], one word each, lower case, for [SttGuard.verdict]'s `known`. */
     @Volatile var known: Set<String> = emptySet()
         private set

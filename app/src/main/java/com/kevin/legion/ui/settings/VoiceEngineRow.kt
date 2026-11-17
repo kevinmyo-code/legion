@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -19,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,6 +30,7 @@ import com.kevin.legion.service.cascade.CascadeSession
 import com.kevin.legion.service.cascade.CascadeTimings
 import com.kevin.legion.service.cascade.LaptopProbe
 import com.kevin.legion.service.cascade.LaptopVoiceConfig
+import com.kevin.legion.service.cascade.SpokenLanguages
 import com.kevin.legion.service.cascade.VoiceEngine
 import com.kevin.legion.service.cascade.VoiceEngineSettings
 import com.kevin.legion.ui.common.DeckButton
@@ -62,6 +65,7 @@ fun VoiceEngineRow() {
     var result by remember { mutableStateOf<String?>(null) }
     var last by remember { mutableStateOf(VoiceEngineSettings.lastStatus(context)) }
     var speed by remember { mutableStateOf(VoiceEngineSettings.speechSpeed(context)) }
+    var spoken by remember { mutableStateOf(SpokenLanguages.load(context).map { it.name }.toSet()) }
 
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -72,7 +76,7 @@ fun VoiceEngineRow() {
             )
             Text(
                 "Cloud: Gemini hears you, Gemini with tools answers on the phone, and Gemini speaks " +
-                    "in your companion's voice. Laptop pipeline: the same, with speech on your laptop; " +
+                    "in the Neno voice. Laptop pipeline: the same, with speech on your laptop; " +
                     "when the laptop cannot be used it runs on Cloud. Applies from the next conversation.",
                 style = LegionType.stamp,
                 color = sem.faint,
@@ -103,6 +107,26 @@ fun VoiceEngineRow() {
                 steps = SPEED_STEPS,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // 2026-11-17: the languages he speaks. English always; each conversation starts in English
+            // and switches when he asks ("speak Burmese"). Cloud voice only.
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Languages I speak (English always; say \"speak Burmese\" to switch, cloud voice only)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            for (lang in SpokenLanguages.OFFERED) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = lang.name in spoken,
+                        onCheckedChange = { on ->
+                            spoken = if (on) spoken + lang.name else spoken - lang.name
+                            SpokenLanguages.save(context, spoken)
+                        },
+                    )
+                    Text(lang.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
             if (engine == VoiceEngine.LAPTOP) {
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(

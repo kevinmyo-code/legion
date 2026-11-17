@@ -9,7 +9,6 @@ import android.util.Log
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CrisisDetector
-import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiUsageMeter
 import com.kevin.legion.ai.KeyHealth
@@ -121,7 +120,7 @@ internal class CascadeSession(
     private val micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
     /** The cloud voice, in the companion's own voice (a fake in a test). */
     private val cloudSpeech: (CoroutineScope, (CallUsage) -> Unit) -> SpeechBackend = { parent, usage ->
-        defaultCloudSpeech(parent, CompanionProfile.voice(context), usage)
+        defaultCloudSpeech(parent, CloudSpeechWire.VOICE, usage)
     },
     /** Whether the cloud voice can start at all: it runs on the key Kevin pasted in Settings. */
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
@@ -275,6 +274,10 @@ internal class CascadeSession(
     @Volatile private var lastToolFiller: String? = null
     private val toolFillerIndex = java.util.concurrent.atomic.AtomicInteger(0)
 
+    /** His languages (Settings) and the one this conversation is in; every conversation starts English. */
+    private val languages: List<SpokenLanguages.Language> = SpokenLanguages.load(ctx)
+    @Volatile private var conversationLanguage: SpokenLanguages.Language = SpokenLanguages.ENGLISH
+
     /** The last line spoken (not a filler): a question gets the longer follow-up window. */
     @Volatile private var lastClipText: String? = null
 
@@ -364,6 +367,7 @@ internal class CascadeSession(
         LiveLatency.log(LiveLatency.TAG, "open_backend_ms=${System.currentTimeMillis() - started}")
         // The transcriber's names (his cars, his name), from data already on the phone ([SttHintStore]).
         if (test == null) scope.launch(Dispatchers.IO) { SttHintStore.refresh(ctx) }
+        SttHintStore.instruction = SpokenLanguages.sttInstruction(languages, SpokenLanguages.ENGLISH)
         val b = opened.first
         val probeMs = opened.second
         backend = b
@@ -557,7 +561,8 @@ internal class CascadeSession(
     )
 
     /** His turns' preamble: the shared one plus the agenda ([CascadePrompt.withAgenda]). */
-    private fun turnPreamble(): String = CascadePrompt.withAgenda(preamble, agendaNow())
+    private fun turnPreamble(): String =
+        CascadePrompt.withAgenda(preamble, agendaNow()) + SpokenLanguages.turnNote(conversationLanguage)
 
     /** A write was called: the agenda read at open is withdrawn, and this turn's result says so. */
     private fun noteChange(response: JSONObject) {
@@ -1020,7 +1025,7 @@ internal class CascadeSession(
                 if (stt.reason == "cancelled") return
                 recoverWords(u, stt.reason) ?: return
             }
-            is SttResult.Text -> when (val v = SttGuard.verdict(stt.text, stt.audioMs ?: 0L, SttHintStore.known)) {
+            is SttResult.Text -> when (val v = SttGuard.verdict(stt.text, stt.audioMs ?: 0L, SttHintStore.known, languages)) {
                 is SttGuard.Verdict.Keep -> v.text
                 is SttGuard.Verdict.Drop -> {
                     // Not plausibly his English (2026-11-17: Spanish and Chinese fragments, one acted
@@ -1057,6 +1062,10 @@ internal class CascadeSession(
             discardDraftOf(u, "not_answered")
             recordTurn(heard, "")
             endByVoice()
+            return
+        }
+        if (!followLanguage(heard)) {
+            discardDraftOf(u, "not_answered")
             return
         }
         answerTurn(heard, eotAtMs, TurnRecord(heard), takeDraft(u, heard))
@@ -1190,7 +1199,7 @@ internal class CascadeSession(
         }
         if (outcome != ReplySpeaker.Outcome.Played) return
         if (checkInStep == CheckInStep.LINE && !record.fromUser) {
-            afterCheckInLine(record.reply.toString())
+            afterCheckInLine(TtsTags.strip(record.reply.toString()))
         } else {
             afterReply()
         }
@@ -1261,7 +1270,7 @@ internal class CascadeSession(
         currentUtt?.cancel()
         currentUtt = null
         val reply = newSpeaker(null)
-        reply.say(ClosingLines.next(ctx))
+        reply.say(ClosingLines.next(ctx), tagsAllowed = true)
         val o = withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() }
         if (o == ReplySpeaker.Outcome.Played) player?.awaitDrained() else host.closingTone()
         shutdown("check_in_no_reply")
@@ -1342,14 +1351,42 @@ internal class CascadeSession(
         sayMissedLine()
     }
 
-    /** [MISSED_LINE] out loud, then listening again as after any reply. Silent if no voice can say it. */
-    private suspend fun sayMissedLine() {
+    /**
+     * The conversation's language after [heard] ([SpokenLanguages]): a request for one of his languages,
+     * or a whole sentence spoken in one, switches it; a request for one not in his setting gets the
+     * scripted line and the turn ends there (false). The laptop voice speaks English only: it says so
+     * and stays English, and the turn is answered in English.
+     */
+    private suspend fun followLanguage(heard: String): Boolean {
+        val asked = SpokenLanguages.request(heard, languages)
+        if (asked is SpokenLanguages.Switch.NotInSettings) {
+            LiveLatency.log(LiveLatency.TAG, "language_refused not_in_settings")
+            sayMissedLine(SpokenLanguages.notInSettingsLine(asked.name))
+            return false
+        }
+        val next = (asked as? SpokenLanguages.Switch.To)?.language
+            ?: SpokenLanguages.writtenIn(heard, languages)
+            ?: return true
+        if (next == conversationLanguage) return true
+        if (next != SpokenLanguages.ENGLISH && backend?.kind != SpeechBackend.Kind.CLOUD) {
+            LiveLatency.log(LiveLatency.TAG, "language_refused laptop")
+            sayMissedLine(SpokenLanguages.LAPTOP_ENGLISH_ONLY)
+            return false
+        }
+        conversationLanguage = next
+        SttHintStore.instruction = SpokenLanguages.sttInstruction(languages, next)
+        LiveLatency.log(LiveLatency.TAG, "language_switch to=${next.name.lowercase().replace(' ', '_')}")
+        return true
+    }
+
+    /** [line] (default [MISSED_LINE]) out loud, then listening again as after any reply. */
+    private suspend fun sayMissedLine(line: String = MISSED_LINE) {
         if (closing.get() || backend == null || player == null) {
             backToListening()
             return
         }
         val reply = newSpeaker(null)
-        reply.say(MISSED_LINE)
+        reply.say(line)
         when (reply.await()) {
             ReplySpeaker.Outcome.Played -> afterReply()
             ReplySpeaker.Outcome.Interrupted -> Unit
@@ -1670,7 +1707,7 @@ internal class CascadeSession(
      * paid for and nothing can fail before he speaks.
      */
     private fun playCue() {
-        val cue = ListenCue.next(ctx, CompanionProfile.voice(ctx))
+        val cue = ListenCue.next(ctx, CloudSpeechWire.VOICE)
         val p = player ?: return
         LiveLatency.log(LiveLatency.TAG, "listen_cue ${cue.label} (cascade)")
         turnJob = scope.launch(loop) {
@@ -2042,7 +2079,7 @@ internal class CascadeSession(
                 "audio_ms=${audio.size / PCM_BYTES_PER_MS}")
             val said = r as? SttResult.Text ?: return@launch
             // A transcript the turn would not believe ([SttGuard]) is not drafted on either.
-            val kept = SttGuard.verdict(said.text, said.audioMs ?: 0L, SttHintStore.known) as? SttGuard.Verdict.Keep
+            val kept = SttGuard.verdict(said.text, said.audioMs ?: 0L, SttHintStore.known, languages) as? SttGuard.Verdict.Keep
                 ?: return@launch
             val heard = (carry + " " + kept.text).trim()
             if (draftable(heard) && draftRefusal() == null) startDraftAnswer(d, heard)
@@ -2513,6 +2550,7 @@ internal class CascadeSession(
                 voice = voice,
                 usage = usage,
                 hint = { SttHintStore.line },
+                instruction = { SttHintStore.instruction },
             )
 
         /** One cache store for the process: the cache outlives any one conversation. */

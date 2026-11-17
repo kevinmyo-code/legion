@@ -51,7 +51,7 @@ class SentenceSplitter(private val firstClauseWords: Int = FIRST_CLAUSE_WORDS) {
         while (i < buf.length) {
             val c = buf[i]
             if (c == '\n') return i + 1
-            if (c == '.' || c == '!' || c == '?') {
+            if (c in SENTENCE_ENDS) {
                 var j = i + 1
                 while (j < buf.length && buf[j] in CLOSERS) j++
                 // Need to see what follows: a boundary is only known once whitespace arrives.
@@ -107,6 +107,9 @@ class SentenceSplitter(private val firstClauseWords: Int = FIRST_CLAUSE_WORDS) {
          */
         const val FIRST_CLAUSE_WORDS = 6
         private const val CLOSERS = "\"')]”’"
+
+        /** Latin, plus Burmese ။, CJK 。！？ and Thai/others' Latin marks (2026-11-17, more languages). */
+        const val SENTENCE_ENDS = ".!?။。！？"
         private const val CLAUSE_MARKS = ",;:–—"
         private val ABBREVIATIONS = setOf(
             "mr", "mrs", "ms", "dr", "st", "jr", "sr", "vs", "etc", "e.g", "i.e", "a.m", "p.m",

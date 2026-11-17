@@ -49,20 +49,33 @@ internal object SttGuard {
      * - from [LONG_AUDIO_MS] or more, under [MIN_CHARS_PER_S] characters a second (`too_short`; the
      *   lowest real rate on 2026-11-17 was 7.3).
      */
-    @Suppress("ReturnCount") // one exit per reason
-    fun verdict(text: String, audioMs: Long, known: Set<String> = emptySet()): Verdict {
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // one exit per reason, one clause per rule
+    fun verdict(
+        text: String,
+        audioMs: Long,
+        known: Set<String> = emptySet(),
+        /** His languages ([SpokenLanguages]); English alone is the pin. */
+        accepted: List<SpokenLanguages.Language> = listOf(SpokenLanguages.ENGLISH),
+    ): Verdict {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Verdict.Keep("")
-        // Other scripts (CJK, Cyrillic, Arabic...) are removed word by word; English around them stays.
+        // Scripts none of his languages use (CJK, Cyrillic, Arabic...) are removed word by word; words in
+        // his languages' scripts stay.
+        val scripts = accepted.map { it.script }.toSet() + Character.UnicodeScript.LATIN
         val words = trimmed.split(Regex("\\s+")).filter { it.isNotEmpty() }
-        val latin = words.filter { w -> w.none { it.isLetter() && !isLatin(it) } }
-        if (latin.none { w -> w.any { it.isLetterOrDigit() } }) return Verdict.Drop("not_english_script")
-        val kept = latin.joinToString(" ")
-        if (kept.any { it in SPANISH_MARKS }) return Verdict.Drop("not_english")
-        val bare = latin.map { w -> w.trim { !it.isLetterOrDigit() }.lowercase() }.filter { it.isNotEmpty() }
-        val names = known.map { it.lowercase() }.toSet()
-        val foreign = bare.count { w -> w !in names && (w.any { it in ACCENTED } || w in SPANISH_WORDS) }
-        if (bare.isNotEmpty() && foreign * FOREIGN_DENOMINATOR >= bare.size) return Verdict.Drop("not_english")
+        val ok = words.filter { w -> w.none { it.isLetter() && Character.UnicodeScript.of(it.code) !in scripts } }
+        if (ok.none { w -> w.any { it.isLetterOrDigit() } }) return Verdict.Drop("not_english_script")
+        val kept = ok.joinToString(" ")
+        // Spanish look-alikes count against English only while no other Latin-script language is his.
+        val latinOther = accepted.any { it != SpokenLanguages.ENGLISH && it.script == Character.UnicodeScript.LATIN }
+        if (!latinOther) {
+            if (kept.any { it in SPANISH_MARKS }) return Verdict.Drop("not_english")
+            val latin = ok.filter { w -> w.none { it.isLetter() && !isLatin(it) } }
+            val bare = latin.map { w -> w.trim { !it.isLetterOrDigit() }.lowercase() }.filter { it.isNotEmpty() }
+            val names = known.map { it.lowercase() }.toSet()
+            val foreign = bare.count { w -> w !in names && (w.any { it in ACCENTED } || w in SPANISH_WORDS) }
+            if (bare.isNotEmpty() && foreign * FOREIGN_DENOMINATOR >= bare.size) return Verdict.Drop("not_english")
+        }
         val signal = kept.count { it.isLetterOrDigit() }
         if (signal < 2 && audioMs >= SHORT_AUDIO_MS) return Verdict.Drop("too_short")
         if (audioMs >= LONG_AUDIO_MS && kept.length * MS_PER_S < MIN_CHARS_PER_S * audioMs) {
