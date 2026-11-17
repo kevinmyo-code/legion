@@ -4,8 +4,8 @@ aspect-engine meta-tools (`service/EngineToolbox.kt`).
 The phone has nine; eight are twinned here. `aspect_clerk` is not: it is a nested model loop over
 the other six, and on the engine the agent's own loop calls them directly. Three names differ from
 the phone's because the engine's registry already has `read_records` / `write_record` /
-`delete_record` (generic household tables) in the same spec, and a model choosing between
-`delete_record` and `delete_record` cannot be right:
+`delete_record` (generic household tables) in the same spec, and a model choosing between the
+phone's `delete_record` and the registry's cannot be right:
 
 | Tool | Phone tool | Reads or writes |
 |---|---|---|
