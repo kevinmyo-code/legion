@@ -220,6 +220,15 @@ class PhoneCardsTest {
         assertEquals(setOf(CarPart.CODES), card.parts.keys)
     }
 
+    @Test
+    fun `an empty engine code read says what was read and nothing wider`() {
+        val card = CarCards.codes("Jeep", jeep(), emptyList(), chicago)
+        assertEquals(CarCards.NO_ENGINE_CODES_NOTE, card.note)
+        assertTrue(card.note!!.contains("engine"))
+        assertFalse(card.note!!.contains("everything", ignoreCase = true))
+        assertFalse(Regex("\\b(all )?clear\\b", RegexOption.IGNORE_CASE).containsMatchIn(card.note!!))
+    }
+
     private fun codeEvent(date: String, cleared: Boolean, vararg codes: Pair<String, String?>) =
         org.json.JSONObject().put("date", date).put("cleared", cleared).put(
             "codes",

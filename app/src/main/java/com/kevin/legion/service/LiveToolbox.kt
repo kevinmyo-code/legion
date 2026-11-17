@@ -5109,6 +5109,17 @@ object LiveToolbox {
         return read.put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
     }
 
+    /**
+     * get_codes' empty answer, scoped to what it read (2026-11-16): one generic read of the engine's
+     * stored codes. Never "everything" or "the car is clear": pending codes and every other module
+     * were not read by it.
+     */
+    internal const val NO_ENGINE_CODES = "No stored engine codes. That is the engine's generic stored-code " +
+        "read only: pending codes and the other modules were not read."
+
+    internal const val ENGINE_CODES_NOT_READ = "The engine's stored-code read (OBD mode 03) got no real answer, so " +
+        "its codes are not known and nothing is known to be clear."
+
     internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
         "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
 
@@ -5116,10 +5127,15 @@ object LiveToolbox {
         if (!ObdBluetoothManager.isConnected) {
             return result(false, "The OBD adapter isn't connected, so I can't read any codes.")
         }
-        val codes = ObdBluetoothManager.getDtcCodes()
+        // 2026-11-16: one Mode 03 read of the engine's stored codes. A reply that is not a real
+        // Mode 03 answer is a failed read and is said as one, never as "no codes".
+        val raw = ObdBluetoothManager.getDtcCodesRaw()
+        val parser = com.kevin.legion.vehicle.ObdResponseParser
+        if (!parser.isValidDtcReply(raw)) return result(false, ENGINE_CODES_NOT_READ)
+        val codes = parser.dtcCodes(raw)
         if (codes.isEmpty()) {
             ToolCards.codes(context, ActiveVehicle.connectedCarId(context), codes, emptyMap())
-            return result(true, "No codes stored - everything's clear.")
+            return result(true, NO_ENGINE_CODES)
         }
 
         val seed = withContext(Dispatchers.IO) { DtcDescriptions.loadSeed(context) }

@@ -118,6 +118,26 @@ class ClearReadInsteadTest {
     }
 
     @Test
+    fun `an empty engine read says stored engine codes only, never everything`() {
+        val pcm = SimCars.uds(0x7E0, emptyList()).apply { obd = SimObd() }
+        connect(SimCar(BusKind.CAN_11, listOf(pcm)))
+        val r = clearCodes("any codes?")
+        assertTrue(r.toString(), r.optBoolean("success"))
+        assertEquals(LiveToolbox.NO_ENGINE_CODES, r.getString("message"))
+        assertFalse(r.getString("message").contains("everything", ignoreCase = true))
+    }
+
+    @Test
+    fun `a failed engine read says so, never no codes`() {
+        val car = SimCars.canTruck()
+        val elm = connect(car)
+        elm.car.ignitionOn = false
+        val r = clearCodes("read the codes")
+        assertFalse(r.toString(), r.optBoolean("success"))
+        assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ, r.getString("message"))
+    }
+
+    @Test
     fun `a clear request still asks first and sends nothing`() {
         val car = SimCars.canTruck()
         val elm = connect(car)
