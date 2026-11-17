@@ -93,7 +93,7 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
-from assistant import fillers, read_through, speech_tags, tour, web_greeting
+from assistant import fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
@@ -371,13 +371,15 @@ class Speaker:
         self.first_audio_ms: int | None = None
         self.total_ms = 0
         self._pool = ThreadPoolExecutor(max_workers=2) if enabled else None
-        # Expression tags left in this reply (`speech_tags`): two at most.
-        self.tags = speech_tags.Budget()
+        # The person asked for exact figures this turn: nothing is rounded when spoken.
+        self.exact = False
 
     def spoken_text(self, text: str, expressive: bool = False) -> str:
-        """What goes to speech for `text`: its allowed tags only when `expressive` (a model
-        sentence or a code line written with one), every tag removed otherwise."""
-        return speech_tags.for_speech(text, self.tags, expressive=expressive)
+        """What goes to speech for `text`: its figures rounded like a person says them
+        (`spoken_figures`; the exact ones stay in the caption), and its allowed tags only when
+        `expressive` (a model sentence or a code line written with one)."""
+        said = spoken_figures.speakable(text, exact=self.exact)
+        return speech_tags.for_speech(said, expressive=expressive)
 
     def add(self, text: str, expressive: bool = False) -> None:
         if not self.enabled:
@@ -613,9 +615,22 @@ def context_note(context: str) -> str:
     return f"(Current context, use naturally if relevant:\n{context.strip()})"
 
 
+# How it talks (`.legion/reports/voice-persona-1117.md` sections 1 and 2, Kevin 2026-11-17: "a
+# work tool but we still want it to feel like a real person"). Adds warmth to the persona's own
+# register; it does not replace it.
+PERSONA_NOTE = (
+    "Talk like a friendly, quick, slightly dry colleague: one sentence unless asked for more, "
+    'contractions, now and then a lead-in like "So," or "Right," (never the same one twice '
+    "running). A short warm remark or a joke back is fine; it never delays or pads the answer. "
+    "For a list, say three, then how many more. Write every figure exactly as the tools gave it, "
+    "to the cent: the voice rounds it for speech and the exact one stays on screen."
+)
+
+
 def cached_system(body: str) -> str:
-    """What is cached: the prompt's stable body plus the phone's voice clause (spec 9, 11)."""
-    return f"{body.strip()}\n\n{VOICE_CLAUSE} {speech_tags.PROMPT_LINE}"
+    """What is cached: the prompt's stable body plus the phone's voice clause (spec 9, 11), how
+    it talks, and the sound tags it may use."""
+    return f"{body.strip()}\n\n{VOICE_CLAUSE} {PERSONA_NOTE} {speech_tags.PROMPT_LINE}"
 
 
 def _failure_words(result, door: WebDoor) -> str | None:
@@ -782,6 +797,7 @@ def _answer(
         if turn_input.spoken:
             yield ev.Event("heard", {"text": words})
     report.heard = words
+    speaker.exact = spoken_figures.wants_exact(words)
     web_conversation.record_lines(
         request,
         conversation_id_of(door),

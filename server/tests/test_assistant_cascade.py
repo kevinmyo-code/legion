@@ -524,7 +524,8 @@ def test_has_money_matches_the_phones_filter(sentence, money):
 def test_the_cached_prefix_carries_the_voice_clause_and_the_turn_the_context(member, engine):
     _events(_post(member, text="Hi."))
     sent = engine.model.requests[0]
-    assert sent.system.endswith(cascade.VOICE_CLAUSE)
+    assert cascade.VOICE_CLAUSE in sent.system
+    assert sent.system.endswith(cascade.speech_tags.PROMPT_LINE)
     assert sent.contents[-1]["parts"][0]["text"].startswith("(Current context, use naturally")
 
 

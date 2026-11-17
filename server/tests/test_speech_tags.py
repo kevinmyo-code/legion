@@ -42,41 +42,43 @@ def test_strip_removes_every_tag_and_tidies_the_spaces():
 
 
 def test_only_allowed_tags_are_spoken_and_long_pause_is_not_one():
-    budget = speech_tags.Budget()
-    assert speech_tags.for_speech("Well <long pause> then.", budget) == "Well then."
-    assert speech_tags.for_speech("Well <breath> then.", budget) == "Well then."
-    assert budget.left == 2
-    assert speech_tags.for_speech("Well <SIGH> then.", budget) == "Well <sigh> then."
+    assert speech_tags.for_speech("Well <long pause> then.") == "Well then."
+    assert speech_tags.for_speech("Well <applause> then.") == "Well then."
+    assert speech_tags.for_speech("Well <scream> then.") == "Well then."
+    assert speech_tags.for_speech("Well <SIGH> then.") == "Well <sigh> then."
+    assert speech_tags.for_speech("Well <throat-clearing> then.") == "Well <throat-clearing> then."
     assert "<long pause>" not in speech_tags.ALLOWED
 
 
-def test_one_tag_a_sentence_and_two_a_reply():
-    budget = speech_tags.Budget()
-    once = speech_tags.for_speech("<chuckle> Fine, <laugh> fine.", budget)
-    assert once == "<chuckle> Fine, fine."
-    assert speech_tags.for_speech("<sigh> Again.", budget) == "<sigh> Again."
-    assert speech_tags.for_speech("<laugh> A third.", budget) == "A third."
-    assert budget.left == 0
+def test_one_tag_a_sentence_and_no_cap_a_reply():
+    assert speech_tags.for_speech("<chuckle> Fine, <laugh> fine.") == "<chuckle> Fine, fine."
+    said = [speech_tags.for_speech(f"<sigh> Line {word}.") for word in ("one", "two", "three")]
+    assert said == ["<sigh> Line one.", "<sigh> Line two.", "<sigh> Line three."]
 
 
 @pytest.mark.parametrize(
     "sentence",
     [
         "<chuckle> You spent $412.50 on groceries.",
-        "<sigh> That's due on November 3.",
+        "<sigh> That's due on November third.",
         "<laugh> The code is AB12.",
         "<short pause> It went up 4%.",
+        "<chuckle> See you at noon.",
+        "<sigh> Sorry, I can't change that from here.",
+        "<chuckle> Add oat milk to the groceries?",
+        "<laugh> Nothing was changed.",
     ],
 )
-def test_a_sentence_with_a_figure_keeps_no_tag(sentence):
-    assert not speech_tags.has_tag(speech_tags.for_speech(sentence, speech_tags.Budget()))
+def test_a_figure_date_time_refusal_or_confirmation_keeps_no_tag(sentence):
+    assert not speech_tags.has_tag(speech_tags.for_speech(sentence))
+
+
+def test_a_casual_question_may_keep_its_tag():
+    assert speech_tags.for_speech("<chuckle> Long week?") == "<chuckle> Long week?"
 
 
 def test_a_code_line_that_is_not_expressive_is_spoken_plain():
-    spoken = speech_tags.for_speech(
-        "<chuckle> Not answered.", speech_tags.Budget(), expressive=False
-    )
-    assert spoken == "Not answered."
+    assert speech_tags.for_speech("<chuckle> Not answered.", expressive=False) == "Not answered."
 
 
 def test_the_scripted_lines_carry_only_allowed_tags():
@@ -98,6 +100,7 @@ def test_the_model_is_told_the_tags_once():
     for tag in speech_tags.ALLOWED:
         assert tag in speech_tags.PROMPT_LINE
     assert "long pause" not in speech_tags.PROMPT_LINE
+    assert cascade.PERSONA_NOTE in system
 
 
 # =============================================================================
@@ -106,14 +109,14 @@ def test_the_model_is_told_the_tags_once():
 
 
 def test_a_model_tag_is_spoken_but_never_shown_stored_or_sent_back(member, engine):
-    engine.model = FakeModel([say("<chuckle> Nothing on today. <laugh> Enjoy it.")])
+    engine.model = FakeModel([say("<chuckle> The calendar is empty. <laugh> Enjoy it.")])
     events = _events(_post(member, audio=PCM))
     shown = [s["text"] for s in _of(events, "sentence")]
     assert shown and not any("<" in s for s in shown)
     done = _of(events, "done")[0]
     assert "<" not in done.get("final_text", "")
     spoken = [text for text, _voice in engine.speech.spoken]
-    assert sum(speech_tags.has_tag(t) for t in spoken) == 1  # one per sentence, here one sentence
+    assert sum(speech_tags.has_tag(t) for t in spoken) == 2  # one per sentence, no cap
     # The record (and so the next turn's history) holds the words without tags.
     from tests.test_assistant_cascade import _record
 
@@ -139,21 +142,20 @@ def test_a_tag_only_sentence_is_dropped_and_checks_see_plain_text(member, engine
     assert [s["text"] for s in _of(events, "sentence")] == ["Your day is clear."]
 
 
-def test_the_speaker_speaks_code_lines_plain_and_keeps_the_reply_budget():
+def test_the_speaker_speaks_code_lines_plain_and_figures_rounded():
     from tests.test_assistant_cascade import FakeSpeech
 
     speech = FakeSpeech()
     speaker = cascade.Speaker(speech, "Puck", enabled=True)
-    speaker.add("<chuckle> Groceries were fifty dollars.")  # a verbatim or refusal line
+    speaker.add("<chuckle> Groceries were $2,333.61.")  # a verbatim line
     speaker.add("<chuckle> Fine.", expressive=True)
     speaker.add("<sigh> Fine again.", expressive=True)
-    speaker.add("<laugh> A third.", expressive=True)
     list(speaker.drain())
     speaker.close()
     said = [text for text, _voice in speech.spoken]
     # Two speak at once, so the order they reach speech is not fixed.
     assert sorted(said) == sorted(
-        ["Groceries were fifty dollars.", "<chuckle> Fine.", "<sigh> Fine again.", "A third."]
+        ["Groceries were about $2,330.", "<chuckle> Fine.", "<sigh> Fine again."]
     )
 
 
@@ -164,10 +166,10 @@ def test_the_tour_shows_its_lines_plain_and_speaks_their_tag(visitor, engine):
     assert any("<chuckle>" in t for t, _v in engine.speech.spoken)
 
 
-def test_the_opening_is_shown_plain_and_spoken_with_its_pause(visitor, engine):
+def test_the_opening_is_shown_plain_and_spoken_with_its_tag(visitor, engine):
     events = _events(_post(visitor, greet="true"))
     assert "<" not in _of(events, "greeting")[0]["text"]
-    assert any("<short pause>" in t for t, _v in engine.speech.spoken)
+    assert any("<breath>" in t for t, _v in engine.speech.spoken)
 
 
 # =============================================================================
@@ -238,3 +240,10 @@ def test_a_refused_voice_falls_back_to_puck_rather_than_silence():
     assert b"".join(speech.speak("Again.", "en-us-neno", Spoken()))
     assert len(transport.bodies) == sent + 1
     assert FALLBACK_VOICE == "Puck"
+
+
+def test_scripted_greetings_never_repeat_running():
+    from assistant import web_greeting
+
+    said = [web_greeting.ack_line(pick=lambda options: options[0]) for _ in range(6)]
+    assert all(a != b for a, b in zip(said, said[1:], strict=False))

@@ -436,15 +436,19 @@ def test_realrun_gate(real, household_user):
 
     row = _gate_turn(real, visitor, "recruiter", "gate_money", "spend")
     assert row.get("said"), row
-    # The reply's audio, transcribed back: every dollar amount heard is one a tool returned, to the
-    # cent (none made up or re-worded wrongly by the model or the voice).
+    # The reply's audio, transcribed back: every dollar amount heard is one a tool returned, as
+    # code rounds it for speech (`assistant/spoken_figures.py`, Kevin 2026-11-17: "round when
+    # spoken like a real person") or to the cent; anything else is a wrong figure.
+    from assistant.spoken_figures import rounded_cents
+
     heard = row.get("money_heard") or []
     assert heard, ("no amount heard in a spending answer", row.get("heard_back"))
     tools = row["money_from_tools"]
-    dollars = {round(c / 100) for c in tools}
-    # Exact to the cent, or the same amount said in whole dollars; anything else is a wrong figure.
-    stray = [c for c in heard if c not in tools and not (c % 100 == 0 and c // 100 in dollars)]
+    allowed = set(tools) | {rounded_cents(c) for c in tools}
+    stray = [c for c in heard if c not in allowed]
     assert not stray, (stray, row.get("heard_back"))
+    # The exact figure is on screen in the same turn: the captions carry the tool's own amount.
+    assert any(c in tools for c in _cents_in(row["said"])), row["said"]
 
     row = _gate_turn(real, visitor, "recruiter", "gate_stop", "stop")
     assert (row.get("done") or {}).get("end") is True, row

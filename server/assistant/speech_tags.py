@@ -1,31 +1,52 @@
-"""Expression tags in spoken text (Kevin, 2026-11-17: "plain. and with tags where possible").
+"""Expression tags in spoken text (Kevin, 2026-11-17: "use as many tags as u can ... so we can make
+it feel more natural"; `.legion/reports/voice-persona-1117.md` section 3).
 
-Gemini 3.8 Flash TTS reads a few inline tags as sounds and never says them aloud in our request
-shape (`.legion/reports/tts-styles-1117.md`). They live only on the text sent to speech:
+Gemini 3.8 Flash TTS reads inline tags as sounds and never says them aloud in our request shape.
+They live only on the text sent to speech:
 
-- **Allowed:** `<chuckle>`, `<laugh>`, `<sigh>`, `<short pause>`. Any other tag is removed, and
-  `<long pause>` is not allowed.
-- **Where:** a few code-written lines carry them on purpose (the demo's opening, the tour's lighter
-  lines, a sign-off), and the model may use one now and then (`PROMPT_LINE`). Never on a sentence
-  with an amount, a date, a code or any figure, and never on a verbatim, refusal, error or filler
-  line: those are spoken with every tag removed (`for_speech(..., expressive=False)`).
-- **How many:** at most one per sentence and two per reply (`Budget`).
+- **Allowed:** the human sounds on Google's speech page that passed a heard test in our shape on
+  2026-11-17 for both voices (`.legion/reports/tag-heard-test-1117.json`: synthesised, transcribed
+  back, the tag word never spoken, the length sane). Any other tag is removed; `<long pause>` (about
+  1.5 s) and the non-human or distressed sounds are never allowed.
+- **Where:** casual sentences, liberally: code-written lines (the opening, the tour, sign-offs, a
+  thinking sound on some fillers) and the model (`PROMPT_LINE`). Never on a sentence with a
+  figure, date or time, a refusal or error, or a confirmation of a change (`casual`), and never on
+  a code line that is not expressive (verbatim figures, failures, the recording notice).
+- **How many:** at most one per sentence.
 - **Never anywhere else:** captions, the conversation record, the history sent back to the model,
-  logs, the funnel and the live strip, and the figure and honesty checks all see `strip(text)`.
+  logs, the funnel and the live strip, and the figure and honesty checks all see `untagged(text)`.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
-ALLOWED = ("<chuckle>", "<laugh>", "<sigh>", "<short pause>")
-MAX_PER_REPLY = 2
+ALLOWED = (
+    "<short pause>",
+    "<chuckle>",
+    "<chuckles>",
+    "<laugh>",
+    "<laughter>",
+    "<giggle>",
+    "<snicker>",
+    "<sigh>",
+    "<sighs>",
+    "<phew>",
+    "<gasp>",
+    "<breath>",
+    "<exhales>",
+    "<pff>",
+    "<tsk>",
+    "<throat-clearing>",
+)
 
 PROMPT_LINE = (
-    "You may add one of these sound tags, written exactly, very rarely and only where it fits a "
-    "light moment: <chuckle>, <laugh>, <sigh>, <short pause>. Never with figures, dates or bad "
-    "news, and never any other tag."
+    "In casual sentences you may add one sound tag, written exactly: <chuckle> or <laugh> for "
+    "something funny, <sigh> or <phew> for relief or a long day, <short pause> before a point, "
+    "<breath> before thinking aloud, <tsk> for a small annoyance, <gasp> for a surprise. Use "
+    "them freely in light lines, one per sentence at most, never in a sentence with a figure, "
+    "date or time, never in bad news, refusals or a question confirming a change, and no other "
+    "tags."
 )
 
 # Any angle-bracket tag of words (`<long pause>`, `<breath>`, `</b>`), with the space around it.
@@ -33,6 +54,20 @@ _TAG = re.compile(r"\s*<\s*/?\s*([A-Za-z][A-Za-z _-]{0,30}?)\s*/?\s*>\s*")
 # An amount, a date, a code, a figure: any digit, or a currency or percent sign.
 _FIGURE = re.compile(r"[0-9$£€%]")
 _SPACE_BEFORE = re.compile(r"\s+([,.!?;:])")
+_DATE = re.compile(
+    r"\b(january|february|march|april|may|june|july|august|september|october|november|december|"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|yesterday|"
+    r"o'clock|a\.m\.|p\.m\.|noon|midnight)\b",
+    re.I,
+)
+_REFUSAL = re.compile(
+    r"\b(can't|cannot|couldn't|won't|unable|not allowed|nothing was|wasn't|isn't possible|"
+    r"sorry|error|failed|refus)",
+    re.I,
+)
+_CHANGE = re.compile(
+    r"\b(add|log|delete|remove|change|save|set|move|cancel|send|book|update)\b", re.I
+)
 
 
 def _tidy(text: str) -> str:
@@ -50,20 +85,25 @@ def has_tag(text: str) -> bool:
     return bool(_TAG.search(text or ""))
 
 
-@dataclass
-class Budget:
-    """Tags left in one reply."""
+def casual(plain: str) -> bool:
+    """A sentence a tag may go on: no figure, date or time, not a refusal, not a confirmation of
+    a change (`voice-persona-1117.md` section 3)."""
+    return not (
+        _FIGURE.search(plain)
+        or _DATE.search(plain)
+        or _REFUSAL.search(plain)
+        or (plain.rstrip().endswith("?") and _CHANGE.search(plain))
+    )
 
-    left: int = MAX_PER_REPLY
 
-
-def for_speech(text: str, budget: Budget | None, *, expressive: bool = True) -> str:
-    """What is sent to speech. Keeps the first allowed tag of an expressive sentence while the
-    reply has any left; removes every other tag. A sentence with a figure keeps none."""
+def for_speech(text: str, *, expressive: bool = True) -> str:
+    """What is sent to speech. Keeps the first allowed tag of an expressive sentence and removes
+    every other tag. A sentence with a figure, date or time, a refusal or a confirmation keeps
+    none."""
     if "<" not in (text or ""):
         return text or ""
     plain = untagged(text)
-    if not expressive or budget is None or budget.left <= 0 or _FIGURE.search(plain):
+    if not expressive or not casual(plain):
         return plain
     kept = False
 
@@ -75,7 +115,4 @@ def for_speech(text: str, budget: Budget | None, *, expressive: bool = True) -> 
             return f" {tag} "
         return " "
 
-    out = _tidy(_TAG.sub(one, text))
-    if kept:
-        budget.left -= 1
-    return out
+    return _tidy(_TAG.sub(one, text))
