@@ -102,6 +102,12 @@ object VoiceEngineSettings {
     private const val KEY_STATUS = "last_status"
     private const val KEY_STATUS_AT = "last_status_at"
     private const val KEY_SPECULATE = "speculate"
+    private const val KEY_SPEED = "speech_speed"
+
+    /** Speaking speed (2026-11-17): 1.15x by default, 1.0x to 1.4x, pitch kept ([ReplyPlayer]). */
+    const val SPEED_DEFAULT = 1.15f
+    const val SPEED_MIN = 1.0f
+    const val SPEED_MAX = 1.4f
 
     /**
      * Gemini Live is retired on the phone (Kevin, 2026-11-15: "replace the sts live pipeline with
@@ -135,6 +141,19 @@ object VoiceEngineSettings {
     fun speculate(context: Context): Boolean = prefs(context).getBoolean(KEY_SPECULATE, true)
 
     fun setSpeculate(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SPECULATE, on).apply()
+
+    fun speechSpeed(context: Context): Float = clampSpeed(prefs(context).getFloat(KEY_SPEED, SPEED_DEFAULT))
+
+    fun setSpeechSpeed(context: Context, speed: Float) =
+        prefs(context).edit().putFloat(KEY_SPEED, clampSpeed(speed)).apply()
+
+    /** Into [SPEED_MIN]..[SPEED_MAX], on 0.05 steps; anything not a number is the default. */
+    @Suppress("MagicNumber") // 0.05 steps: 20 to the whole
+    fun clampSpeed(speed: Float): Float {
+        if (speed.isNaN()) return SPEED_DEFAULT
+        val c = speed.coerceIn(SPEED_MIN, SPEED_MAX)
+        return Math.round(c * 20f) / 20f
+    }
 
     fun laptop(context: Context): LaptopVoiceConfig {
         val p = prefs(context)

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,6 +61,7 @@ fun VoiceEngineRow() {
     var testing by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<String?>(null) }
     var last by remember { mutableStateOf(VoiceEngineSettings.lastStatus(context)) }
+    var speed by remember { mutableStateOf(VoiceEngineSettings.speechSpeed(context)) }
 
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -86,6 +88,21 @@ fun VoiceEngineRow() {
                     label = engineLabel(option),
                 )
             }
+            // 2026-11-17: speaking speed, pitch kept, for every voice and scripted line.
+            Spacer(Modifier.height(4.dp))
+            Text(
+                speedLabel(speed),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Slider(
+                value = speed,
+                onValueChange = { speed = VoiceEngineSettings.clampSpeed(it) },
+                onValueChangeFinished = { VoiceEngineSettings.setSpeechSpeed(context, speed) },
+                valueRange = VoiceEngineSettings.SPEED_MIN..VoiceEngineSettings.SPEED_MAX,
+                steps = SPEED_STEPS,
+                modifier = Modifier.fillMaxWidth(),
+            )
             if (engine == VoiceEngine.LAPTOP) {
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
@@ -151,6 +168,14 @@ fun VoiceEngineRow() {
         }
     }
 }
+
+/** 1.0 to 1.4 in 0.05 steps: seven stops between the ends. */
+private const val SPEED_STEPS = 7
+
+/** "Speaking speed: 1.15x (applies from the next conversation)". */
+internal fun speedLabel(speed: Float): String =
+    "Speaking speed: ${"%.2f".format(java.util.Locale.US, speed).trimEnd('0').trimEnd('.')}x " +
+        "(applies from the next conversation)"
 
 /** What Settings calls each engine. */
 internal fun engineLabel(engine: VoiceEngine): String = when (engine) {
