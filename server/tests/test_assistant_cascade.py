@@ -27,6 +27,7 @@ from engine_mcp.tools import SPEAK_VERBATIM, ToolResult
 from household.models import Household, HouseholdMember, User
 from ingest.statements import GEMINI_KEY_ENV
 from tests.test_assistant import browser
+from tests.test_recruiter import _recruiter_browser, _visitor_token
 
 pytestmark = pytest.mark.django_db
 
@@ -89,13 +90,17 @@ def member(household_user, monkeypatch):
 def visitor_user(db):
     demo = Household.objects.create(name="Demo visit cascade", is_demo_visit=True)
     user = User.objects.create_user(email="visitor-cascade@demo.invalid", first_name="Pat")
+    user.set_unusable_password()
+    user.save()
     HouseholdMember.objects.create(user=user, household=demo, role=HouseholdMember.RECRUITER)
     return user
 
 
 @pytest.fixture
 def visitor(visitor_user):
-    return browser(visitor_user)
+    """What `POST /api/demo/enter` leaves a browser holding (`tests/test_recruiter.py`)."""
+    token, _raw = _visitor_token(visitor_user)
+    return _recruiter_browser(visitor_user, token)
 
 
 PCM = b"\x10\x00" * 16_000  # one second
