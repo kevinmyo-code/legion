@@ -209,6 +209,11 @@ INSTALLED_APPS = [
     # Architecture review 2026-11-10, item 15: the engine's model-call helper (retry and
     # backoff), the model config route, and `llm_usage`, per-member token accounting.
     "llm",
+    # engine-brain ticket 02 (ADR 0100): the agent runtime (`agents/runtime`, `agents/graph`, no
+    # LEGION imports), LEGION's specs, guards and tool gateway (`agents/legion`), the turn traces
+    # (`public.agents_*`, private to their member) and the eval runner. DARK: the turn endpoint
+    # refuses unless LEGION_AGENTS_TURN=on.
+    "agents",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
@@ -592,6 +597,10 @@ REST_FRAMEWORK = {
         # ADR 0076: ID vault reveals per MEMBER (`id_vault.views.VaultRevealThrottle`). Same
         # per-process LocMemCache caveat as `mcp` above.
         "vault_reveal": os.environ.get("LEGION_VAULT_REVEAL_RATE", "").strip() or "10/hour",
+        # engine-brain ticket 02: agent turns per MEMBER (`agents.views.AgentTurnThrottle`). Each
+        # one spends the household key, so it is bounded like the assistant's mint. Same
+        # per-process LocMemCache caveat as `mcp` above.
+        "agents_turn": "30/min",
         # The browser's half of a conversation record (`POST /api/assistant/conversation`):
         # about one upload per turn and one at the end, per member.
         "assistant_conversation": (

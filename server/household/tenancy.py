@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# Eighty-three names (count it with len(); this line was stale four times before).
+# A hundred and three names (count it with len(); this line was stale five times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -214,6 +214,13 @@ TENANT_TABLES: tuple[str, ...] = (
     # alfred-greets ticket 01 (ADR 0091): the topics Alfred raised and the member answered or
     # silenced, always private to the member (`OWNER_PATHS`; `greeting/models.py`).
     "greeting_topics",
+    # engine-brain ticket 02 (ADR 0100): the agent turn's conversations, turns, checkpoints, model
+    # calls and tool calls, always private to the member (`OWNER_PATHS`; `agents/models.py`).
+    "agents_conversation",
+    "agents_turn",
+    "agents_checkpoint",
+    "agents_model_call",
+    "agents_tool_call",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -300,6 +307,11 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "llm_usage",
         "canvas_course_grades",
         "greeting_topics",
+        "agents_conversation",
+        "agents_turn",
+        "agents_checkpoint",
+        "agents_model_call",
+        "agents_tool_call",
     }
 )
 
@@ -493,6 +505,12 @@ OWNER_PATHS: dict[str, str] = {
     "canvas_course_grades": "owner_user",
     # ADR 0091: never null, so a member reads and records only the topics raised with him.
     "greeting_topics": "owner_user",
+    # ADR 0100: never null on any of the five, so a member reads only their own turns and traces.
+    "agents_conversation": "owner_user",
+    "agents_turn": "owner_user",
+    "agents_checkpoint": "owner_user",
+    "agents_model_call": "owner_user",
+    "agents_tool_call": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private
