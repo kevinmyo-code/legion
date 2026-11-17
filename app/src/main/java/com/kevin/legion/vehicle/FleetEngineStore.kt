@@ -769,6 +769,10 @@ object FleetEngineStore {
         val db = CarDatabase.getDatabase(context)
         val record = db.serviceRecordDao().getById(localId) ?: return
         val vehicleServerId = db.vehicleSidecarDao().getByMac(mac)?.serverId ?: return
+        // Engine-brain ticket 03: the engine addresses a service record by origin_guid. A first
+        // push uses this record's syncId; a row the engine already holds keeps the guid it has.
+        val originGuid = record.serverId?.let { db.serviceHistoryReplicaDao().getByServerId(it)?.originGuid }
+            ?: record.syncId.takeIf { record.serverId == null }
 
         val remote = backend.upsertServiceHistory(
             ServiceHistoryUpload(
@@ -779,6 +783,7 @@ object FleetEngineStore {
                 serviceDateEpochMs = record.date,
                 costCents = record.costCents,
                 kind = record.kind,
+                originGuid = originGuid,
             ),
         ).getOrElse {
             Log.w("FleetEngineStore", "Supabase service-history sync failed for record $localId: ${it.message}")

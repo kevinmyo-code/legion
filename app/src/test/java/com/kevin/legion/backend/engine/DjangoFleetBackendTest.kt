@@ -372,6 +372,36 @@ class DjangoFleetBackendTest {
         assertTrue(engine.requests.isEmpty())
     }
 
+    @Test
+    fun `a live service-history upsert that names its origin_guid is a PUT to that row`() = runBlocking {
+        val reply = """
+            {"id": "aaaaaaaa-2222-4333-8444-555555555555", "vehicle_id": "$vehicleId",
+             "service_name": "oil change", "mileage": 91000, "service_date": null,
+             "cost_cents": 6500, "kind": "ASSERTED", "updated_at": "2026-09-02T14:03:03Z",
+             "deleted_at": null, "origin_guid": "svc-guid-1"}
+        """.trimIndent()
+        val engine = EngineTestSupport.RecordingEngine { json(reply) }
+
+        val result = backend(engine).upsertServiceHistory(
+            ServiceHistoryUpload(
+                serverId = null,
+                vehicleServerId = vehicleId,
+                serviceName = "oil change",
+                mileage = 91000,
+                serviceDateEpochMs = null,
+                costCents = 6500,
+                kind = "ASSERTED",
+                originGuid = "svc-guid-1",
+            ),
+        )
+
+        assertTrue(result.exceptionOrNull()?.message ?: "", result.isSuccess)
+        val request = engine.requests.single()
+        assertEquals("PUT", request.method.value)
+        assertTrue(request.url.encodedPath, request.url.encodedPath.endsWith("/api/fleet/service_history/svc-guid-1/"))
+        assertEquals("svc-guid-1", result.getOrThrow().originGuid)
+    }
+
     private fun sample(pid: String) = ObdSampleUpload(
         vehicleServerId = vehicleId,
         pid = pid,

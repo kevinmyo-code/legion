@@ -236,6 +236,10 @@ interface LedgerTransactionDao {
     @Query("DELETE FROM ledger_transactions WHERE id = :id AND pendingLoggedAt IS NOT NULL")
     suspend fun deletePendingById(id: Long): Int
 
+    /** A pending row the engine cleared. Same `pendingLoggedAt` guard as [deletePendingById]. */
+    @Query("DELETE FROM ledger_transactions WHERE syncId = :syncId AND pendingLoggedAt IS NOT NULL")
+    suspend fun deletePendingBySyncId(syncId: String): Int
+
     /**
      * [com.kevin.legion.backend.LedgerTransactionsSync.mirror]'s delete: a row the engine no longer
      * lists (a rule-7 supersession removed it server-side). **`sourceFile = 'synced'` is the

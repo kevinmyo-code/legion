@@ -118,6 +118,9 @@ class AdvisorAgent(
                         outcome = outcomeFor(proposalPresent),
                     ),
                 )
+                // Engine-brain ticket 03: the engine's copy. A later outcome change reaches it on
+                // the next HomesSync reconcile.
+                com.kevin.legion.backend.HomesSync.adviceAdded(context, id)
                 AdvisorResult.Success(answer, id)
             }
             AgentResult.RateLimited -> AdvisorResult.RateLimited

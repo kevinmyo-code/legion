@@ -96,4 +96,8 @@ interface ProactiveRaiseDao {
     @Query("SELECT * FROM proactive_raises ORDER BY spokenAt DESC LIMIT 1")
     suspend fun mostRecent(): ProactiveRaiseRow?
 
+    /** Every raise spoken at or after [fromMs], for the engine home (engine-brain ticket 03). */
+    @Query("SELECT * FROM proactive_raises WHERE spokenAt >= :fromMs")
+    suspend fun since(fromMs: Long): List<ProactiveRaiseRow>
+
 }

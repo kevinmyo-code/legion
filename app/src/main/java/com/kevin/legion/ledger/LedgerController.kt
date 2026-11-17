@@ -243,22 +243,22 @@ object LedgerController {
         amountCents: Long,
         txnDate: Long,
     ) {
-        writeTransaction(
-            context,
-            LedgerTransaction(
-                sourceFile = "voice",
-                accountId = accountId,
-                currency = currency,
-                txnDate = txnDate,
-                description = description,
-                amountCents = amountCents,
-                balanceCents = null,
-                lineRef = "voice:${java.util.UUID.randomUUID()}",
-                ingestMethod = IngestMethod.UNRECONCILED,
-                sourceFileId = null,
-                pendingLoggedAt = System.currentTimeMillis(),
-            ),
+        val row = LedgerTransaction(
+            sourceFile = "voice",
+            accountId = accountId,
+            currency = currency,
+            txnDate = txnDate,
+            description = description,
+            amountCents = amountCents,
+            balanceCents = null,
+            lineRef = "voice:${java.util.UUID.randomUUID()}",
+            ingestMethod = IngestMethod.UNRECONCILED,
+            sourceFileId = null,
+            pendingLoggedAt = System.currentTimeMillis(),
         )
+        writeTransaction(context, row)
+        // Engine-brain ticket 03: the engine home (`pending_transactions`), keyed by this row's syncId.
+        com.kevin.legion.backend.HomesSync.pendingLogged(context, row)
     }
 
     /** Every voice-logged pending row, most recently logged first - `list_pending_transactions`'s read. */
@@ -278,7 +278,12 @@ object LedgerController {
      */
     suspend fun clearPendingTransaction(context: Context, id: Long): Boolean {
         ensureLegacyReconciled(context)
-        return db(context).ledgerTransactionDao().deletePendingById(id) > 0
+        val dao = db(context).ledgerTransactionDao()
+        val syncId = dao.pendingRows().firstOrNull { it.id == id }?.syncId
+        val removed = dao.deletePendingById(id) > 0
+        // Engine-brain ticket 03: clear the engine's copy too (queued if the engine is unreachable).
+        if (removed && syncId != null) com.kevin.legion.backend.HomesSync.pendingCleared(context, syncId)
+        return removed
     }
 
     /**

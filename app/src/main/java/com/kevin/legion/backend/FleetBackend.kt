@@ -199,6 +199,10 @@ data class ServiceHistoryUpload(
     val serviceDateEpochMs: Long?,
     val costCents: Long?,
     val kind: String,
+    /** The engine's address for this row (engine-brain ticket 03): the local record's `syncId` on
+     * a first push, or the replica's `originGuid` for a row the engine already holds. Null where
+     * neither is known; the Django transport then refuses in words, as before. */
+    val originGuid: String? = null,
 )
 
 /**

@@ -257,9 +257,31 @@ class DjangoFleetBackend(private val http: EngineHttp) : FleetBackend {
             true
         }
 
-    /** Refused without sending anything - see this class's own doc comment, "THE ONE GAP". */
-    override suspend fun upsertServiceHistory(history: ServiceHistoryUpload): Result<RemoteServiceHistory> =
-        Result.failure(EngineHttpException(EngineFailure.Refused(HTTP_NOT_FOUND, LIVE_SERVICE_REFUSAL)))
+    /**
+     * Engine-brain ticket 03 closes "THE ONE GAP" for service records: the caller now names the
+     * row's `origin_guid` (the local record's `syncId`, the identity [uploadMigratedServiceHistory]
+     * already uses), so a `PUT service_history/<origin_guid>/` addresses exactly the row it means
+     * and a retry cannot make a second one. Without one it is still refused without sending
+     * anything - see this class's own doc comment.
+     */
+    override suspend fun upsertServiceHistory(history: ServiceHistoryUpload): Result<RemoteServiceHistory> {
+        val guid = history.originGuid
+            ?: return Result.failure(EngineHttpException(EngineFailure.Refused(HTTP_NOT_FOUND, LIVE_SERVICE_REFUSAL)))
+        return translatingEngineCall("save a service record") {
+            val body = engineSyncedJson.encodeToString(
+                DjangoServiceHistoryWrite.serializer(),
+                DjangoServiceHistoryWrite(
+                    vehicleId = history.vehicleServerId,
+                    serviceName = history.serviceName,
+                    mileage = history.mileage,
+                    serviceDate = history.serviceDateEpochMs?.let { fleetDate(it) },
+                    costCents = history.costCents,
+                    kind = history.kind,
+                ),
+            )
+            serviceHistory.put(guid, body).toRemote()
+        }
+    }
 
     // --- Shape 2: sync_id ----------------------------------------------------------------------
 

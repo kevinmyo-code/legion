@@ -61,4 +61,8 @@ interface AdvisorAdviceDao {
      * `accepting` state or wrongly parked at `accepted` for a write that never landed. */
     @Query("UPDATE advisor_advice SET outcome = 'pending', resolvedAt = NULL WHERE id = :id")
     suspend fun revertToPending(id: Long)
+
+    /** Every row, for the engine home's backfill (engine-brain ticket 03). */
+    @Query("SELECT * FROM advisor_advice")
+    suspend fun all(): List<AdvisorAdvice>
 }
