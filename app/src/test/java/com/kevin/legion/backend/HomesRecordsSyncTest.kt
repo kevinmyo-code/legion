@@ -85,13 +85,17 @@ class HomesRecordsSyncTest {
 
     private suspend fun seed(): Long {
         val hikes = db.aspectDao().insert(Aspect(name = "Hikes", createdAt = 1_000, updatedAt = 1_000))
-        val hike = db.recordTypeDao().insert(RecordType(aspectId = hikes, name = "Hike", createdAt = 1_000, updatedAt = 1_000))
+        val hike = db.recordTypeDao().insert(
+            RecordType(aspectId = hikes, name = "Hike", createdAt = 1_000, updatedAt = 1_000),
+        )
         val trail = db.fieldDefDao().insert(
             FieldDef(recordTypeId = hike, name = "trail", type = FieldType.TEXT, createdAt = 1_000, updatedAt = 1_000),
         )
         // A plugin's aspect: replica rows with typed homes on the engine. Never sent.
         val fleet = db.aspectDao().insert(Aspect(name = "Fleet", createdAt = 500, updatedAt = 500))
-        val vehicle = db.recordTypeDao().insert(RecordType(aspectId = fleet, name = "Vehicle", createdAt = 500, updatedAt = 500))
+        val vehicle = db.recordTypeDao().insert(
+            RecordType(aspectId = fleet, name = "Vehicle", createdAt = 500, updatedAt = 500),
+        )
         val plate = db.fieldDefDao().insert(
             FieldDef(
                 recordTypeId = vehicle, name = "plate", type = FieldType.TEXT, ownerPluginId = "fleet", locked = true,
@@ -115,12 +119,30 @@ class HomesRecordsSyncTest {
         assertEquals(listOf(1, 1, 1, 2), HomeTable.RECORDS.map { engine.rows.getValue(it).size })
         val fieldGuid = engine.rows.getValue(HomeTable.USER_FIELD_DEFS).keys.single()
         val payloads = engine.rows.getValue(HomeTable.USER_RECORDS).values.map { it.getValue("payload").jsonObject }
-        assertEquals(setOf("Test ridge", "Test creek"), payloads.map { it.getValue(fieldGuid).jsonPrimitive.content }.toSet())
+        val trails = payloads.map { it.getValue(fieldGuid).jsonPrimitive.content }.toSet()
+        assertEquals(setOf("Test ridge", "Test creek"), trails)
         assertFalse(engine.rows.values.any { table -> table.values.any { "TEST-123" in it.toString() } })
         assertFalse(fieldGuid == trail.toString())
         // Again: the same rows, nothing doubled.
         HomesRecordsSync.run(context, engine)
         assertEquals(listOf(1, 1, 1, 2), HomeTable.RECORDS.map { engine.rows.getValue(it).size })
+    }
+
+    @Test
+    fun theRealPluginSeedersAspectsNeverTravel() = runBlocking {
+        com.kevin.legion.engine.fleet.FleetAspectSeeder.ensureSeeded(context)
+        com.kevin.legion.engine.ledger.LedgerAspectSeeder.ensureSeeded(context)
+        com.kevin.legion.engine.pantry.PantryAspectSeeder.ensureSeeded(context)
+        com.kevin.legion.engine.notes.NotesAspectSeeder.ensureSeeded(context)
+        com.kevin.legion.engine.places.PlacesAspectSeeder.ensureSeeded(context)
+        com.kevin.legion.engine.dates.DatesAspectSeeder.ensureSeeded(context)
+        val snap = HomesRecordsSync.snapshot(context)
+        assertTrue(snap.aspects.size >= 6)
+        HomeTable.RECORDS.forEach { assertTrue(it.key, snap.rows(it).isEmpty()) }
+        // And with their fields' owners wiped (an install seeded before `ownerPluginId`): still none.
+        db.fieldDefDao().listAll().forEach { db.fieldDefDao().update(it.copy(ownerPluginId = null, locked = false)) }
+        val unowned = HomesRecordsSync.snapshot(context)
+        HomeTable.RECORDS.forEach { assertTrue(it.key, unowned.rows(it).isEmpty()) }
     }
 
     @Test

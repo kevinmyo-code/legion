@@ -26,11 +26,17 @@ import org.junit.Test
 class HomesRecordsTest {
     private val hikes = Aspect(id = 1, name = "Hikes", createdAt = 100, updatedAt = 100)
     private val fleet = Aspect(id = 2, name = "Fleet", createdAt = 50, updatedAt = 50)
-    private val hike = RecordType(id = 10, aspectId = 1, name = "Hike", primaryAmountFieldId = 102, createdAt = 100, updatedAt = 100)
+    private val hike = RecordType(
+        id = 10, aspectId = 1, name = "Hike", primaryAmountFieldId = 102, createdAt = 100, updatedAt = 100,
+    )
     private val photo = RecordType(id = 11, aspectId = 1, name = "Photo", createdAt = 100, updatedAt = 100)
     private val vehicle = RecordType(id = 20, aspectId = 2, name = "Vehicle", createdAt = 50, updatedAt = 50)
-    private val trail = FieldDef(id = 101, recordTypeId = 10, name = "trail", type = FieldType.TEXT, createdAt = 100, updatedAt = 100)
-    private val parking = FieldDef(id = 102, recordTypeId = 10, name = "parking", type = FieldType.MONEY_CENTS, createdAt = 100, updatedAt = 100)
+    private val trail = FieldDef(
+        id = 101, recordTypeId = 10, name = "trail", type = FieldType.TEXT, createdAt = 100, updatedAt = 100,
+    )
+    private val parking = FieldDef(
+        id = 102, recordTypeId = 10, name = "parking", type = FieldType.MONEY_CENTS, createdAt = 100, updatedAt = 100,
+    )
     private val ref = FieldDef(
         id = 103, recordTypeId = 11, name = "hike", type = FieldType.REFERENCE,
         config = """{"targetRecordTypeId":10,"deletePolicy":"BLOCK"}""", createdAt = 100, updatedAt = 100,
@@ -56,6 +62,9 @@ class HomesRecordsTest {
     @Test
     fun onlyAspectsNoPluginOwnsTravel() {
         assertEquals(setOf(1L), HomesRecords.userAspectIds(listOf(hikes, fleet), listOf(hike, photo, vehicle), all))
+        // By name too: a seeded aspect whose fields carry no owner still never travels.
+        val unowned = all.map { it.copy(ownerPluginId = null) }
+        assertEquals(setOf(1L), HomesRecords.userAspectIds(listOf(hikes, fleet), listOf(hike, photo, vehicle), unowned))
     }
 
     @Test
@@ -68,7 +77,9 @@ class HomesRecordsTest {
         assertEquals(before, HomesRecords.derived(HomesRecords.ASPECT, 1, 100))
         assertNotEquals(before, HomesRecords.derived(HomesRecords.ASPECT, 1, 101))
         assertNotEquals(before, HomesRecords.derived(HomesRecords.RECORD_TYPE, 1, 100))
-        assertEquals("engine-a", book(mapOf("aspect:1" to "engine-a")).aspectGuid.getValue(1))
+        assertEquals("engine-a", book(mapOf("aspect:1:100" to "engine-a")).aspectGuid.getValue(1))
+        // A remembered guid for an older row that had the same local id never lands on this one.
+        assertEquals(before, book(mapOf("aspect:1:99" to "engine-old")).aspectGuid.getValue(1))
     }
 
     @Test

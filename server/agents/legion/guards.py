@@ -12,7 +12,9 @@ In order:
    `mark_before`, failing closed when the save fails.
 5. **Confirm before write**: a destructive tool, or one the spec lists, returns a read-back the
    first time; `pending_confirm` holds the sha256 of its arguments, and only a yes in a LATER turn
-   (`confirm_reply`) releases a call whose arguments hash the same.
+   (`confirm_reply`) releases a call whose arguments hash the same. A tool with its own draft
+   step (`CONFIRM_FLAG_TOOLS`, ticket 15) drafts freely; its `confirm: true` call is the one held
+   for that later yes, so a model cannot draft and commit in one turn.
 
 Tenancy is not a guard here because it is not optional: every engine tool runs through
 `run_engine_tool` as the member (`agents/legion/gateway.py`), under their `visible()`.
@@ -35,6 +37,9 @@ from engine_mcp.tools import TOOLS_BY_NAME
 from household.models import is_recruiter
 
 THIRD_PARTY_TOOLS = read_through.THIRD_PARTY_TOOLS
+# Tools whose first call only drafts or counts and whose `confirm: true` call commits (the
+# user-aspect records' bulk delete and tracker authoring, `homes/records_tools.py`).
+CONFIRM_FLAG_TOOLS = frozenset({"delete_aspect_record", "create_aspect", "update_aspect"})
 CONFIRM_TURNS = 2
 
 NOT_ALLOWED = (
@@ -84,7 +89,8 @@ def check_call(state, spec, name: str, args: dict, tool, user) -> Verdict:
             )
         )
         return Verdict(False, words, "tainted")
-    if tool.writes and (tool.destructive or name in spec.confirm):
+    flagged = name in CONFIRM_FLAG_TOOLS and (args or {}).get("confirm") is True
+    if tool.writes and (tool.destructive or name in spec.confirm or flagged):
         digest = args_sha256(name, args)
         if state.confirmed and state.confirmed == digest:
             state.confirmed = None

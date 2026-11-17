@@ -494,3 +494,82 @@ def test_trashed_entries_are_not_read_and_dates_render_on_the_household_clock(re
     UserRecord.objects.update(trashed_at=datetime(2026, 3, 10, tzinfo=UTC))
     query = {"aspect_name": "Hikes", "record_type_name": "Hike"}
     assert rt.QUERY_ASPECT_RECORDS.handler(req, query).structured["count"] == 0
+
+
+def test_a_recruiter_gets_none_of_the_records_tools(household_a):
+    """Default deny (ADR 0068): no records twin is on the recruiter list, so the gateway's guard
+    refuses each one in words before it runs."""
+    from assistant.surface import refusal_for
+    from household.models import HouseholdMember, User
+
+    visitor = User.objects.create_user(email="visitor-records@example.com", password=None)
+    HouseholdMember.objects.create(
+        user=visitor, household=household_a, role=HouseholdMember.RECRUITER
+    )
+    for tool in rt.RECORD_TOOLS:
+        assert refusal_for(tool.name, visitor, {}), tool.name
+
+
+def test_the_batch_takes_exactly_what_the_phone_sends(auth_client):
+    """The key sets `HomesRecords.kt` emits, explicit nulls included, for all four tables."""
+    clocks = {"created_at_client": AT, "updated_at_client": AT}
+    sent = (
+        (
+            "aspects",
+            {
+                "origin_guid": "pa",
+                "name": "Test tracker",
+                "icon": "",
+                "color": "",
+                "position": 0,
+                "archived": False,
+                "archived_at": None,
+                **clocks,
+            },
+        ),
+        (
+            "types",
+            {
+                "origin_guid": "pt",
+                "aspect": "pa",
+                "name": "Entry",
+                "primary_amount_field": None,
+                "primary_due_date_field": None,
+                **clocks,
+            },
+        ),
+        (
+            "fields",
+            {
+                "origin_guid": "pf",
+                "record_type": "pt",
+                "name": "what",
+                "type": "TEXT",
+                "required": False,
+                "position": 0,
+                "config": None,
+                **clocks,
+            },
+        ),
+        (
+            "entries",
+            {
+                "origin_guid": "pe",
+                "record_type": "pt",
+                "due_at": None,
+                "amount_cents": None,
+                "search_text": "",
+                "provenance": "USER",
+                "payload": {"pf": None, "phone_field:9": "kept"},
+                "trashed_at": None,
+                **clocks,
+            },
+        ),
+    )
+    for prefix, row in sent:
+        out = auth_client.post(f"/api/records/{prefix}/batch/", {"rows": [row]}, format="json")
+        assert out.status_code == 200 and out.data["failed"] == [], (prefix, out.data)
+        assert out.data["created"] == 1
+        again = auth_client.post(f"/api/records/{prefix}/batch/", {"rows": [row]}, format="json")
+        assert again.data["unchanged"] == 1, (prefix, again.data)
+    assert UserRecord.objects.get().payload == {"pf": None, "phone_field:9": "kept"}

@@ -67,17 +67,19 @@ object HomesRecordsSync {
         prefs(context).all.filterKeys { it.startsWith(KEY_ID) }
             .mapNotNull { (k, v) -> (v as? String)?.let { k.removePrefix(KEY_ID) to it } }.toMap()
 
-    private fun remember(context: Context, kind: String, localId: Long, guid: String) {
-        prefs(context).edit().putString("$KEY_ID$kind:$localId", guid).apply()
+    private fun remember(context: Context, kind: String, localId: Long, createdAt: Long, guid: String) {
+        prefs(context).edit().putString(KEY_ID + HomesRecords.rememberKey(kind, localId, createdAt), guid).apply()
     }
 
-    internal suspend fun snapshot(context: Context): Snapshot {
+    /** [withRecords] false reads the three small schema tables only: the schema pulls re-read
+     * after every insert, and `records` also holds the plugins' replica rows (it can be large). */
+    internal suspend fun snapshot(context: Context, withRecords: Boolean = true): Snapshot {
         val db = CarDatabase.getDatabase(context)
         return Snapshot(
             aspects = db.aspectDao().listAll(),
             recordTypes = db.recordTypeDao().listAll(),
             fieldDefs = db.fieldDefDao().listAll(),
-            records = db.engineRecordDao().listAll(),
+            records = if (withRecords) db.engineRecordDao().listAll() else emptyList(),
             remembered = remembered(context),
         )
     }
@@ -185,7 +187,7 @@ object HomesRecordsSync {
 
     private suspend fun pullAspects(context: Context, rows: List<JsonObject>): PullReport {
         val dao = CarDatabase.getDatabase(context).aspectDao()
-        var snap = snapshot(context)
+        var snap = snapshot(context, withRecords = false)
         var inserted = 0
         var updated = 0
         var skipped = 0
@@ -218,24 +220,26 @@ object HomesRecordsSync {
                 updatedAt = changed,
             )
             if (local == null) {
-                remember(context, HomesRecords.ASPECT, dao.insert(incoming), guid)
+                remember(context, HomesRecords.ASPECT, dao.insert(incoming), born, guid)
                 inserted++
             } else {
-                if (snap.ids.aspectGuid[local] != guid) remember(context, HomesRecords.ASPECT, local, guid)
                 val mine = snap.aspects.first { it.id == local }
+                if (snap.ids.aspectGuid[local] != guid) {
+                    remember(context, HomesRecords.ASPECT, local, mine.createdAt, guid)
+                }
                 if (changed > mine.updatedAt) {
                     dao.update(incoming.copy(id = local, createdAt = mine.createdAt))
                     updated++
                 }
             }
-            snap = snapshot(context)
+            snap = snapshot(context, withRecords = false)
         }
         return PullReport(true, inserted, updated, skipped)
     }
 
     private suspend fun pullRecordTypes(context: Context, rows: List<JsonObject>): PullReport {
         val dao = CarDatabase.getDatabase(context).recordTypeDao()
-        var snap = snapshot(context)
+        var snap = snapshot(context, withRecords = false)
         var inserted = 0
         var updated = 0
         var skipped = 0
@@ -261,24 +265,26 @@ object HomesRecordsSync {
             )
             if (local == null) {
                 val id = dao.insert(RecordType(aspectId = aspectId, name = name, createdAt = born, updatedAt = changed))
-                remember(context, HomesRecords.RECORD_TYPE, id, guid)
+                remember(context, HomesRecords.RECORD_TYPE, id, born, guid)
                 inserted++
             } else {
-                if (snap.ids.recordTypeGuid[local] != guid) remember(context, HomesRecords.RECORD_TYPE, local, guid)
                 val mine = snap.recordTypes.first { it.id == local }
+                if (snap.ids.recordTypeGuid[local] != guid) {
+                    remember(context, HomesRecords.RECORD_TYPE, local, mine.createdAt, guid)
+                }
                 if (changed > mine.updatedAt) {
                     dao.update(mine.copy(name = name, updatedAt = changed))
                     updated++
                 }
             }
-            snap = snapshot(context)
+            snap = snapshot(context, withRecords = false)
         }
         return PullReport(true, inserted, updated, skipped)
     }
 
     private suspend fun pullFieldDefs(context: Context, rows: List<JsonObject>): PullReport {
         val dao = CarDatabase.getDatabase(context).fieldDefDao()
-        var snap = snapshot(context)
+        var snap = snapshot(context, withRecords = false)
         var inserted = 0
         var updated = 0
         var skipped = 0
@@ -317,11 +323,13 @@ object HomesRecordsSync {
                         updatedAt = changed,
                     ),
                 )
-                remember(context, HomesRecords.FIELD_DEF, id, guid)
+                remember(context, HomesRecords.FIELD_DEF, id, born, guid)
                 inserted++
             } else {
-                if (snap.ids.fieldGuid[local] != guid) remember(context, HomesRecords.FIELD_DEF, local, guid)
                 val mine = snap.fieldDefs.first { it.id == local }
+                if (snap.ids.fieldGuid[local] != guid) {
+                    remember(context, HomesRecords.FIELD_DEF, local, mine.createdAt, guid)
+                }
                 if (changed > mine.updatedAt && !mine.locked) {
                     dao.update(
                         mine.copy(
@@ -335,7 +343,7 @@ object HomesRecordsSync {
                     updated++
                 }
             }
-            snap = snapshot(context)
+            snap = snapshot(context, withRecords = false)
         }
         return PullReport(true, inserted, updated, skipped)
     }
@@ -343,13 +351,15 @@ object HomesRecordsSync {
     /** A record type's two primary-field pointers, once its fields are local. */
     private suspend fun pullPrimaryFields(context: Context, rows: List<JsonObject>): PullReport {
         val dao = CarDatabase.getDatabase(context).recordTypeDao()
-        val snap = snapshot(context)
+        val snap = snapshot(context, withRecords = false)
         for (row in rows) {
             val local = HomesFromEngine.guidOf(row)?.let { snap.ids.recordTypeId[it] } ?: continue
             val mine = snap.recordTypes.first { it.id == local }
             val amount = row.text("primary_amount_field")?.let { snap.ids.fieldId[it] }
             val due = row.text("primary_due_date_field")?.let { snap.ids.fieldId[it] }
-            if ((amount != null && amount != mine.primaryAmountFieldId) || (due != null && due != mine.primaryDueDateFieldId)) {
+            val amountMoved = amount != null && amount != mine.primaryAmountFieldId
+            val dueMoved = due != null && due != mine.primaryDueDateFieldId
+            if (amountMoved || dueMoved) {
                 dao.update(
                     mine.copy(
                         primaryAmountFieldId = amount ?: mine.primaryAmountFieldId,

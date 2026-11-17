@@ -501,3 +501,27 @@ def test_rest_schemas_take_one_type_each():
     from assistant.surface import web_tools
 
     walk(rest_declarations([*web_tools(), *TWINS.values()]))
+
+
+def test_a_tracker_draft_cannot_be_committed_in_the_same_turn(seeded):
+    """Ticket 15: create_aspect drafts freely, but its `confirm: true` call is held for a yes in
+    a LATER turn (`guards.CONFIRM_FLAG_TOOLS`), so a model cannot draft and commit at once."""
+    from homes.models import UserAspect
+    from homes.records_tools import CREATE_ASPECT, RECORD_TOOLS
+
+    assert guards.CONFIRM_FLAG_TOOLS <= {t.name for t in RECORD_TOOLS}
+    draft = {
+        "aspect_name": "Test reading",
+        "record_types": [{"name": "Book", "fields": [{"name": "title", "type": "TEXT"}]}],
+    }
+    token = CREATE_ASPECT.handler(member_request(seeded), draft).structured["draft_token"]
+    commit = {**draft, "confirm": True, "draft_token": token}
+    same_turn = m.FakeModel(
+        [m.call("create_aspect", draft), m.call("create_aspect", commit), m.say("Shall I?")]
+    )
+    _, state, conversation = _turn(seeded, "track my reading, title only", same_turn)
+    assert state.pending_confirm and state.pending_confirm["tool"] == "create_aspect"
+    assert not UserAspect.objects.filter(name="Test reading").exists()
+    after_yes = m.FakeModel([m.call("create_aspect", commit), m.say("Created.")])
+    _turn(seeded, "yes", after_yes, conversation)
+    assert UserAspect.objects.filter(name="Test reading").exists()

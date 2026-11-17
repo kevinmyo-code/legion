@@ -56,13 +56,17 @@ object HomesRecords {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    fun rememberKey(kind: String, localId: Long, createdAt: Long): String = "$kind:$localId:$createdAt"
+
     fun derived(kind: String, localId: Long, createdAt: Long): String =
         UUID.nameUUIDFromBytes("$kind|$localId|$createdAt".toByteArray(Charsets.UTF_8)).toString()
 
     /**
-     * The guid of each schema row. [remembered] maps `"<kind>:<localId>"` to the guid the engine
-     * gave a row it wrote; everything else is [derived]. Built from EVERY local row (plugin ones
-     * too), so a reference into a plugin record type still translates.
+     * The guid of each schema row. [remembered] maps `"<kind>:<localId>:<createdAt>"` to the guid
+     * the engine gave a row it wrote; everything else is [derived]. The creation instant is in the
+     * key so a remembered guid never lands on another row that later took the same local id (a
+     * restored older backup keeps preferences but swaps Room). Built from EVERY local row (plugin
+     * ones too), so a reference into a plugin record type still translates.
      */
     class IdBook(
         aspects: List<Aspect>,
@@ -71,10 +75,12 @@ object HomesRecords {
         records: List<EngineRecord>,
         val remembered: Map<String, String>,
     ) {
-        private fun guid(kind: String, id: Long, createdAt: Long) = remembered["$kind:$id"] ?: derived(kind, id, createdAt)
+        private fun guid(kind: String, id: Long, createdAt: Long) =
+            remembered[rememberKey(kind, id, createdAt)] ?: derived(kind, id, createdAt)
 
         val aspectGuid: Map<Long, String> = aspects.associate { it.id to guid(ASPECT, it.id, it.createdAt) }
-        val recordTypeGuid: Map<Long, String> = recordTypes.associate { it.id to guid(RECORD_TYPE, it.id, it.createdAt) }
+        val recordTypeGuid: Map<Long, String> =
+            recordTypes.associate { it.id to guid(RECORD_TYPE, it.id, it.createdAt) }
         val fieldGuid: Map<Long, String> = fieldDefs.associate { it.id to guid(FIELD_DEF, it.id, it.createdAt) }
         val recordGuid: Map<Long, String> = records.associate { it.id to it.guid }
 
@@ -84,11 +90,26 @@ object HomesRecords {
         val recordId: Map<String, Long> = recordGuid.entries.associate { (k, v) -> v to k }
     }
 
-    /** The aspects no capability plugin owns: none of their fields carries an `ownerPluginId`. */
+    /** The capability plugins' aspect names (`engine/*/…AspectSeeder.ASPECT_NAME`). Excluded by
+     * name too, failing safe: a seeded aspect whose fields predate `ownerPluginId` must not upload
+     * its replica rows as his own. The engine refuses these names for a new tracker. */
+    val PLUGIN_ASPECT_NAMES: Set<String> = setOf(
+        com.kevin.legion.engine.fleet.FleetAspectSeeder.ASPECT_NAME,
+        com.kevin.legion.engine.ledger.LedgerAspectSeeder.ASPECT_NAME,
+        com.kevin.legion.engine.pantry.PantryAspectSeeder.ASPECT_NAME,
+        com.kevin.legion.engine.notes.NotesAspectSeeder.ASPECT_NAME,
+        com.kevin.legion.engine.places.PlacesAspectSeeder.ASPECT_NAME,
+        com.kevin.legion.engine.dates.DatesAspectSeeder.ASPECT_NAME,
+    ).map { it.lowercase() }.toSet()
+
+    /** The aspects no capability plugin owns: none of their fields carries an `ownerPluginId`,
+     * and the name is not a plugin's. */
     fun userAspectIds(aspects: List<Aspect>, recordTypes: List<RecordType>, fieldDefs: List<FieldDef>): Set<Long> {
         val typeAspect = recordTypes.associate { it.id to it.aspectId }
-        val pluginAspects = fieldDefs.filter { it.ownerPluginId != null }.mapNotNull { typeAspect[it.recordTypeId] }.toSet()
-        return aspects.map { it.id }.filter { it !in pluginAspects }.toSet()
+        val pluginAspects = fieldDefs.filter { it.ownerPluginId != null }
+            .mapNotNull { typeAspect[it.recordTypeId] }.toSet()
+        return aspects.filter { it.id !in pluginAspects && it.name.lowercase() !in PLUGIN_ASPECT_NAMES }
+            .map { it.id }.toSet()
     }
 
     // ---- Room -> engine ----------------------------------------------------------------------
@@ -151,7 +172,8 @@ object HomesRecords {
             val fieldId = key.toLongOrNull()
             val guid = fieldId?.let { ids.fieldGuid[it] }
             val outKey = guid ?: "$PHONE_FIELD$key"
-            out[outKey] = if (fieldId != null && fieldTypes[fieldId] == FieldType.REFERENCE) referenceOut(value, ids) else value
+            val isReference = fieldId != null && fieldTypes[fieldId] == FieldType.REFERENCE
+            out[outKey] = if (isReference) referenceOut(value, ids) else value
         }
         return JsonObject(out)
     }
@@ -168,7 +190,8 @@ object HomesRecords {
             val id = (value as? JsonPrimitive)?.longOrNull
             when {
                 key in CONFIG_RECORD_TYPE_KEYS && id != null ->
-                    out[CONFIG_RECORD_TYPE_KEYS.getValue(key)] = JsonPrimitive(ids.recordTypeGuid[id] ?: "$PHONE_RECORD$id")
+                    out[CONFIG_RECORD_TYPE_KEYS.getValue(key)] =
+                        JsonPrimitive(ids.recordTypeGuid[id] ?: "$PHONE_RECORD$id")
                 key in CONFIG_FIELD_KEYS && id != null ->
                     out[CONFIG_FIELD_KEYS.getValue(key)] = JsonPrimitive(ids.fieldGuid[id] ?: "$PHONE_FIELD$id")
                 else -> out[key] = value
@@ -184,8 +207,7 @@ object HomesRecords {
     fun payloadIn(payload: JsonObject?, ids: IdBook, fieldTypes: Map<Long, FieldType>): String? {
         val out = LinkedHashMap<String, JsonElement>()
         for ((key, value) in payload ?: JsonObject(emptyMap())) {
-            val fieldId = ids.fieldId[key] ?: key.removePrefix(PHONE_FIELD).takeIf { key.startsWith(PHONE_FIELD) }?.toLongOrNull()
-                ?: return null
+            val fieldId = localId(key, ids.fieldId, PHONE_FIELD) ?: return null
             out[fieldId.toString()] = if (fieldTypes[fieldId] == FieldType.REFERENCE) referenceIn(value, ids) else value
         }
         return JsonObject(out).toString()
@@ -193,8 +215,7 @@ object HomesRecords {
 
     private fun referenceIn(value: JsonElement, ids: IdBook): JsonElement {
         val text = (value as? JsonPrimitive)?.takeUnless { it is JsonNull }?.contentOrNull ?: return JsonNull
-        val id = ids.recordId[text] ?: text.removePrefix(PHONE_RECORD).takeIf { text.startsWith(PHONE_RECORD) }?.toLongOrNull()
-        return id?.let(::JsonPrimitive) ?: JsonNull
+        return localId(text, ids.recordId, PHONE_RECORD)?.let(::JsonPrimitive) ?: JsonNull
     }
 
     fun configIn(config: String?, ids: IdBook): String? {
@@ -206,7 +227,8 @@ object HomesRecords {
             val text = (value as? JsonPrimitive)?.contentOrNull
             when {
                 key in typeKeys && text != null ->
-                    localId(text, ids.recordTypeId, PHONE_RECORD)?.let { out[typeKeys.getValue(key)] = JsonPrimitive(it) }
+                    localId(text, ids.recordTypeId, PHONE_RECORD)
+                        ?.let { out[typeKeys.getValue(key)] = JsonPrimitive(it) }
                 key in fieldKeys && text != null ->
                     localId(text, ids.fieldId, PHONE_FIELD)?.let { out[fieldKeys.getValue(key)] = JsonPrimitive(it) }
                 else -> out[key] = value
@@ -225,9 +247,8 @@ object HomesRecords {
         val byId = fields.associateBy { it.id }
         val out = mutableMapOf<Long, Any?>()
         for ((key, value) in payload ?: JsonObject(emptyMap())) {
-            val id = ids.fieldId[key] ?: key.removePrefix(PHONE_FIELD).takeIf { key.startsWith(PHONE_FIELD) }?.toLongOrNull()
-                ?: return null
-            val field = byId[id] ?: return null
+            val field = localId(key, ids.fieldId, PHONE_FIELD)?.let { byId[it] } ?: return null
+            val id = field.id
             if (field.type == FieldType.COMPUTED) continue
             out[id] = storeValue(field.type, value, ids)
         }
