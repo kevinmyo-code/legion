@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-15
+amended: 2026-11-17
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-15 - Gemini Live retired on the phone; the cascade is the voice (Kevin)]]"
@@ -10,6 +11,8 @@ tags: [adr]
 # 92. The phone's voice is a cascade; Gemini Live is retired
 
 ## Standing
+
+**AMENDED 2026-11-17 by [[0095-alfreds-brain-runs-on-the-engine]]:** the cascade's text model and tools move to the engine; the phone keeps speech-to-text and text-to-speech (Cloud and Laptop engines unchanged) and has no fallback brain.
 
 ACCEPTED, BUILT and shipped (stage 1, 2026-11-15). **Every voice conversation on the phone runs on a
 cascade, not on Gemini Live:** speech-to-text, a text model with tools, text-to-speech

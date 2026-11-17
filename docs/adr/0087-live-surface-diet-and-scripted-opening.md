@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-10
+amended: 2026-11-17
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-10 - Cut the Live tool list; scripted opening lines instead of a spoken greeting (Kevin)]]"
@@ -10,6 +11,8 @@ tags: [adr]
 # 87. The Live tool surface is a budget; a tap opens the mic with a scripted line
 
 ## Standing
+
+**AMENDED 2026-11-17 by [[0095-alfreds-brain-runs-on-the-engine]] and [[0096-agent-graph-router-and-specialists]]:** once the engine brain answers turns, the 24-declaration budget binds only the generalist; each specialist has its own limit.
 
 **About 15 always-loaded core tools plus helpers: at most 24 top-level Live declarations, under a
 tools-JSON size budget**, both asserted in `LiveSetupPayloadSizeTest`. A new capability joins an

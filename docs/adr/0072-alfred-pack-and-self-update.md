@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-05
+amended: 2026-11-17
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-05 - Patch Alfred over the internet: the pack and self-update (Kevin)]]"
@@ -10,6 +11,8 @@ tags: [adr]
 # 72. Alfred's wording comes from the engine; the phone updates itself, and asks first
 
 ## Standing
+
+**AMENDED 2026-11-17 by [[0095-alfreds-brain-runs-on-the-engine]]:** the pack's phone overlay and the APK-compiled locked set retire with the phone's model loop; the locked safety text lives in the engine's code. Self-update (half B) is unchanged.
 
 **Two halves, both binding** (map `.scratch/alfred-ota/`, Kevin ruled all five decisions as
 recommended on 2026-11-05).

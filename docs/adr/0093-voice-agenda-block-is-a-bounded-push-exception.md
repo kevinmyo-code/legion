@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-16
+amended: 2026-11-17
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-16 - Today's agenda rides in the voice turn: a bounded exception to pull-based tools (Kevin)]]"
@@ -10,6 +11,8 @@ tags: [adr]
 # 93. Today's agenda rides in the voice turn: a bounded exception to pull-based tools
 
 ## Standing
+
+**AMENDED 2026-11-17 by [[0097-router-run-reads]]:** once the engine brain answers turns, router-run reads replace this pushed block, and the block retires with the phone loop.
 
 ACCEPTED, BUILT (stage 5, 2026-11-16), NARROWED the same day by the agenda gate, then WIDENED again
 on `feat/agenda-block-overdue` (same day, below; not yet gated on the model, merged or verified on a

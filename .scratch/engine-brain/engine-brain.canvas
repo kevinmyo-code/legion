@@ -1,0 +1,275 @@
+{
+  "nodes": [
+    {
+      "id": "9e95121311e0eb25",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/00-rulings.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "90d5260d28f12c42",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/01-measure.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3c2f6567847c7aaa",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/02-runtime-and-evals.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "54d7da854fa33ff8",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/03-engine-homes-for-room-only-data.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "66ea63d44dcbe06d",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/04-limb-contract-relay-and-switch.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9438a63e87184515",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/05-mail-on-the-engine.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "207f97e7c4561a43",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/06-specialists-router-and-router-run-reads.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0264e7d02b980a45",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/11-telemetry-obd-via-phone.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a716d75941246b75",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/07-retire-the-phone-brain.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9405befef01ecd8a",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/09-derived-knowledge.md",
+      "x": 2080,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "61b9a6ab1b6c317c",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/10-procedures-device-step.md",
+      "x": 2080,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "03d19c8bcfbda75f",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/08-engine-native-writes.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ed09b9cf93bc8c61",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/12-evening-due-sweep.md",
+      "x": 2600,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "755e7c8cde9185f9",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/13-web-on-the-engine.md",
+      "x": 2600,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9d980f19fc0a9dab",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/14-headunit-thin-limb.md",
+      "x": 3120,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "9c3eaaaeceab5933",
+      "fromNode": "9e95121311e0eb25",
+      "fromSide": "right",
+      "toNode": "90d5260d28f12c42",
+      "toSide": "left"
+    },
+    {
+      "id": "48c9b552f02271d3",
+      "fromNode": "9e95121311e0eb25",
+      "fromSide": "right",
+      "toNode": "3c2f6567847c7aaa",
+      "toSide": "left"
+    },
+    {
+      "id": "abb0be9c40c34059",
+      "fromNode": "9e95121311e0eb25",
+      "fromSide": "right",
+      "toNode": "54d7da854fa33ff8",
+      "toSide": "left"
+    },
+    {
+      "id": "258e1b3fe4d9059c",
+      "fromNode": "3c2f6567847c7aaa",
+      "fromSide": "right",
+      "toNode": "66ea63d44dcbe06d",
+      "toSide": "left"
+    },
+    {
+      "id": "d27e110d13f1e722",
+      "fromNode": "54d7da854fa33ff8",
+      "fromSide": "right",
+      "toNode": "66ea63d44dcbe06d",
+      "toSide": "left"
+    },
+    {
+      "id": "11dcce502b7992c6",
+      "fromNode": "66ea63d44dcbe06d",
+      "fromSide": "right",
+      "toNode": "9438a63e87184515",
+      "toSide": "left"
+    },
+    {
+      "id": "58d6aa3df63cbd75",
+      "fromNode": "66ea63d44dcbe06d",
+      "fromSide": "right",
+      "toNode": "207f97e7c4561a43",
+      "toSide": "left"
+    },
+    {
+      "id": "9cba33a1b48759ea",
+      "fromNode": "54d7da854fa33ff8",
+      "fromSide": "right",
+      "toNode": "a716d75941246b75",
+      "toSide": "left"
+    },
+    {
+      "id": "ffa75129278ef0e7",
+      "fromNode": "9438a63e87184515",
+      "fromSide": "right",
+      "toNode": "a716d75941246b75",
+      "toSide": "left"
+    },
+    {
+      "id": "0a919a57d6c2fd46",
+      "fromNode": "207f97e7c4561a43",
+      "fromSide": "right",
+      "toNode": "a716d75941246b75",
+      "toSide": "left"
+    },
+    {
+      "id": "0e3e9fffbea24a6d",
+      "fromNode": "a716d75941246b75",
+      "fromSide": "right",
+      "toNode": "03d19c8bcfbda75f",
+      "toSide": "left"
+    },
+    {
+      "id": "48f809a180bd64f0",
+      "fromNode": "207f97e7c4561a43",
+      "fromSide": "right",
+      "toNode": "9405befef01ecd8a",
+      "toSide": "left"
+    },
+    {
+      "id": "b80c41fd302fef48",
+      "fromNode": "207f97e7c4561a43",
+      "fromSide": "right",
+      "toNode": "61b9a6ab1b6c317c",
+      "toSide": "left"
+    },
+    {
+      "id": "a9830e433bbe6ede",
+      "fromNode": "66ea63d44dcbe06d",
+      "fromSide": "right",
+      "toNode": "0264e7d02b980a45",
+      "toSide": "left"
+    },
+    {
+      "id": "30478f2465818eac",
+      "fromNode": "9405befef01ecd8a",
+      "fromSide": "right",
+      "toNode": "ed09b9cf93bc8c61",
+      "toSide": "left"
+    },
+    {
+      "id": "9e4f5a9621d04c9f",
+      "fromNode": "a716d75941246b75",
+      "fromSide": "right",
+      "toNode": "755e7c8cde9185f9",
+      "toSide": "left"
+    },
+    {
+      "id": "f600317a27ff2267",
+      "fromNode": "755e7c8cde9185f9",
+      "fromSide": "right",
+      "toNode": "9d980f19fc0a9dab",
+      "toSide": "left"
+    }
+  ]
+}

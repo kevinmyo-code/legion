@@ -8086,3 +8086,71 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   provable per bank without `balances.limit`, which is not stored. ADR 0094.
 - Built on `feat/net-cash`: `server/finance/net_cash.py`, `/api/finance/net-cash`, the
   `account_balances` lead, the phone's Home line, Money section and `get_balance` lead.
+
+## 2026-11-17 - Alfred's brain moves to the engine; the phone becomes a thin limb (Kevin)
+
+- **Kevin's words:**
+  - *"lets plan the fuller agent graph and build it after"* (2026-11-16).
+  - On specialists: *"that was my initial plan, a specialist agent for each aspect or domain"*.
+  - The end state: *"one powerful backend on the cloud, and various limbs that attach to it"*.
+  - On shipping: *"Ship every stage when checks pass"*.
+- **Ruled, against the plan's defaults where noted:**
+  - **The brain moves to the engine.** Prompt, routing, the model-plus-tools loop and the specialist agents all run there: day, money, fleet, places, body + goals, concierge, phone control, mail, plus a generalist for router misses. ADRs 0095, 0096.
+  - **No fallback brain on the phone** (against the default). The phone becomes a thin limb. With the engine unreachable it gives no voice answers; screens show the last data and say how old it is.
+    - The phone's model loop, prompt and tool loop retire once the engine brain has taken over.
+    - The locked safety text therefore lives in the engine's code.
+    - The planned wording pack for a phone brain is dropped.
+    - The phone keeps: wake word; speech-to-text and text-to-speech as today (Cloud and Laptop); barge-in; the crisis pre-check; the confirm UI; phone-only tools through the relay; the ID vault.
+  - **No shadow week** (against the default). The switch rides on the eval suites, run on both brains against the same cases, plus an on-phone smoke run and a per-member flag that turns it back.
+  - **Router-run reads: yes, reads only.** ADR 0097; amends ADR 0093 and the pull-based rule.
+  - **flash-lite on every node.** The engine is warmed when Alfred is woken. Turns and traces are kept 30 days.
+  - **Voice stays where it is.** Cloud-hosted voice and the on-phone engine are both dropped.
+  - **Web last, then the head unit.**
+  - **Real-model suites run in the laptop ship script only.** No CI key.
+  - **No `ask_alfred` on `/mcp`** (against the default). An outside agent calling Alfred pays for two models, and the existing `/mcp` tools already serve outside agents.
+  - **Defaults taken:**
+    - a `device` procedure step, reads only (amends ADR 0070);
+    - the phone relays the OBD dongle;
+    - the actuator posture (confirm always; never tainted, scheduled, unattended or voice-only);
+    - the runtime as a reusable package with an import-boundary test;
+    - traces and pass-rate bars as the release gate (ADR 0100);
+    - the limb contract and relay (ADR 0098).
+  - **Ship every stage when its checks pass**, with no per-stage ask, the switch included. Each ship is reported after. Engine deploys still go from clean `dev` through the ship script.
+- **Reconciled:**
+  - Simple commands (ADR 0088) stay on the phone. They use no model, so they are not a brain.
+  - The Claude worker gets nothing from the engine's mail.
+- **Plan and map:** `.scratch/engine-brain/map.md`.
+
+## 2026-11-17 - The engine reads, drafts and sends Kevin's mail, read-through only (Kevin)
+
+- **Kevin's words:** *"can we give the engine access to my mail? read write draft send"*.
+- **Ruled, with binding safeguards:**
+  - Mail content is read-through only. It is never stored: not in turn state, checkpoints, traces, eval candidates, memory, baselines or changes. A trace records only that a mail tool ran.
+  - Nothing acts in a turn that read mail.
+  - A send needs a read-back of recipient, subject and gist, then his spoken yes in a later turn.
+  - Never from a scheduled or background agent, never over `/mcp`, never for the recruiter role.
+  - He grants access himself on Google's consent screen. The token lives in Secret Manager.
+  - The Claude worker gets none of it. Its 2026-11-04 read-only carve-out is unchanged.
+- **Design:**
+  - Its own `mail` specialist, so its allowlist is the guard.
+  - Scopes: `gmail.readonly` and `gmail.compose`, the same as the phone's today.
+  - The OAuth web client is in the household's own project.
+- **Amends** the 2026-08-22 read-through rule (mail may now be read on the engine, still never stored) and ADR 0086 (the `email` tool and its send gate move to the engine). ADR 0099.
+
+## 2026-11-17 - Derived knowledge: baselines and changes, never raw data in memory (Kevin)
+
+- **Kevin's words:** *"baselines and changes > i want that added to the agent graph plan. maybe patterns too"*. He then ruled patterns off.
+- **Ruled:**
+  - Raw data is never copied into memory: it is looked up live, with its as-of time.
+  - Code computes baselines on a schedule. Each has a window, a sample size, a time and a method, and none is stated below its minimum sample. The first five, with their minimums:
+    - category spend by day of month: 3 months;
+    - usual sleep: 10 nights;
+    - sessions per week: 4 weeks;
+    - weekly miles per car: 4 weeks;
+    - days between buys: 3 buys.
+  - Changes go in one `change_events` table, fed by the watch evaluator, with sources and a told state.
+  - Patterns: OFF.
+  - "Forget that" deletes and never records again.
+  - Unprompted mentions pass the compulsion test and the ADR 0091 check-in rules.
+  - The greeting picker is the first consumer once it runs on the engine.
+- ADR 0101.

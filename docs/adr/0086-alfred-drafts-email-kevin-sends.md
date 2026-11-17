@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-10
+amended: 2026-11-17
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-10 - Alfred drafts email; Kevin checks it in Gmail or says send (Kevin)]]"
@@ -10,6 +11,8 @@ tags: [adr]
 # 86. Alfred drafts email in Kevin's Gmail; it sends only on Kevin's own "send"
 
 ## Standing
+
+**AMENDED 2026-11-17 by [[0099-engine-mail-read-draft-send]]:** mail read, draft and send move to the engine's `mail` specialist with this ADR's send gate; the phone's `email` tool retires with the phone loop.
 
 **One `email` tool, on the phone only, with three actions.** `draft` saves a real Gmail draft and
 sends nothing. `open` opens the Gmail app (at the draft if Gmail honours the link, else Gmail
