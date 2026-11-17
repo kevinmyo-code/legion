@@ -111,6 +111,9 @@ internal class VoiceEvalHarness(
                 result.text
             }
             audit.assistant(said, readThrough = result.readThrough)
+            // What would be heard, even when the record redacts it (made-up data only): the scorer
+            // reads this line first (2026-11-17, ADR 0090 guard cases score the spoken answer).
+            out(TEST_TAG, "heard text=${LiveAudit.quote(said)}")
             audit.turnComplete()
             out(
                 LiveLatency.TAG,
@@ -156,6 +159,8 @@ internal class VoiceEvalHarness(
         // ADR 0090: the controller's one write guard, in the same place.
         ReadThroughWriteGuard.refusal(resolved, resolvedArgs, readThrough)?.let { return it }
         val response = when (resolved) {
+            // No Gmail on the laptop: the made-up inbox ([VoiceEvalFixture.mailAnswer]).
+            in VoiceEvalFixture.MAIL_TOOLS -> VoiceEvalFixture.mailAnswer()
             "show_agenda_modal" -> CoachRouting.agendaRefusal(userText)
                 ?.let { JSONObject().put("success", false).put("message", it) }
                 ?: screenOnly()
@@ -173,7 +178,10 @@ internal class VoiceEvalHarness(
     companion object {
         const val TEST_TAG = "LIVE_TEST"
 
-        /** Tools whose whole effect is a screen (LiveSessionController owns them). */
-        val SCREEN_TOOLS = setOf("show_saved_places", "import_receipt", "show_generated_view")
+        /**
+         * Tools whose whole effect is a screen (LiveSessionController owns them). `navigate` opens the
+         * map and asks the route service, neither of which exists on the laptop.
+         */
+        val SCREEN_TOOLS = setOf("show_saved_places", "import_receipt", "show_generated_view", "navigate")
     }
 }

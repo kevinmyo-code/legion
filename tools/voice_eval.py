@@ -193,6 +193,12 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
                 if fields.get("note"):
                     cur.notes.append(fields["note"].replace("_", " "))
                 cur = None
+            elif word == "heard" and cur is not None and cur.turns:
+                # The laptop harness's spoken answer (made-up data), which the record may redact.
+                try:
+                    cur.turns[-1].answer_parts = [json.loads(msg.split("text=", 1)[1])]
+                except (IndexError, ValueError):
+                    pass
             elif word == "note" and cur is not None:
                 cur.notes.append(msg[5:].strip())
             elif word in ("run_begin", "device", "settings"):
