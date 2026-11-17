@@ -10,7 +10,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -41,8 +42,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Net cash (ADR 0094): the Typeset front page with the big number near the top (on the phone's
  * 1080x2340 config, the first rows still on screen), and the Money screen's working in each state
- * (normal, a missing card, a saved copy over a day old, below the floor). Invented figures only.
- * The clock and zone are fixed so no baseline rots.
+ * (normal, over a day old, a missing card, offline, a saved copy over a day old, below the floor,
+ * below zero). Invented figures only.
+ * The clock and zone are fixed so no baseline rots. Home's fit tiers compose the page more than
+ * once, so a line is looked for as the first of its matches.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -83,8 +86,8 @@ class NetCashScreenshotTest {
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     fun `home - net cash near the top, the first rows still on screen`() {
         shot("net-cash-home.png") { Home(NetCashText.model(FinanceRead.Fresh(BODY), null, NOW, ZoneOffset.UTC)) }
-        rule.onNodeWithText("As of 14:05 today").assertExists()
-        rule.onNodeWithText("Study group").assertExists()
+        rule.onAllNodesWithText("As of 14:05 today").onFirst().assertExists()
+        rule.onAllNodesWithText("Study group").onFirst().assertExists()
     }
 
     @Test
@@ -92,7 +95,7 @@ class NetCashScreenshotTest {
     fun `home - below zero, flagged in words, night`() {
         val low = NetCashText.model(FinanceRead.Fresh(BODY.copy(netCents = -4_500)), null, NOW, ZoneOffset.UTC)
         shot("net-cash-home-below-zero-night.png") { Home(low) }
-        rule.onNodeWithText("Below zero").assertExists()
+        rule.onAllNodesWithText("Below zero").onFirst().assertExists()
     }
 
     @Test
@@ -101,28 +104,28 @@ class NetCashScreenshotTest {
         shot("net-cash-home-missing.png") {
             Home(NetCashText.model(FinanceRead.Fresh(MISSING), null, NOW, ZoneOffset.UTC))
         }
-        rule.onNodeWithText("No figure").assertExists()
+        rule.onAllNodesWithText("No figure").onFirst().assertExists()
     }
 
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     fun `money - the working, the line and no floor`() {
         shot("net-cash-money.png") { Money(FinanceRead.Fresh(BODY)) }
-        rule.onNodeWithText("Rewards Card ending 7823").assertExists()
+        rule.onAllNodesWithText("Rewards Card ending 7823").onFirst().assertExists()
     }
 
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     fun `money - below the floor`() {
         shot("net-cash-money-floor.png") { Money(FinanceRead.Fresh(BODY), floor = 200_000) }
-        rule.onNodeWithText("net cash, below your \$2,000 floor").assertExists()
+        rule.onAllNodesWithText("net cash, below your \$2,000 floor").onFirst().assertExists()
     }
 
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     fun `money - a missing card names the account`() {
         shot("net-cash-money-missing.png") { Money(FinanceRead.Fresh(MISSING)) }
-        rule.onNodeWithText("No figure").assertExists()
+        rule.onAllNodesWithText("No figure").onFirst().assertExists()
     }
 
     @Test
@@ -132,7 +135,30 @@ class NetCashScreenshotTest {
         shot("net-cash-money-saved-stale.png") {
             Money(FinanceRead.Saved(old, 0L, "Saved 5 hours ago. The engine could not be reached."))
         }
-        rule.onNodeWithText("Last known, over a day old: as of 09:12 yesterday").assertExists()
+        rule.onAllNodesWithText("Last known, over a day old: as of 09:12 yesterday").onFirst().assertExists()
+    }
+
+    @Test
+    @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
+    fun `money - read fresh but over a day old`() {
+        shot("net-cash-money-stale.png") { Money(FinanceRead.Fresh(BODY.copy(asOf = "2026-11-15T09:12:00+00:00"))) }
+        rule.onAllNodesWithText("Over a day old: as of 09:12 yesterday").onFirst().assertExists()
+    }
+
+    @Test
+    @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
+    fun `money - offline, the saved copy says so`() {
+        shot("net-cash-money-offline.png") {
+            Money(FinanceRead.Saved(BODY, 0L, "Saved 40 minutes ago. The engine could not be reached."))
+        }
+        rule.onAllNodesWithText("Last known: as of 14:05 today").onFirst().assertExists()
+    }
+
+    @Test
+    @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
+    fun `money - below zero, flagged in words`() {
+        shot("net-cash-money-below-zero.png") { Money(FinanceRead.Fresh(BODY.copy(netCents = -4_500))) }
+        rule.onAllNodesWithText("below zero", substring = true, ignoreCase = true).onFirst().assertExists()
     }
 
     private companion object {
@@ -146,8 +172,12 @@ class NetCashScreenshotTest {
             asOf = AS_OF,
             pendingCents = -2_150,
             parts = listOf(
-                NetCashPartWire("checking", "Everyday Checking", "1000", "USD", 180_000, "bank_available", -650, 1, AS_OF),
-                NetCashPartWire("card", "Rewards Card", "7823", "USD", -39_782, "current_plus_pending", -1_500, 2, AS_OF),
+                NetCashPartWire(
+                    "checking", "Everyday Checking", "1000", "USD", 180_000, "bank_available", -650, 1, AS_OF,
+                ),
+                NetCashPartWire(
+                    "card", "Rewards Card", "7823", "USD", -39_782, "current_plus_pending", -1_500, 2, AS_OF,
+                ),
             ),
             history = NetCashHistoryWire(
                 start = "2026-11-03",
@@ -162,7 +192,9 @@ class NetCashScreenshotTest {
             available = false,
             reason = "No net cash figure: Rewards Card ending 7823: the bank sent no balance for this card.",
             parts = BODY.parts.take(1),
-            missing = listOf(NetCashMissingWire("card", "Rewards Card", "7823", "the bank sent no balance for this card")),
+            missing = listOf(
+                NetCashMissingWire("card", "Rewards Card", "7823", "the bank sent no balance for this card"),
+            ),
         )
         val GLANCE = TypesetGlance(
             dateline = "Monday, 16 November",
