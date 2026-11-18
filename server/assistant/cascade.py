@@ -593,18 +593,20 @@ class Speaker:
         self.stopped = False
         self._notices: list[ev.Event] = []
 
-    def spoken_text(self, text: str, expressive: bool = False) -> str:
-        """What goes to speech for `text`: no path, link or backtick read out (`spoken_words`),
-        its figures rounded like a person says them
-        (`spoken_figures`; the exact ones stay in the caption), and its allowed tags only when
-        `expressive` (a model sentence or a code line written with one)."""
-        said = spoken_figures.speakable(speakable_words(text), exact=self.exact)
+    def spoken_text(self, text: str, expressive: bool = False, model: bool = False) -> str:
+        """What goes to speech for `text`: for a `model` sentence only, no file span, link or
+        backtick read out (`spoken_words`; a line code wrote, his profile or a figure, is never
+        reworded); its figures rounded like a person says them (`spoken_figures`; the exact ones
+        stay in the caption), and its allowed tags only when `expressive` (a model sentence or a
+        code line written with one)."""
+        said = speakable_words(text) if model else text
+        said = spoken_figures.speakable(said, exact=self.exact)
         return speech_tags.for_speech(said, expressive=expressive)
 
-    def add(self, text: str, expressive: bool = False) -> None:
+    def add(self, text: str, expressive: bool = False, model: bool = False) -> None:
         if not self.enabled:
             return
-        spoken = self.spoken_text(text, expressive)
+        spoken = self.spoken_text(text, expressive, model)
         if self.grouping == "sentence":
             self._submit(spoken)
             return
@@ -1641,7 +1643,11 @@ def _answer(
         report.say(text, replay)
         if first_sentence is None:
             first_sentence = int((clock() - t0) * 1000)
-        speaker.add(tagged if tagged is not None else text, expressive=tagged is not None)
+        speaker.add(
+            tagged if tagged is not None else text,
+            expressive=tagged is not None,
+            model=tagged is not None,
+        )
         return ev.Event("sentence", {"text": text})
 
     loop = run_loop(

@@ -875,3 +875,19 @@ def test_a_tour_code_line_is_replayed_as_said_and_a_content_line_as_a_marker():
     assert report.history_text() == f"(Tour line read aloud: who.) {tour.LIVE_LINE}"
     report.say("Second profile line.", "")
     assert report.history_text().endswith(tour.LIVE_LINE)
+
+
+def test_a_profile_line_with_a_link_and_a_slash_list_is_spoken_exactly(tmp_path, visitor, engine):
+    # Blind review round 7: the speech wording rewrote profile lines ("Python/SQL/Django" became
+    # "the file on screen"). His lines are code's: spoken as written, links and slashes too.
+    profile = {
+        "Skills": "Python/SQL/Django and React, Node.js, Next.js and Vue.js.\n"
+        "Portfolio: https://example.invalid/pat/work"
+    }
+    load_fake(tmp_path, content=_content(profile=profile))
+    engine.model = FakeModel([ak("skills")])
+    _events(_post(visitor, text="What are his skills?", spoken="true"))
+    spoken = " ".join(item[0] for item in engine.speech.spoken)
+    assert "Python/SQL/Django and React, Node.js, Next.js and Vue.js." in spoken
+    assert "https://example.invalid/pat/work" in spoken
+    assert "on screen" not in spoken
