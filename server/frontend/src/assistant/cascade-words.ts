@@ -48,24 +48,3 @@ export function micNotice(kind: 'denied' | 'unavailable' | 'lost'): Notice {
       return { kind: 'mic-unavailable', text: "A microphone couldn't be opened on this device. Typing still works." }
   }
 }
-
-/**
- * A refusal from `/turn` that ends the conversation, in the engine's words when it gave some; null
- * for one the conversation carries on past (said as a caption).
- */
-export function refusalNotice(status: number, detail: string | null): Notice | null {
-  const said = (fallback: string) => detail ?? fallback
-  switch (status) {
-    case 409:
-      return { kind: 'mint-failed', text: said('The assistant could not answer that.') }
-    case 429:
-      return { kind: 'throttled', text: said('Too much at once. Try again in a little while.') }
-    case 503:
-      return { kind: 'no-key', text: said("The assistant isn't set up on this server.") }
-    case 401:
-    case 403:
-      return { kind: 'signed-out', text: 'You are signed out, so nothing was asked. Sign in again.' }
-    default:
-      return null
-  }
-}

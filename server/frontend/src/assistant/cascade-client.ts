@@ -1,4 +1,4 @@
-import { asCard, mergeCar, type Card } from '@/components/assistant/cards/types'
+import { asCard } from '@/components/assistant/cards/types'
 
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
 import {
@@ -6,16 +6,16 @@ import {
   ENDED_LIMIT,
   ENDED_LOCKED,
   TONE_RATE,
-  STILL_BUSY,
   TURN_STALLED,
   UNREACHABLE,
   closingTone,
   micNotice,
-  refusalNotice,
 } from './cascade-words'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
+import { mergedCard } from './merge-card'
+import { readRefusal } from './refusals'
 import { TurnDeadline } from './turn-deadline'
 import { newTurnId, postTurn } from './turn-post'
 import { utterance } from './utterance'
@@ -920,7 +920,9 @@ export class CascadeClient {
         if (name === 'end_conversation') return null
         const ok = data.ok === true
         const text = typeof data.text === 'string' ? data.text : ''
-        const card = this.mergedCard(asCard(data.card))
+        const merged = mergedCard(this.state.lines, asCard(data.card))
+        if (merged.replaces !== null) this.update(merged.replaces, { card: undefined } as Partial<Line>)
+        const card = merged.card
         this.push({
           kind: 'tool',
           ok,
@@ -1010,33 +1012,27 @@ export class CascadeClient {
     }
   }
 
-  /** Decided by the engine's `code`; an engine that sends none is read by the status alone. */
   private refused(status: number, detail: string | null, code: string | null) {
-    if (code === 'busy') {
-      this.stillBusy()
-      return
+    const refusal = readRefusal(status, detail, code, this.conversationId !== null)
+    switch (refusal.type) {
+      case 'wait':
+        return this.stillBusy(refusal.text)
+      case 'end':
+        return this.end(this.options.sessionLimit?.()?.trim() || (refusal.text ?? ENDED_LIMIT))
+      case 'close':
+        return this.closeWith(refusal.notice)
+      case 'listen':
+        if (refusal.caption) this.push({ kind: 'sys', text: refusal.caption })
+        this.settle(this.spokenTurn)
     }
-    const timeLimit = code !== null ? code === 'time_limit' : status === 409
-    if (timeLimit && this.conversationId) {
-      // A demo conversation's time limit.
-      this.end(this.options.sessionLimit?.()?.trim() || (detail ?? ENDED_LIMIT))
-      return
-    }
-    const notice = refusalNotice(status, detail)
-    if (notice) {
-      this.closeWith(notice)
-      return
-    }
-    this.push({ kind: 'sys', text: detail ?? 'The engine refused that, so nothing was asked.' })
-    this.settle(this.spokenTurn)
   }
 
   /**
    * Still `busy` after the retries: the conversation stays (its id, its record), the mic is let go,
    * and the next tap listens in it again rather than greeting.
    */
-  private stillBusy() {
-    this.push({ kind: 'sys', text: STILL_BUSY })
+  private stillBusy(text: string) {
+    this.push({ kind: 'sys', text })
     if (!this.voiceOpen) return
     this.voiceOpen = false
     this.stopListening()
@@ -1118,29 +1114,5 @@ export class CascadeClient {
         return
       }
     }
-  }
-
-  /** As `LiveClient.mergedCard`: one car card per car, one diagram card per view. */
-  private mergedCard(card: Card | undefined): Card | undefined {
-    if (!card) return undefined
-    const lines = this.state.lines
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i]
-      if (line.kind !== 'tool' || !line.card) continue
-      if (card.card === 'car' && line.card.card === 'car' && line.card.name === card.name) {
-        this.update(line.id, { card: undefined } as Partial<Line>)
-        return mergeCar(line.card, card)
-      }
-      if (
-        card.card === 'diagram' &&
-        line.card.card === 'diagram' &&
-        line.card.project === card.project &&
-        line.card.view === card.view
-      ) {
-        this.update(line.id, { card: undefined } as Partial<Line>)
-      }
-      return card
-    }
-    return card
   }
 }
