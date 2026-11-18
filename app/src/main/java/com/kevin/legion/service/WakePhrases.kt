@@ -84,11 +84,57 @@ object WakePhrases {
      * to err on for a hard-stop backstop, but the right one for a backstop that sits behind a
      * model already told to recognise all of those (`end_conversation`'s description): a missed
      * backstop costs one more turn, a false one hangs up on someone mid-sentence.
+     *
+     * [afterQuestion]: the last line he heard asked him something, so "that's it" or "never mind"
+     * may be his answer; only a [HARD_STOPS] phrase ends the conversation in code, the rest go to the
+     * model (2026-11-18 review: "That's it." said as a yes ended the conversation without acting).
      */
-    fun isSleepPhrase(transcript: String): Boolean {
+    fun isSleepPhrase(transcript: String, companionName: String = "", afterQuestion: Boolean = false): Boolean {
         val t = normalise(transcript)
-        if (t.isEmpty()) return false
-        return t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED)
+        val name = normalise(companionName)
+        return when {
+            t.isEmpty() -> false
+            afterQuestion -> isStopPhrase(t, name, HARD_STOPS)
+            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || isStopPhrase(t, name, STOP_PHRASES)
+        }
+    }
+
+    /**
+     * The stop and goodbye phrases (2026-11-18: goodbye ends the conversation, as in the dashboard
+     * voice app), in [normalise]d form. Unlike [SLEEP] these must be the WHOLE turn: "stop the music"
+     * and "that's all I need from the pantry" are requests.
+     */
+    val STOP_PHRASES: Set<String> = setOf(
+        "stop", "stop stop", "never mind", "nevermind", "that s all", "that s it", "that s all thanks",
+        "that s it thanks", "that will be all", "that ll be all", "go away", "stand down", "bye", "bye bye",
+        "goodbye", "good bye", "thanks bye", "thank you bye", "thanks goodbye", "ok bye", "okay bye",
+        "we re done", "i m done",
+    )
+
+    /** The stops that are never an answer to a question: these end the conversation even after one. */
+    val HARD_STOPS: Set<String> = setOf("stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down")
+
+    private val LEAD_INS = setOf("hey", "ok", "okay")
+
+    /**
+     * [t] (normalised) is a stop phrase once the companion's [name] (normalised, at either end) and a
+     * leading hey/ok/okay are set aside: "Goodbye, Alfred", "Alfred, stop", "ok bye".
+     */
+    private fun isStopPhrase(t: String, name: String, phrases: Set<String>): Boolean {
+        if (t in phrases) return true
+        var words = t.split(' ')
+        val nameWords = name.split(' ').filter { it.isNotEmpty() }
+        fun dropName() {
+            if (nameWords.isEmpty()) return
+            if (words.take(nameWords.size) == nameWords) words = words.drop(nameWords.size)
+            if (words.takeLast(nameWords.size) == nameWords) words = words.dropLast(nameWords.size)
+        }
+        dropName()
+        while (words.size > 1 && words.first() in LEAD_INS && words.joinToString(" ") !in phrases) {
+            words = words.drop(1)
+            dropName()
+        }
+        return words.joinToString(" ") in phrases
     }
 
     /**
