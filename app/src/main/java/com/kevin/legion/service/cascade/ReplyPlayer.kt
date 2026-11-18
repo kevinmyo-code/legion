@@ -21,7 +21,7 @@ internal class ReplyPlayer(
     val sampleRate: Int,
     private val callAudio: () -> Boolean,
     /**
-     * Speaking speed, pitch kept (2026-11-17, Kevin: "the cloud assistant talks too slow"): read when
+     * Speaking speed, pitch kept (2026-11-17: the cloud voice was too slow; default 1.15x): read when
      * the track is built, so a Settings change applies from the next conversation. Every voice and
      * every scripted clip plays through here, so all of them speed up alike.
      */

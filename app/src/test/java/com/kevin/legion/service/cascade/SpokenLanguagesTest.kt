@@ -65,7 +65,7 @@ class SpokenLanguagesTest {
         }
         for (t in listOf(
             "remind me to ask if the tutor can speak Spanish", "let's switch to Thai food tonight", "find a doctor who can speak Chinese",
-            "answer in Burmese and then read my calendar", "Thai.", "Chinese.",
+            "answer in Burmese and then read my calendar", "Thai.", "Chinese.", "español", "Melayu.",
         )) {
             assertNull(t, SpokenLanguages.request(t, withSpanish, "Alfred"))
             assertEquals(t, SpokenLanguages.Decision.Stay, SpokenLanguages.decide(t, englishOnly, SpokenLanguages.ENGLISH, cloud = true, companionName = "Alfred"))

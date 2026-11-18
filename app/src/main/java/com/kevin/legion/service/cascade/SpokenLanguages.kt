@@ -3,13 +3,13 @@ package com.kevin.legion.service.cascade
 import android.content.Context
 
 /**
- * The languages he speaks to Alfred, and the one a conversation is in (Kevin, 2026-11-17: can Alfred
- * switch languages and speak Burmese?). A small model instead of a hard English pin:
+ * The languages he speaks to Alfred, and the one a conversation is in (2026-11-17: Alfred may switch
+ * languages, Burmese included). A small model instead of a hard English pin:
  * - Settings > Voice engine > "Languages I speak": English always, plus any of [OFFERED]. Default:
  *   English only, which is the pin of 2026-11-17 (other languages are a sentence not caught).
  * - The transcriber is told he speaks ONLY those languages, each in its own script ([sttInstruction]).
  * - Every conversation starts in English. It switches when his whole turn asks for a language in his
- *   setting ("speak Burmese", "switch to Thai", or the language's own name for itself), or when he
+ *   setting ("speak Burmese", "switch to Thai", "speak español"), or when he
  *   speaks a whole sentence in one written in its own non-Latin script (a Spanish sentence does not
  *   switch: its letters are English's); back on "English" / "speak English"; and at the end of the
  *   conversation. A language named inside a longer request ("find a tutor who can speak Spanish")
@@ -123,9 +123,9 @@ internal object SpokenLanguages {
         val m = ASK.matchEntire(words.joinToString(" ")) ?: return null
         val asked = m.groupValues[2]
         val self = (spoken + OFFERED).firstOrNull { it.selfName.equals(asked, ignoreCase = true) }
-        // A bare language word is a request only for English or a language's own name for itself:
-        // "Thai." alone may answer "what food?".
-        if (m.groupValues[1].isEmpty() && self == null && asked != "english") return null
+        // A bare language word is a request only for English ("Thai." or "español" alone may answer a
+        // question about food or a word, 2026-11-18 review r2 E).
+        if (m.groupValues[1].isEmpty() && asked != "english") return null
         val lang = self?.name ?: ALIASES[asked] ?: asked.replaceFirstChar { it.uppercase() }
         if (lang.lowercase() !in KNOWN) return null
         val mine = spoken.firstOrNull { it.name.equals(lang, ignoreCase = true) }

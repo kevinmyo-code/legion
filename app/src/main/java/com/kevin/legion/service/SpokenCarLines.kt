@@ -1,7 +1,7 @@
 package com.kevin.legion.service
 
 /**
- * How the car's code answers SOUND (2026-11-17, "the conversations felt slow"): the AI-explanation
+ * How the car's code answers SOUND (2026-11-17: spoken answers ran long): the AI-explanation
  * label is part of every result and every screen, but read aloud on every answer it was a long
  * parenthesis heard again and again. Heard, it is a short form, at most once in [WINDOW_MS] (about
  * one conversation; the phone's tool code does not know where a conversation starts). The words on

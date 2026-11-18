@@ -3,8 +3,8 @@ package com.kevin.legion.service.cascade
 import org.json.JSONObject
 
 /**
- * The holding line says what is really happening (Kevin, 2026-11-17: "can the fillers be more like,
- * telling the user what its actually doing? like ok im calling the specialist agent now"). Chosen from
+ * The holding line says what is really happening (2026-11-17: it names the work that started, such
+ * as asking a specialist). Chosen from
  * the tool call that has STARTED (name, and its action or domain where that is what differs), never
  * guessed before the model picks a tool, and never a result: "Asking the car specialist.", not "The
  * car is fine." (CLAUDE.md sec 7, the honesty clause: no outcome verb).
