@@ -30,8 +30,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from legion import deadline
-
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/drive/v3"
 UPLOAD_API = "https://www.googleapis.com/upload/drive/v3"
@@ -84,7 +82,7 @@ def urllib_transport(
     method: str, url: str, headers: dict[str, str], body: bytes | None
 ) -> Response:
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as reply:
+    with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 

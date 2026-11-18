@@ -238,6 +238,27 @@ def _capped(node: ast.Call) -> bool:
     )
 
 
+# Outbound transports the import walk reaches that no tool calls inside a turn: scheduled jobs and
+# other routes. Each is named with what does call it; they keep their own timeouts unchanged. A
+# new outbound call anywhere else must be capped (or listed here with its reason).
+NOT_IN_A_TURN = {
+    "brief/news.py": "the morning brief job (`morning_brief`); `brief_latest` reads the stored one",
+    "finance/fx.py": "the `fx_rates` job; money tools read stored rates (`fx.rate_on`)",
+    "ingest/drive.py": "the Drive statements job; web_search borrows only its opener object",
+    "ingest/statements.py": "the statements job (PDF extraction)",
+    "member_memory/consolidate.py": "the memory consolidation job",
+}
+# The transports tools DO call in a turn, each capped: web_search, github_status,
+# vehicle_recalls, check_conditions, and run_procedure's decision step.
+IN_A_TURN = {
+    "engine_mcp/web_search.py",
+    "engine_mcp/github_status.py",
+    "engine_mcp/recalls.py",
+    "conditions/sources.py",
+    "procedures/decide.py",
+}
+
+
 def test_every_outbound_call_a_tool_can_reach_is_capped_by_the_deadline():
     from assistant.surface import RECRUITER_ONLY_TOOLS, web_tools
     from engine_mcp.tools import TOOLS
@@ -245,6 +266,7 @@ def test_every_outbound_call_a_tool_can_reach_is_capped_by_the_deadline():
     tools = [*TOOLS, *RECRUITER_ONLY_TOOLS.values(), *web_tools()]
     todo = {inspect.getmodule(t.handler).__name__ for t in tools}
     seen: set[str] = set()
+    found: set[str] = set()
     missing = []
     while todo:
         name = todo.pop()
@@ -257,11 +279,15 @@ def test_every_outbound_call_a_tool_can_reach_is_capped_by_the_deadline():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         package = name if path.name == "__init__.py" else name.rsplit(".", 1)[0]
         todo.update(m for m in _imports(tree, package) if m not in seen)
+        where = path.relative_to(SERVER).as_posix()
         for node in _outbound_calls(tree):
-            if not _capped(node):
-                missing.append(f"{path.relative_to(SERVER)}:{node.lineno}")
+            found.add(where)
+            if where not in NOT_IN_A_TURN and not _capped(node):
+                missing.append(f"{where}:{node.lineno}")
     assert len(seen) > 20  # the walk really followed the imports
     assert not missing, f"outbound calls without timeout=deadline.cap(...): {missing}"
+    assert IN_A_TURN <= found, IN_A_TURN - found
+    assert set(NOT_IN_A_TURN) <= found, set(NOT_IN_A_TURN) - found  # no stale entry
 
 
 def test_the_capped_timeout_reaches_the_transport(monkeypatch):

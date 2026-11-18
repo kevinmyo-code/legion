@@ -70,7 +70,6 @@ from django.db.models.functions import Now
 from ingest import vault
 from ingest.drive import Response
 from ingest.models import IngestRun, SessionSource
-from legion import deadline
 
 TIMEOUT_SECONDS = 30
 MAX_PAGES = 100
@@ -112,7 +111,7 @@ def urllib_transport(
     method: str, url: str, headers: dict[str, str], body: bytes | None
 ) -> Response:
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as reply:
+    with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 

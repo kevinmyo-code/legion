@@ -24,7 +24,6 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from agents.runtime import deadline
 
 API = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -155,7 +154,7 @@ class UrllibTransport:
     def lines(self, url: str, headers: dict, body: bytes, timeout: float) -> Iterable[bytes]:
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
-            resp = urllib.request.urlopen(req, timeout=deadline.cap(timeout))  # noqa: S310 - fixed https host
+            resp = urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - fixed https host
         except urllib.error.HTTPError as exc:
             raise ModelFailure(f"Gemini answered HTTP {exc.code}{_error_words(exc)}") from None
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
@@ -176,7 +175,7 @@ class UrllibTransport:
     ) -> tuple[int, bytes]:
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=deadline.cap(timeout)) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
                 return resp.status, resp.read()
         except urllib.error.HTTPError as exc:
             return exc.code, b""

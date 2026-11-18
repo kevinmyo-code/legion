@@ -27,8 +27,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 
-from legion import deadline
-
 MICROS = 1_000_000
 TIMEOUT_SECONDS = 8
 USER_AGENT = "LEGION engine (household assistant)"
@@ -156,7 +154,7 @@ def _get(url: str) -> dict:
         url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310
             raw = response.read()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         host = url.split("/")[2]

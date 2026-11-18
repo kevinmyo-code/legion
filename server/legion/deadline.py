@@ -16,21 +16,45 @@ Outside a deadline (`/mcp`, a management command) `cap` returns the caller's own
 
 from __future__ import annotations
 
+import contextvars
+import time
 from contextlib import contextmanager
 
 from django.db import DatabaseError, connection, transaction
 
-# The context variable and `cap` live in the runtime (it may import nothing from the engine).
-from agents.runtime.deadline import FLOOR_S, cap, remaining, within
-
-__all__ = ["FLOOR_S", "DeadlinePassed", "cap", "remaining", "within", "within_database"]
-
+_UNTIL: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "legion_deadline", default=None
+)
+# The shortest timeout handed out: a request that cannot finish in this is not worth starting.
+FLOOR_S = 0.05
 # Statement timeout is lowered again as time runs out, in steps of at least this.
 _RESET_STEP_MS = 500
 
 
 class DeadlinePassed(DatabaseError):
     """A statement was refused, or cancelled by the database, because the deadline passed."""
+
+
+def remaining() -> float | None:
+    until = _UNTIL.get()
+    return None if until is None else until - time.monotonic()
+
+
+def cap(seconds: float) -> float:
+    """`seconds`, or the time left on the current deadline when that is shorter."""
+    left = remaining()
+    if left is None:
+        return seconds
+    return max(FLOOR_S, min(seconds, left))
+
+
+@contextmanager
+def within(seconds: float):
+    token = _UNTIL.set(time.monotonic() + seconds)
+    try:
+        yield
+    finally:
+        _UNTIL.reset(token)
 
 
 class _Guard:
