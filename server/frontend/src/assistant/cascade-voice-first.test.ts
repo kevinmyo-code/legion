@@ -103,7 +103,7 @@ class StubDetector implements TurnDetector {
 function build(
   answers: TurnStart[],
   options: {
-    prepare?: () => Promise<boolean>
+    prepare?: (signal: AbortSignal) => Promise<boolean>
     transcript?: string | null
     early?: boolean
     loadModels?: () => Promise<TurnDetector | null>

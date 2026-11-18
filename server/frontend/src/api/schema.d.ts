@@ -6197,11 +6197,8 @@ export interface components {
              * @default false
              */
             spoken: boolean;
-            /**
-             * @description With `audio`: the utterance began while a reply was playing (a barge-in). Only such a turn is checked for the reply heard back (an echo): one that repeats the reply that was playing ends as no speech. A turn without it is never checked.
-             * @default false
-             */
-            barge_in: boolean;
+            /** @description With `audio`: the utterance began while a reply was playing (a barge-in). Only such a turn is checked for the reply heard back (an echo): one that repeats the reply that was playing ends as no speech. A turn without it is never checked. */
+            barge_in?: boolean;
             /**
              * Format: uuid
              * @description The browser's own id for this turn, so it can be stopped with `POST /api/assistant/turn/cancel`.

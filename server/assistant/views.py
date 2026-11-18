@@ -858,8 +858,9 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
         ),
     )
     barge_in = serializers.BooleanField(
+        # Optional, with no default, so it is not required in the schema: old pages never send it
+        # and the page sends it only on a barge-in turn.
         required=False,
-        default=False,
         help_text=(
             "With `audio`: the utterance began while a reply was playing (a barge-in). Only such a "
             "turn is checked for the reply heard back (an echo): one that repeats the reply that "
