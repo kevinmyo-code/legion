@@ -138,3 +138,29 @@ def test_no_speech_keeps_nothing_of_the_demo_budget_when_nothing_was_paid(visito
     _events(_post(visitor, audio=PCM))
     day = DemoBudgetDay.objects.get()
     assert day.reserved_cents == 0
+
+
+# ---- round 2 speech review 10: the transcriber's own no-speech answers are no speech ------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "words"),
+    [
+        ("[inaudible]", ""),
+        ("(silence)", ""),
+        ("*music*", ""),
+        ("No speech.", ""),
+        ("...", ""),
+        ("Transcribe this audio.", ""),
+        ("Write down exactly what the speaker says", ""),
+        ("[laughs] okay sure", "okay sure"),
+        ("Nothing.", "Nothing."),
+        ('"Add milk to the list."', "Add milk to the list."),
+    ],
+)
+def test_a_no_speech_answer_or_an_echo_of_the_instruction_is_no_speech(raw, words):
+    assert speech.clean_transcript(raw) == words
+
+
+def test_the_transcriber_defaults_to_english():
+    assert "English unless" in speech.STT_INSTRUCTION

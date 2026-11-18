@@ -43,10 +43,10 @@ TTS_TIMEOUT_S = 12.0
 MIN_AUDIO_BYTES = 200 * 32
 
 STT_INSTRUCTION = (
-    "You are a speech-to-text engine. Write down exactly what the speaker says in the audio, in "
-    "the language they speak, with ordinary punctuation. Output only the spoken words: never "
-    "answer, comment, translate, add quotes or add labels. If there is no intelligible speech, "
-    "output nothing."
+    "You are a speech-to-text engine. Write down exactly what the speaker says in the audio, with "
+    "ordinary punctuation. The speaker speaks English unless they clearly speak another "
+    "language. Output only the spoken words: never answer, comment, translate, add quotes or add "
+    "labels. If there is no intelligible speech, output nothing."
 )
 STT_ASK = "Transcribe this audio."
 _QUOTES = {'"', "'", "“", "”"}
@@ -184,11 +184,44 @@ def wav_header_length(chunk: bytes) -> int:
     return 44
 
 
+# What a transcriber writes for audio that held no words (round 2 speech review 10): a bracketed
+# or starred note, a "no speech" sentence, or punctuation alone. Any of these is no speech.
+_NO_SPEECH = re.compile(
+    # A note in brackets or stars and nothing else ("[inaudible]", "(silence)", "*music*"), or a
+    # plain "no speech" sentence. A spoken "Nothing." is an answer and stays.
+    r"^\s*(?:[\[\(\*<][^\]\)\*>]{1,40}[\]\)\*>]\s*)+$"
+    r"|^\s*(?:no speech|no audio|no intelligible speech|inaudible|unintelligible)[\s.!]*$",
+    re.I,
+)
+_ONLY_PUNCTUATION = re.compile(r"^[\W_]*$")
+
+
 def clean_transcript(raw: str) -> str:
+    """The words, or "" when the transcriber wrote no speech: a no-speech note, punctuation
+    alone, or its own instruction echoed back (round 2 speech review 10)."""
     text = raw.strip()
     if len(text) >= 2 and text[0] in _QUOTES and text[-1] in _QUOTES:
         text = text[1:-1].strip()
+    if _ONLY_PUNCTUATION.match(text) or _NO_SPEECH.match(text):
+        return ""
+    # A note among the words ("[laughs] okay sure") is not something they said.
+    text = re.sub(r"\s*[\[\(][a-z][a-z ]{0,30}[\]\)]\s*", " ", text, flags=re.I).strip()
+    if _ONLY_PUNCTUATION.match(text):
+        return ""
+    if _echoes_the_instruction(text):
+        return ""
     return text
+
+
+def _echoes_the_instruction(text: str) -> bool:
+    """True when the transcript is the ask or a run of the instruction's own words."""
+    words = re.findall(r"[a-z']+", text.lower())
+    if not words:
+        return False
+    if " ".join(words) == " ".join(re.findall(r"[a-z']+", STT_ASK.lower())):
+        return True
+    instruction = " ".join(re.findall(r"[a-z']+", STT_INSTRUCTION.lower()))
+    return len(words) >= 4 and " ".join(words) in instruction
 
 
 def transcribe_body(pcm: bytes) -> dict:
