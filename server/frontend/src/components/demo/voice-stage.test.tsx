@@ -102,3 +102,64 @@ describe('the voice stage on the page', () => {
     expect(own.filter((cls) => pinned.has(cls))).toEqual([])
   })
 })
+
+/**
+ * Blind review of the overlap fix (2026-11-18): once the stage scrolls away on a phone there is no
+ * way to stop him while he speaks. A small fixed Stop appears only while a reply plays and the orb
+ * is off screen, and does what the orb's tap does.
+ */
+describe('the Stop control when the orb is off screen', () => {
+  type Callback = (entries: { isIntersecting: boolean }[]) => void
+  const observers: Callback[] = []
+  const realIO = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver
+  afterEach(() => {
+    ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = realIO
+    observers.length = 0
+  })
+  function fakeIO() {
+    ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = class {
+      constructor(cb: Callback) {
+        observers.push(cb)
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+  }
+  const orbSeen = (seen: boolean) => act(() => observers.forEach((cb) => cb([{ isIntersecting: seen }])))
+
+  test('appears while he speaks with the orb scrolled away, and stops him in one tap', async () => {
+    fakeIO()
+    const { audio, cancels } = stage(true)
+    // A spoken conversation: the tap opens the mic, and the reply's audio plays.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    // The answer's card dialog is closed for this check: the page under it is what scrolls.
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    await act(async () => settle())
+    expect(screen.queryByRole('button', { name: /^Stop / })).not.toBeInTheDocument()
+    orbSeen(false)
+    const stop = await screen.findByRole('button', { name: /^Stop / })
+    const flushes = audio.flushes
+    await act(async () => {
+      fireEvent.click(stop)
+      await settle()
+    })
+    // The same as the orb's tap: the reply stops and the engine's turn is cancelled.
+    expect(cancels).toHaveLength(1)
+    expect(audio.flushes).toBe(flushes + 1)
+  })
+
+  test('is not there while the orb is on screen', async () => {
+    fakeIO()
+    stage(true)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    orbSeen(true)
+    expect(screen.queryByRole('button', { name: /^Stop / })).not.toBeInTheDocument()
+  })
+})
