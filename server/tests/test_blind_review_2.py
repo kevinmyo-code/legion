@@ -81,3 +81,24 @@ def test_the_robotic_tap_works_in_autocommit_as_in_production(visitor, engine):
     )
     assert response.status_code == 204
     assert "robotic turn=0 source=tap" in _record(conversation)
+
+
+# ---- finding 5: remember refused after a web read is said, not passed over --------------------
+
+
+def test_remember_refused_after_a_web_search_says_why(member, engine):
+    from agents.runtime.model import FakeModel, call, say
+    from assistant import cascade
+
+    engine.model = FakeModel(
+        [
+            call("web_search", {"query": "oat milk"}),
+            call("remember", {"text": "Oat milk is the best."}),
+            say("Noted."),
+        ]
+    )
+    events = _events(_post(member, text="Look up oat milk and remember I like it."))
+    remember = [t for t in _of(events, "tool") if t["name"] == "remember"][0]
+    assert remember["ok"] is False
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert said[-1] == cascade.READ_THROUGH_WAIT

@@ -1327,7 +1327,7 @@ class AssistantRoboticView(_AssistantView):
                 request, f"Nothing was marked. {body.errors}", status.HTTP_400_BAD_REQUEST
             )
         conversation = body.validated_data["conversation_id"]
-        # `owned` locks the row (`select_for_update`): only inside a transaction (round 2 finding 10).
+        # `owned` locks the row (select_for_update): inside a transaction only (round 2, finding 10).
         with transaction.atomic():
             mine = web_conversation.owned(request, conversation) is not None
         if not mine:

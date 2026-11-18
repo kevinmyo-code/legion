@@ -1289,8 +1289,14 @@ def _answer(
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
+    # A change ADR 0090 held back: a write refused by the outside-text rule, or `remember`'s own
+    # refusal (round 2 finding 5: that one was missed, so "Noted." passed with nothing saved).
     guard_refused = any(
-        not c.ok and c.text.startswith("Nothing was") and "read outside text" in c.text
+        not c.ok
+        and (
+            (c.text.startswith("Nothing was") and "read outside text" in c.text)
+            or c.text == read_through.REFUSAL
+        )
         for c in door.calls
     )
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
