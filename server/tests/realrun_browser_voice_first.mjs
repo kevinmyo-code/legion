@@ -6,6 +6,9 @@
 // Scenarios:
 //  vf-echo   the demo link; tap the orb; the mic hears only the opening's own words at a lower level
 //            while it plays (the reply heard back): no barge-in, the opening plays to its end.
+//  vf-echo-long  a long question; while its answer still streams and plays, the mic hears answer-like
+//            words at a quarter level: no turn should be posted, or, if one is, it carries
+//            barge_in=1.
 //  vf-barge  the demo link; a question, then the person talks over the long answer: playback stops,
 //            the engine's turn is cancelled, what they said is the next turn.
 //  vf-tap   a question, then a tap on the orb while the answer plays and at once a typed question:
@@ -183,6 +186,23 @@ if (A.scenario === 'vf-echo') {
   check('playback_alone_does_not_self_trigger', cut.length === 0 && !greet?.failed, {
     stops: cut.length, greetFailed: greet?.failed ?? null, openingMs: R.opening.audioMs, turnsAfter: spokenTurns.map((t) => t.heard),
   })
+}
+
+if (A.scenario === 'vf-echo-long') {
+  const asked = await waitFor(async () => turns.some((t) => t.kind === 'audio' || t.kind === 'spoken-text'), 90000)
+  const q = turns.find((t) => t.kind === 'audio' || t.kind === 'spoken-text')
+  await waitFor(async () => q?.complete, 90000)
+  await sleep(12000)
+  await sync()
+  const a = await audit()
+  const after = turns.filter((t) => (t.kind === 'audio' || t.kind === 'spoken-text') && t !== q)
+  const flagged = after.map((t) => (t.req.postDataBuffer() ?? Buffer.alloc(0)).toString('latin1').includes('name="barge_in"'))
+  const cut = a.stops.filter((t) => q?.at !== undefined && t > q.at).length
+  check('echo_during_a_streaming_answer_posts_nothing_unflagged', asked && after.every((_t, i) => flagged[i]), {
+    turnsAfter: after.map((t, i) => ({ heard: t.heard, done: t.done, barge_in: flagged[i] })), stops: cut,
+    answerEnded: Boolean(q?.complete), said: (q?.said ?? '').slice(0, 100),
+  })
+  await shot('echo-long')
 }
 
 if (A.scenario === 'vf-barge') {

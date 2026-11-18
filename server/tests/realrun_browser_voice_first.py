@@ -56,12 +56,25 @@ def _wavs() -> tuple[dict[str, Path], dict]:
     long_q = _tts(speech, "long", "Walk me through how LEGION is built, in detail.")
     barge = _tts(speech, "barge", "Actually, when is the car due for service?")
     spend = _tts(speech, "spend", "What did this household spend last month?")
+    # A long answer heard back while it is still being streamed: the reply's own kind of words,
+    # at a quarter of its level, starting a few seconds into the answer.
+    echo_long = _tts(
+        speech,
+        "echo-long",
+        "So, looking at the layers on your screen, it starts with Django REST Framework on the "
+        "API layer, moving down through auth and tenant scoping to the domain apps.",
+    )
     lead = 9.0
     files = {
         # The opening heard back at a quarter of its level while it plays (no person speaking).
         "vf-echo": _silence(0.6) + _scaled(opening, 0.25) + _silence(20.0),
         "vf-barge": _silence(lead) + long_q + _silence(9.0) + barge + _silence(25.0),
         "vf-tap": _silence(lead) + long_q + _silence(40.0),
+        "vf-echo-long": _silence(lead)
+        + long_q
+        + _silence(6.0)
+        + _scaled(echo_long, 0.25)
+        + _silence(30.0),
         "vf-eot": _silence(lead) + spend + _silence(25.0),
         "vf-eot-energy": _silence(lead) + spend + _silence(25.0),
         "vf-desk": _silence(20.0),
@@ -110,7 +123,15 @@ def test_browser_voice_first(real, live_server, tmp_path):
     results = []
     from assistant.models import TurnCancel
 
-    for scenario in ("vf-echo", "vf-barge", "vf-tap", "vf-eot", "vf-eot-energy", "vf-desk"):
+    for scenario in (
+        "vf-echo",
+        "vf-echo-long",
+        "vf-barge",
+        "vf-tap",
+        "vf-eot",
+        "vf-eot-energy",
+        "vf-desk",
+    ):
         if only and scenario not in only:
             continue
         _row, code = DemoCode.rotate()
