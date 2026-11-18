@@ -2,6 +2,11 @@ package com.kevin.legion.service.cascade
 
 import android.content.Context
 import com.kevin.legion.ai.KeyVault
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Which voice pipeline a conversation runs on (Kevin, 2026-11-10: "i want to be able to switch
@@ -102,6 +107,13 @@ object VoiceEngineSettings {
     private const val KEY_STATUS = "last_status"
     private const val KEY_STATUS_AT = "last_status_at"
     private const val KEY_SPECULATE = "speculate"
+    private const val KEY_SPEED = "speech_speed"
+    private const val KEY_CLOUD_VOICE = "cloud_voice"
+
+    /** Speaking speed (2026-11-17): 1.15x by default, 1.0x to 1.4x, pitch kept ([ReplyPlayer]). */
+    const val SPEED_DEFAULT = 1.15f
+    const val SPEED_MIN = 1.0f
+    const val SPEED_MAX = 1.4f
 
     /**
      * Gemini Live is retired on the phone (Kevin, 2026-11-15: "replace the sts live pipeline with
@@ -135,6 +147,46 @@ object VoiceEngineSettings {
     fun speculate(context: Context): Boolean = prefs(context).getBoolean(KEY_SPECULATE, true)
 
     fun setSpeculate(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SPECULATE, on).apply()
+
+    /** The cloud voice's id: [CloudSpeechWire.VOICE] (en-gb-advisor-3) unless another passed [testVoice]. */
+    fun cloudVoice(context: Context): String =
+        prefs(context).getString(KEY_CLOUD_VOICE, null)?.trim()?.takeIf { it.isNotEmpty() } ?: CloudSpeechWire.VOICE
+
+    fun setCloudVoice(context: Context, voice: String) =
+        prefs(context).edit().putString(KEY_CLOUD_VOICE, voice.trim()).apply()
+
+    /**
+     * One short test line in [voice] on his key: true only if Google spoke it in that voice (a bad id
+     * is a 400, and the fallback to Puck is off here). Settings saves a voice only after this.
+     */
+    suspend fun testVoice(voice: String, transport: GeminiStreamTransport = OkHttpGemini()): Boolean {
+        if (!VOICE_ID.matches(voice.trim())) return false
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        return try {
+            val tts = GeminiTts(transport, scope, voice = voice.trim(), allowFallback = false)
+            val outcome = withTimeoutOrNull(VOICE_TEST_MS) { tts.speak("Testing this voice.").outcome() }
+            outcome is TtsOutcome.Done
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /** A Gemini voice id: a name ("Puck") or a library id ("en-gb-xxxx"); nothing else is sent. */
+    private val VOICE_ID = Regex("[A-Za-z][A-Za-z0-9-]{1,40}")
+    private const val VOICE_TEST_MS = 10_000L
+
+    fun speechSpeed(context: Context): Float = clampSpeed(prefs(context).getFloat(KEY_SPEED, SPEED_DEFAULT))
+
+    fun setSpeechSpeed(context: Context, speed: Float) =
+        prefs(context).edit().putFloat(KEY_SPEED, clampSpeed(speed)).apply()
+
+    /** Into [SPEED_MIN]..[SPEED_MAX], on 0.05 steps; anything not a number is the default. */
+    @Suppress("MagicNumber") // 0.05 steps: 20 to the whole
+    fun clampSpeed(speed: Float): Float {
+        if (speed.isNaN()) return SPEED_DEFAULT
+        val c = speed.coerceIn(SPEED_MIN, SPEED_MAX)
+        return Math.round(c * 20f) / 20f
+    }
 
     fun laptop(context: Context): LaptopVoiceConfig {
         val p = prefs(context)

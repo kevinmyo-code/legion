@@ -4,6 +4,7 @@ import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
+import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
@@ -179,8 +180,10 @@ object CascadePrompt {
     const val VOICE_CLAUSE =
         "Spoken output: what you write is read aloud by a separate voice, as you write it. Write plain " +
             "spoken sentences only: no markdown, lists, headings, emoji, links or symbols. Write numbers, " +
-            "money, times and units the way you would say them. Keep replies short unless asked for " +
-            "detail. When a tool will take a moment, a few words first are fine."
+            "money, times and units the way you would say them. Answer in one short sentence unless he " +
+            "asks for more, and say each thing once. When a tool will take a moment, a few words first are fine. " +
+            "Now and then, in a casual moment only, one of <chuckle>, <laugh>, <sigh> or <short pause> may go " +
+            "in a sentence; never with figures, codes or bad news."
 
     data class Split(val cacheable: String, val volatile: String)
 
@@ -325,8 +328,96 @@ internal object ScriptedLines {
      */
     val FILLERS = listOf("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.")
 
-    /** The opening acks, the fillers and the check-in closers ([com.kevin.legion.service.checkin.ClosingLines]). */
-    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS + com.kevin.legion.service.checkin.ClosingLines.LINES).toSet()
+    /**
+     * Said when his words were not caught or not believed (2026-11-17): a question, so the follow-up
+     * window after it is the longer one ([com.kevin.legion.service.FollowUpWindow.windowAfter]).
+     */
+    const val MISSED = "Didn't catch that. Say it again?"
+
+    /** Said from memory when the cloud voice failed on a line (2026-11-18): the answer is on screen. */
+    const val VOICE_LOST = "Sorry, I lost my voice for a second."
+
+    /**
+     * One write a turn made, as facts (never the tool's message, which is written for the model):
+     * the fixed phrase for what was done, the item's title and list from the result's structured
+     * fields, and whether it went through.
+     */
+    data class WriteFact(val phrase: String, val title: String, val list: String, val ok: Boolean)
+
+    /** [response] of the write [name] / [action] as a [WriteFact]; [ok] is the loop's success flag. */
+    fun writeFact(name: String, action: String, response: org.json.JSONObject, ok: Boolean): WriteFact =
+        WriteFact(
+            phrase = DONE_PHRASES[action] ?: DONE_PHRASES[name] ?: "did %s",
+            title = field(response, TITLE_KEYS).take(MAX_TITLE),
+            list = field(response, listOf("list")).take(MAX_TITLE),
+            ok = ok,
+        )
+
+    /**
+     * What he hears before the tone when a stop cut off a turn whose writes had already run
+     * (2026-11-18 review r2 N3): "Done: added milk to Groceries." Built here from [facts]; a clause per
+     * write, at most [MAX_DONE_CHARS] characters, never a question. A write that failed is "<thing>
+     * didn't go through."; one whose title the reply already said aloud ([alreadySaid]) is not repeated.
+     * Null when there is nothing to say.
+     */
+    fun doneLine(facts: List<WriteFact>, alreadySaid: String = ""): String? {
+        val said = alreadySaid.lowercase()
+        val fresh = facts.filterNot { it.ok && it.title.isNotEmpty() && said.contains(it.title.lowercase()) }
+        val done = fresh.filter { it.ok }.map { f ->
+            val to = if (f.list.isNotEmpty() && f.phrase.startsWith("added")) " to ${f.list}" else ""
+            f.phrase.format(f.title.ifEmpty { "it" }) + to
+        }
+        val failed = fresh.filterNot { it.ok }.map { f ->
+            f.title.ifEmpty { "That change" }.replaceFirstChar { it.uppercase() } + " didn't go through."
+        }
+        // Clause by clause while it fits: a run of writes is cut at a clause; only a first clause too
+        // long on its own is trimmed.
+        var kept = done.take(1).map { it.take(MAX_DONE_CHARS - "Done: .".length) }
+        for (c in done.drop(1)) {
+            if (doneText(kept + c).length <= MAX_DONE_CHARS) kept = kept + c
+        }
+        var line = if (kept.isEmpty()) "" else doneText(kept)
+        for (f in failed) {
+            val next = if (line.isEmpty()) f else "$line $f"
+            if (next.length <= MAX_DONE_CHARS) line = next
+        }
+        return line.replace("?", "").ifEmpty { null }
+    }
+
+    private fun doneText(clauses: List<String>) = "Done: " + clauses.joinToString("; ") + "."
+
+    @Suppress("ReturnCount") // the top level, then one nested level, then nothing
+    private fun field(o: org.json.JSONObject, keys: List<String>): String {
+        keys.firstNotNullOfOrNull { k -> o.optString(k).trim().takeIf { it.isNotEmpty() && o.opt(k) is String } }
+            ?.let { return it }
+        for (k in o.keys()) {
+            val nested = when (val v = o.opt(k)) {
+                is org.json.JSONObject -> v
+                is org.json.JSONArray -> v.optJSONObject(0)
+                else -> null
+            } ?: continue
+            keys.firstNotNullOfOrNull { kk ->
+                nested.optString(kk).trim().takeIf { it.isNotEmpty() && nested.opt(kk) is String }
+            }?.let { return it }
+        }
+        return ""
+    }
+
+    private val TITLE_KEYS = listOf("title", "text", "item", "name")
+    private const val MAX_TITLE = 40
+    const val MAX_DONE_CHARS = 80
+
+    /** A fixed phrase per write action or tool; `%s` is the item's title. */
+    private val DONE_PHRASES = mapOf(
+        "add" to "added %s", "remove" to "removed %s", "tick" to "ticked off %s", "untick" to "unticked %s",
+        "schedule" to "scheduled %s", "skip" to "skipped %s", "create" to "created %s", "set" to "set %s",
+        "log" to "logged %s", "remember" to "saved %s", "forget" to "forgot %s", "clear_ticked" to "cleared %s",
+        "complete_task" to "marked %s done", "set_reminder" to "set a reminder for %s",
+    )
+
+    /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
+    val KEEP: Set<String> =
+        (AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + ClosingLines.LINES).toSet()
 
     /**
      * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename
@@ -350,17 +441,6 @@ internal object ScriptedLines {
     /** A filler is due: a slow tool was asked for and nothing of the answer has been written yet. */
     fun fillerDue(toolNames: List<String>, anyText: Boolean, fillerPlayed: Boolean): Boolean =
         !anyText && !fillerPlayed && toolNames.any { it in SLOW_TOOLS }
-
-    /**
-     * Whether the filler is said now (2026-11-16):
-     * - only from memory: a line whose audio is not in hand would cost a TTS round trip (805 ms
-     *   measured) and could hold the answer up behind it, so it is skipped and its audio fetched
-     *   for next time instead;
-     * - only with barge-in on: once a filler is audible the phone counts the reply as playing, and
-     *   half-duplex (Bluetooth, a call) does not listen then, so words said during the lookup would
-     *   be lost instead of merged into his turn.
-     */
-    fun fillerNow(due: Boolean, inHand: Boolean, bargeIn: Boolean): Boolean = due && inHand && bargeIn
 }
 
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */
