@@ -99,6 +99,22 @@ internal object ToolFillers {
         return Plan(key, LINES[key] ?: GENERIC, slow = slow != null)
     }
 
+    /**
+     * What to say now and what to fetch for next time: the tool's own line when its audio is in
+     * memory ([inHand]); else a [GENERIC] line that is, so a due filler is never silence (2026-11-18
+     * review B7: after a voice change every tool's first use was silent), and the tool's own line is
+     * fetched. Nothing to say only when no line at all is in memory.
+     */
+    fun choose(plan: Plan, last: String?, index: Int, inHand: (String) -> Boolean): Choice {
+        val own = pick(plan.lines, last, index)
+        if (inHand(own)) return Choice(say = own, fetch = null)
+        val ready = GENERIC.filter(inHand)
+        return Choice(say = if (ready.isEmpty()) null else pick(ready, last, index), fetch = own)
+    }
+
+    /** [say] now (null: nothing in memory), [fetch] for next time (null: nothing to fetch). */
+    data class Choice(val say: String?, val fetch: String?)
+
     /** One of [lines], never [last] when there is another. */
     fun pick(lines: List<String>, last: String?, index: Int): String {
         val options = lines.filter { it != last }.ifEmpty { lines }

@@ -107,6 +107,63 @@ class CascadeWiringTest {
     }
 
     @Test
+    fun `a cloud voice that fails on a reply keeps the conversation, from memory or the earcon`() {
+        val s = session()
+        val answer = bodyOf(s, "answerTurn")
+        assertTrue("a failed cloud reply says it lost its voice", answer.contains("sayVoiceLost("))
+        assertFalse("a failed reply never hands over, which closes", answer.contains("\"tts\""))
+        assertTrue("the answer still reaches the record and the panel", answer.indexOf("unsaid()") in 0 until answer.indexOf("sayVoiceLost("))
+        val lost = bodyOf(s, "sayVoiceLost")
+        assertTrue("a kept line only when it is in hand", lost.contains("inHand("))
+        assertTrue("else the earcon", lost.contains("earconPcm()"))
+        assertTrue("the window opens again", lost.contains("afterReply()"))
+        for (closer in listOf("closingTone", "shutdown(", "handOver(")) assertFalse(closer, lost.contains(closer))
+        assertTrue("a scripted line on the cloud voice too", bodyOf(s, "onScriptedFailed").contains("sayVoiceLost("))
+        assertTrue("warmed with the fillers", ScriptedLines.VOICE_LOST in ScriptedLines.KEEP)
+        assertTrue(s.contains("ScriptedLines.MISSED + ScriptedLines.VOICE_LOST"))
+    }
+
+    @Test
+    fun `a stop is checked before every noise guard and never restarts the waiting request`() {
+        val s = session()
+        val run = bodyOf(s, "runTurn")
+        val stop = run.indexOf("endsConversation(stt.text)")
+        assertTrue(stop >= 0)
+        assertTrue("before the transcript guard", stop < run.indexOf("verdictOf(stt)"))
+        assertTrue("recovered words too", run.contains("endsConversation(recovered)"))
+        val end = bodyOf(s, "endByStop")
+        assertTrue("the waiting request is dropped, not answered", end.contains("carry = \"\""))
+        assertTrue(end.contains("endByVoice()"))
+        assertFalse(end.contains("answerTurn("))
+        assertTrue("after a question only a hard stop", bodyOf(s, "endsConversation").contains("afterQuestion = FollowUpWindow.isQuestion(lastClipText)"))
+        // Why the order matters: a stop heard over loud noise may score as noise and be dropped.
+        assertTrue(SttGuard.verdict("Stop.", 0L) is SttGuard.Verdict.Drop)
+    }
+
+    @Test
+    fun `silent noise turns are capped like spoken misses, five in a row close with the tone`() {
+        val s = session()
+        val close = bodyOf(s, "closedOnNoise")
+        assertTrue(close.contains("MAX_NOISE_IN_A_ROW"))
+        assertTrue(close.contains("host.closingTone()"))
+        assertTrue("a noise drop counts", bodyOf(s, "droppedWords").contains("closedOnNoise()"))
+        assertTrue("no voice at all counts", bodyOf(s, "runTurn").contains("closedOnNoise()"))
+        assertTrue("heard words reset it", bodyOf(s, "runTurn").contains("noiseInARow = 0"))
+        assertEquals(5, CascadeSession.MAX_NOISE_IN_A_ROW)
+    }
+
+    @Test
+    fun `every tool that takes a date gets his day word, at the one dispatch door, before any toolbox`() {
+        val toolbox = stripComments(File(sourceRoot(), "service/LiveToolbox.kt").readText())
+        val dispatch = bodyOf(toolbox, "dispatch")
+        val fix = dispatch.indexOf("RelativeDay.corrected(args, userText")
+        assertTrue(fix >= 0)
+        assertTrue("before the first toolbox and the big when", fix < dispatch.indexOf("EngineToolbox.dispatch(") && fix < dispatch.indexOf("return when (name)"))
+        assertTrue("the result carries the note", dispatch.contains("put(\"date_note\", note)"))
+        assertEquals("one path: no tool corrects on its own", 1, Regex("RelativeDay\\.corrected\\(").findAll(toolbox).count())
+    }
+
+    @Test
     fun `the swap keeps the conversation and is idempotent`() {
         val swap = bodyOf(session(), "swapToCloud")
         assertTrue("a late report of the same laptop failure changes nothing", swap.contains("if (current !== failed)"))
@@ -203,7 +260,7 @@ class CascadeWiringTest {
         val run = bodyOf(s, "runTurn")
         val take = run.indexOf("takeDraft(u, heard)")
         assertTrue(take >= 0)
-        for (check in listOf("CrisisDetector.detect(heard)", "WakePhrases.isSleepPhrase(heard, name)", "heard.isBlank()")) {
+        for (check in listOf("CrisisDetector.detect(heard)", "endsConversation(stt.text)", "heard.isBlank()")) {
             assertTrue("$check must come before a draft is taken", run.indexOf(check) in 0 until take)
         }
         assertTrue(bodyOf(s, "answerTurn").contains("drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))"))

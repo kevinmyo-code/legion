@@ -282,9 +282,6 @@ class ReplySpeakerTest {
             assertFalse(name, ScriptedLines.fillerDue(listOf(name), anyText = false, fillerPlayed = false))
         }
         assertTrue(ScriptedLines.fillerDue(listOf("phone", "look_up"), anyText = false, fillerPlayed = false))
-        assertTrue(ScriptedLines.fillerNow(due = true, inHand = true))
-        assertFalse("a line not in memory is skipped and warmed", ScriptedLines.fillerNow(due = true, inHand = false))
-        assertFalse(ScriptedLines.fillerNow(due = false, inHand = true))
     }
 
     @Test

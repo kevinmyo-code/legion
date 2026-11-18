@@ -81,4 +81,32 @@ class ToolFillersTest {
             assertTrue(line, line in ScriptedLines.KEEP)
         }
     }
+
+    @Test
+    fun `a tool line not in memory yet is fetched while a generic line in memory is said, never silence`() {
+        val plan = ToolFillers.plan(listOf(ToolFillers.Call("day", JSONObject().put("action", "read_calendar"), false)))!!
+        val own = plan.lines
+        // After a voice change: only the generic lines (warmed at open) are in memory.
+        val cold = ToolFillers.choose(plan, null, 0) { it in ToolFillers.GENERIC }
+        assertTrue(cold.say in ToolFillers.GENERIC)
+        assertTrue(cold.fetch in own)
+        // Next time the tool's own line is in memory: it is said, nothing fetched.
+        val warm = ToolFillers.choose(plan, null, 0) { true }
+        assertTrue(warm.say in own)
+        assertNull(warm.fetch)
+        // Nothing in memory at all: nothing said, the own line fetched.
+        val none = ToolFillers.choose(plan, null, 0) { false }
+        assertNull(none.say)
+        assertTrue(none.fetch in own)
+    }
+
+    @Test
+    fun `the session says the chosen line, generic or own, and fetches the own one`() {
+        val s = java.io.File(listOf("src/main/java", "app/src/main/java").map { java.io.File(it) }.first { it.isDirectory },
+            "com/kevin/legion/service/cascade/CascadeSession.kt").readText()
+        val body = s.substring(s.indexOf("private fun sayToolFiller("), s.indexOf("private fun newSpeaker("))
+        assertTrue(body.contains("ToolFillers.choose("))
+        assertTrue(body.contains("choice.fetch?.let { tts?.warm("))
+        assertTrue(body.contains("reply.filler(line)"))
+    }
 }

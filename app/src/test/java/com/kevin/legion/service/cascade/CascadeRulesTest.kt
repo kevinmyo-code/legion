@@ -313,4 +313,26 @@ class CascadeRulesTest {
         assertFalse(LaptopVoiceConfig("laptop:8765", "t").isComplete)
         assertFalse(LaptopVoiceConfig("http://laptop:8765", "").isComplete)
     }
+
+    @Test
+    fun `a write finished under a stop is said in the tool's own words, before the tone`() {
+        assertEquals("Done: added \"milk\" to Groceries.", ScriptedLines.doneLine(listOf("Added \"milk\" to Groceries.")))
+        assertEquals("Done: added stamps; reminder set for nine.", ScriptedLines.doneLine(listOf("Added stamps.", "Reminder set for nine.")))
+        assertEquals("Done.", ScriptedLines.doneLine(listOf("")))
+        assertNull(ScriptedLines.doneLine(emptyList()))
+    }
+
+    @Test
+    fun `the stop path says the stopped turn's finished writes, from the tool result, then the tone`() {
+        val s = java.io.File(sourceRootForRules(), "service/cascade/CascadeSession.kt").readText()
+        val end = s.substring(s.indexOf("private suspend fun endByStop("), s.indexOf("private fun verdictOf("))
+        assertTrue(end.contains("ScriptedLines.doneLine(unheardWrites)"))
+        assertTrue("said before the tone", end.indexOf("reply.say(done)") in 0 until end.indexOf("endByVoice()"))
+        assertTrue("the tool's message, never the reply", s.contains("record.writeLines.add(response.optString(\"message\"))"))
+    }
+
+    private fun sourceRootForRules(): java.io.File {
+        val candidates = listOf("src/main/java/com/kevin/legion", "app/src/main/java/com/kevin/legion")
+        return candidates.map { java.io.File(it) }.first { it.isDirectory }
+    }
 }

@@ -53,6 +53,7 @@ import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
 import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.DtcClearController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -282,6 +283,12 @@ internal class CascadeSession(
     /** "Didn't catch that" said this many times in a row; the third closes the conversation. */
     private var missedInARow = 0
 
+    /** The writes a stopped turn finished before he could hear them ([ScriptedLines.doneLine]). */
+    @Volatile private var unheardWrites: List<String> = emptyList()
+
+    /** Transcripts of noise in a row ([SttGuard.NOISE]): silent, but capped ([MAX_NOISE_IN_A_ROW]). */
+    private var noiseInARow = 0
+
     /** The last line spoken (not a filler): a question gets the longer follow-up window. */
     @Volatile private var lastClipText: String? = null
 
@@ -290,6 +297,9 @@ internal class CascadeSession(
         val reply = StringBuffer()
         val toolsRan = mutableListOf<String>()
         val writesDone = mutableListOf<String>()
+
+        /** Each finished write's own result message (code-written, never the model's words). */
+        val writeLines = mutableListOf<String>()
         @Volatile var readThrough = false
         @Volatile var fillerPlayed = false
 
@@ -1027,27 +1037,38 @@ internal class CascadeSession(
             is SttResult.Failed -> {
                 discardDraftOf(u, "stt_failed")
                 if (stt.reason == "cancelled") return
-                recoverWords(u, stt.reason) ?: return
+                val recovered = recoverWords(u, stt.reason) ?: return
+                if (endsConversation(recovered)) return endByStop(u, recovered)
+                recovered
             }
-            is SttResult.Text -> when (val v = verdictOf(stt)) {
-                is SttGuard.Verdict.Keep -> v.text
-                is SttGuard.Verdict.Drop -> {
-                    // Not plausibly his English (2026-11-17: Spanish and Chinese fragments, one acted
-                    // on): never sent to the model. Counts only.
-                    LiveLatency.log(
-                        LiveLatency.TAG,
-                        "stt_rejected reason=${v.reason} chars=${stt.text.length} audio_ms=${stt.audioMs ?: -1}",
-                    )
-                    if (!droppedWords(u, v.reason)) return
-                    ""
+            is SttResult.Text -> {
+                // "Stop", "goodbye": before every noise and length guard, and on his latest words alone,
+                // so a stop said during a lookup ends the conversation, never restarts the lookup.
+                if (endsConversation(stt.text)) return endByStop(u, stt.text)
+                when (val v = verdictOf(stt)) {
+                    is SttGuard.Verdict.Keep -> v.text
+                    is SttGuard.Verdict.Drop -> {
+                        // Not plausibly his English (2026-11-17: Spanish and Chinese fragments, one acted
+                        // on): never sent to the model. Counts only.
+                        LiveLatency.log(
+                            LiveLatency.TAG,
+                            "stt_rejected reason=${v.reason} chars=${stt.text.length} audio_ms=${stt.audioMs ?: -1} " +
+                                "voiced_ms=${stt.voicedMs ?: -1}",
+                        )
+                        if (!droppedWords(u, v.reason)) return
+                        ""
+                    }
                 }
             }
         }
         val heard = (carry + " " + words).trim()
-        if (heard.isNotBlank()) missedInARow = 0
+        if (heard.isNotBlank()) {
+            missedInARow = 0
+            noiseInARow = 0
+        }
         if (heard.isBlank()) {
             discardDraftOf(u, "nothing_heard")
-            backToListening()
+            if (!closedOnNoise()) backToListening()
             return
         }
         carry = ""
@@ -1060,15 +1081,6 @@ internal class CascadeSession(
             discardDraftOf(u, "not_answered")
             shutdown("crisis")
             host.crisis()
-            return
-        }
-        // "Stop", "goodbye", "that's all": the whole of his latest words, so a stop said during a lookup
-        // ends the conversation instead of being merged into the request it interrupted.
-        val name = CompanionProfile.name(ctx)
-        if (WakePhrases.isSleepPhrase(words, name) || WakePhrases.isSleepPhrase(heard, name)) {
-            discardDraftOf(u, "not_answered")
-            recordTurn(heard, "")
-            endByVoice()
             return
         }
         if (!followLanguage(heard)) {
@@ -1091,6 +1103,7 @@ internal class CascadeSession(
         /** A speculative draft confirmed with these words: its answer is this turn's. */
         drafted: SpeculativeAnswer? = null,
     ) {
+        if (record.fromUser) unheardWrites = emptyList()
         turn = record
         // ADR 0090 gap 5: the turn after a read-through opener starts marked, as on Live.
         if (readThroughCarry.startTurn(record.fromUser, record.startMarked)) {
@@ -1171,18 +1184,23 @@ internal class CascadeSession(
             outcome = reply.await()
             val failed = outcome as? ReplySpeaker.Outcome.Failed
             if (failed != null) {
-                // The model and the tools already ran on the phone: only the voice was lost. The
-                // reply goes again, whole, on the next voice; nothing is asked of the model twice.
-                // If no voice can say it, the answer and what was done still reach the panel and
-                // the record before the conversation ends.
+                // The model and the tools already ran on the phone: only the voice was lost. A laptop
+                // reply goes again, whole, on the cloud voice; nothing is asked of the model twice.
+                // A cloud voice that fails (two tries, no audio): the answer and what was done reach
+                // the panel and the record, he hears [sayVoiceLost], and the window opens again.
                 val words = text ?: LeadingFiller.strip(result.text)
                 val unsaid = { recordTurn(heard, withWrites(words, record), record.readThrough, seq, record.fromUser) }
-                val again = revoice(voice, failed.reason, heardMoment(heard, record), words, unsaid) ?: return
-                reply = again
-                outcome = again.await()
+                val again = if (voice.kind == SpeechBackend.Kind.CLOUD) {
+                    null
+                } else {
+                    revoice(voice, failed.reason, heardMoment(heard, record), words, unsaid) ?: return
+                }
+                outcome = again?.also { reply = it }?.await() ?: failed
                 if (outcome is ReplySpeaker.Outcome.Failed) {
                     unsaid()
-                    handOver(heardMoment(heard, record), "tts", outcome.reason)
+                    answeredOnce = true
+                    turnsAnswered.incrementAndGet()
+                    sayVoiceLost(outcome.reason)
                     return
                 }
             }
@@ -1196,6 +1214,8 @@ internal class CascadeSession(
             // Interrupted (tap, barge-in) or merged into the next turn: keep only what was heard.
             withContext(NonCancellable) {
                 reply.interrupt()
+                // A write that finished under a stop is said before the tone ([endByStop]).
+                if (record.fromUser) unheardWrites = synchronized(record) { record.writeLines.toList() }
                 if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty())) {
                     recordTurn(heard, withWrites(reply.spoken(), record), record.readThrough, seq, record.fromUser)
                 }
@@ -1371,14 +1391,45 @@ internal class CascadeSession(
         sayMissedLine()
     }
 
+    /**
+     * His latest words are a stop ([WakePhrases.isSleepPhrase]); after a question only a hard stop,
+     * so "that's it" as an answer goes to the model.
+     */
+    private fun endsConversation(words: String): Boolean =
+        WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = FollowUpWindow.isQuestion(lastClipText))
+
+    /**
+     * A stop: nothing waiting is answered, the conversation ends with the tone. A write the stopped turn
+     * already finished is said first, in the tool's own words (2026-11-18 review B3: it was done and
+     * never said).
+     */
+    private suspend fun endByStop(u: TurnUtterance, words: String) {
+        discardDraftOf(u, "not_answered")
+        carry = ""
+        val done = ScriptedLines.doneLine(unheardWrites)
+        unheardWrites = emptyList()
+        recordTurn(words, done.orEmpty())
+        if (done != null && backend != null && player != null) {
+            val reply = newSpeaker(null)
+            reply.say(done)
+            reply.await()
+        }
+        endByVoice()
+    }
+
+    /** One more silent turn (noise, or no voice at all); the [MAX_NOISE_IN_A_ROW]th closes with the tone. */
+    private suspend fun closedOnNoise(): Boolean {
+        if (++noiseInARow < MAX_NOISE_IN_A_ROW) return false
+        LiveLatency.log(LiveLatency.TAG, "stt_noise_close n=$noiseInARow")
+        host.closingTone()
+        shutdown("noise")
+        host.closed("noise")
+        return true
+    }
+
     /** Whether [stt]'s words are believed ([SttGuard]), for his languages and the names on the phone. */
-    private fun verdictOf(stt: SttResult.Text): SttGuard.Verdict = SttGuard.verdict(
-        stt.text,
-        stt.audioMs ?: 0L,
-        SttHintStore.known,
-        languages,
-        afterQuestion = FollowUpWindow.isQuestion(lastClipText),
-    )
+    private fun verdictOf(stt: SttResult.Text): SttGuard.Verdict =
+        SttGuard.verdict(stt.text, stt.voicedMs, SttHintStore.known, languages)
 
     /**
      * A transcript was not believed. With words still waiting from before (a request he made, then a
@@ -1389,8 +1440,10 @@ internal class CascadeSession(
         discardDraftOf(u, "stt_rejected")
         if (carry.isNotBlank()) return true
         if (reason in SttGuard.SILENT_REASONS) {
-            // Nothing real was said (noise, an echo, the hint read back): silence. No line, no filler;
-            // the follow-up window starts over in full, as after a statement.
+            // Nothing real was said (noise, an echo): silence. No line, no filler; the follow-up
+            // window starts over in full, as after a statement. Steady noise that keeps opening turns
+            // closes the conversation rather than keep the mic open and the transcriber billed.
+            if (closedOnNoise()) return false
             lastClipText = null
             backToListening()
         } else {
@@ -1400,14 +1453,14 @@ internal class CascadeSession(
     }
 
     /**
-     * The conversation's language after [heard] ([SpokenLanguages]): a request for one of his languages,
-     * or a whole sentence spoken in one, switches it; a request for one not in his setting gets the
+     * The conversation's language after [heard] ([SpokenLanguages]): a whole-turn request for one of his
+     * languages, or a sentence spoken in one in its own non-Latin script, switches it; a request for one not in his setting gets the
      * scripted line and the turn ends there (false). The laptop voice speaks English only: it says so
      * and stays English, and the turn is answered in English.
      */
     private suspend fun followLanguage(heard: String): Boolean {
         val cloud = backend?.kind == SpeechBackend.Kind.CLOUD
-        return when (val d = SpokenLanguages.decide(heard, languages, conversationLanguage, cloud)) {
+        return when (val d = SpokenLanguages.decide(heard, languages, conversationLanguage, cloud, CompanionProfile.name(ctx))) {
             SpokenLanguages.Decision.Stay -> true
             is SpokenLanguages.Decision.Refuse -> {
                 LiveLatency.log(LiveLatency.TAG, "language_refused ${d.why}")
@@ -1563,7 +1616,12 @@ internal class CascadeSession(
 
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {
             if (CascadeRules.isWrite(name, args)) noteChange(response)
-            if (writeDone) synchronized(record) { record.writesDone.add(name) }
+            if (writeDone) {
+                synchronized(record) {
+                    record.writesDone.add(name)
+                    record.writeLines.add(response.optString("message"))
+                }
+            }
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$name sent=true async=false")
         }
 
@@ -1579,21 +1637,24 @@ internal class CascadeSession(
 
     /** [plan]'s line now, from memory only (else its audio is fetched for next time). */
     private fun sayToolFiller(plan: ToolFillers.Plan, reply: ReplySpeaker, record: TurnRecord) {
-        val line = ToolFillers.pick(plan.lines, lastToolFiller, toolFillerIndex.getAndIncrement())
         val tts = backend?.tts
-        val inHand = tts?.inHand(SpokenText.forSpeech(line)) == true
-        if (ScriptedLines.fillerNow(due = true, inHand = inHand)) {
-            lastToolFiller = line
-            val duplex = if (turnTaker?.bargeIn == true) "full" else "half"
-            val timing = if (plan.slow) "start" else "late"
-            if (reply.filler(line)) {
-                record.fillerPlayed = true
-                LiveLatency.log(LiveLatency.TAG, "filler tool=${plan.key} at=$timing duplex=$duplex")
-            }
-        } else {
-            // Only this line, one request, behind any reply ([GeminiTts.warm]): it plays next time.
-            tts?.warm(listOf(SpokenText.forSpeech(line)))
+        val choice = ToolFillers.choose(plan, lastToolFiller, toolFillerIndex.getAndIncrement()) { line ->
+            tts?.inHand(SpokenText.forSpeech(line)) == true
+        }
+        // The tool's own line, not in memory yet: one request, behind any reply ([GeminiTts.warm]).
+        choice.fetch?.let { tts?.warm(listOf(SpokenText.forSpeech(it))) }
+        val line = choice.say
+        if (line == null) {
             LiveLatency.log(LiveLatency.TAG, "filler_skip reason=not_in_memory tool=${plan.key}")
+            return
+        }
+        lastToolFiller = line
+        val duplex = if (turnTaker?.bargeIn == true) "full" else "half"
+        val timing = if (plan.slow) "start" else "late"
+        if (reply.filler(line)) {
+            record.fillerPlayed = true
+            val generic = if (choice.fetch != null) " generic=true" else ""
+            LiveLatency.log(LiveLatency.TAG, "filler tool=${plan.key} at=$timing duplex=$duplex$generic")
         }
     }
 
@@ -1772,11 +1833,42 @@ internal class CascadeSession(
 
     private suspend fun onScriptedFailed(voice: SpeechBackend, line: String, reason: String) {
         val moment = if (history.isEmpty()) Handover.Moment.AtOpen else Handover.Moment.Idle
-        if (swapToCloud(voice, "tts", reason)) {
-            speakScripted(line)
-        } else {
-            handOver(moment, "tts", reason, from = voice.kind)
+        when {
+            voice.kind == SpeechBackend.Kind.CLOUD -> sayVoiceLost(reason)
+            swapToCloud(voice, "tts", reason) -> speakScripted(line)
+            else -> handOver(moment, "tts", reason, from = voice.kind)
         }
+    }
+
+    /**
+     * The cloud voice could not say a line (two tries, no audio; 2026-11-18 review B1: this closed
+     * the conversation). The words are already on the panel; he hears a kept line from memory, or the
+     * earcon when it is not in hand, never a new TTS call, and the window opens again.
+     */
+    private suspend fun sayVoiceLost(reason: String) {
+        LiveLatency.log(LiveLatency.TAG, "reply_voice_lost reason=$reason")
+        val b = backend
+        val p = player
+        if (closing.get() || b == null || p == null) {
+            backToListening()
+            return
+        }
+        if (b.tts.inHand(SpokenText.forSpeech(VOICE_LOST_LINE))) {
+            val reply = newSpeaker(null)
+            reply.say(VOICE_LOST_LINE)
+            when (reply.await()) {
+                ReplySpeaker.Outcome.Played -> afterReply()
+                ReplySpeaker.Outcome.Interrupted -> Unit
+                is ReplySpeaker.Outcome.Failed -> backToListening()
+            }
+            return
+        }
+        if (b.tts.sampleRate == ListenCue.SAMPLE_RATE) {
+            p.awaitDrained()
+            val gen = p.generation()
+            withContext(Dispatchers.IO) { p.write(ListenCue.earconPcm(), gen) }
+        }
+        afterReply()
     }
 
     /**
@@ -2422,6 +2514,8 @@ internal class CascadeSession(
 
     private suspend fun releaseNow(reason: String, caller: Job?) {
         isOpen = false
+        // A clear-codes question belongs to this conversation: a "yes" in the next one answers nothing.
+        step("clear_question") { DtcClearController.forgetClearQuestion() }
         step("jobs") {
             followUpJob?.cancel()
             uttCapJob?.cancel()
@@ -2550,9 +2644,11 @@ internal class CascadeSession(
 
         /** "Didn't catch that" twice in a row is the most; the next miss closes the conversation. */
         private const val MAX_MISSED_IN_A_ROW = 2
+        const val MAX_NOISE_IN_A_ROW = 5
 
         /** Said when his words were not caught (2026-11-17); kept in memory like the fillers. */
         const val MISSED_LINE = ScriptedLines.MISSED
+        const val VOICE_LOST_LINE = ScriptedLines.VOICE_LOST
 
         /** The open's "refusal" token when the engine is Cloud: no laptop was asked. */
         private const val CLOUD_ENGINE = "cloud_engine"
@@ -2565,7 +2661,7 @@ internal class CascadeSession(
          * lines at once queued ahead of the first answer). Tool lines are fetched one at a time, the
          * first time each is due, and play from the next time on.
          */
-        private val FILLERS_SPOKEN = (ToolFillers.GENERIC + ScriptedLines.MISSED)
+        private val FILLERS_SPOKEN = (ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST)
             .distinct().map { SpokenText.forSpeech(it) }
 
         /** How long the phone's own read of today may take at open (normally well under 100 ms). */

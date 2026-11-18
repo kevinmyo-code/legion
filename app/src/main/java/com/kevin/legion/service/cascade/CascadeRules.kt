@@ -334,9 +334,24 @@ internal object ScriptedLines {
      */
     const val MISSED = "Didn't catch that. Say it again?"
 
+    /** Said from memory when the cloud voice failed on a line (2026-11-18): the answer is on screen. */
+    const val VOICE_LOST = "Sorry, I lost my voice for a second."
+
+    /**
+     * What he hears before the tone when a stop cut off a turn whose write had already finished:
+     * "Done: added milk to Groceries." from the tools' own result messages, never the model's words.
+     * Null when nothing was written; "Done." when a write left no message.
+     */
+    fun doneLine(messages: List<String>): String? {
+        if (messages.isEmpty()) return null
+        val parts = messages.map { it.trim().trimEnd('.', '!') }.filter { it.isNotEmpty() }.distinct()
+        if (parts.isEmpty()) return "Done."
+        return "Done: " + parts.joinToString("; ") { it.replaceFirstChar { c -> c.lowercase() } } + "."
+    }
+
     /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
     val KEEP: Set<String> =
-        (AckLines.DEFAULT + FILLERS + MISSED + ToolFillers.ALL + ClosingLines.LINES).toSet()
+        (AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + ClosingLines.LINES).toSet()
 
     /**
      * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename
@@ -360,19 +375,6 @@ internal object ScriptedLines {
     /** A filler is due: a slow tool was asked for and nothing of the answer has been written yet. */
     fun fillerDue(toolNames: List<String>, anyText: Boolean, fillerPlayed: Boolean): Boolean =
         !anyText && !fillerPlayed && toolNames.any { it in SLOW_TOOLS }
-
-    /**
-     * Whether the filler is said now: only from memory (2026-11-16): a line whose audio is not in
-     * hand would cost a TTS round trip (805 ms measured) and could hold the answer up behind it, so
-     * it is skipped and its audio fetched for next time instead.
-     *
-     * Half-duplex too, since 2026-11-17 (all 12 fillers of that day's car drive were skipped there,
-     * "I didn't hear much of the filler words"). The mic is deaf while the line plays, as for any
-     * reply, so its echo cannot start a turn; once it has drained the session listens again until
-     * the answer's first audio ([CascadeSession]'s `onFillerPlayed`), so words said during the
-     * lookup still merge into his turn as they did without a filler.
-     */
-    fun fillerNow(due: Boolean, inHand: Boolean): Boolean = due && inHand
 }
 
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */
