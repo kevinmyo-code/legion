@@ -128,7 +128,7 @@ class CascadeWiringTest {
     fun `a stop is checked before every noise guard and never restarts the waiting request`() {
         val s = session()
         val run = bodyOf(s, "runTurn")
-        val stop = run.indexOf("endsConversation(stt.text) && SttGuard.stopVoiced(stt.voicedMs)")
+        val stop = run.indexOf("val stop = stopWords && SttGuard.stopVoiced(stt.voicedMs)")
         assertTrue("a stop over no voice is not a stop", stop >= 0)
         assertTrue("decided before the transcript guard can drop it", stop < run.indexOf("if (stop) return endByStop(u, stt.text)"))
         assertTrue("every turn logs voiced time and the decision", run.contains("stt_voiced ms="))
