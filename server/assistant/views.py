@@ -1088,6 +1088,10 @@ class AssistantTurnView(_AssistantView):
     audit_kind = AssistantCall.SESSION
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    def throttled(self, request, wait):
+        _audit(request, self.audit_kind, Outcome.THROTTLED, None)
+        raise _TurnThrottled(wait)
+
     @extend_schema(
         tags=ASSISTANT_TAGS,
         operation_id="api_assistant_turn_create",
@@ -1103,7 +1107,11 @@ class AssistantTurnView(_AssistantView):
             "conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing "
             "was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's "
             "estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no "
-            "`audio`."
+            "`audio`. Every refusal body is {detail, code}: `bad_request` (400), "
+            "`no_conversation` (404), `live_engine`, `time_limit`, `busy` (with `retry_ms`) and "
+            "`duplicate` (409), `too_long` (413), `member_cap`, `demo_full`, `budget` and "
+            "`throttled` (429), `no_key` (503). `turn_id` names the turn for "
+            "`POST /api/assistant/turn/cancel`."
         ),
         request={"multipart/form-data": AssistantTurnRequestSerializer},
         responses={
@@ -1138,10 +1146,6 @@ class AssistantTurnView(_AssistantView):
             503: OpenApiResponse(DetailSerializer, description="No Gemini key on this server."),
         },
     )
-    def throttled(self, request, wait):
-        _audit(request, self.audit_kind, Outcome.THROTTLED, None)
-        raise _TurnThrottled(wait)
-
     def post(self, request):
         if voice_engine.engine_for(request.user) != voice_engine.CASCADE:
             return _refuse(request, LIVE_ONLY, status.HTTP_409_CONFLICT, "live_engine")

@@ -284,9 +284,33 @@ export interface paths {
         put?: never;
         /**
          * One assistant turn on the engine's voice pipeline, answered as Server-Sent Events
-         * @description text/event-stream, one event per thing that happened: `turn` {conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` {kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); `speech_failed` {reason}; `done` {status, final_text, writes_ran, words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no `audio`.
+         * @description text/event-stream, one event per thing that happened: `turn` {conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` {kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); `speech_failed` {reason}; `done` {status, final_text, writes_ran, words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}: `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`, `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`, `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names the turn for `POST /api/assistant/turn/cancel`.
          */
         post: operations["api_assistant_turn_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turn/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop one of the caller's own turns (idempotent, costs nothing)
+         * @description Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
+         *     and the server only notices a dropped stream at its next write). Marks the turn cancelled in
+         *     the database, where the running turn looks at every stage boundary, from any worker or
+         *     instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
+         *     or not the turn is still running; costs nothing; a row stops only the caller's own turn.
+         */
+        post: operations["api_assistant_turn_cancel_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6141,6 +6165,13 @@ export interface components {
             /** @description How long the transcription took. */
             ms: number;
         };
+        AssistantTurnCancelRequest: {
+            /**
+             * Format: uuid
+             * @description The id the browser gave the turn to stop.
+             */
+            turn_id: string;
+        };
         AssistantTurnRequest: {
             /**
              * Format: uri
@@ -6163,7 +6194,12 @@ export interface components {
              * @default false
              */
             spoken: boolean;
-            /** @description A demo visit's one-minute tour: the beat to play (from 0). With `audio`, what was said during the tour: 'skip' plays this beat, 'stop' ends the tour, anything else is a question and the tour ends. */
+            /**
+             * Format: uuid
+             * @description The browser's own id for this turn, so it can be stopped with `POST /api/assistant/turn/cancel`.
+             */
+            turn_id?: string | null;
+            /** @description A demo visit's one-minute tour: the beat to play (from 0). With `audio` or `text`, what was said or typed during the tour: 'skip' plays this beat, 'stop' ends the tour, anything else is a question and the tour ends. */
             tour?: number | null;
             /**
              * @description The greeting on open, spoken: no `audio` or `text` with it. A member's is built from their greeting facts; a demo visit's is scripted.
@@ -12593,6 +12629,39 @@ export interface operations {
             };
             /** @description No Gemini key on this server. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_turn_cancel_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantTurnCancelRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantTurnCancelRequest"];
+                "multipart/form-data": components["schemas"]["AssistantTurnCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body did not fit. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

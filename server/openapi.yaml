@@ -610,7 +610,11 @@ paths:
         words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure`
         or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and
         tools_ms? (a demo visit''s estimated turn cost and each tool''s time)}; `error`
-        {words}. A typed turn gets no `audio`.'
+        {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}:
+        `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`,
+        `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`,
+        `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names
+        the turn for `POST /api/assistant/turn/cancel`.'
       summary: One assistant turn on the engine's voice pipeline, answered as Server-Sent
         Events
       tags:
@@ -665,6 +669,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No Gemini key on this server.
+  /api/assistant/turn/cancel:
+    post:
+      operationId: api_assistant_turn_cancel_create
+      description: |-
+        Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
+        and the server only notices a dropped stream at its next write). Marks the turn cancelled in
+        the database, where the running turn looks at every stage boundary, from any worker or
+        instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
+        or not the turn is still running; costs nothing; a row stops only the caller's own turn.
+      summary: Stop one of the caller's own turns (idempotent, costs nothing)
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnCancelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnCancelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnCancelRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
   /api/auth/csrf:
     get:
       operationId: api_auth_csrf_retrieve
@@ -14301,6 +14340,15 @@ components:
       required:
       - ms
       - text
+    AssistantTurnCancelRequest:
+      type: object
+      properties:
+        turn_id:
+          type: string
+          format: uuid
+          description: The id the browser gave the turn to stop.
+      required:
+      - turn_id
     AssistantTurnRequest:
       type: object
       properties:
@@ -14336,14 +14384,21 @@ components:
           default: false
           description: 'With `text`: the page transcribed the utterance early (`POST
             /api/assistant/transcribe`) and the answer is spoken, as for `audio`.'
+        turn_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The browser's own id for this turn, so it can be stopped with
+            `POST /api/assistant/turn/cancel`.
         tour:
           type: integer
           maximum: 20
           minimum: 0
           nullable: true
           description: 'A demo visit''s one-minute tour: the beat to play (from 0).
-            With `audio`, what was said during the tour: ''skip'' plays this beat,
-            ''stop'' ends the tour, anything else is a question and the tour ends.'
+            With `audio` or `text`, what was said or typed during the tour: ''skip''
+            plays this beat, ''stop'' ends the tour, anything else is a question and
+            the tour ends.'
         greet:
           type: boolean
           default: false
