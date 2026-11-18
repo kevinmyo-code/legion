@@ -435,11 +435,16 @@ class FillerAudio:
 
         def fetch() -> None:
             for line in missing:
+                stats = Spoken()
                 try:
                     # Through the same tag rules as an answer (round 2 speech review 6).
                     said = speech_tags.for_speech(line, expressive=True)
-                    audio = b"".join(speech.speak(said, voice, Spoken()))
+                    audio = b"".join(speech.speak(said, voice, stats))
                 except (SpeechFailure, OSError):
+                    audio = b""
+                if stats.voice not in (None, voice):
+                    # Spoken in the fallback voice: never kept under this voice (round 3 S3); it
+                    # is asked for again later, when the voice may be back.
                     audio = b""
                 with self._lock:
                     self._fetching.discard((voice, line))
