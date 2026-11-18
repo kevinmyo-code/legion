@@ -920,6 +920,7 @@ def _turn_sse(
     reserved_rounds,
     companion_name="",
     held=None,
+    reserved_speech=0,
 ):
     report = cascade.TurnReport()
     spoken = turn_input.audio is not None or turn_input.greet
@@ -979,9 +980,17 @@ def _turn_sse(
                 # No voice in the audio: no paid speech-to-text and nothing spoken.
                 speech_unused=report.status == "nothing_heard"
                 and not report.timings.get("stt_paid"),
+                speech_requests_reserved=reserved_speech,
+                speech_requests_used=_count(report.timings, "tts_requests")
+                + _count(report.timings, "speech_fetched"),
             )
         if held is not None:
             held.release()
+
+
+def _count(timings: dict, key: str) -> int:
+    value = timings.get(key)
+    return value if isinstance(value, int) and value > 0 else 0
 
 
 def _greeting_history(raw: str | None) -> dict:
@@ -1124,20 +1133,28 @@ class AssistantTurnView(_AssistantView):
         reservation = None
         try:
             # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
+            # One more for a prompt cache the turn may have to make (round 2 turn review 8).
             reserved_rounds = (
                 1
                 if greet
                 else 0
                 if tour_beat is not None and audio is None
                 else cascade.MAX_ROUNDS + 1
+            ) + 1
+            spoken_turn = (
+                greet or audio is not None or bool(data.get("spoken")) or tour_beat is not None
+            )
+            voice = voice_engine.voice_for(request.user)
+            # Speech reserved per request it may make: the turn's own, and the filler and failure
+            # lines it may have to make first for this voice (round 2 turn review 8).
+            reserved_speech = (
+                cascade.MAX_TTS_REQUESTS + cascade.FILLER_AUDIO.missing(voice) if spoken_turn else 0
             )
             if demo_budget.counts(request.user):
                 reservation = demo_budget.reserve_cascade_turn(
                     rounds=reserved_rounds,
-                    spoken=greet
-                    or audio is not None
-                    or bool(data.get("spoken"))
-                    or tour_beat is not None,
+                    spoken=spoken_turn,
+                    speech_requests=reserved_speech,
                     user=request.user,
                 )
                 if reservation is None:
@@ -1189,11 +1206,12 @@ class AssistantTurnView(_AssistantView):
                     system,
                     context,
                     # Per role, not the companion's stored voice (that one is Live's): ADR 0103.
-                    voice_engine.voice_for(request.user),
+                    voice,
                     reservation,
                     reserved_rounds,
                     companion.name,
                     held,
+                    reserved_speech,
                 ),
                 content_type="text/event-stream",
             )

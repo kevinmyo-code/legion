@@ -291,6 +291,10 @@ LEGION_DEMO_COST_PER_TEXT_CALL_USD = (
 # ADR 0102: a web cascade turn's speech-to-text plus its text-to-speech, reserved per spoken turn
 # (`demo.budget.reserve_cascade_turn`). An estimate: about 15 s of audio in and a few sentences out
 # at flash-lite audio and flash TTS list prices is well under a cent; one cent rounds it up.
+# One text-to-speech request of a cascade turn, retries included (round 2 turn review 8).
+LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD = (
+    os.environ.get("LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD", "").strip() or "0.002"
+)
 LEGION_DEMO_COST_PER_SPEECH_TURN_USD = (
     os.environ.get("LEGION_DEMO_COST_PER_SPEECH_TURN_USD", "").strip() or "0.01"
 )

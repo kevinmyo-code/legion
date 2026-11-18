@@ -282,3 +282,38 @@ def test_a_broken_spoken_turn_says_so_from_memory(member, engine, monkeypatch, h
     events = _events(_post(member, audio=PCM))
     kinds = [k for k, _ in events]
     assert kinds[-2:] == ["audio", "error"]
+
+
+# ---- finding 8: every paid call is counted, speech is reserved per request ----------------------
+
+
+def test_a_cache_creation_and_a_resend_are_each_counted():
+    from assistant import cascade
+
+    class Inner:
+        def stream(self, req):
+            return iter(())
+
+        def create_cache(self, *a, **k):
+            return "cachedContents/x"
+
+    counted = cascade.CountingModel(Inner())
+    counted.create_cache("m", "s", [])
+    list(counted.stream(None))
+    list(counted.stream(None))  # the resend after a broken cache
+    assert counted.calls == 3
+
+
+def test_speech_is_reserved_per_request_and_given_back_when_unused(visitor, engine):
+    from agents.runtime.model import FakeModel, say
+    from demo import budget
+    from demo.models import DemoBudgetDay
+
+    engine.model = FakeModel([say("Hello there.")])
+    _events(_post(visitor, text="Hi.", spoken="true"))
+    day = DemoBudgetDay.objects.get()
+    from assistant import cascade, fillers
+
+    lines = len(set(fillers.all_lines()) | set(cascade.SPOKEN_FAILURES))
+    # One text call used; the speech share; one speech request plus the lines set out to be made.
+    assert day.reserved_cents == 1 + 1 + budget.speech_requests_cents(1 + lines)

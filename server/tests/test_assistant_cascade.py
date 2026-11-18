@@ -716,10 +716,16 @@ def test_an_empty_answer_after_a_tool_is_asked_once_more(member, engine):
 
 
 def test_a_visitor_greeting_keeps_its_speech_reservation(visitor, engine, settings):
+    from assistant import fillers
+    from demo import budget
+
     _events(_post(visitor, greet="true"))
     day = DemoBudgetDay.objects.get()
-    # One text call reserved and not used (the demo hello is scripted), speech kept: one cent.
-    assert day.reserved_cents == 1
+    # The text calls reserved go back unused (the demo hello is scripted); speech is kept: the
+    # turn's share, its one speech request, and the filler and failure lines it set out to make
+    # (round 2 turn review 8: those were paid and never reserved).
+    lines = len(set(fillers.all_lines()) | set(cascade.SPOKEN_FAILURES))
+    assert day.reserved_cents == 1 + budget.speech_requests_cents(1 + lines)
 
 
 def test_a_claimed_change_after_a_refused_write_is_not_said(member, engine):

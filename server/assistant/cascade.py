@@ -449,6 +449,19 @@ class FillerAudio:
         self._spawn(fetch)
         return len(missing)
 
+    def missing(self, voice: str, lines=None) -> int:
+        """How many lines `warm` would fetch now: what a turn reserves for them first."""
+        lines = (*fillers.all_lines(), *SPOKEN_FAILURES) if lines is None else lines
+        now = time.monotonic()
+        with self._lock:
+            return sum(
+                1
+                for line in lines
+                if (voice, line) not in self._audio
+                and (voice, line) not in self._fetching
+                and now - self._failed.get((voice, line), -FILLER_RETRY_S) >= FILLER_RETRY_S
+            )
+
     def get(self, voice: str, line: str) -> bytes | None:
         with self._lock:
             return self._audio.get((voice, line))
@@ -918,8 +931,9 @@ class TurnReport:
 
 
 class CountingModel:
-    """Counts every model call started (each `stream`), so a cancelled or retried round is
-    billed to the budget like any other (finding 6)."""
+    """Counts every paid model call started: each `stream` and each prompt cache made, so a
+    cancelled round, a resend after a broken cache (counted under the cache layer, round 2 turn
+    review 8) and a cache creation are all billed to the budget like any other."""
 
     def __init__(self, inner):
         self.inner = inner
@@ -928,6 +942,10 @@ class CountingModel:
     def stream(self, req):
         self.calls += 1
         return self.inner.stream(req)
+
+    def create_cache(self, *args, **kwargs):
+        self.calls += 1
+        return self.inner.create_cache(*args, **kwargs)
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
@@ -1010,8 +1028,14 @@ def run_turn(
     t0 = clock()
     timings = report.timings
     filler_audio = filler_audio or FILLER_AUDIO
-    counted = CountingModel(model)
-    model = counted
+    # Counted UNDER the prompt-cache layer when there is one, so its resend after a broken cache
+    # and its cache creation are each a call.
+    if hasattr(model, "inner") and hasattr(model, "store"):
+        counted = CountingModel(model.inner)
+        model.inner = counted
+    else:
+        counted = CountingModel(model)
+        model = counted
     speak = (
         turn_input.audio is not None
         or turn_input.greet
@@ -1025,7 +1049,7 @@ def run_turn(
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
     if speak:
         # The filler lines' audio, fetched while the floor is theirs (spec 22).
-        filler_audio.warm(speech, voice)
+        timings["speech_fetched"] = filler_audio.warm(speech, voice)
     try:
         if turn_input.greet:
             yield from _greet(
@@ -1100,6 +1124,7 @@ def run_turn(
         # Every model call that was started counts, even one a hang-up cut short or a cache retry
         # sent twice (finding 6): billed rounds are never handed back to the budget.
         report.rounds = max(report.rounds, counted.calls)
+        timings["tts_requests"] = speaker.requests
         _meter_speech(request, timings)
 
 

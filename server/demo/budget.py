@@ -333,8 +333,26 @@ def speech_turn_cents() -> int:
     return _cents("LEGION_DEMO_COST_PER_SPEECH_TURN_USD")
 
 
+def speech_requests_cents(requests: int) -> int:
+    """`requests` text-to-speech requests, retries included, in whole cents rounded up once for
+    the lot (round 2 turn review 8: speech was reserved flat per turn, not per request)."""
+    raw = settings.LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD
+    try:
+        value = Decimal(str(raw))
+    except InvalidOperation:
+        raise ImproperlyConfigured(
+            f"LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD must be an amount in USD; got {raw!r}."
+        ) from None
+    return math.ceil(value * 100 * max(requests, 0))
+
+
 def reserve_cascade_turn(
-    *, rounds: int, spoken: bool, now: datetime | None = None, user=None
+    *,
+    rounds: int,
+    spoken: bool,
+    speech_requests: int = 0,
+    now: datetime | None = None,
+    user=None,
 ) -> Reservation | None:
     """Reserve one web cascade turn's worst case (ADR 0102) before anything is asked of Google:
     `rounds` text-model calls at `LEGION_DEMO_COST_PER_TEXT_CALL_USD`, plus, for a spoken turn,
@@ -343,13 +361,22 @@ def reserve_cascade_turn(
     budget. Counted as one `text_calls` (no new counter, so no migration). None: refuse the turn.
     `release_unused` gives back the rounds the turn did not use."""
     lim = limits()
-    cents = lim.text_call_cents * rounds + (speech_turn_cents() if spoken else 0)
+    cents = (
+        lim.text_call_cents * rounds
+        + (speech_turn_cents() if spoken else 0)
+        + speech_requests_cents(speech_requests)
+    )
     cap = lim.voice_cap_cents if spoken else lim.budget_cents
     return _reserve(cents, cap, "text_calls", now, user)
 
 
 def release_unused(
-    reservation: Reservation, *, rounds_unused: int, speech_unused: bool = False
+    reservation: Reservation,
+    *,
+    rounds_unused: int,
+    speech_unused: bool = False,
+    speech_requests_reserved: int = 0,
+    speech_requests_used: int = 0,
 ) -> None:
     """Give back `rounds_unused` text calls of a cascade turn's reservation, and its speech share
     when no speech was paid for (no voice in the audio: nothing was sent). Never more than was
@@ -357,6 +384,8 @@ def release_unused(
     cents = max(rounds_unused, 0) * limits().text_call_cents
     if speech_unused:
         cents += speech_turn_cents()
+    used = min(max(speech_requests_used, 0), speech_requests_reserved)
+    cents += speech_requests_cents(speech_requests_reserved) - speech_requests_cents(used)
     cents = min(cents, reservation.cents)
     if cents > 0:
         release(Reservation(day=reservation.day, cents=cents, code_id=reservation.code_id))
