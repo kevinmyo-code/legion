@@ -6,6 +6,7 @@ import {
   ENDED_LIMIT,
   ENDED_LOCKED,
   TONE_RATE,
+  TURN_STALLED,
   UNREACHABLE,
   closingTone,
   micNotice,
@@ -14,6 +15,7 @@ import {
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
+import { TurnDeadline } from './turn-deadline'
 import type { TurnDetector } from './turn/detector'
 import type { AssistantState, Line, Notice } from './live-client'
 import { base64ToPcm16 } from './pcm'
@@ -152,6 +154,7 @@ export class CascadeClient {
   private endpointer: Endpointer | null = null
   private chunks: Int16Array[] = []
   private abort: AbortController | null = null
+  private deadline: TurnDeadline | null = null
   private conversationId: string | null = null
   private record: ConversationRecord | null = null
   private playing = false
@@ -725,6 +728,11 @@ export class CascadeClient {
     const abort = new AbortController()
     this.abort = abort
     const generation = ++this.turnGeneration
+    this.deadline?.clear()
+    const deadline = new TurnDeadline(() => {
+      if (generation === this.turnGeneration) this.closeWith(TURN_STALLED)
+    })
+    this.deadline = deadline
     this.spokenTurn = spoken
     this.awaiting = true
     this.afterReply = null
@@ -745,6 +753,7 @@ export class CascadeClient {
       )
     } catch {
       if (generation !== this.turnGeneration) return
+      deadline.clear()
       this.awaiting = false
       this.push({ kind: 'sys', text: UNREACHABLE })
       this.settle(spoken)
@@ -752,6 +761,7 @@ export class CascadeClient {
     }
     if (generation !== this.turnGeneration) return
     if (!start.ok) {
+      deadline.clear()
       this.awaiting = false
       this.refused(start.status, start.detail)
       return
@@ -763,6 +773,7 @@ export class CascadeClient {
     try {
       for await (const event of start.events) {
         if (generation !== this.turnGeneration) return
+        deadline.heard()
         if (event.type === 'done' && event.data.end === true) end = true
         if (event.type === 'done') {
           const tour = event.data.tour as { next?: number | null } | undefined
@@ -777,6 +788,7 @@ export class CascadeClient {
       this.push({ kind: 'sys', text: 'The answer was cut off: the connection to the engine dropped.' })
     } finally {
       if (generation === this.turnGeneration) {
+        deadline.clear()
         this.closeAi(open, false)
         this.awaiting = false
         this.abort = null
@@ -965,6 +977,7 @@ export class CascadeClient {
   /** Stop what is playing and the turn in flight; `source` null records nothing. */
   private cutReply(source: 'barge_in' | null) {
     const wasActive = this.playing || this.awaiting
+    this.deadline?.clear()
     this.abort?.abort()
     this.abort = null
     this.turnGeneration += 1

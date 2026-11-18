@@ -7,6 +7,12 @@ export const ENDED_LOCKED = 'Conversation ended when the screen locked.'
 export const ENDED_LIMIT = 'The conversation reached its time limit. Start a new one.'
 export const UNREACHABLE = "Not answered: couldn't reach the engine. Nothing was changed."
 
+/** A turn past its deadline (`turn-deadline.ts`). A tool may have run, so it claims nothing either way. */
+export const TURN_STALLED: Notice = {
+  kind: 'engine-unreachable',
+  text: 'The engine took too long to answer, so the page stopped waiting. Tap to start again.',
+}
+
 /** The phone's closing tone (spec 17): 150 ms, half gain. */
 const TONE_MS = 150
 const TONE_HZ = 880

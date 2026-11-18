@@ -5,6 +5,7 @@ import type { AssistantClient } from './client'
 import type { RecordEvent, RecordTransport } from './conversation-record'
 import { MAX_UTTERANCE_MS, SILENCE_MS, WINDOW_MS } from './endpointer'
 import { pcm16ToBase64 } from './pcm'
+import { FIRST_EVENT_MS, TURN_MS } from './turn-deadline'
 import type { SseEvent } from './sse'
 import { FakeAudio, settle } from '../test/fake-live'
 
@@ -352,6 +353,33 @@ describe('CascadeClient', () => {
     await settle()
     expect(audio.micOpen).toBe(false)
     expect(client.getState().notice?.text).toBe("Today's demo budget is used up.")
+  })
+
+  it.each([
+    ['no first event', [] as SseEvent[], FIRST_EVENT_MS],
+    ['a stream that stops', [{ type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }] as SseEvent[], TURN_MS],
+  ])('a stalled turn (%s) is stopped: aborted, the words on screen, the mic let go', async (_name, before, ms) => {
+    async function* stalled(): AsyncGenerator<SseEvent> {
+      yield* before
+      await new Promise(() => {})
+    }
+    const { client, audio, signals } = build([greeting(), { ok: true, events: stalled() }])
+    await open(client, audio)
+    vi.useFakeTimers()
+    try {
+      feed(audio, LOUD, 300)
+      feed(audio, QUIET, SILENCE_MS + 20)
+      await vi.advanceTimersByTimeAsync(ms - 100)
+      expect(client.getState().activity).toBe('thinking')
+      expect(signals[1].aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(signals[1].aborted).toBe(true)
+      expect(audio.micOpen).toBe(false)
+      expect(client.getState().activity).toBe('idle')
+      expect(client.getState().notice?.kind).toBe('engine-unreachable')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('sends the browser record only what the engine cannot know', async () => {
