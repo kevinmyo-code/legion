@@ -75,11 +75,11 @@ class RelativeDayTest {
         val write = fix("""{"action":"schedule","date":"$tue","item":"invented"}""", "remind me tomorrow", tool = "manage_item")!!.first
         assertEquals(tomorrow.toString(), write.getString("date"))
         assertEquals("invented", write.getString("item"))
-        assertEquals(tomorrow.toString(), fix("""{"date":"${tue.plusDays(2)}"}""", "tick it off for tomorrow", tool = "complete_task")!!.first.getString("date"))
+        assertEquals(tomorrow.toString(), fix("""{"date":"${tue.plusDays(2)}"}""", "remind me tomorrow", tool = "manage_item")!!.first.getString("date"))
         // Kept: the right day, two days off, a word, another day named.
         assertNull(fix("""{"from":"$tomorrow","to":"$tomorrow"}"""))
-        assertNull(fix("""{"date":"${tue.plusDays(3)}"}""", tool = "complete_task"))
-        assertNull(fix("""{"date":"tomorrow"}""", tool = "complete_task"))
+        assertNull(fix("""{"date":"${tue.plusDays(3)}"}""", tool = "manage_item"))
+        assertNull(fix("""{"date":"tomorrow"}""", tool = "manage_item"))
         assertNull(fix("""{"from":"${tue.plusDays(2)}","to":"${tue.plusDays(2)}"}""", "what about Thursday"))
     }
 
@@ -90,10 +90,12 @@ class RelativeDayTest {
         assertNull("only from", fix("""{"from":"$off"}"""))
         assertNull("only to", fix("""{"to":"$off"}"""))
         assertNull("date beside a range", fix("""{"date":"$off","from":"$off","to":"$off"}"""))
-        assertNull("not a calendar or task tool", fix("""{"date":"$off"}""", tool = "log_sleep"))
+        assertNull("not a calendar or reminder tool", fix("""{"date":"$off"}""", tool = "log_sleep"))
+        assertNull("a tick's date is not the evening bug", fix("""{"date":"$off"}""", "tick off the essay for tomorrow", tool = "complete_task"))
         assertNull("not the turn's only date call", fix("""{"from":"$off","to":"$off"}""", only = false))
-        assertTrue(RelativeDay.isDateCall("complete_task", org.json.JSONObject("""{"date":"$off"}""")))
-        assertTrue(!RelativeDay.isDateCall("complete_task", org.json.JSONObject("""{"item":"x"}""")))
+        assertTrue(RelativeDay.isDateCall("manage_item", org.json.JSONObject("""{"date":"$off"}""")))
+        assertTrue(!RelativeDay.isDateCall("manage_item", org.json.JSONObject("""{"item":"x"}""")))
+        assertTrue("a tick still counts as a second date call", RelativeDay.isDateCall("complete_task", org.json.JSONObject("""{"date":"$off"}""")))
         assertTrue(!RelativeDay.isDateCall("money", org.json.JSONObject("""{"date":"$off"}""")))
     }
 

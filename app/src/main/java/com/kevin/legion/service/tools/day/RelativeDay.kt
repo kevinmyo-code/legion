@@ -57,11 +57,18 @@ internal object RelativeDay {
         companion object Key : CoroutineContext.Key<TurnDates>
     }
 
-    /** The tools the fix is for: the calendar read and the task and reminder-item writes. */
-    val DATE_TOOLS: Set<String> = setOf("read_calendar", "complete_task", "manage_item")
+    /**
+     * The tools the fix is for: the calendar read and the reminder-item writes. Not complete_task
+     * (2026-11-18 r3: a tick's date is not the evening bug, and two rounds could move a right one).
+     */
+    val DATE_TOOLS: Set<String> = setOf("read_calendar", "manage_item")
 
-    /** A call that takes a date ([DATE_TOOLS] with a date argument), counted per turn for [TurnDates]. */
-    fun isDateCall(name: String, args: JSONObject): Boolean = name in DATE_TOOLS && DATE_KEYS.any { args.has(it) }
+    /**
+     * A call that takes a date, counted per turn for [TurnDates]: [DATE_TOOLS] and complete_task with a
+     * date argument. A tick is never corrected, but it still makes a second date call in the turn.
+     */
+    fun isDateCall(name: String, args: JSONObject): Boolean =
+        (name in DATE_TOOLS || name == "complete_task") && DATE_KEYS.any { args.has(it) }
 
     /**
      * [args] with its one date, one day off the day he [words] said, put back to that day, and the
