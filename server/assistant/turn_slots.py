@@ -3,6 +3,9 @@
 A cascade turn holds one server thread for its whole stream (speech-to-text, model rounds, speech),
 and the engine has a small pool of threads across all its instances. So:
 
+- **One waiter per caller and per address** (round 3, D2): a post that finds the caller's own
+  turn still running may wait up to `OWN_TURN_WAIT_S` for it, but only one at a time; any other
+  is answered `busy` at once.
 - **One turn in flight per caller.** A second turn from the same user (a visitor is its own user)
   while one runs is refused (409, `BUSY_SELF`); the page stops the first before it starts another.
 - **One demo turn at a time per address** (round 2 finding 1): two visits from one address cannot
@@ -36,6 +39,9 @@ SLOTS_ENV = "LEGION_DEMO_TURN_SLOTS"
 _NS_USER = 0x4C45  # "LE"
 _NS_DEMO = 0x4744  # "GD"
 _NS_ADDRESS = 0x4950  # "IP"
+# The one waiter allowed per user and per address (round 3 design change D2).
+_NS_USER_WAITER = 0x5557  # "UW"
+_NS_ADDRESS_WAITER = 0x4157  # "AW"
 
 # How long a turn waits for the same caller's earlier turn to release (2026-11-17, interrupt).
 OWN_TURN_WAIT_S = 2.5
@@ -103,6 +109,36 @@ class Held:
                 log.warning("turn slots: unlock failed", exc_info=True)
 
 
+def _wait_for_own_turn(user_key: int, address_key: int | None) -> bool:
+    """The caller's OWN earlier turn may still be stopping (an interrupt: the server learns of the
+    abort only at its next stage boundary). Wait for it a little, never for anyone else's, and
+    only as the ONE waiter for this user and (a demo turn) this address (round 3 design change
+    D2): any other concurrent post is answered at once, so a burst cannot pin request threads.
+    True once the user lock is held."""
+    waiters = [(_NS_USER_WAITER, user_key)]
+    if address_key is not None:
+        waiters.append((_NS_ADDRESS_WAITER, address_key))
+    taken = []
+    try:
+        for ns, key in waiters:
+            if not _try(ns, key):
+                return False
+            taken.append((ns, key))
+        deadline = time.monotonic() + OWN_TURN_WAIT_S
+        while True:
+            time.sleep(0.1)
+            if _try(_NS_USER, user_key):
+                return True
+            if time.monotonic() >= deadline:
+                return False
+    finally:
+        for ns, key in reversed(taken):
+            try:
+                _unlock(ns, key)
+            except Exception:  # noqa: BLE001 - a dropped connection already released it
+                log.warning("turn slots: waiter unlock failed", exc_info=True)
+
+
 def acquire(user, address: str = "") -> tuple[Held | None, str | None, int]:
     """(the held locks, or None with the refusal words and its HTTP status). `address` is the
     caller's (`legion.client_ip`), counted for demo turns only."""
@@ -111,16 +147,13 @@ def acquire(user, address: str = "") -> tuple[Held | None, str | None, int]:
         return Held(), None, 0
     held = Held()
     user_key = _key(f"user:{user.pk}")
-    # The caller's OWN earlier turn may still be stopping (an interrupt: the server learns of the
-    # abort only at its next stage boundary). Wait for it a little; never for anyone else's.
-    deadline = time.monotonic() + OWN_TURN_WAIT_S
-    while not _try(_NS_USER, user_key):
-        if time.monotonic() >= deadline:
+    recruiter = is_recruiter(user)
+    address_key = _key(f"ip:{address or 'unknown'}")
+    if not _try(_NS_USER, user_key):
+        if not _wait_for_own_turn(user_key, address_key if recruiter else None):
             return None, BUSY_SELF, 409
-        time.sleep(0.1)
     held.locks.append((_NS_USER, user_key))
-    if is_recruiter(user):
-        address_key = _key(f"ip:{address or 'unknown'}")
+    if recruiter:
         if not _try(_NS_ADDRESS, address_key):
             held.release()
             return None, BUSY_ADDRESS, 429
