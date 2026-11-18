@@ -96,7 +96,7 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
-from assistant import fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
+from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
@@ -546,6 +546,16 @@ def _transcribe(speech, pcm: bytes, timings: dict):
         return speech.transcribe(pcm)
     finally:
         timings["stt_retries"] = max(getattr(speech, "stt_sent", 1) - 1, 0)
+
+
+def _last_reply(history: list[dict]) -> str:
+    """The assistant's last reply in this conversation, as it was said (its notes removed)."""
+    for turn in reversed(history or []):
+        if turn.get("role") == "model":
+            text = " ".join(p.get("text", "") for p in turn.get("parts") or [])
+            text = text.replace(web_conversation.CUT_OFF_NOTE, "")
+            return re.sub(r"\(Done: [^)]*\.\)", "", text).strip()
+    return ""
 
 
 def _whole(value) -> int:
@@ -1317,6 +1327,19 @@ def _answer(
             # Stopped while being transcribed: no model round starts.
             report.status = "cancelled"
             yield ev.done("cancelled", "", False)
+            return
+        last = _last_reply(history)
+        if words and echo.is_echo(words, last):
+            # The assistant's own last reply heard back through the speaker (2026-11-17: played
+            # back at 5% it was transcribed and answered). No model round, nothing kept as their
+            # line, not side talk; logged with lengths only.
+            report.status = "echo"
+            log.warning(
+                "assistant cascade: echo heard_words=%d reply_words=%d",
+                len(echo.words(words)),
+                len(echo.words(last)),
+            )
+            yield ev.done("nothing_heard", "", False, ignored="no_speech")
             return
         if words:
             timings["speech_fetched"] = filler_audio.warm(speech, speaker.voice)

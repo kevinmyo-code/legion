@@ -418,7 +418,10 @@ def utterances_received(row: DeviceLog) -> int:
     return sum(
         1
         for text in body.splitlines()
-        if "cascade_turn status=" in text and "cascade_turn status=greeting" not in text
+        if "cascade_turn status=" in text
+        and "cascade_turn status=greeting" not in text
+        # The assistant's own reply heard back is not an utterance (the echo layer).
+        and "cascade_turn status=echo" not in text
     )
 
 
