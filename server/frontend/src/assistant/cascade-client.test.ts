@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { STILL_BUSY } from './cascade-words'
+import { DEMO_FULL, STILL_BUSY } from './cascade-words'
 import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type TurnRequest, type TurnStart } from './cascade-client'
 import type { AssistantClient } from './client'
 import type { RecordEvent, RecordTransport } from './conversation-record'
@@ -42,7 +42,10 @@ function greeting(text = 'Essay still waiting, huh?', kind = 'due'): TurnStart {
   }
 }
 
-function build(answers: TurnStart[] = [], options: { visitor?: boolean; speakTyped?: boolean } = {}) {
+function build(
+  answers: TurnStart[] = [],
+  options: { visitor?: boolean; speakTyped?: boolean; onEngineLive?: () => void } = {},
+) {
   const audio = new FakeAudio()
   const requests: TurnRequest[] = []
   const signals: AbortSignal[] = []
@@ -75,6 +78,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean; speakTyp
     sessionMinutes: null,
     endOnHidden: () => true,
     ...(options.speakTyped ? { speakTyped: true } : {}),
+    ...(options.onEngineLive ? { onEngineLive: options.onEngineLive } : {}),
     ...(options.visitor
       ? {
           openingTurn: () => '(The visitor just joined the demo.)',
@@ -552,6 +556,76 @@ describe('CascadeClient', () => {
     expect(requests).toHaveLength(3)
     expect(audio.micOpen).toBe(false)
     expect(client.getState().notice?.text).toBe('No conversation with that id is yours.')
+  })
+
+  const utter = async (client: CascadeClient, audio: FakeAudio) => {
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+  }
+
+  it('duplicate: already answered, so no words, no retry, and the conversation listens again', async () => {
+    const { client, audio, requests } = build([greeting(), { ok: false, status: 409, detail: 'Already answered.', code: 'duplicate' }])
+    await open(client, audio)
+    const lines = client.getState().lines.length
+    await utter(client, audio)
+    expect(requests).toHaveLength(2)
+    expect(client.getState().lines).toHaveLength(lines)
+    expect(client.getState().notice).toBeNull()
+    expect(client.getState().mic).toBe('on')
+  })
+
+  it('live_engine: the page is told to ask the engine again, the mic goes, and nothing greets into it', async () => {
+    const onEngineLive = vi.fn()
+    const { client, audio, requests } = build([greeting(), { ok: false, status: 409, detail: 'Live here.', code: 'live_engine' }], {
+      onEngineLive,
+    })
+    await open(client, audio)
+    await utter(client, audio)
+    expect(onEngineLive).toHaveBeenCalledTimes(1)
+    expect(audio.micOpen).toBe(false)
+    expect(requests).toHaveLength(2)
+  })
+
+  const full: TurnStart = { ok: false, status: 429, detail: 'The demo is full.', code: 'demo_full' }
+
+  it('demo_full: waits and posts again 1.5 s apart, still thinking, and is answered', async () => {
+    const { client, audio, requests } = build([greeting(), full, { ok: true, events: stream(reply('Fine.')) }])
+    await open(client, audio)
+    vi.useFakeTimers()
+    try {
+      feed(audio, LOUD, 300)
+      feed(audio, QUIET, SILENCE_MS + 20)
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(requests).toHaveLength(2)
+      expect(client.getState().activity).toBe('thinking')
+      await vi.advanceTimersByTimeAsync(600)
+      expect(requests).toHaveLength(3)
+      expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'ai', text: 'Fine.' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('demo_full three times: says so, lets the mic go, keeps the conversation (no close)', async () => {
+    const { client, audio, requests } = build([greeting(), full, full, full, full])
+    await open(client, audio)
+    vi.useFakeTimers()
+    try {
+      feed(audio, LOUD, 300)
+      feed(audio, QUIET, SILENCE_MS + 20)
+      await vi.advanceTimersByTimeAsync(5_000)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(requests).toHaveLength(1 + 3)
+    expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: DEMO_FULL })
+    expect(client.getState().lines.some((l) => l.kind === 'sys' && l.text === CONVERSATION_CLOSED)).toBe(false)
+    expect(audio.micOpen).toBe(false)
+    await client.startVoice()
+    await settle()
+    expect(requests).toHaveLength(4)
+    expect(client.getState().mic).toBe('on')
   })
 
   it('an interrupt tells the engine once, with the aborted turn id', async () => {

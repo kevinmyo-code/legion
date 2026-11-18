@@ -1,4 +1,4 @@
-import { STILL_BUSY } from './cascade-words'
+import { DEMO_FULL, STILL_BUSY } from './cascade-words'
 import type { Notice } from './live-client'
 
 /**
@@ -14,9 +14,16 @@ export type Refusal =
   | { type: 'close'; notice: Notice }
   /** A caption (when there are words), and the conversation listens again. */
   | { type: 'listen'; caption: string | null }
+  /** This caller's engine is Live now: the page asks again and shows the Live page. */
+  | { type: 'live' }
 
 export function readRefusal(status: number, detail: string | null, code: string | null, inConversation: boolean): Refusal {
   if (code === 'busy') return { type: 'wait', text: STILL_BUSY }
+  // The demo-wide or per-address cap (another visitor on the same network): retried, then wait.
+  if (code === 'demo_full') return { type: 'wait', text: DEMO_FULL }
+  // Already answered (the same turn posted twice): nothing to say, and the conversation goes on.
+  if (code === 'duplicate') return { type: 'listen', caption: null }
+  if (code === 'live_engine') return { type: 'live' }
   if (code === 'no_conversation') {
     // Already posted again as a new conversation (`CascadeClient.turn`); that failed too.
     return { type: 'close', notice: { kind: 'mint-failed', text: detail ?? 'The engine lost this conversation. Tap to start a new one.' } }

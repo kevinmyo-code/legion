@@ -143,6 +143,8 @@ export interface CascadeOptions {
   prepare?: () => Promise<boolean>
   /** Typed messages are answered aloud even with no voice conversation open (the demo's stage). */
   speakTyped?: boolean
+  /** The engine says this caller is on Live now (`live_engine`): the page asks again and swaps. */
+  onEngineLive?: () => void
 }
 
 /** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
@@ -1076,6 +1078,11 @@ export class CascadeClient {
         return this.end(this.options.sessionLimit?.()?.trim() || (refusal.text ?? ENDED_LIMIT))
       case 'close':
         return this.closeWith(refusal.notice)
+      case 'live':
+        if (!this.options.onEngineLive) return this.closeWith({ kind: 'mint-failed', text: detail ?? 'The assistant could not answer that.' })
+        // Quietly: the page swaps to the Live engine's page, and nothing greets into the same refusal.
+        this.close(false)
+        return this.options.onEngineLive()
       case 'listen':
         if (refusal.caption) this.push({ kind: 'sys', text: refusal.caption })
         this.settle(this.spokenTurn)

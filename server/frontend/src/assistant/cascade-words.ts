@@ -16,6 +16,9 @@ export const ENTRY_STALLED: Notice = {
   text: 'Opening the demo is taking too long. Tap to try again.',
 }
 
+/** The demo's turn cap still full after the retries (`turn-post.ts`). */
+export const DEMO_FULL = 'The demo is busy right now. Tap to try again.'
+
 /** A turn past its deadline (`turn-deadline.ts`). A tool may have run, so it claims nothing either way. */
 export const TURN_STALLED: Notice = {
   kind: 'engine-unreachable',
