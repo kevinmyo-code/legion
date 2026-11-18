@@ -49,3 +49,10 @@ Kevin, 2026-11-17: few visitors who opened the demo went on to talk to it, and t
 - The page fetches about 11 MB of models and the runtime's WASM after the first tap, never before.
 - iPhone Safari is not tested here. Its echo cancellation decides whether barge-in can be turned on there.
 - Fast tools' fillers can only follow the tool's result, because the engine's stream is held while an engine tool runs.
+
+## Follow-ups (blind review round 5, 2026-11-17; not in the shipped build)
+
+- A prepaid demo web search that never reaches the provider (an empty query, a read-through mark that fails, or the deadline passing before the call) stays charged; give it back.
+- The Puck fallback can add one speech call per request inside the same reservation; reserve it.
+- Retune the echo check before voice barge-in is ever switched on (it was written for barge-in turns only and has not run against real barge-ins).
+- On iOS, playback suspended by the system could leave the orb on "speaking" until a tap.
