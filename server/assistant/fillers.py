@@ -4,10 +4,10 @@ doing (Kevin, 2026-11-17: fillers should say what Alfred is doing, "checking wit
 Rules (applied in `assistant.cascade`):
 - **Only from a tool call that has started.** Never before the model picks a tool, never naming a
   result: every line says what is being looked at, none says what was found or done.
-- **When.** A tool marked slow here gets its line the moment it starts (the turn's stream is held
-  while an engine tool runs, so a line can only go out before it). A fast tool's line goes out
-  after it returns, and only when the person has already waited `FAST_AFTER_MS` with nothing said,
-  to fill the model's next round; never once any answer has been said.
+- **When.** A tool marked slow here gets its line the moment it starts, and only once the door
+  would accept the call (a refused tool is never announced). A fast tool gets no line: once a tool
+  has returned its result is in hand, and a line would only delay what comes next (round 2 speech
+  review 7). Never once any answer has been said.
 - **Never twice running, never two in a turn.** Two or three light variants each.
 - **From memory.** Each line's speech is made once per voice and kept in the process
   (`cascade.FillerAudio`), so it starts at once; a line not yet in memory is skipped and fetched.
@@ -20,8 +20,6 @@ from __future__ import annotations
 
 import random
 import threading
-
-FAST_AFTER_MS = 700
 
 _ACCOUNTS = ("Checking the accounts.", "Looking at the accounts.", "Pulling up the numbers.")
 _CALENDAR = ("Checking the calendar.", "Looking at the calendar.")

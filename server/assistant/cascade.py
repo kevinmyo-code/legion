@@ -720,6 +720,18 @@ class WebDoor:
             ]
         return self._declarations
 
+    def would_accept(self, name: str) -> bool:
+        """Whether a call to `name` gets past the door's own refusals that need no arguments: the
+        per-turn cap, the role's fence and "not for me"."""
+        if len(self.calls) >= MAX_TOOL_CALLS or name not in self.tools():
+            return False
+        if self.not_for_me and self._writes(name):
+            return False
+        return (
+            recruiter_only_tool(name, self.user) is not None
+            or refusal_for(name, self.user, {}) is None
+        )
+
     def _writes(self, name: str) -> bool:
         tool = self.tools().get(name)
         return bool(tool is not None and tool.writes)
@@ -1254,8 +1266,10 @@ def _answer(
             if event.type == "working":
                 # A slow tool has started: its own line, from memory, before it runs.
                 yield event
-                if speak and sentences == 0 and not filler_said:
-                    line = yield from filler(event.data["tool"])
+                tool = event.data["tool"]
+                if speak and sentences == 0 and not filler_said and door.would_accept(tool):
+                    # Never for a call the door is about to refuse (round 2 speech review 7).
+                    line = yield from filler(tool)
                     filler_said = line is not None
                 continue
             if event.type == "tool" and door.calls[-1].name == NOT_FOR_ME_TOOL:
@@ -1276,18 +1290,8 @@ def _answer(
                 if done.card is not None:
                     payload["card"] = done.card
                 yield ev.Event("tool", payload)
-                waited = (clock() - t0) * 1000
-                if (
-                    speak
-                    and sentences == 0
-                    and not filler_said
-                    and not fillers.is_slow(done.name)
-                    and waited >= fillers.FAST_AFTER_MS
-                ):
-                    # A fast tool returned and nothing has been said yet: its line fills the
-                    # model's next round. Never once an answer has started.
-                    line = yield from filler(done.name)
-                    filler_said = line is not None
+                # No filler once its tool has returned (round 2 speech review 7): the result is in
+                # hand, so a line would only delay what comes next, a code-written sentence first.
                 if done.verbatim and not verbatim_said:
                     verbatim_said = True
                     yield say(done.verbatim)

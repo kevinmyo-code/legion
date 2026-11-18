@@ -98,51 +98,70 @@ def test_the_picker_never_says_the_same_line_twice_running():
     assert picker.pick(("A.",)) is None
 
 
-def test_a_fast_tool_gets_its_line_after_it_returns_once_the_wait_is_long(
-    member, engine, monkeypatch, household_user
-):
+def test_a_slow_tool_gets_its_line_when_it_starts(member, engine, monkeypatch, household_user):
     _warm(monkeypatch, engine, household_user)
-    monkeypatch.setattr(fillers, "FAST_AFTER_MS", 0)
-    engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
+    engine.model = FakeModel([call("legion_docs", {"query": "router"}), say("It routes.")])
     events = _events(_post(member, audio=PCM))
-    # The tool's own line (the acknowledgement before it has no tool).
     order = [k if k != "filler" or d["tool"] else "ack" for k, d in events]
-    assert order.index("tool") < order.index("filler") < order.index("sentence")
+    assert order.index("working") < order.index("filler") < order.index("tool")
     filler = [f for f in _of(events, "filler") if f["tool"]][0]
-    assert filler["tool"] == "list_events"
-    assert filler["text"] in fillers.lines_for("list_events")
-    # The filler's audio is flagged, so the page can tell it from the answer.
-    flagged = [data for kind, data in events if kind == "audio" and data.get("filler")]
-    assert len(flagged) == 2  # the acknowledgement and the tool's line
+    assert filler["tool"] == "legion_docs"
+    assert filler["text"] in fillers.lines_for("legion_docs")
 
 
-def test_a_fast_tool_that_returns_quickly_gets_no_line(member, engine, monkeypatch, household_user):
+def test_a_tool_that_has_returned_gets_no_line(member, engine, monkeypatch, household_user):
+    # Round 2 speech review 7: a fast tool's line played after it returned, only adding delay.
     _warm(monkeypatch, engine, household_user)
-    monkeypatch.setattr(fillers, "FAST_AFTER_MS", 10_000_000)
     engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
     events = _events(_post(member, audio=PCM))
     assert [f for f in _of(events, "filler") if f["tool"]] == []
 
 
-def test_a_write_is_silent_and_two_tools_get_one_line(member, engine, monkeypatch, household_user):
+def test_no_filler_in_front_of_a_code_written_sentence(member, engine, monkeypatch, household_user):
+    from engine_mcp.tools import SPEAK_VERBATIM, ToolResult
+
     _warm(monkeypatch, engine, household_user)
-    monkeypatch.setattr(fillers, "FAST_AFTER_MS", 0)
+
+    def fake(request, name, args):
+        return ToolResult(text="figures", structured={SPEAK_VERBATIM: "Net cash is $1,195.55."})
+
+    monkeypatch.setattr(cascade, "run_tool", fake)
+    engine.model = FakeModel([call("account_balances", {}), say("Anything else?")])
+    events = _events(_post(member, audio=PCM))
+    kinds = [k if k != "filler" or d["tool"] else "ack" for k, d in events]
+    assert "filler" not in kinds
+    assert _of(events, "sentence")[0]["text"] == "Net cash is $1,195.55."
+
+
+def test_a_tool_the_door_refuses_is_never_announced(visitor, engine, monkeypatch):
+    from assistant.surface import RECRUITER_TOOLS
+
+    audio = cascade.FillerAudio(spawn=lambda work: work())
+    audio.warm(engine.speech, "Puck")
+    monkeypatch.setattr(cascade, "FILLER_AUDIO", audio)
+    assert "github_status" not in RECRUITER_TOOLS
+    engine.model = FakeModel([call("github_status", {"aspect": "open"}), say("Can't here.")])
+    events = _events(_post(visitor, audio=PCM))
+    assert [f for f in _of(events, "filler") if f["tool"]] == []
+
+
+def test_two_slow_tools_get_one_line(member, engine, monkeypatch, household_user):
+    _warm(monkeypatch, engine, household_user)
     engine.model = FakeModel(
         [
-            call("list_events", {}),
-            call("list_checklists", {}),
-            say("Nothing on today and the lists are empty."),
+            call("legion_docs", {"query": "router"}),
+            call("web_search", {"query": "router"}),
+            say("Here is how it works."),
         ]
     )
     events = _events(_post(member, audio=PCM))
-    assert [f["tool"] for f in _of(events, "filler") if f["tool"]] == ["list_events"]
+    assert [f["tool"] for f in _of(events, "filler") if f["tool"]] == ["legion_docs"]
 
 
 def test_a_typed_turn_gets_no_filler(member, engine, monkeypatch, household_user):
     _warm(monkeypatch, engine, household_user)
-    monkeypatch.setattr(fillers, "FAST_AFTER_MS", 0)
-    engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
-    events = _events(_post(member, text="What's on?"))
+    engine.model = FakeModel([call("legion_docs", {"query": "router"}), say("It routes.")])
+    events = _events(_post(member, text="How does the router work?"))
     assert _of(events, "filler") == []
 
 
