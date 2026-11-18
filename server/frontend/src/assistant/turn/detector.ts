@@ -29,7 +29,7 @@ export const PREROLL_WINDOWS = 17
 export const MAX_SILERO_MS = 16
 /** Slower than this per Smart Turn check and it could not hold a turn before the 700 ms base. */
 export const MAX_SMART_MS = 450
-/** The longest turn kept (Smart Turn reads the last 8 s; the engine takes 28 s). */
+/** The longest turn kept, its newest audio (Smart Turn reads the last 8 s; the engine takes 28 s). */
 export const MAX_TURN_SAMPLES = 28 * 16_000
 
 export interface TurnHandlers {
@@ -203,9 +203,11 @@ class ModelDetector implements TurnDetector {
     if (!w || this.disposed || w.epoch !== this.epoch) return
     this.recent.push(w.pcm)
     if (this.recent.length > PREROLL_WINDOWS) this.recent.shift()
-    if (this.turn && this.turnSamples < MAX_TURN_SAMPLES) {
+    if (this.turn) {
+      // Over the engine's cap the oldest audio goes, as `utterance()` cuts: the last words stay.
       this.turn.push(w.pcm)
       this.turnSamples += w.pcm.length
+      while (this.turnSamples > MAX_TURN_SAMPLES && this.turn.length > 1) this.turnSamples -= this.turn.shift()!.length
     }
     if (w.playing) {
       const event = this.gate.onWindow(prob, w.level, true)

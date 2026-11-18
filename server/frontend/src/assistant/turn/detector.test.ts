@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { BASE_MS, EARLY_MS } from './eot-policy'
-import { loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
+import { MAX_TURN_SAMPLES, loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
 import { chunks, concat, echo, over, silence, speech } from './fixtures'
 import type { FromWorker, ToWorker } from './turn.worker'
 import { SILENCE_MS } from '../endpointer'
@@ -149,6 +149,26 @@ describe('loadTurnDetector', () => {
 })
 
 describe('the turn (speech, then silence)', () => {
+  it('a turn over the cap keeps its end, as the upload does: the last words, not the first', async () => {
+    const { detector } = await load()
+    const seen: Int16Array[] = []
+    detector!.setHandlers({
+      onStart: () => {},
+      onEarly: () => {},
+      onResumed: () => {},
+      onEnd: (audio) => seen.push(audio),
+      onBargeIn: () => {},
+      onVerdict: () => {},
+    })
+    for (const c of chunks(concat(speech(29_000), silence(1_000)))) detector!.push(c, true, false)
+    await flush()
+    await flush()
+    expect(seen).toHaveLength(1)
+    expect(seen[0].length).toBeLessThanOrEqual(MAX_TURN_SAMPLES)
+    // It ends in the silence that ended it.
+    expect(Array.from(seen[0].subarray(seen[0].length - 512)).every((v) => v === 0)).toBe(true)
+  })
+
   it('a reset forgets the pre-roll heard while not listening, windows still at the model included', async () => {
     const control = (await load()).detector!
     const expected = watch(control)
