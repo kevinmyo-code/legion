@@ -323,38 +323,17 @@ READ_THROUGH_WAIT = (
 # list; you'll want the phone app for that", which is false on the web). After outside text was read
 # and no write went through, such a sentence is dropped and READ_THROUGH_WAIT is said in its place.
 # Anywhere else it stands (a true phone-only refusal: alarms, music).
-# Narrowed (coordinator, 2026-11-18): only a FIRST-PERSON decline of a change verb counts (at most
-# two filler words between), "put" only with a list-like place; and only a sentence that SENDS them
-# elsewhere to do it ("you'll want the phone app", "in the phone app ... for that"). "the app" or
-# "another device" alone, "I couldn't find any update", "NASA was unable to schedule" never count.
-_I_CANNOT = (
-    r"\b(?:I can't|I cannot|I can not|I couldn't|I could not|I'm unable to|I am unable to|"
-    r"I'm not able to|I am not able to|I won't be able to|I will not be able to|"
-    r"I don't have (?:a|the|any) (?:way|tool) to|there's no way for me to|"
-    r"there is no way for me to)\s+(?:(?:actually|currently|directly|really|just|quite|yet|"
-    r"do that or)\s+){0,2}"
-)
 _CANNOT_CHANGE = re.compile(
-    _I_CANNOT
-    + r"(?:(?:add|change|save|update|create|delete|remove|edit|tick|schedule|book|write|log|"
-    r"move)\b|put\s+(?:\w+\s+){1,3}?(?:on|in|onto|into)\s+(?:\w+\s+){0,3}?(?:list|checklist|"
-    r"calendar|groceries|schedule|reminders|budget)\b)",
+    r"\b(?:can't|cannot|can not|couldn't|could not|unable to|not able to|won't be able to|"
+    r"don't have (?:a|the|any) (?:tool|way|ability)|no (?:tool|way) to)\b[^.;!?]{0,40}?"
+    r"\b(?:add|change|save|update|create|delete|remove|edit|tick|schedule|book|write|log|move|"
+    r"put\b[^.;!?]{0,30}?\b(?:on|in|onto|into|to))\b",
     re.I,
 )
-_PLACE = r"(?:the phone app|the mobile app|the LEGION app|your phone)"
-_ELSEWHERE = re.compile(
-    r"\b(?:you'll want|you'll need|you will need|you'd have to|you would have to|you can|"
-    r"please use|use|try|open)\b[^.;!?]{0,30}?\b" + _PLACE + r"\b"
-    r"|\b(?:in|from|through|on) " + _PLACE + r"\b[^.;!?]{0,40}?\b(?:for that|instead|to do that|"
-    r"to add|to change)\b"
-    r"|\b(?:for that|instead|to do that|to add|to change)\b[^.;!?]{0,40}?\b(?:in|from|through|on) "
-    + _PLACE + r"\b",
-    re.I,
-)
+_ELSEWHERE = re.compile(r"\b(?:phone app|mobile app|the app|another device)\b", re.I)
 
 
 def declines_a_change(text: str) -> bool:
-    text = (text or "").replace("’", "'")
     return bool(_CANNOT_CHANGE.search(text) or _ELSEWHERE.search(text))
 
 
