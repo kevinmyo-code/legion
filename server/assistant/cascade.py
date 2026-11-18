@@ -85,7 +85,6 @@ from agents.runtime.loop import (
     TIMEOUT_WORDS,
     LoopHooks,
     SentenceSplitter,
-    first_clause,
     run_loop,
 )
 from agents.runtime.model import (
@@ -530,13 +529,29 @@ MAX_TTS_REQUESTS = 6
 TTS_REQUEST_CEILING = 16
 GROUP_SENTENCES = 3
 GROUP_CHARS = 400
-# A first sentence longer than this many words has its first clause spoken on its own.
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# Speech only (2026-11-18, speed; blind review round 7 moved it here from the runtime, after the
+# checks): a first sentence past this many words is spoken in two requests, cut at its first
+# , ; or : that leaves at least FIRST_CLAUSE_MIN_WORDS in front.
+FIRST_CLAUSE_PAST_WORDS = 8
+FIRST_CLAUSE_MIN_WORDS = 6
+_CLAUSE_BREAK = re.compile(r"(?<=[,;:])\s+")
 
 
 def _first_sentence(text: str) -> tuple[str, str]:
     parts = _SENTENCE_END.split(text, maxsplit=1)
     return parts[0], parts[1] if len(parts) > 1 else ""
+
+
+def first_clause(text: str) -> tuple[str, str]:
+    """(what is spoken at once, the rest) for an answer's first sentence; a short one goes whole."""
+    if len(text.split()) <= FIRST_CLAUSE_PAST_WORDS:
+        return text, ""
+    for match in _CLAUSE_BREAK.finditer(text):
+        head, rest = text[: match.start()].strip(), text[match.end() :].strip()
+        if len(head.split()) >= FIRST_CLAUSE_MIN_WORDS and rest:
+            return head, rest
+    return text, ""
 
 
 def _transcribe(speech, pcm: bytes, timings: dict):
@@ -1661,7 +1676,6 @@ def _answer(
             clock=clock,
             started=t0,
             cancelled=door.cancelled,
-            early_clause=speaker.enabled,
         ),
     )
     result = None

@@ -219,51 +219,17 @@ def test_cancel_stops_before_the_next_round_and_before_a_tool():
     assert len(model.requests) == 1
 
 
-@pytest.mark.parametrize(
-    ("stream", "first"),
-    [
-        # Past eight words with no full stop yet: said at the first , ; : after six words.
-        (
-            ["So the router reads your question first, then it", " picks one and answers."],
-            "So the router reads your question first,",
-        ),
-        (
-            ["Here is the plan for the week; Monday", " is the dentist."],
-            "Here is the plan for the week;",
-        ),
-        # Too short to cut, or the break comes before six words: the whole sentence.
-        (["Short, and sweet."], "Short, and sweet."),
-        (
-            ["Yes, the car is due for service next week and", " needs tyres."],
-            "Yes, the car is due for service next week and needs tyres.",
-        ),
-    ],
-)
-def test_the_first_clause_of_a_long_first_sentence_streams_before_its_full_stop(stream, first):
+def test_the_splitter_never_gives_less_than_a_sentence():
+    """Blind review round 7: a first clause cut here became a "sentence" for the honesty guard,
+    the filler and money checks and the cap. Speech cuts it later, after the checks."""
     from agents.runtime.loop import SentenceSplitter
 
-    splitter = SentenceSplitter(early_clause=True)
+    splitter = SentenceSplitter()
     out = []
-    for chunk in stream:
+    for chunk in ["So the router reads your question first, then it", " picks one. And", " more."]:
         out += splitter.feed(chunk)
     out += splitter.flush()
-    assert out[0] == first
-    assert " ".join(out) == "".join(stream)
-
-
-def test_only_the_first_sentence_is_cut_and_only_when_asked():
-    from agents.runtime.loop import SentenceSplitter
-
-    long = "So the router reads your question first, then it picks one. "
-    later = "And then the second sentence goes on, past eight words, with commas."
-    assert SentenceSplitter().feed(long + later) == [long.strip()]
-    early = SentenceSplitter(early_clause=True)
-    out = early.feed(long + later) + early.flush()
-    assert out == [
-        "So the router reads your question first,",
-        "then it picks one.",
-        later,
-    ]
+    assert out == ["So the router reads your question first, then it picks one.", "And more."]
 
 
 def test_a_tool_whose_outcome_ends_the_turn_stops_the_loop_with_no_further_round():

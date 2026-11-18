@@ -769,6 +769,25 @@ def test_a_real_change_may_be_said(member, engine):
     assert [s["text"] for s in _of(events, "sentence")] == ["Added it."]
 
 
+def test_a_claim_with_a_long_tail_is_judged_whole_and_spoken_in_order(member, engine):
+    # Blind review round 7: the runtime cut a first sentence's first clause into a "sentence" of
+    # its own, so the claim's head was held while its tail was spoken first. The checks read the
+    # whole sentence; speech alone cuts it, in order.
+    claim = (
+        "I have created the shopping list for you, and the reminder for Friday is still there."
+    )
+    round0 = [e for e in say(claim) if type(e).__name__ in ("PartEvent", "TextDelta")]
+    round0 += call("create_checklist", {"name": "Shopping"})
+    engine.model = FakeModel([round0, say("Anything else?")])
+    events = _events(_post(member, text="Make a shopping list.", spoken="true"))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert claim in said
+    assert not any(s != claim and s in claim for s in said)
+    spoken = " ".join(text for text, _voice in engine.speech.spoken)
+    head = "I have created the shopping list for you,"
+    assert head in spoken and spoken.index(head) < spoken.index("the reminder for Friday")
+
+
 def test_a_claimed_change_with_no_write_tried_is_not_said(member, engine):
     engine.model = FakeModel([call("list_events", {}), say("Nothing is on. I added a reminder.")])
     events = _events(_post(member, text="Anything?"))
