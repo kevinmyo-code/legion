@@ -265,12 +265,20 @@ def test_a_filler_line_whose_speech_failed_is_not_asked_for_every_turn():
 # ---- finding 7: the member greeting goes through the answers' checks ----------------------------
 
 
-def test_a_greeting_figure_must_be_in_its_facts():
-    facts = "Net cash: $2,333.61 as of 9am."
-    assert cascade.greeting_is_honest("Morning. Net cash is $2,333.61.", facts)
-    assert cascade.greeting_is_honest("Morning. Net cash is about $2,330.", facts)
-    assert not cascade.greeting_is_honest("Morning. Net cash is $3,100.", facts)
-    assert not cascade.greeting_is_honest("Morning. I've added your dentist visit.", facts)
+def test_a_model_greeting_states_no_figure_and_claims_no_change():
+    # Round 2 speech review A supersedes round 1's "figure must be in its facts": no figure at all.
+    assert cascade.greeting_is_honest("Morning. The dentist is still on for later.")
+    for line in (
+        "Morning. Net cash is $2,333.61.",
+        "Morning. Net cash is about $2,330.",
+        "Groceries are at 950 dollars.",
+        "Nine hundred bucks on groceries, huh.",
+        "You've got forty dollars left.",
+        "Three tasks due today.",
+        "Budget is 80% gone.",
+        "Morning. I've added your dentist visit.",
+    ):
+        assert not cascade.greeting_is_honest(line), line
 
 
 # ---- finding 8: speech-to-text that cannot be reached -------------------------------------------

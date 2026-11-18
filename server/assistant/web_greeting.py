@@ -86,7 +86,7 @@ Every other line is background only: do not mention it, and money least of all.
 How it sounds, for this greeting only:
 - One short sentence, fifteen words at most, and one clause: no "and" joining a second thought. Casual and dry, the way an old friend says hello, not a status report. Plain American English.
 - Go straight to the subject, no time-of-day greeting first. React to it in your own words, the reaction first; never read its facts out or list them.
-- Numbers are not first here. Use no figure, or at most one, rounded hard to a round number. Never cents, never two amounts, never how many are done or left.
+- State no figure at all: no amount, no count, no percentage, in digits or in words. React to the subject instead.
 - React as if you just found out. You know nothing of earlier days, so nothing may sound like it happened before, and say no day count or timing the facts do not give.
 - About money or a workout not done: no shame, no nagging, no telling them what they should do.{topic_rule}
 - At most one question, and it may be none.

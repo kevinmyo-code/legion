@@ -1565,7 +1565,7 @@ def _greet(
     rounds: list[dict] = []
     if prompt is not None:
         text = _one_call(model, model_name, system, context, prompt, door, rounds, clock)
-        if text and not greeting_is_honest(text, block):
+        if text and not greeting_is_honest(text):
             # The greeting goes through the answers' checks (finding 7): a figure the facts do not
             # hold, or a claimed change, and the scripted line is said instead.
             report.timings["greeting_refused"] = 1
@@ -1605,28 +1605,32 @@ def _greet(
     yield ev.done("greeting", text, False)
 
 
-_AMOUNT = re.compile(r"\$\s?(\d[\d,]*)(?:\.(\d{1,2}))?")
+# A figure in any form: digits, a currency or percent sign, or a number word beside a money or
+# quantity word ("nine hundred bucks", "forty dollars", "three tasks").
+_NUMBER_WORD = (
+    r"(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
+    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|"
+    r"ninety|hundred|thousand|million|billion|half|dozen|a couple)"
+)
+_FIGURE_IN_WORDS = re.compile(
+    _NUMBER_WORD
+    + r"[\s-]+(\w+[\s-]+)?(dollars?|bucks?|cents?|grand|percent|per cent|pounds?|kilos?|miles?|"
+    r"items?|tasks?|things?|events?|bills?|charges?|workouts?|sets?|reps?|days?|hours?|minutes?|"
+    r"times?|left|due|over|under)\b",
+    re.I,
+)
 
 
-def _amounts(text: str) -> set[int]:
-    """Dollar amounts written with a $ sign, as cents."""
-    out = set()
-    for whole, part in _AMOUNT.findall(text or ""):
-        out.add(int(whole.replace(",", "")) * 100 + int((part or "0").ljust(2, "0")))
-    return out
+def greeting_states_a_figure(text: str) -> bool:
+    """True when a model-worded greeting states any figure (round 2 speech review A: checking or
+    rewriting figures in free model text never converged, so a greeting carries none). The
+    scripted line is said instead; a figure that belongs in a greeting is written by code."""
+    return bool(re.search(r"[0-9$%\u00a3\u20ac]", text) or _FIGURE_IN_WORDS.search(text))
 
 
-def greeting_is_honest(text: str, facts: str) -> bool:
-    """A model-worded greeting may state only the figures its facts block holds (exactly, or as
-    code would round them for speech), and claims no change: the honesty rules of an answer."""
-    if claims_unbacked_outcome(text, []):
-        return False
-    said = _amounts(text)
-    if not said:
-        return not has_money(text) or bool(_amounts(facts))
-    known = _amounts(facts)
-    allowed = known | {spoken_figures.rounded_cents(c) for c in known}
-    return said <= allowed
+def greeting_is_honest(text: str) -> bool:
+    """A model-worded greeting may state no figure and claim no change."""
+    return not greeting_states_a_figure(text) and not claims_unbacked_outcome(text, [])
 
 
 def _one_call(model, model_name, system, context, prompt, door, rounds, clock) -> str:
