@@ -8,6 +8,7 @@ import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.UserHandle
 import android.os.UserManager
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -64,14 +65,18 @@ fun AppsScreen() {
     var pinMenuApp by remember { mutableStateOf<DrawerApp?>(null) }
     // Ticket 07: the letter folder that is open as a dialog, if any.
     var openFolder by remember { mutableStateOf<LetterFolder?>(null) }
+    // The Typeset tray's open folder, by its letter (home-ui 2026-11-17).
+    var openLetter by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reload) {
         loaded = AppDrawerCache.refresh(context)
     }
 
-    // Typeset (ADR 0081): outside Matrix mode the drawer is an index by first letter, names in
-    // full, with "blocked" beside a feed app from the same block list (ADR 0066). Matrix keeps
-    // the folder grid in the else branch, unchanged. The pin sheet at the end serves both.
+    // Typeset (ADR 0081): outside Matrix mode the drawer is the letter folders again, drawn in
+    // Typeset (Kevin, 2026-11-17), with "blocked" under a feed app from the same block list
+    // (ADR 0066). Matrix keeps its folder grid in the else branch, unchanged. The open folder is
+    // held by its letter (its apps are re-read from the filtered list each time), and the pin sheet
+    // at the end serves both.
     val typesetIndex = !com.kevin.legion.ui.theme.LocalMatrixMode.current && loaded?.apps?.isNotEmpty() == true
     if (typesetIndex) {
         val state = loaded!!
@@ -82,9 +87,13 @@ fun AppsScreen() {
                 query = query,
                 onQueryChange = { query = it },
                 blocked = { app -> graph.blockPolicy.verdict(app.packageName).blocked },
-                onOpen = { app -> message = launchDrawerApp(context, app, state, PAUSED_TYPESET) },
+                onOpen = { app ->
+                    openLetter = null
+                    message = launchDrawerApp(context, app, state, PAUSED_TYPESET)
+                },
                 onLongPress = { app -> pinMenuApp = app },
-                modifier = Modifier.fillMaxSize(),
+                // Its own ground: the shell under it is the old pure black by night.
+                modifier = Modifier.fillMaxSize().background(com.kevin.legion.ui.theme.soft.SoftColors.ground),
                 message = message,
                 workPaused = state.workPaused.takeIf { state.workProfile != null },
                 onToggleWork = {
@@ -93,6 +102,9 @@ fun AppsScreen() {
                         reload++
                     }
                 },
+                icons = state.icons,
+                openFolder = openLetter,
+                onOpenFolder = { openLetter = it },
             )
         }
     } else

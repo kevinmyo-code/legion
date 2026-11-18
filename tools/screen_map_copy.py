@@ -60,9 +60,10 @@ ROUTES = {
     "home": dict(
         name="Home",
         marker="More",
-        what="What LEGION opens to: the today card, the Money panel, the panel buttons (More, Books, "
-             "Games) and the chat button. In Matrix mode this route shows Matrix HOME instead "
-             "(`matrix/home`).",
+        what="What LEGION opens to: the Typeset front page (the glance, the orb, then the contents "
+             "(Today, Money, Car, ... More), the app groups (Bank, Music, Maps, Mail, Chat) and the "
+             "pinned apps, each a small icon with its name under it; tap the name). In Matrix mode "
+             "this route shows Matrix HOME instead (`matrix/home`).",
         controls=[
             ("text", "More", "opens the More sheet: Money, Body, Fleet, Recordings, News, Reports, Claude session"),
             ("desc", "Settings", "the gear: a menu with LEGION settings and Phone settings (Phone settings is refused)"),
@@ -124,7 +125,9 @@ ROUTES = {
     "news": dict(name="News", what="The news feed.", parent="home", reach=[("text", "More"), ("text", "News")]),
     "ask": dict(name="Reports", what="The closed-enum report builder over ledger and pantry.",
                 parent="home", reach=[("text", "More"), ("text", "Reports")]),
-    "apps": dict(name="App drawer", what="Every app on the phone (LEGION as the home app, ADR 0050).",
+    "apps": dict(name="App drawer", what="Every app on the phone (LEGION as the home app, ADR 0050), "
+                 "in letter folders (desc `Folder A, N apps`; a tap opens it over the page, `Close` "
+                 "shuts it); typing in `Find an app` lists every match flat.",
                  parent="home", reach=[("desc", "Apps")]),
     "dashboard": dict(name="Dashboard", what="The widget pager, an opt-in surface reached from Settings."),
     "claude-session": dict(name="Claude session", what="Tasks for Claude Code on Kevin's laptops.",
