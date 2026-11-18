@@ -115,12 +115,16 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       {interruptible && !orbSeen && (
         <button
           type="button"
-          onClick={() => client.interrupt()}
-          aria-label={`Stop ${who}`}
+          onClick={() => {
+            client.interrupt()
+            // The control unmounts with the reply; keep the keyboard on the orb, not the page body.
+            orbRef.current?.focus({ preventScroll: true })
+          }}
+          aria-label={`Interrupt ${who}`}
           data-stage="stop"
           className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 min-h-11 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg"
         >
-          Stop
+          Interrupt
         </button>
       )}
       <p role="status" data-stage="line" className="rc-h3 min-h-[1.5em] text-lg font-semibold">
