@@ -6,6 +6,7 @@ import type { RecordEvent, RecordTransport } from './conversation-record'
 import { MAX_UTTERANCE_MS, SILENCE_MS, WINDOW_MS } from './endpointer'
 import { pcm16ToBase64 } from './pcm'
 import { FIRST_EVENT_MS, TURN_MS } from './turn-deadline'
+import { MAX_UTTERANCE_SAMPLES } from './utterance'
 import type { SseEvent } from './sse'
 import { FakeAudio, settle } from '../test/fake-live'
 
@@ -258,6 +259,19 @@ describe('CascadeClient', () => {
     feed(audio, LOUD, MAX_UTTERANCE_MS + 40)
     await settle()
     expect(requests).toHaveLength(2)
+  })
+
+  it('an utterance at the cap is sent within the engine cap, its start (the pre-roll) dropped', async () => {
+    const { client, audio, requests } = build([greeting()])
+    await open(client, audio)
+    feed(audio, QUIET, 400)
+    feed(audio, LOUD, MAX_UTTERANCE_MS + 40)
+    await settle()
+    const sent = requests[1].audio!
+    expect(sent.length).toBe(MAX_UTTERANCE_SAMPLES)
+    // The quiet lead-in went; the speech, to its last chunk, is all there.
+    expect(sent[0]).toBe(3000)
+    expect(sent[sent.length - 1]).toBe(3000)
   })
 
   it('answers a typed turn in text, with the opener ahead of a visitor first message', async () => {

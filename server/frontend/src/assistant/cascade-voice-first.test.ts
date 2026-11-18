@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
 import { EARLY_TRANSCRIPT, createCascadeDeps } from './deps'
 import { MAX_UTTERANCE_MS, WINDOW_MS } from './endpointer'
+import { MAX_UTTERANCE_SAMPLES } from './utterance'
 import { pcm16ToBase64 } from './pcm'
 import type { SseEvent } from './sse'
 import { BargeInGate } from './turn/barge-in-gate'
@@ -262,6 +263,17 @@ describe('noise (review 2026-11-17: a fan or a TV kept the conversation open)', 
     await open(t)
     for (let ms = 0; ms < 3 * WINDOW_MS + 100; ms += 20) t.audio.handlers?.onChunk(NOISE)
     expect(t.client.getState().mic).toBe('off')
+  })
+
+  it('with the models, an utterance at the cap is sent within the engine cap', async () => {
+    const t = build([spoken('Hello.')])
+    await open(t)
+    for (let ms = 0; ms < 400; ms += 20) t.audio.handlers?.onChunk(new Int16Array(320))
+    t.detector.handlers?.onStart()
+    for (let ms = 0; ms < MAX_UTTERANCE_MS + 40 && t.requests.length < 2; ms += 20) t.audio.handlers?.onChunk(NOISE)
+    await settle()
+    expect(t.requests).toHaveLength(2)
+    expect(t.requests[1].audio!.length).toBeLessThanOrEqual(MAX_UTTERANCE_SAMPLES)
   })
 
   it('two turns in a row with no speech in them close the conversation', async () => {

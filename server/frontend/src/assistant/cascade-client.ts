@@ -16,6 +16,7 @@ import { ConversationRecord, type RecordEvent, type RecordTransport } from './co
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
 import { TurnDeadline } from './turn-deadline'
+import { utterance } from './utterance'
 import type { TurnDetector } from './turn/detector'
 import type { AssistantState, Line, Notice } from './live-client'
 import { base64ToPcm16 } from './pcm'
@@ -137,6 +138,7 @@ const PREROLL_CHUNKS = 15
 
 export { CONVERSATION_CLOSED, closingTone }
 
+type TurnInput = { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number }
 type Draft<T> = T extends unknown ? Omit<T, 'id'> : never
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
@@ -647,14 +649,7 @@ export class CascadeClient {
   private sendUtterance() {
     const chunks = this.chunks
     this.stopListening()
-    const total = chunks.reduce((n, c) => n + c.length, 0)
-    const audio = new Int16Array(total)
-    let at = 0
-    for (const chunk of chunks) {
-      audio.set(chunk, at)
-      at += chunk.length
-    }
-    void this.turn({ audio }, true)
+    void this.turn({ audio: chunks }, true)
   }
 
   private micLost() {
@@ -716,10 +711,13 @@ export class CascadeClient {
   }
 
   private async turn(
-    input: { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number },
+    given: Omit<TurnInput, 'audio'> & { audio?: Int16Array | Int16Array[] },
     spoken: boolean,
   ) {
     if (this.disposed) return
+    // Every upload passes here, so none is ever over the engine's cap.
+    const { audio: raw, ...rest } = given
+    let input: TurnInput = raw ? { ...rest, audio: utterance(raw) } : rest
     if (input.audio && input.tour === undefined && this.tourNext !== null) {
       // Said during the tour: the engine hears "skip" and "stop", or answers a question.
       input = { ...input, tour: this.tourNext }
