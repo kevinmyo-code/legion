@@ -129,22 +129,19 @@ def test_not_for_me_after_a_write_says_what_was_done(member, engine):
     assert Checklist.objects.filter(name="Hardware").exists()
 
 
-def test_no_write_runs_after_not_for_me(member, engine):
-    from agents.runtime.model import FakeModel, Finish, PartEvent, ToolCallEvent, Usage
+def test_the_door_runs_no_write_after_not_for_me(household_user, rf):
+    # The door itself refuses (the loop also stops at "not for me", so a turn alone cannot show
+    # this guard; on 7d4664e5 the door ran the write).
+    from agents.runtime.tools import ToolCall
     from assistant import cascade
     from checklists.models import Checklist
 
-    both = [
-        PartEvent({"functionCall": {"name": cascade.NOT_FOR_ME_TOOL, "args": {}}}),
-        ToolCallEvent("", cascade.NOT_FOR_ME_TOOL, {}),
-        PartEvent({"functionCall": {"name": "create_checklist", "args": {"name": "Side talk"}}}),
-        ToolCallEvent("", "create_checklist", {"name": "Side talk"}),
-        Usage(100, 0, 5, 105),
-        Finish("STOP"),
-    ]
-    engine.model = FakeModel([both])
-    events = _events(_post(member, text="Ha, make a list of that, he said."))
-    assert _of(events, "done")[0]["ignored"] == "not_addressed"
+    request = rf.post("/api/assistant/turn")
+    request.user = household_user
+    door = cascade.WebDoor(request, None, 0)
+    door.call(None, None, ToolCall("c1", cascade.NOT_FOR_ME_TOOL, {}), 8.0)
+    door.call(None, None, ToolCall("c2", "create_checklist", {"name": "Side talk"}), 8.0)
+    assert door.calls[-1].ok is False
     assert not Checklist.objects.filter(name="Side talk").exists()
 
 
@@ -266,12 +263,20 @@ def test_a_tour_transcription_failure_is_said(visitor, engine):
 
 
 def test_a_broken_spoken_turn_says_so_from_memory(member, engine, monkeypatch, household_user):
+    import base64
+
     from agents.runtime.model import FakeModel, call, say
     from assistant import cascade, voice_engine
     from engine_mcp import cards
 
+    class Distinct:
+        """Speech whose audio is the line's own text, so a test can tell which line it is."""
+
+        def speak(self, text, voice, spoken):
+            yield text.encode()
+
     audio = cascade.FillerAudio(spawn=lambda work: work())
-    audio.warm(engine.speech, voice_engine.voice_for(household_user))
+    audio.warm(Distinct(), voice_engine.voice_for(household_user))
     monkeypatch.setattr(cascade, "FILLER_AUDIO", audio)
 
     def broken(card, recruiter):
@@ -282,6 +287,9 @@ def test_a_broken_spoken_turn_says_so_from_memory(member, engine, monkeypatch, h
     events = _events(_post(member, audio=PCM))
     kinds = [k for k, _ in events]
     assert kinds[-2:] == ["audio", "error"]
+    # The audio is the failure line itself, not an earlier clip (the acknowledgement).
+    said = base64.b64decode(events[-2][1]["pcm"]).decode()
+    assert said == cascade.FAILED_SPOKEN
 
 
 # ---- finding 8: every paid call is counted, speech is reserved per request ----------------------
