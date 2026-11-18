@@ -729,8 +729,8 @@ export class CascadeClient {
     // Every upload passes here, so none is ever over the engine's cap.
     const { audio: raw, ...rest } = given
     let input: TurnInput = raw ? { ...rest, audio: utterance(raw) } : rest
-    if (input.audio && input.tour === undefined && this.tourNext !== null) {
-      // Said during the tour: the engine hears "skip" and "stop", or answers a question.
+    if ((input.audio || input.text) && input.tour === undefined && this.tourNext !== null) {
+      // Said or typed during the tour: the engine hears "skip" and "stop", or answers a question.
       input = { ...input, tour: this.tourNext }
     }
     if (input.tour === undefined) this.tourNext = null

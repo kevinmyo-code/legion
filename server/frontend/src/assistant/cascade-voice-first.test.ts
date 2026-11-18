@@ -466,6 +466,16 @@ describe('the demo', () => {
     expect(t.requests.at(-1)).toMatchObject({ tour: 1 })
   })
 
+  it('something typed during the tour goes with the beat too', async () => {
+    const t = build([spoken('Hi.'), spoken('Beat one.', { tour: { beat: 0, next: 1 } })])
+    await open(t)
+    t.client.startTour()
+    await settle()
+    t.client.send('skip')
+    await settle()
+    expect(t.requests.at(-1)).toMatchObject({ text: 'skip', tour: 1 })
+  })
+
   it('counts the first word heard and the third turn', async () => {
     const heard = (text: string) => spoken('Ok.', {}, [{ type: 'heard', data: { text } }])
     const t = build([spoken('Hi.'), heard('one'), heard('two'), heard('three')])
