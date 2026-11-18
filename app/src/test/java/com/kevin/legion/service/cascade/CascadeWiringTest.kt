@@ -296,7 +296,9 @@ class CascadeWiringTest {
         val prompt = bodyOf(s, "buildPrompt")
         assertTrue(prompt.substring(prompt.indexOf("preambleReady =")).contains("loadAgenda()"))
         assertFalse(prompt.substring(prompt.indexOf("prefixReady ="), prompt.indexOf("preambleReady =")).contains("agenda"))
-        assertTrue(s.contains("if (CascadeRules.isWrite(name, args)) noteChange(response)"))
+        val result = bodyOf(s, "onToolResult")
+        assertTrue(result.contains("val write = CascadeRules.isWrite(name, args)"))
+        assertTrue("a write withdraws it", result.indexOf("noteChange(response)") > result.indexOf("if (write) {"))
     }
 
     @Test
