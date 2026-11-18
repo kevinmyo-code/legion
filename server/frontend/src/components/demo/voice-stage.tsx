@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
 import { UNNAMED, useAssistant } from '@/assistant/assistant-context'
@@ -40,6 +40,17 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const { client, state, name } = useAssistant()
   const [draft, setDraft] = useState('')
   const [marked, setMarked] = useState(false)
+  // Whether the orb is on screen (blind review, 2026-11-18): once the stage scrolls away on a
+  // phone, a small fixed Stop is the way to interrupt him while he speaks.
+  const orbRef = useRef<HTMLButtonElement>(null)
+  const [orbSeen, setOrbSeen] = useState(true)
+  useEffect(() => {
+    const el = orbRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver((entries) => setOrbSeen(entries.some((e) => e.isIntersecting)))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
   const mode = orbMode(state)
@@ -82,6 +93,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   return (
     <section aria-label="Talk to the demo assistant" className="rc-voice-stage flex flex-col items-center gap-3 px-4 pt-6 pb-4 text-center">
       <button
+        ref={orbRef}
         type="button"
         onClick={onOrb}
         aria-label={speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`}
@@ -91,6 +103,17 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       >
         <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
       </button>
+      {speaking && !orbSeen && (
+        <button
+          type="button"
+          onClick={() => client.interrupt()}
+          aria-label={`Stop ${who}`}
+          data-stage="stop"
+          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 min-h-11 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg"
+        >
+          Stop
+        </button>
+      )}
       <p role="status" data-stage="line" className="rc-h3 min-h-[1.5em] text-lg font-semibold">
         {status}
       </p>
