@@ -558,7 +558,7 @@ describe('CascadeClient', () => {
     expect(client.getState().notice?.text).toBe('No conversation with that id is yours.')
   })
 
-  const utter = async (client: CascadeClient, audio: FakeAudio) => {
+  const utter = async (audio: FakeAudio) => {
     feed(audio, LOUD, 300)
     feed(audio, QUIET, SILENCE_MS + 20)
     await settle()
@@ -568,7 +568,7 @@ describe('CascadeClient', () => {
     const { client, audio, requests } = build([greeting(), { ok: false, status: 409, detail: 'Already answered.', code: 'duplicate' }])
     await open(client, audio)
     const lines = client.getState().lines.length
-    await utter(client, audio)
+    await utter(audio)
     expect(requests).toHaveLength(2)
     expect(client.getState().lines).toHaveLength(lines)
     expect(client.getState().notice).toBeNull()
@@ -581,7 +581,7 @@ describe('CascadeClient', () => {
       onEngineLive,
     })
     await open(client, audio)
-    await utter(client, audio)
+    await utter(audio)
     expect(onEngineLive).toHaveBeenCalledTimes(1)
     expect(audio.micOpen).toBe(false)
     expect(requests).toHaveLength(2)
