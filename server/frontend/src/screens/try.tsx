@@ -13,7 +13,14 @@ import {
   type DemoProjectSection,
 } from '@/api/demo'
 import { useMe } from '@/api/queries'
-import { AssistantProvider, UNNAMED, useAssistant, type ChatCopy } from '@/assistant/assistant-context'
+import {
+  AssistantProvider,
+  ENGINE_QUERY,
+  UNNAMED,
+  useAssistant,
+  useAssistantEngine,
+  type ChatCopy,
+} from '@/assistant/assistant-context'
 import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { AssistantModals } from '@/components/assistant/assistant-modals'
 import { usePresenter } from '@/components/assistant/cards/presenter-context'
@@ -116,7 +123,15 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   const me = useMe()
   const recruiter = session.data?.role === 'recruiter'
   // A visit's own session is signed in too: a member is someone signed in who is not a visitor.
-  const member = me.data?.signedIn === true && !recruiter
+  // Never decided while the tap is entering: entering refetches both, and `me` landing first
+  // briefly read the new visitor as a member, which unmounted the orb mid-tap (review item 2).
+  const [entering, setEntering] = useState(false)
+  const member = me.data?.signedIn === true && !recruiter && !entering
+  // The engine's switch (ADR 0102): a visit whose engine is Live gets the Live dock page, so a
+  // server-side rollback needs no new web build. Asked once a visit exists (it is the visit's own
+  // answer); before that, the tap's entry asks it before any greeting (`enter` below).
+  const engine = useAssistantEngine(recruiter)
+  const liveVisit = recruiter && engine.data?.engine === 'live'
 
   // When the visit runs out, ask again, so the page goes back to the code box
   // instead of showing an assistant that will refuse.
@@ -129,27 +144,36 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
     return () => clearTimeout(timer)
   }, [expiresAt, queryClient])
 
-  if (linkCode !== undefined && !member && !linkError) {
-    // The link carries the code: the page opens on the orb, and the tap enters (voice-first).
+  const awaitingEngine = recruiter && engine.isPending
+  if (!member && !liveVisit && !linkError && !awaitingEngine && (linkCode !== undefined || recruiter)) {
+    // Every visitor gets the voice stage (Kevin, 2026-11-17): a link with its code (the tap enters),
+    // a reload of a visit, or a code typed in the box. One branch, so entering never remounts it.
     return (
       <VoiceFirstVisit
         refTag={refTag}
         entered={recruiter}
-        expiresAt={recruiter ? session.data?.expires_at : undefined}
+        expiresAt={expiresAt}
         enter={async () => {
-          const result = await enterDemo(linkCode, refTag)
-          if (!result.ok) {
-            setLinkError(result.message)
-            return false
+          setEntering(true)
+          try {
+            const result = await enterDemo(linkCode ?? '', refTag)
+            if (!result.ok) {
+              setLinkError(result.message)
+              return false
+            }
+            // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
+            const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
+            await queryClient.invalidateQueries()
+            return chosen?.engine !== 'live'
+          } finally {
+            setEntering(false)
           }
-          await queryClient.invalidateQueries()
-          return true
         }}
       />
     )
   }
 
-  if (session.isPending || me.isPending) {
+  if (session.isPending || me.isPending || awaitingEngine) {
     return (
       <Shell>
         <p role="status" className="rc-status">

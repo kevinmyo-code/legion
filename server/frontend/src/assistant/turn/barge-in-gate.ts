@@ -99,9 +99,19 @@ export class BargeInGate {
   private replyMaxLevel = 0
   private longestRunMs = 0
   private bestSpanWindows = 0
+  /** The last barge-in already counted as a self-interrupt (by the verdict or by the page). */
+  private fireCounted = false
 
   get armedNow(): boolean {
     return this.armed
+  }
+
+  /** A new conversation: barge-in is back on, with no self-interrupts counted. */
+  newConversation() {
+    this.disabled = false
+    this.selfInterrupts = 0
+    this.verdictWindowsLeft = 0
+    this.fireCounted = false
   }
 
   /** Stop listening for good in this conversation (the web's own half-duplex switch). */
@@ -116,6 +126,8 @@ export class BargeInGate {
     this.armed = !this.disabled
     this.replyOpen = true
     this.fired = false
+    // At most one barge-in per reply: a new reply is a new one to count.
+    this.fireCounted = false
     this.windows = 0
     this.speechWindows = 0
     this.loudWindows = 0
@@ -203,6 +215,7 @@ export class BargeInGate {
     this.fireLevel = maxLevel
     this.fireThreshold = threshold
     this.fired = true
+    this.fireCounted = false
     this.armed = false
     this.resetRun()
     this.verdictWindowsLeft = Math.floor(VERDICT_MS / WINDOW_MS)
@@ -228,7 +241,10 @@ export class BargeInGate {
     if (--this.verdictWindowsLeft > 0) return null
     const clearlyUser = this.fireLevel >= this.fireThreshold * CLEARLY_USER_FACTOR
     const self = this.speechAfterMs < SELF_SPEECH_MS && !clearlyUser
-    if (self) this.selfInterrupts++
+    if (self && !this.fireCounted) {
+      this.fireCounted = true
+      this.selfInterrupts++
+    }
     if (this.selfInterrupts >= MAX_SELF_INTERRUPTS) this.disabled = true
     return {
       type: 'verdict',
@@ -241,8 +257,13 @@ export class BargeInGate {
     }
   }
 
-  /** A self-interrupt the page found itself (an empty transcript, or one echoing the reply). */
+  /**
+   * A self-interrupt the page found itself (an empty transcript, or one echoing the reply). Each
+   * barge-in counts once, whichever of this and the gate's own verdict comes first.
+   */
   countSelfInterrupt(): boolean {
+    if (this.fireCounted) return this.disabled
+    this.fireCounted = true
     this.selfInterrupts++
     if (this.selfInterrupts >= MAX_SELF_INTERRUPTS) this.disable()
     return this.disabled

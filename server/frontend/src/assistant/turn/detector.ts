@@ -29,7 +29,7 @@ export const PREROLL_WINDOWS = 17
 export const MAX_SILERO_MS = 16
 /** Slower than this per Smart Turn check and it could not hold a turn before the 700 ms base. */
 export const MAX_SMART_MS = 450
-/** The longest turn kept (Smart Turn reads the last 8 s; the engine takes 28 s). */
+/** The longest turn kept, its newest audio (Smart Turn reads the last 8 s; the engine takes 28 s). */
 export const MAX_TURN_SAMPLES = 28 * 16_000
 
 export interface TurnHandlers {
@@ -86,19 +86,20 @@ function ready(worker: WorkerLike, init: ToWorker, timeoutMs: number): Promise<E
   })
 }
 
-/** Loads both models; null when they cannot run here (the page keeps its energy threshold). */
+/**
+ * Loads both models; null when they cannot run here (the page keeps its energy threshold). One
+ * after the other: both workers load the same 14 MB runtime wasm, and the second, started once the
+ * first is ready, finds it in the browser's cache instead of fetching it again in parallel.
+ */
 export async function loadTurnDetector(deps: DetectorDeps, timeoutMs = 20_000): Promise<TurnDetector | null> {
   const vad = deps.makeWorker()
-  const st = deps.makeWorker()
-  const [v, s] = await Promise.all([
-    ready(vad, { type: 'init', silero: deps.sileroUrl }, timeoutMs),
-    ready(st, { type: 'init', smart: deps.smartUrl }, timeoutMs),
-  ])
+  const v = await ready(vad, { type: 'init', silero: deps.sileroUrl }, timeoutMs)
   if (!v || v.sileroMs > MAX_SILERO_MS) {
     vad.terminate()
-    st.terminate()
     return null
   }
+  const st = deps.makeWorker()
+  const s = await ready(st, { type: 'init', smart: deps.smartUrl }, timeoutMs)
   const smartOk = Boolean(s && s.smartMs !== null && s.smartMs <= MAX_SMART_MS)
   if (!smartOk) st.terminate()
   return new ModelDetector(vad, smartOk ? st : null, Math.max(v.loadMs, s?.loadMs ?? 0), v.sileroMs, s?.smartMs ?? null)
@@ -115,7 +116,9 @@ class ModelDetector implements TurnDetector {
   private pending = new Int16Array(0)
   private seq = 0
   /** Windows sent and not yet answered, in order: their samples, level and whether listening. */
-  private inFlight = new Map<number, { pcm: Int16Array; level: number; listening: boolean; playing: boolean }>()
+  private inFlight = new Map<number, { pcm: Int16Array; level: number; listening: boolean; playing: boolean; epoch: number }>()
+  /** Moves on each reset; a window sent before it was heard while the page was not listening. */
+  private epoch = 0
   private recent: Int16Array[] = []
   private turn: Int16Array[] | null = null
   private turnSamples = 0
@@ -162,7 +165,7 @@ class ModelDetector implements TurnDetector {
       const pcm = merged.slice(at, at + WINDOW)
       at += WINDOW
       const seq = ++this.seq
-      this.inFlight.set(seq, { pcm, level: peakLevel(pcm), listening, playing })
+      this.inFlight.set(seq, { pcm, level: peakLevel(pcm), listening, playing, epoch: this.epoch })
       this.vad.postMessage({ type: 'window', seq, samples: toFloat(pcm) } satisfies ToWorker)
     }
     this.pending = merged.slice(at)
@@ -176,10 +179,16 @@ class ModelDetector implements TurnDetector {
     this.gate.onReplyEnd()
   }
 
+  /**
+   * Also forgets the pre-roll: what was heard while the page ignored the mic (the reply's tail, in
+   * half-duplex) is never the start of the next turn, nor are windows still at the model.
+   */
   reset() {
     this.policy.reset()
     this.turn = null
     this.turnSamples = 0
+    this.recent = []
+    this.epoch++
   }
 
   dispose() {
@@ -191,12 +200,14 @@ class ModelDetector implements TurnDetector {
   private onProb(seq: number, prob: number) {
     const w = this.inFlight.get(seq)
     this.inFlight.delete(seq)
-    if (!w || this.disposed) return
+    if (!w || this.disposed || w.epoch !== this.epoch) return
     this.recent.push(w.pcm)
     if (this.recent.length > PREROLL_WINDOWS) this.recent.shift()
-    if (this.turn && this.turnSamples < MAX_TURN_SAMPLES) {
+    if (this.turn) {
+      // Over the engine's cap the oldest audio goes, as `utterance()` cuts: the last words stay.
       this.turn.push(w.pcm)
       this.turnSamples += w.pcm.length
+      while (this.turnSamples > MAX_TURN_SAMPLES && this.turn.length > 1) this.turnSamples -= this.turn.shift()!.length
     }
     if (w.playing) {
       const event = this.gate.onWindow(prob, w.level, true)

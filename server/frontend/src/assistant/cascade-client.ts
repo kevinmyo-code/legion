@@ -1,8 +1,24 @@
 import { asCard, mergeCar, type Card } from '@/components/assistant/cards/types'
 
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
+import {
+  CONVERSATION_CLOSED,
+  ENDED_LIMIT,
+  ENDED_LOCKED,
+  TONE_RATE,
+  STILL_BUSY,
+  TURN_STALLED,
+  UNREACHABLE,
+  closingTone,
+  micNotice,
+  refusalNotice,
+} from './cascade-words'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { Endpointer } from './endpointer'
+import { GreetingCaps } from './greeting-caps'
+import { TurnDeadline } from './turn-deadline'
+import { newTurnId, postTurn } from './turn-post'
+import { utterance } from './utterance'
 import type { TurnDetector } from './turn/detector'
 import type { AssistantState, Line, Notice } from './live-client'
 import { base64ToPcm16 } from './pcm'
@@ -32,7 +48,9 @@ import type { SseEvent } from './sse'
  *   thinks or speaks interrupts it and listens again (spec 20).
  * - **Nothing heard / not understood** (spec 32): a caption, no speech, and listening resumes.
  *
- * A typed message is answered in text only, as on Live. What it will not do, as `LiveClient`:
+ * A typed message is answered in text only, as on Live, unless a voice conversation is open or the
+ * page asks for it aloud (`speakTyped`, the demo's stage): then it is spoken and the conversation
+ * carries on as after any turn. What it will not do, as `LiveClient`:
  * assert an outcome the engine did not report (`Done:` only after `ok: true`), or keep anything
  * of the conversation in the browser. The engine writes the conversation record's words and tool
  * calls itself; this sends only what the browser alone knows (mic changes, interruptions, the
@@ -52,6 +70,8 @@ export interface TurnRequest {
   conversationId: string | null
   utcOffsetMinutes: number
   preface?: string
+  /** This turn's id, for `cancelTurn`. */
+  turnId?: string
 }
 
 export interface GreetingHistory {
@@ -62,11 +82,13 @@ export interface GreetingHistory {
 
 export type TurnStart =
   | { ok: true; events: AsyncIterable<SseEvent> }
-  | { ok: false; status: number; detail: string | null }
+  | { ok: false; status: number; detail: string | null; code?: string | null; retryMs?: number | null }
 
 export interface CascadeDeps {
   /** Post one turn; resolves when the engine has answered with a stream or a refusal. */
   startTurn(request: TurnRequest, signal: AbortSignal): Promise<TurnStart>
+  /** Tell the engine a turn in flight is abandoned (`POST /api/assistant/turn/cancel`). Fire and forget. */
+  cancelTurn?: (turnId: string) => void
   /** The device audio. Called once, from the tap that starts the microphone. */
   audio(): AudioIO
   now(): number
@@ -117,32 +139,18 @@ export interface CascadeOptions {
    * the demo enters its visit here, so the tap that unlocks the audio is the tap that enters.
    */
   prepare?: () => Promise<boolean>
+  /** Typed messages are answered aloud even with no voice conversation open (the demo's stage). */
+  speakTyped?: boolean
 }
 
-export const CONVERSATION_CLOSED = 'Conversation closed'
-const ENDED_LOCKED = 'Conversation ended when the screen locked.'
-const ENDED_LIMIT = 'The conversation reached its time limit. Start a new one.'
-const UNREACHABLE = "Not answered: couldn't reach the engine. Nothing was changed."
 /** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
 const PREROLL_CHUNKS = 15
-/** The phone's closing tone (spec 17): 150 ms, half gain. */
-const TONE_MS = 150
-const TONE_HZ = 880
-const TONE_RATE = 24_000
 
+export { CONVERSATION_CLOSED, closingTone }
+
+type TurnInput = { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number }
 type Draft<T> = T extends unknown ? Omit<T, 'id'> : never
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
-
-/** The phone's closing tone as 16-bit PCM. */
-export function closingTone(): Int16Array {
-  const n = Math.round((TONE_RATE * TONE_MS) / 1000)
-  const out = new Int16Array(n)
-  for (let i = 0; i < n; i++) {
-    const fade = Math.min(1, i / 240, (n - i) / 240)
-    out[i] = Math.round(0.5 * fade * 0x7fff * Math.sin((2 * Math.PI * TONE_HZ * i) / TONE_RATE))
-  }
-  return out
-}
 
 export class CascadeClient {
   private state: AssistantState
@@ -158,6 +166,9 @@ export class CascadeClient {
   private endpointer: Endpointer | null = null
   private chunks: Int16Array[] = []
   private abort: AbortController | null = null
+  /** The id of the turn in flight (posted, its stream not yet ended), for the engine's cancel. */
+  private turnId: string | null = null
+  private deadline: TurnDeadline | null = null
   private conversationId: string | null = null
   private record: ConversationRecord | null = null
   private playing = false
@@ -169,7 +180,6 @@ export class CascadeClient {
   private limitTimer: ReturnType<typeof setTimeout> | null = null
   private replyFrom: number | null = null
   private spokenTurn = false
-  private memoryHistory: string | null = null
   // ---- the phone's turn-taking (turn/detector.ts) ----
   private detector: TurnDetector | null = null
   private detectorAsked = false
@@ -179,9 +189,11 @@ export class CascadeClient {
   private speechStarted = false
   /** The reply that was playing when the person talked over it, for the echo check. */
   private bargedOver: string | null = null
-  /** The gate's own verdict already counted this barge-in as the reply's echo. */
-  private bargeCounted = false
   private lastReply = ''
+  /** This turn's typed words, which the engine says back as `heard` when it answers aloud. */
+  private typedEcho: string | null = null
+  /** Turns in a row the engine heard no speech in (noise sent as an utterance). */
+  private noSpeechRun = 0
   private spec: { abort: AbortController; result: Promise<string | null>; samples: number } | null = null
   /** The silence that ended each utterance the models ended (the browser check reads it). */
   eotMs: number[] = []
@@ -193,6 +205,15 @@ export class CascadeClient {
   private heardLineId: number | null = null
   private spokenTurns = 0
   private prepared = false
+  /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
+  private entering = false
+  /** The mic's permission settled for the conversation being opened. */
+  private micReady = false
+  /** The last turn ended `busy`: the next tap listens in the same conversation. */
+  private resumeOnTap = false
+  private preparing: Promise<boolean> | null = null
+  /** The page let go of this client: it never asks the engine for anything again. */
+  private disposed = false
   // ---- the demo ----
   private tourNext: number | null = null
   strip: StripState = { tools: [], costUsd: null }
@@ -201,6 +222,7 @@ export class CascadeClient {
 
   private readonly deps: CascadeDeps
   private readonly options: CascadeOptions
+  private readonly caps: GreetingCaps
 
   private readonly onPageHide = () => this.record?.beacon()
   private readonly onVisibility = () => {
@@ -217,6 +239,7 @@ export class CascadeClient {
   constructor(deps: CascadeDeps, options: CascadeOptions) {
     this.deps = deps
     this.options = options
+    this.caps = new GreetingCaps(() => deps.now(), deps.greetingStore)
     this.state = {
       phase: 'idle',
       mic: 'off',
@@ -229,6 +252,8 @@ export class CascadeClient {
   }
 
   attach() {
+    // StrictMode runs the provider's effect, its cleanup and the effect again on one client.
+    this.disposed = false
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility)
     if (typeof window !== 'undefined') window.addEventListener('pagehide', this.onPageHide)
   }
@@ -292,14 +317,28 @@ export class CascadeClient {
 
   send(raw: string): boolean {
     const text = raw.trim()
-    if (!text || this.state.phase === 'ended') return false
+    if (!text || this.state.phase === 'ended' || this.disposed) return false
+    // Typed into an open voice conversation, or on the voice stage: answered aloud, and the
+    // conversation carries on as after any turn. Otherwise in text only, as on Live.
+    const aloud = this.voiceOpen || this.options.speakTyped === true
+    if (aloud) this.unlockPlayback()
     const wasSpeaking = this.playing
     this.cutReply('barge_in')
     this.stopListening()
     this.push({ kind: 'me', text, via: 'typed', open: false })
     if (wasSpeaking) this.push({ kind: 'sys', text: 'Stopped speaking because you typed.' })
-    void this.afterPrepare(() => this.turn({ text }, false))
+    void this.afterPrepare(() => this.turn(aloud ? { text, spoken: true } : { text }, aloud, true))
     return true
+  }
+
+  /** Open the playback side inside a tap (Safari), without the microphone. */
+  private unlockPlayback() {
+    try {
+      const audio = (this.audioIO ??= this.deps.audio())
+      audio.unlock?.((playing) => this.onPlaying(playing))
+    } catch {
+      // No audio here: the answer still comes as text.
+    }
   }
 
   /**
@@ -309,13 +348,16 @@ export class CascadeClient {
    * assistant thinking or speaking), it interrupts and listens again (spec 20, 21).
    */
   startVoice(): Promise<void> {
-    if (this.state.phase === 'ended') return Promise.resolve()
+    if (this.state.phase === 'ended' || this.disposed) return Promise.resolve()
     if (this.voiceOpen) {
+      // Taps while the visit is being entered are ignored: a double tap on first contact is one.
+      if (this.entering) return Promise.resolve()
       if (this.playing || this.awaiting) this.cutReply('barge_in')
       this.listen()
       return Promise.resolve()
     }
     if (this.state.mic !== 'off') return Promise.resolve()
+    this.micReady = false
     this.set({ mic: 'starting', notice: null })
     const generation = ++this.micGeneration
     let opened: Promise<void>
@@ -331,14 +373,20 @@ export class CascadeClient {
     }
     // The greeting goes now, in the tap, while the mic permission settles.
     this.voiceOpen = true
+    // Barge-in falls back to half-duplex for one conversation, never for the page.
+    this.halfDuplex = false
+    this.detector?.gate.newConversation()
     this.deps.funnel?.('orb_tap')
     this.loadDetector()
-    void this.greetAfterPrepare()
+    if (this.resumeOnTap && this.conversationId) this.listen()
+    else void this.greetAfterPrepare()
+    this.resumeOnTap = false
     return opened.then(
       () => {
         if (generation !== this.micGeneration) return
         this.rec({ kind: 'mic_open', reason: 'tap' })
-        if (this.state.mic === 'starting') this.set({ mic: 'off' })
+        this.micReady = true
+        if (this.state.mic === 'starting' && !this.entering) this.set({ mic: 'off' })
       },
       (error: unknown) => {
         if (generation !== this.micGeneration) return
@@ -349,27 +397,16 @@ export class CascadeClient {
     )
   }
 
-  private async greetAfterPrepare() {
-    if (this.options.prepare && !this.prepared) {
-      this.awaiting = true
-      this.refresh()
-      let ok = false
-      try {
-        ok = await this.options.prepare()
-      } catch {
-        ok = false
-      }
-      this.awaiting = false
-      if (!ok) {
+  private greetAfterPrepare() {
+    return this.afterPrepare(
+      () => this.turn({ greet: true }, true),
+      () => {
         this.voiceOpen = false
         this.micGeneration += 1
         this.audioIO?.stopMic()
         this.set({ mic: 'off' })
-        return
-      }
-      this.prepared = true
-    }
-    void this.turn({ greet: true }, true)
+      },
+    )
   }
 
   /** The phone's turn models, once per page, after the first tap (the page stays light before). */
@@ -379,6 +416,8 @@ export class CascadeClient {
     void this.deps.turnDetector().then(
       (detector) => {
         if (!detector) return
+        // Loaded after the page let go of this client: its workers go too.
+        if (this.disposed) return detector.dispose()
         this.detector = detector
         detector.setHandlers({
           onStart: () => this.onSpeechStart(),
@@ -387,7 +426,6 @@ export class CascadeClient {
           onEnd: (audio, _reason, silenceMs) => this.onTurnEnd(audio, silenceMs),
           onBargeIn: () => this.onBargeIn(),
           onVerdict: (v) => {
-            if (v.selfInterrupt) this.bargeCounted = true
             if (v.nowDisabled) this.halfDuplex = true
           },
         })
@@ -403,14 +441,9 @@ export class CascadeClient {
 
   /** The demo's one-minute tour: plays beat `beat` (from 0), driven by the engine. */
   startTour(beat = 0) {
-    if (this.state.phase === 'ended') return
+    if (this.state.phase === 'ended' || this.disposed) return
     if (beat === 0) this.deps.funnel?.('tour_started')
-    try {
-      const audio = (this.audioIO ??= this.deps.audio())
-      audio.unlock?.((playing) => this.onPlaying(playing))
-    } catch {
-      // No audio here: the tour still shows and captions.
-    }
+    this.unlockPlayback()
     this.cutReply('barge_in')
     this.stopListening()
     void this.afterPrepare(() => this.turn({ tour: beat }, true))
@@ -422,13 +455,8 @@ export class CascadeClient {
    */
   ask(raw: string): boolean {
     const text = raw.trim()
-    if (!text || this.state.phase === 'ended') return false
-    try {
-      const audio = (this.audioIO ??= this.deps.audio())
-      audio.unlock?.((playing) => this.onPlaying(playing))
-    } catch {
-      // No audio here: the answer still comes as text.
-    }
+    if (!text || this.state.phase === 'ended' || this.disposed) return false
+    this.unlockPlayback()
     this.cutReply('barge_in')
     this.stopListening()
     // The engine says it back as `heard`, which draws the line.
@@ -436,26 +464,43 @@ export class CascadeClient {
     return true
   }
 
-  private async afterPrepare(then: () => Promise<void> | void) {
+  /**
+   * Run `then` once the demo visit is entered (once per page; every tap waiting on it shares the one
+   * entry). A tap, a close or the page leaving while it waits cancels `then` (the turn generation
+   * moved), so nothing is asked for that nobody is waiting for.
+   */
+  private async afterPrepare(then: () => Promise<void> | void, failed?: () => void) {
     if (this.options.prepare && !this.prepared) {
+      const generation = this.turnGeneration
       this.awaiting = true
+      this.entering = true
       this.refresh()
-      let ok = false
-      try {
-        ok = await this.options.prepare()
-      } catch {
-        ok = false
-      }
+      this.preparing ??= this.options
+        .prepare()
+        .catch(() => false)
+        .then((ok) => {
+          this.preparing = null
+          if (ok) this.prepared = true
+          return ok
+        })
+      const ok = await this.preparing
+      this.entering = false
+      if (generation !== this.turnGeneration || this.disposed) return
       this.awaiting = false
+      // The orb held "starting" through the entry; the mic is ready if its permission settled.
+      if (this.state.mic === 'starting' && this.micReady) this.set({ mic: 'off' })
       this.refresh()
-      if (!ok) return
-      this.prepared = true
+      if (!ok) {
+        failed?.()
+        return
+      }
     }
     await then()
   }
 
   /** A tap while listening closes the conversation (spec 21); while it speaks, it interrupts. */
   stopVoice() {
+    if (this.entering) return
     if (this.listening || this.state.mic === 'starting') {
       this.close(false)
       return
@@ -465,7 +510,7 @@ export class CascadeClient {
 
   /** Stop the reply now, its audio and the engine's turn, and listen again (spec 20). */
   interrupt() {
-    if (!this.playing && !this.awaiting) return
+    if (this.entering || (!this.playing && !this.awaiting)) return
     this.cutReply('barge_in')
     if (this.voiceOpen) this.listen()
     this.refresh()
@@ -485,6 +530,7 @@ export class CascadeClient {
   }
 
   dispose() {
+    this.disposed = true
     this.finishRecord('The page closed.', true)
     this.cutReply(null)
     this.stopEverything()
@@ -492,6 +538,10 @@ export class CascadeClient {
     if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide)
     this.audioIO?.dispose()
     this.audioIO = null
+    // The models' two workers live as long as the client, not the page (one set per mount).
+    this.detector?.dispose()
+    this.detector = null
+    this.detectorAsked = false
   }
 
   // ---- listening -----------------------------------------------------------
@@ -569,7 +619,9 @@ export class CascadeClient {
 
   private async sendTurn(audio: Int16Array, spec: { result: Promise<string | null> } | null) {
     if (spec) {
+      const generation = this.turnGeneration
       const text = await spec.result
+      if (generation !== this.turnGeneration || this.listening || !this.voiceOpen) return
       if (text && text.trim()) {
         void this.turn({ text: text.trim(), spoken: true }, true)
         return
@@ -582,7 +634,6 @@ export class CascadeClient {
   private onBargeIn() {
     if (!this.voiceOpen || (!this.playing && !this.awaiting) || !this.fullDuplex) return
     this.bargedOver = this.lastReply
-    this.bargeCounted = false
     this.bargeIns += 1
     this.cutReply('barge_in')
     this.listen(true)
@@ -608,9 +659,10 @@ export class CascadeClient {
       // in full duplex. Half-duplex: nothing heard while the assistant speaks is kept (spec 19).
       this.detector.push(pcm, this.listening, this.playing && this.fullDuplex)
       if (!this.listening || !this.endpointer) return
-      // The energy endpointer still runs the follow-up window (spec 14, 15) and the length cap.
-      const verdict = this.endpointer.push(pcm)
-      if (verdict === 'lapsed' && !this.speechStarted) this.close(true)
+      // The endpointer runs the follow-up window (spec 14, 15) on the clock and the length cap from
+      // the models' speech; noise alone never holds it open or reaches the cap.
+      const verdict = this.endpointer.push(pcm, this.speechStarted)
+      if (verdict === 'lapsed') this.close(true)
       else if (verdict === 'max') {
         this.detector.reset()
         this.chunks.push(pcm)
@@ -631,14 +683,7 @@ export class CascadeClient {
   private sendUtterance() {
     const chunks = this.chunks
     this.stopListening()
-    const total = chunks.reduce((n, c) => n + c.length, 0)
-    const audio = new Int16Array(total)
-    let at = 0
-    for (const chunk of chunks) {
-      audio.set(chunk, at)
-      at += chunk.length
-    }
-    void this.turn({ audio }, true)
+    void this.turn({ audio: chunks }, true)
   }
 
   private micLost() {
@@ -660,6 +705,8 @@ export class CascadeClient {
     if (tone) this.audioIO?.play(closingTone(), TONE_RATE)
     this.rec({ kind: 'mic_closed', reason: tone ? 'window' : 'tap' })
     this.voiceOpen = false
+    this.noSpeechRun = 0
+    this.resumeOnTap = false
     this.stopListening()
     this.micGeneration += 1
     this.audioIO?.stopMic()
@@ -670,6 +717,19 @@ export class CascadeClient {
     this.limitTimer = null
     this.push({ kind: 'sys', text: CONVERSATION_CLOSED })
     this.set({ mic: 'off', phase: 'idle' })
+  }
+
+  /**
+   * Close and say why (a refusal, a stalled turn): the mic is let go, the closing tone plays, the
+   * reason stays on screen as the notice (the caption line under it is "Conversation closed"), and
+   * the next tap opens a new conversation.
+   */
+  private closeWith(notice: Notice) {
+    // First the turn: with no voice and no conversation open (a chip, the box, the tour) close()
+    // has nothing to close, and the turn must still stop.
+    this.cutReply(null)
+    this.close(true)
+    this.set({ notice })
   }
 
   // ---- one turn ------------------------------------------------------------
@@ -689,41 +749,58 @@ export class CascadeClient {
   }
 
   private async turn(
-    input: { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number },
+    given: Omit<TurnInput, 'audio'> & { audio?: Int16Array | Int16Array[] },
     spoken: boolean,
+    typed = false,
   ) {
-    if (input.audio && input.tour === undefined && this.tourNext !== null) {
-      // Said during the tour: the engine hears "skip" and "stop", or answers a question.
+    if (this.disposed) return
+    this.typedEcho = typed ? given.text ?? null : null
+    // Every upload passes here, so none is ever over the engine's cap.
+    const { audio: raw, ...rest } = given
+    let input: TurnInput = raw ? { ...rest, audio: utterance(raw) } : rest
+    if ((input.audio || (typed && input.text)) && input.tour === undefined && this.tourNext !== null) {
+      // Said or typed during the tour: the engine hears "skip" and "stop", or answers a question.
       input = { ...input, tour: this.tourNext }
     }
     if (input.tour === undefined) this.tourNext = null
     this.strip = { tools: [], costUsd: null }
     this.lastReply = ''
     this.heardLineId = null
-    this.abort?.abort()
+    this.dropTurn()
     const abort = new AbortController()
     this.abort = abort
+    const turnId = newTurnId()
+    this.turnId = turnId
     const generation = ++this.turnGeneration
+    this.deadline?.clear()
+    const deadline = new TurnDeadline(() => {
+      if (generation === this.turnGeneration) this.closeWith(TURN_STALLED)
+    })
+    this.deadline = deadline
     this.spokenTurn = spoken
     this.awaiting = true
     this.afterReply = null
     this.replyFrom = input.greet ? null : this.deps.now()
     this.set({ phase: 'live', notice: null })
     const startedConversation = this.conversationId === null
+    const request: TurnRequest = {
+      ...input,
+      ...(input.greet ? { greetingHistory: this.caps.history() } : {}),
+      conversationId: this.conversationId,
+      utcOffsetMinutes: this.deps.utcOffsetMinutes(),
+      preface: this.preface(Boolean(input.greet)),
+      turnId,
+    }
     let start: TurnStart
     try {
-      start = await this.deps.startTurn(
-        {
-          ...input,
-          ...(input.greet ? { greetingHistory: this.greetingHistory() } : {}),
-          conversationId: this.conversationId,
-          utcOffsetMinutes: this.deps.utcOffsetMinutes(),
-          preface: this.preface(Boolean(input.greet)),
-        },
-        abort.signal,
+      start = await postTurn(
+        () => this.deps.startTurn(request, abort.signal),
+        () => generation === this.turnGeneration,
       )
     } catch {
       if (generation !== this.turnGeneration) return
+      this.turnId = null
+      deadline.clear()
       this.awaiting = false
       this.push({ kind: 'sys', text: UNREACHABLE })
       this.settle(spoken)
@@ -731,8 +808,10 @@ export class CascadeClient {
     }
     if (generation !== this.turnGeneration) return
     if (!start.ok) {
+      this.turnId = null
+      deadline.clear()
       this.awaiting = false
-      this.refused(start.status, start.detail)
+      this.refused(start.status, start.detail, start.code ?? null)
       return
     }
     let open: number | null = null
@@ -742,6 +821,7 @@ export class CascadeClient {
     try {
       for await (const event of start.events) {
         if (generation !== this.turnGeneration) return
+        deadline.heard()
         if (event.type === 'done' && event.data.end === true) end = true
         if (event.type === 'done') {
           const tour = event.data.tour as { next?: number | null } | undefined
@@ -756,6 +836,8 @@ export class CascadeClient {
       this.push({ kind: 'sys', text: 'The answer was cut off: the connection to the engine dropped.' })
     } finally {
       if (generation === this.turnGeneration) {
+        this.turnId = null
+        deadline.clear()
         this.closeAi(open, false)
         this.awaiting = false
         this.abort = null
@@ -779,7 +861,8 @@ export class CascadeClient {
   /** After a spoken turn: listen again once the reply has played (spec 14). */
   private settle(spoken: boolean) {
     if (!spoken || !this.voiceOpen) return
-    this.afterReply = 'listen'
+    // Noise the engine heard no words in, twice running: close rather than loop on it.
+    this.afterReply = this.noSpeechRun >= 2 ? 'close' : 'listen'
     if (!this.playing) this.replyDrained()
   }
 
@@ -801,7 +884,10 @@ export class CascadeClient {
       }
       case 'heard': {
         const text = typeof data.text === 'string' ? data.text.trim() : ''
-        if (text) {
+        // A typed turn sent to be spoken comes back as `heard`: its line is already on screen.
+        const typed = text !== '' && text === this.typedEcho
+        if (text) this.noSpeechRun = 0
+        if (text && !typed) {
           this.push({ kind: 'me', text, via: 'spoken', open: false })
           this.heardLineId = this.state.lines[this.state.lines.length - 1].id
         }
@@ -818,7 +904,7 @@ export class CascadeClient {
         return open
       }
       case 'greeting': {
-        this.noteGreeting(typeof data.kind === 'string' ? data.kind : '', typeof data.text === 'string' ? data.text : '')
+        this.caps.note(typeof data.kind === 'string' ? data.kind : '', typeof data.text === 'string' ? data.text : '')
         return open
       }
       case 'tool': {
@@ -877,7 +963,10 @@ export class CascadeClient {
           if (id !== null) this.set({ lines: this.state.lines.filter((l) => l.id !== id) })
           this.ignoredTurns += 1
           // No speech after a barge-in is the reply's own echo (the self-interrupt count).
-          if (data.ignored === 'no_speech') this.noteHeard('')
+          if (data.ignored === 'no_speech') {
+            this.noSpeechRun += 1
+            this.noteHeard('')
+          }
         }
         const words = typeof data.words === 'string' ? data.words : ''
         if (words) this.push({ kind: 'sys', text: words })
@@ -910,7 +999,8 @@ export class CascadeClient {
     }
     const over = this.bargedOver
     this.bargedOver = null
-    if (over === null || !this.detector || this.bargeCounted) return
+    // The gate counts each barge-in once, whether its verdict or this comes first.
+    if (over === null || !this.detector) return
     const words = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
     const reply = over.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ')
     // Nothing heard, or only what the assistant was saying: the barge-in was its own voice. Two of
@@ -920,31 +1010,40 @@ export class CascadeClient {
     }
   }
 
-  private refused(status: number, detail: string | null) {
-    const said = (fallback: string) => detail ?? fallback
-    switch (status) {
-      case 409:
-        // A demo conversation's time limit, or this page asked the wrong engine.
-        if (this.conversationId) {
-          this.end(this.options.sessionLimit?.()?.trim() || said(ENDED_LIMIT))
-          return
-        }
-        this.set({ notice: { kind: 'mint-failed', text: said('The assistant could not answer that.') } })
-        return
-      case 429:
-        this.set({ notice: { kind: 'throttled', text: said('Too much at once. Try again in a little while.') } })
-        return
-      case 503:
-        this.set({ notice: { kind: 'no-key', text: said("The assistant isn't set up on this server.") } })
-        return
-      case 401:
-      case 403:
-        this.set({ notice: { kind: 'signed-out', text: 'You are signed out, so nothing was asked. Sign in again.' } })
-        return
-      default:
-        this.push({ kind: 'sys', text: said('The engine refused that, so nothing was asked.') })
-        this.settle(this.spokenTurn)
+  /** Decided by the engine's `code`; an engine that sends none is read by the status alone. */
+  private refused(status: number, detail: string | null, code: string | null) {
+    if (code === 'busy') {
+      this.stillBusy()
+      return
     }
+    const timeLimit = code !== null ? code === 'time_limit' : status === 409
+    if (timeLimit && this.conversationId) {
+      // A demo conversation's time limit.
+      this.end(this.options.sessionLimit?.()?.trim() || (detail ?? ENDED_LIMIT))
+      return
+    }
+    const notice = refusalNotice(status, detail)
+    if (notice) {
+      this.closeWith(notice)
+      return
+    }
+    this.push({ kind: 'sys', text: detail ?? 'The engine refused that, so nothing was asked.' })
+    this.settle(this.spokenTurn)
+  }
+
+  /**
+   * Still `busy` after the retries: the conversation stays (its id, its record), the mic is let go,
+   * and the next tap listens in it again rather than greeting.
+   */
+  private stillBusy() {
+    this.push({ kind: 'sys', text: STILL_BUSY })
+    if (!this.voiceOpen) return
+    this.voiceOpen = false
+    this.stopListening()
+    this.micGeneration += 1
+    this.audioIO?.stopMic()
+    this.resumeOnTap = true
+    this.set({ mic: 'off' })
   }
 
   private closeAi(open: number | null, cut: boolean) {
@@ -954,10 +1053,18 @@ export class CascadeClient {
   }
 
   /** Stop what is playing and the turn in flight; `source` null records nothing. */
-  private cutReply(source: 'barge_in' | null) {
-    const wasActive = this.playing || this.awaiting
+  /** Abort the turn in flight, if any, and tell the engine it is abandoned. */
+  private dropTurn() {
     this.abort?.abort()
     this.abort = null
+    if (this.turnId) this.deps.cancelTurn?.(this.turnId)
+    this.turnId = null
+  }
+
+  private cutReply(source: 'barge_in' | null) {
+    const wasActive = this.playing || this.awaiting
+    this.deadline?.clear()
+    this.dropTurn()
     this.turnGeneration += 1
     this.afterReply = null
     this.awaiting = false
@@ -1013,51 +1120,6 @@ export class CascadeClient {
     }
   }
 
-  // ---- the greeting's caps (spec 27) -----------------------------------------
-
-  private loadHistory(): { day: string; history: GreetingHistory } {
-    const day = new Date(this.deps.now()).toDateString()
-    let raw: string | null = this.memoryHistory
-    try {
-      raw = this.deps.greetingStore?.load() ?? raw
-    } catch {
-      // Storage refused (a private window): the page's own memory stands in.
-    }
-    try {
-      const parsed = raw ? (JSON.parse(raw) as { day?: string; history?: GreetingHistory }) : null
-      const history = parsed?.history
-      if (history && Array.isArray(history.hellos)) {
-        return { day, history: { ...history, today: parsed?.day === day ? history.today ?? [] : [] } }
-      }
-    } catch {
-      // Not ours, or not JSON: start clean.
-    }
-    return { day, history: { today: [], last: null, hellos: [] } }
-  }
-
-  private greetingHistory(): GreetingHistory {
-    return this.loadHistory().history
-  }
-
-  private noteGreeting(kind: string, text: string) {
-    if (!kind || kind === 'scripted') return
-    const { day, history } = this.loadHistory()
-    if (kind === 'hello') {
-      history.hellos = [...history.hellos, text].slice(-3)
-      history.last = 'hello'
-    } else {
-      history.today = [...history.today, kind]
-      history.last = kind
-    }
-    const value = JSON.stringify({ day, history })
-    this.memoryHistory = value
-    try {
-      this.deps.greetingStore?.save(value)
-    } catch {
-      // Storage refused: kept in memory for this page.
-    }
-  }
-
   /** As `LiveClient.mergedCard`: one car card per car, one diagram card per view. */
   private mergedCard(card: Card | undefined): Card | undefined {
     if (!card) return undefined
@@ -1080,22 +1142,5 @@ export class CascadeClient {
       return card
     }
     return card
-  }
-}
-
-function micNotice(kind: 'denied' | 'unavailable' | 'lost'): Notice {
-  switch (kind) {
-    case 'denied':
-      return {
-        kind: 'mic-denied',
-        text: 'The microphone is blocked for this app. To talk, allow the microphone for LEGION in your device or browser settings, then try again. Typing still works.',
-      }
-    case 'lost':
-      return {
-        kind: 'mic-lost',
-        text: 'The microphone stopped, so nobody is listening. Tap the mic to talk again. Typing still works.',
-      }
-    default:
-      return { kind: 'mic-unavailable', text: "A microphone couldn't be opened on this device. Typing still works." }
   }
 }

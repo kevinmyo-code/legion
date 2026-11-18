@@ -8,12 +8,12 @@ import { orbMode } from '@/components/assistant/orb'
 import { VoiceOrb } from '@/components/assistant/voice-orb'
 
 /**
- * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"; since
- * 2026-11-06 about 30 page loads and one entry, and the one outside visitor heard a 16 s opening
- * and left after two turns). One large orb and one line; the tap that opens the audio is the tap
- * that enters the visit, and the opening is about five seconds. Under the orb, for people who
+ * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
+ * spoken opening and a page to read before talking lose people, so: one large orb and one line;
+ * the tap that opens the audio is the tap that enters the visit, and the opening is about five
+ * seconds. Under the orb, for people who
  * cannot talk: tappable questions answered aloud, the one-minute tour, captions always on, and a
- * box to type. The full recording notice sits by the mic. A live strip shows what the engine is
+ * box to type (answered aloud too, and an open conversation carries on after it). The full recording notice sits by the mic. A live strip shows what the engine is
  * doing (tool, how long, the turn's estimated cost). The ask (resume, contact) stays on screen.
  * Mobile first: one column at 360 px.
  */

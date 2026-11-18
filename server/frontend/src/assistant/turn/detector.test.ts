@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { BASE_MS, EARLY_MS } from './eot-policy'
-import { loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
+import { MAX_TURN_SAMPLES, loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
 import { chunks, concat, echo, over, silence, speech } from './fixtures'
 import type { FromWorker, ToWorker } from './turn.worker'
 import { SILENCE_MS } from '../endpointer'
@@ -126,6 +126,16 @@ describe('loadTurnDetector', () => {
     expect(detector!.smartAvailable).toBe(true)
   })
 
+  it('loads the second model only once the first is ready, so the runtime wasm is fetched once', async () => {
+    const { makeWorker, made } = fakeWorkers()
+    const pending = loadTurnDetector({ makeWorker, sileroUrl: '/turn/s.onnx', smartUrl: '/turn/t.onnx' }, 1000)
+    expect(made).toHaveLength(1)
+    const detector = await pending
+    if (detector) opened.push(detector)
+    expect(made).toHaveLength(2)
+    expect(detector!.smartAvailable).toBe(true)
+  })
+
   it('falls back to the energy threshold when Silero is too slow here', async () => {
     const { detector, made } = await load({ sileroMs: 40 })
     expect(detector).toBeNull()
@@ -139,6 +149,42 @@ describe('loadTurnDetector', () => {
 })
 
 describe('the turn (speech, then silence)', () => {
+  it('a turn over the cap keeps its end, as the upload does: the last words, not the first', async () => {
+    const { detector } = await load()
+    const seen: Int16Array[] = []
+    detector!.setHandlers({
+      onStart: () => {},
+      onEarly: () => {},
+      onResumed: () => {},
+      onEnd: (audio) => seen.push(audio),
+      onBargeIn: () => {},
+      onVerdict: () => {},
+    })
+    for (const c of chunks(concat(speech(29_000), silence(1_000)))) detector!.push(c, true, false)
+    await flush()
+    await flush()
+    expect(seen).toHaveLength(1)
+    expect(seen[0].length).toBeLessThanOrEqual(MAX_TURN_SAMPLES)
+    // It ends in the silence that ended it.
+    expect(Array.from(seen[0].subarray(seen[0].length - 512)).every((v) => v === 0)).toBe(true)
+  })
+
+  it('a reset forgets the pre-roll heard while not listening, windows still at the model included', async () => {
+    const control = (await load()).detector!
+    const expected = watch(control)
+    await play(control, concat(speech(1200), silence(1000)), true, false)
+    const { detector } = await load()
+    const seen = watch(detector!)
+    // The reply's tail, heard while the page ignored the mic (half-duplex): 600 ms answered by
+    // the model, then 200 ms still at it when the page starts listening again.
+    await play(detector!, echo(600), false, false)
+    for (const c of chunks(echo(200))) detector!.push(c, false, false)
+    detector!.reset()
+    await play(detector!, concat(speech(1200), silence(1000)), true, false)
+    expect(seen.ends).toHaveLength(1)
+    expect(seen.ends[0].samples).toBe(expected.ends[0].samples)
+  })
+
   it('starts on speech, transcribes early at 300 ms, and ends at the base silence', async () => {
     const { detector } = await load()
     const seen = watch(detector!)

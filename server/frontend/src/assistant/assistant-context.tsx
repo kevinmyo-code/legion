@@ -88,18 +88,19 @@ export function useCompanionRead() {
  * Which engine this caller's assistant runs on (ADR 0102), and what the cascade needs to know.
  * The server decides per role; the other engine's door refuses.
  */
+export const ENGINE_QUERY = {
+  queryKey: ['assistant', 'engine'],
+  queryFn: async () => {
+    const { data, response } = await api.GET('/api/assistant/session')
+    if (!data) throw new Error(`GET /api/assistant/session answered ${response.status}`)
+    return data
+  },
+  retry: false,
+  staleTime: Infinity,
+} as const
+
 export function useAssistantEngine(enabled = true) {
-  return useQuery({
-    enabled,
-    queryKey: ['assistant', 'engine'],
-    queryFn: async () => {
-      const { data, response } = await api.GET('/api/assistant/session')
-      if (!data) throw new Error(`GET /api/assistant/session answered ${response.status}`)
-      return data
-    },
-    retry: false,
-    staleTime: Infinity,
-  })
+  return useQuery({ ...ENGINE_QUERY, enabled })
 }
 
 export function AssistantProvider({
@@ -174,6 +175,7 @@ export function AssistantProvider({
           continueTurn: () => continueRef.current ?? null,
           sessionLimit: () => limitRef.current ?? null,
           prepare: () => voiceFirstRef.current!.prepare(),
+          speakTyped: true,
         })
       : new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',

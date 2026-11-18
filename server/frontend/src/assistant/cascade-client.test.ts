@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { STILL_BUSY } from './cascade-words'
 import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type TurnRequest, type TurnStart } from './cascade-client'
 import type { AssistantClient } from './client'
 import type { RecordEvent, RecordTransport } from './conversation-record'
 import { MAX_UTTERANCE_MS, SILENCE_MS, WINDOW_MS } from './endpointer'
 import { pcm16ToBase64 } from './pcm'
+import { FIRST_EVENT_MS, TURN_MS } from './turn-deadline'
+import { MAX_UTTERANCE_SAMPLES } from './utterance'
 import type { SseEvent } from './sse'
 import { FakeAudio, settle } from '../test/fake-live'
 
@@ -39,12 +42,13 @@ function greeting(text = 'Essay still waiting, huh?', kind = 'due'): TurnStart {
   }
 }
 
-function build(answers: TurnStart[] = [], options: { visitor?: boolean } = {}) {
+function build(answers: TurnStart[] = [], options: { visitor?: boolean; speakTyped?: boolean } = {}) {
   const audio = new FakeAudio()
   const requests: TurnRequest[] = []
   const signals: AbortSignal[] = []
   const recorded: RecordEvent[] = []
   const store: { value: string | null } = { value: null }
+  const cancels: string[] = []
   const record: RecordTransport = {
     upload: async (_id, events) => {
       recorded.push(...events)
@@ -59,6 +63,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean } = {}) {
   })
   const deps: CascadeDeps = {
     startTurn,
+    cancelTurn: (id) => cancels.push(id),
     audio: () => audio,
     now: () => Date.now(),
     utcOffsetMinutes: () => -300,
@@ -69,6 +74,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean } = {}) {
     companionName: 'Alfred',
     sessionMinutes: null,
     endOnHidden: () => true,
+    ...(options.speakTyped ? { speakTyped: true } : {}),
     ...(options.visitor
       ? {
           openingTurn: () => '(The visitor just joined the demo.)',
@@ -78,7 +84,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean } = {}) {
       : {}),
   })
   client.attach()
-  return { client, audio, requests, signals, startTurn, recorded, store }
+  return { client, audio, requests, signals, startTurn, recorded, store, cancels }
 }
 
 function feed(audio: FakeAudio, chunk: Int16Array, ms: number) {
@@ -259,6 +265,19 @@ describe('CascadeClient', () => {
     expect(requests).toHaveLength(2)
   })
 
+  it('an utterance at the cap is sent within the engine cap, its start (the pre-roll) dropped', async () => {
+    const { client, audio, requests } = build([greeting()])
+    await open(client, audio)
+    feed(audio, QUIET, 400)
+    feed(audio, LOUD, MAX_UTTERANCE_MS + 40)
+    await settle()
+    const sent = requests[1].audio!
+    expect(sent.length).toBe(MAX_UTTERANCE_SAMPLES)
+    // The quiet lead-in went; the speech, to its last chunk, is all there.
+    expect(sent[0]).toBe(3000)
+    expect(sent[sent.length - 1]).toBe(3000)
+  })
+
   it('answers a typed turn in text, with the opener ahead of a visitor first message', async () => {
     const { client, requests, audio } = build([{ ok: true, events: stream(reply('Nothing is on.', 'Anything else?')) }], {
       visitor: true,
@@ -266,11 +285,50 @@ describe('CascadeClient', () => {
     client.send('What is on today?')
     await settle()
     expect(requests[0].text).toBe('What is on today?')
+    expect(requests[0].spoken).toBeUndefined()
     expect(requests[0].preface).toBe('(The visitor just joined the demo.)')
     const lines = client.getState().lines
     expect(lines[1]).toMatchObject({ text: 'Nothing is on. Anything else?', via: 'typed', open: false })
     expect(audio.played).toEqual([])
     expect(client.getState().mic).toBe('off')
+  })
+
+  it('a turn typed into an open voice conversation is answered aloud, and listening carries on', async () => {
+    const said: SseEvent[] = [
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } },
+      { type: 'heard', data: { text: 'What is on today?' } },
+      { type: 'sentence', data: { text: 'Nothing is on.' } },
+      { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([5])), rate: 24000 } },
+      { type: 'done', data: { status: 'done' } },
+    ]
+    const { client, audio, requests } = build([greeting(), { ok: true, events: stream(said) }])
+    await open(client, audio)
+    client.send('What is on today?')
+    await settle()
+    expect(requests[1]).toMatchObject({ text: 'What is on today?', spoken: true })
+    expect(audio.played).toHaveLength(2)
+    // The typed line once: the engine's `heard` of it draws no second one.
+    const mine = client.getState().lines.filter((l) => l.kind === 'me')
+    expect(mine).toEqual([expect.objectContaining({ text: 'What is on today?', via: 'typed' })])
+    drained(audio)
+    expect(client.getState().mic).toBe('on')
+    expect(client.getState().activity).toBe('listening')
+  })
+
+  it('on the voice stage (speakTyped) a typed turn is answered aloud with no conversation open', async () => {
+    const said: SseEvent[] = [
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } },
+      { type: 'sentence', data: { text: 'He builds things.' } },
+      { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([5])), rate: 24000 } },
+      { type: 'done', data: { status: 'done' } },
+    ]
+    const { client, audio, requests } = build([{ ok: true, events: stream(said) }], { speakTyped: true })
+    client.send('Who is he?')
+    await settle()
+    expect(requests[0]).toMatchObject({ text: 'Who is he?', spoken: true })
+    expect(audio.played).toHaveLength(1)
+    // The microphone was never opened by typing.
+    expect(audio.micOpen).toBe(false)
   })
 
   it("a visitor's later conversation greets with the continue line", async () => {
@@ -320,6 +378,198 @@ describe('CascadeClient', () => {
     client.send('Hi.')
     await settle()
     expect(client.getState().notice).toEqual({ kind: 'throttled', text: "Today's demo budget is used up." })
+  })
+
+  it.each([
+    [409, 'Refused here.'],
+    [429, 'Refused here.'],
+    [503, 'Refused here.'],
+    [401, 'You are signed out, so nothing was asked. Sign in again.'],
+    [403, 'You are signed out, so nothing was asked. Sign in again.'],
+  ])('a %i refusal settles: mic let go, the tone, the words on screen, and a tap starts again', async (status, words) => {
+    const { client, audio, requests } = build([{ ok: false, status, detail: 'Refused here.' }])
+    await client.startVoice()
+    await settle()
+    expect(audio.micOpen).toBe(false)
+    expect(client.getState().mic).toBe('off')
+    expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+    // Once the closing tone has played, nothing is going on.
+    drained(audio)
+    expect(client.getState().activity).toBe('idle')
+    expect(client.getState().notice?.text).toBe(words)
+    await client.startVoice()
+    await settle()
+    expect(requests).toHaveLength(2)
+    expect(requests[1].greet).toBe(true)
+    expect(audio.micOpen).toBe(true)
+  })
+
+  it('a refusal mid-conversation lets the mic go too', async () => {
+    const { client, audio } = build([greeting(), { ok: false, status: 429, detail: "Today's demo budget is used up." }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    expect(audio.micOpen).toBe(false)
+    expect(client.getState().notice?.text).toBe("Today's demo budget is used up.")
+  })
+
+  it.each([
+    ['no first event', [] as SseEvent[], FIRST_EVENT_MS],
+    ['a stream that stops', [{ type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }] as SseEvent[], TURN_MS],
+  ])('a stalled turn (%s) is stopped: aborted, the words on screen, the mic let go', async (_name, before, ms) => {
+    async function* stalled(): AsyncGenerator<SseEvent> {
+      yield* before
+      await new Promise(() => {})
+    }
+    const { client, audio, signals } = build([greeting(), { ok: true, events: stalled() }])
+    await open(client, audio)
+    vi.useFakeTimers()
+    try {
+      feed(audio, LOUD, 300)
+      feed(audio, QUIET, SILENCE_MS + 20)
+      await vi.advanceTimersByTimeAsync(ms - 100)
+      expect(client.getState().activity).toBe('thinking')
+      expect(signals[1].aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(signals[1].aborted).toBe(true)
+      expect(audio.micOpen).toBe(false)
+      expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+      drained(audio)
+      expect(client.getState().activity).toBe('idle')
+      expect(client.getState().notice?.kind).toBe('engine-unreachable')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a stalled tapped question with nothing open is stopped too, not left thinking', async () => {
+    async function* silent(): AsyncGenerator<SseEvent> {
+      await new Promise(() => {})
+    }
+    const { client, signals } = build([{ ok: true, events: silent() }])
+    vi.useFakeTimers()
+    try {
+      client.ask('Tell me about Kevin.')
+      await vi.advanceTimersByTimeAsync(FIRST_EVENT_MS + 100)
+      expect(signals[0].aborted).toBe(true)
+      expect(client.getState().activity).not.toBe('thinking')
+      expect(client.getState().notice?.kind).toBe('engine-unreachable')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  const busy = (retryMs?: number): TurnStart => ({
+    ok: false,
+    status: 409,
+    detail: 'A turn is still running.',
+    code: 'busy',
+    ...(retryMs !== undefined ? { retryMs } : {}),
+  })
+
+  it('busy, then answered: the same turn is posted again after retry_ms, still thinking meanwhile', async () => {
+    const { client, requests } = build([busy(100), { ok: true, events: stream(reply('Fine.')) }])
+    vi.useFakeTimers()
+    try {
+      client.send('Hi.')
+      await vi.advanceTimersByTimeAsync(50)
+      expect(requests).toHaveLength(1)
+      expect(client.getState().activity).toBe('thinking')
+      await vi.advanceTimersByTimeAsync(100)
+      expect(requests).toHaveLength(2)
+      expect(requests[1]).toBe(requests[0])
+      expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'ai', text: 'Fine.' })
+      expect(client.getState().phase).not.toBe('ended')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('busy every time: gives up within the tries, says so, lets the mic go, and keeps the conversation', async () => {
+    const { client, audio, requests } = build([greeting(), busy(), busy(), busy(), busy(), busy(), busy()])
+    await open(client, audio)
+    vi.useFakeTimers()
+    try {
+      feed(audio, LOUD, 300)
+      feed(audio, QUIET, SILENCE_MS + 20)
+      await vi.advanceTimersByTimeAsync(7_000)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(requests).toHaveLength(1 + 5)
+    expect(client.getState().phase).not.toBe('ended')
+    expect(client.getState().ended).toBeNull()
+    expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: STILL_BUSY })
+    expect(audio.micOpen).toBe(false)
+    expect(client.getState().activity).toBe('idle')
+    // The next tap listens in the same conversation, without a new greeting.
+    await client.startVoice()
+    await settle()
+    expect(requests).toHaveLength(6)
+    expect(client.getState().mic).toBe('on')
+  })
+
+  it('a 409 coded time_limit still ends the conversation as the time limit', async () => {
+    const { client } = build(
+      [
+        { ok: true, events: stream(reply('Hi.')) },
+        { ok: false, status: 409, detail: 'Over.', code: 'time_limit' },
+      ],
+      { visitor: true },
+    )
+    client.send('Hi.')
+    await settle()
+    client.send('Still there?')
+    await settle()
+    expect(client.getState().phase).toBe('ended')
+    expect(client.getState().ended).toBe('Demo sessions last 5 minutes.')
+  })
+
+  it('an interrupt tells the engine once, with the aborted turn id', async () => {
+    async function* slow(): AsyncGenerator<SseEvent> {
+      yield { type: 'sentence', data: { text: 'A long answer.' } }
+      yield { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([1])), rate: 24000 } }
+      await new Promise(() => {})
+    }
+    const { client, audio, requests, cancels } = build([greeting(), { ok: true, events: slow() }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    client.interrupt()
+    client.interrupt()
+    expect(cancels).toEqual([requests[1].turnId])
+    expect(requests[1].turnId).not.toBe(requests[0].turnId)
+  })
+
+  it('a turn that has finished is never cancelled', async () => {
+    const { client, audio, cancels } = build([greeting()])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    drained(audio)
+    client.stopVoice()
+    client.dispose()
+    expect(cancels).toEqual([])
+  })
+
+  it('a disposed client tells the engine its turn is abandoned, and asks nothing else', async () => {
+    async function* stalled(): AsyncGenerator<SseEvent> {
+      await new Promise(() => {})
+    }
+    const { client, audio, requests, cancels } = build([greeting(), { ok: true, events: stalled() }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    client.dispose()
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    expect(cancels).toEqual([requests[1].turnId])
+    expect(requests).toHaveLength(2)
   })
 
   it('sends the browser record only what the engine cannot know', async () => {

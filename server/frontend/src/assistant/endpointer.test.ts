@@ -6,9 +6,9 @@ import { SseParser } from './sse'
 const LOUD = new Int16Array(320).fill(3000)
 const QUIET = new Int16Array(320)
 
-function run(endpointer: Endpointer, chunk: Int16Array, ms: number) {
+function run(endpointer: Endpointer, chunk: Int16Array, ms: number, speech?: boolean) {
   let verdict = 'listening'
-  for (let t = 0; t < ms && verdict === 'listening'; t += 20) verdict = endpointer.push(chunk)
+  for (let t = 0; t < ms && verdict === 'listening'; t += 20) verdict = endpointer.push(chunk, speech)
   return verdict
 }
 
@@ -26,6 +26,21 @@ describe('Endpointer', () => {
     e.push(LOUD)
     expect(run(e, QUIET, SILENCE_MS + 100)).toBe('listening')
     expect(e.heardSpeech).toBe(false)
+  })
+
+  it('with the models: steady noise the models call no speech still lets the window lapse', () => {
+    const e = new Endpointer()
+    // Late loud runs it again twice (spec 15), then it lapses on the clock.
+    expect(run(e, LOUD, 3 * WINDOW_MS + 100, false)).toBe('lapsed')
+    expect(e.heardSpeech).toBe(false)
+  })
+
+  it('with the models: their speech holds the window, starts the cap, and never ends the turn itself', () => {
+    const e = new Endpointer()
+    expect(run(e, QUIET, 400, false)).toBe('listening')
+    expect(run(e, QUIET, WINDOW_MS + SILENCE_MS, true)).toBe('listening')
+    expect(e.heardSpeech).toBe(true)
+    expect(run(e, QUIET, MAX_UTTERANCE_MS, true)).toBe('max')
   })
 
   it('the follow-up window lapses with no speech', () => {

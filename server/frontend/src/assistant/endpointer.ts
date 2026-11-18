@@ -59,8 +59,14 @@ export class Endpointer {
     return this.started
   }
 
-  /** One chunk at 16 kHz. Returns what to do now. */
-  push(pcm: Int16Array): Verdict {
+  /**
+   * One chunk at 16 kHz. Returns what to do now. `speech`, when the turn models are loaded, is
+   * whether they hear speech now: then only speech holds the window open and starts the cap, and
+   * energy only extends the window (spec 15). A fan or a TV above the energy line used to start
+   * "speech" and hold the window open for good (review 2026-11-17). The models end the turn
+   * themselves, so with `speech` given this never says `end`.
+   */
+  push(pcm: Int16Array, speech?: boolean): Verdict {
     const ms = (pcm.length / 16_000) * 1000
     this.elapsedMs += ms
     const voiced = rms(pcm) > VOICE_RMS
@@ -68,7 +74,7 @@ export class Endpointer {
       this.run += 1
       this.quietMs = 0
       this.lastLoudMs = this.elapsedMs
-      if (this.run >= ONSET_CHUNKS && !this.started) {
+      if (speech === undefined && this.run >= ONSET_CHUNKS && !this.started) {
         this.started = true
         this.speechStartMs = this.elapsedMs - this.run * ms
       }
@@ -76,9 +82,13 @@ export class Endpointer {
       this.run = 0
       this.quietMs += ms
     }
+    if (speech && !this.started) {
+      this.started = true
+      this.speechStartMs = this.elapsedMs - ms
+    }
     if (this.started) {
       if (this.elapsedMs - this.speechStartMs >= MAX_UTTERANCE_MS) return 'max'
-      if (this.quietMs >= SILENCE_MS) return 'end'
+      if (speech === undefined && this.quietMs >= SILENCE_MS) return 'end'
       return 'listening'
     }
     const deadline = this.windowStart + WINDOW_MS
