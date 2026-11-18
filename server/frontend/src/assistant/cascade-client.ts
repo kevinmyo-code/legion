@@ -197,6 +197,10 @@ export class CascadeClient {
   private heardLineId: number | null = null
   private spokenTurns = 0
   private prepared = false
+  /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
+  private entering = false
+  /** The mic's permission settled for the conversation being opened. */
+  private micReady = false
   private preparing: Promise<boolean> | null = null
   /** The page let go of this client: it never asks the engine for anything again. */
   private disposed = false
@@ -336,11 +340,14 @@ export class CascadeClient {
   startVoice(): Promise<void> {
     if (this.state.phase === 'ended' || this.disposed) return Promise.resolve()
     if (this.voiceOpen) {
+      // Taps while the visit is being entered are ignored: a double tap on first contact is one.
+      if (this.entering) return Promise.resolve()
       if (this.playing || this.awaiting) this.cutReply('barge_in')
       this.listen()
       return Promise.resolve()
     }
     if (this.state.mic !== 'off') return Promise.resolve()
+    this.micReady = false
     this.set({ mic: 'starting', notice: null })
     const generation = ++this.micGeneration
     let opened: Promise<void>
@@ -366,7 +373,8 @@ export class CascadeClient {
       () => {
         if (generation !== this.micGeneration) return
         this.rec({ kind: 'mic_open', reason: 'tap' })
-        if (this.state.mic === 'starting') this.set({ mic: 'off' })
+        this.micReady = true
+        if (this.state.mic === 'starting' && !this.entering) this.set({ mic: 'off' })
       },
       (error: unknown) => {
         if (generation !== this.micGeneration) return
@@ -453,6 +461,7 @@ export class CascadeClient {
     if (this.options.prepare && !this.prepared) {
       const generation = this.turnGeneration
       this.awaiting = true
+      this.entering = true
       this.refresh()
       this.preparing ??= this.options
         .prepare()
@@ -463,8 +472,11 @@ export class CascadeClient {
           return ok
         })
       const ok = await this.preparing
+      this.entering = false
       if (generation !== this.turnGeneration || this.disposed) return
       this.awaiting = false
+      // The orb held "starting" through the entry; the mic is ready if its permission settled.
+      if (this.state.mic === 'starting' && this.micReady) this.set({ mic: 'off' })
       this.refresh()
       if (!ok) {
         failed?.()
@@ -476,6 +488,7 @@ export class CascadeClient {
 
   /** A tap while listening closes the conversation (spec 21); while it speaks, it interrupts. */
   stopVoice() {
+    if (this.entering) return
     if (this.listening || this.state.mic === 'starting') {
       this.close(false)
       return
@@ -485,7 +498,7 @@ export class CascadeClient {
 
   /** Stop the reply now, its audio and the engine's turn, and listen again (spec 20). */
   interrupt() {
-    if (!this.playing && !this.awaiting) return
+    if (this.entering || (!this.playing && !this.awaiting)) return
     this.cutReply('barge_in')
     if (this.voiceOpen) this.listen()
     this.refresh()

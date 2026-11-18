@@ -385,31 +385,26 @@ describe('the demo', () => {
     expect(t.requests[0].greet).toBe(true)
   })
 
-  it('a second tap during the entry cancels the greeting: no greeting over a listening mic', async () => {
+  it('taps during the entry are ignored: a double (or triple) tap is one conversation, one greeting', async () => {
     let enter: (ok: boolean) => void = () => {}
     const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>((resolve) => (enter = resolve)) })
     void t.client.startVoice()
     await settle()
+    expect(t.client.getState().mic).toBe('starting')
     void t.client.startVoice()
-    expect(t.client.getState().mic).toBe('on')
-    enter(true)
-    await settle()
-    expect(t.requests).toHaveLength(0)
-    expect(t.client.getState().mic).toBe('on')
-  })
-
-  it('a third tap during the entry closes, and no greeting follows', async () => {
-    let enter: (ok: boolean) => void = () => {}
-    const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>((resolve) => (enter = resolve)) })
-    void t.client.startVoice()
-    await settle()
-    void t.client.startVoice()
+    t.client.interrupt()
     t.client.stopVoice()
+    expect(t.client.getState().mic).toBe('starting')
     enter(true)
     await settle()
-    expect(t.requests).toHaveLength(0)
-    expect(t.audio.micOpen).toBe(false)
-    expect(t.audio.played).toHaveLength(0)
+    expect(t.requests).toHaveLength(1)
+    expect(t.requests[0].greet).toBe(true)
+    expect(t.audio.micOpen).toBe(true)
+    expect(t.client.getState().lines.some((l) => l.kind === 'sys' && l.text === CONVERSATION_CLOSED)).toBe(false)
+    // After the greeting has started, a tap behaves normally (it interrupts).
+    t.audio.handlers?.onPlaying(false)
+    await settle()
+    expect(t.client.getState().mic).toBe('on')
   })
 
   it('a client the page let go of during the entry asks the engine for nothing', async () => {
