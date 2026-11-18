@@ -30,11 +30,11 @@ NOT_SHARED_LINE = f"{NOT_SHARED}."
 CAP = 5
 
 # The only lines the model may add, by key. A closing line that names a thing this visit cannot
-# show is never said (`offer_line`).
+# show is never said (`offer_line`). No diagram offer: a "yes" would have the model narrate his job
+# over the diagram's labels in its own words (blind review r2); code-spoken captions come first.
 OFFERS = {
     "resume": "Want to see his résumé?",
     "contact": "Want to know how to reach him?",
-    "diagram": "Want the diagram for that?",
 }
 OFFER_KEYS = ("none", *OFFERS)
 
@@ -218,9 +218,7 @@ def speak(
     return Spoken(lines, tuple(s.title for s in kept), _more_on(left) if left else None)
 
 
-def offer_line(
-    offer: str | None, *, has_resume: bool, has_contact: bool, has_diagram: bool = False
-) -> str | None:
+def offer_line(offer: str | None, *, has_resume: bool, has_contact: bool) -> str | None:
     """The model's chosen closing line, only when this visit can show what it offers."""
-    can = {"resume": has_resume, "contact": has_contact, "diagram": has_diagram}
+    can = {"resume": has_resume, "contact": has_contact}
     return OFFERS[offer] if can.get(offer or "") else None

@@ -112,8 +112,7 @@ SPOKEN_DESCRIPTION = (
     "call it with no sections, never with the nearest ones: "
     f'code then says "{NOT_SHARED}." For more of a long section, call it again with rest_of set '
     "to that id (and from_sentence when the history says where it stopped). offer adds one "
-    "closing question (resume, contact, or diagram for his work on a project) when it would "
-    "help. Never "
+    "closing question (resume or contact) when it would help. Never "
     "use the demo household's data to answer about Kevin; that household is made up. This tool "
     "is for facts ABOUT KEVIN only. A general question that merely comes up - what a visa such as "
     "the H-1B1 is, what a term means, how something works - is not about Kevin: never call this "
@@ -152,13 +151,6 @@ def spoken_for(user) -> EngineTool:
     return dataclasses.replace(ABOUT_KEVIN_SPOKEN, input_schema=schema, description=description)
 
 
-def _has_diagram(user) -> bool:
-    """Whether this visitor can be shown any diagram (`diagrams.catalogue.available`)."""
-    from diagrams.catalogue import VIEWS, available
-
-    return any(available(user, project) for project in VIEWS)
-
-
 def _about_kevin_spoken(request, arguments: dict) -> ToolResult:
     user = getattr(request, "user", None)
     row, sections, ordered = _row_and_sections(user)
@@ -178,7 +170,6 @@ def _about_kevin_spoken(request, arguments: dict) -> ToolResult:
         arguments.get("offer"),
         has_resume=row.resume is not None,
         has_contact=any(links.values()),
-        has_diagram=_has_diagram(user),
     )
     lines = [*spoken.lines, *([closing] if closing else [])]
     if spoken.read:

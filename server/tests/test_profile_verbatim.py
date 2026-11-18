@@ -23,7 +23,7 @@ from agents.runtime.model import FakeModel, call, say
 from assistant import cascade, tour
 from demo import profile
 from demo.profile import NOT_SHARED_LINE, OFFERS, Section, speak, split_sentences
-from demo.tools import ABOUT_KEVIN, spoken_for
+from demo.tools import ABOUT_KEVIN, ABOUT_KEVIN_SPOKEN, spoken_for
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     _clean,
     _events,
@@ -691,21 +691,31 @@ def test_a_write_in_the_same_round_is_confirmed_in_code_words(loaded, visitor, e
     assert _of(events, "done")[0]["writes_ran"] is True
 
 
-def test_a_question_about_his_work_is_his_words_first_and_the_diagram_is_offered():
+def test_a_question_about_his_work_is_his_words_and_no_diagram_is_offered():
+    # A "yes" to a diagram offer would have the model narrate his job over the diagram's labels in
+    # its own words (blind review r2): no diagram is offered for his work until captions are code's.
     from assistant.prompt import RECRUITER_FRAME, cascade_recruiter_frame
 
     frame = cascade_recruiter_frame()
     assert "what Kevin did on a project or job, or how he builds" not in frame
-    assert "call about_kevin first, never show_diagram, and pass offer=diagram" in frame
+    assert "call about_kevin first and offer no diagram" in frame
+    assert "offer=diagram" not in frame
     # Live keeps it as it was (`test_profile_live_unchanged.py` checks the bytes).
     assert "what Kevin did on a project or job, or how he builds" in RECRUITER_FRAME
 
 
-def test_the_diagram_offer_is_said_only_when_a_diagram_can_be_shown():
-    assert profile.offer_line("diagram", has_resume=False, has_contact=False, has_diagram=True) == (
-        "Want the diagram for that?"
-    )
+def test_the_offers_are_resume_and_contact_only():
+    assert set(profile.OFFERS) == {"resume", "contact"}
     assert profile.offer_line("diagram", has_resume=True, has_contact=True) is None
+    assert "diagram" not in ABOUT_KEVIN_SPOKEN.input_schema["properties"]["offer"]["enum"]
+    assert "diagram" not in ABOUT_KEVIN_SPOKEN.description
+
+
+def test_an_offer_of_a_diagram_is_refused_and_asked_again(loaded, visitor, engine):
+    engine.model = FakeModel([ak("experience", offer="diagram"), ak("availability")])
+    events = _events(_post(visitor, text="What did he do at his last job?"))
+    assert [s["text"] for s in _of(events, "sentence")] == AVAILABILITY
+    assert "Want the diagram for that?" not in str(events)
 
 
 def test_his_status_gets_the_not_shared_line_and_a_visa_type_is_answered(loaded, visitor, engine):

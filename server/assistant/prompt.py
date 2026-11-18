@@ -234,8 +234,8 @@ CASCADE_ABOUT_KEVIN = (
         "yourself: code reads his own words aloud and that is the answer; you are never shown "
         "them. When none of its sections covers the question, call it with no sections and code "
         "says \"Kevin hasn't shared that here; ask him directly.\" A question about what Kevin "
-        "did, his role or a job of his is about him too: call about_kevin first, never "
-        "show_diagram, and pass offer=diagram so code offers the diagram for it.",
+        "did, his role or a job of his is about him too: call about_kevin first and offer no "
+        "diagram; show_diagram only when they ask for a diagram.",
     ),
     (
         "answer what they are and how he built them from about_kevin, never from legion_docs",
