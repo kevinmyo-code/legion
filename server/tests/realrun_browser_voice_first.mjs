@@ -9,8 +9,8 @@
 //  vf-echo-long  a long question; while its answer still streams and plays, the mic hears answer-like
 //            words at a quarter level: no turn should be posted, or, if one is, it carries
 //            barge_in=1.
-//  vf-barge  the demo link; a question, then the person talks over the long answer: playback stops,
-//            the engine's turn is cancelled, what they said is the next turn.
+//  vf-barge  half-duplex (voice barge-in deferred): a question, words spoken over its long answer
+//            (ignored: no stop, nothing posted), then a question after the answer ends (answered).
 //  vf-tap   a question, then a tap on the orb while the answer plays and at once a typed question:
 //            the cancel is posted (204) and the new turn is answered, not refused busy.
 //  vf-eot    a question, timed: how long after the speech ends the turn is posted (models).
@@ -206,22 +206,23 @@ if (A.scenario === 'vf-echo-long') {
 }
 
 if (A.scenario === 'vf-barge') {
-  // A question (in the WAV after the opening), its long answer, then the person talks over it.
-  const asked = await waitFor(async () => turns.some((t) => (t.kind === 'audio' || t.kind === 'spoken-text') && t.complete !== undefined), 90000)
-  const q = turns.find((t) => t.kind === 'audio' || t.kind === 'spoken-text')
+  // Half-duplex (2026-11-17: voice barge-in deferred): a question, its long answer, words spoken
+  // over the answer (ignored: no stop, nothing posted), then a question after it ends (answered).
+  const spoken = () => turns.filter((t) => t.kind === 'audio' || t.kind === 'spoken-text')
+  const asked = await waitFor(async () => spoken().length >= 1, 90000)
+  const q = spoken()[0]
   const playing = await waitFor(async () => (await audit()).buffers.some((b) => q?.at !== undefined && b.t > q.at), 60000)
-  const overlapped = await waitFor(async () => turns.filter((t) => t.kind === 'audio' || t.kind === 'spoken-text').length >= 2, 90000)
+  const later = await waitFor(async () => spoken().length >= 2 && spoken()[1].complete, 150000)
   await sync()
   const a = await audit()
-  const second = turns.filter((t) => t.kind === 'audio' || t.kind === 'spoken-text')[1]
-  const stopsBefore = a.stops.filter((t) => q?.at !== undefined && t > q.at && (second?.at === undefined || t < second.at))
-  check('barge_in_stops_playback_and_cancels_turn', asked && playing && overlapped && stopsBefore.length > 0 && (q.complete === false || Boolean(q.failed) || q.done?.status === 'interrupted' || !q.complete), {
-    first: { heard: q?.heard, said: (q?.said ?? '').slice(0, 120), failed: q?.failed ?? null, complete: q?.complete },
-    second: { heard: second?.heard }, stops: stopsBefore.length,
+  const second = spoken()[1]
+  const stopsDuring = a.stops.filter((t) => q?.at !== undefined && t > q.at && (second?.at === undefined || t < second.at))
+  check('speech_during_a_reply_is_ignored', asked && playing && stopsDuring.length === 0 && Boolean(q?.complete) && !/when is the car/i.test(second?.heard ?? ''), {
+    first: { heard: q?.heard, complete: q?.complete, said: (q?.said ?? '').slice(0, 100) }, stops: stopsDuring.length,
+    secondHeard: second?.heard ?? null,
   })
-  await waitFor(async () => second?.complete, 60000)
-  check('barge_in_posts_a_cancel_and_the_next_turn_is_answered', cancels.some((c) => c.status === 204) && second?.status === 200 && Boolean(second?.said), {
-    cancels, second: { status: second?.status, said: (second?.said ?? '').slice(0, 160), done: second?.done },
+  check('speech_after_the_reply_is_answered', later && second?.status === 200 && Boolean(second?.said), {
+    second: { heard: second?.heard, status: second?.status, said: (second?.said ?? '').slice(0, 120) },
   })
   await shot('barge')
 }

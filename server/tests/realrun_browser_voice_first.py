@@ -68,7 +68,14 @@ def _wavs() -> tuple[dict[str, Path], dict]:
     files = {
         # The opening heard back at a quarter of its level while it plays (no person speaking).
         "vf-echo": _silence(0.6) + _scaled(opening, 0.25) + _silence(20.0),
-        "vf-barge": _silence(lead) + long_q + _silence(9.0) + barge + _silence(25.0),
+        # Words over the answer (ignored), then a question once the answer has ended (answered).
+        "vf-barge": _silence(lead)
+        + long_q
+        + _silence(9.0)
+        + barge
+        + _silence(45.0)
+        + spend
+        + _silence(25.0),
         "vf-tap": _silence(lead) + long_q + _silence(40.0),
         "vf-echo-long": _silence(lead)
         + long_q
