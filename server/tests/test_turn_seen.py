@@ -100,3 +100,35 @@ def test_a_turn_that_sent_done_is_a_duplicate(visitor, engine):
     _events(_post(visitor, text="Hi.", turn_id=turn_id))
     again = _post(visitor, text="Hi.", turn_id=turn_id)
     assert again.status_code == 409 and again.data["code"] == "duplicate"
+
+
+def test_a_failed_mark_is_tried_again_then_logged_loudly(
+    member, monkeypatch, caplog, household_user
+):
+    """Round 4 R4: losing the mark after a committed write lets a re-send repeat the write, so a
+    failure is not swallowed: tried once more, then logged as an error."""
+    import logging
+
+    from django.db import DatabaseError
+
+    from assistant import views
+    from assistant.models import TurnSeen
+
+    real = TurnSeen.objects.get_or_create
+    fails = {"left": 1}
+
+    def flaky(**kwargs):
+        if fails["left"]:
+            fails["left"] -= 1
+            raise DatabaseError("connection reset")
+        return real(**kwargs)
+
+    monkeypatch.setattr(TurnSeen.objects, "get_or_create", flaky)
+    once = uuid.uuid4()
+    views._mark_answered(household_user, once)
+    assert TurnSeen.objects.filter(turn_id=once).exists()
+
+    fails["left"] = 2
+    caplog.set_level(logging.WARNING)
+    views._mark_answered(household_user, uuid.uuid4())
+    assert any(r.levelno >= logging.ERROR and "mark" in r.getMessage() for r in caplog.records)
