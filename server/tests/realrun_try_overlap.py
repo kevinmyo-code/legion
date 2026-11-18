@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from demo.models import DemoCode
+from tests.realrun_web_cascade import real  # noqa: F401 - fixture (key, real speech)
 from tests.test_recruiter_content import write_folder
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -28,7 +29,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 HERE = Path(__file__).resolve().parent
 
 
-def test_try_overlap(live_server, tmp_path, monkeypatch):
+def test_try_overlap(live_server, tmp_path, monkeypatch, real):  # noqa: F811
     from django.core.management import call_command
 
     # The suite pins Live (conftest); the voice-first page is the cascade's (the code default).
