@@ -1337,6 +1337,7 @@ class AssistantTurnView(_AssistantView):
                 greeting_history=_greeting_history(data.get("greeting_history")),
                 spoken=bool(data.get("spoken")) and bool(text),
                 tour_beat=tour_beat,
+                heard_before=web_conversation.utterances_received(row),
             )
             response = StreamingHttpResponse(
                 _turn_sse(

@@ -964,6 +964,9 @@ class TurnInput:
     # A text turn the page transcribed early and sends as spoken (the phone's speculation, spec
     # 33 adapted): answered aloud like an utterance, recorded as spoken.
     spoken: bool = False
+    # Utterances this conversation received before this one, answered or not (round 3 speech
+    # S5): only the first may get the acknowledgement.
+    heard_before: int = 0
     # The one-minute tour (`assistant/tour.py`): the beat to play, or None.
     tour_beat: int | None = None
 
@@ -1346,7 +1349,7 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("robotic", ROBOTIC_ACK, False)
         return
-    if speak and door.turn == 0 and needs_work(words):
+    if speak and turn_input.heard_before == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
         # while the model's first round runs. Only on the first utterance after the tap, which is
         # for the assistant by construction (round 2 speech review 5): on any later turn nothing

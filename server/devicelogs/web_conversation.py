@@ -409,6 +409,19 @@ def record_lines(request, conversation_id, stamped: list[tuple]) -> None:
         log.warning("conversation record: could not write a cascade turn", exc_info=True)
 
 
+def utterances_received(row: DeviceLog) -> int:
+    """How many turns other than the greeting this conversation has received, answered or not
+    (ignored side talk and no-speech turns included): one timing line each (round 3 speech S5)."""
+    from devicelogs.views import inflate_capped
+
+    body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace")
+    return sum(
+        1
+        for text in body.splitlines()
+        if "cascade_turn status=" in text and "cascade_turn status=greeting" not in text
+    )
+
+
 CUT_OFF_NOTE = "(They spoke over this reply and stopped it here.)"
 
 
