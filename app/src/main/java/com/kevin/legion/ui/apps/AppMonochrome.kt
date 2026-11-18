@@ -45,6 +45,10 @@ internal object AppMonochrome {
     private const val ALPHA_SHIFT = 24
     private const val ANDROID_13 = 33
 
+    /** An adaptive layer spans 108 units; 72 of them show. Drawn at 108/72 of the mark, the middle kept. */
+    private const val LAYER_SPAN = 108
+    private const val VISIBLE_SPAN = 72
+
     /** Pure: which layer to flatten. */
     fun source(api: Int, adaptive: Boolean, hasMonochrome: Boolean): Source = when {
         adaptive && hasMonochrome && api >= ANDROID_13 -> Source.MONOCHROME
@@ -82,7 +86,7 @@ internal object AppMonochrome {
     }
 
     private fun layer(d: Drawable, px: Int): Bitmap {
-        val full = px * 3 / 2
+        val full = px * LAYER_SPAN / VISIBLE_SPAN
         val inset = (full - px) / 2
         val out = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)

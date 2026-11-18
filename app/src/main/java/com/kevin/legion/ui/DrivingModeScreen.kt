@@ -310,6 +310,9 @@ fun DrivingModeScreen(onExit: () -> Unit) {
 }
 
 /** Plain UI: the instrument-panel layout with no Room/OBD reference, see the file doc's state-holder split. */
+// Made internal for DayEditionScreensScreenshotTest (2026-11-18); its length and branching are the
+// baselined debt of the private function it was, unchanged.
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
 internal fun DrivingModeContent(
     vehicleName: String,

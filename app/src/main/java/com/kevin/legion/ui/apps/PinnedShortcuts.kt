@@ -92,6 +92,7 @@ internal object PinnedShortcutsAndroid {
     private const val TAG = "PinnedShortcuts"
 
     /** The request a CONFIRM_PIN_SHORTCUT intent carries, or null (not ours, or too old an Android). */
+    @Suppress("ReturnCount") // guard clauses, one exit each
     fun request(context: Context, intent: Intent?): PinRequest? {
         if (intent == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
         val apps = context.getSystemService(LauncherApps::class.java) ?: return null
@@ -103,6 +104,7 @@ internal object PinnedShortcutsAndroid {
      * [marks] by [iconKey]. Empty when LEGION is not the default home app (only the default launcher
      * may read shortcuts; the pins are kept and come back when it is the home app again).
      */
+    @Suppress("ReturnCount") // guard clauses, one exit each
     fun load(
         launcherApps: LauncherApps,
         profile: UserHandle,
