@@ -10,6 +10,8 @@ import { AssistantModals } from '@/components/assistant/assistant-modals'
 import { DIAGRAM_CARD } from '@/test/cards-seed'
 import { FakeAudio, settle } from '@/test/fake-live'
 
+import indexCss from '../../index.css?raw'
+
 import { QUESTION_CHIPS, VoiceStage } from './voice-stage'
 
 /**
@@ -72,5 +74,31 @@ describe('the voice stage with a card open over it', () => {
     expect(within(dialog).queryByRole('button', { name: 'Interrupt' })).not.toBeInTheDocument()
     // The keyboard stays in the dialog, on its Close.
     expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close' }))
+  })
+})
+
+/**
+ * Live demo, 2026-11-18 (Kevin, Chrome): "the orb and the top section scrolls with it so it overlaps
+ * on the other content below". The stage borrowed `rc-stage`, the phone section's sticky class, so
+ * it stayed pinned with no background over the captions, cards and notice scrolling under it. The
+ * stage scrolls away with the page: none of its own classes may be pinned by the stylesheet.
+ */
+function pinnedClasses(css: string): Set<string> {
+  const pinned = new Set<string>()
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/position\s*:\s*(sticky|fixed)/.test(match[2])) continue
+    for (const cls of match[1].matchAll(/\.([A-Za-z][\w-]*)/g)) pinned.add(cls[1])
+  }
+  return pinned
+}
+
+describe('the voice stage on the page', () => {
+  test('is not pinned by the stylesheet, so it never covers the content scrolling below it', () => {
+    stage(false)
+    const section = screen.getByRole('region', { name: 'Talk to the demo assistant' })
+    const pinned = pinnedClasses(indexCss)
+    expect(pinned.size).toBeGreaterThan(0)
+    const own = [section, ...Array.from(section.querySelectorAll('*'))].flatMap((el) => Array.from(el.classList))
+    expect(own.filter((cls) => pinned.has(cls))).toEqual([])
   })
 })
