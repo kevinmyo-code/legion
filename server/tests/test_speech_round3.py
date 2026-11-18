@@ -103,13 +103,15 @@ def _shape(body) -> str:
     return "legacy" if "prebuiltVoiceConfig" in voice else "new"
 
 
-def test_a_stray_400_fails_one_sentence_and_marks_nothing():
-    from assistant.speech import GeminiSpeech, SpeechFailure, Spoken
+def test_a_stray_400_marks_nothing_and_the_sentence_is_said_in_puck():
+    # Round 4 N3: a failed sentence is said once in Puck before giving up; nothing is marked.
+    from assistant.speech import GeminiSpeech, Spoken
 
     transport = _Voices(stray=2)
     speech = GeminiSpeech(lambda: "key", stt_model="stt", transport=transport)
-    with pytest.raises(SpeechFailure):
-        b"".join(speech.speak("Hello.", "en-gb-advisor-3", Spoken()))
+    first = Spoken()
+    assert b"".join(speech.speak("Hello.", "en-gb-advisor-3", first))
+    assert first.voice == "Puck"
     assert not speech.bad_voices
     stats = Spoken()
     assert b"".join(speech.speak("Again.", "en-gb-advisor-3", stats))
