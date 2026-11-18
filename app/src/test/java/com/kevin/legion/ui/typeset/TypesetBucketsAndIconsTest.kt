@@ -9,6 +9,9 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
@@ -197,6 +200,9 @@ class TypesetBucketsAndIconsTest {
     fun `a shortcut on the home row offers Remove shortcut, asks once, and has no Move`() {
         var removed = 0
         val tile = TypesetDockTile("We", "Weather board", note = "Browser", isShortcut = true)
+        // The orb animates forever, so the clock is driven by hand (the page is never idle otherwise).
+        composeTestRule.mainClock.autoAdvance = false
+        fun settle() = composeTestRule.mainClock.advanceTimeBy(FRAMES_MS)
         composeTestRule.setContent {
             SoftTheme {
                 androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(400.dp, 900.dp)) {
@@ -217,11 +223,18 @@ class TypesetBucketsAndIconsTest {
                 }
             }
         }
-        composeTestRule.onNodeWithText("Weather board").performTouchInput { longClick() }
+        settle()
+        // The fit ladder measures each tier in its own subcomposition; the page drawn is the last one.
+        // The long-press action itself: a gesture's long-press timer waits on the clock this test holds.
+        composeTestRule.onAllNodesWithText("Weather board").onLast()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        settle()
         composeTestRule.onNodeWithText("Move left").assertDoesNotExist()
         composeTestRule.onNodeWithText("Remove shortcut").performClick()
+        settle()
         assertEquals(0, removed)
         composeTestRule.onNodeWithText("Remove").performClick()
+        settle()
         assertEquals(1, removed)
     }
 
@@ -262,3 +275,6 @@ class TypesetBucketsAndIconsTest {
         composeTestRule.onNodeWithText("blocked").assertExists()
     }
 }
+
+/** How far the clock moves per step in the front-page test (the orb never idles). */
+private const val FRAMES_MS = 500L
