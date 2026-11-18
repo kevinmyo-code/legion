@@ -1,10 +1,20 @@
 import { asCard, mergeCar, type Card } from '@/components/assistant/cards/types'
 
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
+import {
+  CONVERSATION_CLOSED,
+  ENDED_LIMIT,
+  ENDED_LOCKED,
+  TONE_RATE,
+  UNREACHABLE,
+  closingTone,
+  micNotice,
+} from './cascade-words'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { Endpointer } from './endpointer'
+import { GreetingCaps } from './greeting-caps'
 import type { TurnDetector } from './turn/detector'
-import type { AssistantState, Line, Notice } from './live-client'
+import type { AssistantState, Line } from './live-client'
 import { base64ToPcm16 } from './pcm'
 import type { SseEvent } from './sse'
 
@@ -119,30 +129,13 @@ export interface CascadeOptions {
   prepare?: () => Promise<boolean>
 }
 
-export const CONVERSATION_CLOSED = 'Conversation closed'
-const ENDED_LOCKED = 'Conversation ended when the screen locked.'
-const ENDED_LIMIT = 'The conversation reached its time limit. Start a new one.'
-const UNREACHABLE = "Not answered: couldn't reach the engine. Nothing was changed."
 /** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
 const PREROLL_CHUNKS = 15
-/** The phone's closing tone (spec 17): 150 ms, half gain. */
-const TONE_MS = 150
-const TONE_HZ = 880
-const TONE_RATE = 24_000
+
+export { CONVERSATION_CLOSED, closingTone }
 
 type Draft<T> = T extends unknown ? Omit<T, 'id'> : never
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
-
-/** The phone's closing tone as 16-bit PCM. */
-export function closingTone(): Int16Array {
-  const n = Math.round((TONE_RATE * TONE_MS) / 1000)
-  const out = new Int16Array(n)
-  for (let i = 0; i < n; i++) {
-    const fade = Math.min(1, i / 240, (n - i) / 240)
-    out[i] = Math.round(0.5 * fade * 0x7fff * Math.sin((2 * Math.PI * TONE_HZ * i) / TONE_RATE))
-  }
-  return out
-}
 
 export class CascadeClient {
   private state: AssistantState
@@ -169,7 +162,6 @@ export class CascadeClient {
   private limitTimer: ReturnType<typeof setTimeout> | null = null
   private replyFrom: number | null = null
   private spokenTurn = false
-  private memoryHistory: string | null = null
   // ---- the phone's turn-taking (turn/detector.ts) ----
   private detector: TurnDetector | null = null
   private detectorAsked = false
@@ -201,6 +193,7 @@ export class CascadeClient {
 
   private readonly deps: CascadeDeps
   private readonly options: CascadeOptions
+  private readonly caps: GreetingCaps
 
   private readonly onPageHide = () => this.record?.beacon()
   private readonly onVisibility = () => {
@@ -217,6 +210,7 @@ export class CascadeClient {
   constructor(deps: CascadeDeps, options: CascadeOptions) {
     this.deps = deps
     this.options = options
+    this.caps = new GreetingCaps(() => deps.now(), deps.greetingStore)
     this.state = {
       phase: 'idle',
       mic: 'off',
@@ -715,7 +709,7 @@ export class CascadeClient {
       start = await this.deps.startTurn(
         {
           ...input,
-          ...(input.greet ? { greetingHistory: this.greetingHistory() } : {}),
+          ...(input.greet ? { greetingHistory: this.caps.history() } : {}),
           conversationId: this.conversationId,
           utcOffsetMinutes: this.deps.utcOffsetMinutes(),
           preface: this.preface(Boolean(input.greet)),
@@ -818,7 +812,7 @@ export class CascadeClient {
         return open
       }
       case 'greeting': {
-        this.noteGreeting(typeof data.kind === 'string' ? data.kind : '', typeof data.text === 'string' ? data.text : '')
+        this.caps.note(typeof data.kind === 'string' ? data.kind : '', typeof data.text === 'string' ? data.text : '')
         return open
       }
       case 'tool': {
@@ -1013,51 +1007,6 @@ export class CascadeClient {
     }
   }
 
-  // ---- the greeting's caps (spec 27) -----------------------------------------
-
-  private loadHistory(): { day: string; history: GreetingHistory } {
-    const day = new Date(this.deps.now()).toDateString()
-    let raw: string | null = this.memoryHistory
-    try {
-      raw = this.deps.greetingStore?.load() ?? raw
-    } catch {
-      // Storage refused (a private window): the page's own memory stands in.
-    }
-    try {
-      const parsed = raw ? (JSON.parse(raw) as { day?: string; history?: GreetingHistory }) : null
-      const history = parsed?.history
-      if (history && Array.isArray(history.hellos)) {
-        return { day, history: { ...history, today: parsed?.day === day ? history.today ?? [] : [] } }
-      }
-    } catch {
-      // Not ours, or not JSON: start clean.
-    }
-    return { day, history: { today: [], last: null, hellos: [] } }
-  }
-
-  private greetingHistory(): GreetingHistory {
-    return this.loadHistory().history
-  }
-
-  private noteGreeting(kind: string, text: string) {
-    if (!kind || kind === 'scripted') return
-    const { day, history } = this.loadHistory()
-    if (kind === 'hello') {
-      history.hellos = [...history.hellos, text].slice(-3)
-      history.last = 'hello'
-    } else {
-      history.today = [...history.today, kind]
-      history.last = kind
-    }
-    const value = JSON.stringify({ day, history })
-    this.memoryHistory = value
-    try {
-      this.deps.greetingStore?.save(value)
-    } catch {
-      // Storage refused: kept in memory for this page.
-    }
-  }
-
   /** As `LiveClient.mergedCard`: one car card per car, one diagram card per view. */
   private mergedCard(card: Card | undefined): Card | undefined {
     if (!card) return undefined
@@ -1080,22 +1029,5 @@ export class CascadeClient {
       return card
     }
     return card
-  }
-}
-
-function micNotice(kind: 'denied' | 'unavailable' | 'lost'): Notice {
-  switch (kind) {
-    case 'denied':
-      return {
-        kind: 'mic-denied',
-        text: 'The microphone is blocked for this app. To talk, allow the microphone for LEGION in your device or browser settings, then try again. Typing still works.',
-      }
-    case 'lost':
-      return {
-        kind: 'mic-lost',
-        text: 'The microphone stopped, so nobody is listening. Tap the mic to talk again. Typing still works.',
-      }
-    default:
-      return { kind: 'mic-unavailable', text: "A microphone couldn't be opened on this device. Typing still works." }
   }
 }
