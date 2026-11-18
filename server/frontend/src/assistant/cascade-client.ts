@@ -211,6 +211,8 @@ export class CascadeClient {
   private prepared = false
   /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
   private entering = false
+  /** The closing tone is what is playing. */
+  private toning = false
   private enteringSince = 0
   /** The mic's permission settled for the conversation being opened. */
   private micReady = false
@@ -555,6 +557,12 @@ export class CascadeClient {
   /** Stop the reply now, its audio and the engine's turn, and listen again (spec 20). */
   interrupt() {
     if (this.entering) return this.tapDuringEntry()
+    if (this.toning && !this.voiceOpen) {
+      // A tap over the closing tone means "again": a new conversation at once, from this tap.
+      this.audioIO?.flush()
+      void this.startVoice()
+      return
+    }
     if (!this.playing && !this.awaiting) return
     this.cutReply('barge_in')
     if (this.voiceOpen) this.listen()
@@ -621,6 +629,7 @@ export class CascadeClient {
       else this.detector?.replyEnded()
     }
     this.playing = playing
+    if (!playing) this.toning = false
     if (!playing && !this.awaiting) this.replyDrained()
     this.refresh()
   }
@@ -750,6 +759,7 @@ export class CascadeClient {
     if (!this.voiceOpen && this.state.mic === 'off' && !this.conversationId) return
     this.cutReply(null)
     if (tone) this.audioIO?.play(closingTone(), TONE_RATE)
+    this.toning = tone && this.playing
     this.rec({ kind: 'mic_closed', reason: tone ? 'window' : 'tap' })
     this.voiceOpen = false
     this.noSpeechRun = 0

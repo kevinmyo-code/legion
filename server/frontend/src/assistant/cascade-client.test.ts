@@ -628,6 +628,18 @@ describe('CascadeClient', () => {
     expect(client.getState().mic).toBe('on')
   })
 
+  it('a tap during the closing tone starts a new conversation at once', async () => {
+    const { client, audio, requests } = build([greeting(), greeting()])
+    await open(client, audio)
+    feed(audio, QUIET, WINDOW_MS + 40)
+    expect(client.getState().activity).toBe('speaking')
+    client.interrupt()
+    await settle()
+    expect(requests).toHaveLength(2)
+    expect(requests[1].greet).toBe(true)
+    expect(audio.micOpen).toBe(true)
+  })
+
   it('an interrupt tells the engine once, with the aborted turn id', async () => {
     async function* slow(): AsyncGenerator<SseEvent> {
       yield { type: 'sentence', data: { text: 'A long answer.' } }
