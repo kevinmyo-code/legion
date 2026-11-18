@@ -60,23 +60,59 @@ class RelativeDayTest {
         }
     }
 
-    @Test fun `a date one day off the day he said becomes that day, in any date argument, with a note`() {
+    private val evening = java.time.LocalTime.of(21, 0)
+
+    private fun fix(args: String, words: String = "and tomorrow?", tool: String = "read_calendar", day: LocalDate = tue, at: java.time.LocalTime = evening, only: Boolean = true) =
+        RelativeDay.corrected(tool, org.json.JSONObject(args), words, RelativeDay.TurnDates(day, at, only))
+
+    @Test fun `a single date one day off the day he said becomes that day, with a note`() {
         val tomorrow = tue.plusDays(1)
-        fun fix(args: String, words: String = "and tomorrow?") = RelativeDay.corrected(org.json.JSONObject(args), words, tue)
         val read = fix("""{"from":"${tue.plusDays(2)}","to":"${tue.plusDays(2)}"}""")!!
         assertEquals(tomorrow.toString(), read.first.getString("from"))
         assertEquals(tomorrow.toString(), read.first.getString("to"))
         assertTrue(read.second.contains(tomorrow.toString()))
-        // A write's single date moves too; other fields are untouched.
-        val write = fix("""{"action":"add","date":"$tue","text":"invented"}""", "remind me tomorrow")!!.first
+        // A task or reminder-item write's one date moves too; other fields are untouched.
+        val write = fix("""{"action":"schedule","date":"$tue","item":"invented"}""", "remind me tomorrow", tool = "manage_item")!!.first
         assertEquals(tomorrow.toString(), write.getString("date"))
-        assertEquals("invented", write.getString("text"))
-        assertEquals(tomorrow.toString(), fix("""{"day":"${tue.plusDays(2)}"}""", "tick it off for tomorrow")!!.first.getString("day"))
-        // Kept: the right day, two days off, a range, a word, nothing said.
-        assertNull(fix("""{"date":"$tomorrow"}"""))
-        assertNull(fix("""{"date":"${tue.plusDays(3)}"}"""))
-        assertNull(fix("""{"from":"$tue","to":"${tue.plusDays(6)}"}"""))
-        assertNull(fix("""{"date":"tomorrow"}"""))
-        assertNull(fix("""{"date":"${tue.plusDays(2)}"}""", "what about Thursday"))
+        assertEquals("invented", write.getString("item"))
+        assertEquals(tomorrow.toString(), fix("""{"date":"${tue.plusDays(2)}"}""", "tick it off for tomorrow", tool = "complete_task")!!.first.getString("date"))
+        // Kept: the right day, two days off, a word, another day named.
+        assertNull(fix("""{"from":"$tomorrow","to":"$tomorrow"}"""))
+        assertNull(fix("""{"date":"${tue.plusDays(3)}"}""", tool = "complete_task"))
+        assertNull(fix("""{"date":"tomorrow"}""", tool = "complete_task"))
+        assertNull(fix("""{"from":"${tue.plusDays(2)}","to":"${tue.plusDays(2)}"}""", "what about Thursday"))
+    }
+
+    @Test fun `never a range, one side of one, another tool, or a turn with two date calls`() {
+        val off = tue.plusDays(2)
+        assertNull("a range", fix("""{"from":"$tue","to":"${tue.plusDays(6)}"}"""))
+        assertNull("from today to the word", fix("""{"from":"$tue","to":"tomorrow"}"""))
+        assertNull("only from", fix("""{"from":"$off"}"""))
+        assertNull("only to", fix("""{"to":"$off"}"""))
+        assertNull("date beside a range", fix("""{"date":"$off","from":"$off","to":"$off"}"""))
+        assertNull("not a calendar or task tool", fix("""{"date":"$off"}""", tool = "log_sleep"))
+        assertNull("not the turn's only date call", fix("""{"from":"$off","to":"$off"}""", only = false))
+        assertTrue(RelativeDay.isDateCall("complete_task", org.json.JSONObject("""{"date":"$off"}""")))
+        assertTrue(!RelativeDay.isDateCall("complete_task", org.json.JSONObject("""{"item":"x"}""")))
+        assertTrue(!RelativeDay.isDateCall("money", org.json.JSONObject("""{"date":"$off"}""")))
+    }
+
+    @Test fun `the day is the turn's, so a call landing after midnight keeps a right tomorrow`() {
+        // 23:59:58 on the 17th: "remind me tomorrow", the model rightly sends the 18th; the call runs at
+        // 00:00:02 on the 18th. The turn's day is the 17th, so nothing moves.
+        val late = java.time.LocalTime.of(23, 59, 58)
+        assertNull(fix("""{"date":"${tue.plusDays(1)}"}""", "remind me tomorrow", tool = "manage_item", at = late))
+        // A turn that STARTED at 00:00:02 on the 18th: tomorrow is the 19th; the 18th sent is one off.
+        val early = java.time.LocalTime.of(0, 0, 2)
+        val moved = fix("""{"date":"${tue.plusDays(1)}"}""", "remind me tomorrow", tool = "manage_item", day = tue.plusDays(1), at = early)!!
+        assertEquals(tue.plusDays(2).toString(), moved.first.getString("date"))
+    }
+
+    @Test fun `tonight in the small hours is left to the model`() {
+        val halfPastMidnight = java.time.LocalTime.of(0, 30)
+        // At 00:30 on the 18th "tonight" may be the night in progress (the 17th's): nothing moves.
+        assertNull(fix("""{"from":"$tue","to":"$tue"}""", "what's on tonight", day = tue.plusDays(1), at = halfPastMidnight))
+        assertNull(RelativeDay.saidDay("what's on tonight", tue, halfPastMidnight))
+        assertEquals(tue, RelativeDay.saidDay("what's on tonight", tue, evening))
     }
 }

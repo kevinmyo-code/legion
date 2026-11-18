@@ -859,7 +859,7 @@ object LiveToolbox {
         args: JSONObject,
         touchedReadThroughToolThisTurn: Boolean = false,
         // What the user said (or typed) in the turn that called this tool - null when the caller
-        // has no turn to read it from. clear_codes' yes-check and the date fix (RelativeDay.corrected) read it.
+        // has no turn to read it from. clear_codes' yes-check and the date fix read it.
         userText: String? = null,
     ): JSONObject? {
         // Live cost diet (2026-11-10): an action tool's call runs as the tool it stands for. The
@@ -868,9 +868,11 @@ object LiveToolbox {
             if (r.name != name) return dispatch(context, r.name, r.args, touchedReadThroughToolThisTurn, userText)
         }
         LiveSurface.unknownAction(name, args)?.let { return it }
-        // His own day word wins over a date one day off it, for every tool that takes a date, reads
-        // and writes alike (RelativeDay.corrected; 2026-11-17 evening: "and tomorrow?" read today+2).
-        RelativeDay.corrected(args, userText, RelativeDay.today())?.let { (fixed, note) ->
+        // His own day word wins over a date one day off it, for the calendar and task tools, on the
+        // date the voice turn was given (RelativeDay.corrected; 2026-11-17 evening: "and tomorrow?"
+        // read today+2). Only a voice turn carries TurnDates.
+        val turnDates = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates]
+        turnDates?.let { RelativeDay.corrected(name, args, userText, it) }?.let { (fixed, note) ->
             return dispatch(context, name, fixed, touchedReadThroughToolThisTurn, userText)?.put("date_note", note)
         }
         MidnightEvents.toolDispatched(name)
