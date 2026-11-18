@@ -862,30 +862,6 @@ object LiveToolbox {
         // has no turn to read it from. Only clear_codes' yes-check reads it (2026-11-05).
         userText: String? = null,
     ): JSONObject? {
-        val response = dispatchTool(context, name, args, touchedReadThroughToolThisTurn, userText)
-        // The adapter's car is unknown: a live-car read still runs (its readings are held, not filed),
-        // and its result carries the one ask, once a conversation ([AdapterBinding], 2026-11-17).
-        if (response != null && name in CATEGORY_A_TOOLS && name != "clear_codes" &&
-            response.optString("error") != "adapter_car_unknown"
-        ) {
-            val car = com.kevin.legion.vehicle.DongleCarController.state.value
-            val labels = if (car is com.kevin.legion.vehicle.DongleCar.OnCar) {
-                com.kevin.legion.vehicle.DongleCarController.labels(context)
-            } else {
-                emptyMap()
-            }
-            com.kevin.legion.vehicle.AdapterBinding.noteFor(car, labels)?.let { response.put("adapter_car", it) }
-        }
-        return response
-    }
-
-    private suspend fun dispatchTool(
-        context: Context,
-        name: String,
-        args: JSONObject,
-        touchedReadThroughToolThisTurn: Boolean,
-        userText: String?,
-    ): JSONObject? {
         // Live cost diet (2026-11-10): an action tool's call runs as the tool it stands for. The
         // voice and typed paths resolve before they get here; this keeps any other caller honest.
         LiveSurface.resolve(name, args).let { r ->
@@ -901,6 +877,14 @@ object LiveToolbox {
         // exempt - they resolve their own `vehicle` argument below.
         if (name in CATEGORY_A_TOOLS) {
             refuseIfNotConnectedCar(context, args)?.let { return it }
+            // The adapter's car is unknown or only recognised: the live read still runs (its readings
+            // are held, not filed), and its result carries the ask or the "looks like" once
+            // ([AdapterBinding], 2026-11-17). Run once more with a mark so the note is added once.
+            if (name != "clear_codes" && !args.has(ADAPTER_NOTED)) {
+                val marked = JSONObject(args.toString()).put(ADAPTER_NOTED, true)
+                return dispatch(context, name, marked, touchedReadThroughToolThisTurn, userText)
+                    ?.let { withAdapterNote(context, it) }
+            }
         }
         // The nine aspect-engine meta-tools (ticket 17) live in their own file; try them first so
         // this already-7,000-line `when` never has to grow their branches too.
@@ -1342,6 +1326,22 @@ object LiveToolbox {
             "show_generated_view" -> null // caller validates the spec, runs it, and replies
             else -> result(success = false, message = "Unknown tool: $name")
         }
+    }
+
+    /** The mark [dispatch] puts on a live-car call it has already decided to add the adapter note to. */
+    private const val ADAPTER_NOTED = "_adapter_noted"
+
+    /** [response] with the adapter-car note ([AdapterBinding.noteFor]) when one is due. */
+    private suspend fun withAdapterNote(context: Context, response: JSONObject): JSONObject {
+        if (response.optString("error") == "adapter_car_unknown") return response
+        val car = com.kevin.legion.vehicle.DongleCarController.state.value
+        val labels = if (car is com.kevin.legion.vehicle.DongleCar.OnCar) {
+            com.kevin.legion.vehicle.DongleCarController.labels(context)
+        } else {
+            emptyMap()
+        }
+        com.kevin.legion.vehicle.AdapterBinding.noteFor(car, labels)?.let { response.put("adapter_car", it) }
+        return response
     }
 
     /**
@@ -5221,6 +5221,7 @@ object LiveToolbox {
     internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
         "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
 
+    @Suppress("CyclomaticComplexMethod", "ReturnCount") // read, empty, failed, each code
     private suspend fun getCodes(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return result(false, "The OBD adapter isn't connected, so I can't read any codes.")

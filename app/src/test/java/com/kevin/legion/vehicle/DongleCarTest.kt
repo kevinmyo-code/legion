@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures and assertions read best on one line
+
 package com.kevin.legion.vehicle
 
 import com.kevin.legion.vehicle.DongleCar.AnswerPlan

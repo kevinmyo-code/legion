@@ -170,6 +170,7 @@ object VehicleController {
      * stored value alone (same "blank means don't touch" convention [correctVehicle] uses) rather
      * than clobbering it back to empty.
      */
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // the on-file answer, a refusal, or the write
     suspend fun registerDirect(context: Context, year: Int, make: String, model: String, trim: String = "", engine: String = ""): WriteOutcome {
         // **This returned a bare `String` and `LiveToolbox`'s `register_vehicle` dispatch hardcoded
         // `success = true` over it**, so this refusal - which writes nothing at all - reached the
@@ -186,7 +187,10 @@ object VehicleController {
         if (DongleCarController.hasLiveQuestion()) {
             AdapterBinding.carOnFileNamed(FleetEngineStore.getAll(context), year, make, model)?.let { car ->
                 val bound = switchToOutcome(context, car.obdMac)
-                return WriteOutcome(bound.success, "That car is already on file, so nothing new was added. ${bound.message}")
+                return WriteOutcome(
+                    bound.success,
+                    "That car is already on file, so nothing new was added. ${bound.message}",
+                )
             }
         }
         val refusal = when {

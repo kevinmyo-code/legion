@@ -2,7 +2,11 @@ package com.kevin.legion.service.cascade
 
 import android.content.Context
 import com.kevin.legion.ai.KeyVault
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Which voice pipeline a conversation runs on (Kevin, 2026-11-10: "i want to be able to switch
@@ -157,10 +161,11 @@ object VoiceEngineSettings {
      */
     suspend fun testVoice(voice: String, transport: GeminiStreamTransport = OkHttpGemini()): Boolean {
         if (!VOICE_ID.matches(voice.trim())) return false
-        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         return try {
             val tts = GeminiTts(transport, scope, voice = voice.trim(), allowFallback = false)
-            kotlinx.coroutines.withTimeoutOrNull(VOICE_TEST_MS) { tts.speak("Testing this voice.").outcome() } is TtsOutcome.Done
+            val outcome = withTimeoutOrNull(VOICE_TEST_MS) { tts.speak("Testing this voice.").outcome() }
+            outcome is TtsOutcome.Done
         } finally {
             scope.cancel()
         }

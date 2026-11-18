@@ -51,7 +51,7 @@ import java.util.Date
  * The token is never shown back: the field starts empty and a blank save keeps the stored one.
  * Applies from the next conversation.
  */
-@Suppress("LongMethod") // one settings row: the choice, two fields, two buttons, two status lines
+@Suppress("LongMethod", "CyclomaticComplexMethod") // one settings row: engine, voice, speed, languages, laptop
 @Composable
 fun VoiceEngineRow() {
     val context = LocalContext.current
@@ -183,7 +183,11 @@ fun VoiceEngineRow() {
                             SpokenLanguages.save(context, spoken)
                         },
                     )
-                    Text(lang.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        lang.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
             }
             if (engine == VoiceEngine.LAPTOP) {

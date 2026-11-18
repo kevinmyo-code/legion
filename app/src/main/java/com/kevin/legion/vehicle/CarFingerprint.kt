@@ -23,6 +23,7 @@ import android.content.Context
  */
 object CarFingerprint {
     /** The fingerprint for one connect, or null when the car did not really answer. */
+    @Suppress("ReturnCount") // no protocol, no answer, or the print
     fun of(protocolCode: String?, supported0100: String?): String? {
         val proto = protocolCode?.trim()?.uppercase()?.removePrefix("A").orEmpty()
         if (proto.isEmpty() || proto == "0" || proto.any { !it.isLetterOrDigit() }) return null

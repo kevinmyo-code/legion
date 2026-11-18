@@ -44,6 +44,9 @@ internal object SttHintStore {
     }
 
     internal fun set(names: List<String>) {
-        known = names.flatMap { it.split(Regex("\\s+")) }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+        known = names.flatMap { it.split(Regex("\\s+")) }
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .toSet()
     }
 }

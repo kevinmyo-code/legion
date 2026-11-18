@@ -130,7 +130,11 @@ internal object CloudSpeechWire {
     private const val STT_ASK = "Transcribe this audio."
 
     /** The transcription request: the utterance as a WAV, inline; [hint] ([SttGuard.hint]) after the rules. */
-    fun transcribe(pcm16k: ByteArray, hint: String = "", instruction: String = STT_INSTRUCTION): JSONObject = JSONObject()
+    fun transcribe(
+        pcm16k: ByteArray,
+        hint: String = "",
+        instruction: String = STT_INSTRUCTION,
+    ): JSONObject = JSONObject()
         .put(
             "systemInstruction",
             JSONObject().put(
@@ -304,7 +308,7 @@ internal class GeminiStt(
      * One transcript for [pcm] (16 kHz PCM16 mono). Never throws except to cancel. [report] gets
      * each request's counts (a speculative draft holds them until it is kept or dropped).
      */
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // one exit per outcome; the hung-request retry
     suspend fun transcribe(pcm: ByteArray, report: (CallUsage) -> Unit = usage): SttResult {
         val audioMs = pcm.size / BYTES_PER_MS
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
@@ -320,7 +324,8 @@ internal class GeminiStt(
         val first = withTimeoutOrNull(attemptTimeoutMs) { attempt(body, audioMs.toLong(), report) }
         var (outcome, turn) = first ?: (StreamOutcome.Network("hung") to StreamedTurn())
         if (first == null || CloudSpeechWire.worthRetry(outcome)) {
-            log("stt_cloud_retry after=${if (first == null) "hung_$attemptTimeoutMs" else CloudSpeechWire.token(outcome)}")
+            val why = if (first == null) "hung_$attemptTimeoutMs" else CloudSpeechWire.token(outcome)
+            log("stt_cloud_retry after=$why")
             val again = withTimeoutOrNull(attemptTimeoutMs) { attempt(body, audioMs.toLong(), report) }
                 ?: return SttResult.Failed("timeout")
             outcome = again.first
@@ -462,6 +467,9 @@ internal class GeminiTts(
 
     private val voiceNow: String get() = if (fallbackVoice) CloudSpeechWire.FALLBACK_VOICE else voice
 
+    /** Not yet fallen back, allowed to, and not already Puck. */
+    private fun mayFallBack(): Boolean = allowFallback && !fallbackVoice && voice != CloudSpeechWire.FALLBACK_VOICE
+
     override val performsTags = true
 
     override fun speak(text: String): SpeechClip {
@@ -513,6 +521,7 @@ internal class GeminiTts(
         private var firstAudioMs: Long? = null
         private val whole = ByteArrayOutputStream()
 
+        @Suppress("CyclomaticComplexMethod") // shape retry, voice fallback, one network retry: each once
         fun start() {
             job = scope.launch {
                 gate.withPermit {
@@ -526,9 +535,8 @@ internal class GeminiTts(
                         o = request(asked)
                     }
                     // A voice name Google does not know (a 400 in either shape): Puck, not silence.
-                    if (o is StreamOutcome.HttpError && o.code == HTTP_BAD_REQUEST && bytes == 0L &&
-                        allowFallback && !fallbackVoice && voice != CloudSpeechWire.FALLBACK_VOICE
-                    ) {
+                    val refused = o is StreamOutcome.HttpError && o.code == HTTP_BAD_REQUEST
+                    if (refused && bytes == 0L && mayFallBack()) {
                         fallbackVoice = true
                         // Once per conversation: the flag stays set, so this is never logged twice.
                         log("tts_voice_fallback from=$voice to=${CloudSpeechWire.FALLBACK_VOICE}")
@@ -549,7 +557,9 @@ internal class GeminiTts(
                                     TtsOutcome.Failed("no_audio")
                                 } else {
                                     // Filed under the voice that actually spoke it (a fallback may have changed it).
-                                    if (text in keepLines) kept[keyOf(text)] = synchronized(whole) { whole.toByteArray() }
+                                    if (text in keepLines) {
+                                        kept[keyOf(text)] = synchronized(whole) { whole.toByteArray() }
+                                    }
                                     TtsOutcome.Done(bytes / BYTES_PER_MS, firstAudioMs)
                                 }
                         },

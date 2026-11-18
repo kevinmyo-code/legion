@@ -163,6 +163,7 @@ object DongleCarController {
         VinResponse.Result.NoResponse
     }
 
+    @Suppress("CyclomaticComplexMethod") // blip, same car, answered, carried: each a rule of its own
     private suspend fun decideAndApply(context: Context, mac: String, vinResult: VinResponse.Result): DongleCar {
         val cars = carVins(context)
         var decision = decideFor(context, mac, vinResult, cars)

@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures and assertions read best on one line
+
 package com.kevin.legion.voiceeval
 
 import android.content.Context
@@ -119,6 +121,7 @@ internal class VoiceEvalHarness(
         }
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements") // the session's turn order, in one place
     private suspend fun runTurns(case: EvalCase) {
         val audit = LiveAudit(sink = { out(LiveAudit.TAG, it) }, onSession = {})
         audit.enabled = true

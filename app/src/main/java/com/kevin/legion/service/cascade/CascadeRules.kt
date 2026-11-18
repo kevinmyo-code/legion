@@ -4,6 +4,7 @@ import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
+import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
@@ -333,9 +334,9 @@ internal object ScriptedLines {
      */
     const val MISSED = "Didn't catch that. Say it again?"
 
-    /** The opening acks, fillers, missed line and check-in closers ([com.kevin.legion.service.checkin.ClosingLines]). */
+    /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
     val KEEP: Set<String> =
-        (AckLines.DEFAULT + FILLERS + MISSED + ToolFillers.ALL + com.kevin.legion.service.checkin.ClosingLines.LINES).toSet()
+        (AckLines.DEFAULT + FILLERS + MISSED + ToolFillers.ALL + ClosingLines.LINES).toSet()
 
     /**
      * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename

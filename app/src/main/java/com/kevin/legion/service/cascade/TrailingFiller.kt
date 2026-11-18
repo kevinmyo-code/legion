@@ -24,6 +24,7 @@ internal class TrailingFiller(private val contentBefore: () -> Boolean) : Senten
     override var dropped = 0
         private set
 
+    @Suppress("LoopWithTooManyJumpStatements") // one pass per finished sentence
     override fun feed(delta: String): String {
         buf.append(delta)
         val out = StringBuilder()
@@ -54,6 +55,7 @@ internal class TrailingFiller(private val contentBefore: () -> Boolean) : Senten
         return out.toString()
     }
 
+    @Suppress("ReturnCount") // nothing held, an open sentence, a dropped wait line, or the rest
     override fun flush(): String {
         val rest = buf.toString()
         buf.setLength(0)
@@ -95,6 +97,7 @@ internal class TrailingFiller(private val contentBefore: () -> Boolean) : Senten
         }
 
         /** The unfinished sentence [partial] could still be a filler line. */
+        @Suppress("ReturnCount")
         fun mayBeFiller(partial: String): Boolean {
             val s = partial.trimStart().lowercase()
             if (s.isEmpty()) return true

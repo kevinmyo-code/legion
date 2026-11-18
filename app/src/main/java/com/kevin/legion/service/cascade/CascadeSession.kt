@@ -1025,7 +1025,7 @@ internal class CascadeSession(
                 if (stt.reason == "cancelled") return
                 recoverWords(u, stt.reason) ?: return
             }
-            is SttResult.Text -> when (val v = SttGuard.verdict(stt.text, stt.audioMs ?: 0L, SttHintStore.known, languages)) {
+            is SttResult.Text -> when (val v = verdictOf(stt)) {
                 is SttGuard.Verdict.Keep -> v.text
                 is SttGuard.Verdict.Drop -> {
                     // Not plausibly his English (2026-11-17: Spanish and Chinese fragments, one acted
@@ -1357,12 +1357,17 @@ internal class CascadeSession(
         sayMissedLine()
     }
 
+    /** Whether [stt]'s words are believed ([SttGuard]), for his languages and the names on the phone. */
+    private fun verdictOf(stt: SttResult.Text): SttGuard.Verdict =
+        SttGuard.verdict(stt.text, stt.audioMs ?: 0L, SttHintStore.known, languages)
+
     /**
      * The conversation's language after [heard] ([SpokenLanguages]): a request for one of his languages,
      * or a whole sentence spoken in one, switches it; a request for one not in his setting gets the
      * scripted line and the turn ends there (false). The laptop voice speaks English only: it says so
      * and stays English, and the turn is answered in English.
      */
+    @Suppress("ReturnCount") // one exit per outcome: refused, unchanged, laptop, switched
     private suspend fun followLanguage(heard: String): Boolean {
         val asked = SpokenLanguages.request(heard, languages)
         if (asked is SpokenLanguages.Switch.NotInSettings) {
@@ -1546,7 +1551,9 @@ internal class CascadeSession(
             lastToolFiller = line
             val duplex = if (turnTaker?.bargeIn == true) "full" else "half"
             val timing = if (plan.slow) "start" else "late"
-            if (reply.filler(line)) LiveLatency.log(LiveLatency.TAG, "filler tool=${plan.key} at=$timing duplex=$duplex")
+            if (reply.filler(line)) {
+                LiveLatency.log(LiveLatency.TAG, "filler tool=${plan.key} at=$timing duplex=$duplex")
+            }
         } else {
             tts?.warm(FILLERS_SPOKEN)
             LiveLatency.log(LiveLatency.TAG, "filler_skip reason=not_in_memory tool=${plan.key}")
@@ -1599,7 +1606,8 @@ internal class CascadeSession(
                     scope.launch(loop) {
                         p.awaitDrained()
                         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
-                        if (!answerAudible && speaker === self && speaking && !closing.get()) {
+                        val stillWaiting = !answerAudible && speaker === self
+                        if (stillWaiting && speaking && !closing.get()) {
                             speaking = false
                             playbackActive = false
                             host.phase(Phase.THINKING, "...")
@@ -2086,8 +2094,7 @@ internal class CascadeSession(
                 "audio_ms=${audio.size / PCM_BYTES_PER_MS}")
             val said = r as? SttResult.Text ?: return@launch
             // A transcript the turn would not believe ([SttGuard]) is not drafted on either.
-            val kept = SttGuard.verdict(said.text, said.audioMs ?: 0L, SttHintStore.known, languages) as? SttGuard.Verdict.Keep
-                ?: return@launch
+            val kept = verdictOf(said) as? SttGuard.Verdict.Keep ?: return@launch
             val heard = (carry + " " + kept.text).trim()
             if (draftable(heard) && draftRefusal() == null) startDraftAnswer(d, heard)
         }

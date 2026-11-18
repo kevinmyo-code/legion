@@ -46,6 +46,9 @@ internal object TtsTags {
     /** True when [text] has any tag. */
     fun hasTag(text: String): Boolean = TAG.containsMatchIn(text)
 
+    /** A figure or bad news: never a tag. */
+    private fun mustBePlain(bare: String): Boolean = FIGURE.containsMatchIn(bare) || BAD_NEWS.containsMatchIn(bare)
+
     /** How many tags this reply may still carry. */
     class Budget(var left: Int = MAX_PER_REPLY)
 
@@ -54,10 +57,11 @@ internal object TtsTags {
      * scripted error, a verbatim answer) or the sentence holds a figure or bad news; otherwise the
      * first allowed tag kept if [budget] allows.
      */
+    @Suppress("ReturnCount") // no tag, none allowed here, or the kept one
     fun forSpeech(sentence: String, budget: Budget, plain: Boolean = false): String {
         if (!hasTag(sentence)) return sentence
         val bare = strip(sentence)
-        if (plain || budget.left <= 0 || FIGURE.containsMatchIn(bare) || BAD_NEWS.containsMatchIn(bare)) return bare
+        if (plain || budget.left <= 0 || mustBePlain(bare)) return bare
         var kept = false
         val out = TAG.replace(sentence) { m ->
             val name = m.groupValues[1].trim().lowercase().replace(Regex("\\s+"), " ")
