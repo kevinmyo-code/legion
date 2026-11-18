@@ -210,21 +210,27 @@ if (A.scenario === 'vf-tap') {
   // A spoken question; while its answer plays, tap the orb and at once type a new question.
   const asked = await waitFor(async () => turns.some((t) => t.kind === 'audio' || t.kind === 'spoken-text'), 90000)
   const q = turns.find((t) => t.kind === 'audio' || t.kind === 'spoken-text')
-  const playing = await waitFor(async () => (await audit()).buffers.some((b) => q?.at !== undefined && b.t > q.at), 60000)
-  await sleep(700)
-  await page.locator('[data-stage="orb"]').click()
+  // Tap only once the orb offers "Interrupt" (the answer is playing), and note whether the first
+  // stream had already ended: then no cancel is expected.
+  const orb = page.locator('[data-stage="orb"]')
+  const playing = await waitFor(async () => /^Interrupt/.test((await orb.getAttribute('aria-label')) ?? ''), 60000)
+  await sync()
+  const firstEndedAtTap = Boolean(q?.complete)
+  await orb.click()
   await page.getByLabel(/^Type to /).fill('When is the car due for service?')
   await page.getByLabel(/^Type to /).press('Enter')
-  const answered = await waitFor(async () => turns.some((t) => t.kind === 'text' && t.complete), 90000)
+  const answered = await waitFor(async () => turns.some((t) => t.kind === 'text' && t.status === 200 && t.complete), 90000)
   await sync()
-  const next = turns.find((t) => t.kind === 'text')
+  const texts = turns.filter((t) => t.kind === 'text')
+  const next = texts.find((t) => t.status === 200) ?? texts[texts.length - 1]
+  const busyBefore = texts.filter((t) => t.status === 409).length
   const a = await audit()
   const nextAudio = a.buffers.filter((b) => next?.at !== undefined && b.t > next.at).length
   check('tap_then_new_question_is_answered', asked && playing && answered && next?.status === 200 && Boolean(next?.said) && next?.done?.status !== 'cancelled', {
-    first: { heard: q?.heard, done: q?.done, failed: q?.failed ?? null }, cancels,
+    first: { heard: q?.heard, done: q?.done, failed: q?.failed ?? null, endedAtTap: firstEndedAtTap }, cancels, busyBefore,
     next: { status: next?.status, said: (next?.said ?? '').slice(0, 160), done: next?.done, audioChunks: nextAudio },
   })
-  check('tap_posts_a_cancel', cancels.some((c) => c.status === 204), cancels)
+  check('tap_posts_a_cancel', firstEndedAtTap || cancels.some((c) => c.status === 204), { cancels, firstEndedAtTap })
   await shot('tap')
 }
 
