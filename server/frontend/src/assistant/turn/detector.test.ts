@@ -149,6 +149,22 @@ describe('loadTurnDetector', () => {
 })
 
 describe('the turn (speech, then silence)', () => {
+  it('a reset forgets the pre-roll heard while not listening, windows still at the model included', async () => {
+    const control = (await load()).detector!
+    const expected = watch(control)
+    await play(control, concat(speech(1200), silence(1000)), true, false)
+    const { detector } = await load()
+    const seen = watch(detector!)
+    // The reply's tail, heard while the page ignored the mic (half-duplex): 600 ms answered by
+    // the model, then 200 ms still at it when the page starts listening again.
+    await play(detector!, echo(600), false, false)
+    for (const c of chunks(echo(200))) detector!.push(c, false, false)
+    detector!.reset()
+    await play(detector!, concat(speech(1200), silence(1000)), true, false)
+    expect(seen.ends).toHaveLength(1)
+    expect(seen.ends[0].samples).toBe(expected.ends[0].samples)
+  })
+
   it('starts on speech, transcribes early at 300 ms, and ends at the base silence', async () => {
     const { detector } = await load()
     const seen = watch(detector!)

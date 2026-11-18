@@ -116,7 +116,9 @@ class ModelDetector implements TurnDetector {
   private pending = new Int16Array(0)
   private seq = 0
   /** Windows sent and not yet answered, in order: their samples, level and whether listening. */
-  private inFlight = new Map<number, { pcm: Int16Array; level: number; listening: boolean; playing: boolean }>()
+  private inFlight = new Map<number, { pcm: Int16Array; level: number; listening: boolean; playing: boolean; epoch: number }>()
+  /** Moves on each reset; a window sent before it was heard while the page was not listening. */
+  private epoch = 0
   private recent: Int16Array[] = []
   private turn: Int16Array[] | null = null
   private turnSamples = 0
@@ -163,7 +165,7 @@ class ModelDetector implements TurnDetector {
       const pcm = merged.slice(at, at + WINDOW)
       at += WINDOW
       const seq = ++this.seq
-      this.inFlight.set(seq, { pcm, level: peakLevel(pcm), listening, playing })
+      this.inFlight.set(seq, { pcm, level: peakLevel(pcm), listening, playing, epoch: this.epoch })
       this.vad.postMessage({ type: 'window', seq, samples: toFloat(pcm) } satisfies ToWorker)
     }
     this.pending = merged.slice(at)
@@ -177,10 +179,16 @@ class ModelDetector implements TurnDetector {
     this.gate.onReplyEnd()
   }
 
+  /**
+   * Also forgets the pre-roll: what was heard while the page ignored the mic (the reply's tail, in
+   * half-duplex) is never the start of the next turn, nor are windows still at the model.
+   */
   reset() {
     this.policy.reset()
     this.turn = null
     this.turnSamples = 0
+    this.recent = []
+    this.epoch++
   }
 
   dispose() {
@@ -192,7 +200,7 @@ class ModelDetector implements TurnDetector {
   private onProb(seq: number, prob: number) {
     const w = this.inFlight.get(seq)
     this.inFlight.delete(seq)
-    if (!w || this.disposed) return
+    if (!w || this.disposed || w.epoch !== this.epoch) return
     this.recent.push(w.pcm)
     if (this.recent.length > PREROLL_WINDOWS) this.recent.shift()
     if (this.turn && this.turnSamples < MAX_TURN_SAMPLES) {
