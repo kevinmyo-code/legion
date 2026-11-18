@@ -55,6 +55,7 @@ import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.ClearCodesVoiceGate
 import com.kevin.legion.vehicle.DtcClearController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -302,7 +303,12 @@ internal class CascadeSession(
     @Volatile private var lastClipText: String? = null
 
     /** What one turn has done so far: what [Handover] needs if the laptop drops mid-turn. */
-    private class TurnRecord(val heard: String, val fromUser: Boolean = true) {
+    private class TurnRecord(
+        val heard: String,
+        val fromUser: Boolean = true,
+        /** The voiced time of the clip his words came from ([SttGuard.voicedMs]); null when not measured. */
+        val voicedMs: Long? = null,
+    ) {
         val reply = StringBuffer()
 
         /** When the turn started, and its date-taking tool calls so far ([RelativeDay.TurnDates]). */
@@ -1060,7 +1066,13 @@ internal class CascadeSession(
                 // "Stop", "goodbye": before every noise and length guard, and on his latest words alone,
                 // so a stop said during a lookup ends the conversation, never restarts the lookup.
                 // A stop over no voice (a burst read as "Bye.") is not a stop; the guard below decides it.
-                val stop = endsConversation(stt.text) && SttGuard.stopVoiced(stt.voicedMs)
+                // Either way a stop phrase never restarts the request it interrupted: that is dropped.
+                val stopWords = endsConversation(stt.text)
+                val stop = stopWords && SttGuard.stopVoiced(stt.voicedMs)
+                if (stopWords && !stop) {
+                    discardDraftOf(u, "not_answered")
+                    carry = ""
+                }
                 val v = verdictOf(stt)
                 // Every turn, numbers and the decision only: real car audio tunes the thresholds later.
                 LiveLatency.log(
@@ -1111,7 +1123,8 @@ internal class CascadeSession(
             discardDraftOf(u, "not_answered")
             return
         }
-        answerTurn(heard, eotAtMs, TurnRecord(heard), takeDraft(u, heard))
+        val record = TurnRecord(heard, voicedMs = (stt as? SttResult.Text)?.voicedMs)
+        answerTurn(heard, eotAtMs, record, takeDraft(u, heard))
     }
 
     /**
@@ -1587,7 +1600,10 @@ internal class CascadeSession(
                     JSONObject().put("success", false).put("message", "That only works on the Live voice engine.")
                 // A read-through opener (ADR 0090) marks the turn before the loop's own flag can.
                 // The turn's date facts ride in the call's context to the date fix ([RelativeDay.corrected]).
-                else -> withContext(RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1)) {
+                else -> withContext(
+                    RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1) +
+                        ClearCodesVoiceGate.HeardVoice(record.voicedMs),
+                ) {
                     host.runTool(
                         name,
                         args,
