@@ -6,6 +6,7 @@ import {
   ENDED_LIMIT,
   ENDED_LOCKED,
   TONE_RATE,
+  STILL_BUSY,
   TURN_STALLED,
   UNREACHABLE,
   closingTone,
@@ -16,6 +17,7 @@ import { ConversationRecord, type RecordEvent, type RecordTransport } from './co
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
 import { TurnDeadline } from './turn-deadline'
+import { newTurnId, postTurn } from './turn-post'
 import { utterance } from './utterance'
 import type { TurnDetector } from './turn/detector'
 import type { AssistantState, Line, Notice } from './live-client'
@@ -68,6 +70,8 @@ export interface TurnRequest {
   conversationId: string | null
   utcOffsetMinutes: number
   preface?: string
+  /** This turn's id, for `cancelTurn`. */
+  turnId?: string
 }
 
 export interface GreetingHistory {
@@ -78,11 +82,13 @@ export interface GreetingHistory {
 
 export type TurnStart =
   | { ok: true; events: AsyncIterable<SseEvent> }
-  | { ok: false; status: number; detail: string | null }
+  | { ok: false; status: number; detail: string | null; code?: string | null; retryMs?: number | null }
 
 export interface CascadeDeps {
   /** Post one turn; resolves when the engine has answered with a stream or a refusal. */
   startTurn(request: TurnRequest, signal: AbortSignal): Promise<TurnStart>
+  /** Tell the engine a turn in flight is abandoned (`POST /api/assistant/turn/cancel`). Fire and forget. */
+  cancelTurn?: (turnId: string) => void
   /** The device audio. Called once, from the tap that starts the microphone. */
   audio(): AudioIO
   now(): number
@@ -160,6 +166,8 @@ export class CascadeClient {
   private endpointer: Endpointer | null = null
   private chunks: Int16Array[] = []
   private abort: AbortController | null = null
+  /** The id of the turn in flight (posted, its stream not yet ended), for the engine's cancel. */
+  private turnId: string | null = null
   private deadline: TurnDeadline | null = null
   private conversationId: string | null = null
   private record: ConversationRecord | null = null
@@ -201,6 +209,8 @@ export class CascadeClient {
   private entering = false
   /** The mic's permission settled for the conversation being opened. */
   private micReady = false
+  /** The last turn ended `busy`: the next tap listens in the same conversation. */
+  private resumeOnTap = false
   private preparing: Promise<boolean> | null = null
   /** The page let go of this client: it never asks the engine for anything again. */
   private disposed = false
@@ -368,7 +378,9 @@ export class CascadeClient {
     this.detector?.gate.newConversation()
     this.deps.funnel?.('orb_tap')
     this.loadDetector()
-    void this.greetAfterPrepare()
+    if (this.resumeOnTap && this.conversationId) this.listen()
+    else void this.greetAfterPrepare()
+    this.resumeOnTap = false
     return opened.then(
       () => {
         if (generation !== this.micGeneration) return
@@ -694,6 +706,7 @@ export class CascadeClient {
     this.rec({ kind: 'mic_closed', reason: tone ? 'window' : 'tap' })
     this.voiceOpen = false
     this.noSpeechRun = 0
+    this.resumeOnTap = false
     this.stopListening()
     this.micGeneration += 1
     this.audioIO?.stopMic()
@@ -753,9 +766,11 @@ export class CascadeClient {
     this.strip = { tools: [], costUsd: null }
     this.lastReply = ''
     this.heardLineId = null
-    this.abort?.abort()
+    this.dropTurn()
     const abort = new AbortController()
     this.abort = abort
+    const turnId = newTurnId()
+    this.turnId = turnId
     const generation = ++this.turnGeneration
     this.deadline?.clear()
     const deadline = new TurnDeadline(() => {
@@ -768,20 +783,23 @@ export class CascadeClient {
     this.replyFrom = input.greet ? null : this.deps.now()
     this.set({ phase: 'live', notice: null })
     const startedConversation = this.conversationId === null
+    const request: TurnRequest = {
+      ...input,
+      ...(input.greet ? { greetingHistory: this.caps.history() } : {}),
+      conversationId: this.conversationId,
+      utcOffsetMinutes: this.deps.utcOffsetMinutes(),
+      preface: this.preface(Boolean(input.greet)),
+      turnId,
+    }
     let start: TurnStart
     try {
-      start = await this.deps.startTurn(
-        {
-          ...input,
-          ...(input.greet ? { greetingHistory: this.caps.history() } : {}),
-          conversationId: this.conversationId,
-          utcOffsetMinutes: this.deps.utcOffsetMinutes(),
-          preface: this.preface(Boolean(input.greet)),
-        },
-        abort.signal,
+      start = await postTurn(
+        () => this.deps.startTurn(request, abort.signal),
+        () => generation === this.turnGeneration,
       )
     } catch {
       if (generation !== this.turnGeneration) return
+      this.turnId = null
       deadline.clear()
       this.awaiting = false
       this.push({ kind: 'sys', text: UNREACHABLE })
@@ -790,9 +808,10 @@ export class CascadeClient {
     }
     if (generation !== this.turnGeneration) return
     if (!start.ok) {
+      this.turnId = null
       deadline.clear()
       this.awaiting = false
-      this.refused(start.status, start.detail)
+      this.refused(start.status, start.detail, start.code ?? null)
       return
     }
     let open: number | null = null
@@ -817,6 +836,7 @@ export class CascadeClient {
       this.push({ kind: 'sys', text: 'The answer was cut off: the connection to the engine dropped.' })
     } finally {
       if (generation === this.turnGeneration) {
+        this.turnId = null
         deadline.clear()
         this.closeAi(open, false)
         this.awaiting = false
@@ -990,8 +1010,14 @@ export class CascadeClient {
     }
   }
 
-  private refused(status: number, detail: string | null) {
-    if (status === 409 && this.conversationId) {
+  /** Decided by the engine's `code`; an engine that sends none is read by the status alone. */
+  private refused(status: number, detail: string | null, code: string | null) {
+    if (code === 'busy') {
+      this.stillBusy()
+      return
+    }
+    const timeLimit = code !== null ? code === 'time_limit' : status === 409
+    if (timeLimit && this.conversationId) {
       // A demo conversation's time limit.
       this.end(this.options.sessionLimit?.()?.trim() || (detail ?? ENDED_LIMIT))
       return
@@ -1005,6 +1031,21 @@ export class CascadeClient {
     this.settle(this.spokenTurn)
   }
 
+  /**
+   * Still `busy` after the retries: the conversation stays (its id, its record), the mic is let go,
+   * and the next tap listens in it again rather than greeting.
+   */
+  private stillBusy() {
+    this.push({ kind: 'sys', text: STILL_BUSY })
+    if (!this.voiceOpen) return
+    this.voiceOpen = false
+    this.stopListening()
+    this.micGeneration += 1
+    this.audioIO?.stopMic()
+    this.resumeOnTap = true
+    this.set({ mic: 'off' })
+  }
+
   private closeAi(open: number | null, cut: boolean) {
     if (open === null) return
     const line = this.state.lines.find((l) => l.id === open)
@@ -1012,11 +1053,18 @@ export class CascadeClient {
   }
 
   /** Stop what is playing and the turn in flight; `source` null records nothing. */
+  /** Abort the turn in flight, if any, and tell the engine it is abandoned. */
+  private dropTurn() {
+    this.abort?.abort()
+    this.abort = null
+    if (this.turnId) this.deps.cancelTurn?.(this.turnId)
+    this.turnId = null
+  }
+
   private cutReply(source: 'barge_in' | null) {
     const wasActive = this.playing || this.awaiting
     this.deadline?.clear()
-    this.abort?.abort()
-    this.abort = null
+    this.dropTurn()
     this.turnGeneration += 1
     this.afterReply = null
     this.awaiting = false

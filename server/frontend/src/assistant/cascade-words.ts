@@ -7,6 +7,9 @@ export const ENDED_LOCKED = 'Conversation ended when the screen locked.'
 export const ENDED_LIMIT = 'The conversation reached its time limit. Start a new one.'
 export const UNREACHABLE = "Not answered: couldn't reach the engine. Nothing was changed."
 
+/** The engine still had the last turn after the retries (`turn-post.ts`). */
+export const STILL_BUSY = 'Still finishing the last answer. Tap to try again.'
+
 /** A turn past its deadline (`turn-deadline.ts`). A tool may have run, so it claims nothing either way. */
 export const TURN_STALLED: Notice = {
   kind: 'engine-unreachable',

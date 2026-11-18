@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { STILL_BUSY } from './cascade-words'
 import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type TurnRequest, type TurnStart } from './cascade-client'
 import type { AssistantClient } from './client'
 import type { RecordEvent, RecordTransport } from './conversation-record'
@@ -47,6 +48,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean; speakTyp
   const signals: AbortSignal[] = []
   const recorded: RecordEvent[] = []
   const store: { value: string | null } = { value: null }
+  const cancels: string[] = []
   const record: RecordTransport = {
     upload: async (_id, events) => {
       recorded.push(...events)
@@ -61,6 +63,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean; speakTyp
   })
   const deps: CascadeDeps = {
     startTurn,
+    cancelTurn: (id) => cancels.push(id),
     audio: () => audio,
     now: () => Date.now(),
     utcOffsetMinutes: () => -300,
@@ -81,7 +84,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean; speakTyp
       : {}),
   })
   client.attach()
-  return { client, audio, requests, signals, startTurn, recorded, store }
+  return { client, audio, requests, signals, startTurn, recorded, store, cancels }
 }
 
 function feed(audio: FakeAudio, chunk: Int16Array, ms: number) {
@@ -455,6 +458,118 @@ describe('CascadeClient', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  const busy = (retryMs?: number): TurnStart => ({
+    ok: false,
+    status: 409,
+    detail: 'A turn is still running.',
+    code: 'busy',
+    ...(retryMs !== undefined ? { retryMs } : {}),
+  })
+
+  it('busy, then answered: the same turn is posted again after retry_ms, still thinking meanwhile', async () => {
+    const { client, requests } = build([busy(100), { ok: true, events: stream(reply('Fine.')) }])
+    vi.useFakeTimers()
+    try {
+      client.send('Hi.')
+      await vi.advanceTimersByTimeAsync(50)
+      expect(requests).toHaveLength(1)
+      expect(client.getState().activity).toBe('thinking')
+      await vi.advanceTimersByTimeAsync(100)
+      expect(requests).toHaveLength(2)
+      expect(requests[1]).toBe(requests[0])
+      expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'ai', text: 'Fine.' })
+      expect(client.getState().phase).not.toBe('ended')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('busy every time: gives up within the tries, says so, lets the mic go, and keeps the conversation', async () => {
+    const { client, audio, requests } = build([greeting(), busy(), busy(), busy(), busy(), busy(), busy()])
+    await open(client, audio)
+    vi.useFakeTimers()
+    try {
+      feed(audio, LOUD, 300)
+      feed(audio, QUIET, SILENCE_MS + 20)
+      await vi.advanceTimersByTimeAsync(7_000)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(requests).toHaveLength(1 + 5)
+    expect(client.getState().phase).not.toBe('ended')
+    expect(client.getState().ended).toBeNull()
+    expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: STILL_BUSY })
+    expect(audio.micOpen).toBe(false)
+    expect(client.getState().activity).toBe('idle')
+    // The next tap listens in the same conversation, without a new greeting.
+    await client.startVoice()
+    await settle()
+    expect(requests).toHaveLength(6)
+    expect(client.getState().mic).toBe('on')
+  })
+
+  it('a 409 coded time_limit still ends the conversation as the time limit', async () => {
+    const { client } = build(
+      [
+        { ok: true, events: stream(reply('Hi.')) },
+        { ok: false, status: 409, detail: 'Over.', code: 'time_limit' },
+      ],
+      { visitor: true },
+    )
+    client.send('Hi.')
+    await settle()
+    client.send('Still there?')
+    await settle()
+    expect(client.getState().phase).toBe('ended')
+    expect(client.getState().ended).toBe('Demo sessions last 5 minutes.')
+  })
+
+  it('an interrupt tells the engine once, with the aborted turn id', async () => {
+    async function* slow(): AsyncGenerator<SseEvent> {
+      yield { type: 'sentence', data: { text: 'A long answer.' } }
+      yield { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([1])), rate: 24000 } }
+      await new Promise(() => {})
+    }
+    const { client, audio, requests, cancels } = build([greeting(), { ok: true, events: slow() }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    client.interrupt()
+    client.interrupt()
+    expect(cancels).toEqual([requests[1].turnId])
+    expect(requests[1].turnId).not.toBe(requests[0].turnId)
+  })
+
+  it('a turn that has finished is never cancelled', async () => {
+    const { client, audio, cancels } = build([greeting()])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    drained(audio)
+    client.stopVoice()
+    client.dispose()
+    expect(cancels).toEqual([])
+  })
+
+  it('a disposed client tells the engine its turn is abandoned, and asks nothing else', async () => {
+    async function* stalled(): AsyncGenerator<SseEvent> {
+      await new Promise(() => {})
+    }
+    const { client, audio, requests, cancels } = build([greeting(), { ok: true, events: stalled() }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    client.dispose()
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    expect(cancels).toEqual([requests[1].turnId])
+    expect(requests).toHaveLength(2)
   })
 
   it('sends the browser record only what the engine cannot know', async () => {

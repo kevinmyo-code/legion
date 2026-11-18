@@ -206,6 +206,7 @@ export function turnForm(request: TurnRequest): FormData {
   form.append('utc_offset_minutes', String(request.utcOffsetMinutes))
   form.append('client_now_ms', String(Date.now()))
   if (request.preface) form.append('preface', request.preface)
+  if (request.turnId) form.append('turn_id', request.turnId)
   return form
 }
 
@@ -228,13 +229,37 @@ async function startTurn(request: TurnRequest, signal: AbortSignal): Promise<Tur
   })
   if (response.ok && response.body) return { ok: true, events: readSse(response.body) }
   let detail: string | null = null
+  let code: string | null = null
+  let retryMs: number | null = null
   try {
-    const parsed = (error ?? (await response.json())) as { detail?: string } | undefined
+    const parsed = (error ?? (await response.json())) as { detail?: unknown; code?: unknown; retry_ms?: unknown } | undefined
     detail = typeof parsed?.detail === 'string' ? parsed.detail : null
+    code = typeof parsed?.code === 'string' ? parsed.code : null
+    retryMs = typeof parsed?.retry_ms === 'number' ? parsed.retry_ms : null
   } catch {
     detail = null
   }
-  return { ok: false, status: response.status, detail }
+  return { ok: false, status: response.status, detail, code, retryMs }
+}
+
+/**
+ * The engine's cancel door for an abandoned turn: fire and forget, `keepalive` so it survives the
+ * page unloading, and a failure is never shown (the aborted fetch already stopped the stream).
+ * Raw `fetch` because the door is newer than the generated schema; same credentials and CSRF.
+ */
+function cancelTurn(turnId: string) {
+  try {
+    const token = csrfToken()
+    void fetch('/api/assistant/turn/cancel', {
+      method: 'POST',
+      credentials: 'same-origin',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(token ? { 'X-CSRFToken': token } : {}) },
+      body: JSON.stringify({ turn_id: turnId }),
+    }).catch(() => {})
+  } catch {
+    // Never in the way.
+  }
 }
 
 /** The phone's turn models, after the first tap: two workers, the site's own model files. */
@@ -300,6 +325,7 @@ async function robotic(conversationId: string, turn: number): Promise<boolean> {
 export function createCascadeDeps(options: { funnelRef?: string } = {}): CascadeDeps {
   return {
     startTurn,
+    cancelTurn,
     robotic,
     turnDetector: loadTurnModels,
     ...(EARLY_TRANSCRIPT ? { transcribe } : {}),
