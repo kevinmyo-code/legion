@@ -4031,6 +4031,10 @@ object LiveToolbox {
             )
         }
 
+    /** The voiced time of the clip behind this call, when a voice turn carries it. */
+    private suspend fun heardVoicedMs(): Long? =
+        kotlin.coroutines.coroutineContext[com.kevin.legion.vehicle.ClearCodesVoiceGate.HeardVoice]?.voicedMs
+
     @Suppress("ReturnCount") // refused, the link dropped during the read, or the outcome
     private suspend fun clearCodes(context: Context, args: JSONObject, userText: String?): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
@@ -4041,7 +4045,7 @@ object LiveToolbox {
         val gate = DtcClearController.voiceGate
         val refusal = when {
             !connected -> "The OBD adapter isn't connected, so I can't clear anything."
-            confirmed -> gate.checkConfirmed(userText)
+            confirmed -> gate.checkConfirmed(userText, heardVoicedMs())
             else -> null
         }
         if (refusal != null) {

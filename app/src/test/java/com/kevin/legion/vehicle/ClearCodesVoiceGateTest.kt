@@ -103,4 +103,15 @@ class ClearCodesVoiceGateTest {
         assertNull("no words (hands path) is not judged here", ClearCodesVoiceGate.notAskedToClear(false, null))
         assertTrue(ClearCodesVoiceGate.NOT_ASKED.startsWith("Nothing was cleared"))
     }
+
+    @Test
+    fun `a yes from a clip with almost no voice is not a yes, and the question still waits`() {
+        val gate = ClearCodesVoiceGate()
+        gate.asked("clear the codes")
+        assertEquals(ClearCodesVoiceGate.UNHEARD, gate.checkConfirmed("yes", voicedMs = 40))
+        assertEquals(ClearCodesVoiceGate.UNHEARD, gate.checkConfirmed("yes", voicedMs = 149))
+        assertNull("a voiced yes goes through", gate.checkConfirmed("yes", voicedMs = 150))
+        gate.asked("clear the codes")
+        assertNull("no measure (typed, laptop voice): the words decide", gate.checkConfirmed("yes"))
+    }
 }
