@@ -130,6 +130,9 @@ VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances"})
 CACHED_MICRO_USD_PER_TOKEN_X100 = 3
 # How long the turn waits for the next sentence's speech before it gives up on it.
 TTS_WAIT_S = 20.0
+# How often a turn waiting on speech asks whether it was cancelled (round 3 N4): well inside the
+# page's 6 s of `busy` re-sends.
+CANCEL_POLL_S = 0.25
 # The longest a whole turn may hold its server thread, speech included (finding 1): speech-to-text
 # (12 s), the rounds (`LIMITS`), and what is left of the speech is cut here.
 TURN_WALL_S = 60.0
@@ -528,6 +531,10 @@ def first_clause(sentence: str) -> tuple[str, str]:
     return sentence, ""
 
 
+class _Cancelled(Exception):
+    """The turn was cancelled while it waited on speech."""
+
+
 class Speaker:
     """Each sentence goes to speech the moment it is whole, at most two at once; audio comes out
     in sentence order. `ready()` hands over what has arrived without waiting; `drain()` waits."""
@@ -642,7 +649,13 @@ class Speaker:
             # Never past the turn's own deadline, however many sentences are still queued.
             wait = min(TTS_WAIT_S, max(self.deadline - self.clock(), 0.05))
             try:
-                item = head.chunks.get(timeout=wait) if block else head.chunks.get_nowait()
+                item = self._next(head, wait) if block else head.chunks.get_nowait()
+            except _Cancelled:
+                for job in self.jobs:
+                    job.cancelled.set()
+                self.jobs.clear()
+                self._pending = []
+                return
             except queue.Empty:
                 if block:
                     head.cancelled.set()
@@ -659,6 +672,20 @@ class Speaker:
                     yield ev.Event("speech_failed", {"reason": "tts"})
                 continue
             yield self.audio_event(item)
+
+    def _next(self, job: _Job, wait: float):
+        """The job's next chunk within `wait` seconds, asking about a cancel every
+        `CANCEL_POLL_S` meanwhile (round 3 N4: a 20 s wait must not hold a cancelled turn)."""
+        until = time.monotonic() + wait
+        while True:
+            left = until - time.monotonic()
+            try:
+                return job.chunks.get(timeout=max(min(CANCEL_POLL_S, left), 0.001))
+            except queue.Empty:
+                if self.cancelled_often():
+                    raise _Cancelled from None
+                if left <= CANCEL_POLL_S:
+                    raise
 
     def ready(self) -> Iterator[ev.Event]:
         yield from self._take(block=False)
@@ -1094,6 +1121,12 @@ def run_turn(
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
     speaker.cancelled = cancelled
     speaker.cancelled_often = getattr(cancelled, "often", cancelled)
+    if cancelled():
+        # Cancelled before it started (a cancel sent for a `busy` turn that was then re-sent):
+        # no transcription, greeting call or speech is paid for (round 3 N4).
+        report.status = "cancelled"
+        yield ev.done("cancelled", "", False)
+        return
     if speak and turn_input.audio is None:
         # The filler lines' audio, fetched while the floor is theirs (spec 22). For audio, only
         # once speech was heard: room noise must cost nothing (round 2 cloud run, 2026-11-17).
@@ -1697,6 +1730,10 @@ def _greet(
                 kind = web_greeting.HELLO
                 prompt = web_greeting.hello_prompt(history.get("hellos") or [])
     rounds: list[dict] = []
+    if door.cancelled():
+        report.status = "cancelled"
+        yield ev.done("cancelled", "", False)
+        return
     if prompt is not None:
         text = _one_call(model, model_name, system, context, prompt, door, rounds, clock)
         if text and not greeting_is_honest(text):
@@ -1733,7 +1770,12 @@ def _greet(
     else:
         if speaker.enabled:
             speaker.add(spoken_as, expressive=True)
-        if filler_audio is not None and kind == "scripted" and speaker.enabled:
+        if (
+            filler_audio is not None
+            and kind == "scripted"
+            and speaker.enabled
+            and not door.cancelled()
+        ):
             filler_audio.warm(speaker.speech, speaker.voice, [spoken_as])
     yield from speaker.drain()
     yield ev.done("greeting", text, False)
