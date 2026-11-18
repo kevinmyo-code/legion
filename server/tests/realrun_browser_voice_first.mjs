@@ -37,8 +37,10 @@ const browser = await chromium.launch({
   ],
 })
 const desk = A.scenario === 'vf-desk'
+// The chips row is checked at a 390 px phone (demo stage 2, item 1).
+const phone = A.scenario === 'vf-chips' ? { width: 390, height: 844 } : { width: 360, height: 780 }
 const context = await browser.newContext({
-  viewport: desk ? { width: 1440, height: 900 } : { width: 360, height: 780 },
+  viewport: desk ? { width: 1440, height: 900 } : phone,
   deviceScaleFactor: desk ? 1 : 2,
   isMobile: !desk,
   hasTouch: !desk,
@@ -267,6 +269,40 @@ if (A.scenario === 'vf-tap') {
   })
   check('tap_posts_a_cancel', firstEndedAtTap || cancels.some((c) => c.status === 204), { cancels, firstEndedAtTap })
   await shot('tap')
+}
+
+if (A.scenario === 'vf-chips') {
+  // The greeting has played to its end (notice heard): the examples come, checked for this visit.
+  const row = page.locator('[data-stage="chips"]')
+  const shown = await waitFor(async () => (await row.locator('button').count()) > 0, 30000)
+  const width = () => page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }))
+  const w0 = await width()
+  const labels = shown ? await row.locator('button').allTextContents() : []
+  check('examples_shown_after_greeting', shown && labels.length >= 2, { labels })
+  check('no_page_overflow_390_examples', w0.scroll <= w0.inner && w0.inner === 390, w0)
+  await shot('chips-examples')
+  // A tap with the conversation open: asked aloud, answered by code (his profile, no model call).
+  const before = turns.length
+  await row.getByRole('button', { name: 'About Kevin' }).click({ timeout: 5000 })
+  const answered = await waitFor(async () => turns.slice(before).some((t) => t.complete), 60000)
+  await sync()
+  const tap = turns.slice(before).find((t) => t.complete)
+  const tapAudio = (await audit()).buffers.filter((b) => tap?.at !== undefined && b.t > tap.at)
+  R.chipTap = {
+    kind: tap?.kind, status: tap?.status, tools: tap?.tools, said: (tap?.said ?? '').slice(0, 200),
+    done: tap?.done, pageFirstAudioMs: tapAudio.length ? Math.round(tapAudio[0].t - tap.at) : null,
+  }
+  check('chip_asked_aloud_and_answered', answered && tap?.kind === 'spoken-text' && (tap?.tools ?? []).some((x) => x.startsWith('about_kevin')) && tapAudio.length > 0, R.chipTap)
+  // The follow-ups: his other sections, in the same row, still within the screen.
+  const follow = await waitFor(async () => {
+    const now = await row.locator('button').allTextContents().catch(() => [])
+    return now.length >= 2 && now.join('|') !== labels.join('|')
+  }, 30000)
+  const w1 = await width()
+  const followLabels = await row.locator('button').allTextContents().catch(() => [])
+  check('follow_ups_after_profile', follow, { followLabels })
+  check('no_page_overflow_390_follow_ups', w1.scroll <= w1.inner, w1)
+  await shot('chips-follow-ups')
 }
 
 if (A.scenario.startsWith('vf-eot')) {

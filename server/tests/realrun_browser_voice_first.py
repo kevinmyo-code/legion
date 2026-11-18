@@ -85,6 +85,8 @@ def _wavs() -> tuple[dict[str, Path], dict]:
         "vf-eot": _silence(lead) + spend + _silence(25.0),
         "vf-eot-energy": _silence(lead) + spend + _silence(25.0),
         "vf-desk": _silence(20.0),
+        # No speech at all: the chips are tapped (demo stage 2).
+        "vf-chips": _silence(60.0),
     }
     out = {}
     for name, pcm in files.items():
@@ -117,6 +119,24 @@ def _run(live_server, scenario: str, wav: Path, extra: dict) -> dict:
         return {"scenario": scenario, "error": done.stderr[-2000:]}
 
 
+def _first_audio_pairs() -> list[dict]:
+    """Item 2d: per spoken turn, the engine's first audio (`tts_first_audio_ms`, from the turn's
+    start on the engine) beside the page's (`first_audio_ms`, from its post to the first sound),
+    read from the conversation records this run wrote. Local: no Cloud Run or Cloudflare hop."""
+    import re
+
+    from devicelogs.models import DeviceLog
+    from devicelogs.views import inflate_capped
+
+    out = []
+    for row in DeviceLog.objects.order_by("id"):
+        text = inflate_capped(bytes(row.body_gz)).decode("utf-8", "replace")
+        engine = [int(m) for m in re.findall(r"tts_first_audio_ms=(-?\d+)", text)]
+        page = [int(m) for m in re.findall(r"first_audio_ms=(\d+)", text.replace("tts_first", "x"))]
+        out.append({"engine_ms": engine, "page_ms": page})
+    return out
+
+
 def test_browser_voice_first(real, live_server, tmp_path):
     from django.core.management import call_command
 
@@ -138,6 +158,7 @@ def test_browser_voice_first(real, live_server, tmp_path):
         "vf-eot",
         "vf-eot-energy",
         "vf-desk",
+        "vf-chips",
     ):
         if only and scenario not in only:
             continue
@@ -146,6 +167,8 @@ def test_browser_voice_first(real, live_server, tmp_path):
         result = _run(live_server, scenario, wavs[scenario], {"code": code, **timing})
         # The cancel must reach the engine, not only leave the page.
         result["serverCancelRows"] = TurnCancel.objects.count() - before
+        if scenario == "vf-chips":
+            result["firstAudio"] = _first_audio_pairs()
         results.append(result)
     (OUT / "vf-results.json").write_text(json.dumps(results, indent=1), encoding="utf-8")
     print("VF RESULTS", json.dumps([r.get("checks") for r in results])[:4000])
