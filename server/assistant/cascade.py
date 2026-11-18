@@ -59,8 +59,6 @@ one `cascade_turn` line on the record and in the log, numbers only, never words.
 from __future__ import annotations
 
 import base64
-import concurrent.futures
-import contextvars
 import dataclasses
 import functools
 import logging
@@ -74,7 +72,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from django.db import DatabaseError, connection, connections, transaction
+from django.db import DatabaseError, transaction
 
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
@@ -108,6 +106,7 @@ from engine_mcp.models import Outcome
 from engine_mcp.tools import SPEAK_VERBATIM, ToolResult, run_engine_tool, run_tool
 from household.models import is_recruiter
 from household.tenancy import household_of
+from legion import deadline
 from llm import cap as member_cap
 from llm import client as llm_client
 
@@ -131,6 +130,9 @@ VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances"})
 CACHED_MICRO_USD_PER_TOKEN_X100 = 3
 # How long the turn waits for the next sentence's speech before it gives up on it.
 TTS_WAIT_S = 20.0
+# How often a turn waiting on speech asks whether it was cancelled (round 3 N4): well inside the
+# page's 6 s of `busy` re-sends.
+CANCEL_POLL_S = 0.25
 # The longest a whole turn may hold its server thread, speech included (finding 1): speech-to-text
 # (12 s), the rounds (`LIMITS`), and what is left of the speech is cut here.
 TURN_WALL_S = 60.0
@@ -433,11 +435,16 @@ class FillerAudio:
 
         def fetch() -> None:
             for line in missing:
+                stats = Spoken()
                 try:
                     # Through the same tag rules as an answer (round 2 speech review 6).
                     said = speech_tags.for_speech(line, expressive=True)
-                    audio = b"".join(speech.speak(said, voice, Spoken()))
+                    audio = b"".join(speech.speak(said, voice, stats))
                 except (SpeechFailure, OSError):
+                    audio = b""
+                if stats.voice not in (None, voice):
+                    # Spoken in the fallback voice: never kept under this voice (round 3 S3); it
+                    # is asked for again later, when the voice may be back.
                     audio = b""
                 with self._lock:
                     self._fetching.discard((voice, line))
@@ -498,9 +505,12 @@ class _Job:
 # as one request) or "sentence" (one request per sentence, the phone's old shape). Kept as a
 # constant while the two are measured against each other (section 8.3); the loser goes.
 SPEECH_GROUPING = "breath"
-# Speech requests one turn may make: what `LEGION_DEMO_COST_PER_SPEECH_TURN_USD` (one cent by
-# default) covers with retries: about 12 sentences grouped into these (finding 6).
+# Speech requests reserved before a turn starts (finding 6). A longer answer reserves more as it
+# goes, one request at a time, up to `TTS_REQUEST_CEILING` (round 3 speech S4: the 12-sentence
+# limit spoken one sentence a request, plus the closing lines); one is always kept back for a
+# closing honesty line.
 MAX_TTS_REQUESTS = 6
+TTS_REQUEST_CEILING = 16
 GROUP_SENTENCES = 3
 GROUP_CHARS = 400
 # A first sentence longer than this many words has its first clause spoken on its own.
@@ -527,6 +537,23 @@ def first_clause(sentence: str) -> tuple[str, str]:
         if len(head.split()) >= 4 and len(sentence[match.end() :].split()) >= 3:
             return head, sentence[match.end() :].strip()
     return sentence, ""
+
+
+def _transcribe(speech, pcm: bytes, timings: dict):
+    """`speech.transcribe(pcm)`, noting how many requests it sent beyond the first (a retry),
+    which the turn's reservation holds one call for (round 3, finding 8 leftovers)."""
+    try:
+        return speech.transcribe(pcm)
+    finally:
+        timings["stt_retries"] = max(getattr(speech, "stt_sent", 1) - 1, 0)
+
+
+def _whole(value) -> int:
+    return value if isinstance(value, int) and value > 0 else 0
+
+
+class _Cancelled(Exception):
+    """The turn was cancelled while it waited on speech."""
 
 
 class Speaker:
@@ -558,6 +585,13 @@ class Speaker:
         self.skipped = 0
         self.cancelled = _never
         self.cancelled_often = _never
+        # Speech requests this turn may make now, and how to reserve more (round 3 S4).
+        self.allowed = MAX_TTS_REQUESTS
+        self.more: Callable[[int], bool] = lambda n: True
+        # Set for the turn's closing lines: they may use the request kept back for them.
+        self.closing = False
+        self.stopped = False
+        self._notices: list[ev.Event] = []
 
     def spoken_text(self, text: str, expressive: bool = False) -> str:
         """What goes to speech for `text`: its figures rounded like a person says them
@@ -597,14 +631,28 @@ class Speaker:
     def _submit(self, spoken: str) -> None:
         if self.cancelled():
             return
-        if self.requests >= MAX_TTS_REQUESTS:
-            # What the turn's speech reserve covers (finding 6); the rest is shown, not said.
+        if not self._may_speak():
+            # Past what could be reserved: the rest is shown, not said, and the page is told
+            # once (round 3 S4). The closing lines still have the request kept back for them.
             self.skipped += 1
+            if not self.stopped:
+                self.stopped = True
+                self._notices.append(ev.Event("speech_stopped", {"reason": "limit"}))
             return
         self.requests += 1
         job = _Job(spoken, queue.Queue(), Spoken(), threading.Event())
         self.jobs.append(job)
         self._pool.submit(self._run, job)
+
+    def _may_speak(self) -> bool:
+        def room() -> bool:
+            return self.requests < (self.allowed if self.closing else self.allowed - 1)
+
+        if room():
+            return True
+        if self.allowed < TTS_REQUEST_CEILING and self.more(1):
+            self.allowed += 1
+        return room()
 
     def _run(self, job: _Job) -> None:
         started = time.monotonic()
@@ -631,6 +679,8 @@ class Speaker:
         return ev.Event("audio", data)
 
     def _take(self, block: bool) -> Iterator[ev.Event]:
+        while self._notices:
+            yield self._notices.pop(0)
         while self.jobs:
             if self.cancelled_often():
                 # Stopped: what is queued or still speaking is dropped, nothing more is asked for.
@@ -643,7 +693,13 @@ class Speaker:
             # Never past the turn's own deadline, however many sentences are still queued.
             wait = min(TTS_WAIT_S, max(self.deadline - self.clock(), 0.05))
             try:
-                item = head.chunks.get(timeout=wait) if block else head.chunks.get_nowait()
+                item = self._next(head, wait) if block else head.chunks.get_nowait()
+            except _Cancelled:
+                for job in self.jobs:
+                    job.cancelled.set()
+                self.jobs.clear()
+                self._pending = []
+                return
             except queue.Empty:
                 if block:
                     head.cancelled.set()
@@ -660,6 +716,20 @@ class Speaker:
                     yield ev.Event("speech_failed", {"reason": "tts"})
                 continue
             yield self.audio_event(item)
+
+    def _next(self, job: _Job, wait: float):
+        """The job's next chunk within `wait` seconds, asking about a cancel every
+        `CANCEL_POLL_S` meanwhile (round 3 N4: a 20 s wait must not hold a cancelled turn)."""
+        until = time.monotonic() + wait
+        while True:
+            left = until - time.monotonic()
+            try:
+                return job.chunks.get(timeout=max(min(CANCEL_POLL_S, left), 0.001))
+            except queue.Empty:
+                if self.cancelled_often():
+                    raise _Cancelled from None
+                if left <= CANCEL_POLL_S:
+                    raise
 
     def ready(self) -> Iterator[ev.Event]:
         yield from self._take(block=False)
@@ -690,42 +760,29 @@ class DoorCall:
 
 
 TURN_STOPPED = "Not run: the turn was stopped."
-TOOL_TIMED_OUT_READ = (
-    "Not answered: {name} took too long, so the turn stopped waiting for it. Nothing was changed."
+# A tool still running at its deadline (round 3 design change D1): the database cancelled its
+# statement or its wait for a lock and rolled its transaction back, or its request timed out.
+TOOL_TIMED_OUT = (
+    "Not done: {name} took too long, so it was stopped and nothing it did was kept. Nothing was "
+    "changed."
 )
-TOOL_TIMED_OUT_WRITE = (
-    "Not confirmed: {name} was still running when the turn stopped waiting for it. The change may "
-    "still go through; say so, and that they should check before asking again."
-)
-# Said at the end of a turn whose write was still running at its deadline.
-CHANGE_UNCERTAIN = (
-    "That change was still running when I stopped waiting: check it before asking again."
-)
-_TOOL_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="cascade-tool")
 
 
-def run_with_deadline(work, deadline_s: float):
-    """`work()`'s result, or None when it is still running at `deadline_s` (round 2 finding 2: the
-    tool deadline was never enforced, so a slow tool held the turn's thread and its demo slot).
-
-    The tool runs on its own thread with its own database connection, which it closes when done;
-    the turn stops waiting, the tool may still finish. Inside an open transaction (a test, or a
-    caller's `atomic`) a second connection could not see its rows, so it runs inline there."""
-    if connection.in_atomic_block:
-        return work()
-    context = contextvars.copy_context()
-
-    def run():
-        try:
-            return context.run(work)
-        finally:
-            connections.close_all()
-
-    future = _TOOL_POOL.submit(run)
+def _run_by_deadline(work, deadline_s: float):
+    """`work()`'s result, or None when it ran past `deadline_s` and was stopped (round 3 design
+    change D1, replacing a thread pool that could not stop a call). Inline, on the turn's own
+    thread: the database cancels a slow statement or lock wait and rolls the tool's transaction
+    back, and outbound requests are capped by the time left (`legion.deadline`). So a write either
+    committed inside the deadline or did not happen."""
+    guard = None
     try:
-        return future.result(timeout=deadline_s)
-    except concurrent.futures.TimeoutError:
+        with deadline.within_database(deadline_s) as guard:
+            result = work()
+    except DatabaseError:
+        if guard is None or not guard.expired:
+            raise
         return None
+    return None if guard.expired else result
 
 
 class WebDoor:
@@ -740,10 +797,10 @@ class WebDoor:
         self.recruiter = is_recruiter(self.user)
         self.calls: list[DoorCall] = []
         self.end_requested = False
-        # A write that was still running when its deadline passed: it may yet go through.
-        self.uncertain = False
         # The browser's cancel (`CancelCheck`), asked before each tool.
         self.cancelled = _never
+        # Told when a write committed: the turn is then one the user could have received (N5).
+        self.on_write = lambda: None
         # Section 10: the model said the sentence was not for it, and the code-read signals.
         self.not_for_me = False
         self.addressed: dict[str, bool] = {}
@@ -844,17 +901,14 @@ class WebDoor:
                     work = functools.partial(run_engine_tool, self.request, only_here, args)
                 else:
                     work = functools.partial(run_tool, self.request, name, args)
-                result = run_with_deadline(work, deadline_s)
+                result = _run_by_deadline(work, deadline_s)
                 if result is None:
-                    # Still running when the turn stopped waiting (round 2 finding 2). A write may
-                    # yet go through, so nothing claims it did or did not.
-                    writes = self._writes(name)
-                    self.uncertain = self.uncertain or writes
-                    timed_out = TOOL_TIMED_OUT_WRITE if writes else TOOL_TIMED_OUT_READ
                     result = ToolResult(
-                        text=timed_out.format(name=name), is_error=True, outcome=Outcome.FAILED
+                        text=TOOL_TIMED_OUT.format(name=name), is_error=True, outcome=Outcome.FAILED
                     )
                 ok, outcome, text, guard = not result.is_error, result.outcome, result.text, None
+        if ok and self._writes(name):
+            self.on_write()
         call_id = call.id or f"c{len(self.calls) + 1}"
         # Known at once: whatever fails after this, the turn knows the write went through.
         self.calls.append(DoorCall(name, ok, outcome, text, None, None, 0))
@@ -923,6 +977,9 @@ class TurnInput:
     # A text turn the page transcribed early and sends as spoken (the phone's speculation, spec
     # 33 adapted): answered aloud like an utterance, recorded as spoken.
     spoken: bool = False
+    # Utterances this conversation received before this one, answered or not (round 3 speech
+    # S5): only the first may get the acknowledgement.
+    heard_before: int = 0
     # The one-minute tour (`assistant/tour.py`): the beat to play, or None.
     tour_beat: int | None = None
 
@@ -1028,9 +1085,9 @@ PERSONA_NOTE = (
 # Taught by example, not adjectives (section 8.1). Invented content, for the shape only.
 SPOKEN_EXAMPLES = (
     "How replies sound (invented examples, for the shape only; never use their facts): "
-    '"What\'s due this week?" -> "Three things. The stats quiz Thursday night is the big one." '
+    '"What\'s due this week?" -> "3 things. The stats quiz Thursday night is the big one." '
     '"How much did we spend on groceries last month?" -> "$412.38, a bit under the month before." '
-    '"Is the car due for anything?" -> "An oil change, in about 600 miles. Want it on the '
+    '"Is the car due for anything?" -> "An oil change, in 612 miles. Want it on the '
     'calendar?" '
     '"How does the router work?" -> "Short version: it reads the question and hands it to one '
     'specialist. Want the long one?" '
@@ -1080,6 +1137,8 @@ def run_turn(
     filler_audio: FillerAudio | None = None,
     companion_name: str = "",
     cancelled: Callable[[], bool] = _never,
+    on_write: Callable[[], None] = lambda: None,
+    more_speech: Callable[[int], bool] = lambda n: True,
 ) -> Iterator[ev.Event]:
     """Yields the turn's events. Fills `report` as it goes, so a caller that stops reading (the
     browser hung up) still knows what happened. `cancelled` is asked at every stage boundary: once
@@ -1099,16 +1158,25 @@ def run_turn(
         turn_input.audio is not None
         or turn_input.greet
         or turn_input.spoken
-        or turn_input.tour_beat is not None
+        # A tour beat is narrated; a typed question during it is a typed turn (round 3 N9).
+        or (turn_input.tour_beat is not None and not turn_input.text)
     )
     system = cached_system(system)
     yield ev.Event("turn", {"conversation_id": str(conversation_id), "turn": turn})
     door = WebDoor(request, conversation_id, turn)
     report.door = door
     door.cancelled = cancelled
+    door.on_write = on_write
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
     speaker.cancelled = cancelled
     speaker.cancelled_often = getattr(cancelled, "often", cancelled)
+    speaker.more = more_speech
+    if cancelled():
+        # Cancelled before it started (a cancel sent for a `busy` turn that was then re-sent):
+        # no transcription, greeting call or speech is paid for (round 3 N4).
+        report.status = "cancelled"
+        yield ev.done("cancelled", "", False)
+        return
     if speak and turn_input.audio is None:
         # The filler lines' audio, fetched while the floor is theirs (spec 22). For audio, only
         # once speech was heard: room noise must cost nothing (round 2 cloud run, 2026-11-17).
@@ -1135,7 +1203,7 @@ def run_turn(
             if turn_input.audio is not None:
                 # Said during the tour: "skip" and "stop" steer it; anything else is a question.
                 try:
-                    heard = speech.transcribe(turn_input.audio)
+                    heard = _transcribe(speech, turn_input.audio, timings)
                 except SpeechFailure as exc:
                     timings["stt_failed"] = str(exc)
                     report.status = "stt_failed"
@@ -1229,7 +1297,7 @@ def _answer(
     # 1. The words.
     if turn_input.audio is not None:
         try:
-            heard = speech.transcribe(turn_input.audio)
+            heard = _transcribe(speech, turn_input.audio, timings)
         except SpeechFailure as exc:
             timings["stt_failed"] = str(exc)
             report.status = "stt_failed"
@@ -1295,7 +1363,7 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("robotic", ROBOTIC_ACK, False)
         return
-    if speak and door.turn == 0 and needs_work(words):
+    if speak and turn_input.heard_before == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
         # while the model's first round runs. Only on the first utterance after the tap, which is
         # for the assistant by construction (round 2 speech review 5): on any later turn nothing
@@ -1519,6 +1587,9 @@ def _answer(
         )
         for c in door.calls
     )
+    # The answer's own words go to speech first; what follows may use the request kept back.
+    speaker.flush()
+    speaker.closing = True
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
         if honest(text):
@@ -1528,8 +1599,6 @@ def _answer(
     wrote = door.wrote()
     if guard_refused:
         yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)
-    elif door.uncertain:
-        yield say(CHANGE_UNCERTAIN)
     elif unbacked:
         if wrote:
             yield say(CHANGE_MADE)
@@ -1542,7 +1611,7 @@ def _answer(
     if failure is not None:
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
-        yield say(NO_TEXT + ("" if door.wrote() or door.uncertain else NOTHING_CHANGED))
+        yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
     yield from speaker.drain()
     if not door.end_requested and is_stop_utterance(words):
         door.end_requested = True
@@ -1714,6 +1783,10 @@ def _greet(
                 kind = web_greeting.HELLO
                 prompt = web_greeting.hello_prompt(history.get("hellos") or [])
     rounds: list[dict] = []
+    if door.cancelled():
+        report.status = "cancelled"
+        yield ev.done("cancelled", "", False)
+        return
     if prompt is not None:
         text = _one_call(model, model_name, system, context, prompt, door, rounds, clock)
         if text and not greeting_is_honest(text):
@@ -1750,24 +1823,32 @@ def _greet(
     else:
         if speaker.enabled:
             speaker.add(spoken_as, expressive=True)
-        if filler_audio is not None and kind == "scripted" and speaker.enabled:
-            filler_audio.warm(speaker.speech, speaker.voice, [spoken_as])
+        if (
+            filler_audio is not None
+            and kind == "scripted"
+            and speaker.enabled
+            and not door.cancelled()
+        ):
+            fetched = filler_audio.warm(speaker.speech, speaker.voice, [spoken_as])
+            report.timings["speech_fetched"] = (
+                _whole(report.timings.get("speech_fetched")) + fetched
+            )
     yield from speaker.drain()
     yield ev.done("greeting", text, False)
 
 
-# A figure in any form: digits, a currency or percent sign, or a number word beside a money or
-# quantity word ("nine hundred bucks", "forty dollars", "three tasks").
-_NUMBER_WORD = (
-    r"(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
-    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|"
-    r"ninety|hundred|thousand|million|billion|half|dozen|a couple)"
-)
-_FIGURE_IN_WORDS = re.compile(
-    _NUMBER_WORD
-    + r"[\s-]+(\w+[\s-]+)?(dollars?|bucks?|cents?|grand|percent|per cent|pounds?|kilos?|miles?|"
-    r"items?|tasks?|things?|events?|bills?|charges?|workouts?|sets?|reps?|days?|hours?|minutes?|"
-    r"times?|left|due|over|under)\b",
+# A figure in any form (round 3 speech S2, ruling A: NO figure at all in a model-worded greeting):
+# digits, a currency or percent sign, any number word but "one", any ordinal, a fraction word, or
+# a clock time in words. "one" is allowed alone: it is a pronoun or an article far more often
+# ("one thing", "a quiet one"); "one hundred" is still caught by "hundred".
+_FIGURE_WORDS = re.compile(
+    r"\b(zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
+    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|"
+    r"eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|couple|"
+    r"first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|"
+    r"\w+teenth|\w+tieth|hundredth|thousandth|"
+    r"half|halves|quarters?|thirds|fourths|fifths|tenths|twice|thrice|double|triple|"
+    r"noon|midnight|o'clock|oclock)\b",
     re.I,
 )
 
@@ -1776,7 +1857,7 @@ def greeting_states_a_figure(text: str) -> bool:
     """True when a model-worded greeting states any figure (round 2 speech review A: checking or
     rewriting figures in free model text never converged, so a greeting carries none). The
     scripted line is said instead; a figure that belongs in a greeting is written by code."""
-    return bool(re.search(r"[0-9$%\u00a3\u20ac]", text) or _FIGURE_IN_WORDS.search(text))
+    return bool(re.search(r"[0-9$%\u00a3\u20ac]", text) or _FIGURE_WORDS.search(text))
 
 
 def greeting_is_honest(text: str) -> bool:

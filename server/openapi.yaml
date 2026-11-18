@@ -606,7 +606,8 @@ paths:
         while a tool runs; `tool` is empty for the acknowledgement); `tool` {name,
         ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags);
         `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a
-        filler''s audio); `speech_failed` {reason}; `done` {status, final_text, writes_ran,
+        filler''s audio); `speech_failed` {reason}; `speech_stopped` {reason} (the
+        rest of the answer is shown, not spoken); `done` {status, final_text, writes_ran,
         words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure`
         or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and
         tools_ms? (a demo visit''s estimated turn cost and each tool''s time)}; `error`
@@ -633,41 +634,42 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/TurnRefusal'
           description: The body did not fit; nothing ran.
         '404':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/TurnRefusal'
           description: No conversation with that id is the caller's.
         '409':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
-          description: This caller's assistant runs on live voice, or a demo conversation
-            reached its time limit. Nothing ran.
+                $ref: '#/components/schemas/TurnRefusal'
+          description: '`live_engine`, `time_limit`, `busy` (the caller''s own earlier
+            turn has not released; send the same request again after `retry_ms`) or
+            `duplicate` (this `turn_id` was already answered). Nothing ran.'
         '413':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/TurnRefusal'
           description: 'The utterance is too long: over MAX_UTTERANCE_SECONDS of 16
             kHz 16-bit mono PCM, judged on the upload''s size in bytes.'
         '429':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
-          description: Too many turns (per member, and per address for a demo visit),
-            or today's demo budget or the member's own spend limit is used up. Nothing
-            ran.
+                $ref: '#/components/schemas/TurnRefusal'
+          description: '`throttled` (too many turns per member, and per address for
+            a demo visit), `demo_full` (every demo slot or this address''s slot is
+            in use), `budget` or `member_cap`. Nothing ran.'
         '503':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/TurnRefusal'
           description: No Gemini key on this server.
   /api/assistant/turn/cancel:
     post:
@@ -675,9 +677,12 @@ paths:
       description: |-
         Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
         and the server only notices a dropped stream at its next write). Marks the turn cancelled in
-        the database, where the running turn looks at every stage boundary, from any worker or
-        instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
-        or not the turn is still running; costs nothing; a row stops only the caller's own turn.
+        the database, from any worker or instance. The running turn looks at its stage boundaries
+        (before transcription, each model round, each tool, each speech request, and every 250 ms
+        while it waits on speech): from then on it starts no further paid call. What is already in
+        flight runs to its end (one model round, one tool, or the speech requests already sent), and
+        the turn's slot comes free when its stream ends. Idempotent; 204 whether or not the turn is
+        still running; costs nothing; a row stops only the caller's own turn.
       summary: Stop one of the caller's own turns (idempotent, costs nothing)
       tags:
       - assistant
@@ -704,6 +709,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The body did not fit.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many stops in a short time, from this caller or this address.
   /api/auth/csrf:
     get:
       operationId: api_auth_csrf_retrieve
@@ -25486,6 +25497,67 @@ components:
       - day
       - trend_lbs
       - weight_lbs
+    TurnRefusal:
+      type: object
+      description: |-
+        A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
+        acts on (`TURN_REFUSAL_CODES`).
+      properties:
+        detail:
+          type: string
+          description: What did not happen, in words to show.
+        code:
+          allOf:
+          - $ref: '#/components/schemas/TurnRefusalCodeEnum'
+          description: |-
+            What the page does next.
+
+            * `bad_request` - bad_request
+            * `budget` - budget
+            * `busy` - busy
+            * `demo_full` - demo_full
+            * `duplicate` - duplicate
+            * `live_engine` - live_engine
+            * `member_cap` - member_cap
+            * `no_conversation` - no_conversation
+            * `no_key` - no_key
+            * `throttled` - throttled
+            * `time_limit` - time_limit
+            * `too_long` - too_long
+        retry_ms:
+          type: integer
+          description: 'With `busy`: when to send the same request again.'
+      required:
+      - code
+      - detail
+    TurnRefusalCodeEnum:
+      enum:
+      - bad_request
+      - budget
+      - busy
+      - demo_full
+      - duplicate
+      - live_engine
+      - member_cap
+      - no_conversation
+      - no_key
+      - throttled
+      - time_limit
+      - too_long
+      type: string
+      description: |-
+        * `bad_request` - bad_request
+        * `budget` - budget
+        * `busy` - busy
+        * `demo_full` - demo_full
+        * `duplicate` - duplicate
+        * `live_engine` - live_engine
+        * `member_cap` - member_cap
+        * `no_conversation` - no_conversation
+        * `no_key` - no_key
+        * `throttled` - throttled
+        * `time_limit` - time_limit
+        * `too_long` - too_long
     TurnRequest:
       type: object
       properties:

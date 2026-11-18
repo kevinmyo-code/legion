@@ -48,9 +48,29 @@ def test_the_rounding_table(amount, said):
 
 
 def test_the_sign_is_said_once():
-    # Round 2 speech review: "overdrawn by minus about" said the negative twice.
+    # Round 2 speech review: "overdrawn by minus about" said the negative twice. Left out only
+    # when the sign word is right before the amount (round 3 S1).
     assert speakable("You're overdrawn by -$2,333.61.") == "You're overdrawn by about $2,330."
     assert speakable("Balance: -$2,333.61.") == "Balance: minus about $2,330."
+
+
+@pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        (
+            "Short version: checking is at -$1,234.56.",
+            "Short version: checking is at minus about $1,230.",
+        ),
+        (
+            "Spending is down a bit and checking sits at -$45.20.",
+            "Spending is down a bit and checking sits at minus about $45.",
+        ),
+        ("You owe them and the card is at -$300.", "You owe them and the card is at minus $300."),
+    ],
+)
+def test_a_negative_amount_is_always_said_negative(sentence, said):
+    # Round 3 S1: a sign word anywhere earlier in the sentence dropped the "minus".
+    assert speakable(sentence) == said
 
 
 @pytest.mark.parametrize(
@@ -73,6 +93,8 @@ def test_the_band_edges(amount, said):
     "sentence",
     [
         "Rent ran $1,450-$1,500.",
+        "Rent ran $1,450 -$1,500.",
+        "Rent ran $1,450 – $1,500.",
         "It was $1,450 - $1,500 a month.",
         "Somewhere between $10 and $20.",
         "From $10 to $20, roughly.",

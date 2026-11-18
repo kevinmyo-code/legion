@@ -190,7 +190,8 @@ _NO_SPEECH = re.compile(
     # A note in brackets or stars and nothing else ("[inaudible]", "(silence)", "*music*"), or a
     # plain "no speech" sentence. A spoken "Nothing." is an answer and stays.
     r"^\s*(?:[\[\(\*<][^\]\)\*>]{1,40}[\]\)\*>]\s*)+$"
-    r"|^\s*(?:no speech|no audio|no intelligible speech|inaudible|unintelligible)[\s.!]*$",
+    r"|^\s*(?:no (?:intelligible |audible |clear )?(?:speech|audio|words)"
+    r"(?: (?:detected|present|heard|found))?|inaudible|unintelligible|silence)[\s.!]*$",
     re.I,
 )
 _ONLY_PUNCTUATION = re.compile(r"^[\W_]*$")
@@ -204,10 +205,8 @@ def clean_transcript(raw: str) -> str:
         text = text[1:-1].strip()
     if _ONLY_PUNCTUATION.match(text) or _NO_SPEECH.match(text):
         return ""
-    # A note among the words ("[laughs] okay sure") is not something they said.
-    text = re.sub(r"\s*[\[\(][a-z][a-z ]{0,30}[\]\)]\s*", " ", text, flags=re.I).strip()
-    if _ONLY_PUNCTUATION.match(text):
-        return ""
+    # Words around a marker are real speech and are kept as written (round 3 speech, small c:
+    # "(two percent)" was cut from a real sentence).
     if _echoes_the_instruction(text):
         return ""
     return text
@@ -247,6 +246,12 @@ def transcribe_body(pcm: bytes) -> dict:
 
 # What a refused voice name is spoken in instead (the phone's own voice).
 FALLBACK_VOICE = "Puck"
+# How long a voice Google refused by name is spoken in the fallback before it is tried again
+# (round 3 speech S3: not for the life of the process).
+BAD_VOICE_S = 300.0
+# Google's words for a voice name it does not have (probed 2026-11-17: the legacy shape says
+# this; the new shape answers only "Request contains an invalid argument.").
+_NO_SUCH_VOICE = re.compile(r"no matching speaker voice|voice.*not (found|supported)", re.I)
 
 
 def speak_body(text: str, voice: str, *, legacy_voice: bool) -> dict:
@@ -278,6 +283,9 @@ class Spoken:
     prompt_tokens: int = 0
     output_tokens: int = 0
     failed: str | None = None
+    # The voice that actually spoke it (a refused voice is spoken in FALLBACK_VOICE): audio is
+    # kept under this voice only (round 3 speech S3).
+    voice: str | None = None
 
 
 class SpeechFailure(ModelFailure):
@@ -321,9 +329,10 @@ class GeminiSpeech:
         self._transport = transport or UrllibTransport()
         self._api = api
         self._clock = clock or time.monotonic
-        self._legacy_voice = False
-        # Voices Google refused by name (HTTP 400 in both shapes): spoken in FALLBACK_VOICE instead.
-        self.bad_voices: set[str] = set()
+        # Voices Google refused by name, until when (round 3 speech S3): spoken in
+        # FALLBACK_VOICE instead until then.
+        self.bad_voices: dict[str, float] = {}
+        self.stt_sent = 0
 
     def _headers(self) -> dict:
         key = self._key()
@@ -362,6 +371,8 @@ class GeminiSpeech:
             return Heard("", audio_ms, 0)
         started = self._clock()
         text, usage = [], {}
+        # Requests actually sent, a retry included: what the turn is charged for (round 3).
+        self.stt_sent += 1
         for ev in self._stream(self._stt_model, transcribe_body(pcm), STT_TIMEOUT_S):
             if isinstance(ev.get("error"), dict):
                 raise SpeechFailure(f"stt_error_{ev['error'].get('code', '?')}")
@@ -389,11 +400,16 @@ class GeminiSpeech:
         started = self._clock()
         sent = 0
         retried = False
-        if voice in self.bad_voices:
+        legacy = False
+        until = self.bad_voices.get(voice)
+        if until is not None and self._clock() < until:
             voice = FALLBACK_VOICE
+        else:
+            self.bad_voices.pop(voice, None)
         while True:
             try:
-                for chunk in self._speak_once(text, voice, spoken, started):
+                spoken.voice = voice
+                for chunk in self._speak_once(text, voice, spoken, started, legacy):
                     sent += len(chunk)
                     yield chunk
                 return
@@ -401,25 +417,27 @@ class GeminiSpeech:
                 said = str(exc)
                 if sent:
                     raise SpeechFailure(spoken.failed or "tts_failed") from None
-                if "400" in said and not self._legacy_voice:
-                    # Google refused the 3.8 voice shape: the older one, for the rest of the turn.
-                    self._legacy_voice = True
-                elif "400" in said and voice != FALLBACK_VOICE:
-                    # Refused in both shapes: the voice's name (a bad name is a 400, never silently
-                    # replaced). Said in the fallback voice rather than not at all (Kevin,
-                    # 2026-11-17: "fall back to Puck on a voice error rather than going silent").
-                    self.bad_voices.add(voice)
-                    voice = FALLBACK_VOICE
+                if "400" in said and _NO_SUCH_VOICE.search(said) and voice != FALLBACK_VOICE:
+                    # Google says it has no voice by this name: said in the fallback voice rather
+                    # than not at all (Kevin, 2026-11-17), for a few minutes (round 3 S3).
+                    self.bad_voices[voice] = self._clock() + BAD_VOICE_S
+                    voice, legacy = FALLBACK_VOICE, False
+                elif "400" in said and not legacy:
+                    # The new voice shape refused: this request once more in the older shape,
+                    # whose error names the voice when the voice is the problem. Nothing is kept.
+                    legacy = True
                 elif _worth_retry(said) and not retried:
                     retried = True
                 else:
                     raise SpeechFailure(spoken.failed or "tts_failed") from None
                 spoken.failed = None
 
-    def _speak_once(self, text, voice, spoken: Spoken, started: float) -> Iterator[bytes]:
+    def _speak_once(
+        self, text, voice, spoken: Spoken, started: float, legacy: bool = False
+    ) -> Iterator[bytes]:
         first = True
         odd = b""
-        body = speak_body(text, voice, legacy_voice=self._legacy_voice)
+        body = speak_body(text, voice, legacy_voice=legacy)
         try:
             for ev in self._stream(TTS_MODEL, body, TTS_TIMEOUT_S):
                 if isinstance(ev.get("error"), dict):

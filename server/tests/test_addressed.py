@@ -120,3 +120,21 @@ def test_the_signals_read_from_the_words():
     assert signals == {"named": True, "answers_question": True, "second_person": True}
     quiet = cascade.addressed_signals("Ha, that was funny.", "Alfred", "Done.")
     assert quiet == {"named": False, "answers_question": False, "second_person": False}
+
+
+def test_tap_then_side_talk_twice_gets_at_most_one_acknowledgement(
+    member, engine, monkeypatch, household_user
+):
+    """Round 3 speech S5: utterances are counted as received, answered or not; only the first
+    after the tap may get "one sec"."""
+    _warm(monkeypatch, engine, household_user)
+    engine.model = FakeModel([say("Morning.")])
+    opened = _events(_post(member, greet="true"))
+    conversation = _of(opened, "turn")[0]["conversation_id"]
+    acks = 0
+    for _ in range(2):
+        engine.speech.heard = "Did you look at what we spent on groceries last month?"
+        engine.model = FakeModel([call(cascade.NOT_FOR_ME_TOOL, {})])
+        events = _events(_post(member, audio=PCM, conversation_id=conversation))
+        acks += len([f for f in _of(events, "filler") if f["tool"] == ""])
+    assert acks <= 1

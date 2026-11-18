@@ -385,6 +385,20 @@ def test_a_question_during_the_tour_typed_or_spoken_is_answered(visitor, engine,
     assert "tour" not in _of(events, "done")[0]
 
 
+def test_a_typed_tour_question_is_recorded_typed_and_not_spoken(visitor, engine, tmp_path):
+    """Round 3 N9: a typed question during the tour is a typed turn: recorded with typed=true,
+    answered on screen, and reserved against the text budget, not the voice cap."""
+    from tests.test_assistant_cascade import _record
+
+    load_fake(tmp_path)
+    engine.model = FakeModel([say("About three hundred a month.")])
+    events = _events(_post(visitor, tour=1, text="What does the household spend on food?"))
+    assert engine.speech.spoken == []
+    assert _of(events, "audio") == []
+    record = _record(_of(events, "turn")[0]["conversation_id"])
+    assert "user final=true typed=true" in record
+
+
 # =============================================================================
 # Funnel counts
 # =============================================================================

@@ -78,6 +78,7 @@ from devicelogs.models import REASON_CONVERSATION, DeviceLog
 from devicelogs.render import batch_text
 from ingest import statements
 from ingest.drive import _OPENER, Response, Transport
+from legion import deadline
 from llm.client import retrying
 from member_memory.models import (
     DECAY_DURABLE,
@@ -276,7 +277,7 @@ def request_body(text: str, known: list[MemberMemory]) -> bytes:
 
 def _transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> Response:
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as reply:
+    with _OPENER.open(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 

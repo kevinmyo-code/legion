@@ -35,11 +35,12 @@ answer here is built from Google's reply, never from the key.
 
 from __future__ import annotations
 
+import functools
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.http import StreamingHttpResponse
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import exceptions, serializers, status
@@ -930,8 +931,11 @@ def _turn_sse(
     held=None,
     reserved_speech=0,
     cancelled=None,
+    answered=None,
+    more_speech=None,
 ):
     report = cascade.TurnReport()
+    answered = answered or (lambda: None)
     spoken = turn_input.audio is not None or turn_input.greet
     turn = None
     try:
@@ -947,6 +951,8 @@ def _turn_sse(
             voice=voice,
             companion_name=companion_name,
             cancelled=cancelled or (lambda: False),
+            on_write=answered,
+            more_speech=more_speech or (lambda n: True),
             model_name=voice_engine.text_model(),
             model=model,
             speech=speech,
@@ -954,6 +960,9 @@ def _turn_sse(
         )
         for event in turn:
             yield event.sse()
+            if event.type == "done":
+                # Written to the browser: a re-send of this turn is now a duplicate (N5).
+                answered()
     except GeneratorExit:
         # The browser hung up (an interrupt aborts the request): no further round, tool call or
         # speech starts, and the record says the turn was cut.
@@ -986,7 +995,9 @@ def _turn_sse(
         if reservation is not None:
             demo_budget.release_unused(
                 reservation,
-                rounds_unused=max(reserved_rounds - report.rounds, 0),
+                rounds_unused=max(
+                    reserved_rounds - report.rounds - _count(report.timings, "stt_retries"), 0
+                ),
                 # No voice in the audio: no paid speech-to-text and nothing spoken.
                 speech_unused=report.status == "nothing_heard"
                 and not report.timings.get("stt_paid"),
@@ -1047,19 +1058,47 @@ TURN_REFUSAL_CODES = {
 BUSY_RETRY_MS = 1000
 
 
-def _first_time(user, turn_id) -> bool:
-    """Marks `turn_id` started for `user`; False when it had already started."""
-    from django.db import IntegrityError
+class TurnRefusalSerializer(serializers.Serializer):
+    """A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
+    acts on (`TURN_REFUSAL_CODES`)."""
 
+    detail = serializers.CharField(help_text="What did not happen, in words to show.")
+    code = serializers.ChoiceField(
+        choices=sorted(TURN_REFUSAL_CODES), help_text="What the page does next."
+    )
+    retry_ms = serializers.IntegerField(
+        required=False, help_text="With `busy`: when to send the same request again."
+    )
+
+
+def _more_speech(user):
+    """How a running turn reserves more speech requests (round 3 S4): against the demo budget for
+    a visit, without limit (bar the turn's ceiling) for a member."""
+    if not demo_budget.counts(user):
+        return lambda n: True
+    return lambda n: demo_budget.reserve_speech_requests(n, user=user) is not None
+
+
+def _answered(user, turn_id) -> bool:
+    """Whether `turn_id` already reached a state `user` could have received (round 3 N5)."""
     from assistant.models import TurnSeen
 
+    return TurnSeen.objects.filter(turn_id=turn_id, user=user).exists()
+
+
+def _mark_answered(user, turn_id) -> None:
+    """Records `turn_id` as answered, once a write in it committed or its `done` was sent; never
+    on arrival, so a turn refused or broken before either is re-sent and runs (round 3 N5)."""
+    from assistant.models import TurnSeen
+
+    if not turn_id:
+        return
     try:
         with transaction.atomic():
-            TurnSeen.objects.create(turn_id=turn_id, user=user)
-    except IntegrityError:
-        return False
-    TurnSeen.objects.filter(at__lt=datetime.now(UTC) - timedelta(days=1)).delete()
-    return True
+            TurnSeen.objects.get_or_create(turn_id=turn_id, user=user)
+        TurnSeen.objects.filter(at__lt=datetime.now(UTC) - timedelta(days=1)).delete()
+    except DatabaseError:
+        cascade.log.warning("assistant cascade: turn mark failed", exc_info=True)
 
 
 class _TurnThrottled(exceptions.APIException):
@@ -1103,7 +1142,8 @@ class AssistantTurnView(_AssistantView):
             "said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, "
             "outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm "
             "(base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); "
-            "`speech_failed` {reason}; `done` {status, final_text, writes_ran, words?, end? (the "
+            "`speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer is "
+            "shown, not spoken); `done` {status, final_text, writes_ran, words?, end? (the "
             "conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing "
             "was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's "
             "estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no "
@@ -1117,33 +1157,37 @@ class AssistantTurnView(_AssistantView):
         responses={
             200: OpenApiResponse(description="text/event-stream, as described."),
             400: OpenApiResponse(
-                DetailSerializer, description="The body did not fit; nothing ran."
+                TurnRefusalSerializer, description="The body did not fit; nothing ran."
             ),
             404: OpenApiResponse(
-                DetailSerializer, description="No conversation with that id is the caller's."
+                TurnRefusalSerializer, description="No conversation with that id is the caller's."
             ),
             409: OpenApiResponse(
-                DetailSerializer,
+                TurnRefusalSerializer,
                 description=(
-                    "This caller's assistant runs on live voice, or a demo conversation reached "
-                    "its time limit. Nothing ran."
+                    "`live_engine`, `time_limit`, `busy` (the caller's own earlier turn has not "
+                    "released; send the same request again after `retry_ms`) or `duplicate` (this "
+                    "`turn_id` was already answered). Nothing ran."
                 ),
             ),
             413: OpenApiResponse(
-                DetailSerializer,
+                TurnRefusalSerializer,
                 description=(
                     "The utterance is too long: over MAX_UTTERANCE_SECONDS of 16 kHz 16-bit mono "
                     "PCM, judged on the upload's size in bytes."
                 ),
             ),
             429: OpenApiResponse(
-                DetailSerializer,
+                TurnRefusalSerializer,
                 description=(
-                    "Too many turns (per member, and per address for a demo visit), or today's "
-                    "demo budget or the member's own spend limit is used up. Nothing ran."
+                    "`throttled` (too many turns per member, and per address for a demo visit), "
+                    "`demo_full` (every demo slot or this address's slot is in use), `budget` or "
+                    "`member_cap`. Nothing ran."
                 ),
             ),
-            503: OpenApiResponse(DetailSerializer, description="No Gemini key on this server."),
+            503: OpenApiResponse(
+                TurnRefusalSerializer, description="No Gemini key on this server."
+            ),
         },
     )
     def post(self, request):
@@ -1232,7 +1276,7 @@ class AssistantTurnView(_AssistantView):
             return _refuse(request, busy, busy_status, "demo_full")
         reservation = None
         try:
-            if data.get("turn_id") and not _first_time(request.user, data["turn_id"]):
+            if data.get("turn_id") and _answered(request.user, data["turn_id"]):
                 # The page re-sends a `busy` turn with its id; one that already ran is never a
                 # second turn or a second charge.
                 held.release()
@@ -1251,8 +1295,15 @@ class AssistantTurnView(_AssistantView):
                 if tour_beat is not None and audio is None and not text
                 else cascade.MAX_ROUNDS + 1
             ) + 1
+            if audio is not None:
+                # Speech-to-text may be tried once more (round 3, finding 8 leftovers): reserved
+                # as one more call, given back when it was not needed.
+                reserved_rounds += 1
             spoken_turn = (
-                greet or audio is not None or bool(data.get("spoken")) or tour_beat is not None
+                greet
+                or audio is not None
+                or bool(data.get("spoken"))
+                or (tour_beat is not None and not text)
             )
             voice = voice_engine.voice_for(request.user)
             # Speech reserved per request it may make: the turn's own, and the filler and failure
@@ -1260,6 +1311,9 @@ class AssistantTurnView(_AssistantView):
             reserved_speech = (
                 cascade.MAX_TTS_REQUESTS + cascade.FILLER_AUDIO.missing(voice) if spoken_turn else 0
             )
+            if greet:
+                # The scripted greeting's own clip, fetched for next time (round 3, finding 8).
+                reserved_speech += 1
             if demo_budget.counts(request.user):
                 reservation = demo_budget.reserve_cascade_turn(
                     rounds=reserved_rounds,
@@ -1312,6 +1366,7 @@ class AssistantTurnView(_AssistantView):
                 greeting_history=_greeting_history(data.get("greeting_history")),
                 spoken=bool(data.get("spoken")) and bool(text),
                 tour_beat=tour_beat,
+                heard_before=web_conversation.utterances_received(row),
             )
             response = StreamingHttpResponse(
                 _turn_sse(
@@ -1330,6 +1385,8 @@ class AssistantTurnView(_AssistantView):
                     held,
                     reserved_speech,
                     cascade.CancelCheck(request.user.pk, data.get("turn_id")),
+                    functools.partial(_mark_answered, request.user, data.get("turn_id")),
+                    _more_speech(request.user),
                 ),
                 content_type="text/event-stream",
             )
@@ -1498,6 +1555,18 @@ class AssistantTurnCancelThrottle(_PerMemberThrottle):
     scope = "assistant_turn_cancel"
 
 
+class AssistantTurnCancelIpThrottle(ClientIpThrottleMixin, SimpleRateThrottle):
+    """The cancel route per address too (round 3 N6): every visit is a fresh user."""
+
+    scope = "assistant_turn_cancel_ip"
+
+    def get_cache_key(self, request, view):
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
 class AssistantTurnCancelRequestSerializer(serializers.Serializer):
     turn_id = serializers.UUIDField(help_text="The id the browser gave the turn to stop.")
 
@@ -1505,11 +1574,14 @@ class AssistantTurnCancelRequestSerializer(serializers.Serializer):
 class AssistantTurnCancelView(_AssistantView):
     """Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
     and the server only notices a dropped stream at its next write). Marks the turn cancelled in
-    the database, where the running turn looks at every stage boundary, from any worker or
-    instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
-    or not the turn is still running; costs nothing; a row stops only the caller's own turn."""
+    the database, from any worker or instance. The running turn looks at its stage boundaries
+    (before transcription, each model round, each tool, each speech request, and every 250 ms
+    while it waits on speech): from then on it starts no further paid call. What is already in
+    flight runs to its end (one model round, one tool, or the speech requests already sent), and
+    the turn's slot comes free when its stream ends. Idempotent; 204 whether or not the turn is
+    still running; costs nothing; a row stops only the caller's own turn."""
 
-    throttle_classes = [AssistantTurnCancelThrottle]
+    throttle_classes = [AssistantTurnCancelThrottle, AssistantTurnCancelIpThrottle]
     audit_kind = AssistantCall.SESSION
 
     @extend_schema(
@@ -1520,6 +1592,10 @@ class AssistantTurnCancelView(_AssistantView):
         responses={
             204: None,
             400: OpenApiResponse(DetailSerializer, description="The body did not fit."),
+            429: OpenApiResponse(
+                DetailSerializer,
+                description="Too many stops in a short time, from this caller or this address.",
+            ),
         },
     )
     def post(self, request):

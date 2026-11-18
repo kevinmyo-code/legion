@@ -24,6 +24,8 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from legion import deadline
+
 API = "https://generativelanguage.googleapis.com/v1beta"
 
 
@@ -134,6 +136,18 @@ def event_from_json(raw: dict) -> ModelEvent:
 # =============================================================================
 
 
+def _error_words(exc) -> str:
+    """Google's own error message for an HTTP error (": <message>"), or "": the speech client
+    decides from it whether a voice name was refused (round 3 speech S3). Google's message names
+    the field or voice at fault; it never echoes the key or the request's text."""
+    try:
+        raw = exc.read(2048)
+        message = json.loads(raw.decode("utf-8", "replace"))["error"]["message"]
+    except Exception:  # noqa: BLE001 - no body, or not Google's shape: the code alone
+        return ""
+    return f": {str(message)[:200]}" if message else ""
+
+
 class UrllibTransport:
     """The stdlib transport. `lines` streams the body line by line; `request` is one plain call.
     Both raise `ModelFailure` with the HTTP status only."""
@@ -141,9 +155,9 @@ class UrllibTransport:
     def lines(self, url: str, headers: dict, body: bytes, timeout: float) -> Iterable[bytes]:
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
-            resp = urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - fixed https host
+            resp = urllib.request.urlopen(req, timeout=deadline.cap(timeout))  # noqa: S310 - fixed https host
         except urllib.error.HTTPError as exc:
-            raise ModelFailure(f"Gemini answered HTTP {exc.code}") from None
+            raise ModelFailure(f"Gemini answered HTTP {exc.code}{_error_words(exc)}") from None
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
             raise ModelFailure(f"Gemini could not be reached ({type(exc).__name__})") from None
         try:
@@ -162,7 +176,7 @@ class UrllibTransport:
     ) -> tuple[int, bytes]:
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=deadline.cap(timeout)) as resp:  # noqa: S310
                 return resp.status, resp.read()
         except urllib.error.HTTPError as exc:
             return exc.code, b""

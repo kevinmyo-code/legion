@@ -272,7 +272,12 @@ class _Transport:
         shape = body["generationConfig"]["speechConfig"]["voiceConfig"]
         name = shape.get("voice") or shape.get("prebuiltVoiceConfig", {}).get("voiceName")
         if name == self.refused:
-            raise ModelFailure("HTTP 400 invalid argument")
+            # Google's words, as probed 2026-11-17 (round 3 S3).
+            if "prebuiltVoiceConfig" in shape:
+                raise ModelFailure(
+                    f"Gemini answered HTTP 400: No matching speaker voice found for name: {name}"
+                )
+            raise ModelFailure("Gemini answered HTTP 400: Request contains an invalid argument.")
         audio = base64.b64encode(b"\x01\x00" * 240).decode()
         part = {"inlineData": {"mimeType": "audio/l16", "data": audio}}
         yield "data: " + json.dumps({"candidates": [{"content": {"parts": [part]}}]})

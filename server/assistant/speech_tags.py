@@ -56,13 +56,35 @@ PROMPT_LINE = (
 _TAG = re.compile(
     r"\s*<\s*/?\s*([A-Za-z][A-Za-z-]{0,30}(?:\s(?:pause|breath|clearing))?)\s*/?\s*>\s*"
 )
-# Markup and stage directions a model may write: SSML (`<break time="500ms"/>`), "[laughs]",
-# "*laughs*". Never spoken, never shown.
+# SSML a model may write (`<break time="500ms"/>`). Never spoken, never shown.
 _MARKUP = re.compile(
     r"\s*<\s*/?\s*[A-Za-z][\w:-]*(?:\s+[\w:-]+\s*=\s*(?:\"[^\"]*\"|'[^']*'))+\s*/?\s*>\s*"
-    r"|\s*\[[A-Za-z][A-Za-z -]{0,30}\]\s*"
-    r"|\s*\*[A-Za-z][A-Za-z -]{0,30}\*\s*"
 )
+# Words in square brackets or between asterisks: a stage direction ("[laughs]", "*sighs*") is
+# removed; anything else ("*really*", "[Reuters]") keeps its words and loses only the marks
+# (round 3 speech, small b).
+_BRACKETED = re.compile(r"\s*\[([^\[\]]{1,40})\]\s*|\s*\*([^*]{1,40})\*\s*")
+_STAGE = re.compile(
+    r"\s*(\w+\s+)?(laugh|laughs|laughing|chuckle|chuckles|chuckling|sigh|sighs|sighing|pause|"
+    r"short pause|long pause|breath|breathes|breathing|giggle|giggles|giggling|clears throat|"
+    r"clearing throat|smile|smiles|smiling|grin|grins|grinning|gasp|gasps|gasping|whisper|"
+    r"whispers|whispering|exhale|exhales|inhale|inhales|cough|coughs|sniff|sniffs|tsk|hum|hums|"
+    r"nod|nods|shrug|shrugs|phew)(\s+\w+){0,2}\s*",
+    re.I,
+)
+
+
+def _bracketed(match: re.Match) -> str:
+    inner = match.group(1) if match.group(1) is not None else match.group(2)
+    if _STAGE.fullmatch(inner):
+        return " "
+    lead = " " if match.group(0)[:1].isspace() else ""
+    tail = " " if match.group(0)[-1:].isspace() else ""
+    return f"{lead}{inner.strip()}{tail}"
+
+
+def _unmarked(text: str) -> str:
+    return _BRACKETED.sub(_bracketed, _MARKUP.sub(" ", text))
 # An amount, a date, a code, a figure: any digit, or a currency or percent sign.
 _FIGURE = re.compile(r"[0-9$£€%]")
 _SPACE_BEFORE = re.compile(r"\s+([,.!?;:])")
@@ -92,11 +114,16 @@ def untagged(text: str) -> str:
     text = text or ""
     if not any(c in text for c in "<[*"):
         return text
-    return _tidy(_TAG.sub(" ", _MARKUP.sub(" ", text)))
+    return _tidy(_TAG.sub(" ", _unmarked(text)))
 
 
 def has_tag(text: str) -> bool:
-    return bool(_TAG.search(text or "") or _MARKUP.search(text or ""))
+    text = text or ""
+    return bool(
+        _TAG.search(text)
+        or _MARKUP.search(text)
+        or any(_STAGE.fullmatch(m.group(1) or m.group(2)) for m in _BRACKETED.finditer(text))
+    )
 
 
 # Section 9 (measured): a tag on a short line stretched a five-word sign-off from 2.3 s to 4-5 s.
@@ -128,7 +155,7 @@ def for_speech(text: str, *, expressive: bool = True) -> str:
     plain = untagged(text)
     if not expressive or not casual(plain):
         return plain
-    text = _MARKUP.sub(" ", text)
+    text = _unmarked(text)
     kept = False
 
     def one(match: re.Match) -> str:
