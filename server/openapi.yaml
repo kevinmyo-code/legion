@@ -14395,6 +14395,13 @@ components:
           default: false
           description: 'With `text`: the page transcribed the utterance early (`POST
             /api/assistant/transcribe`) and the answer is spoken, as for `audio`.'
+        barge_in:
+          type: boolean
+          default: false
+          description: 'With `audio`: the utterance began while a reply was playing
+            (a barge-in). Only such a turn is checked for the reply heard back (an
+            echo): one that repeats the reply that was playing ends as no speech.
+            A turn without it is never checked.'
         turn_id:
           type: string
           format: uuid
