@@ -320,3 +320,13 @@ def test_no_model_request_in_a_chip_conversation_holds_his_sentences(
     for request in engine.model.requests:
         flat = repr(request.contents) + repr(request.system)
         assert not any(sentence in flat for sentence in ALL_SENTENCES)
+
+
+def test_over_the_rate_the_page_gets_no_chips_and_no_error(loaded, seeded, visitor, monkeypatch):
+    from demo.content_views import DemoChipsThrottle
+
+    rates = {**DemoChipsThrottle.THROTTLE_RATES, "demo_chips": "1/min"}
+    monkeypatch.setattr(DemoChipsThrottle, "THROTTLE_RATES", rates)
+    offer = suggestions.examples_offer(HouseholdMember.objects.get(household=seeded).user)
+    assert len(_chips(visitor, offer)) == 4
+    assert _chips(visitor, offer) == []

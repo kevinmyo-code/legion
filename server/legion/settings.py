@@ -617,6 +617,10 @@ REST_FRAMEWORK = {
         "assistant_turn_cancel": "60/min",
         # The same per address (round 3 N6): fresh visits from one network share it.
         "assistant_turn_cancel_ip": "120/min",
+        # The demo's suggestion chips (`POST /api/demo/chips`), per visitor and per address: one
+        # per answer, reads only, but never a free loop. Throttled, the page simply gets none.
+        "demo_chips": "30/min",
+        "demo_chips_ip": "120/min",
         "assistant_turn_ip": (
             os.environ.get("LEGION_ASSISTANT_TURN_IP_RATE", "").strip() or "120/hour"
         ),

@@ -23,6 +23,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import exceptions, serializers
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
@@ -30,6 +31,7 @@ from demo.content import ASSET_KINDS, public_content
 from demo.models import DemoVisit, RecruiterContent
 from household.models import HouseholdMember, is_recruiter
 from household.permissions import RECRUITER_VISIT_OVER_CODE, IsHouseholdMember
+from legion.client_ip import ClientIpThrottleMixin
 
 DEMO_TAGS = ["demo"]
 
@@ -315,6 +317,24 @@ class DemoChipsSerializer(serializers.Serializer):
     chips = DemoChipSerializer(many=True)
 
 
+class DemoChipsThrottle(SimpleRateThrottle):
+    """Per visitor."""
+
+    scope = "demo_chips"
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {"scope": self.scope, "ident": request.user.pk}
+
+
+class DemoChipsIpThrottle(ClientIpThrottleMixin, SimpleRateThrottle):
+    """Per address too: every visit is a fresh user."""
+
+    scope = "demo_chips_ip"
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
 class DemoChipsView(APIView):
     """After the answer has gone out: the offer's chips, each checked answerable for THIS visitor
     (`demo.suggestions.answerable`). Reads only. An offer made for someone else, or expired, gives
@@ -322,6 +342,11 @@ class DemoChipsView(APIView):
 
     permission_classes = [RecruiterOnly]
     allows_recruiter = True
+    throttle_classes = [DemoChipsThrottle, DemoChipsIpThrottle]
+
+    def throttled(self, request, wait):
+        # Over the rate: no chips, never an error the page would show (`post`).
+        self.over_rate = True
 
     @extend_schema(
         tags=DEMO_TAGS,
@@ -337,6 +362,8 @@ class DemoChipsView(APIView):
     def post(self, request):
         from demo import suggestions
 
+        if getattr(self, "over_rate", False):
+            return Response({"chips": []}, headers={"Cache-Control": "private, no-store"})
         body = DemoChipsRequestSerializer(data=request.data)
         if not body.is_valid():
             return Response({"detail": f"No chips: {body.errors}"}, status=400)
