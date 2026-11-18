@@ -497,10 +497,10 @@ def test_realrun_no_speech_never_becomes_words(real):
 
 
 def test_realrun_the_last_reply_heard_back_is_an_echo(real, db):
-    """The server's echo layer (2026-11-17): a reply the assistant really spoke in this
-    conversation, played back as the next utterance at 5% and 30% volume, and with its first
-    half cut off, ends as `echo` (or as no speech, when too quiet to send): no model round,
-    nothing stored as their line."""
+    """The server's echo layer (2026-11-17, round 4: barge-in turns only): a reply the assistant
+    really spoke in this conversation, played back as the next utterance at 5% and 30% volume, and
+    with its first half cut off, sent with `barge_in=1`, ends as `echo` (or as no speech, when too
+    quiet to send): no model round, nothing stored as their line."""
     from tests.realrun_web_cascade import _to_16k
     from tests.test_assistant_cascade import _record
 
@@ -519,7 +519,8 @@ def test_realrun_the_last_reply_heard_back_is_an_echo(real, db):
     }
     rows = []
     for name, pcm in cases.items():
-        row = _post(real, visitor, name, audio=pcm, conversation_id=cid)
+        # The page marks an utterance that began while a reply played (round 4 ruling).
+        row = _post(real, visitor, name, audio=pcm, conversation_id=cid, barge_in="1")
         statuses = re.findall(r"cascade_turn status=(\w+)", _record(cid))
         rows.append(
             {
