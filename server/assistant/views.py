@@ -995,7 +995,9 @@ def _turn_sse(
         if reservation is not None:
             demo_budget.release_unused(
                 reservation,
-                rounds_unused=max(reserved_rounds - report.rounds, 0),
+                rounds_unused=max(
+                    reserved_rounds - report.rounds - _count(report.timings, "stt_retries"), 0
+                ),
                 # No voice in the audio: no paid speech-to-text and nothing spoken.
                 speech_unused=report.status == "nothing_heard"
                 and not report.timings.get("stt_paid"),
@@ -1276,6 +1278,10 @@ class AssistantTurnView(_AssistantView):
                 if tour_beat is not None and audio is None and not text
                 else cascade.MAX_ROUNDS + 1
             ) + 1
+            if audio is not None:
+                # Speech-to-text may be tried once more (round 3, finding 8 leftovers): reserved
+                # as one more call, given back when it was not needed.
+                reserved_rounds += 1
             spoken_turn = (
                 greet
                 or audio is not None
@@ -1288,6 +1294,9 @@ class AssistantTurnView(_AssistantView):
             reserved_speech = (
                 cascade.MAX_TTS_REQUESTS + cascade.FILLER_AUDIO.missing(voice) if spoken_turn else 0
             )
+            if greet:
+                # The scripted greeting's own clip, fetched for next time (round 3, finding 8).
+                reserved_speech += 1
             if demo_budget.counts(request.user):
                 reservation = demo_budget.reserve_cascade_turn(
                     rounds=reserved_rounds,

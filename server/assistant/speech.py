@@ -332,6 +332,7 @@ class GeminiSpeech:
         # Voices Google refused by name, until when (round 3 speech S3): spoken in
         # FALLBACK_VOICE instead until then.
         self.bad_voices: dict[str, float] = {}
+        self.stt_sent = 0
 
     def _headers(self) -> dict:
         key = self._key()
@@ -370,6 +371,8 @@ class GeminiSpeech:
             return Heard("", audio_ms, 0)
         started = self._clock()
         text, usage = [], {}
+        # Requests actually sent, a retry included: what the turn is charged for (round 3).
+        self.stt_sent += 1
         for ev in self._stream(self._stt_model, transcribe_body(pcm), STT_TIMEOUT_S):
             if isinstance(ev.get("error"), dict):
                 raise SpeechFailure(f"stt_error_{ev['error'].get('code', '?')}")

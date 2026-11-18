@@ -539,6 +539,19 @@ def first_clause(sentence: str) -> tuple[str, str]:
     return sentence, ""
 
 
+def _transcribe(speech, pcm: bytes, timings: dict):
+    """`speech.transcribe(pcm)`, noting how many requests it sent beyond the first (a retry),
+    which the turn's reservation holds one call for (round 3, finding 8 leftovers)."""
+    try:
+        return speech.transcribe(pcm)
+    finally:
+        timings["stt_retries"] = max(getattr(speech, "stt_sent", 1) - 1, 0)
+
+
+def _whole(value) -> int:
+    return value if isinstance(value, int) and value > 0 else 0
+
+
 class _Cancelled(Exception):
     """The turn was cancelled while it waited on speech."""
 
@@ -1190,7 +1203,7 @@ def run_turn(
             if turn_input.audio is not None:
                 # Said during the tour: "skip" and "stop" steer it; anything else is a question.
                 try:
-                    heard = speech.transcribe(turn_input.audio)
+                    heard = _transcribe(speech, turn_input.audio, timings)
                 except SpeechFailure as exc:
                     timings["stt_failed"] = str(exc)
                     report.status = "stt_failed"
@@ -1284,7 +1297,7 @@ def _answer(
     # 1. The words.
     if turn_input.audio is not None:
         try:
-            heard = speech.transcribe(turn_input.audio)
+            heard = _transcribe(speech, turn_input.audio, timings)
         except SpeechFailure as exc:
             timings["stt_failed"] = str(exc)
             report.status = "stt_failed"
@@ -1816,7 +1829,10 @@ def _greet(
             and speaker.enabled
             and not door.cancelled()
         ):
-            filler_audio.warm(speaker.speech, speaker.voice, [spoken_as])
+            fetched = filler_audio.warm(speaker.speech, speaker.voice, [spoken_as])
+            report.timings["speech_fetched"] = (
+                _whole(report.timings.get("speech_fetched")) + fetched
+            )
     yield from speaker.drain()
     yield ev.done("greeting", text, False)
 
