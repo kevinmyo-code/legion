@@ -204,3 +204,20 @@ def test_only_stage_directions_are_stripped(text, kept):
     from assistant import speech_tags
 
     assert speech_tags.untagged(text) == kept
+
+
+# ---- small d: the cached examples obey the one figure rule: exact, in digits ---------------------
+
+
+def test_the_spoken_examples_write_every_figure_exactly_in_digits():
+    import re
+
+    examples = cascade.SPOKEN_EXAMPLES
+    assert not re.search(r"\b(about|around|roughly|nearly|almost)\s+\$?\d", examples, re.I)
+    words = re.compile(
+        r"\b(two|three|four|five|six|seven|eight|nine|ten|twenty|hundred|thousand)\b", re.I
+    )
+    # Only inside the rule sentence at the end ("never more than three items") may a count be
+    # a word; every example reply writes its figures in digits.
+    replies = re.findall(r'-> "([^"]*)"', examples)
+    assert replies and not [r for r in replies if words.search(r)]
