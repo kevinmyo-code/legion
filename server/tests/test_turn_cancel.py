@@ -193,3 +193,16 @@ def test_a_busy_turn_resent_with_its_id_runs_once_its_slot_is_free(
     engine.model = FakeModel([say("Hello.")])
     events = _events(_post(visitor, text="Hi.", turn_id=turn_id))
     assert [s["text"] for s in _of(events, "sentence")] == ["Hello."]
+
+
+def test_the_cancel_route_is_also_limited_per_address(member, visitor, monkeypatch):
+    """Round 3 N6: fresh visits from one address must not multiply the cancel route's rate."""
+    from django.core.cache import cache
+
+    cache.clear()
+    monkeypatch.setattr(views.AssistantTurnCancelIpThrottle, "rate", "2/min")
+    body = {"turn_id": str(uuid.uuid4())}
+    assert member.post("/api/assistant/turn/cancel", body, format="json").status_code == 204
+    assert visitor.post("/api/assistant/turn/cancel", body, format="json").status_code == 204
+    third = visitor.post("/api/assistant/turn/cancel", body, format="json")
+    assert third.status_code == 429
