@@ -54,7 +54,10 @@ DESCRIPTION = (
     "answer; the turn ends there. Call it FIRST for any question about Kevin himself, and say "
     "nothing about him yourself, before or after: you are never shown his profile, so anything "
     "you said about him would be made up. Pick every section that answers the question, by id: "
-    f"{SECTIONS_PLACEHOLDER}. When none of them covers what was asked, call it with no sections: "
+    f"{SECTIONS_PLACEHOLDER}. For a general question about him, pick the two or three that "
+    "introduce him best. For a pointed one, pick a section only when its title names it; when no "
+    "title does (his visa, work authorisation or sponsorship, say, unless a title names it), "
+    "call it with no sections, never with the nearest ones: "
     f'code then says "{NOT_SHARED}." For more of a long section, call it again with rest_of set '
     "to that id. offer adds one closing question (resume or contact) when it would help. Never "
     "use the demo household's data to answer about Kevin; that household is made up. This tool "
