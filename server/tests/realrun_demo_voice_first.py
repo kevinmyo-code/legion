@@ -385,6 +385,59 @@ def test_realrun_one_breath_against_per_sentence(real, monkeypatch):
 # ---- no speech never becomes words (2026-11-17, the Midcon self-talk) ----------------------------
 
 
+def test_realrun_voice_map(real, household_user, monkeypatch):
+    """One spoken member turn and one spoken visitor turn: the voice each asked the speech model
+    for, whether Google took it (no fallback to Puck), and that audio came back."""
+    from assistant import views
+    from tests.realrun_web_cascade import _member
+
+    real_clients = views._cascade_clients
+    asked: list[str] = []
+    speeches = []
+
+    class Recording:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def speak(self, text, voice, spoken):
+            asked.append(voice)
+            yield from self.inner.speak(text, voice, spoken)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+    def clients():
+        model, speech = real_clients()
+        speeches.append(speech)
+        return model, Recording(speech)
+
+    monkeypatch.setattr(views, "_cascade_clients", clients)
+    rows = []
+    for role, client, want in (
+        ("member", _member(household_user), voice_engine.MEMBER_VOICE_DEFAULT),
+        ("visitor", _visitor(), "Puck"),
+    ):
+        asked.clear()
+        row = _post(real, client, f"voice_{role}", audio=real.audio_for("vf_car"))
+        refused = sorted(set().union(*(s.bad_voices for s in speeches)))
+        rows.append(
+            {
+                "role": role,
+                "want": want,
+                "asked": sorted(set(asked)),
+                "refused": refused,
+                "reply_audio_ms": row["reply_audio_ms"],
+                "said": row["said"][:160],
+            }
+        )
+    real._write({"case": "voice_map", "rows": rows})
+    print("VOICE MAP", json.dumps(rows))
+    for r in rows:
+        assert r["asked"] and set(r["asked"]) <= {r["want"]}, r
+        assert not r["refused"], r
+        assert r["reply_audio_ms"] > 0, r
+
+
 def _noise_clips(real) -> dict[str, bytes]:
     import math
     import random

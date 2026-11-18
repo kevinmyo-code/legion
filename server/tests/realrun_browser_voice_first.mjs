@@ -8,6 +8,8 @@
 //            while it plays (the reply heard back): no barge-in, the opening plays to its end.
 //  vf-barge  the demo link; a question, then the person talks over the long answer: playback stops,
 //            the engine's turn is cancelled, what they said is the next turn.
+//  vf-tap   a question, then a tap on the orb while the answer plays and at once a typed question:
+//            the cancel is posted (204) and the new turn is answered, not refused busy.
 //  vf-eot    a question, timed: how long after the speech ends the turn is posted (models).
 //  vf-eot-energy  the same with the model files refused: the 1.2 s energy threshold.
 //  vf-desk   the same link at desk width, for a screenshot.
@@ -58,7 +60,7 @@ await page.addInitScript(() => {
     const url = typeof input === 'string' ? input : input.url
     const at = performance.now()
     const res = await realFetch.call(this, input, init)
-    if (url && url.includes('/api/assistant/turn')) {
+    if (url && url.includes('/api/assistant/turn') && !url.includes('/turn/cancel')) {
       const entry = { at, status: res.status, text: '', done: false, error: null }
       window.__turnBodies.push(entry)
       res.clone().text().then((t) => { entry.text = t; entry.done = true }, (e) => { entry.error = String(e); entry.done = true })
@@ -95,6 +97,10 @@ page.on('requestfinished', async (req) => {
   } catch {}
 })
 const turns = []
+const cancels = []
+page.on('response', (res) => {
+  if (new URL(res.url()).pathname === '/api/assistant/turn/cancel') cancels.push({ status: res.status(), wall: Date.now() })
+})
 page.on('request', (req) => {
   const url = new URL(req.url())
   if (url.pathname === '/api/assistant/turn' && req.method() === 'POST') {
@@ -118,12 +124,13 @@ function parse(text) {
   })
 }
 async function sync() {
-  const bodies = await page.evaluate(() => window.__turnBodies.map((b) => ({ at: b.at, done: b.done, text: b.text, error: b.error })))
+  const bodies = await page.evaluate(() => window.__turnBodies.map((b) => ({ at: b.at, status: b.status, done: b.done, text: b.text, error: b.error })))
   const posts = turns.filter((t) => t.kind !== 'transcribe')
   bodies.forEach((b, i) => {
     const t = posts[i]
     if (!t) return
     t.at = b.at
+    t.status = b.status
     if (!b.done) return
     if (b.error) t.failed = t.failed ?? b.error
     const ev = parse(b.text)
@@ -192,7 +199,33 @@ if (A.scenario === 'vf-barge') {
     first: { heard: q?.heard, said: (q?.said ?? '').slice(0, 120), failed: q?.failed ?? null, complete: q?.complete },
     second: { heard: second?.heard }, stops: stopsBefore.length,
   })
+  await waitFor(async () => second?.complete, 60000)
+  check('barge_in_posts_a_cancel_and_the_next_turn_is_answered', cancels.some((c) => c.status === 204) && second?.status === 200 && Boolean(second?.said), {
+    cancels, second: { status: second?.status, said: (second?.said ?? '').slice(0, 160), done: second?.done },
+  })
   await shot('barge')
+}
+
+if (A.scenario === 'vf-tap') {
+  // A spoken question; while its answer plays, tap the orb and at once type a new question.
+  const asked = await waitFor(async () => turns.some((t) => t.kind === 'audio' || t.kind === 'spoken-text'), 90000)
+  const q = turns.find((t) => t.kind === 'audio' || t.kind === 'spoken-text')
+  const playing = await waitFor(async () => (await audit()).buffers.some((b) => q?.at !== undefined && b.t > q.at), 60000)
+  await sleep(700)
+  await page.locator('[data-stage="orb"]').click()
+  await page.getByLabel(/^Type to /).fill('When is the car due for service?')
+  await page.getByLabel(/^Type to /).press('Enter')
+  const answered = await waitFor(async () => turns.some((t) => t.kind === 'text' && t.complete), 90000)
+  await sync()
+  const next = turns.find((t) => t.kind === 'text')
+  const a = await audit()
+  const nextAudio = a.buffers.filter((b) => next?.at !== undefined && b.t > next.at).length
+  check('tap_then_new_question_is_answered', asked && playing && answered && next?.status === 200 && Boolean(next?.said) && next?.done?.status !== 'cancelled', {
+    first: { heard: q?.heard, done: q?.done, failed: q?.failed ?? null }, cancels,
+    next: { status: next?.status, said: (next?.said ?? '').slice(0, 160), done: next?.done, audioChunks: nextAudio },
+  })
+  check('tap_posts_a_cancel', cancels.some((c) => c.status === 204), cancels)
+  await shot('tap')
 }
 
 if (A.scenario.startsWith('vf-eot')) {
@@ -217,6 +250,7 @@ R.weight.afterTapBytes = bytes.afterTap
 R.weight.modelBytes = bytes.models
 check('nothing_from_another_host', R.foreign.length === 0, R.foreign)
 R.turns = turns.map(({ req, ...t }) => t)
+R.cancels = cancels
 fs.writeFileSync(path.join(A.out, `${A.scenario}.json`), JSON.stringify(R, null, 1))
 await browser.close()
 console.log(JSON.stringify(R.checks))

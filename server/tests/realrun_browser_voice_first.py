@@ -7,7 +7,8 @@
         pt.sh <worktree> <port> <db> tests/realrun_browser_voice_first.py -s
 
 Scenarios in `realrun_browser_voice_first.mjs`: the reply heard back alone never barges in; talking
-over the reply stops it and cancels the turn; end of turn with the models against the 1.2 s energy
+over the reply stops it and cancels the turn; a tap then a typed question at once is answered (the
+cancel row is counted on the engine); end of turn with the models against the 1.2 s energy
 threshold; screenshots at 360 px and desk width. Invented content only
 (`tests/test_recruiter_content.fake_content`); the key is read from its file and never printed.
 """
@@ -60,6 +61,7 @@ def _wavs() -> tuple[dict[str, Path], dict]:
         # The opening heard back at a quarter of its level while it plays (no person speaking).
         "vf-echo": _silence(0.6) + _scaled(opening, 0.25) + _silence(20.0),
         "vf-barge": _silence(lead) + long_q + _silence(9.0) + barge + _silence(25.0),
+        "vf-tap": _silence(lead) + long_q + _silence(40.0),
         "vf-eot": _silence(lead) + spend + _silence(25.0),
         "vf-eot-energy": _silence(lead) + spend + _silence(25.0),
         "vf-desk": _silence(20.0),
@@ -106,10 +108,16 @@ def test_browser_voice_first(real, live_server, tmp_path):
     wavs, timing = _wavs()
     only = {s for s in os.environ.get("BROWSER_SCENARIOS", "").split(",") if s}
     results = []
-    for scenario in ("vf-echo", "vf-barge", "vf-eot", "vf-eot-energy", "vf-desk"):
+    from assistant.models import TurnCancel
+
+    for scenario in ("vf-echo", "vf-barge", "vf-tap", "vf-eot", "vf-eot-energy", "vf-desk"):
         if only and scenario not in only:
             continue
         _row, code = DemoCode.rotate()
-        results.append(_run(live_server, scenario, wavs[scenario], {"code": code, **timing}))
+        before = TurnCancel.objects.count()
+        result = _run(live_server, scenario, wavs[scenario], {"code": code, **timing})
+        # The cancel must reach the engine, not only leave the page.
+        result["serverCancelRows"] = TurnCancel.objects.count() - before
+        results.append(result)
     (OUT / "vf-results.json").write_text(json.dumps(results, indent=1), encoding="utf-8")
     print("VF RESULTS", json.dumps([r.get("checks") for r in results])[:4000])
