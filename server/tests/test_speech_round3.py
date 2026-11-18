@@ -33,6 +33,13 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
         "Dentist at noon.",
         "Twice this week already.",
         "Back at seven.",
+        # Round 4 speech N2: a clock time with "one", "both", and a span of time.
+        "Your quiz is at one tonight.",
+        "Lunch at one, then the dentist.",
+        "One tomorrow works for the call.",
+        "Both lists are long today.",
+        "Your trip is a week from now.",
+        "The car is due in a month or so.",
     ],
 )
 def test_a_greeting_with_a_number_word_ordinal_fraction_or_clock_time_is_refused(greeting):
