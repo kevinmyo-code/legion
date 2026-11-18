@@ -213,10 +213,37 @@ def test_the_tour_shows_its_lines_plain_and_speaks_their_tag(visitor, engine):
     assert not any("<" in t for t, _v in engine.speech.spoken)
 
 
-def test_the_opening_is_shown_plain_and_spoken_with_its_tag(visitor, engine):
+def test_the_opening_is_shown_and_spoken_plain(visitor, engine):
+    """Round 4 speech E2: no tag next to the recording notice; plain is better there."""
     events = _events(_post(visitor, greet="true"))
     assert "<" not in _of(events, "greeting")[0]["text"]
-    assert any("<breath>" in t for t, _v in engine.speech.spoken)
+    assert engine.speech.spoken and not any("<" in t for t, _v in engine.speech.spoken)
+
+
+@pytest.mark.parametrize(
+    ("raw", "spoken"),
+    [
+        # A tag on a short second sentence goes, whatever the length of the whole line.
+        (
+            "I'm Alfred. <breath> Ask about Kevin or the tour.",
+            "I'm Alfred. Ask about Kevin or the tour.",
+        ),
+        # A long casual sentence keeps its tag; the short one before it has none to lose.
+        (
+            "Right. <chuckle> That one went sideways on me the last time we tried it, honestly.",
+            "Right. <chuckle> That one went sideways on me the last time we tried it, honestly.",
+        ),
+        # One per sentence: each sentence judged on its own.
+        (
+            "<sigh> It has been a long week for everyone in the house, I think. <chuckle> Still, "
+            "the weekend is nearly here and nothing much is planned yet.",
+            "<sigh> It has been a long week for everyone in the house, I think. <chuckle> Still, "
+            "the weekend is nearly here and nothing much is planned yet.",
+        ),
+    ],
+)
+def test_the_tag_rules_apply_per_sentence(raw, spoken):
+    assert speech_tags.for_speech(raw) == spoken
 
 
 # =============================================================================
