@@ -718,6 +718,26 @@ def test_an_offer_of_a_diagram_is_refused_and_asked_again(loaded, visitor, engin
     assert "Want the diagram for that?" not in str(events)
 
 
+def test_a_second_profile_call_in_the_turn_is_not_read(loaded, visitor, engine):
+    # The cap (five lines and one closing line) is what one turn's speech reserve covers: a second
+    # reading in the same round would double it (blind review r2).
+    engine.model = FakeModel([both(ak("education"), ak("location"))])
+    events = _events(_post(visitor, text="Where did he study, and where is he?"))
+    assert [s["text"] for s in _of(events, "sentence")] == EDUCATION
+    tools = _of(events, "tool")
+    assert [t["name"] for t in tools] == ["about_kevin", "about_kevin"]
+    assert tools[0]["ok"] is True
+    assert tools[1]["ok"] is False and tools[1]["text"].startswith("Not read:")
+    assert not any(sentence in tools[1]["text"] for sentence in ALL_SENTENCES)
+    assert len(_of(events, "done")) == 1
+
+
+def test_a_refused_profile_call_does_not_use_up_the_reading(loaded, visitor, engine):
+    engine.model = FakeModel([both(ak("hobbies"), ak("location"))])
+    events = _events(_post(visitor, text="Hobbies, or where he is?"))
+    assert [s["text"] for s in _of(events, "sentence")] == LOCATION
+
+
 def test_his_status_gets_the_not_shared_line_and_a_visa_type_is_answered(loaded, visitor, engine):
     engine.model = FakeModel([ak()])
     status = _events(_post(visitor, text="Is Kevin authorised to work in the US?"))

@@ -776,6 +776,9 @@ class DoorCall:
 
 
 TURN_STOPPED = "Not run: the turn was stopped."
+PROFILE_READ_ONCE = (
+    "Not read: his profile was already read aloud in this turn, and that reading is the answer."
+)
 # A tool still running at its deadline (round 3 design change D1): the database cancelled its
 # statement or its wait for a lock and rolled its transaction back, or its request timed out.
 TOOL_TIMED_OUT = (
@@ -972,6 +975,12 @@ class WebDoor:
             # A control, not a data tool: the page closes the conversation after the sign-off.
             self.end_requested = True
             ok, outcome, text, guard = True, Outcome.OK, END_INSTRUCTION, None
+        elif name == "about_kevin" and any(
+            c.name == name and c.ok and c.verbatim for c in self.calls
+        ):
+            # One reading of his profile per turn: the cap (five sentences and a closing line) is
+            # what one turn's speech reserve covers, and the first call's lines are the answer.
+            ok, outcome, text, guard = False, Outcome.REFUSED, PROFILE_READ_ONCE, "once"
         else:
             refusal = refusal_for(name, self.user, args)
             if refusal is not None:
