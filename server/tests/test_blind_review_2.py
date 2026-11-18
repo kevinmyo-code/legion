@@ -178,3 +178,38 @@ def test_a_failure_before_the_stream_releases_the_slot_and_the_reservation(
                 assert cur.fetchone()[0] is True
     finally:
         other.close()
+
+
+# ---- finding 1: one address holds at most one demo turn; the cap follows the thread count -------
+
+
+def test_one_address_cannot_hold_every_demo_slot(visitor, engine, monkeypatch):
+    from django.db import connections
+
+    from assistant import turn_slots
+
+    other = connections.create_connection("default")
+    try:
+        with other.cursor() as cur:
+            # Another visit from the same address is mid-turn.
+            key = turn_slots._key("ip:127.0.0.1")
+            cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [turn_slots._NS_ADDRESS, key])
+            assert cur.fetchone()[0] is True
+        response = _post(visitor, text="Hi.")
+        assert response.status_code == 429
+        assert response.data["detail"] == turn_slots.BUSY_ADDRESS
+    finally:
+        other.close()
+
+
+def test_the_demo_cap_is_half_one_instances_threads(monkeypatch):
+    from assistant import turn_slots
+
+    monkeypatch.delenv(turn_slots.SLOTS_ENV, raising=False)
+    monkeypatch.setenv("LEGION_GUNICORN_WORKERS", "2")
+    monkeypatch.setenv("LEGION_GUNICORN_THREADS", "4")
+    assert turn_slots.demo_slots() == 4
+    monkeypatch.setenv("LEGION_GUNICORN_THREADS", "1")
+    assert turn_slots.demo_slots() == 1
+    monkeypatch.setenv(turn_slots.SLOTS_ENV, "3")
+    assert turn_slots.demo_slots() == 3

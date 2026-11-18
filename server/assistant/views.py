@@ -65,7 +65,7 @@ from household.models import is_recruiter
 from household.permissions import IsHouseholdMember
 from household.tenancy import household_of
 from ingest.statements import gemini_key
-from legion.client_ip import ClientIpThrottleMixin
+from legion.client_ip import ClientIpThrottleMixin, client_ip
 from llm import cap as member_cap
 
 ASSISTANT_TAGS = ["assistant"]
@@ -1115,7 +1115,7 @@ class AssistantTurnView(_AssistantView):
         if member_cap.over_cap(request.user):
             return _refuse(request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS)
         # One turn in flight per caller, and a small cap on demo turns engine-wide (finding 1).
-        held, busy, busy_status = turn_slots.acquire(request.user)
+        held, busy, busy_status = turn_slots.acquire(request.user, client_ip(request))
         if held is None:
             return _refuse(request, busy, busy_status)
         reservation = None
