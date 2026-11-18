@@ -160,28 +160,15 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
                 mismatched.append((key, f, ran))
     assert not mismatched, mismatched
 
-    # Speculation: the early transcript, then the words as a spoken turn; against the audio turn.
+    # Early transcripts are OFF (ADR 0103): the route answers 404 and nothing is paid.
     q = real.audio_for("vf_car")
-    started = time.monotonic()
-    heard = visitor.post(
+    off = visitor.post(
         "/api/assistant/transcribe",
         {"audio": SimpleUploadedFile("s.pcm", q, "application/octet-stream")},
         format="multipart",
     )
-    transcribe_ms = int((time.monotonic() - started) * 1000)
-    assert heard.status_code == 200, heard.data
-    spec = _post(
-        real, visitor, "speculated", text=heard.data["text"], spoken="true", conversation_id=cid
-    )
-    plain = _post(real, visitor, "unspeculated", audio=q, conversation_id=cid)
-    real._write(
-        {
-            "case": "speculation",
-            "transcribe_ms": transcribe_ms,
-            "first_audio_after_end_spec_ms": spec["first_audio_ms_wall"],
-            "first_audio_after_end_plain_ms": plain["first_audio_ms_wall"],
-        }
-    )
+    assert off.status_code == 404, off.status_code
+    spec = _post(real, visitor, "spoken", audio=q, conversation_id=cid)
 
     # Expression tags: never read aloud, never on a money answer, never in what is shown.
     spoken_tags = []

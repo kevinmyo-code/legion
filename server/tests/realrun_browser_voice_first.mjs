@@ -216,7 +216,11 @@ if (A.scenario === 'vf-tap') {
   const playing = await waitFor(async () => /^Interrupt/.test((await orb.getAttribute('aria-label')) ?? ''), 60000)
   await sync()
   const firstEndedAtTap = Boolean(q?.complete)
-  await orb.click()
+  // A diagram the answer opened covers the orb (seen 2026-11-17): noted, closed, then the tap.
+  const modalOpen = (await page.locator('[role="dialog"][data-state="open"]').count()) > 0
+  R.notes.push(`modal over orb at tap: ${modalOpen}`)
+  if (modalOpen) await page.keyboard.press('Escape')
+  await orb.click({ timeout: 5000 })
   await page.getByLabel(/^Type to /).fill('When is the car due for service?')
   await page.getByLabel(/^Type to /).press('Enter')
   const answered = await waitFor(async () => turns.some((t) => t.kind === 'text' && t.status === 200 && t.complete), 90000)
