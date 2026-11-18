@@ -139,7 +139,7 @@ export function AssistantProvider({
    * that tap, and `funnelRef` tags the page's funnel counts.
    */
   voiceFirst?: {
-    prepare: () => Promise<boolean>
+    prepare: (signal: AbortSignal) => Promise<boolean>
     funnelRef?: string
     sessionMinutes?: number | null
     /** The engine answered `live_engine`: ask it again (the page then shows the Live page). */
@@ -180,7 +180,7 @@ export function AssistantProvider({
           openingTurn: () => openingRef.current ?? null,
           continueTurn: () => continueRef.current ?? null,
           sessionLimit: () => limitRef.current ?? null,
-          prepare: () => voiceFirstRef.current!.prepare(),
+          prepare: (signal) => voiceFirstRef.current!.prepare(signal),
           speakTyped: true,
           ...(voiceFirstRef.current.onEngineLive ? { onEngineLive: () => voiceFirstRef.current?.onEngineLive?.() } : {}),
         })

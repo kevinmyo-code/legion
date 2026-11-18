@@ -12,6 +12,7 @@ import { renderApp } from '@/test/render-app'
 import type { DemoContent, DemoMedia } from '@/api/demo'
 import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
 import { QUESTION_CHIPS, RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
+import { ENTRY_TAP_MS } from '@/assistant/turn-deadline'
 
 /**
  * The recruiter section (recruiter-demo ticket 07): the code box on `/login`,
@@ -193,6 +194,46 @@ describe('/try', () => {
     expect(audio.disposed).toBe(false)
     expect(audio.micOpen).toBe(true)
     expect(engine.demo.enterBodies).toHaveLength(1)
+  })
+
+  test('an entry the conversation gave up on is aborted and never touches the page when it answers late', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    renderApp('/try?code=OPEN-SESAME', engine, 'family')
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    const answer = globalThis.fetch
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    let entry: Request | null = null
+    vi.stubGlobal('fetch', async (input: Request) => {
+      if (new URL(input.url).pathname === '/api/demo/enter') {
+        entry = input
+        await held
+      }
+      return answer(input)
+    })
+    await act(async () => {
+      fireEvent.click(orb)
+      await settle()
+    })
+    // Still entering after two seconds: a tap gives up on it.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, ENTRY_TAP_MS + 100))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^(Talk to|Interrupt) / }))
+      await settle()
+    })
+    expect(entry!.signal.aborted).toBe(true)
+    // It answers late, refused: the page does not switch to the code box.
+    engine.demo.enterReply = { status: 403, body: { detail: WRONG_CODE } }
+    await act(async () => {
+      release()
+      await settle()
+    })
+    expect(screen.queryByText(WRONG_CODE)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Talk to / })).toBeInTheDocument()
   })
 
   test("a member's preview stays put while the visit question is asked again", async () => {

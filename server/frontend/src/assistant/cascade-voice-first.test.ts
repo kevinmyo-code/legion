@@ -245,6 +245,40 @@ describe('the models in the conversation', () => {
     expect(t.audio.paused).toBe(false)
   })
 
+  it('the reply ends while paused, then its echo verdict: the conversation listens again (not stuck idle)', async () => {
+    const t = build([spoken('Hello.'), spoken('A long answer.')])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    t.detector.fire()
+    // The answer runs out while paused (its stream already ended: it re-listens), then the verdict.
+    t.audio.handlers?.onPlaying(false)
+    t.detector.verdict(true)
+    expect(t.client.getState().mic).toBe('on')
+    expect(t.client.getState().activity).toBe('listening')
+  })
+
+  it('a barge-in turn posts barge_in; the next ordinary turn does not; a busy re-post keeps it', async () => {
+    const busy: TurnStart = { ok: false, status: 409, detail: 'busy', code: 'busy', retryMs: 0 }
+    const t = build([spoken('Hello.'), { ok: true, events: hanging([{ type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }, AUDIO]) }, busy, spoken('Sure.'), spoken('Fine.')])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    t.detector.fire()
+    t.detector.verdict(false)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    await settle()
+    expect(t.requests[2].bargeIn).toBe(true)
+    expect(t.requests[3]).toBe(t.requests[2])
+    t.audio.handlers?.onPlaying(false)
+    await settle()
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests[4].bargeIn).toBeUndefined()
+    expect(t.requests[1].bargeIn).toBeUndefined()
+  })
+
   it('half-duplex lasts one conversation: the next one has barge-in again', async () => {
     const t = build([spoken('Hello.')])
     await open(t)
@@ -522,6 +556,28 @@ describe('the demo', () => {
       t.client.interrupt()
       expect(t.audio.micOpen).toBe(false)
       expect(t.client.getState().notice?.text).toBe(ENTRY_STALLED.text)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("an abandoned entry's timer never abandons the newer entry", async () => {
+    vi.useFakeTimers()
+    try {
+      const prepare = vi.fn((_signal: AbortSignal) => new Promise<boolean>(() => {}))
+      const t = build([spoken('Hi.')], { prepare })
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(ENTRY_TAP_MS + 500)
+      t.client.interrupt()
+      expect(t.audio.micOpen).toBe(false)
+      // The first entry was aborted, so the page's request can stop.
+      expect(prepare.mock.calls[0][0].aborted).toBe(true)
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(ENTRY_MS - ENTRY_TAP_MS)
+      // Past the first entry's 12 s, inside the second's: the second is still entering.
+      expect(t.audio.micOpen).toBe(true)
+      expect(t.client.getState().mic).toBe('starting')
+      expect(prepare.mock.calls[1][0].aborted).toBe(false)
     } finally {
       vi.useRealTimers()
     }

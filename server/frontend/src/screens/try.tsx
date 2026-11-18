@@ -126,6 +126,7 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   // Never decided while the tap is entering: entering refetches both, and `me` landing first
   // briefly read the new visitor as a member, which unmounted the orb mid-tap (review item 2).
   const [entering, setEntering] = useState(false)
+  const entryToken = useRef(0)
   const member = me.data?.signedIn === true && !recruiter && !entering
   // The engine's switch (ADR 0102): a visit whose engine is Live gets the Live dock page, so a
   // server-side rollback needs no new web build. Asked once a visit exists (it is the visit's own
@@ -153,20 +154,25 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
         refTag={refTag}
         entered={recruiter}
         expiresAt={expiresAt}
-        enter={async () => {
+        enter={async (signal) => {
+          // Each entry is its own: one the conversation gave up on (aborted) never touches the page.
+          const token = ++entryToken.current
+          const current = () => token === entryToken.current && !signal.aborted
           setEntering(true)
           try {
-            const result = await enterDemo(linkCode ?? '', refTag)
+            const result = await enterDemo(linkCode ?? '', refTag, signal)
+            if (!current()) return false
             if (!result.ok) {
               setLinkError(result.message)
               return false
             }
             // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
             const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
+            if (!current()) return false
             await queryClient.invalidateQueries()
-            return chosen?.engine !== 'live'
+            return current() && chosen?.engine !== 'live'
           } finally {
-            setEntering(false)
+            if (token === entryToken.current) setEntering(false)
           }
         }}
       />
@@ -291,7 +297,7 @@ function VoiceFirstVisit({
   refTag?: string
   entered: boolean
   expiresAt?: string
-  enter: () => Promise<boolean>
+  enter: (signal: AbortSignal) => Promise<boolean>
 }) {
   // A browser that already holds a visit (a reload) is not entered again by the tap.
   const enteredRef = useRef(entered)
@@ -303,7 +309,7 @@ function VoiceFirstVisit({
   const queryClient = useQueryClient()
   const voiceFirst = useMemo(
     () => ({
-      prepare: () => (enteredRef.current ? Promise.resolve(true) : enterRef.current()),
+      prepare: (signal: AbortSignal) => (enteredRef.current ? Promise.resolve(true) : enterRef.current(signal)),
       funnelRef: refTag ?? '',
       sessionMinutes: 5,
       // The server switched this visit to Live mid-visit: ask again, and `TryScreen` swaps pages.
