@@ -1613,6 +1613,9 @@ def _answer(
     elif sentences == 0 and not door.end_requested:
         yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
     yield from speaker.drain()
+    if door.cancelled():
+        # Stopped while its speech played out (round 3 N4): the turn ends as cancelled.
+        report.status = "cancelled"
     if not door.end_requested and is_stop_utterance(words):
         door.end_requested = True
         timings["stop_phrase"] = 1
