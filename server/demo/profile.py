@@ -10,8 +10,8 @@ profile, so it has nothing to reword.
 - `split_sentences`: a section's text as sentences, cut where a sentence ends and nowhere else
   (a line break ends one; "B.S.", "U.S.", "Ph.D.", "e.g." and a single initial do not). When in
   doubt it does NOT cut: two sentences spoken as one are still his words.
-- `speak`: the picked sections' sentences, capped at `CAP`, whole sections only, plus at most one
-  closing line from a fixed list.
+- `speak`: the picked sections' sentences in his own order, capped at `CAP`, whole sections only,
+  plus at most one closing line from a fixed list.
 
 Every example in tests is invented; nothing of the real profile is in this repo.
 """
@@ -35,6 +35,9 @@ OFFERS = {
     "contact": "Want to know how to reach him?",
 }
 OFFER_KEYS = ("none", *OFFERS)
+
+# Where the loader keeps the profile's own section order, beside it in the content blob.
+PROFILE_ORDER = "profile_order"
 
 # Words that end in a full stop without ending a sentence. Lower-cased, without the stop.
 _ABBREVIATIONS = frozenset(
@@ -96,12 +99,19 @@ def _slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_") or "section"
 
 
-def sections_of(profile: dict | None) -> list[Section]:
-    """The profile's sections in its own order, each with a stable id from its title. A section
-    with no text is left out (there is nothing to say)."""
+def sections_of(profile: dict | None, order: list | None = None) -> list[Section]:
+    """The profile's sections in the order Kevin wrote them, each with a stable id from its title.
+
+    Postgres keeps a JSON object's keys in its own order, so the loader stores the file's order
+    beside the profile (`PROFILE_ORDER`, `demo.content.load`); a row loaded before that has none
+    and keeps the stored order. A section with no text is left out (there is nothing to say)."""
+    profile = profile or {}
+    titles = [t for t in (order or []) if t in profile]
+    titles += [t for t in profile if t not in titles]
     out: list[Section] = []
     taken: set[str] = set()
-    for title, text in (profile or {}).items():
+    for title in titles:
+        text = profile[title]
         sentences = tuple(split_sentences(text if isinstance(text, str) else ""))
         if not sentences:
             continue
@@ -114,13 +124,6 @@ def sections_of(profile: dict | None) -> list[Section]:
     return out
 
 
-def _titles(sections: list[Section]) -> str:
-    names = [s.title for s in sections]
-    if len(names) <= 1:
-        return "".join(names)
-    return ", ".join(names[:-1]) + " and " + names[-1]
-
-
 @dataclass(frozen=True)
 class Spoken:
     lines: tuple[str, ...]
@@ -130,15 +133,22 @@ class Spoken:
     more: str | None
 
 
+MORE = "There's more; just ask."
+
+
+def _more_on(sections: list[Section]) -> str:
+    return f"There's more on {', '.join(s.title for s in sections)}; just ask."
+
+
 def speak(sections: list[Section], chosen: list[str], rest_of: str | None = None) -> Spoken:
     """What is said for the picked section ids. Unknown ids are ignored; none left is "not shared".
 
-    The cap: when the picked sections hold more than `CAP` sentences, whole sections are taken
-    shortest first while they fit (so a pointed question about a short section is never crowded
-    out by a long one) and spoken in the order the model picked them; the ones left out are named
-    in one line. A single section longer than `CAP` gives its first `CAP` sentences, and
-    `rest_of=<its id>` gives the next `CAP`. No sentence is ever cut or picked from inside a
-    section otherwise."""
+    The cap: the picked sections are spoken WHOLE, in the order Kevin wrote them (his own order of
+    importance), while they fit in `CAP` sentences; the first that does not fit and every one after
+    it are named in one line, in the same order. When the first picked section alone is longer
+    than `CAP`, its first `CAP` sentences are said and the line says there is more (naming the
+    others too, when others were picked); `rest_of=<its id>` gives the next `CAP`. No sentence is
+    ever cut or picked from inside a section otherwise."""
     by_id = {s.id: s for s in sections}
     if rest_of in by_id:
         section = by_id[rest_of]
@@ -147,27 +157,24 @@ def speak(sections: list[Section], chosen: list[str], rest_of: str | None = None
         if len(rest) > CAP:
             more = f"There's more on {section.title} than I can read out here; ask him directly."
         return Spoken(tuple(rest[:CAP]), (section.title,), more)
-    picked = [by_id[i] for i in dict.fromkeys(chosen or []) if i in by_id]
+    wanted = set(chosen or [])
+    picked = [s for s in sections if s.id in wanted]
     if not picked:
         return Spoken((NOT_SHARED_LINE,), (), None)
-    if sum(len(s.sentences) for s in picked) <= CAP:
-        kept = picked
-    else:
-        order = sorted(picked, key=lambda s: (len(s.sentences), picked.index(s)))
-        kept, used = [], 0
-        for section in order:
-            if used + len(section.sentences) <= CAP:
-                kept.append(section)
-                used += len(section.sentences)
-        if not kept:
-            first = order[0]
-            left = [s for s in picked if s is not first]
-            more = f"There's more on {_titles([first, *left])}; just ask."
-            return Spoken(first.sentences[:CAP], (first.title,), more)
-    left = [s for s in picked if s not in kept]
-    lines = tuple(line for s in picked if s in kept for line in s.sentences)
-    more = f"There's more on {_titles(left)}; just ask." if left else None
-    return Spoken(lines, tuple(s.title for s in picked if s in kept), more)
+    first = picked[0]
+    if len(first.sentences) > CAP:
+        more = _more_on(picked) if len(picked) > 1 else MORE
+        return Spoken(first.sentences[:CAP], (first.title,), more)
+    kept: list[Section] = []
+    used = 0
+    for section in picked:
+        if used + len(section.sentences) > CAP:
+            break
+        kept.append(section)
+        used += len(section.sentences)
+    left = picked[len(kept) :]
+    lines = tuple(line for s in kept for line in s.sentences)
+    return Spoken(lines, tuple(s.title for s in kept), _more_on(left) if left else None)
 
 
 def offer_line(offer: str | None, *, has_resume: bool, has_contact: bool) -> str | None:
