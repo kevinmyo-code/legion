@@ -1025,11 +1025,16 @@ class AssistantTurnView(_AssistantView):
         summary="One assistant turn on the engine's voice pipeline, answered as Server-Sent Events",
         description=(
             "text/event-stream, one event per thing that happened: `turn` "
-            "{conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `working` "
-            "{tool}; `tool` {name, ok, outcome, text, card?}; `sentence` {text}; `audio` {pcm "
-            "(base64 16-bit mono PCM), rate} after each sentence of a spoken turn; "
-            "`speech_failed` {reason}; `done` {status, final_text, writes_ran, words?}; `error` "
-            "{words}. A typed turn gets no `audio`."
+            "{conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` "
+            "{kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line "
+            "said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, "
+            "outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm "
+            "(base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); "
+            "`speech_failed` {reason}; `done` {status, final_text, writes_ran, words?, end? (the "
+            "conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing "
+            "was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's "
+            "estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no "
+            "`audio`."
         ),
         request={"multipart/form-data": AssistantTurnRequestSerializer},
         responses={
@@ -1047,7 +1052,13 @@ class AssistantTurnView(_AssistantView):
                     "its time limit. Nothing ran."
                 ),
             ),
-            413: OpenApiResponse(DetailSerializer, description="The utterance is too long."),
+            413: OpenApiResponse(
+                DetailSerializer,
+                description=(
+                    "The utterance is too long: over MAX_UTTERANCE_SECONDS of 16 kHz 16-bit mono "
+                    "PCM, judged on the upload's size in bytes."
+                ),
+            ),
             429: OpenApiResponse(
                 DetailSerializer,
                 description=(
