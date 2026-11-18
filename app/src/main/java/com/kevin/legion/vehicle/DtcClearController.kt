@@ -31,6 +31,15 @@ object DtcClearController {
     val voiceGate = ClearCodesVoiceGate()
 
     /**
+     * The adapter dropped: any clear question still waiting is void (2026-11-17 review). A yes must
+     * answer a question asked on the connection it would clear; the next connection may be another car.
+     */
+    fun onAdapterDisconnected() {
+        voiceGate.reset()
+        com.kevin.legion.vehicle.diag.DiagVoice.gate.reset()
+    }
+
+    /**
      * D2's five states plus NOT_PARKED (2026-11-17), exhaustive. `Command sent?`:
      * NOTHING_TO_CLEAR/REFUSED/NOT_PARKED = no, CLEARED/RETURNED/UNVERIFIED = yes - see
      * [recordOutcome] for why only the latter three ever earn a [CodeClearEvent] row.
