@@ -9,6 +9,7 @@ import {
   SPAN_WINDOWS,
   SUSTAIN_MS,
   SUSTAIN_WINDOWS,
+  VERDICT_GRACE_MS,
   VERDICT_MS,
   WINDOW_MS,
   peakLevel,
@@ -274,5 +275,22 @@ describe('one barge-in counts once (review 2026-11-17)', () => {
     expect(g.disabled).toBe(false)
     expect(g.selfInterrupts).toBe(0)
     expect(fires(feed(g, windows, 0.95, loud))).toHaveLength(1)
+  })
+})
+
+describe('the verdict after a paused reply (review 2026-11-17: echo still in flight)', () => {
+  it("the reply's echo still arriving in the first 320 ms after a fire is not a person", () => {
+    const g = gate()
+    feed(g, windows, 0.95, loud)
+    // 288 ms of echo: well over SELF_SPEECH_MS, so without the grace it reads as a person.
+    expect(9 * WINDOW_MS).toBeLessThan(VERDICT_GRACE_MS)
+    const v = verdicts([...feed(g, 9, 0.95, loud), ...feed(g, 60, 0.05, 300)])[0]
+    expect(v.selfInterrupt).toBe(true)
+  })
+
+  it('a person who keeps talking past it is still a person', () => {
+    const g = gate()
+    feed(g, windows, 0.95, loud)
+    expect(verdicts(feed(g, 60, 0.9, 20_000))[0].selfInterrupt).toBe(false)
   })
 })

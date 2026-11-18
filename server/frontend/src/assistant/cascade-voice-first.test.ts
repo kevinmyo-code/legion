@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
+import { CONVERSATION_CLOSED, CascadeClient, ECHO_TAIL_MS, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
 import { EARLY_TRANSCRIPT, createCascadeDeps } from './deps'
 import { MAX_UTTERANCE_MS, WINDOW_MS } from './endpointer'
 import { MAX_UTTERANCE_SAMPLES } from './utterance'
@@ -85,6 +85,19 @@ class StubDetector implements TurnDetector {
   fire() {
     this.handlers?.onBargeIn({ type: 'fire', prob: 0.9, level: 20000, echoFloor: 5000, threshold: 7500, sustainMs: 256 })
   }
+  /** The gate's verdict on the last firing: its own echo (`self`) or a person. */
+  verdict(self: boolean) {
+    const nowDisabled = self ? this.gate.countSelfInterrupt() : this.gate.disabled
+    this.handlers?.onVerdict({
+      type: 'verdict',
+      selfInterrupt: self,
+      speechMsAfter: self ? 0 : 600,
+      fireLevel: 20000,
+      fireThreshold: 7500,
+      selfInterrupts: this.gate.selfInterrupts,
+      nowDisabled,
+    })
+  }
 }
 
 function build(
@@ -137,6 +150,8 @@ async function open(t: ReturnType<typeof build>) {
   await settle()
   t.audio.handlers?.onPlaying(false)
   await settle()
+  // The greeting's tail in the room, which the page does not listen to.
+  for (let ms = 0; ms < ECHO_TAIL_MS; ms += 20) t.audio.handlers?.onChunk(new Int16Array(320))
 }
 
 const UTTERANCE = new Int16Array(16000)
@@ -151,6 +166,9 @@ describe('the models in the conversation', () => {
     expect(t.detector.replies.started).toBe(1)
     t.audio.handlers?.onPlaying(false)
     expect(t.detector.replies.ended).toBe(1)
+    // The reply's tail in the room reaches the models, not yet as a turn.
+    for (let ms = 0; ms < ECHO_TAIL_MS; ms += 20) t.audio.handlers?.onChunk(new Int16Array(320))
+    expect(t.detector.pushes.at(-1)).toEqual({ listening: false, playing: false })
     // Every chunk reaches the models; while the reply plays it is marked as playback.
     t.audio.handlers?.onPlaying(true)
     t.audio.handlers?.onChunk(new Int16Array(320))
@@ -177,7 +195,7 @@ describe('the models in the conversation', () => {
     expect(late.handlers).toBeNull()
   })
 
-  it('a barge-in stops the reply at once, cancels the engine turn, and listens', async () => {
+  it('a barge-in pauses the reply; a person (the verdict) cuts it, cancels the turn, and listens', async () => {
     const t = build([spoken('Hello.'), { ok: true, events: hanging([{ type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }, AUDIO]) }])
     await open(t)
     // A turn is in flight and its audio playing.
@@ -186,6 +204,10 @@ describe('the models in the conversation', () => {
     expect(t.requests).toHaveLength(2)
     const flushes = t.audio.flushes
     t.detector.fire()
+    expect(t.audio.paused).toBe(true)
+    expect(t.audio.flushes).toBe(flushes)
+    expect(t.signals[1].aborted).toBe(false)
+    t.detector.verdict(false)
     expect(t.audio.flushes).toBe(flushes + 1)
     expect(t.signals[1].aborted).toBe(true)
     expect(t.client.getState().mic).toBe('on')
@@ -196,33 +218,31 @@ describe('the models in the conversation', () => {
     expect(t.requests).toHaveLength(3)
   })
 
-  it('two barge-ins that heard nothing new switch to half-duplex without a word', async () => {
-    const t = build([
-      spoken('Hello.'),
-      spoken('A long answer.'),
-      { ok: true, events: stream([{ type: 'turn', data: { conversation_id: 'c-1', turn: 2 } }, { type: 'heard', data: { text: '' } }, { type: 'done', data: { status: 'done' } }]) },
-      spoken('Another long answer.'),
-      { ok: true, events: stream([{ type: 'turn', data: { conversation_id: 'c-1', turn: 4 } }, { type: 'heard', data: { text: 'another long answer' } }, { type: 'done', data: { status: 'done' } }]) },
-    ])
+  it('its own echo (the verdict): nothing is posted and the answer plays on; twice, and it is half-duplex', async () => {
+    const t = build([spoken('Hello.'), spoken('A long answer.'), spoken('Another long answer.')])
     await open(t)
     for (let i = 0; i < 2; i++) {
       t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
       await settle()
-      t.audio.handlers?.onPlaying(true)
       t.detector.fire()
+      // The echo's "turn" ends before the verdict: held, never sent.
       t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
       await settle()
+      t.detector.verdict(true)
+      expect(t.audio.paused).toBe(false)
+      expect(t.audio.flushes).toBe(0)
       t.audio.handlers?.onPlaying(false)
       await settle()
     }
+    expect(t.requests).toHaveLength(3)
+    expect(t.client.bargeIns).toBe(0)
     expect(t.client.fullDuplex).toBe(false)
     const said = t.client.getState().lines.filter((l) => l.kind === 'sys').map((l) => l.text)
     expect(said.join(' ')).not.toMatch(/duplex|interrupt/i)
     // Talked over now: nothing happens.
-    const before = t.client.bargeIns
     t.audio.handlers?.onPlaying(true)
     t.detector.fire()
-    expect(t.client.bargeIns).toBe(before)
+    expect(t.audio.paused).toBe(false)
   })
 
   it('half-duplex lasts one conversation: the next one has barge-in again', async () => {
@@ -248,7 +268,9 @@ describe('the models in the conversation', () => {
     t.audio.handlers?.onPlaying(true)
     t.detector.fire()
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    t.detector.verdict(false)
     await settle()
+    expect(t.requests).toHaveLength(3)
     expect(t.detector.gate.selfInterrupts).toBe(0)
     expect(t.client.fullDuplex).toBe(true)
   })
@@ -554,6 +576,7 @@ describe('the demo', () => {
     await settle()
     t.audio.handlers?.onPlaying(true)
     t.detector.fire()
+    t.detector.verdict(false)
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
     await settle()
     expect(t.requests.at(-1)).toMatchObject({ tour: 1 })

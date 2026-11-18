@@ -34,6 +34,12 @@ export const USER_GUARD_WINDOWS = Math.floor(USER_GUARD_MS / WINDOW_MS)
 const MAX_LEARN = 2_000
 export const VERDICT_MS = 1_216
 export const SELF_SPEECH_MS = 160
+/**
+ * The web's addition: speech in the verdict's first this-many ms is not counted. The page pauses
+ * the reply when the gate fires, and what already left the speaker is still on its way back to the
+ * mic (output latency, the room); counted, the reply's own echo read as a person still talking.
+ */
+export const VERDICT_GRACE_MS = 320
 export const MAX_SELF_INTERRUPTS = 2
 export const CLEARLY_USER_FACTOR = 2
 
@@ -87,6 +93,8 @@ export class BargeInGate {
   private armed = false
   private verdictWindowsLeft = 0
   private speechAfterMs = 0
+  /** The part of it after `VERDICT_GRACE_MS`, which is what the verdict goes on. */
+  private speechAfterGraceMs = 0
   private fireLevel = 0
   private fireThreshold = 0
   private replyOpen = false
@@ -220,6 +228,7 @@ export class BargeInGate {
     this.resetRun()
     this.verdictWindowsLeft = Math.floor(VERDICT_MS / WINDOW_MS)
     this.speechAfterMs = 0
+    this.speechAfterGraceMs = 0
     this.userGuardLeft = USER_GUARD_WINDOWS
     return fire
   }
@@ -234,13 +243,15 @@ export class BargeInGate {
   }
 
   private watch(prob: number): GateEvent | null {
+    const watchedMs = (Math.floor(VERDICT_MS / WINDOW_MS) - this.verdictWindowsLeft) * WINDOW_MS
     if (prob >= SPEECH_PROB) {
       this.speechAfterMs += WINDOW_MS
+      if (watchedMs >= VERDICT_GRACE_MS) this.speechAfterGraceMs += WINDOW_MS
       this.userGuardLeft = USER_GUARD_WINDOWS
     }
     if (--this.verdictWindowsLeft > 0) return null
     const clearlyUser = this.fireLevel >= this.fireThreshold * CLEARLY_USER_FACTOR
-    const self = this.speechAfterMs < SELF_SPEECH_MS && !clearlyUser
+    const self = this.speechAfterGraceMs < SELF_SPEECH_MS && !clearlyUser
     if (self && !this.fireCounted) {
       this.fireCounted = true
       this.selfInterrupts++
