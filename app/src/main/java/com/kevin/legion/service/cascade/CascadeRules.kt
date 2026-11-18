@@ -338,18 +338,82 @@ internal object ScriptedLines {
     const val VOICE_LOST = "Sorry, I lost my voice for a second."
 
     /**
-     * What he hears before the tone when a stop cut off a turn whose write had already finished:
-     * "Done: added milk to Groceries." from the tools' own result messages, never the model's words.
-     * Null when nothing was written; "Done." when a write left no message.
+     * One write a turn made, as facts (never the tool's message, which is written for the model):
+     * the fixed phrase for what was done, the item's title and list from the result's structured
+     * fields, and whether it went through.
      */
-    fun doneLine(messages: List<String>): String? {
-        val parts = messages.map { it.trim().trimEnd('.', '!') }.filter { it.isNotEmpty() }.distinct()
-        return when {
-            messages.isEmpty() -> null
-            parts.isEmpty() -> "Done."
-            else -> "Done: " + parts.joinToString("; ") { it.replaceFirstChar { c -> c.lowercase() } } + "."
+    data class WriteFact(val phrase: String, val title: String, val list: String, val ok: Boolean)
+
+    /** [response] of the write [name] / [action] as a [WriteFact]; [ok] is the loop's success flag. */
+    fun writeFact(name: String, action: String, response: org.json.JSONObject, ok: Boolean): WriteFact =
+        WriteFact(
+            phrase = DONE_PHRASES[action] ?: DONE_PHRASES[name] ?: "did %s",
+            title = field(response, TITLE_KEYS).take(MAX_TITLE),
+            list = field(response, listOf("list")).take(MAX_TITLE),
+            ok = ok,
+        )
+
+    /**
+     * What he hears before the tone when a stop cut off a turn whose writes had already run
+     * (2026-11-18 review r2 N3): "Done: added milk to Groceries." Built here from [facts]; a clause per
+     * write, at most [MAX_DONE_CHARS] characters, never a question. A write that failed is "<thing>
+     * didn't go through."; one whose title the reply already said aloud ([alreadySaid]) is not repeated.
+     * Null when there is nothing to say.
+     */
+    fun doneLine(facts: List<WriteFact>, alreadySaid: String = ""): String? {
+        val said = alreadySaid.lowercase()
+        val fresh = facts.filterNot { it.ok && it.title.isNotEmpty() && said.contains(it.title.lowercase()) }
+        val done = fresh.filter { it.ok }.map { f ->
+            val to = if (f.list.isNotEmpty() && f.phrase.startsWith("added")) " to ${f.list}" else ""
+            f.phrase.format(f.title.ifEmpty { "it" }) + to
         }
+        val failed = fresh.filterNot { it.ok }.map { f ->
+            f.title.ifEmpty { "That change" }.replaceFirstChar { it.uppercase() } + " didn't go through."
+        }
+        // Clause by clause while it fits: a run of writes is cut at a clause; only a first clause too
+        // long on its own is trimmed.
+        var kept = done.take(1).map { it.take(MAX_DONE_CHARS - "Done: .".length) }
+        for (c in done.drop(1)) {
+            if (doneText(kept + c).length <= MAX_DONE_CHARS) kept = kept + c
+        }
+        var line = if (kept.isEmpty()) "" else doneText(kept)
+        for (f in failed) {
+            val next = if (line.isEmpty()) f else "$line $f"
+            if (next.length <= MAX_DONE_CHARS) line = next
+        }
+        return line.replace("?", "").ifEmpty { null }
     }
+
+    private fun doneText(clauses: List<String>) = "Done: " + clauses.joinToString("; ") + "."
+
+    @Suppress("ReturnCount") // the top level, then one nested level, then nothing
+    private fun field(o: org.json.JSONObject, keys: List<String>): String {
+        keys.firstNotNullOfOrNull { k -> o.optString(k).trim().takeIf { it.isNotEmpty() && o.opt(k) is String } }
+            ?.let { return it }
+        for (k in o.keys()) {
+            val nested = when (val v = o.opt(k)) {
+                is org.json.JSONObject -> v
+                is org.json.JSONArray -> v.optJSONObject(0)
+                else -> null
+            } ?: continue
+            keys.firstNotNullOfOrNull { kk ->
+                nested.optString(kk).trim().takeIf { it.isNotEmpty() && nested.opt(kk) is String }
+            }?.let { return it }
+        }
+        return ""
+    }
+
+    private val TITLE_KEYS = listOf("title", "text", "item", "name")
+    private const val MAX_TITLE = 40
+    const val MAX_DONE_CHARS = 80
+
+    /** A fixed phrase per write action or tool; `%s` is the item's title. */
+    private val DONE_PHRASES = mapOf(
+        "add" to "added %s", "remove" to "removed %s", "tick" to "ticked off %s", "untick" to "unticked %s",
+        "schedule" to "scheduled %s", "skip" to "skipped %s", "create" to "created %s", "set" to "set %s",
+        "log" to "logged %s", "remember" to "saved %s", "forget" to "forgot %s", "clear_ticked" to "cleared %s",
+        "complete_task" to "marked %s done", "set_reminder" to "set a reminder for %s",
+    )
 
     /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
     val KEEP: Set<String> =
