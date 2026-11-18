@@ -192,6 +192,22 @@ def test_the_cost_estimate_prices_cached_input_at_the_cached_rate():
 # =============================================================================
 
 
+@pytest.fixture
+def early_on(monkeypatch):
+    from assistant import voice_engine
+
+    monkeypatch.setenv(voice_engine.EARLY_TRANSCRIPTS_ENV, "on")
+
+
+def test_early_transcripts_are_off_by_default_and_cost_nothing(member, visitor, engine):
+    from demo.models import DemoBudgetDay
+
+    assert _transcribe(member).status_code == 404
+    assert _transcribe(visitor).status_code == 404
+    assert engine.speech.transcribed == []
+    assert not DemoBudgetDay.objects.exists()
+
+
 def _transcribe(client, audio=PCM):
     return client.post(
         "/api/assistant/transcribe",
@@ -200,7 +216,7 @@ def _transcribe(client, audio=PCM):
     )
 
 
-def test_transcribe_returns_the_words_and_answers_nothing(member, engine):
+def test_transcribe_returns_the_words_and_answers_nothing(member, engine, early_on):
     engine.speech.heard = "How is LEGION built"
     response = _transcribe(member)
     assert response.status_code == 200
@@ -209,13 +225,15 @@ def test_transcribe_returns_the_words_and_answers_nothing(member, engine):
     assert engine.speech.spoken == []
 
 
-def test_transcribe_refuses_a_stranger_and_a_live_caller(client, member, engine, monkeypatch):
+def test_transcribe_refuses_a_stranger_and_a_live_caller(
+    client, member, engine, early_on, monkeypatch
+):
     assert _transcribe(client).status_code in (401, 403)
     monkeypatch.setenv("LEGION_WEB_VOICE", "live")
     assert _transcribe(member).status_code == 409
 
 
-def test_a_visitors_transcribe_is_charged_to_the_demo_budget(visitor, engine, settings):
+def test_a_visitors_transcribe_is_charged_to_the_demo_budget(visitor, engine, early_on, settings):
     before = DemoBudgetDay.objects.count()
     assert _transcribe(visitor).status_code == 200
     assert DemoBudgetDay.objects.count() >= before

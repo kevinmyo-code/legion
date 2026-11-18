@@ -80,5 +80,14 @@ def voice_for(user) -> str:
     return os.environ.get(VOICE_ENV, "").strip() or MEMBER_VOICE_DEFAULT
 
 
+# Early transcripts (`POST /api/assistant/transcribe`): OFF unless this is "on" (2026-11-17 review
+# round 2). What must exist before it is switched on is in ADR 0103 ("Early transcripts").
+EARLY_TRANSCRIPTS_ENV = "LEGION_WEB_EARLY_TRANSCRIPTS"
+
+
+def early_transcripts_on() -> bool:
+    return os.environ.get(EARLY_TRANSCRIPTS_ENV, "").strip().lower() == "on"
+
+
 def text_model() -> str:
     return os.environ.get(TEXT_MODEL_ENV, "").strip() or TEXT_MODEL_DEFAULT

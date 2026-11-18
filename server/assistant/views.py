@@ -1260,6 +1260,10 @@ class AssistantTranscribeView(_AssistantView):
         },
     )
     def post(self, request):
+        if not voice_engine.early_transcripts_on():
+            # OFF by default (round 2 review: no slot, no per-utterance cap, no cancel, members
+            # unmetered). Off is a plain 404: no paid call, nothing metered, nothing reserved.
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         if voice_engine.engine_for(request.user) != voice_engine.CASCADE:
             return _refuse(request, LIVE_ONLY, status.HTTP_409_CONFLICT)
         body = AssistantTranscribeRequestSerializer(data=request.data)
