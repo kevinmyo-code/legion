@@ -148,7 +148,7 @@ object VoiceEngineSettings {
 
     fun setSpeculate(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SPECULATE, on).apply()
 
-    /** The cloud voice's id (Puck unless he set another and it passed [testVoice]). */
+    /** The cloud voice's id: [CloudSpeechWire.VOICE] (en-gb-advisor-3) unless another passed [testVoice]. */
     fun cloudVoice(context: Context): String =
         prefs(context).getString(KEY_CLOUD_VOICE, null)?.trim()?.takeIf { it.isNotEmpty() } ?: CloudSpeechWire.VOICE
 

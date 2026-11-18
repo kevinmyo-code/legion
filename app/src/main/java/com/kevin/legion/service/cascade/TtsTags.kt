@@ -1,7 +1,7 @@
 package com.kevin.legion.service.cascade
 
 /**
- * Gemini TTS expression tags (Kevin, 2026-11-17: "i like neno plain. and with tags where possible").
+ * Gemini TTS expression tags (2026-11-17: plain speech, with a tag only where one fits).
  * Measured in our request shape (`.legion/reports/tts-styles-1117.md`, private): a tag in the text is
  * performed, never read aloud; `<long pause>` adds ~1.5 s, `<breath>` is barely audible, so neither is
  * allowed. Only [ALLOWED].
