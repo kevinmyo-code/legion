@@ -349,8 +349,10 @@ describe('CascadeClient', () => {
     await settle()
     expect(audio.micOpen).toBe(false)
     expect(client.getState().mic).toBe('off')
-    expect(client.getState().activity).toBe('idle')
     expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+    // Once the closing tone has played, nothing is going on.
+    drained(audio)
+    expect(client.getState().activity).toBe('idle')
     expect(client.getState().notice?.text).toBe(words)
     await client.startVoice()
     await settle()
@@ -389,6 +391,8 @@ describe('CascadeClient', () => {
       await vi.advanceTimersByTimeAsync(200)
       expect(signals[1].aborted).toBe(true)
       expect(audio.micOpen).toBe(false)
+      expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+      drained(audio)
       expect(client.getState().activity).toBe('idle')
       expect(client.getState().notice?.kind).toBe('engine-unreachable')
     } finally {
