@@ -70,7 +70,8 @@ fun AppsScreen() {
     var openLetter by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reload) {
-        loaded = AppDrawerCache.refresh(context)
+        // Guarded (review 2026-11-18): a throwing read keeps the last list rather than closing All apps.
+        loaded = runCatching { AppDrawerCache.refresh(context) }.getOrNull() ?: loaded
     }
 
     // Typeset (ADR 0081): outside Matrix mode the drawer is the letter folders again, drawn in

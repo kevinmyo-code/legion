@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 /** Everything the drawer renders, captured at one moment. */
@@ -79,10 +80,14 @@ internal object AppDrawerCache {
     }
 
     /** Re-read the app list, reusing every icon still valid. One refresh at a time. */
-    suspend fun refresh(context: Context): Loaded = mutex.withLock {
-        val app = context.applicationContext
-        registerCallback(app)
-        load(app).also { cached = it }
+    // Off the main thread whoever calls it (review 2026-11-18: Home and All apps called it from
+    // Main on every return): the package and shortcut reads and any icon drawing run on IO.
+    suspend fun refresh(context: Context): Loaded = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val app = context.applicationContext
+            registerCallback(app)
+            load(app).also { cached = it }
+        }
     }
 
     @Suppress("ReturnCount") // guard clauses, one worded exit each
@@ -137,7 +142,9 @@ internal object AppDrawerCache {
             handles[key] = profile
             val isWork = profile != me
             if (isWork) work = profile
-            shortcuts += PinnedShortcutsAndroid.load(launcherApps, profile, key, isWork, dpi, ICON_PX, icons)
+            shortcuts += PinnedShortcutsAndroid.load(
+                launcherApps, profile, key, isWork, dpi, ICON_PX, icons, unreadable,
+            )
             val activities = runCatching { launcherApps.getActivityList(null, profile) }.getOrDefault(emptyList())
             for (info in activities) {
                 val component = info.componentName

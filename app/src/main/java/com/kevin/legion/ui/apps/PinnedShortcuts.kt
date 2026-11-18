@@ -104,7 +104,7 @@ internal object PinnedShortcutsAndroid {
      * [marks] by [iconKey]. Empty when LEGION is not the default home app (only the default launcher
      * may read shortcuts; the pins are kept and come back when it is the home app again).
      */
-    @Suppress("ReturnCount") // guard clauses, one exit each
+    @Suppress("ReturnCount", "LongParameterList") // guard clauses; the cache loop's own state, passed in
     fun load(
         launcherApps: LauncherApps,
         profile: UserHandle,
@@ -113,6 +113,7 @@ internal object PinnedShortcutsAndroid {
         densityDpi: Int,
         iconPx: Int,
         marks: MutableMap<String, ImageBitmap>,
+        unreadable: MutableSet<String>,
     ): List<DrawerApp> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return emptyList()
         if (!runCatching { launcherApps.hasShortcutHostPermission() }.getOrDefault(false)) return emptyList()
@@ -124,10 +125,14 @@ internal object PinnedShortcutsAndroid {
             val label = (info.shortLabel ?: info.longLabel ?: info.id).toString()
             val row = PinnedShortcuts.asDrawerApp(info.`package`, info.id, label, isWork, profileKey)
             val key = iconKey(profileKey, row.packageName, row.className)
-            if (!marks.containsKey(key)) {
-                runCatching { launcherApps.getShortcutIconDrawable(info, densityDpi) }.getOrNull()
-                    ?.let { AppMonochrome.mark(it, iconPx) }
-                    ?.let { marks[key] = it }
+            // Every outcome is kept: a mark, or "no usable mark" (the monogram), so a shortcut's icon is
+            // drawn once, not on every return home. A change to the package evicts both (the cache's
+            // changed(), from onShortcutsChanged or a package event). A throwing icon is a monogram.
+            if (!marks.containsKey(key) && key !in unreadable) {
+                val mark = runCatching {
+                    launcherApps.getShortcutIconDrawable(info, densityDpi)?.let { AppMonochrome.mark(it, iconPx) }
+                }.getOrNull()
+                if (mark != null) marks[key] = mark else unreadable += key
             }
             row
         }
