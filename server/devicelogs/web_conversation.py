@@ -425,6 +425,25 @@ def utterances_received(row: DeviceLog) -> int:
     )
 
 
+def last_reply(row: DeviceLog) -> str:
+    """The assistant's most recent reply in this conversation, as one record line said it: the
+    reply that was playing, never several merged (round 4: the echo check compares against it)."""
+    from devicelogs.views import inflate_capped
+
+    body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace").splitlines()
+    for text in reversed(body):
+        match = _ENGINE_TURN.match(text)
+        if match is None or not match.group("ai"):
+            continue
+        try:
+            words = json.loads(match.group("text"))
+        except ValueError:
+            continue
+        if isinstance(words, str) and words.strip():
+            return words
+    return ""
+
+
 CUT_OFF_NOTE = "(They spoke over this reply and stopped it here.)"
 
 

@@ -548,16 +548,6 @@ def _transcribe(speech, pcm: bytes, timings: dict):
         timings["stt_retries"] = max(getattr(speech, "stt_sent", 1) - 1, 0)
 
 
-def _last_reply(history: list[dict]) -> str:
-    """The assistant's last reply in this conversation, as it was said (its notes removed)."""
-    for turn in reversed(history or []):
-        if turn.get("role") == "model":
-            text = " ".join(p.get("text", "") for p in turn.get("parts") or [])
-            text = text.replace(web_conversation.CUT_OFF_NOTE, "")
-            return re.sub(r"\(Done: [^)]*\.\)", "", text).strip()
-    return ""
-
-
 def _whole(value) -> int:
     return value if isinstance(value, int) and value > 0 else 0
 
@@ -1028,6 +1018,10 @@ class TurnInput:
     # Utterances this conversation received before this one, answered or not (round 3 speech
     # S5): only the first may get the acknowledgement.
     heard_before: int = 0
+    # The page marked this utterance a barge-in (it began while a reply played), and the reply
+    # that was playing: only then is the transcript checked for an echo (round 4 ruling).
+    barge_in: bool = False
+    last_reply: str = ""
     # The one-minute tour (`assistant/tour.py`): the beat to play, or None.
     tour_beat: int | None = None
 
@@ -1366,8 +1360,8 @@ def _answer(
             report.status = "cancelled"
             yield ev.done("cancelled", "", False)
             return
-        last = _last_reply(history)
-        if words and echo.is_echo(words, last):
+        last = turn_input.last_reply
+        if words and turn_input.barge_in and echo.is_echo(words, last):
             # The assistant's own last reply heard back through the speaker (2026-11-17: played
             # back at 5% it was transcribed and answered). No model round, nothing kept as their
             # line, not side talk; logged with lengths only.

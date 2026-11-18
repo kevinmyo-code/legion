@@ -857,6 +857,15 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
             "/api/assistant/transcribe`) and the answer is spoken, as for `audio`."
         ),
     )
+    barge_in = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text=(
+            "With `audio`: the utterance began while a reply was playing (a barge-in). Only such a "
+            "turn is checked for the reply heard back (an echo): one that repeats the reply that "
+            "was playing ends as no speech. A turn without it is never checked."
+        ),
+    )
     turn_id = serializers.UUIDField(
         required=False,
         allow_null=True,
@@ -1367,6 +1376,8 @@ class AssistantTurnView(_AssistantView):
                 spoken=bool(data.get("spoken")) and bool(text),
                 tour_beat=tour_beat,
                 heard_before=web_conversation.utterances_received(row),
+                barge_in=bool(data.get("barge_in")) and audio is not None,
+                last_reply=web_conversation.last_reply(row),
             )
             response = StreamingHttpResponse(
                 _turn_sse(
