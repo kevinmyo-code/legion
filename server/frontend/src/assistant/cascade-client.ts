@@ -699,6 +699,9 @@ export class CascadeClient {
    * the next tap opens a new conversation.
    */
   private closeWith(notice: Notice) {
+    // First the turn: with no voice and no conversation open (a chip, the box, the tour) close()
+    // has nothing to close, and the turn must still stop.
+    this.cutReply(null)
     this.close(true)
     this.set({ notice })
   }
@@ -729,7 +732,7 @@ export class CascadeClient {
     // Every upload passes here, so none is ever over the engine's cap.
     const { audio: raw, ...rest } = given
     let input: TurnInput = raw ? { ...rest, audio: utterance(raw) } : rest
-    if ((input.audio || input.text) && input.tour === undefined && this.tourNext !== null) {
+    if ((input.audio || (typed && input.text)) && input.tour === undefined && this.tourNext !== null) {
       // Said or typed during the tour: the engine hears "skip" and "stop", or answers a question.
       input = { ...input, tour: this.tourNext }
     }

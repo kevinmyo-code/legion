@@ -440,6 +440,23 @@ describe('CascadeClient', () => {
     }
   })
 
+  it('a stalled tapped question with nothing open is stopped too, not left thinking', async () => {
+    async function* silent(): AsyncGenerator<SseEvent> {
+      await new Promise(() => {})
+    }
+    const { client, signals } = build([{ ok: true, events: silent() }])
+    vi.useFakeTimers()
+    try {
+      client.ask('Tell me about Kevin.')
+      await vi.advanceTimersByTimeAsync(FIRST_EVENT_MS + 100)
+      expect(signals[0].aborted).toBe(true)
+      expect(client.getState().activity).not.toBe('thinking')
+      expect(client.getState().notice?.kind).toBe('engine-unreachable')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('sends the browser record only what the engine cannot know', async () => {
     const { client, audio, recorded } = build([greeting()])
     await open(client, audio)
