@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launch window's ground and bar icons (Theme.Legion). By night: the old dark ground. -->
+    <color name="launch_ground">#FF0B0D0E</color>
+    <bool name="launch_light_bars">false</bool>
+</resources>

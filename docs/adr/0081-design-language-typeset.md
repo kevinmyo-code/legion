@@ -50,6 +50,13 @@ conversation surface (Typeset, Matrix mono, City pop) and picked Typeset: *"i wa
 - **One Controls panel** with six entries: Quiet, Feed blocker, Clock, Claude sessions, LEGION
   settings, Phone settings. An app dock of six monogram tiles, and an "All apps" tray set as an
   index with a find line.
+- **App icons are monochrome (Kevin, 2026-11-18: "monochrome icons"; "no logos" holds).** The
+  home's contents, app groups and pins became small icons with their names under them, and All
+  apps went back to letter folders (2026-11-17). An app is drawn by its own monochrome (themed)
+  icon layer, else its adaptive foreground flattened to a silhouette, else its whole legacy icon
+  flattened, always tinted with the screen's ink (day, night and Matrix), never in the app's
+  colours. A silhouette that does not read as a shape (a filled tile, an empty layer) gives way to
+  the two-letter monogram. `ui/apps/AppMonochrome.kt`.
 - Tokens stay in `ui/theme/soft/` under their existing role names, now behind a CompositionLocal
   (`LocalSoftPalette`), so one provider reaches every screen that reads them.
 

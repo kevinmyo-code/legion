@@ -1,8 +1,6 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.kevin.legion.ui.typeset
 
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,48 +20,39 @@ import com.kevin.legion.ui.home.slotStatusWord
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
 import com.kevin.legion.ui.home.CategoryUi
 import com.kevin.legion.ui.home.categoryButtonSpec
+import com.kevin.legion.ui.home.lookOf
+import com.kevin.legion.ui.home.singleAppIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.TypesetType
 
 /**
  * One app group on the Typeset front page (the old home's category row: Bank, Music, Maps, Mail,
- * Chat): its short name in small caps, no icon (ADR 0081: no logos). The taps are the old row's own
- * (`CategoryRow`): one app opens it, several ask which in a sheet, none opens the chooser, long press
- * edits the group. A group with nothing picked reads in italic meta; its words say so to TalkBack.
+ * Chat) as a small icon with its short name under it (Kevin, 2026-11-17: "same for bank music maps
+ * mail"). The icon is the picked app's monochrome mark (2026-11-18) when exactly one installed app is picked
+ * (the old row's rule, Kevin 2026-10-09: "if a bucket has only one app, take the icon of that app"),
+ * otherwise the group's glyph from the repo's set ([lookOf]) in ink. The taps are the old row's own
+ * (`CategoryRow`): one app opens it, several ask which in a sheet, none opens the chooser, long
+ * press edits the group. A group with nothing picked reads in italic meta with a meta glyph; one
+ * that cannot open now (paused, not installed) is dimmed; its words say so to TalkBack.
  */
 @Composable
 fun RowScope.TypesetGroupCell(ui: CategoryUi, onClick: () -> Unit, onLongClick: () -> Unit) {
     val spec = categoryButtonSpec(ui)
-    Box(
-        Modifier.weight(1f).heightIn(min = TapTarget)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .semantics {
-                role = Role.Button
-                contentDescription = spec.description
-            },
-        contentAlignment = Alignment.Center,
+    TypesetIconCell(
+        label = ui.category.short,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        description = spec.description,
+        dimmed = spec.dimmed,
+        italic = spec.unset,
     ) {
-        FitLine(
-            ui.category.short.uppercase(),
-            if (spec.unset) TypesetType.caps.copy(fontStyle = FontStyle.Italic) else TypesetType.caps,
-            if (spec.unset || spec.dimmed) SoftColors.text2 else SoftColors.text,
-            min = 9.sp,
-            align = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        val app = singleAppIcon(ui)
+        if (app != null) AppGlyph(app, "") else Glyph(lookOf(ui.category).icon, quiet = spec.unset)
     }
 }
 

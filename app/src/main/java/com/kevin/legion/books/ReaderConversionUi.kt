@@ -50,7 +50,7 @@ internal fun ConversionNotices(state: ReaderUiState, palette: ReaderPalette, act
             )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = actions.onOpenOriginal, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(PdfConversionSentences.OPEN_ORIGINAL, color = BooksTone.onContainer)
+                    Text(PdfConversionSentences.OPEN_ORIGINAL, color = BooksTone.darkOnContainer)
                 }
                 TextButton(onClick = { dismissed = true }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("Got it", color = palette.muted)
@@ -78,7 +78,7 @@ internal fun ConversionNotices(state: ReaderUiState, palette: ReaderPalette, act
                         .heightIn(min = 48.dp)
                         .semantics { contentDescription = PdfConversionSentences.TRY_AGAIN_DESCRIPTION },
                 ) {
-                    Text(PdfConversionSentences.TRY_AGAIN, color = BooksTone.onContainer)
+                    Text(PdfConversionSentences.TRY_AGAIN, color = BooksTone.darkOnContainer)
                 }
             }
         }

@@ -2,8 +2,8 @@
 
 package com.kevin.legion.ui.home
 
+import com.kevin.legion.ui.apps.AppMark
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -44,6 +44,7 @@ import com.kevin.legion.ui.apps.DrawerApp
 import com.kevin.legion.ui.apps.HomeCategory
 import com.kevin.legion.ui.apps.Loaded
 import com.kevin.legion.ui.apps.iconKey
+import com.kevin.legion.ui.theme.soft.AreaAccent
 import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 
@@ -165,25 +166,22 @@ internal fun mapsTap(slots: List<DockSlotUi>): MapsTap =
 /** The prototype's per-category tile and glyph colours (research/tray-canvas, option A). */
 internal data class CategoryLook(@DrawableRes val icon: Int, val tile: Color, val glyph: Color)
 
-private object Tiles {
-    val bank = Color(0xFF173D2B)
-    val bankGlyph = Color(0xFF7EDBA5)
-    val music = Color(0xFF33265A)
-    val musicGlyph = Color(0xFFCDBDFF)
-    val maps = Color(0xFF0F3B40)
-    val mapsGlyph = Color(0xFF77DCE5)
-    val mail = Color(0xFF1F3450)
-    val mailGlyph = Color(0xFFA8C8FF)
-    val chat = Color(0xFF43340F)
-    val chatGlyph = Color(0xFFFFD36B)
-}
-
-internal fun lookOf(category: HomeCategory): CategoryLook = when (category) {
-    HomeCategory.BANK -> CategoryLook(R.drawable.ms_account_balance, Tiles.bank, Tiles.bankGlyph)
-    HomeCategory.MUSIC -> CategoryLook(R.drawable.ms_music_note, Tiles.music, Tiles.musicGlyph)
-    HomeCategory.MAPS -> CategoryLook(R.drawable.ms_navigation, Tiles.maps, Tiles.mapsGlyph)
-    HomeCategory.MAIL -> CategoryLook(R.drawable.ms_mail, Tiles.mail, Tiles.mailGlyph)
-    HomeCategory.CHAT -> CategoryLook(R.drawable.ms_chat, Tiles.chat, Tiles.chatGlyph)
+/**
+ * A group's glyph and its tile pair. The pairs are the area accents' (bank is Money's green, music
+ * Recordings' violet, maps Fleet's teal, mail Calendar's blue, chat Lists' gold: the same values the
+ * prototype's tray canvas gave), so on day paper they turn light with every other accent chip and
+ * by night they are the dark tiles they always were (home-ui review 2026-11-18: dark discs by day).
+ */
+@Composable
+internal fun lookOf(category: HomeCategory): CategoryLook {
+    val (icon, accent) = when (category) {
+        HomeCategory.BANK -> R.drawable.ms_account_balance to AreaAccent.MONEY
+        HomeCategory.MUSIC -> R.drawable.ms_music_note to AreaAccent.RECORDINGS
+        HomeCategory.MAPS -> R.drawable.ms_navigation to AreaAccent.FLEET
+        HomeCategory.MAIL -> R.drawable.ms_mail to AreaAccent.CALENDAR
+        HomeCategory.CHAT -> R.drawable.ms_chat to AreaAccent.LISTS
+    }
+    return CategoryLook(icon, accent.container, accent.onContainer)
 }
 
 /**
@@ -311,7 +309,7 @@ private fun CategoryButton(
             ) {
                 val appIcon = singleAppIcon(ui)
                 if (appIcon != null) {
-                    Image(bitmap = appIcon, contentDescription = null, modifier = Modifier.size(SINGLE_APP_ICON_DP.dp))
+                    AppMark(appIcon, modifier = Modifier.size(SINGLE_APP_ICON_DP.dp))
                 } else {
                     MsIcon(
                         res = look.icon,

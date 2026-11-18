@@ -8,6 +8,12 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.kevin.legion.ui.theme.soft.LocalSoftActive
+import com.kevin.legion.ui.theme.soft.LocalSoftPalette
+import com.kevin.legion.ui.theme.soft.LocalTypesetEdition
+import com.kevin.legion.ui.theme.soft.TypesetDayPalette
+import com.kevin.legion.ui.theme.soft.TypesetDayScheme
+import com.kevin.legion.ui.theme.soft.TypesetDaySemantics
+import com.kevin.legion.ui.theme.soft.TypesetEdition
 
 /**
  * LEGION's theme. Direction "VACUUM with a tinge of SENTRY" on Material 3's
@@ -249,23 +255,35 @@ val LocalLegionSemantics = staticCompositionLocalOf { DarkSemantics }
  * cyberdeck-ui - a stated decision, not a gap). This composable used to take a
  * `darkTheme` Boolean and there used to be a `LegionThemeFollowingSystem` twin
  * that read [androidx.compose.foundation.isSystemInDarkTheme]; both are gone.
- * Grep confirmed no caller outside this file's own (now rewritten) previews
- * ever passed `darkTheme = false`.
+ *
+ * **Day paper (Kevin, 2026-11-17: "some screens are black... not everything becomes fully day").**
+ * When an activity has resolved the Typeset edition to DAY ([LocalTypesetEdition], never the phone's
+ * own theme) and Matrix is off, every screen still under this theme (Settings and its pages, Car,
+ * the shell's own ground) is drawn on the Typeset day scheme instead: paper and ink, the same audited
+ * values `SoftTheme` uses (`SoftThemeTest`), and `SoftColors` read under it follow the day palette.
+ * The mission-control shapes and type stay; only the colours turn day. Night, Matrix, and anywhere
+ * no edition is provided (previews, every screenshot baseline) keep VACUUM/SENTRY exactly as before.
  */
 @Composable
 fun LegionTheme(content: @Composable () -> Unit) {
     // Resets LocalSoftActive: a LegionTheme nested inside a SoftTheme (Settings reached from a soft
     // screen) must render mission-control, not inherit the flag.
     val matrix = LocalMatrixMode.current
+    val day = legionDay(matrix, LocalTypesetEdition.current)
     CompositionLocalProvider(
-        LocalLegionSemantics provides pickSemantics(matrix, DarkSemantics),
+        LocalLegionSemantics provides if (day) TypesetDaySemantics else pickSemantics(matrix, DarkSemantics),
         LocalSoftActive provides false,
+        LocalSoftPalette provides if (day) TypesetDayPalette else LocalSoftPalette.current,
     ) {
         MaterialTheme(
-            colorScheme = pickColorScheme(matrix, DarkScheme),
+            colorScheme = if (day) TypesetDayScheme else pickColorScheme(matrix, DarkScheme),
             typography = LegionTypography,
             shapes = LegionShapes,
             content = content,
         )
     }
 }
+
+/** True when [LegionTheme] draws on day paper: an explicit DAY edition, Matrix off. Pure. */
+internal fun legionDay(matrix: Boolean, edition: TypesetEdition?): Boolean =
+    !matrix && edition == TypesetEdition.DAY

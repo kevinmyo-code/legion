@@ -3,14 +3,12 @@
 
 package com.kevin.legion.ui.typeset
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,9 +31,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -253,7 +251,11 @@ private fun CashLine(c: NetCashText.Model, tier: FitTier, onOpen: () -> Unit) {
     }
 }
 
-/** The contents line: every place the page leads, in words, five to a row (seven when [FitTier.PACKED]). */
+/**
+ * The contents: every place the page leads, as a small icon with its name under it (Kevin,
+ * 2026-11-17), five to a row (seven when the tier packs). Same names, same taps as the word line it
+ * replaces; the glyphs are the repo's own (`contentsIcon`).
+ */
 @Composable
 private fun Contents(perRow: Int, actions: TypesetHomeActions) {
     val go: Map<String, () -> Unit> = mapOf(
@@ -263,26 +265,35 @@ private fun Contents(perRow: Int, actions: TypesetHomeActions) {
         "Ideas" to actions.onOpenIdeas, "Brief" to actions.onBrief, "Media" to actions.onOpenMedia,
         "More" to actions.onMore,
     )
-    TypesetHomeDerive.CONTENTS.chunked(perRow).forEach { row ->
-        Row(Modifier.fillMaxWidth()) {
-            row.forEach { name ->
-                // Packed rows weigh each cell by its word, so "Breathe" is not clipped beside "Car".
-                val w = if (perRow > CONTENTS_PER_ROW) name.length.toFloat() else 1f
-                Box(Modifier.weight(w).tap(name, go[name] ?: {}), contentAlignment = Alignment.CenterStart) {
-                    FitLine(
-                        name,
-                        TypesetType.small.copy(textDecoration = TextDecoration.Underline),
-                        SoftColors.text,
-                        min = 10.sp,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+    // The grid runs into the page's side margins (review 2026-11-18): seven cells across a 360dp
+    // phone are then 51dp each, not 47; a phone too narrow even for that gets six to a row.
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val full = maxWidth + Gutter * 2
+        val cols = contentsColumns(perRow, full)
+        Box(Modifier.bleed(Gutter)) {
+            Column {
+                IconRows(TypesetHomeDerive.CONTENTS, cols) { name ->
+                    TypesetIconCell(name, onClick = go[name] ?: {}) { Glyph(contentsIcon(name)) }
                 }
             }
-            val gap = if (perRow > CONTENTS_PER_ROW) row.sumOf { it.length }.toFloat() / row.size else 1f
-            repeat(perRow - row.size) { Spacer(Modifier.weight(gap)) }
         }
     }
     HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
+}
+
+/** How many contents cells to a row: the tier's count, one fewer while a cell would be under 48dp. */
+internal fun contentsColumns(perRow: Int, width: Dp): Int {
+    var cols = perRow
+    while (cols > 1 && width / cols < TapTarget) cols--
+    return cols
+}
+
+/** Lays the content out [by] wider on each side than its parent allows, centred: into the margins. */
+private fun Modifier.bleed(by: Dp): Modifier = layout { measurable, constraints ->
+    val extra = by.roundToPx() * 2
+    val w = constraints.maxWidth + extra
+    val placeable = measurable.measure(constraints.copy(minWidth = w, maxWidth = w))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-extra / 2, 0) }
 }
 
 /**
@@ -422,41 +433,61 @@ private fun Dock(tiles: List<TypesetDockTile>, tier: FitTier, actions: TypesetHo
             )
         }
         if (!tier.dockTiles || tiles.isEmpty()) return@Column
-        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            tiles.forEach { t -> DockTile(t, tier.dockNames, actions) }
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+            tiles.forEach { t -> DockTile(t, actions) }
         }
     }
 }
 
-/** A pinned app: tap opens it, long press offers the old dock's unpin and move, in words. */
+/**
+ * A pinned app: its monochrome mark with its name under it (Kevin, 2026-11-17/18); tap opens it, long
+ * press offers the old dock's unpin and move, in words. A paused work app or one no longer installed
+ * is dimmed and says so to TalkBack ([TypesetDockTile.status]).
+ */
 @Composable
-private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeActions) {
+private fun RowScope.DockTile(t: TypesetDockTile, actions: TypesetHomeActions) {
     var menu by remember { mutableStateOf(false) }
-    Box {
-        Column(
-            Modifier.heightIn(min = TapTarget)
-                .combinedClickable(onClick = { actions.onOpenApp(t) }, onLongClick = { menu = true })
-                .semantics(mergeDescendants = true) {
-                    role = Role.Button
-                    contentDescription = t.name
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Box(Modifier.size(44.dp).border(1.dp, SoftColors.outline), contentAlignment = Alignment.Center) {
-                Text(t.monogram, style = TypesetType.bodyStrong, color = SoftColors.text)
-            }
-            if (named) OneLine(t.name, TypesetType.small, SoftColors.text2)
+    var confirming by remember { mutableStateOf(false) }
+    Box(Modifier.weight(1f)) {
+        Row {
+            TypesetIconCell(
+                label = t.name,
+                onClick = { actions.onOpenApp(t) },
+                onLongClick = { menu = true },
+                description = listOfNotNull(t.name, t.note, t.status?.lowercase()).joinToString(", "),
+                dimmed = t.status != null,
+                note = t.note,
+            ) { AppGlyph(t.icon, t.monogram) }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            listOf(
-                "Unpin ${t.name}" to actions.onUnpin,
-                "Move left" to actions.onMoveLeft,
-                "Move right" to actions.onMoveRight,
-            ).forEach { (words, go) ->
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false; confirming = false }) {
+            // A shortcut (review 2026-11-18): it says what it does, asks once, and has no Move (it
+            // sits after the pinned apps, by name). An app keeps the old dock's unpin and move.
+            val items = when {
+                !t.isShortcut -> listOf(
+                    "Unpin ${t.name}" to actions.onUnpin,
+                    "Move left" to actions.onMoveLeft,
+                    "Move right" to actions.onMoveRight,
+                )
+                !confirming -> listOf(REMOVE_SHORTCUT to { _: TypesetDockTile -> confirming = true; menu = true })
+                else -> listOf(
+                    "Remove" to actions.onUnpin,
+                    "Keep" to { _: TypesetDockTile -> },
+                )
+            }
+            if (t.isShortcut && confirming) {
+                Text(
+                    "Remove ${t.name} from the home screen and All apps?",
+                    style = TypesetType.small,
+                    color = SoftColors.text,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+            items.forEach { (words, go) ->
                 DropdownMenuItem(
                     text = { Text(words, style = TypesetType.small) },
                     onClick = {
                         menu = false
+                        confirming = false
                         go(t)
                     },
                 )
@@ -465,8 +496,10 @@ private fun DockTile(t: TypesetDockTile, named: Boolean, actions: TypesetHomeAct
     }
 }
 
-private const val CONTENTS_PER_ROW = 5
 private const val CASH_LINES = 2
+
+/** What a shortcut's menu says: it takes the shortcut off everywhere, not just this row. */
+internal const val REMOVE_SHORTCUT = "Remove shortcut"
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp

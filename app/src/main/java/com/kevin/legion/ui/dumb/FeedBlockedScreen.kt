@@ -1,5 +1,11 @@
 package com.kevin.legion.ui.dumb
 
+import com.kevin.legion.ui.theme.soft.TypesetEdition
+import com.kevin.legion.ui.theme.soft.TypesetDayPalette
+import com.kevin.legion.ui.theme.soft.LocalTypesetEdition
+import com.kevin.legion.ui.theme.soft.LocalSoftPalette
+import com.kevin.legion.ui.theme.LocalMatrixMode
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -95,6 +101,17 @@ private class PassScreenState(
  * "Ask for a 15 min pass". The pass runs the same 60 second wall-clock wait as leaving Matrix mode,
  * then a typed sentence, then opens the app. The controller re-checks every rule; this is only the view.
  */
+/**
+ * The page frame for [FeedBlockedScreen] outside Matrix: the activity's Typeset edition decides, and
+ * by day the paper palette is provided so [PassInk] draws ink on paper. By night nothing is provided
+ * and the page is exactly the black Matrix-style page it was. Fonts are left alone.
+ */
+@Composable
+internal fun FeedBlockedPage(content: @Composable () -> Unit) {
+    val day = LocalTypesetEdition.current == TypesetEdition.DAY && !LocalMatrixMode.current
+    if (day) CompositionLocalProvider(LocalSoftPalette provides TypesetDayPalette, content = content) else content()
+}
+
 @Composable
 internal fun FeedBlockedScreen(
     appLabel: String,
@@ -115,13 +132,13 @@ internal fun FeedBlockedScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(DumbColors.ground)
+            .background(PassInk.ground)
             .padding(start = 28.dp, end = 28.dp, top = 56.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         PassHeader(appLabel)
         when {
-            !ui.asking -> ui.note?.let { Text(it, color = DumbColors.dim, fontSize = 14.sp) }
+            !ui.asking -> ui.note?.let { Text(it, color = PassInk.dim, fontSize = 14.sp) }
             ui.waitLeftMs > 0L -> PassCountdown(ui.waitLeftMs)
             else -> PassSentenceField(
                 sentence = FeedPassRule.sentence(appLabel),
@@ -158,11 +175,11 @@ private fun grantWords(result: PassResult, appLabel: String, onOpen: () -> Boole
 @Composable
 private fun PassHeader(appLabel: String) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("$appLabel is blocked", color = DumbColors.text, fontSize = 28.sp, fontWeight = FontWeight.Medium)
+        Text("$appLabel is blocked", color = PassInk.text, fontSize = 28.sp, fontWeight = FontWeight.Medium)
         Text(
             "Feed apps are blocked all the time, not only in Matrix mode. A pass opens $appLabel for 15 " +
                 "minutes after a 60 second wait and a sentence, then it is blocked again.",
-            color = DumbColors.body,
+            color = PassInk.body,
             fontSize = 16.sp,
             lineHeight = 24.sp,
         )
@@ -183,7 +200,7 @@ private fun PassButtons(
         if (onBreathe != null) {
             Text(
                 "Breathe instead",
-                color = DumbColors.text,
+                color = PassInk.text,
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center,
                 textDecoration = TextDecoration.Underline,
@@ -201,7 +218,7 @@ private fun PassButtons(
         if (!asking) {
             Text(
                 "Ask for a 15 min pass",
-                color = DumbColors.dim,
+                color = PassInk.dim,
                 fontSize = 15.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -219,34 +236,34 @@ private fun PassCountdown(leftMs: Long) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             DumbFormat.secondsCeil(leftMs).toString(),
-            color = DumbColors.text,
+            color = PassInk.text,
             fontFamily = DumbMono,
             fontSize = 96.sp,
             letterSpacing = (-4).sp,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
-        Text("seconds. Put the phone down if you like.", color = DumbColors.dim, fontSize = 14.sp)
+        Text("seconds. Put the phone down if you like.", color = PassInk.dim, fontSize = 14.sp)
     }
 }
 
 @Composable
 private fun PassSentenceField(sentence: String, typed: String, onTyped: (String) -> Unit, note: String) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Type: $sentence", color = DumbColors.dim, fontSize = 14.sp)
+        Text("Type: $sentence", color = PassInk.dim, fontSize = 14.sp)
         BasicTextField(
             value = typed,
             onValueChange = onTyped,
             singleLine = true,
-            textStyle = TextStyle(color = DumbColors.text, fontSize = 17.sp),
-            cursorBrush = SolidColor(DumbColors.text),
+            textStyle = TextStyle(color = PassInk.text, fontSize = 17.sp),
+            cursorBrush = SolidColor(PassInk.text),
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(DumbColors.field)
+                .background(PassInk.field)
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         )
-        Text(note, color = DumbColors.dim, fontSize = 13.sp, fontFamily = DumbMono)
+        Text(note, color = PassInk.dim, fontSize = 13.sp, fontFamily = DumbMono)
     }
 }
 

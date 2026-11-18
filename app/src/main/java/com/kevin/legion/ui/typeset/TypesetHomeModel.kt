@@ -26,8 +26,22 @@ data class TypesetFigure(
     val lines: List<String> = emptyList(),
 )
 
-/** A dock tile: a two-letter monogram over the app's name. No logos. */
-data class TypesetDockTile(val monogram: String, val name: String)
+/**
+ * A dock tile: the app's monochrome mark over its name (Kevin, 2026-11-17/18), the two-letter
+ * monogram standing in while the mark is loading, the app is gone, or it has no readable mark.
+ * [status] is a reason it cannot open now,
+ * in words ("Paused", "Not installed"), null when it can.
+ */
+data class TypesetDockTile(
+    val monogram: String,
+    val name: String,
+    val icon: androidx.compose.ui.graphics.ImageBitmap? = null,
+    val status: String? = null,
+    /** The small line under the name: who made a shortcut ("Chrome"); null for none. */
+    val note: String? = null,
+    /** A pinned shortcut, not an app: its menu removes it, and it has no place to move to. */
+    val isShortcut: Boolean = false,
+)
 
 /** What the Typeset home draws with nothing asked: the glance. Pure data, built by [TypesetHomeDerive]. */
 data class TypesetGlance(

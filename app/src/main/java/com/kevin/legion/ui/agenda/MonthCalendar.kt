@@ -1,5 +1,8 @@
 package com.kevin.legion.ui.agenda
 
+import com.kevin.legion.ui.theme.soft.onDayPaper
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -221,18 +224,28 @@ fun MonthCellView(cell: MonthCell, isToday: Boolean, isSelected: Boolean, onClic
                 Text(
                     cell.dayOfMonth.toString(),
                     style = MaterialTheme.typography.bodyMedium,
-                    // A selected day sits on the accent's fixed dark container: light text there, the
-                    // edition's ink everywhere else (ink on that container is unreadable by day, ADR 0081).
-                    color = when {
-                        isToday -> accent.container
-                        isSelected -> SoftDarkPalette.text
-                        else -> SoftColors.text
-                    },
+                    color = selectedDayInk(isToday, isSelected, accent),
                 )
                 CellMarks(cell, isToday)
             }
         }
     }
+}
+
+/**
+ * A day number's colour. Today sits on the accent's `onContainer` fill, so it takes `container`. A
+ * selected day sits on the accent's `container`: by night that is the dark tone and the number is
+ * light, as it always was; on day paper the container is a pale tint, so the number takes the
+ * accent's deep `onContainer` (7.1:1; the old light text was cream on pale blue, home-ui review
+ * 2026-11-18). Every other day is the edition's ink.
+ */
+@Composable
+@ReadOnlyComposable
+internal fun selectedDayInk(isToday: Boolean, isSelected: Boolean, accent: AreaAccent): Color = when {
+    isToday -> accent.container
+    isSelected && onDayPaper() -> accent.onContainer
+    isSelected -> SoftDarkPalette.text
+    else -> SoftColors.text
 }
 
 /** The event dots and open-todo squares under a day number (see [MonthCellView]'s doc for why one is
