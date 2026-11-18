@@ -247,6 +247,7 @@ class Run:
             "greeting": next((d for k, d in events if k == "greeting"), None),
             "tools": [(d["name"], d["ok"], d["text"][:160]) for k, d in events if k == "tool"],
             "said": said,
+            "sentences": [d["text"] for k, d in events if k == "sentence"],
             "done": next((d for k, d in events if k == "done"), None),
             "errors": [d for k, d in events if k in ("error", "speech_failed")],
             "first_audio_ms_wall": first_audio,
