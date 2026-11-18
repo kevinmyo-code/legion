@@ -66,6 +66,8 @@ class Beat:
     args: dict | None = None
     # The tool's own text (a diagram's caption) may give the narration instead.
     from_caption: bool = False
+    # The narration states facts about him (his own lead): history replays a marker for it.
+    about_him: bool = False
 
 
 def _content(user) -> dict:
@@ -91,7 +93,7 @@ def beats_for(user) -> list[Beat]:
     beats: list[Beat] = []
     lead = _first_sentences((content.get("hero") or {}).get("lead", ""), 2)
     if lead:
-        beats.append(Beat("who", lead))
+        beats.append(Beat("who", lead, about_him=True))
     found = _diagram(user, "legion", ("components", "context", "containers"))
     if found:
         beats.append(

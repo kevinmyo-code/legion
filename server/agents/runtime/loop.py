@@ -249,6 +249,10 @@ def run_loop(
                 }
             )
             yield ev.tool_ended(call.name, outcome.ok, outcome.outcome, outcome.guard)
+        if any(outcome.ends_turn for _call, outcome in outcomes):
+            # Every call of the round has run (a resume opened, a write made); the answer is
+            # code's, so no further round is asked for.
+            return result(DONE, "", round_no + 1)
         nudge = round_no + 1 == limits.max_rounds - 1
         state.messages.append(function_response_content(outcomes, nudge))
     return result(DONE, "", limits.max_rounds)

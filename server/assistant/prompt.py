@@ -209,6 +209,54 @@ RECRUITER_FRAME = (
     "say exactly that, and add no medical disclaimer, since nobody asked for medical advice. "
 )
 
+# The cascade speaks his profile itself (2026-11-18, `demo.tools.ABOUT_KEVIN_SPOKEN`): there the
+# model is never shown it, so the frame's about_kevin sentences change on the cascade only. Live
+# (the voice rollback) keeps RECRUITER_FRAME exactly as it is; each pair's first half must stand
+# in it word for word (`cascade_recruiter_frame` checks).
+CASCADE_ABOUT_KEVIN = (
+    (
+        "and only then add what legion_docs or about_kevin say.",
+        "and only then add what legion_docs says.",
+    ),
+    # What HE did, his role or a job of his is about him: his own words first, never a diagram
+    # walk-through in the model's words (blind review, 2026-11-18). The project's own architecture
+    # keeps the diagram-first rule.
+    (
+        "going one level deeper - or about what Kevin did on a project or job, or how he builds "
+        "with AI agents, gets",
+        "going one level deeper - or about how he builds with AI agents, gets",
+    ),
+    (
+        "For questions about Kevin himself, use about_kevin and answer only from what it returns; "
+        "anything about Kevin it does not say, answer \"Kevin hasn't shared that here; ask him "
+        "directly.\"",
+        "For questions about Kevin himself, call about_kevin first and say nothing about him "
+        "yourself: code reads his own words aloud and that is the answer; you are never shown "
+        "them. When none of its sections covers the question, call it with no sections and code "
+        "says \"Kevin hasn't shared that here; ask him directly.\" A question about what Kevin "
+        "did, his role or a job of his is about him too: call about_kevin first and offer no "
+        "diagram; show_diagram only when they ask for a diagram.",
+    ),
+    (
+        "answer what they are and how he built them from about_kevin, never from legion_docs",
+        "what they are and how he built them come from about_kevin, never from legion_docs",
+    ),
+    (
+        "if about_kevin does not mention his work in detail, do not describe it.",
+        "never describe his work yourself.",
+    ),
+)
+
+
+def cascade_recruiter_frame() -> str:
+    frame = RECRUITER_FRAME
+    for live, cascade in CASCADE_ABOUT_KEVIN:
+        if live not in frame:
+            raise ValueError(f"the recruiter frame no longer says: {live!r}")
+        frame = frame.replace(live, cascade)
+    return frame
+
+
 # Audit 2026-11-03: "money" was transcribed as "monnaie" and the answer came
 # in French. Live's native-audio models take no language code (capabilities
 # page: they "don't support explicitly setting the language code"; restrict the
@@ -285,18 +333,21 @@ def build_system_prompt_parts(
     utc_offset_minutes: int | None,
     offset_from_household: bool = False,
     recruiter: bool = False,
+    cascade: bool = False,
 ) -> tuple[str, str]:
     """(the stable body, the per-conversation tail: the clock and who is speaking).
 
     The web cascade (ADR 0102) caches the body with the tool declarations as an explicit Gemini
     context cache and sends the tail with each turn, so the clock never breaks the cache. Live
-    joins the two (`build_system_prompt`), unchanged."""
+    joins the two (`build_system_prompt`), unchanged. `cascade` swaps in the cascade's own
+    about_kevin sentences (`CASCADE_ABOUT_KEVIN`); Live never passes it."""
     who = companion.clause
     if companion.delivery:
         who += " " + companion.delivery
     if recruiter:
         who += "\n\n" + RECRUITER_REGISTER
-    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else MEMORY_CLAUSE)
+    recruiter_frame = cascade_recruiter_frame() if cascade else RECRUITER_FRAME
+    frame = WEB_FRAME + LANGUAGE_RULE + (recruiter_frame if recruiter else MEMORY_CLAUSE)
     body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
     clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
     speaker = VISITOR_FACT if recruiter else member_fact(first_name)

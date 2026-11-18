@@ -1405,6 +1405,15 @@ NET_CASH_STALE = timedelta(hours=24)
 # word for word instead of the model's wording (the phone's `VerbatimSpeech.KEY`). Only tools named
 # in `assistant.cascade.VERBATIM_TOOLS` are spoken from it.
 SPEAK_VERBATIM = "speak_verbatim"
+# The rest of that contract, read by the cascade for a `VERBATIM_TOOLS` tool (2026-11-18, the
+# profile spoken by code): `SPEAK_VERBATIM` may then be a list of sentences, each said and shown as
+# it is; `SPEAK_EXACT` says no figure in them is rounded for speech; `ENDS_TURN` makes them the
+# turn's whole answer; `FOR_MODEL` is what the model is handed instead of the result's text; and
+# `REPLAY_AS` is what the conversation's history replays instead of the sentences.
+SPEAK_EXACT = "speak_exact"
+ENDS_TURN = "ends_turn"
+FOR_MODEL = "for_model"
+REPLAY_AS = "replay_as"
 
 
 def net_cash_spoken(request, cash: dict) -> str:

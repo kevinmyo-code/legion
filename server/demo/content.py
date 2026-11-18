@@ -20,6 +20,7 @@ from django.db import transaction
 from jsonschema import Draft202012Validator
 
 from demo.models import RecruiterContent
+from demo.profile import PROFILE_ORDER
 
 _STR = {"type": "string"}
 _STRS = {"type": "array", "items": _STR}
@@ -192,8 +193,10 @@ def _anchor_problems(content: dict) -> list[str]:
 
 
 def public_content(content: dict) -> dict:
-    """What the page is served: everything but `profile`."""
-    return {key: value for key, value in content.items() if key != "profile"}
+    """What the page is served: everything but `profile` (and its order)."""
+    return {
+        key: value for key, value in content.items() if key not in ("profile", PROFILE_ORDER)
+    }
 
 
 @dataclass(frozen=True)
@@ -246,6 +249,9 @@ def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
     never offers a file the folder no longer holds. `key` is a code's label
     for that code's own version (`RecruiterContent.for_user`)."""
     content, files = read_folder(folder)
+    # Postgres keeps a JSON object's keys in its own order, and the cascade speaks the profile's
+    # sections in the order he wrote them (`demo.profile.sections_of`): the order is kept beside it.
+    content = {**content, PROFILE_ORDER: list(content["profile"])}
     defaults: dict = {"content": content}
     for kind, (name, content_type) in ASSET_FILES.items():
         data = files.get(kind)

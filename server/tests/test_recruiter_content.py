@@ -107,7 +107,8 @@ def plain_member(household_a):
 def test_the_command_loads_content_and_both_files(tmp_path):
     said = load_fake(tmp_path)
     row = RecruiterContent.current()
-    assert row.content == fake_content()
+    # Stored as written, plus the profile's own section order (Postgres reorders object keys).
+    assert row.content == {**fake_content(), "profile_order": list(fake_content()["profile"])}
     assert bytes(row.report) == FAKE_REPORT
     assert bytes(row.resume) == FAKE_PDF
     assert row.resume_content_type == "application/pdf"

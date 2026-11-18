@@ -994,6 +994,11 @@ def _turn_sse(
         lines = []
         said = " ".join(report.said).strip()
         if said:
+            replay = report.history_text()
+            if replay != said:
+                # History replays this instead of what was said (his profile, a tour line about
+                # him: `TurnReport.replay`); the record keeps what was said, for him to read.
+                lines.append(web_conversation.engine_replay_line(now, replay))
             lines.append(web_conversation.engine_assistant_line(now, said))
         if report.status == "cancelled":
             lines.append(web_conversation.engine_interrupted_line(now))
@@ -1379,6 +1384,7 @@ class AssistantTurnView(_AssistantView):
                 request.user,
                 now=datetime.now(UTC),
                 utc_offset_minutes=data.get("utc_offset_minutes"),
+                cascade=True,
             )
             _audit(request, AssistantCall.SESSION, Outcome.OK)
             turn_input = cascade.TurnInput(
