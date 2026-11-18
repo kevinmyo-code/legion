@@ -8,7 +8,8 @@ into the exact sentences that are spoken and shown. The model is never handed a 
 profile, so it has nothing to reword.
 
 - `split_sentences`: a section's text as sentences, cut where a sentence ends and nowhere else
-  (a line break ends one; "B.S.", "U.S.", "Ph.D.", "e.g." and a single initial do not). When in
+  (a line break ends one; "B.S.", "U.S.", "Ph.D.", "e.g.", a single initial and the number that
+  opens a line do not). When in
   doubt it does NOT cut: two sentences spoken as one are still his words.
 - `speak`: the picked sections' sentences in his own order, capped at `CAP`, whole sections only,
   plus at most one closing line from a fixed list.
@@ -63,11 +64,14 @@ _END = re.compile(r"[.!?][\"'”’)\]]*\s+(?=[A-Z0-9\"'“‘(\[])")
 
 def _ends_here(text: str, stop_at: int) -> bool:
     """Whether the stop at `stop_at` ends a sentence: not when the word it closes is an
-    abbreviation, a dotted acronym or a single initial."""
+    abbreviation, a dotted acronym, a single initial, or the number that opens the line (a list
+    item's "1." or a year-led "2029.": the item is said whole, not as "one." then the rest)."""
     if text[stop_at] != ".":
         return True
     start = text.rfind(" ", 0, stop_at) + 1
     word = text[start : stop_at + 1].lstrip("(\"'“‘[")
+    if start == 0 and word[:-1].isdigit():
+        return False
     if _DOTTED.match(word) or _INITIAL.match(word):
         return False
     return word[:-1].lower() not in _ABBREVIATIONS

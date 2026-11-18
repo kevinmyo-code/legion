@@ -129,8 +129,9 @@ def loaded(tmp_path):
             "- bullet one\n* bullet two\n1. numbered",
             ["- bullet one", "* bullet two", "1. numbered"],
         ),
-        ("2029. Joined Fabrikam as an intern.", ["2029.", "Joined Fabrikam as an intern."]),
-        ("1. 2. 3.", ["1.", "2.", "3."]),
+        # The number that opens a line is never a sentence end (blind review r2, B1).
+        ("2029. Joined Fabrikam as an intern.", ["2029. Joined Fabrikam as an intern."]),
+        ("1. 2. 3.", ["1. 2.", "3."]),
         ("Lives in the U.S. for now.", ["Lives in the U.S. for now."]),
         # In doubt it does not cut: an acronym that ends a sentence keeps the next one with it.
         # Both are still his words, said as written.
@@ -142,6 +143,47 @@ def loaded(tmp_path):
 )
 def test_a_section_is_cut_into_sentences_only_where_one_ends(text, sentences):
     assert split_sentences(text) == sentences
+
+
+@pytest.mark.parametrize(
+    ("text", "sentences"),
+    [
+        (
+            "1. Data engineer\n2. Support engineer\n3. Analyst",
+            ["1. Data engineer", "2. Support engineer", "3. Analyst"],
+        ),
+        (
+            "Roles:\n1) Data engineer\n2) Analyst",
+            ["Roles:", "1) Data engineer", "2) Analyst"],
+        ),
+        (
+            "10. Tenth item. It has two sentences.",
+            ["10. Tenth item.", "It has two sentences."],
+        ),
+        ("2029. Joined Fabrikam as an intern.", ["2029. Joined Fabrikam as an intern."]),
+        (
+            "2028. Started at Contoso. 2029. Joined Fabrikam.",
+            ["2028. Started at Contoso.", "2029. Joined Fabrikam."],
+        ),
+        ("GPA 3.75 overall. Next.", ["GPA 3.75 overall.", "Next."]),
+        ("Ranked No. 5 in the class. Next.", ["Ranked No. 5 in the class.", "Next."]),
+        (
+            "Office at 221 Baker Street. Visits welcome.",
+            ["Office at 221 Baker Street.", "Visits welcome."],
+        ),
+        ("Unit 12. Then the lobby.", ["Unit 12.", "Then the lobby."]),
+        ("3.", ["3."]),
+        ("3.\n4. Fourth", ["3.", "4. Fourth"]),
+    ],
+)
+def test_a_number_that_opens_a_line_is_part_of_it(text, sentences):
+    assert split_sentences(text) == sentences
+
+
+def test_a_three_item_numbered_list_is_read_whole_under_the_cap():
+    lines = tuple(split_sentences("1. Data\n2. Support\n3. Analyst"))
+    sections = [Section("roles", "Roles", lines)]
+    assert speak(sections, ["roles"]).lines == ("1. Data", "2. Support", "3. Analyst")
 
 
 def test_cutting_keeps_every_character():
