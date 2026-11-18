@@ -185,6 +185,9 @@ export class CascadeClient {
   private heardLineId: number | null = null
   private spokenTurns = 0
   private prepared = false
+  private preparing: Promise<boolean> | null = null
+  /** The page let go of this client: it never asks the engine for anything again. */
+  private disposed = false
   // ---- the demo ----
   private tourNext: number | null = null
   strip: StripState = { tools: [], costUsd: null }
@@ -223,6 +226,8 @@ export class CascadeClient {
   }
 
   attach() {
+    // StrictMode runs the provider's effect, its cleanup and the effect again on one client.
+    this.disposed = false
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility)
     if (typeof window !== 'undefined') window.addEventListener('pagehide', this.onPageHide)
   }
@@ -286,7 +291,7 @@ export class CascadeClient {
 
   send(raw: string): boolean {
     const text = raw.trim()
-    if (!text || this.state.phase === 'ended') return false
+    if (!text || this.state.phase === 'ended' || this.disposed) return false
     const wasSpeaking = this.playing
     this.cutReply('barge_in')
     this.stopListening()
@@ -303,7 +308,7 @@ export class CascadeClient {
    * assistant thinking or speaking), it interrupts and listens again (spec 20, 21).
    */
   startVoice(): Promise<void> {
-    if (this.state.phase === 'ended') return Promise.resolve()
+    if (this.state.phase === 'ended' || this.disposed) return Promise.resolve()
     if (this.voiceOpen) {
       if (this.playing || this.awaiting) this.cutReply('barge_in')
       this.listen()
@@ -343,27 +348,16 @@ export class CascadeClient {
     )
   }
 
-  private async greetAfterPrepare() {
-    if (this.options.prepare && !this.prepared) {
-      this.awaiting = true
-      this.refresh()
-      let ok = false
-      try {
-        ok = await this.options.prepare()
-      } catch {
-        ok = false
-      }
-      this.awaiting = false
-      if (!ok) {
+  private greetAfterPrepare() {
+    return this.afterPrepare(
+      () => this.turn({ greet: true }, true),
+      () => {
         this.voiceOpen = false
         this.micGeneration += 1
         this.audioIO?.stopMic()
         this.set({ mic: 'off' })
-        return
-      }
-      this.prepared = true
-    }
-    void this.turn({ greet: true }, true)
+      },
+    )
   }
 
   /** The phone's turn models, once per page, after the first tap (the page stays light before). */
@@ -397,7 +391,7 @@ export class CascadeClient {
 
   /** The demo's one-minute tour: plays beat `beat` (from 0), driven by the engine. */
   startTour(beat = 0) {
-    if (this.state.phase === 'ended') return
+    if (this.state.phase === 'ended' || this.disposed) return
     if (beat === 0) this.deps.funnel?.('tour_started')
     try {
       const audio = (this.audioIO ??= this.deps.audio())
@@ -416,7 +410,7 @@ export class CascadeClient {
    */
   ask(raw: string): boolean {
     const text = raw.trim()
-    if (!text || this.state.phase === 'ended') return false
+    if (!text || this.state.phase === 'ended' || this.disposed) return false
     try {
       const audio = (this.audioIO ??= this.deps.audio())
       audio.unlock?.((playing) => this.onPlaying(playing))
@@ -430,20 +424,32 @@ export class CascadeClient {
     return true
   }
 
-  private async afterPrepare(then: () => Promise<void> | void) {
+  /**
+   * Run `then` once the demo visit is entered (once per page; every tap waiting on it shares the one
+   * entry). A tap, a close or the page leaving while it waits cancels `then` (the turn generation
+   * moved), so nothing is asked for that nobody is waiting for.
+   */
+  private async afterPrepare(then: () => Promise<void> | void, failed?: () => void) {
     if (this.options.prepare && !this.prepared) {
+      const generation = this.turnGeneration
       this.awaiting = true
       this.refresh()
-      let ok = false
-      try {
-        ok = await this.options.prepare()
-      } catch {
-        ok = false
-      }
+      this.preparing ??= this.options
+        .prepare()
+        .catch(() => false)
+        .then((ok) => {
+          this.preparing = null
+          if (ok) this.prepared = true
+          return ok
+        })
+      const ok = await this.preparing
+      if (generation !== this.turnGeneration || this.disposed) return
       this.awaiting = false
       this.refresh()
-      if (!ok) return
-      this.prepared = true
+      if (!ok) {
+        failed?.()
+        return
+      }
     }
     await then()
   }
@@ -479,6 +485,7 @@ export class CascadeClient {
   }
 
   dispose() {
+    this.disposed = true
     this.finishRecord('The page closed.', true)
     this.cutReply(null)
     this.stopEverything()
@@ -563,7 +570,9 @@ export class CascadeClient {
 
   private async sendTurn(audio: Int16Array, spec: { result: Promise<string | null> } | null) {
     if (spec) {
+      const generation = this.turnGeneration
       const text = await spec.result
+      if (generation !== this.turnGeneration || this.listening || !this.voiceOpen) return
       if (text && text.trim()) {
         void this.turn({ text: text.trim(), spoken: true }, true)
         return
@@ -686,6 +695,7 @@ export class CascadeClient {
     input: { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number },
     spoken: boolean,
   ) {
+    if (this.disposed) return
     if (input.audio && input.tour === undefined && this.tourNext !== null) {
       // Said during the tour: the engine hears "skip" and "stop", or answers a question.
       input = { ...input, tour: this.tourNext }

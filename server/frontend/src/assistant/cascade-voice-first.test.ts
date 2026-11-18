@@ -278,6 +278,48 @@ describe('the demo', () => {
     expect(t.requests[0].greet).toBe(true)
   })
 
+  it('a second tap during the entry cancels the greeting: no greeting over a listening mic', async () => {
+    let enter: (ok: boolean) => void = () => {}
+    const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>((resolve) => (enter = resolve)) })
+    void t.client.startVoice()
+    await settle()
+    void t.client.startVoice()
+    expect(t.client.getState().mic).toBe('on')
+    enter(true)
+    await settle()
+    expect(t.requests).toHaveLength(0)
+    expect(t.client.getState().mic).toBe('on')
+  })
+
+  it('a third tap during the entry closes, and no greeting follows', async () => {
+    let enter: (ok: boolean) => void = () => {}
+    const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>((resolve) => (enter = resolve)) })
+    void t.client.startVoice()
+    await settle()
+    void t.client.startVoice()
+    t.client.stopVoice()
+    enter(true)
+    await settle()
+    expect(t.requests).toHaveLength(0)
+    expect(t.audio.micOpen).toBe(false)
+    expect(t.audio.played).toHaveLength(0)
+  })
+
+  it('a client the page let go of during the entry asks the engine for nothing', async () => {
+    let enter: (ok: boolean) => void = () => {}
+    const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>((resolve) => (enter = resolve)) })
+    void t.client.startVoice()
+    await settle()
+    t.client.dispose()
+    enter(true)
+    await settle()
+    expect(t.requests).toHaveLength(0)
+    expect(t.client.send('Hello?')).toBe(false)
+    t.client.ask('Tell me about Kevin.')
+    await settle()
+    expect(t.requests).toHaveLength(0)
+  })
+
   it('a failed entry asks for nothing and closes the mic', async () => {
     const t = build([], { prepare: async () => false })
     await t.client.startVoice()
