@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
 import { UNNAMED, useAssistant } from '@/assistant/assistant-context'
@@ -36,14 +36,34 @@ function money(usd: number | null): string {
   return usd < 0.01 ? `${(usd * 100).toFixed(2)}¢` : `$${usd.toFixed(3)}`
 }
 
+// A sliver of orb is not a reachable orb: it counts as on screen only when half of it shows.
+const ORB_SEEN: IntersectionObserverInit = { threshold: 0.5 }
+
 export function VoiceStage({ content, error }: { content?: DemoContent | null; error?: string | null }) {
   const { client, state, name } = useAssistant()
   const [draft, setDraft] = useState('')
   const [marked, setMarked] = useState(false)
+  // Whether the orb is on screen (blind review, 2026-11-18): once the stage scrolls away on a
+  // phone, a small fixed control is the way to interrupt him while he thinks or speaks.
+  const orbRef = useRef<HTMLButtonElement>(null)
+  const [orbSeen, setOrbSeen] = useState(true)
+  useEffect(() => {
+    const el = orbRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    // The LAST entry is the orb's current state: a fast scroll can deliver [in, out] in one batch.
+    const observer = new IntersectionObserver((entries) => {
+      const latest = entries[entries.length - 1]
+      if (latest) setOrbSeen(latest.isIntersecting)
+    }, ORB_SEEN)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
   const mode = orbMode(state)
   const speaking = state.activity === 'speaking'
+  // What the orb's tap interrupts; the off-screen control shows for exactly these states.
+  const interruptible = speaking || state.activity === 'thinking'
   const voiceOn = state.mic === 'on'
 
   const freshIfEnded = () => {
@@ -51,7 +71,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   }
   const onOrb = () => {
     freshIfEnded()
-    if (speaking || state.activity === 'thinking') client.interrupt()
+    if (interruptible) client.interrupt()
     else if (voiceOn) client.stopVoice()
     else void client.startVoice()
   }
@@ -77,9 +97,12 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         ? 'Listening. Tap to stop.'
         : STAGE_LINE
 
+  // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
+  // pinned with no background over everything scrolling under it (live demo, 2026-11-18).
   return (
-    <section aria-label="Talk to the demo assistant" className="rc-stage flex flex-col items-center gap-3 px-4 pt-6 pb-4 text-center">
+    <section aria-label="Talk to the demo assistant" className="rc-voice-stage flex flex-col items-center gap-3 px-4 pt-6 pb-4 text-center">
       <button
+        ref={orbRef}
         type="button"
         onClick={onOrb}
         aria-label={speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`}
@@ -89,6 +112,21 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       >
         <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
       </button>
+      {interruptible && !orbSeen && (
+        <button
+          type="button"
+          onClick={() => {
+            client.interrupt()
+            // The control unmounts with the reply; keep the keyboard on the orb, not the page body.
+            orbRef.current?.focus({ preventScroll: true })
+          }}
+          aria-label={`Interrupt ${who}`}
+          data-stage="stop"
+          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 min-h-11 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg"
+        >
+          Interrupt
+        </button>
+      )}
       <p role="status" data-stage="line" className="rc-h3 min-h-[1.5em] text-lg font-semibold">
         {status}
       </p>

@@ -10,6 +10,8 @@ import { AssistantModals } from '@/components/assistant/assistant-modals'
 import { DIAGRAM_CARD } from '@/test/cards-seed'
 import { FakeAudio, settle } from '@/test/fake-live'
 
+import indexCss from '../../index.css?raw'
+
 import { QUESTION_CHIPS, VoiceStage } from './voice-stage'
 
 /**
@@ -22,7 +24,7 @@ afterEach(() => {
   window.history.replaceState({}, '')
 })
 
-function stage(withAudio: boolean) {
+function stage(withAudio: boolean, ends = false) {
   const audio = new FakeAudio()
   const cancels: string[] = []
   async function* answer(): AsyncGenerator<SseEvent> {
@@ -30,6 +32,10 @@ function stage(withAudio: boolean) {
     yield { type: 'tool', data: { name: 'show_diagram', ok: true, text: 'Shown.', card: DIAGRAM_CARD } }
     yield { type: 'sentence', data: { text: 'Here is how it fits together.' } }
     if (withAudio) yield { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array(4800)), rate: 24000 } }
+    if (ends) {
+      yield { type: 'done', data: { status: 'done', final_text: 'Here is how it fits together.' } }
+      return
+    }
     await new Promise(() => {})
   }
   const deps: CascadeDeps = {
@@ -72,5 +78,143 @@ describe('the voice stage with a card open over it', () => {
     expect(within(dialog).queryByRole('button', { name: 'Interrupt' })).not.toBeInTheDocument()
     // The keyboard stays in the dialog, on its Close.
     expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close' }))
+  })
+})
+
+/**
+ * Live demo, 2026-11-18 (Kevin, Chrome): "the orb and the top section scrolls with it so it overlaps
+ * on the other content below". The stage borrowed `rc-stage`, the phone section's sticky class, so
+ * it stayed pinned with no background over the captions, cards and notice scrolling under it. The
+ * stage scrolls away with the page: none of its own classes may be pinned by the stylesheet.
+ */
+function pinnedClasses(css: string): Set<string> {
+  const pinned = new Set<string>()
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/position\s*:\s*(sticky|fixed)/.test(match[2])) continue
+    for (const cls of match[1].matchAll(/\.([A-Za-z][\w-]*)/g)) pinned.add(cls[1])
+  }
+  return pinned
+}
+
+describe('the voice stage on the page', () => {
+  test('is not pinned by the stylesheet, so it never covers the content scrolling below it', () => {
+    stage(false)
+    const section = screen.getByRole('region', { name: 'Talk to the demo assistant' })
+    const pinned = pinnedClasses(indexCss)
+    expect(pinned.size).toBeGreaterThan(0)
+    const own = [section, ...Array.from(section.querySelectorAll('*'))].flatMap((el) => Array.from(el.classList))
+    expect(own.filter((cls) => pinned.has(cls))).toEqual([])
+  })
+})
+
+/**
+ * Blind review of the overlap fix (2026-11-18): once the stage scrolls away on a phone there is no
+ * way to stop him while he speaks. A small fixed control appears while he is thinking or speaking
+ * and the orb is (mostly) off screen, and does what the orb's tap does. Its name says "Interrupt",
+ * like the orb's, never "Stop" (the dialog's mic-off control and the orb's "Stop listening").
+ */
+describe('the interrupt control when the orb is off screen', () => {
+  type Callback = (entries: { isIntersecting: boolean }[]) => void
+  const observers: { cb: Callback; options?: IntersectionObserverInit }[] = []
+  const realIO = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver
+  afterEach(() => {
+    ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = realIO
+    observers.length = 0
+  })
+  function fakeIO() {
+    ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = class {
+      constructor(cb: Callback, options?: IntersectionObserverInit) {
+        observers.push({ cb, options })
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+  }
+  const deliver = (...seen: boolean[]) =>
+    act(() => observers.forEach(({ cb }) => cb(seen.map((isIntersecting) => ({ isIntersecting })))))
+  // Found by its own marker, so the query can never match the orb (whose label also says Interrupt).
+  const control = () => document.querySelector<HTMLButtonElement>('[data-stage="stop"]')
+  const orb = () => document.querySelector<HTMLButtonElement>('[data-stage="orb"]')!
+
+  async function tapOrbAndCloseCard() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    // The answer's card dialog is closed for this check: the page under it is what scrolls.
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    await act(async () => settle())
+  }
+
+  test('appears while he speaks with the orb scrolled away, stops him in one tap and hands focus to the orb', async () => {
+    fakeIO()
+    const { audio, cancels } = stage(true)
+    await tapOrbAndCloseCard()
+    expect(control()).toBeNull()
+    deliver(false)
+    const stop = control()!
+    expect(stop).not.toBeNull()
+    expect(stop).toHaveAccessibleName('Interrupt the assistant')
+    const flushes = audio.flushes
+    await act(async () => {
+      fireEvent.click(stop)
+      await settle()
+    })
+    // The same as the orb's tap: the reply stops and the engine's turn is cancelled.
+    expect(cancels).toHaveLength(1)
+    expect(audio.flushes).toBe(flushes + 1)
+    // The control unmounts; the keyboard lands on the orb, not on the page body.
+    expect(control()).toBeNull()
+    expect(document.activeElement).toBe(orb())
+  })
+
+  test("appears while he is thinking too: the orb's tap interrupts that as well", async () => {
+    fakeIO()
+    const { cancels } = stage(false)
+    await tapOrbAndCloseCard()
+    deliver(false)
+    expect(control()).not.toBeNull()
+    await act(async () => {
+      fireEvent.click(control()!)
+      await settle()
+    })
+    expect(cancels).toHaveLength(1)
+  })
+
+  test('is never there while idle or listening, even with the orb scrolled away', async () => {
+    fakeIO()
+    stage(false, true)
+    deliver(false)
+    expect(control()).toBeNull() // idle: nothing to interrupt
+    await tapOrbAndCloseCard()
+    deliver(false)
+    expect(screen.getByRole('status')).toHaveTextContent('Listening')
+    expect(control()).toBeNull()
+  })
+
+  test('is not there while the orb is on screen', async () => {
+    fakeIO()
+    stage(true)
+    await tapOrbAndCloseCard()
+    deliver(true)
+    expect(control()).toBeNull()
+  })
+
+  test('a batch that ends with the orb leaving the screen shows it: the last entry wins', async () => {
+    fakeIO()
+    stage(true)
+    await tapOrbAndCloseCard()
+    deliver(true, false)
+    expect(control()).not.toBeNull()
+    deliver(false, true)
+    expect(control()).toBeNull()
+  })
+
+  test('a sliver of orb is not a reachable orb: it counts as seen only at half visible', () => {
+    fakeIO()
+    stage(true)
+    expect(observers.length).toBeGreaterThan(0)
+    expect(observers.every(({ options }) => options?.threshold === 0.5)).toBe(true)
   })
 })
