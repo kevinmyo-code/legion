@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { CascadeClient, type CascadeDeps, type TurnRequest, type TurnStart } from './cascade-client'
+import { VOICE_BARGE_IN } from './deps'
 import { pcm16ToBase64 } from './pcm'
 import type { SseEvent } from './sse'
 import { loadTurnDetector, type TurnDetector } from './turn/detector'
@@ -74,6 +75,18 @@ class Room extends FakeAudio {
     this.at = 0
     super.flush()
   }
+  pauses = 0
+  pause() {
+    this.pauses += 1
+    super.pause()
+  }
+  private voice: Int16Array | null = null
+  private voiceAt = 0
+  /** Someone in the room talks: mixed into what the mic hears from the next tick. */
+  say(pcm: Int16Array) {
+    this.voice = pcm
+    this.voiceAt = 0
+  }
   get sounding(): boolean {
     return this.queue.length > 0
   }
@@ -104,6 +117,12 @@ class Room extends FakeAudio {
     }
     this.late.push(out)
     const heard = this.late.length > this.delayMs / 20 ? this.late.shift()! : new Int16Array(320)
+    if (this.voice) {
+      for (let i = 0; i < 320 && this.voiceAt < this.voice.length; i++, this.voiceAt++) {
+        heard[i] = Math.max(-32767, Math.min(32767, heard[i] + this.voice[this.voiceAt]))
+      }
+      if (this.voiceAt >= this.voice.length) this.voice = null
+    }
     this.handlers?.onChunk(heard)
     this.ticks += 1
     const due = this.waiters.filter((w) => w.at <= this.ticks)
@@ -167,6 +186,8 @@ describe('the reply heard back by the microphone', () => {
       audio: () => room,
       now: () => Date.now(),
       utcOffsetMinutes: () => 0,
+      // The barge-in code behind the switch (`deps.ts` VOICE_BARGE_IN, off on the page).
+      bargeIn: true,
       turnDetector: async () => {
         detector = await loadTurnDetector({ makeWorker: () => new FakeWorker(), sileroUrl: 's', smartUrl: 't' }, 1000)
         const set = detector!.setHandlers.bind(detector)
@@ -226,6 +247,8 @@ describe('the reply heard back by the microphone', () => {
       audio: () => room,
       now: () => Date.now(),
       utcOffsetMinutes: () => 0,
+      // The barge-in code behind the switch (`deps.ts` VOICE_BARGE_IN, off on the page).
+      bargeIn: true,
       turnDetector: async () => {
         const detector = await loadTurnDetector({ makeWorker: () => new FakeWorker(), sileroUrl: 's', smartUrl: 't' }, 1000)
         const set = detector!.setHandlers.bind(detector)
@@ -261,5 +284,95 @@ describe('the reply heard back by the microphone', () => {
     expect(room.playedSamples).toBe(greeting.length + answer.length)
     expect(client.getState().mic).toBe('on')
     client.dispose()
+  })
+})
+
+describe('voice barge-in off (the shipped default, deps.ts VOICE_BARGE_IN)', () => {
+  function room(answers: (r: Room) => TurnStart[]) {
+    const r = new Room()
+    const queue = answers(r)
+    const requests: TurnRequest[] = []
+    const cancels: string[] = []
+    const deps: CascadeDeps = {
+      startTurn: async (request) => {
+        requests.push(request)
+        return queue.shift() ?? { ok: true, events: (async function* () {})() }
+      },
+      cancelTurn: (id) => cancels.push(id),
+      audio: () => r,
+      now: () => Date.now(),
+      utcOffsetMinutes: () => 0,
+      bargeIn: VOICE_BARGE_IN,
+      turnDetector: () => loadTurnDetector({ makeWorker: () => new FakeWorker(), sileroUrl: 's', smartUrl: 't' }, 1000),
+    }
+    const client = new CascadeClient(deps, { companionName: 'Alfred', sessionMinutes: null, endOnHidden: () => false })
+    client.attach()
+    const run = async (ticks: number, until?: () => boolean) => {
+      for (let t = 0; t < ticks && !(until?.() ?? false); t++) {
+        r.tick()
+        await microtasks()
+      }
+    }
+    return { room: r, client, requests, cancels, run }
+  }
+
+  it('is off', () => {
+    expect(VOICE_BARGE_IN).toBe(false)
+  })
+
+  it.each([
+    ['25%', 6_500],
+    ['100%', 26_000],
+  ])('its own answer heard back at %s, the stream still sending: no pause, no cut, nothing posted, played in full, listening after', async (_level, peak) => {
+    const greeting = tone(200, peak)
+    const answer = tone(4_000, peak)
+    const t = room((r) => [spokenReply(greeting, 'Hi.', 0), pacedReply(r, answer, 1)])
+    void t.client.startVoice()
+    await microtasks()
+    await t.run(60)
+    t.client.send('Tell me everything.')
+    await microtasks()
+    await t.run(800, () => !t.room.sounding && t.client.getState().activity === 'listening')
+    await t.run(40)
+    expect(t.room.pauses).toBe(0)
+    expect(t.room.cuts).toBe(0)
+    expect(t.requests.filter((q) => q.audio)).toHaveLength(0)
+    expect(t.requests.some((q) => q.bargeIn)).toBe(false)
+    expect(t.room.playedSamples).toBe(greeting.length + answer.length)
+    expect(t.client.getState().mic).toBe('on')
+    t.client.dispose()
+  })
+
+  it('a person talking over the answer is not heard; after it (past the 300 ms tail) they are', async () => {
+    const answer = tone(3_000)
+    const t = room(() => [spokenReply(answer, 'A long answer.', 0)])
+    void t.client.startVoice()
+    await microtasks()
+    await t.run(20)
+    t.room.say(tone(1_000, 20_000))
+    await t.run(400, () => !t.room.sounding && t.client.getState().activity === 'listening')
+    await t.run(40)
+    expect(t.requests).toHaveLength(1)
+    t.room.say(tone(1_000, 20_000))
+    await t.run(150)
+    expect(t.requests).toHaveLength(2)
+    expect(t.requests[1].audio).toBeDefined()
+    expect(t.requests[1].bargeIn).toBeUndefined()
+    t.client.dispose()
+  })
+
+  it('a tap during the answer still stops it and cancels the turn', async () => {
+    const t = room((r) => [spokenReply(tone(200), 'Hi.', 0), pacedReply(r, tone(4_000), 1)])
+    void t.client.startVoice()
+    await microtasks()
+    await t.run(60)
+    t.client.send('Tell me everything.')
+    await microtasks()
+    await t.run(40)
+    expect(t.client.getState().activity).toBe('speaking')
+    t.client.interrupt()
+    expect(t.cancels).toHaveLength(1)
+    expect(t.room.cuts).toBe(1)
+    t.client.dispose()
   })
 })

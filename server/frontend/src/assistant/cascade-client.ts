@@ -106,6 +106,11 @@ export interface CascadeDeps {
    * Absent, or resolving null, keeps the energy threshold and half-duplex.
    */
   turnDetector?: () => Promise<TurnDetector | null>
+  /**
+   * Barge-in by voice (`deps.ts` VOICE_BARGE_IN, off for this ship). Off: half-duplex from the
+   * start; what the mic hears while a reply plays, and in its tail, never reaches the models.
+   */
+  bargeIn?: boolean
   /** An early transcript of what has been said so far (`POST /api/assistant/transcribe`). */
   transcribe?: (audio: Int16Array, signal: AbortSignal) => Promise<string | null>
   /** The `robotic` marker's tap: this reply's turn number, nothing else (`POST /api/assistant/robotic`). */
@@ -306,8 +311,10 @@ export class CascadeClient {
 
   private activityFor(s: AssistantState): AssistantState['activity'] {
     if (s.phase === 'ended') return 'idle'
-    if (this.awaiting) return 'thinking'
+    // Audible is speaking, even while the rest of the answer streams in: the orb then says a tap
+    // interrupts, which is the only way to with voice barge-in off.
     if (this.playing) return 'speaking'
+    if (this.awaiting) return 'thinking'
     if (s.mic === 'on') return 'listening'
     return 'idle'
   }
@@ -467,7 +474,7 @@ export class CascadeClient {
 
   /** Barge-in is live: the models are loaded and this conversation has not fallen back. */
   get fullDuplex(): boolean {
-    return this.detector !== null && !this.halfDuplex && !this.detector.gate.disabled
+    return this.deps.bargeIn === true && this.detector !== null && !this.halfDuplex && !this.detector.gate.disabled
   }
 
   /** The demo's one-minute tour: plays beat `beat` (from 0), driven by the engine. */
@@ -794,8 +801,10 @@ export class CascadeClient {
     const tail = this.listening && this.tailLeftMs > 0
     if (tail) this.tailLeftMs -= (pcm.length / 16_000) * 1000
     if (this.detector) {
-      // The models hear everything; while the reply plays only the barge-in gate listens, and only
-      // in full duplex. Half-duplex: nothing heard while the assistant speaks is kept (spec 19).
+      // Full duplex: the models hear everything, and while the reply plays only the barge-in gate
+      // listens. Half-duplex (and always with voice barge-in off): audio heard while the assistant
+      // thinks or speaks, or in the tail after it, is thrown away here and reaches nothing (spec 19).
+      if (!this.fullDuplex && (!this.listening || tail)) return
       this.detector.push(pcm, this.listening && !tail, this.playing && this.fullDuplex)
       if (!this.listening || !this.endpointer || tail) return
       // The endpointer runs the follow-up window (spec 14, 15) on the clock and the length cap from
