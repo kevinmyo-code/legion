@@ -786,74 +786,15 @@ def test_a_claimed_change_with_no_write_tried_is_not_said(member, engine):
         "I couldn't add it because the system held back the write.",
     ],
 )
-def test_a_reason_after_a_web_read_with_no_write_tried_is_the_code_line(member, engine, excuse):
-    # Ship 2026-11-18 (live gate, reverses findings 4 and 10 for this one case): after outside
-    # text was read and no write went through, a model sentence that says it cannot make a change
-    # here, or sends them elsewhere to make it, is dropped and the true reason is said in code.
+def test_a_reason_after_a_web_read_with_no_write_tried_is_kept(member, engine, excuse):
+    # Blind review findings 4 and 10: no sentence of the model's is swapped for code's on a
+    # regex; with no write attempted and refused, its own words stand.
     engine.model = FakeModel(
         [call("web_search", {"query": "fair date"}), say(f"The fair is on Saturday. {excuse}")]
     )
     events = _events(_post(member, text="Look up the fair and add it to my list."))
     said = [s["text"] for s in _of(events, "sentence")]
-    assert said == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT]
-
-
-GATE_REPLY = (
-    "According to Wikipedia, the next total solar eclipse in North America is on March 30, 2033. "
-    "And I can't add things to your grocery list; you'll want the phone app for that."
-)
-
-
-@pytest.mark.parametrize("role", ["member", "visitor"])
-def test_the_ship_gate_reply_says_the_true_reason_once(request, engine, role):
-    """The live gate's `gate_search_and_add` (2026-11-18): web_search only, no write tried, and an
-    invented reason ("the phone app")."""
-    client = request.getfixturevalue(role)
-    engine.model = FakeModel([call("web_search", {"query": "next eclipse"}), say(GATE_REPLY)])
-    events = _events(
-        _post(client, text="When is the next eclipse? Add eclipse glasses to my list.")
-    )
-    said = [s["text"] for s in _of(events, "sentence")]
-    assert said == [
-        "According to Wikipedia, the next total solar eclipse in North America is on March 30, "
-        "2033.",
-        cascade.READ_THROUGH_WAIT,
-    ]
-
-
-def test_two_declining_sentences_give_one_code_line(member, engine):
-    engine.model = FakeModel(
-        [
-            call("web_search", {"query": "fair date"}),
-            say("The fair is on Saturday. I can't add that here. You'll want the phone app."),
-        ]
-    )
-    events = _events(_post(member, text="Look up the fair and add it."))
-    said = [s["text"] for s in _of(events, "sentence")]
-    assert said == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT]
-
-
-def test_a_could_not_find_sentence_after_a_web_read_stays(member, engine):
-    engine.model = FakeModel(
-        [call("web_search", {"query": "scores"}), say("I couldn't find a list of today's scores.")]
-    )
-    events = _events(_post(member, text="What were today's scores?"))
-    assert [s["text"] for s in _of(events, "sentence")] == [
-        "I couldn't find a list of today's scores."
-    ]
-
-
-def test_after_a_successful_write_no_wait_line_is_added(member, engine):
-    engine.model = FakeModel(
-        [
-            call("create_checklist", {"name": "Hardware"}),
-            call("web_search", {"query": "store hours"}),
-            say("Made the Hardware list. The store opens at nine."),
-        ]
-    )
-    events = _events(_post(member, text="Make a hardware list and look up the store hours."))
-    said = [s["text"] for s in _of(events, "sentence")]
-    assert cascade.READ_THROUGH_WAIT not in said
+    assert said == ["The fair is on Saturday.", excuse]
 
 
 def test_a_refused_write_after_a_web_read_always_says_why(member, engine):
