@@ -273,7 +273,7 @@
     },
     {
       "id": "garbage_transcript",
-      "say": "revisa los códigos del coche, por favor.",
+      "say": "dijo que no hay nada para hoy, gracias.",
       "expect": {
         "not_calls": ["car", "car/clear_codes"],
         "answer_has": ["(?i)catch"]
@@ -335,7 +335,7 @@
     },
     {
       "id": "tags_casual",
-      "say": "ha, I finally finished that essay, I'm done for the night",
+      "say": "ha, that lecture went better than I thought",
       "why": "Expression tags (Kevin 2026-11-17): a casual moment MAY carry an allowed tag; none is read as a word",
       "expect": {
         "tts_not": ["<(?!chuckle>|laugh>|sigh>|short pause>)"]
