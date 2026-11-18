@@ -44,7 +44,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const [draft, setDraft] = useState('')
   const [marked, setMarked] = useState(false)
   // Whether the orb is on screen (blind review, 2026-11-18): once the stage scrolls away on a
-  // phone, a small fixed Stop is the way to interrupt him while he speaks.
+  // phone, a small fixed control is the way to interrupt him while he thinks or speaks.
   const orbRef = useRef<HTMLButtonElement>(null)
   const [orbSeen, setOrbSeen] = useState(true)
   useEffect(() => {
@@ -62,6 +62,8 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const cascade = client instanceof CascadeClient ? client : null
   const mode = orbMode(state)
   const speaking = state.activity === 'speaking'
+  // What the orb's tap interrupts; the off-screen control shows for exactly these states.
+  const interruptible = speaking || state.activity === 'thinking'
   const voiceOn = state.mic === 'on'
 
   const freshIfEnded = () => {
@@ -69,7 +71,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   }
   const onOrb = () => {
     freshIfEnded()
-    if (speaking || state.activity === 'thinking') client.interrupt()
+    if (interruptible) client.interrupt()
     else if (voiceOn) client.stopVoice()
     else void client.startVoice()
   }
@@ -110,7 +112,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       >
         <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
       </button>
-      {speaking && !orbSeen && (
+      {interruptible && !orbSeen && (
         <button
           type="button"
           onClick={() => client.interrupt()}
