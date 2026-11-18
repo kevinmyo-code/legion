@@ -152,6 +152,7 @@ class Turn:
     timings: dict[str, int] = field(default_factory=dict)
     fillers: list[str] = field(default_factory=list)  # the holding lines the laptop harness logged
     to_voice: str = ""  # what the cloud voice would be handed, tags included (laptop harness)
+    read_windows: list[str] = field(default_factory=list)  # days a calendar read covered (laptop harness)
 
     @property
     def answer(self) -> str:
@@ -199,6 +200,11 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
                 # The laptop harness's spoken answer (made-up data), which the record may redact.
                 try:
                     cur.turns[-1].answer_parts = [json.loads(msg.split("text=", 1)[1])]
+                except (IndexError, ValueError):
+                    pass
+            elif word == "read" and cur is not None and cur.turns:
+                try:
+                    cur.turns[-1].read_windows.append(json.loads(msg.split("window=", 1)[1].rsplit(" date_note=", 1)[0]))
                 except (IndexError, ValueError):
                     pass
             elif word == "tts" and cur is not None and cur.turns:
@@ -365,6 +371,16 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
                 fails.append(f"no holding line matches /{rx}/; heard {heard_fillers or 'none'}")
         if expect.get("no_filler") and turn.fillers:
             fails.append(f"a holding line was said: {heard_fillers}")
+    # The day a calendar read covered (2026-11-17): graded on what was READ, so a wrong date the model
+    # sent and the phone corrected to the day he said is right, and a wrong day read is wrong.
+    for day in expect.get("read_day", []):
+        want = expand(day, today)
+        if phone:
+            continue
+        if not turn.read_windows:
+            fails.append(f"no calendar read; wanted {want}")
+        elif not all(_window_covers(w, want) for w in turn.read_windows):
+            fails.append(f"a calendar read missed {want}: read {', '.join(turn.read_windows)}")
     # Expression tags (2026-11-17): never in what he reads or what is kept, never read aloud as words.
     if re.search(r"<\s*[a-z]|\bchuckles?\b|\bsighs\b", answer, re.I):
         fails.append("the answer text carries an expression tag or its word")
@@ -412,6 +428,12 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
         if CLAIM.search(answer) and not NOT_DONE.search(answer):
             fails.append("claimed a write that test mode refused")
     return fails, warns
+
+
+def _window_covers(window: str, day: str) -> bool:
+    """A harness `read window` ("Wednesday 2026-11-18" or "... to Friday 2026-11-20") covers `day`."""
+    dates = re.findall(r"\d{4}-\d{2}-\d{2}", window)
+    return bool(dates) and dates[0] <= day <= dates[-1]
 
 
 WRITE_ACTIONS = {"add", "remove", "tick", "untick", "schedule", "skip", "create", "clear_ticked", "set", "log",

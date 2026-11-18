@@ -86,7 +86,7 @@
           "say": "and tomorrow?",
           "expect": {
             "calls": ["day/read_calendar"],
-            "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+            "read_day": ["{today+1}"]
           }
         }
       ],
@@ -101,7 +101,7 @@
           "say": "what about tomorrow?",
           "expect": {
             "calls": ["day/read_calendar"],
-            "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+            "read_day": ["{today+1}"]
           }
         }
       ]
@@ -368,6 +368,36 @@
       "why": "Languages: with the default setting (English only) the transcriber answers no-speech for Burmese, so it is silence: nothing said, nothing run (the no-voice rule beats a spoken miss)",
       "expect": {
         "silent": true
+      }
+    },
+    {
+      "id": "short_answer_kept",
+      "say": "Five.",
+      "stt_audio": true,
+      "why": "Voice review 2026-11-17: a one-word or number answer is speech, never dropped as too short",
+      "expect": {
+        "answer_not": ["(?i)catch"]
+      }
+    },
+    {
+      "id": "spanish_word_in_english",
+      "say": "add jalapeño peppers to my shopping list",
+      "stt_audio": true,
+      "write": true,
+      "why": "Voice review 2026-11-17: an English sentence with one Spanish-looking word is English",
+      "expect": {
+        "calls": ["manage_checklist/add|manage_item/add"],
+        "answer_not": ["(?i)catch"]
+      }
+    },
+    {
+      "id": "place_name_in_english",
+      "say": "navigate to El Paso",
+      "stt_audio": true,
+      "why": "Voice review 2026-11-17: a Spanish place name in an English request is English",
+      "expect": {
+        "calls": ["navigate"],
+        "answer_not": ["(?i)catch"]
       }
     }
   ]

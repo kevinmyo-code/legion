@@ -305,3 +305,16 @@ def test_a_silent_case_passes_only_when_nothing_is_said_or_run():
     quiet = [l for l in case_lines("quiet", "", [], "") if "assistant text" not in l]
     _, runs = parse(quiet)
     assert ve.score_case(case, runs[0], phone=False).passed
+
+
+def test_the_day_read_is_graded_not_the_dates_the_model_sent():
+    case = {"id": "then_tomorrow", "turns": [{"say": "and tomorrow?", "expect": {"read_day": ["{today+1}"]}}]}
+    base = case_lines("then_tomorrow", "and tomorrow?",
+                      [("day", {"action": "read_calendar", "from": "2026-11-17", "to": "2026-11-17"}, '{"success":true}')],
+                      "The career fair.")
+    right = base[:6] + [L("LIVE_TEST", 'read window="Monday 2026-11-16" date_note=true')] + base[6:]
+    _, runs = parse(right)
+    assert ve.score_case(case, runs[0], phone=False).passed
+    wrong = base[:6] + [L("LIVE_TEST", 'read window="Tuesday 2026-11-17" date_note=false')] + base[6:]
+    _, runs = parse(wrong)
+    assert any("missed" in f for f in ve.score_case(case, runs[0], phone=False).failures)

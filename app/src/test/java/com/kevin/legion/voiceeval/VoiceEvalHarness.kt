@@ -5,6 +5,7 @@ package com.kevin.legion.voiceeval
 import android.content.Context
 import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.CoachRouting
+import com.kevin.legion.service.FollowUpWindow
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
 import com.kevin.legion.service.LiveSessionController
@@ -129,16 +130,22 @@ internal class VoiceEvalHarness(
         val history = mutableListOf<ChatTurn>()
         val languages = listOf(SpokenLanguages.ENGLISH) + case.languages.mapNotNull { SpokenLanguages.byName(it) }
         var current = SpokenLanguages.ENGLISH
+        var lastSaid: String? = null
         val started = now()
         for (said in case.turns) {
-            val heardRaw = if (case.sttAudio) {
+            val (heardRaw, audioMs) = if (case.sttAudio) {
                 transcribeSpoken(said, SpokenLanguages.sttInstruction(languages, current))
             } else {
-                said
+                said to 0L
             }
-            // The session's gate on what the transcriber wrote ([SttGuard]): a transcript it does not
-            // believe never reaches the model; the missed line is said instead.
-            val verdict = SttGuard.verdict(heardRaw, 0L, accepted = languages)
+            // The session's gate on what the transcriber wrote ([SttGuard]), with the audio's length when
+            // there was audio: a transcript it does not believe never reaches the model.
+            val verdict = SttGuard.verdict(
+                heardRaw,
+                audioMs,
+                accepted = languages,
+                afterQuestion = FollowUpWindow.isQuestion(lastSaid),
+            )
             if (verdict is SttGuard.Verdict.Drop && verdict.reason !in SttGuard.SILENT_REASONS) {
                 audit.user(heardRaw, final = true)
                 out(LiveLatency.TAG, "stt_rejected reason=${verdict.reason} chars=${heardRaw.length}")
@@ -157,19 +164,20 @@ internal class VoiceEvalHarness(
                 audit.turnComplete()
                 continue
             }
-            // The session's language rule (CascadeSession.followLanguage), cloud voice.
-            val asked = SpokenLanguages.request(heard, languages)
-            if (asked is SpokenLanguages.Switch.NotInSettings) {
-                audit.user(heard, final = true)
-                val line = SpokenLanguages.notInSettingsLine(asked.name)
-                audit.assistant(line, readThrough = false)
-                out(TEST_TAG, "heard text=${LiveAudit.quote(line)}")
-                audit.turnComplete()
-                continue
-            }
-            ((asked as? SpokenLanguages.Switch.To)?.language ?: SpokenLanguages.writtenIn(heard, languages))?.let {
-                if (it != current) out(TEST_TAG, "language_switch to=${it.name}")
-                current = it
+            // The session's own language rule ([SpokenLanguages.decide]), cloud voice.
+            when (val d = SpokenLanguages.decide(heard, languages, current, cloud = true)) {
+                is SpokenLanguages.Decision.Refuse -> {
+                    audit.user(heard, final = true)
+                    audit.assistant(d.line, readThrough = false)
+                    out(TEST_TAG, "heard text=${LiveAudit.quote(d.line)}")
+                    audit.turnComplete()
+                    continue
+                }
+                is SpokenLanguages.Decision.To -> {
+                    out(TEST_TAG, "language_switch to=${d.language.name}")
+                    current = d.language
+                }
+                SpokenLanguages.Decision.Stay -> Unit
             }
             audit.user(heard, final = true)
             val t0 = now()
@@ -210,6 +218,7 @@ internal class VoiceEvalHarness(
             // What would be heard, even when the record redacts it (made-up data only): the scorer
             // reads this line first (2026-11-17, ADR 0090 guard cases score the spoken answer).
             out(TEST_TAG, "heard text=${LiveAudit.quote(said)}")
+            lastSaid = said
             // What the cloud voice would be handed, tags and all ([TtsTags], as ReplySpeaker applies them).
             val budget = TtsTags.Budget()
             val splitter = SentenceSplitter()
@@ -232,7 +241,7 @@ internal class VoiceEvalHarness(
      * [text] spoken by the cloud voice (Gemini TTS, 24 kHz) and heard back by the cloud transcriber
      * (16 kHz), as a spoken turn is: proves the transcriber's English pinning on real audio.
      */
-    private suspend fun transcribeSpoken(text: String, instruction: String): String {
+    private suspend fun transcribeSpoken(text: String, instruction: String): Pair<String, Long> {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
             val tts = GeminiTts(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.TTS, m, u).line()) })
@@ -246,7 +255,7 @@ internal class VoiceEvalHarness(
             val heard = (r as? SttResult.Text)?.text.orEmpty()
             out(TEST_TAG, "stt_audio audio_ms=${pcm16.size / 32} result=${if (r is SttResult.Text) "text" else r.toString()} " +
                 "voice=${CloudSpeechWire.VOICE} sent=${LiveAudit.quote(text)} heard=${LiveAudit.quote(heard)}")
-            return heard
+            return heard to (pcm16.size / 32).toLong()
         } finally {
             scope.cancel()
         }
@@ -257,6 +266,12 @@ internal class VoiceEvalHarness(
         audit.toolCall(id, name, false, args.toString())
         val t = now()
         val response = runTool(name, args, readThrough, heard)
+        // The day a calendar read covered, whole (the audit line cuts a result at 400 characters): the
+        // date cases grade what was READ, not the model's arguments.
+        if (name == "day" && response.has("window")) {
+            out(TEST_TAG, "read window=${LiveAudit.quote(response.optString("window"))} " +
+                "date_note=${response.has("date_note")}")
+        }
         audit.toolResult(
             LiveAudit.ToolResult(
                 id = id,
