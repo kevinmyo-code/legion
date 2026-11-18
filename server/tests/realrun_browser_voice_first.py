@@ -144,7 +144,11 @@ def test_browser_voice_first(real, live_server, tmp_path):
 
     OUT.mkdir(parents=True, exist_ok=True)
     seed()
-    call_command("load_recruiter_content", str(write_folder(tmp_path / "content")))
+    # Seven invented sections, so his profile's follow-up chips have more than one to offer.
+    from tests.test_profile_verbatim import _content
+
+    folder = write_folder(tmp_path / "content", content=_content())
+    call_command("load_recruiter_content", str(folder))
     wavs, timing = _wavs()
     only = {s for s in os.environ.get("BROWSER_SCENARIOS", "").split(",") if s}
     results = []

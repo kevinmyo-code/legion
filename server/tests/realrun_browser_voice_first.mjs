@@ -281,6 +281,9 @@ if (A.scenario === 'vf-chips') {
   check('examples_shown_after_greeting', shown && labels.length >= 2, { labels })
   check('no_page_overflow_390_examples', w0.scroll <= w0.inner && w0.inner === 390, w0)
   await shot('chips-examples')
+  // Aloud only once the greeting (the recording notice) has played to its end: wait for listening.
+  const listening = await waitFor(async () => /^Listening/.test((await page.locator('[data-stage="line"]').textContent()) ?? ''), 30000)
+  check('greeting_heard_to_the_end_first', listening, null)
   // A tap with the conversation open: asked aloud, answered by code (his profile, no model call).
   const before = turns.length
   await row.getByRole('button', { name: 'About Kevin' }).click({ timeout: 5000 })
