@@ -92,7 +92,7 @@ private fun PageJump(state: ReaderUiState, actions: ReaderActions) {
             Slider(value = target, onValueChange = { target = it }, valueRange = 0f..(state.pageCount - 1).toFloat())
         }
         TextButton(onClick = { actions.onGoPage(target.toInt()) }, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("Go to page ${target.toInt() + 1}", color = BooksTone.onContainer)
+            Text("Go to page ${target.toInt() + 1}", color = BooksTone.darkOnContainer)
         }
     }
 }
@@ -111,7 +111,7 @@ internal fun BookmarksSheet(state: ReaderUiState, actions: ReaderActions) {
         ) {
             Text("Bookmarks", style = MaterialTheme.typography.titleLarge, color = SoftColors.text)
             TextButton(onClick = actions.onAddBookmark, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Add a bookmark here (${state.positionLabel})", color = BooksTone.onContainer)
+                Text("Add a bookmark here (${state.positionLabel})", color = BooksTone.darkOnContainer)
             }
             if (state.bookmarks.isEmpty()) {
                 Text(

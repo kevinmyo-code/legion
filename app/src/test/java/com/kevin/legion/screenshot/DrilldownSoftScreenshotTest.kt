@@ -130,6 +130,34 @@ class DrilldownSoftScreenshotTest {
         )
     }
 
+    /** The tapped day (home-ui review 2026-11-18): on day paper its number was cream on pale blue. */
+    @Test
+    fun `month calendar with a selected day, day`() = shot("drill-month-calendar-selected-day.png") { SelectedMonth() }
+
+    @Test
+    @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS + "-night")
+    fun `month calendar with a selected day, night`() = shot("drill-month-calendar-selected-night.png") {
+        SelectedMonth()
+    }
+
+    @Composable
+    private fun SelectedMonth() {
+        val month = YearMonth.of(2026, 9)
+        val cells = buildMonthCells(month, emptyMap())
+        MonthCalendar(
+            calendarLinked = true,
+            month = month,
+            cells = cells,
+            collapsed = false,
+            selectedDayStart = cells.first { it.dayOfMonth == SELECTED_DAY }.dayStart,
+            onToggleCollapsed = {},
+            onPrevMonth = {},
+            onNextMonth = {},
+            onSelectDay = {},
+            onGrantCalendar = {},
+        )
+    }
+
     @Test
     fun `voice notes rows and detail with the derived and interrupted wording`() = shot("drill-voicenotes.png") {
         val summarised = VoiceNote(
@@ -142,5 +170,9 @@ class DrilldownSoftScreenshotTest {
             VoiceNoteRow(interrupted, onClick = {})
             VoiceNoteDetail(note = summarised, playing = false, onTogglePlayback = {})
         }
+    }
+
+    private companion object {
+        const val SELECTED_DAY = 15
     }
 }

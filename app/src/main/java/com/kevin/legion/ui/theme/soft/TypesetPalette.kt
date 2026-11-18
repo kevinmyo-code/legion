@@ -3,6 +3,8 @@
 package com.kevin.legion.ui.theme.soft
 
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import com.kevin.legion.ui.theme.LegionSemantics
@@ -195,3 +197,24 @@ internal fun typesetSemantics(p: SoftPalette) = LegionSemantics(
 /** [typesetSemantics] over each edition, built once. */
 internal val TypesetDaySemantics = typesetSemantics(TypesetDayPalette)
 internal val TypesetNightSemantics = typesetSemantics(TypesetNightPalette)
+
+/**
+ * True while the page in force is Typeset day paper: under `SoftTheme` by day, or under
+ * `LegionTheme` with the DAY edition (both provide [TypesetDayPalette]). The one question a
+ * hand-picked colour (an area tint, a bar fill, a mic-blocked pill) asks to choose its day value;
+ * night, Matrix and the soft-dark look answer false and keep the colour they always had.
+ */
+@Composable
+@ReadOnlyComposable
+fun onDayPaper(): Boolean = LocalSoftPalette.current == TypesetDayPalette
+
+/**
+ * A filled surface that carries meta text ([SoftColors.text2]): [SoftColors.cardHighest] as ever,
+ * except on day paper, where meta on that tone is 4.0:1, under the 4.5:1 floor, so it takes
+ * [SoftColors.cardHigh] (4.6:1) instead (home-ui 2026-11-17). Tracks and fills with no text on them
+ * keep `cardHighest`.
+ */
+@Composable
+@ReadOnlyComposable
+fun textWellFill(): androidx.compose.ui.graphics.Color =
+    if (onDayPaper()) LocalSoftPalette.current.cardHigh else LocalSoftPalette.current.cardHighest

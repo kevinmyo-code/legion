@@ -61,12 +61,17 @@ class MirrorSyncActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            LegionTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    MirrorSyncScreen()
+            // The Typeset edition, so day paper reaches this screen too (home-ui 2026-11-17), and the
+            // bars with it: enableEdgeToEdge alone picks the icon tone from the phone's dark setting,
+            // not the app's edition (review 2026-11-18).
+            com.kevin.legion.ui.theme.soft.ProvideTypesetEdition(systemBars = true) {
+                LegionTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        MirrorSyncScreen()
+                    }
                 }
             }
         }

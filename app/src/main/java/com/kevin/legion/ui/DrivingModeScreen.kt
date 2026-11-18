@@ -173,7 +173,7 @@ private const val SEGMENTS_RPM = 14
 private const val BAR_TRANSITION_MS = 650
 
 /** One raw reading plus its worded staleness (never a bare number - CLAUDE.md §4/§7, [relativeAge] discipline carried over from [com.kevin.legion.ui.fleet.buildLiveRows]). [raw] is always the PID's own native unit - km/h for speed (converted to mph at the read site below via [kmhToMph]), and now Celsius for coolant too (ticket 07: no conversion needed, the PID and the display finally agree). */
-private data class DrivingSample(val raw: Float, val age: String)
+internal data class DrivingSample(val raw: Float, val age: String)
 
 @Composable
 fun DrivingModeScreen(onExit: () -> Unit) {
@@ -310,8 +310,11 @@ fun DrivingModeScreen(onExit: () -> Unit) {
 }
 
 /** Plain UI: the instrument-panel layout with no Room/OBD reference, see the file doc's state-holder split. */
+// Made internal for DayEditionScreensScreenshotTest (2026-11-18); its length and branching are the
+// baselined debt of the private function it was, unchanged.
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
-private fun DrivingModeContent(
+internal fun DrivingModeContent(
     vehicleName: String,
     linkLive: Boolean,
     clock: String,
@@ -645,7 +648,7 @@ private fun SegmentColumn(
     val valueColor = if (!hasReading || stale) sem.faint else liveColor
     val litCount = litSegmentCount(fraction, totalSegments)
     val litNormalColor = if (stale) sem.faint else liveColor
-    val litRedlineColor = if (stale) sem.faint else DeckChrome
+    val litRedlineColor = if (stale) sem.faint else redlineInk()
     val unlitNormalColor = sem.ruleFaint
     val unlitRedlineColor = sem.chromeDim
     val gridColor = sem.ruleFaint
@@ -1072,3 +1075,11 @@ private fun PreviewDrivingModeNoData() = LegionTheme {
         onExit = {},
     )
 }
+
+/**
+ * The lit redline colour: full chrome red, except on day paper, where that red is under 3:1 against
+ * the paper and the accent ink takes its place (home-ui 2026-11-17).
+ */
+@Composable
+private fun redlineInk(): Color =
+    if (com.kevin.legion.ui.theme.soft.onDayPaper()) com.kevin.legion.ui.theme.soft.SoftColors.onAlert else DeckChrome

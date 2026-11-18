@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- By day: Typeset paper (TypesetDayPalette.ground) with dark bar icons, as the first frame draws. -->
+    <color name="launch_ground">#FFFAF8F3</color>
+    <bool name="launch_light_bars">true</bool>
+</resources>

@@ -1,0 +1,200 @@
+package com.kevin.legion.ui.apps
+
+import android.content.Context
+import android.content.Intent
+import android.content.pm.LauncherApps
+import android.os.Build
+import android.os.UserHandle
+import android.util.Log
+import androidx.compose.ui.graphics.ImageBitmap
+
+/**
+ * Pinned shortcuts with LEGION as the home app (2026-11-18). An app asks the default launcher to
+ * pin a shortcut (`ShortcutManager.requestPinShortcut`; Chrome's "Add to Home screen" for a web
+ * app), and `isRequestPinShortcutSupported()` is true only when the default launcher has an activity
+ * for `LauncherApps.ACTION_CONFIRM_PIN_SHORTCUT`. LEGION had none, so Chrome hid its "Add to Home
+ * screen" / "Install app" item outright (`WebappsUtils.isAddToHomeIntentSupported`). Now
+ * [PinShortcutActivity] confirms the request and `PinItemRequest.accept()` pins it to LEGION.
+ *
+ * The pins live with the system, not here: `LauncherApps.getShortcuts` with
+ * `ShortcutQuery.FLAG_MATCH_PINNED` returns the shortcuts pinned to this launcher, so they survive a
+ * reboot and an update, and an uninstalled package's go with it. They show as drawer rows (a
+ * [DrawerApp] with a [DrawerApp.shortcutId]): in All apps under their letter and after the pinned
+ * apps on the home row, as monochrome marks like every app (Kevin, 2026-11-18). Widgets
+ * (`CONFIRM_PIN_APPWIDGET`) are not handled.
+ */
+internal object PinnedShortcuts {
+
+    /** The class-name slot of a shortcut row: never a real activity, so keys never collide with the app's. */
+    private const val CLASS_PREFIX = "shortcut:"
+
+    /** The home row: the pinned apps first, in their order, then the shortcuts, at most this many. */
+    const val HOME_ROW_MAX = 6
+
+    /** What the line under a shortcut says when the app that made it has no readable name. */
+    const val UNKNOWN_ORIGIN = "shortcut"
+
+    @Suppress("LongParameterList") // one row: its app, id, words, profile and maker
+    fun asDrawerApp(
+        packageName: String,
+        id: String,
+        label: String,
+        isWork: Boolean,
+        profileKey: Int,
+        origin: String? = null,
+    ) = DrawerApp(
+        label, packageName, CLASS_PREFIX + id, isWork, profileKey,
+        shortcutId = id, origin = origin?.takeIf { it.isNotBlank() } ?: UNKNOWN_ORIGIN,
+    )
+
+    /**
+     * The ids to keep pinned once [removeId] is gone, from the package's own pinned list (disabled
+     * pins included). `LauncherApps.pinShortcuts` replaces a package's whole set, so removing one
+     * means re-pinning every other one, or they would go too (review 2026-11-18).
+     */
+    fun remainingIds(pinnedIds: List<String>, removeId: String): List<String> = pinnedIds.filter { it != removeId }
+
+    fun <T> homeRow(apps: List<T>, shortcuts: List<T>, max: Int = HOME_ROW_MAX): List<T> = (apps + shortcuts).take(max)
+}
+
+/** The parts of a `LauncherApps.PinItemRequest` the confirm sheet uses, so the rules test off-device. */
+internal interface PinRequest {
+    val isShortcut: Boolean
+    val isValid: Boolean
+    val label: String
+    val fromPackage: String
+
+    /** The shortcut's icon as a monochrome mark, shown on the sheet before Add; null for its monogram. */
+    val mark: ImageBitmap? get() = null
+
+    /** True when the system pinned it. */
+    fun accept(): Boolean
+}
+
+/**
+ * The confirm sheet's rules. A stock launcher asks before it adds (Launcher3's add-item sheet, the
+ * Pixel's "Add to home screen" dialog), so LEGION asks too: an app should not put things on the
+ * home screen unseen.
+ */
+internal object PinConfirm {
+    enum class Outcome { ADDED, REFUSED, GONE }
+
+    /** Whether to show the sheet at all: shortcut requests only (no widgets), still valid. */
+    fun offer(request: PinRequest): Boolean = request.isShortcut && request.isValid
+
+    /** "Add": accepts a still-valid request once. A stale one adds nothing and says so. */
+    fun add(request: PinRequest): Outcome = when {
+        !request.isValid -> Outcome.GONE
+        request.accept() -> Outcome.ADDED
+        else -> Outcome.REFUSED
+    }
+}
+
+/** [PinRequest] over the platform request. */
+@androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+internal class PlatformPinRequest(
+    private val request: LauncherApps.PinItemRequest,
+    private val apps: LauncherApps,
+    private val densityDpi: Int,
+) : PinRequest {
+    override val mark: ImageBitmap? by lazy {
+        runCatching {
+            request.shortcutInfo
+                ?.let { apps.getShortcutIconDrawable(it, densityDpi) }
+                ?.let { AppMonochrome.mark(it, MARK_PX) }
+        }.getOrNull()
+    }
+    override val isShortcut: Boolean get() = request.requestType == LauncherApps.PinItemRequest.REQUEST_TYPE_SHORTCUT
+    override val isValid: Boolean get() = request.isValid
+    override val label: String get() = request.shortcutInfo?.shortLabel?.toString().orEmpty()
+    override val fromPackage: String get() = request.shortcutInfo?.`package`.orEmpty()
+    override fun accept(): Boolean = runCatching { request.accept() }.getOrDefault(false)
+}
+
+/** The Android side: read, open and remove the shortcuts pinned to LEGION. */
+internal object PinnedShortcutsAndroid {
+    private const val TAG = "PinnedShortcuts"
+
+    /** The request a CONFIRM_PIN_SHORTCUT intent carries, or null (not ours, or too old an Android). */
+    @Suppress("ReturnCount") // guard clauses, one exit each
+    fun request(context: Context, intent: Intent?): PinRequest? {
+        if (intent == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        val apps = context.getSystemService(LauncherApps::class.java) ?: return null
+        val dpi = context.resources.displayMetrics.densityDpi
+        return apps.getPinItemRequest(intent)?.let { PlatformPinRequest(it, apps, dpi) }
+    }
+
+    /**
+     * Every enabled shortcut pinned to LEGION in [profile], as drawer rows, with their marks put in
+     * [marks] by [iconKey]. Empty when LEGION is not the default home app (only the default launcher
+     * may read shortcuts; the pins are kept and come back when it is the home app again).
+     */
+    @Suppress("ReturnCount", "LongParameterList") // guard clauses; the cache loop's own state, passed in
+    fun load(
+        launcherApps: LauncherApps,
+        profile: UserHandle,
+        profileKey: Int,
+        isWork: Boolean,
+        densityDpi: Int,
+        iconPx: Int,
+        marks: MutableMap<String, ImageBitmap>,
+        unreadable: MutableSet<String>,
+        /** The installed app's name for a package, or null. */
+        appName: (String) -> String?,
+    ): List<DrawerApp> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return emptyList()
+        if (!runCatching { launcherApps.hasShortcutHostPermission() }.getOrDefault(false)) return emptyList()
+        val query = LauncherApps.ShortcutQuery().setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
+        val infos = runCatching { launcherApps.getShortcuts(query, profile) }
+            .onFailure { Log.w(TAG, "pinned shortcuts unreadable", it) }
+            .getOrNull().orEmpty()
+        return infos.filter { it.isEnabled }.map { info ->
+            val label = (info.shortLabel ?: info.longLabel ?: info.id).toString()
+            val row = PinnedShortcuts.asDrawerApp(
+                info.`package`, info.id, label, isWork, profileKey, origin = appName(info.`package`),
+            )
+            val key = iconKey(profileKey, row.packageName, row.className)
+            // Every outcome is kept: a mark, or "no usable mark" (the monogram), so a shortcut's icon is
+            // drawn once, not on every return home. A change to the package evicts both (the cache's
+            // changed(), from onShortcutsChanged or a package event). A throwing icon is a monogram.
+            if (!marks.containsKey(key) && key !in unreadable) {
+                val mark = runCatching {
+                    launcherApps.getShortcutIconDrawable(info, densityDpi)?.let { AppMonochrome.mark(it, iconPx) }
+                }.getOrNull()
+                if (mark != null) marks[key] = mark else unreadable += key
+            }
+            row
+        }
+    }
+
+    /** Opens [shortcut], or says why it could not. */
+    fun start(context: Context, shortcut: DrawerApp, handle: UserHandle): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return TOO_OLD
+        return runCatching {
+            context.getSystemService(LauncherApps::class.java)
+                .startShortcut(shortcut.packageName, shortcut.shortcutId.orEmpty(), null, null, handle)
+            null
+        }.getOrElse { "Couldn't open ${shortcut.label}: ${it.message ?: it.javaClass.simpleName}" }
+    }
+
+    /** Removes [shortcut] from LEGION's home, keeping the package's other pins; or says why not. */
+    fun unpin(context: Context, shortcut: DrawerApp, handle: UserHandle): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return TOO_OLD
+        return runCatching {
+            val apps = context.getSystemService(LauncherApps::class.java)
+            // The package's pinned set as the system holds it now, disabled pins included.
+            val query = LauncherApps.ShortcutQuery()
+                .setPackage(shortcut.packageName)
+                .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
+            val ids = apps.getShortcuts(query, handle).orEmpty().map { it.id }
+            val keep = PinnedShortcuts.remainingIds(ids, shortcut.shortcutId.orEmpty())
+            apps.pinShortcuts(shortcut.packageName, keep, handle)
+            null
+        }.getOrElse { "Couldn't remove ${shortcut.label}: ${it.message ?: it.javaClass.simpleName}" }
+    }
+
+    private const val TOO_OLD = "Shortcuts need Android 7.1 or later."
+}
+
+/** The confirm sheet's mark, the drawer cache's size. */
+private const val MARK_PX = 96

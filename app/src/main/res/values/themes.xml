@@ -4,11 +4,16 @@
 
          This exists so the window background matches the Compose ground before
          the first frame draws. It was Theme.Material.Light.NoActionBar, which
-         flashed white on every cold start against a near-black app. -->
+         flashed white on every cold start against a near-black app.
+
+         The ground and bar tone come from launch_ground / launch_light_bars, which values-notnight
+         sets to Typeset paper with dark icons (home-ui review 2026-11-18): by day the app opens on
+         paper, so a black first frame flashed. The phone's own theme is all a resource can know;
+         bedtime, the one-tap switch and Matrix mode are applied by Compose on the first frame. -->
     <style name="Theme.Legion" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/instrument_ground</item>
-        <item name="android:statusBarColor">@color/instrument_ground</item>
-        <item name="android:navigationBarColor">@color/instrument_ground</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowBackground">@color/launch_ground</item>
+        <item name="android:statusBarColor">@color/launch_ground</item>
+        <item name="android:navigationBarColor">@color/launch_ground</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">@bool/launch_light_bars</item>
     </style>
 </resources>

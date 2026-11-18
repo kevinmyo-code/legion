@@ -5,6 +5,7 @@
 
 package com.kevin.legion.ui.money
 
+import com.kevin.legion.ui.theme.soft.textWellFill
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -427,7 +428,7 @@ private fun ThisMonthSection(
 
 @Composable
 private fun CurrencyToggle(currency: String, onSetCurrency: (String) -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(50)).background(SoftColors.cardHighest).padding(2.dp)) {
+    Row(Modifier.clip(RoundedCornerShape(50)).background(textWellFill()).padding(2.dp)) {
         listOf("USD", "SGD").forEach { ccy ->
             val on = ccy == currency
             Text(
@@ -436,7 +437,7 @@ private fun CurrencyToggle(currency: String, onSetCurrency: (String) -> Unit) {
                 color = if (on) SoftColors.text else SoftColors.text2,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(if (on) SoftColors.outline else SoftColors.cardHighest)
+                    .background(if (on) SoftColors.outline else textWellFill())
                     .clickable(role = Role.Tab, onClickLabel = "Show $ccy") { onSetCurrency(ccy) }
                     .heightIn(min = 32.dp)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -651,7 +652,7 @@ private fun TransactionsSection(page: MoneyMonthPage?, onOpenCategory: (String?)
                 maxLines = 1,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(if (on) SoftColors.cardHighest else SoftColors.ground)
+                    .background(if (on) textWellFill() else SoftColors.ground)
                     .border(1.dp, SoftColors.outline, RoundedCornerShape(50))
                     .clickable(role = Role.Tab) { chip = c }
                     .heightIn(min = 32.dp)

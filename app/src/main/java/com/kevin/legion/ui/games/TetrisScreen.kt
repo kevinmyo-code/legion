@@ -228,7 +228,7 @@ private fun Panel(message: String, busy: Boolean = false, content: @Composable (
             color = SoftColors.text,
             textAlign = TextAlign.Center,
         )
-        if (busy) CircularProgressIndicator(color = GamesTone.onContainer)
+        if (busy) CircularProgressIndicator(color = GamesTone.darkOnContainer) // fixed: the page stays dark
         content()
     }
 }

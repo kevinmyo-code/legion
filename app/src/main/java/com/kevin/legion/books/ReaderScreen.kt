@@ -220,7 +220,7 @@ private fun ChoicePill(label: String, theme: ReaderTheme, selected: Boolean, mod
             .heightIn(min = 44.dp)
             .clip(shape)
             .background(p.page)
-            .border(if (selected) 2.dp else 1.dp, if (selected) BooksTone.onContainer else p.line, shape)
+            .border(if (selected) 2.dp else 1.dp, if (selected) BooksTone.darkOnContainer else p.line, shape)
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -241,7 +241,7 @@ private fun ListenBar(readAloud: ReadAloudUi, actions: ReaderActions) {
             .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(BooksTone.container)
+            .background(BooksTone.darkContainer)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -251,13 +251,13 @@ private fun ListenBar(readAloud: ReadAloudUi, actions: ReaderActions) {
             Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(BooksTone.onContainer)
+                .background(BooksTone.darkOnContainer)
                 .clickable(role = Role.Button, onClick = actions.onListen)
                 .semantics { contentDescription = description },
             contentAlignment = Alignment.Center,
         ) {
             val icon = if (readAloud.playing) R.drawable.ms_pause else R.drawable.ms_play_arrow
-            MsIcon(icon, null, BooksTone.container, size = 18.dp)
+            MsIcon(icon, null, BooksTone.darkContainer, size = 18.dp)
         }
         Column(Modifier.weight(1f)) {
             Text(
@@ -268,14 +268,14 @@ private fun ListenBar(readAloud: ReadAloudUi, actions: ReaderActions) {
             Text(
                 "Device voice · offline",
                 style = MaterialTheme.typography.labelSmall,
-                color = BooksTone.onContainer,
+                color = BooksTone.darkOnContainer,
             )
         }
         Box(
             Modifier
                 .heightIn(min = 36.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(BooksTone.onContainer.copy(alpha = 0.25f))
+                .background(BooksTone.darkOnContainer.copy(alpha = 0.25f))
                 .clickable(role = Role.Button, onClick = actions.onSpeed)
                 .padding(horizontal = 12.dp)
                 .semantics { contentDescription = "Reading speed ${readAloud.speedLabel}" },
@@ -307,7 +307,7 @@ private fun BottomBar(state: ReaderUiState, palette: ReaderPalette, actions: Rea
                     Modifier
                         .fillMaxWidth(state.progress.coerceIn(0f, 1f))
                         .height(4.dp)
-                        .background(BooksTone.onContainer, RoundedCornerShape(2.dp)),
+                        .background(BooksTone.darkOnContainer, RoundedCornerShape(2.dp)),
                 )
             }
         }
@@ -317,8 +317,8 @@ private fun BottomBar(state: ReaderUiState, palette: ReaderPalette, actions: Rea
             val listening = state.readAloud.active
             PillButton(
                 if (listening) "Stop listening" else "Listen",
-                BooksTone.onContainer,
-                BooksTone.container,
+                BooksTone.darkOnContainer,
+                BooksTone.darkContainer,
                 Modifier.weight(1f),
                 if (listening) actions.onStopListening else actions.onListen,
             )
