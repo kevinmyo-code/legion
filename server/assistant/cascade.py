@@ -728,6 +728,8 @@ class WebDoor:
         self.end_requested = False
         # The browser's cancel (`CancelCheck`), asked before each tool.
         self.cancelled = _never
+        # Told when a write committed: the turn is then one the user could have received (N5).
+        self.on_write = lambda: None
         # Section 10: the model said the sentence was not for it, and the code-read signals.
         self.not_for_me = False
         self.addressed: dict[str, bool] = {}
@@ -834,6 +836,8 @@ class WebDoor:
                         text=TOOL_TIMED_OUT.format(name=name), is_error=True, outcome=Outcome.FAILED
                     )
                 ok, outcome, text, guard = not result.is_error, result.outcome, result.text, None
+        if ok and self._writes(name):
+            self.on_write()
         call_id = call.id or f"c{len(self.calls) + 1}"
         # Known at once: whatever fails after this, the turn knows the write went through.
         self.calls.append(DoorCall(name, ok, outcome, text, None, None, 0))
@@ -1059,6 +1063,7 @@ def run_turn(
     filler_audio: FillerAudio | None = None,
     companion_name: str = "",
     cancelled: Callable[[], bool] = _never,
+    on_write: Callable[[], None] = lambda: None,
 ) -> Iterator[ev.Event]:
     """Yields the turn's events. Fills `report` as it goes, so a caller that stops reading (the
     browser hung up) still knows what happened. `cancelled` is asked at every stage boundary: once
@@ -1085,6 +1090,7 @@ def run_turn(
     door = WebDoor(request, conversation_id, turn)
     report.door = door
     door.cancelled = cancelled
+    door.on_write = on_write
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
     speaker.cancelled = cancelled
     speaker.cancelled_often = getattr(cancelled, "often", cancelled)

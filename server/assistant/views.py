@@ -35,11 +35,12 @@ answer here is built from Google's reply, never from the key.
 
 from __future__ import annotations
 
+import functools
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.http import StreamingHttpResponse
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import exceptions, serializers, status
@@ -930,8 +931,10 @@ def _turn_sse(
     held=None,
     reserved_speech=0,
     cancelled=None,
+    answered=None,
 ):
     report = cascade.TurnReport()
+    answered = answered or (lambda: None)
     spoken = turn_input.audio is not None or turn_input.greet
     turn = None
     try:
@@ -947,6 +950,7 @@ def _turn_sse(
             voice=voice,
             companion_name=companion_name,
             cancelled=cancelled or (lambda: False),
+            on_write=answered,
             model_name=voice_engine.text_model(),
             model=model,
             speech=speech,
@@ -954,6 +958,9 @@ def _turn_sse(
         )
         for event in turn:
             yield event.sse()
+            if event.type == "done":
+                # Written to the browser: a re-send of this turn is now a duplicate (N5).
+                answered()
     except GeneratorExit:
         # The browser hung up (an interrupt aborts the request): no further round, tool call or
         # speech starts, and the record says the turn was cut.
@@ -1047,19 +1054,26 @@ TURN_REFUSAL_CODES = {
 BUSY_RETRY_MS = 1000
 
 
-def _first_time(user, turn_id) -> bool:
-    """Marks `turn_id` started for `user`; False when it had already started."""
-    from django.db import IntegrityError
-
+def _answered(user, turn_id) -> bool:
+    """Whether `turn_id` already reached a state `user` could have received (round 3 N5)."""
     from assistant.models import TurnSeen
 
+    return TurnSeen.objects.filter(turn_id=turn_id, user=user).exists()
+
+
+def _mark_answered(user, turn_id) -> None:
+    """Records `turn_id` as answered, once a write in it committed or its `done` was sent; never
+    on arrival, so a turn refused or broken before either is re-sent and runs (round 3 N5)."""
+    from assistant.models import TurnSeen
+
+    if not turn_id:
+        return
     try:
         with transaction.atomic():
-            TurnSeen.objects.create(turn_id=turn_id, user=user)
-    except IntegrityError:
-        return False
-    TurnSeen.objects.filter(at__lt=datetime.now(UTC) - timedelta(days=1)).delete()
-    return True
+            TurnSeen.objects.get_or_create(turn_id=turn_id, user=user)
+        TurnSeen.objects.filter(at__lt=datetime.now(UTC) - timedelta(days=1)).delete()
+    except DatabaseError:
+        cascade.log.warning("assistant cascade: turn mark failed", exc_info=True)
 
 
 class _TurnThrottled(exceptions.APIException):
@@ -1232,7 +1246,7 @@ class AssistantTurnView(_AssistantView):
             return _refuse(request, busy, busy_status, "demo_full")
         reservation = None
         try:
-            if data.get("turn_id") and not _first_time(request.user, data["turn_id"]):
+            if data.get("turn_id") and _answered(request.user, data["turn_id"]):
                 # The page re-sends a `busy` turn with its id; one that already ran is never a
                 # second turn or a second charge.
                 held.release()
@@ -1330,6 +1344,7 @@ class AssistantTurnView(_AssistantView):
                     held,
                     reserved_speech,
                     cascade.CancelCheck(request.user.pk, data.get("turn_id")),
+                    functools.partial(_mark_answered, request.user, data.get("turn_id")),
                 ),
                 content_type="text/event-stream",
             )
