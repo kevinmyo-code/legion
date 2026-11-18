@@ -99,6 +99,7 @@ from agents.runtime.tools import ToolCall, ToolOutcome
 from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
+from assistant.spoken_words import speakable_words
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from devicelogs import web_conversation
 from engine_mcp import cards
@@ -594,10 +595,11 @@ class Speaker:
         self._notices: list[ev.Event] = []
 
     def spoken_text(self, text: str, expressive: bool = False) -> str:
-        """What goes to speech for `text`: its figures rounded like a person says them
+        """What goes to speech for `text`: no path, link or backtick read out (`spoken_words`),
+        its figures rounded like a person says them
         (`spoken_figures`; the exact ones stay in the caption), and its allowed tags only when
         `expressive` (a model sentence or a code line written with one)."""
-        said = spoken_figures.speakable(text, exact=self.exact)
+        said = spoken_figures.speakable(speakable_words(text), exact=self.exact)
         return speech_tags.for_speech(said, expressive=expressive)
 
     def add(self, text: str, expressive: bool = False) -> None:
