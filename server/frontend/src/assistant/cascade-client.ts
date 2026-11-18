@@ -178,6 +178,8 @@ export class CascadeClient {
   /** The gate's own verdict already counted this barge-in as the reply's echo. */
   private bargeCounted = false
   private lastReply = ''
+  /** Turns in a row the engine heard no speech in (noise sent as an utterance). */
+  private noSpeechRun = 0
   private spec: { abort: AbortController; result: Promise<string | null>; samples: number } | null = null
   /** The silence that ended each utterance the models ended (the browser check reads it). */
   eotMs: number[] = []
@@ -621,9 +623,10 @@ export class CascadeClient {
       // in full duplex. Half-duplex: nothing heard while the assistant speaks is kept (spec 19).
       this.detector.push(pcm, this.listening, this.playing && this.fullDuplex)
       if (!this.listening || !this.endpointer) return
-      // The energy endpointer still runs the follow-up window (spec 14, 15) and the length cap.
-      const verdict = this.endpointer.push(pcm)
-      if (verdict === 'lapsed' && !this.speechStarted) this.close(true)
+      // The endpointer runs the follow-up window (spec 14, 15) on the clock and the length cap from
+      // the models' speech; noise alone never holds it open or reaches the cap.
+      const verdict = this.endpointer.push(pcm, this.speechStarted)
+      if (verdict === 'lapsed') this.close(true)
       else if (verdict === 'max') {
         this.detector.reset()
         this.chunks.push(pcm)
@@ -673,6 +676,7 @@ export class CascadeClient {
     if (tone) this.audioIO?.play(closingTone(), TONE_RATE)
     this.rec({ kind: 'mic_closed', reason: tone ? 'window' : 'tap' })
     this.voiceOpen = false
+    this.noSpeechRun = 0
     this.stopListening()
     this.micGeneration += 1
     this.audioIO?.stopMic()
@@ -812,7 +816,8 @@ export class CascadeClient {
   /** After a spoken turn: listen again once the reply has played (spec 14). */
   private settle(spoken: boolean) {
     if (!spoken || !this.voiceOpen) return
-    this.afterReply = 'listen'
+    // Noise the engine heard no words in, twice running: close rather than loop on it.
+    this.afterReply = this.noSpeechRun >= 2 ? 'close' : 'listen'
     if (!this.playing) this.replyDrained()
   }
 
@@ -835,6 +840,7 @@ export class CascadeClient {
       case 'heard': {
         const text = typeof data.text === 'string' ? data.text.trim() : ''
         if (text) {
+          this.noSpeechRun = 0
           this.push({ kind: 'me', text, via: 'spoken', open: false })
           this.heardLineId = this.state.lines[this.state.lines.length - 1].id
         }
@@ -910,7 +916,10 @@ export class CascadeClient {
           if (id !== null) this.set({ lines: this.state.lines.filter((l) => l.id !== id) })
           this.ignoredTurns += 1
           // No speech after a barge-in is the reply's own echo (the self-interrupt count).
-          if (data.ignored === 'no_speech') this.noteHeard('')
+          if (data.ignored === 'no_speech') {
+            this.noSpeechRun += 1
+            this.noteHeard('')
+          }
         }
         const words = typeof data.words === 'string' ? data.words : ''
         if (words) this.push({ kind: 'sys', text: words })

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { CascadeClient, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
+import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
 import { EARLY_TRANSCRIPT, createCascadeDeps } from './deps'
+import { MAX_UTTERANCE_MS, WINDOW_MS } from './endpointer'
 import { pcm16ToBase64 } from './pcm'
 import type { SseEvent } from './sse'
 import { BargeInGate } from './turn/barge-in-gate'
@@ -233,6 +234,59 @@ describe('the models in the conversation', () => {
     await settle()
     expect(t.detector.gate.selfInterrupts).toBe(0)
     expect(t.client.fullDuplex).toBe(true)
+  })
+})
+
+describe('noise (review 2026-11-17: a fan or a TV kept the conversation open)', () => {
+  const NOISE = new Int16Array(320).fill(3000)
+  const nothingHeard = (): TurnStart => ({
+    ok: true,
+    events: stream([
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } },
+      { type: 'done', data: { status: 'nothing_heard', ignored: 'no_speech' } },
+    ]),
+  })
+
+  it('noise the models call no speech lets the window lapse on the clock, and nothing is uploaded', async () => {
+    const t = build([spoken('Hello.')])
+    await open(t)
+    for (let ms = 0; ms < MAX_UTTERANCE_MS + 1000; ms += 20) t.audio.handlers?.onChunk(NOISE)
+    await settle()
+    expect(t.requests).toHaveLength(1)
+    expect(t.audio.micOpen).toBe(false)
+    expect(t.client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: CONVERSATION_CLOSED })
+  })
+
+  it('noise still lapses by the third window (late loud runs it again at most twice)', async () => {
+    const t = build([spoken('Hello.')])
+    await open(t)
+    for (let ms = 0; ms < 3 * WINDOW_MS + 100; ms += 20) t.audio.handlers?.onChunk(NOISE)
+    expect(t.client.getState().mic).toBe('off')
+  })
+
+  it('two turns in a row with no speech in them close the conversation', async () => {
+    const t = build([spoken('Hello.'), nothingHeard(), nothingHeard()])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.client.getState().mic).toBe('on')
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests).toHaveLength(3)
+    expect(t.audio.micOpen).toBe(false)
+    expect(t.client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: CONVERSATION_CLOSED })
+  })
+
+  it('words between them reset the count', async () => {
+    const t = build([spoken('Hello.'), nothingHeard(), spoken('Sure.', {}, [{ type: 'heard', data: { text: 'Hi there' } }]), nothingHeard()])
+    await open(t)
+    for (let i = 0; i < 3; i++) {
+      t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+      await settle()
+      t.audio.handlers?.onPlaying(false)
+      await settle()
+    }
+    expect(t.client.getState().mic).toBe('on')
   })
 })
 
