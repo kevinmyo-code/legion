@@ -8,7 +8,9 @@ const require = createRequire(path.join(process.env.NODE_PATH, 'noop.js'))
 const { chromium } = require('playwright')
 
 const mobile = A.width < 600
-const browser = await chromium.launch()
+const browser = await chromium.launch({
+  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
+})
 const context = await browser.newContext({
   viewport: { width: A.width, height: A.height },
   isMobile: mobile,
@@ -79,5 +81,24 @@ await page.evaluate(() => window.scrollBy(0, Math.round(window.innerHeight * 0.8
 await page.waitForTimeout(600)
 const scrolled = await measure()
 await shot('scrolled')
+
+// With a reply playing and the page scrolled: the Stop control (phone width only).
+let stop = null
+if (A.width < 600) {
+  await page.evaluate(() => window.scrollTo(0, 0))
+  const orb = page.locator('[data-stage="orb"]')
+  await orb.click()
+  const speaking = await orb.evaluate(
+    (el) => new Promise((resolve) => {
+      const end = Date.now() + 30000
+      const tick = () => (/^Interrupt/.test(el.getAttribute('aria-label') || '') ? resolve(true) : Date.now() > end ? resolve(false) : setTimeout(tick, 100))
+      tick()
+    }),
+  )
+  await page.evaluate(() => window.scrollBy(0, Math.round(window.innerHeight * 0.9)))
+  const shown = await page.locator('[data-stage="stop"]').waitFor({ timeout: 5000 }).then(() => true, () => false)
+  await shot('stop')
+  stop = { speaking, shown }
+}
 await browser.close()
-console.log(JSON.stringify({ width: A.width, height: A.height, entered, before, scrolled }))
+console.log(JSON.stringify({ width: A.width, height: A.height, entered, before, scrolled, stop }))
