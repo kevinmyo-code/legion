@@ -51,6 +51,12 @@ route exists. Hence `LEGION_DEMO_TEXT_RESERVE_USD` defaults to 0 (Kevin,
 2026-11-02): typed chat shares the Live session, so one cap applies to both.
 Raise it the day a text-model route exists and `charge_text_call` is wired.
 
+**Since ADR 0102 (2026-11-17) the web has a cascade route** (`POST /api/assistant/turn`): a
+recruiter's turn reserves its worst case per turn (`reserve_cascade_turn`: its text rounds, plus
+speech for a spoken turn), a spoken turn against the voice cap and a typed one against the full
+budget, and gives back the rounds it did not use. The paragraph above still describes the Live
+path, which stays whole behind the switch (`assistant/voice_engine.py`).
+
 ## The defaults, and why (`reasoned`, not a quoted price)
 
 - `LEGION_DEMO_COST_PER_VOICE_MINUTE_USD` = 0.10. Live audio is billed as
@@ -280,7 +286,7 @@ def _release_code(code_id: int, day: date, cents: int) -> None:
 
 
 def _reserve(
-    cents: int, cap: int, counter: str, now: datetime | None, user=None
+    cents: int, cap: int, counter: str | None, now: datetime | None, user=None
 ) -> Reservation | None:
     """Add `cents` to today's reservations if the total stays within `cap`
     and within the caller's capped code, if any. One conditional UPDATE each:
@@ -292,8 +298,9 @@ def _reserve(
     if code is not None and not _reserve_code(code, day, cents):
         return None
     _ensure_day(day)
+    counted = {counter: F(counter) + 1} if counter else {}
     fitted = DemoBudgetDay.objects.filter(day=day, reserved_cents__lte=cap - cents).update(
-        reserved_cents=F("reserved_cents") + cents, **{counter: F(counter) + 1}
+        reserved_cents=F("reserved_cents") + cents, **counted
     )
     if not fitted:
         if code is not None:
@@ -311,7 +318,7 @@ def reserve_voice_mint(now: datetime | None = None, user=None) -> Reservation | 
 
 def charge_text_call(now: datetime | None = None, user=None) -> Reservation | None:
     """Reserve one text-model call against the FULL budget. None: refuse it.
-    Not wired: the web has no text-model route yet (see the module doc)."""
+    The web cascade (ADR 0102) reserves per turn instead (`reserve_cascade_turn`)."""
     lim = limits()
     return _reserve(lim.text_call_cents, lim.budget_cents, "text_calls", now, user)
 
@@ -321,6 +328,78 @@ def charge_web_search(now: datetime | None = None, user=None) -> Reservation | N
     Google is asked. None: refuse it (`BUDGET_USED_UP`)."""
     lim = limits()
     return _reserve(lim.search_cents, lim.budget_cents, "web_searches", now, user)
+
+
+def speech_turn_cents() -> int:
+    return _cents("LEGION_DEMO_COST_PER_SPEECH_TURN_USD")
+
+
+def speech_requests_cents(requests: int) -> int:
+    """`requests` text-to-speech requests, retries included, in whole cents rounded up once for
+    the lot (round 2 turn review 8: speech was reserved flat per turn, not per request)."""
+    raw = settings.LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD
+    try:
+        value = Decimal(str(raw))
+    except InvalidOperation:
+        raise ImproperlyConfigured(
+            f"LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD must be an amount in USD; got {raw!r}."
+        ) from None
+    return math.ceil(value * 100 * max(requests, 0))
+
+
+def reserve_cascade_turn(
+    *,
+    rounds: int,
+    spoken: bool,
+    speech_requests: int = 0,
+    now: datetime | None = None,
+    user=None,
+) -> Reservation | None:
+    """Reserve one web cascade turn's worst case (ADR 0102) before anything is asked of Google:
+    `rounds` text-model calls at `LEGION_DEMO_COST_PER_TEXT_CALL_USD`, plus, for a spoken turn,
+    its speech-to-text and text-to-speech at `LEGION_DEMO_COST_PER_SPEECH_TURN_USD`. A spoken turn
+    is checked against the VOICE cap (ruling 7: text outlives voice), a typed one against the full
+    budget. Counted as one `text_calls` (no new counter, so no migration). None: refuse the turn.
+    `release_unused` gives back the rounds the turn did not use."""
+    lim = limits()
+    cents = (
+        lim.text_call_cents * rounds
+        + (speech_turn_cents() if spoken else 0)
+        + speech_requests_cents(speech_requests)
+    )
+    cap = lim.voice_cap_cents if spoken else lim.budget_cents
+    return _reserve(cents, cap, "text_calls", now, user)
+
+
+def reserve_speech_requests(
+    requests: int, now: datetime | None = None, user=None
+) -> Reservation | None:
+    """Reserve `requests` more text-to-speech requests for a turn already running, against the
+    VOICE cap, just before they are made (round 3 speech S4: a long answer reserves as it goes).
+    Not counted as another call. None: it did not fit, and the rest is shown, not said."""
+    lim = limits()
+    return _reserve(speech_requests_cents(requests), lim.voice_cap_cents, None, now, user)
+
+
+def release_unused(
+    reservation: Reservation,
+    *,
+    rounds_unused: int,
+    speech_unused: bool = False,
+    speech_requests_reserved: int = 0,
+    speech_requests_used: int = 0,
+) -> None:
+    """Give back `rounds_unused` text calls of a cascade turn's reservation, and its speech share
+    when no speech was paid for (no voice in the audio: nothing was sent). Never more than was
+    reserved, never below zero."""
+    cents = max(rounds_unused, 0) * limits().text_call_cents
+    if speech_unused:
+        cents += speech_turn_cents()
+    used = min(max(speech_requests_used, 0), speech_requests_reserved)
+    cents += speech_requests_cents(speech_requests_reserved) - speech_requests_cents(used)
+    cents = min(cents, reservation.cents)
+    if cents > 0:
+        release(Reservation(day=reservation.day, cents=cents, code_id=reservation.code_id))
 
 
 def release(reservation: Reservation) -> None:

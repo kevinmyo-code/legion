@@ -380,7 +380,60 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The engine refused its own pack, so none was sent.
+  /api/assistant/robotic:
+    post:
+      operationId: api_assistant_robotic_create
+      description: |-
+        The `robotic` marker's hands path (voice-persona section 8): a thumbs-down on a reply that
+        sounded robotic. The caller's own conversation record gets the turn number; no words are
+        sent or kept. The spoken path is "that sounded robotic" (`cascade.is_robotic_remark`).
+      summary: Mark a reply as sounding robotic (the turn number only)
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantRoboticRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantRoboticRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantRoboticRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Not this caller's conversation.
   /api/assistant/session:
+    get:
+      operationId: api_assistant_session_retrieve
+      summary: Which voice engine this caller's assistant runs on (live or cascade)
+      tags:
+      - assistant
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantEngine'
+          description: ''
     post:
       operationId: api_assistant_session_create
       summary: 'Start a live conversation: mint a locked Gemini Live token'
@@ -421,6 +474,13 @@ paths:
             visit, also: "Today''s demo budget is used up. Try again tomorrow." For
             a member with `LEGION_MEMBER_DAILY_CAP` set: today''s own spend limit
             is used up.'
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: This caller's assistant runs on the cascade (`GET` says `cascade`);
+            no token is minted.
         '502':
           content:
             application/json:
@@ -474,6 +534,187 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: Too many calls; nothing ran.
+  /api/assistant/transcribe:
+    post:
+      operationId: api_assistant_transcribe_create
+      description: |-
+        Speech to text only, for the page's early start (the phone's speculation, `Speculation.kt`,
+        adapted): at about 300 ms of silence the page sends what was said so far, and when the turn
+        ends with no more speech it sends the words to `POST /api/assistant/turn` as `text` with
+        `spoken`. If the person speaks again the transcript is thrown away. Nothing is answered here,
+        no tool runs and nothing is recorded; a demo visit's budget is charged one speech share.
+      summary: Transcribe what has been said so far (no answer, nothing stored)
+      tags:
+      - assistant
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantTranscribeRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantTranscript'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: This caller is on live voice.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too long.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many, or over budget.
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The words could not be had.
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No Gemini key on this server.
+  /api/assistant/turn:
+    post:
+      operationId: api_assistant_turn_create
+      description: 'text/event-stream, one event per thing that happened: `turn` {conversation_id,
+        turn}; `heard` {text} (a spoken turn''s transcript); `greeting` {kind, text}
+        (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said
+        while a tool runs; `tool` is empty for the acknowledgement); `tool` {name,
+        ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags);
+        `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a
+        filler''s audio); `speech_failed` {reason}; `speech_stopped` {reason} (the
+        rest of the answer is shown, not spoken); `done` {status, final_text, writes_ran,
+        words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure`
+        or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and
+        tools_ms? (a demo visit''s estimated turn cost and each tool''s time)}; `error`
+        {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}:
+        `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`,
+        `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`,
+        `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names
+        the turn for `POST /api/assistant/turn/cancel`.'
+      summary: One assistant turn on the engine's voice pipeline, answered as Server-Sent
+        Events
+      tags:
+      - assistant
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnRequest'
+      security:
+      - cookieAuth: []
+      responses:
+        '200':
+          description: text/event-stream, as described.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnRefusal'
+          description: The body did not fit; nothing ran.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnRefusal'
+          description: No conversation with that id is the caller's.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnRefusal'
+          description: '`live_engine`, `time_limit`, `busy` (the caller''s own earlier
+            turn has not released; send the same request again after `retry_ms`) or
+            `duplicate` (this `turn_id` was already answered). Nothing ran.'
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnRefusal'
+          description: 'The utterance is too long: over MAX_UTTERANCE_SECONDS of 16
+            kHz 16-bit mono PCM, judged on the upload''s size in bytes.'
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnRefusal'
+          description: '`throttled` (too many turns per member, and per address for
+            a demo visit), `demo_full` (every demo slot or this address''s slot is
+            in use), `budget` or `member_cap`. Nothing ran.'
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnRefusal'
+          description: No Gemini key on this server.
+  /api/assistant/turn/cancel:
+    post:
+      operationId: api_assistant_turn_cancel_create
+      description: |-
+        Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
+        and the server only notices a dropped stream at its next write). Marks the turn cancelled in
+        the database, from any worker or instance. The running turn looks at its stage boundaries
+        (before transcription, each model round, each tool, each speech request, and every 250 ms
+        while it waits on speech): from then on it starts no further paid call. What is already in
+        flight runs to its end (one model round, one tool, or the speech requests already sent), and
+        the turn's slot comes free when its stream ends. Idempotent; 204 whether or not the turn is
+        still running; costs nothing; a row stops only the caller's own turn.
+      summary: Stop one of the caller's own turns (idempotent, costs nothing)
+      tags:
+      - assistant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnCancelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnCancelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssistantTurnCancelRequest'
+        required: true
+      security:
+      - cookieAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The body did not fit.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Too many stops in a short time, from this caller or this address.
   /api/auth/csrf:
     get:
       operationId: api_auth_csrf_retrieve
@@ -5032,6 +5273,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The visit's demo household could not be seeded. Nothing created.
+  /api/demo/funnel:
+    post:
+      operationId: api_demo_funnel_create
+      description: |-
+        One step of the demo happened (`demo.funnel`). Anonymous (a page load comes before any
+        visit), throttled per address, and it stores a count only.
+      summary: 'Count one step of the demo (a count only: no visitor, no words)'
+      tags:
+      - demo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoFunnel'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DemoFunnel'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DemoFunnel'
+        required: true
+      security:
+      - {}
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/demo/session:
     get:
       operationId: api_demo_session_retrieve
@@ -13802,6 +14081,43 @@ components:
       required:
       - detail
       - stored_lines
+    AssistantEngine:
+      type: object
+      properties:
+        engine:
+          allOf:
+          - $ref: '#/components/schemas/EngineEnum'
+          description: |-
+            `live`: mint with `POST /api/assistant/session` and talk to Gemini Live. `cascade`: post each utterance or typed message to `POST /api/assistant/turn`; the engine transcribes, answers with its tools and speaks (ADR 0102). Decided by the server per role; the other door refuses with 409.
+
+            * `live` - live
+            * `cascade` - cascade
+        companion_name:
+          type: string
+        voice_name:
+          type: string
+        input_audio_rate:
+          type: integer
+          description: '`cascade`: the utterance is 16-bit mono PCM at this rate.'
+        output_audio_rate:
+          type: integer
+          description: '`cascade`: the reply''s audio is 16-bit mono PCM at this rate.'
+        max_utterance_seconds:
+          type: integer
+          description: '`cascade`: the longest utterance the turn route accepts.'
+        session_minutes:
+          type: integer
+          nullable: true
+          description: How long one conversation may last, for a recruiter's demo
+            visit (`LEGION_DEMO_MAX_SESSION_MINUTES`); null for a member.
+      required:
+      - companion_name
+      - engine
+      - input_audio_rate
+      - max_utterance_seconds
+      - output_audio_rate
+      - session_minutes
+      - voice_name
     AssistantPack:
       type: object
       properties:
@@ -13846,6 +14162,21 @@ components:
           type: string
         result_prefix:
           type: string
+    AssistantRoboticRequest:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+          description: The caller's own conversation.
+        turn:
+          type: integer
+          maximum: 10000
+          minimum: 0
+          description: The reply's turn.
+      required:
+      - conversation_id
+      - turn
     AssistantSession:
       type: object
       properties:
@@ -13998,6 +14329,108 @@ components:
       - outcome
       - response
       - text
+    AssistantTranscribeRequest:
+      type: object
+      properties:
+        audio:
+          type: string
+          format: uri
+          description: 'What has been said so far: raw 16-bit little-endian mono PCM
+            at 16 kHz, at most 28 seconds. Never stored.'
+      required:
+      - audio
+    AssistantTranscript:
+      type: object
+      properties:
+        text:
+          type: string
+          description: The words; empty for none.
+        ms:
+          type: integer
+          description: How long the transcription took.
+      required:
+      - ms
+      - text
+    AssistantTurnCancelRequest:
+      type: object
+      properties:
+        turn_id:
+          type: string
+          format: uuid
+          description: The id the browser gave the turn to stop.
+      required:
+      - turn_id
+    AssistantTurnRequest:
+      type: object
+      properties:
+        audio:
+          type: string
+          format: uri
+          description: 'One utterance: raw 16-bit little-endian mono PCM at 16 kHz,
+            no header, at most 28 seconds. Send this OR `text`. Never stored.'
+        text:
+          type: string
+          description: A typed message, answered in text only (no speech). Send this
+            OR `audio`.
+          maxLength: 2000
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 'The conversation this turn continues: the `conversation_id`
+            of an earlier turn''s `turn` event. Omit it to start a new conversation.'
+        utc_offset_minutes:
+          type: integer
+          maximum: 840
+          minimum: -720
+          nullable: true
+          description: As for `POST /api/assistant/session`.
+        client_now_ms:
+          type: integer
+          nullable: true
+          description: As for `POST /api/assistant/session`; read when a conversation
+            starts.
+        spoken:
+          type: boolean
+          default: false
+          description: 'With `text`: the page transcribed the utterance early (`POST
+            /api/assistant/transcribe`) and the answer is spoken, as for `audio`.'
+        barge_in:
+          type: boolean
+          description: 'With `audio`: the utterance began while a reply was playing
+            (a barge-in). Only such a turn is checked for the reply heard back (an
+            echo): one that repeats the reply that was playing ends as no speech.
+            A turn without it is never checked.'
+        turn_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The browser's own id for this turn, so it can be stopped with
+            `POST /api/assistant/turn/cancel`.
+        tour:
+          type: integer
+          maximum: 20
+          minimum: 0
+          nullable: true
+          description: 'A demo visit''s one-minute tour: the beat to play (from 0).
+            With `audio` or `text`, what was said or typed during the tour: ''skip''
+            plays this beat, ''stop'' ends the tour, anything else is a question and
+            the tour ends.'
+        greet:
+          type: boolean
+          default: false
+          description: 'The greeting on open, spoken: no `audio` or `text` with it.
+            A member''s is built from their greeting facts; a demo visit''s is scripted.'
+        greeting_history:
+          type: string
+          description: 'With `greet`: JSON the page keeps for the greeting''s caps,
+            `{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`.'
+          maxLength: 2000
+        preface:
+          type: string
+          description: A hidden line the page puts ahead of the person's words (the
+            demo's opener). Never shown, never recorded as theirs.
+          maxLength: 400
     AverageSpend:
       type: object
       properties:
@@ -16872,6 +17305,17 @@ components:
           pattern: ^[A-Za-z0-9_.-]{1,64}$
       required:
       - code
+    DemoFunnel:
+      type: object
+      properties:
+        event:
+          $ref: '#/components/schemas/EventEnum'
+        ref:
+          type: string
+          default: ''
+          maxLength: 64
+      required:
+      - event
     DemoRefusal:
       type: object
       properties:
@@ -17211,6 +17655,14 @@ components:
       - weight_lbs
       - weight_source
       - words
+    EngineEnum:
+      enum:
+      - live
+      - cascade
+      type: string
+      description: |-
+        * `live` - live
+        * `cascade` - cascade
     EvaluatedOnEnum:
       enum:
       - engine
@@ -17366,6 +17818,24 @@ components:
       - provenance
       - title
       - updated_at
+    EventEnum:
+      enum:
+      - page_load
+      - orb_tap
+      - first_word
+      - turns_3
+      - tour_started
+      - tour_finished
+      - resume_opened
+      type: string
+      description: |-
+        * `page_load` - page_load
+        * `orb_tap` - orb_tap
+        * `first_word` - first_word
+        * `turns_3` - turns_3
+        * `tour_started` - tour_started
+        * `tour_finished` - tour_finished
+        * `resume_opened` - resume_opened
     EventSkip:
       type: object
       properties:
@@ -25033,6 +25503,67 @@ components:
       - day
       - trend_lbs
       - weight_lbs
+    TurnRefusal:
+      type: object
+      description: |-
+        A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
+        acts on (`TURN_REFUSAL_CODES`).
+      properties:
+        detail:
+          type: string
+          description: What did not happen, in words to show.
+        code:
+          allOf:
+          - $ref: '#/components/schemas/TurnRefusalCodeEnum'
+          description: |-
+            What the page does next.
+
+            * `bad_request` - bad_request
+            * `budget` - budget
+            * `busy` - busy
+            * `demo_full` - demo_full
+            * `duplicate` - duplicate
+            * `live_engine` - live_engine
+            * `member_cap` - member_cap
+            * `no_conversation` - no_conversation
+            * `no_key` - no_key
+            * `throttled` - throttled
+            * `time_limit` - time_limit
+            * `too_long` - too_long
+        retry_ms:
+          type: integer
+          description: 'With `busy`: when to send the same request again.'
+      required:
+      - code
+      - detail
+    TurnRefusalCodeEnum:
+      enum:
+      - bad_request
+      - budget
+      - busy
+      - demo_full
+      - duplicate
+      - live_engine
+      - member_cap
+      - no_conversation
+      - no_key
+      - throttled
+      - time_limit
+      - too_long
+      type: string
+      description: |-
+        * `bad_request` - bad_request
+        * `budget` - budget
+        * `busy` - busy
+        * `demo_full` - demo_full
+        * `duplicate` - duplicate
+        * `live_engine` - live_engine
+        * `member_cap` - member_cap
+        * `no_conversation` - no_conversation
+        * `no_key` - no_key
+        * `throttled` - throttled
+        * `time_limit` - time_limit
+        * `too_long` - too_long
     TurnRequest:
       type: object
       properties:

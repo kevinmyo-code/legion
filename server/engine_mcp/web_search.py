@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from brief.news import _web_link
 from ingest import statements
 from ingest.drive import _OPENER, Response, Transport
+from legion import deadline
 
 TIMEOUT_SECONDS = 10
 MAX_SOURCES = 5
@@ -88,7 +89,7 @@ def request_body(query: str) -> bytes:
 
 def _transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> Response:
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as reply:
+    with _OPENER.open(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 

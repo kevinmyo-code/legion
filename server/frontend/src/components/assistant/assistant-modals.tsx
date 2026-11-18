@@ -29,7 +29,9 @@ export function ModalVoiceBar() {
   const { client, state, name } = useAssistant()
   const live = state.phase === 'connecting' || state.phase === 'live'
   if (!live && state.mic === 'off') return null
-  const speaking = state.activity === 'speaking'
+  // Thinking too: an answer that opens a card is often still being worked out, and the modal
+  // covers the stage's orb, so this is the one tap that stops him (the 2026-11-17 browser run).
+  const busy = state.activity === 'speaking' || state.activity === 'thinking'
   const voiceOn = state.mic !== 'off'
   const words = statusWords(state, name) || (voiceOn ? 'Listening' : `${name} is here`)
   return (
@@ -40,8 +42,17 @@ export function ModalVoiceBar() {
       <p role="status" className="min-w-0 flex-1 truncate text-[0.875rem]">
         {words}
       </p>
-      {speaking && (
-        <button type="button" onClick={() => client.interrupt()} className="h-10 rounded-full px-3 text-sm">
+      {busy && (
+        <button
+          type="button"
+          onClick={(event) => {
+            // This button goes once he stops: keep the keyboard in the dialog, on its Close.
+            const dialog = event.currentTarget.closest('[role="dialog"]')
+            client.interrupt()
+            dialog?.querySelector<HTMLElement>('button[aria-label="Close"]')?.focus()
+          }}
+          className="h-10 rounded-full px-3 text-sm"
+        >
           Interrupt
         </button>
       )}

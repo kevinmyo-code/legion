@@ -254,3 +254,34 @@ class DemoCodeDay(models.Model):
 
     def __str__(self) -> str:
         return f"Demo code day {self.day}: {self.reserved_cents} cents reserved"
+
+
+class DemoFunnelDay(models.Model):
+    """How many times a step of the demo happened on one UTC day, per `ref` tag (Kevin,
+    2026-11-17: about 30 page loads and one entry since 2026-11-06, so the first ten seconds are
+    the question). A counter, nothing else: no visitor, no address, no words, no time of day.
+    Kept `VISIT_RETENTION_DAYS` like the visit records (`prune_demo_visitors`)."""
+
+    EVENTS = (
+        "page_load",
+        "orb_tap",
+        "first_word",
+        "turns_3",
+        "tour_started",
+        "tour_finished",
+        "resume_opened",
+    )
+
+    day = models.DateField()
+    ref = models.CharField(max_length=32, blank=True, default="")
+    event = models.CharField(max_length=32)
+    count = models.IntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["day", "ref", "event"], name="demo_funnel_unique"),
+            models.CheckConstraint(condition=models.Q(count__gte=0), name="demo_funnel_nonneg"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Demo funnel {self.day} {self.ref or '-'} {self.event}: {self.count}"

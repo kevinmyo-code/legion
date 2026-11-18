@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import {
   DEMO_SESSION_KEY,
@@ -13,7 +13,14 @@ import {
   type DemoProjectSection,
 } from '@/api/demo'
 import { useMe } from '@/api/queries'
-import { AssistantProvider, UNNAMED, useAssistant, type ChatCopy } from '@/assistant/assistant-context'
+import {
+  AssistantProvider,
+  ENGINE_QUERY,
+  UNNAMED,
+  useAssistant,
+  useAssistantEngine,
+  type ChatCopy,
+} from '@/assistant/assistant-context'
 import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { AssistantModals } from '@/components/assistant/assistant-modals'
 import { usePresenter } from '@/components/assistant/cards/presenter-context'
@@ -21,6 +28,8 @@ import { RESUME_ALT } from '@/components/assistant/cards/resume'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { useSurface } from '@/lib/surface'
+import { postFunnel } from '@/assistant/deps'
+import { VoiceStage } from '@/components/demo/voice-stage'
 import { PhoneSection } from '@/screens/try-phone'
 
 /**
@@ -95,31 +104,35 @@ const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)', voiceFirs
 export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [entering, setEntering] = useState(code !== undefined)
+  // The link's code, kept for the orb's tap (voice-first, Kevin 2026-11-17): the visit is entered
+  // by the tap that opens the audio, not on load. It leaves the address bar at once, so it is never
+  // in the history or a copied URL.
+  const [linkCode] = useState(code)
   const [linkError, setLinkError] = useState<string | null>(null)
-  const started = useRef(false)
+  const counted = useRef(false)
 
-  // The resume's direct link. Submitted once (a double effect must not spend
-  // two of the per-IP tries), and the code leaves the address bar before the
-  // answer is back, so it is never in the history or a copied URL.
   useEffect(() => {
-    if (code === undefined || started.current) return
-    started.current = true
-    void navigate({ to: '/try', search: refTag ? { ref: refTag } : {}, replace: true })
-    void enterDemo(code, refTag).then(async (result) => {
-      if (result.ok) {
-        await queryClient.invalidateQueries()
-      } else {
-        setLinkError(result.message)
-      }
-      setEntering(false)
-    })
-  }, [code, refTag, navigate, queryClient])
+    if (!counted.current) {
+      counted.current = true
+      postFunnel('page_load', refTag)
+    }
+    if (code !== undefined) void navigate({ to: '/try', search: refTag ? { ref: refTag } : {}, replace: true })
+  }, [code, refTag, navigate])
 
-  const session = useDemoSession(!entering)
+  const session = useDemoSession(true)
   const me = useMe()
   const recruiter = session.data?.role === 'recruiter'
-  const member = me.data?.signedIn === true
+  // A visit's own session is signed in too: a member is someone signed in who is not a visitor.
+  // Never decided while the tap is entering: entering refetches both, and `me` landing first
+  // briefly read the new visitor as a member, which unmounted the orb mid-tap (review item 2).
+  const [entering, setEntering] = useState(false)
+  const entryToken = useRef(0)
+  const member = me.data?.signedIn === true && !recruiter && !entering
+  // The engine's switch (ADR 0102): a visit whose engine is Live gets the Live dock page, so a
+  // server-side rollback needs no new web build. Asked once a visit exists (it is the visit's own
+  // answer); before that, the tap's entry asks it before any greeting (`enter` below).
+  const engine = useAssistantEngine(recruiter)
+  const liveVisit = recruiter && engine.data?.engine === 'live'
 
   // When the visit runs out, ask again, so the page goes back to the code box
   // instead of showing an assistant that will refuse.
@@ -132,18 +145,52 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
     return () => clearTimeout(timer)
   }, [expiresAt, queryClient])
 
-  if (entering || session.isPending || me.isPending) {
+  const awaitingEngine = recruiter && engine.isPending
+  if (!member && !liveVisit && !linkError && !awaitingEngine && (linkCode !== undefined || recruiter)) {
+    // Every visitor gets the voice stage (Kevin, 2026-11-17): a link with its code (the tap enters),
+    // a reload of a visit, or a code typed in the box. One branch, so entering never remounts it.
+    return (
+      <VoiceFirstVisit
+        refTag={refTag}
+        entered={recruiter}
+        expiresAt={expiresAt}
+        enter={async (signal) => {
+          // Each entry is its own: one the conversation gave up on (aborted) never touches the page.
+          const token = ++entryToken.current
+          const current = () => token === entryToken.current && !signal.aborted
+          setEntering(true)
+          try {
+            const result = await enterDemo(linkCode ?? '', refTag, signal)
+            if (!current()) return false
+            if (!result.ok) {
+              setLinkError(result.message)
+              return false
+            }
+            // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
+            const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
+            if (!current()) return false
+            await queryClient.invalidateQueries()
+            return current() && chosen?.engine !== 'live'
+          } finally {
+            if (token === entryToken.current) setEntering(false)
+          }
+        }}
+      />
+    )
+  }
+
+  if (session.isPending || me.isPending || awaitingEngine) {
     return (
       <Shell>
         <p role="status" className="rc-status">
-          {entering ? 'Opening the demo…' : 'Checking your access…'}
+          Checking your access…
         </p>
       </Shell>
     )
   }
 
   if (recruiter) {
-    return <RecruiterPage mode="visitor" expiresAt={session.data?.expires_at} />
+    return <RecruiterPage mode="visitor" expiresAt={session.data?.expires_at} refTag={refTag} />
   }
   if (member) {
     return <RecruiterPage mode="preview" />
@@ -168,15 +215,24 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
  * pinned dock beside the column (so nothing is laid out under it), on a phone
  * the Ask bar pinned to the bottom of the column.
  */
-function Shell({ children, assistant = false }: { children: ReactNode; assistant?: boolean }) {
+function Shell({
+  children,
+  assistant = false,
+  dock = true,
+}: {
+  children: ReactNode
+  assistant?: boolean
+  /** False on the voice-first page: its stage is the conversation, so no second dock or bar. */
+  dock?: boolean
+}) {
   const desk = useSurface() === 'workbench'
   const page = (
     <div className="recruiter rc-layout">
       <div className="rc-column rc-prose">
         <div className="rc-inner">{children}</div>
-        {assistant && !desk && <FamilyAssistant launcher="bar" />}
+        {assistant && dock && !desk && <FamilyAssistant launcher="bar" />}
       </div>
-      {assistant && desk && <AssistantDock pinned />}
+      {assistant && dock && desk && <AssistantDock pinned />}
     </div>
   )
   // The diagrams and the resume open over the whole page (demo-modals), from the conversation.
@@ -227,7 +283,69 @@ function expiryWords(iso: string | undefined): string | null {
   return `Your demo access lasts until ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`
 }
 
-function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expiresAt?: string }) {
+/**
+ * A visit opened from a link with its code (voice-first, Kevin 2026-11-17): one provider for the
+ * whole page, so the tap on the orb that enters the visit and unlocks the audio is the same
+ * conversation that then runs. Before the tap: the orb and its line. After: the page below it.
+ */
+function VoiceFirstVisit({
+  refTag,
+  entered,
+  expiresAt,
+  enter,
+}: {
+  refTag?: string
+  entered: boolean
+  expiresAt?: string
+  enter: (signal: AbortSignal) => Promise<boolean>
+}) {
+  // A browser that already holds a visit (a reload) is not entered again by the tap.
+  const enteredRef = useRef(entered)
+  const enterRef = useRef(enter)
+  useEffect(() => {
+    enteredRef.current = entered
+    enterRef.current = enter
+  }, [entered, enter])
+  const queryClient = useQueryClient()
+  const voiceFirst = useMemo(
+    () => ({
+      prepare: (signal: AbortSignal) => (enteredRef.current ? Promise.resolve(true) : enterRef.current(signal)),
+      funnelRef: refTag ?? '',
+      sessionMinutes: 5,
+      // The server switched this visit to Live mid-visit: ask again, and `TryScreen` swaps pages.
+      onEngineLive: () => void queryClient.invalidateQueries({ queryKey: ENGINE_QUERY.queryKey }),
+    }),
+    [refTag, queryClient],
+  )
+  return (
+    <AssistantProvider
+      voiceFirst={voiceFirst}
+      continueTurn={CONTINUE_TURN}
+      sessionLimit={VISITOR_SESSION_ENDED}
+      copy={VISITOR_COPY}
+    >
+      {entered ? <VisitorBody expiresAt={expiresAt} /> : (
+        <Shell assistant dock={false}>
+          <VoiceStage />
+        </Shell>
+      )}
+    </AssistantProvider>
+  )
+}
+
+function VisitorBody({ expiresAt }: { expiresAt?: string }) {
+  const content = useDemoContent(true)
+  const access = <AccessNote expiry={expiryWords(expiresAt)} />
+  const loaded = content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
+  return (
+    <Shell assistant dock={false}>
+      <VoiceStage content={loaded} />
+      {loaded ? <Sections content={loaded} access={access} ask={false} /> : access}
+    </Shell>
+  )
+}
+
+function RecruiterPage({ mode, expiresAt, refTag }: { mode: 'visitor' | 'preview'; expiresAt?: string; refTag?: string }) {
   const content = useDemoContent(true)
   // The way into the app is a visitor's only (ticket 13): a member's preview
   // has no copy of the household to send them to, and no visit to run out.
@@ -261,6 +379,7 @@ function RecruiterPage({ mode, expiresAt }: { mode: 'visitor' | 'preview'; expir
 
   return (
     <AssistantProvider
+      funnelRef={mode === 'visitor' ? (refTag ?? '') : undefined}
       openingTurn={mode === 'visitor' ? OPENING_TURN : undefined}
       continueTurn={mode === 'visitor' ? CONTINUE_TURN : undefined}
       sessionLimit={mode === 'visitor' ? VISITOR_SESSION_ENDED : undefined}
@@ -310,7 +429,7 @@ function propertiesHeading(count: number): string {
   return count === 1 ? 'One property' : `${word} properties`
 }
 
-function Sections({ content, access }: { content: DemoContent; access: ReactNode }) {
+function Sections({ content, access, ask = true }: { content: DemoContent; access: ReactNode; ask?: boolean }) {
   const { hero, look_for: lookFor, work, experience, links, assets, phone, legion } = content
   const name = content.name?.trim() || 'LEGION'
   const hasPhone = phone !== undefined && phone.clips.length > 0
@@ -339,7 +458,8 @@ function Sections({ content, access }: { content: DemoContent; access: ReactNode
             {hero.title}
           </h1>
           <p className="rc-lead">{hero.lead}</p>
-          <AskPrompt />
+          {/* The voice-first page has its stage above: no second way in. */}
+          {ask && <AskPrompt />}
           {hero.facts.length > 0 && (
             <p className="rc-dateline">
               {/* One dateline: the facts run on, a middle dot before each but the first (CSS). */}

@@ -18,6 +18,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from legion import deadline
+
 RECALLS_URL = "https://api.nhtsa.gov/recalls/recallsByVehicle"
 TIMEOUT_SECONDS = 8
 USER_AGENT = "LEGION engine (household assistant)"
@@ -57,7 +59,7 @@ def fetch_recalls(make: str, model: str, year: int) -> list[dict]:
         f"{RECALLS_URL}?{query}", headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as response:  # noqa: S310
             raw = response.read()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise RecallLookupFailed(f"NHTSA could not be reached ({type(exc).__name__})") from exc

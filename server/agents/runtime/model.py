@@ -16,12 +16,14 @@ contents, tool schemas and thought signatures, and is not built (plan section 13
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
+
 
 API = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -133,6 +135,18 @@ def event_from_json(raw: dict) -> ModelEvent:
 # =============================================================================
 
 
+def _error_words(exc) -> str:
+    """Google's own error message for an HTTP error (": <message>"), or "": the speech client
+    decides from it whether a voice name was refused (round 3 speech S3). Google's message names
+    the field or voice at fault; it never echoes the key or the request's text."""
+    try:
+        raw = exc.read(2048)
+        message = json.loads(raw.decode("utf-8", "replace"))["error"]["message"]
+    except Exception:  # noqa: BLE001 - no body, or not Google's shape: the code alone
+        return ""
+    return f": {str(message)[:200]}" if message else ""
+
+
 class UrllibTransport:
     """The stdlib transport. `lines` streams the body line by line; `request` is one plain call.
     Both raise `ModelFailure` with the HTTP status only."""
@@ -142,12 +156,16 @@ class UrllibTransport:
         try:
             resp = urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - fixed https host
         except urllib.error.HTTPError as exc:
-            raise ModelFailure(f"Gemini answered HTTP {exc.code}") from None
+            raise ModelFailure(f"Gemini answered HTTP {exc.code}{_error_words(exc)}") from None
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
             raise ModelFailure(f"Gemini could not be reached ({type(exc).__name__})") from None
         try:
             yield from resp
-        except TimeoutError as exc:
+        except (OSError, http.client.HTTPException) as exc:
+            # A timeout, a reset connection, a cut-off body or a TLS error mid-response: the caller
+            # retries or says it in words (blind review 2026-11-17, round 2 finding 6). `OSError`
+            # covers `TimeoutError`, `ConnectionError` and `ssl.SSLError`; `IncompleteRead` is an
+            # `HTTPException`.
             raise ModelFailure(f"Gemini stopped answering ({type(exc).__name__})") from None
         finally:
             resp.close()

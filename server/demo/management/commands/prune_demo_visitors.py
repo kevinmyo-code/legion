@@ -97,9 +97,13 @@ class Command(BaseCommand):
         records = prune_visit_records()
         runs = prune_runs()
         traces = sum(prune_agent_traces().values())
+        from demo import funnel
+
+        counts = funnel.prune(VISIT_RETENTION_DAYS)
         self.stdout.write(
             f"Deleted {n_households} expired demo visit household(s) ({rows} rows, visitors "
             f"included) and {n_legacy} older visitor(s) with their tokens, and {records} visit "
             f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, and {runs} procedure "
-            f"run(s) past retention, and {traces} agent trace row(s) past retention."
+            f"run(s) past retention, and {traces} agent trace row(s) past retention, and "
+            f"{counts} funnel count row(s) older than {VISIT_RETENTION_DAYS} days."
         )

@@ -46,6 +46,8 @@ from dataclasses import dataclass
 
 from django.core.cache import cache
 
+from legion import deadline
+
 # The phone's `location/AreaInfo.kt` NWS_USER_AGENT, byte for byte.
 USER_AGENT = "(LEGION voice assistant, https://github.com/kevinmyo-code/legion)"
 TIMEOUT_SECONDS = 8
@@ -96,7 +98,7 @@ def _fetch(url: str, headers: dict[str, str] | None = None) -> bytes:
         url, headers={"User-Agent": USER_AGENT, **(headers or {})}, method="GET"
     )
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as response:  # noqa: S310
             return response.read()
     except urllib.error.HTTPError as exc:
         raise SourceFailed(f"answered with an error ({exc.code})") from exc

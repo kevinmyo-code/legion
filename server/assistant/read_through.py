@@ -43,6 +43,9 @@ altogether, and `morning_briefing` calls `brief_latest`.
   Postgres, not the cache: the engine runs on several Cloud Run instances, and a per-process
   cache would let a write on another instance through. A call with no `turn` (a tab from before
   the field) marks the whole conversation, and a check with no `turn` reads any mark.
+- **The web cascade** (`POST /api/assistant/turn`, ADR 0102): one HTTP request is one turn, so
+  the request flag `before_tool` sets is the turn's taint; the turn is also marked with its number
+  (the count of the person's earlier turns on the record), never None.
 - **Fail closed, both ways.** The mark is written BEFORE the third-party tool runs
   (`before_tool`, called by `run_engine_tool`). If that write fails, the tool does not run (no
   web text exists to remember) and the conversation goes into this process's `_UNMARKED`, so
