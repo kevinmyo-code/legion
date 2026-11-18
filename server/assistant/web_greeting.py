@@ -42,22 +42,23 @@ MAX_AVOID_CHARS = 80
 MAX_AVOID_LINES = 3
 
 # The demo's opening (Kevin, 2026-11-17: the old hello ran far too long for a first visit). About
-# five seconds: who is speaking, one thing to ask, and the recording notice as
-# one short clause (Kevin's 2026-11-03 ruling: say conversations are recorded to improve the
-# assistant; never the word "train"). The full notice stays on screen by the mic. Spoken from code,
-# word for word, and kept in memory once made so it starts inside the tap.
+# five seconds: who is speaking, one thing to ask, and the recording notice as one short clause
+# (Kevin's 2026-11-03 ruling: say conversations are recorded to improve the assistant; never the
+# word "train"). The full notice stays on screen by the mic. Spoken from code, word for word, and
+# kept in memory once made so it starts inside the tap. Measured 7.1 to 8.0 s at 22 words
+# (2026-11-17), so every greeting, scripted or model-worded, keeps to `MAX_GREETING_WORDS`.
+MAX_GREETING_WORDS = 14
 RECRUITER_OPENING = (
-    "Hi, I'm {who}. <breath> Ask me about him, or take the one-minute tour. This chat is "
-    "recorded to improve me."
+    "I'm {who}. <breath> Ask about {whom} or the tour. Chats are recorded to improve me."
 )
 
 
 def recruiter_hello(name: str = "") -> str:
     """The opening in the companion's own name (never a name written into copy)."""
     name = (name or "").strip()
-    return RECRUITER_OPENING.format(
-        who=f"{name}, Kevin's assistant" if name else "Kevin's assistant"
-    )
+    if name:
+        return RECRUITER_OPENING.format(who=name, whom="Kevin")
+    return RECRUITER_OPENING.format(who="Kevin's assistant", whom="him")
 
 
 RECRUITER_HELLO = recruiter_hello()
@@ -84,7 +85,7 @@ Your one subject: {subject}. Its facts are the line marked {lead_mark} below.
 Every other line is background only: do not mention it, and money least of all.
 
 How it sounds, for this greeting only:
-- One short sentence, fifteen words at most, and one clause: no "and" joining a second thought. Casual and dry, the way an old friend says hello, not a status report. Plain American English.
+- One short sentence, twelve words at most, and one clause: no "and" joining a second thought. Casual and dry, the way an old friend says hello, not a status report. Plain American English.
 - Go straight to the subject, no time-of-day greeting first. React to it in your own words, the reaction first; never read its facts out or list them.
 - State no figure at all: no amount, no count, no percentage, in digits or in words. React to the subject instead.
 - React as if you just found out. You know nothing of earlier days, so nothing may sound like it happened before, and say no day count or timing the facts do not give.

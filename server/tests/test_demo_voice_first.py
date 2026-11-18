@@ -281,7 +281,8 @@ def test_the_opening_is_short_names_the_tour_and_the_recording_and_never_says_tr
     line = strip(web_greeting.recruiter_hello("Alfred"))
     # About five seconds spoken (2026-11-17: 7.1 to 8.0 s measured at 22 words).
     assert len(line.split()) <= web_greeting.MAX_GREETING_WORDS
-    assert len(strip(web_greeting.recruiter_hello("")).split()) <= web_greeting.MAX_GREETING_WORDS + 1
+    unnamed = strip(web_greeting.recruiter_hello(""))
+    assert len(unnamed.split()) <= web_greeting.MAX_GREETING_WORDS + 1
     assert "tour" in line and "recorded" in line
     assert "train" not in line.lower()
     assert web_greeting.recruiter_hello("").startswith("I'm Kevin's assistant.")

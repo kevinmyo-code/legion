@@ -1887,7 +1887,10 @@ def greeting_states_a_figure(text: str) -> bool:
 
 
 def greeting_is_honest(text: str) -> bool:
-    """A model-worded greeting may state no figure and claim no change."""
+    """A model-worded greeting may state no figure, claim no change, and run no longer than
+    `web_greeting.MAX_GREETING_WORDS` spoken words (2026-11-17: about five seconds)."""
+    if len(speech_tags.untagged(text).split()) > web_greeting.MAX_GREETING_WORDS:
+        return False
     return not greeting_states_a_figure(text) and not claims_unbacked_outcome(text, [])
 
 

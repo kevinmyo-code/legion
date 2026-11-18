@@ -260,10 +260,11 @@ def test_a_transcription_retry_and_the_greetings_fetch_are_reserved(visitor, eng
 
 
 def test_every_scripted_greeting_line_is_short():
-    from assistant import web_greeting
+    from assistant import speech_tags, web_greeting
 
     for line in (*web_greeting.ACK_LINES, web_greeting.recruiter_hello("Alfred")):
-        assert len(line.split()) <= web_greeting.MAX_GREETING_WORDS, line
+        spoken = speech_tags.untagged(line)
+        assert len(spoken.split()) <= web_greeting.MAX_GREETING_WORDS, line
 
 
 @pytest.mark.parametrize(
