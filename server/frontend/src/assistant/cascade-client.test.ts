@@ -686,6 +686,27 @@ describe('CascadeClient', () => {
     expect(requests).toHaveLength(2)
   })
 
+  it('speech_stopped: the rest is on screen, the words keep coming, and the turn ends as usual', async () => {
+    const said: SseEvent[] = [
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } },
+      { type: 'sentence', data: { text: 'First part.' } },
+      { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([5])), rate: 24000 } },
+      { type: 'speech_stopped', data: { reason: 'speech_budget' } },
+      { type: 'sentence', data: { text: 'Second part.' } },
+      { type: 'done', data: { status: 'done' } },
+    ]
+    const { client, audio } = build([greeting(), { ok: true, events: stream(said) }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    const lines = client.getState().lines
+    expect(lines.filter((l) => l.kind === 'sys').map((l) => l.text)).toContain('The rest is on screen.')
+    expect(lines.filter((l) => l.kind === 'ai').at(-1)).toMatchObject({ text: 'First part. Second part.' })
+    drained(audio)
+    expect(client.getState().mic).toBe('on')
+  })
+
   it('sends the browser record only what the engine cannot know', async () => {
     const { client, audio, recorded } = build([greeting()])
     await open(client, audio)

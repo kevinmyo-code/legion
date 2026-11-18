@@ -7,6 +7,7 @@ import {
   ENDED_LOCKED,
   ENTRY_STALLED,
   TONE_RATE,
+  SPEECH_STOPPED,
   TURN_STALLED,
   UNREACHABLE,
   closingTone,
@@ -1039,6 +1040,11 @@ export class CascadeClient {
         }
         const words = typeof data.words === 'string' ? data.words : ''
         if (words) this.push({ kind: 'sys', text: words })
+        return open
+      }
+      case 'speech_stopped': {
+        // The turn ran out of its speech allowance: the words keep coming, on screen only.
+        this.push({ kind: 'sys', text: SPEECH_STOPPED })
         return open
       }
       case 'error': {
