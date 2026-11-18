@@ -126,6 +126,16 @@ describe('loadTurnDetector', () => {
     expect(detector!.smartAvailable).toBe(true)
   })
 
+  it('loads the second model only once the first is ready, so the runtime wasm is fetched once', async () => {
+    const { makeWorker, made } = fakeWorkers()
+    const pending = loadTurnDetector({ makeWorker, sileroUrl: '/turn/s.onnx', smartUrl: '/turn/t.onnx' }, 1000)
+    expect(made).toHaveLength(1)
+    const detector = await pending
+    if (detector) opened.push(detector)
+    expect(made).toHaveLength(2)
+    expect(detector!.smartAvailable).toBe(true)
+  })
+
   it('falls back to the energy threshold when Silero is too slow here', async () => {
     const { detector, made } = await load({ sileroMs: 40 })
     expect(detector).toBeNull()

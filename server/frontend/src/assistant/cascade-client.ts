@@ -367,6 +367,8 @@ export class CascadeClient {
     void this.deps.turnDetector().then(
       (detector) => {
         if (!detector) return
+        // Loaded after the page let go of this client: its workers go too.
+        if (this.disposed) return detector.dispose()
         this.detector = detector
         detector.setHandlers({
           onStart: () => this.onSpeechStart(),
@@ -493,6 +495,10 @@ export class CascadeClient {
     if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide)
     this.audioIO?.dispose()
     this.audioIO = null
+    // The models' two workers live as long as the client, not the page (one set per mount).
+    this.detector?.dispose()
+    this.detector = null
+    this.detectorAsked = false
   }
 
   // ---- listening -----------------------------------------------------------

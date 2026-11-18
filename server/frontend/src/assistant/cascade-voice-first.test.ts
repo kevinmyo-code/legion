@@ -71,7 +71,10 @@ class StubDetector implements TurnDetector {
   reset() {
     this.resets++
   }
-  dispose() {}
+  disposed = 0
+  dispose() {
+    this.disposed++
+  }
   fire() {
     this.handlers?.onBargeIn({ type: 'fire', prob: 0.9, level: 20000, echoFloor: 5000, threshold: 7500, sustainMs: 256 })
   }
@@ -79,7 +82,12 @@ class StubDetector implements TurnDetector {
 
 function build(
   answers: TurnStart[],
-  options: { prepare?: () => Promise<boolean>; transcript?: string | null; early?: boolean } = {},
+  options: {
+    prepare?: () => Promise<boolean>
+    transcript?: string | null
+    early?: boolean
+    loadModels?: () => Promise<TurnDetector | null>
+  } = {},
 ) {
   const audio = new FakeAudio()
   const requests: TurnRequest[] = []
@@ -100,7 +108,7 @@ function build(
     audio: () => audio,
     now: () => Date.now(),
     utcOffsetMinutes: () => 0,
-    turnDetector: async () => detector,
+    turnDetector: options.loadModels ?? (async () => detector),
     // Early transcripts are off on the page (`deps.ts` EARLY_TRANSCRIPT); the tests of the code
     // behind the switch turn it on here.
     ...(options.early ? { transcribe } : {}),
@@ -140,6 +148,26 @@ describe('the models in the conversation', () => {
     t.audio.handlers?.onPlaying(true)
     t.audio.handlers?.onChunk(new Int16Array(320))
     expect(t.detector.pushes.at(-1)).toEqual({ listening: true, playing: true })
+  })
+
+  it('the models stop with the client: its workers end when the page lets go of it', async () => {
+    const t = build([spoken('Hello.')])
+    await open(t)
+    t.client.dispose()
+    expect(t.detector.disposed).toBe(1)
+  })
+
+  it('models that finish loading after the page let go are stopped, not attached', async () => {
+    let loaded: (d: TurnDetector) => void = () => {}
+    const late = new StubDetector()
+    const t = build([spoken('Hello.')], { loadModels: () => new Promise((resolve) => (loaded = resolve)) })
+    await t.client.startVoice()
+    await settle()
+    t.client.dispose()
+    loaded(late)
+    await settle()
+    expect(late.disposed).toBe(1)
+    expect(late.handlers).toBeNull()
   })
 
   it('a barge-in stops the reply at once, cancels the engine turn, and listens', async () => {

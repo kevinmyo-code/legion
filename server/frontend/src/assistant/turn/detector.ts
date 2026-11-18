@@ -86,19 +86,20 @@ function ready(worker: WorkerLike, init: ToWorker, timeoutMs: number): Promise<E
   })
 }
 
-/** Loads both models; null when they cannot run here (the page keeps its energy threshold). */
+/**
+ * Loads both models; null when they cannot run here (the page keeps its energy threshold). One
+ * after the other: both workers load the same 14 MB runtime wasm, and the second, started once the
+ * first is ready, finds it in the browser's cache instead of fetching it again in parallel.
+ */
 export async function loadTurnDetector(deps: DetectorDeps, timeoutMs = 20_000): Promise<TurnDetector | null> {
   const vad = deps.makeWorker()
-  const st = deps.makeWorker()
-  const [v, s] = await Promise.all([
-    ready(vad, { type: 'init', silero: deps.sileroUrl }, timeoutMs),
-    ready(st, { type: 'init', smart: deps.smartUrl }, timeoutMs),
-  ])
+  const v = await ready(vad, { type: 'init', silero: deps.sileroUrl }, timeoutMs)
   if (!v || v.sileroMs > MAX_SILERO_MS) {
     vad.terminate()
-    st.terminate()
     return null
   }
+  const st = deps.makeWorker()
+  const s = await ready(st, { type: 'init', smart: deps.smartUrl }, timeoutMs)
   const smartOk = Boolean(s && s.smartMs !== null && s.smartMs <= MAX_SMART_MS)
   if (!smartOk) st.terminate()
   return new ModelDetector(vad, smartOk ? st : null, Math.max(v.loadMs, s?.loadMs ?? 0), v.sileroMs, s?.smartMs ?? null)
