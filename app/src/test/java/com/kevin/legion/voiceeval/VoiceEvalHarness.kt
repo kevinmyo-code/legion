@@ -12,6 +12,7 @@ import com.kevin.legion.service.LiveSessionController
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextToolExecutor
+import com.kevin.legion.service.WakePhrases
 import com.kevin.legion.service.cascade.CallUsage
 import com.kevin.legion.service.cascade.CascadeLines
 import com.kevin.legion.service.cascade.CascadePrefix
@@ -163,6 +164,15 @@ internal class VoiceEvalHarness(
                 out(TEST_TAG, "heard text=\"\"")
                 audit.turnComplete()
                 continue
+            }
+            // The session's stop and goodbye rule ([WakePhrases.isSleepPhrase]): the conversation ends,
+            // nothing is answered.
+            if (WakePhrases.isSleepPhrase(heard, "Alfred")) {
+                audit.user(heard, final = true)
+                out(TEST_TAG, "ended reason=sleep_phrase")
+                out(TEST_TAG, "heard text=\"\"")
+                audit.turnComplete()
+                break
             }
             // The session's own language rule ([SpokenLanguages.decide]), cloud voice.
             when (val d = SpokenLanguages.decide(heard, languages, current, cloud = true)) {

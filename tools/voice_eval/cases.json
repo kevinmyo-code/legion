@@ -399,6 +399,23 @@
         "calls": ["navigate"],
         "answer_not": ["(?i)catch"]
       }
+    },
+    {
+      "id": "goodbye_ends",
+      "turns": [
+        {"say": "what's due today", "expect": {"calls": ["day/read_calendar"]}},
+        {"say": "Goodbye, Alfred.", "expect": {"ends": true}}
+      ],
+      "why": "Kevin 2026-11-18: goodbye ends the conversation in code, nothing more is answered"
+    },
+    {
+      "id": "stop_the_music_is_a_request",
+      "say": "stop the music",
+      "why": "Kevin 2026-11-18: words that only use stop are a request, never an end",
+      "expect": {
+        "ends": false,
+        "calls": ["control_music|play_music"]
+      }
     }
   ]
 }

@@ -86,4 +86,39 @@ class WakePhrasesTest {
         assertFalse(WakePhrases.isSleepPhrase("what will it all cost"))
         assertFalse(WakePhrases.isSleepPhrase("add milk to the list"))
     }
+
+    // --- stop and goodbye (Kevin, 2026-11-18: "telling alfred goodbye should stop the turn right?") ---
+
+    @Test
+    fun `every stop and goodbye phrase ends the conversation when it is the whole turn`() {
+        for (p in listOf(
+            "stop", "never mind", "that's all", "that's it", "that will be all", "that'll be all", "go away",
+            "stand down", "bye", "goodbye", "good bye", "thanks bye", "ok bye", "we're done", "I'm done",
+        )) {
+            assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred"))
+            assertTrue("$p.", WakePhrases.isSleepPhrase("${p.replaceFirstChar { it.uppercase() }}.", "Alfred"))
+        }
+    }
+
+    @Test
+    fun `the companion's name and a leading hey or ok are not part of the phrase`() {
+        for (s in listOf("Goodbye, Alfred.", "Alfred, stop.", "ok bye", "Okay, goodbye.", "Hey Alfred, that's all.",
+            "Bye Alfred!", "OK, never mind.")) {
+            assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        }
+        // Another companion name is just a name: the rule follows the name he gave it.
+        assertTrue(WakePhrases.isSleepPhrase("Goodbye, Jarvis.", "Jarvis"))
+        assertFalse(WakePhrases.isSleepPhrase("Goodbye, Jarvis.", "Alfred"))
+    }
+
+    @Test
+    fun `sentences that only use those words never end it`() {
+        for (s in listOf(
+            "stop the music", "that's all I need from the pantry", "thanks", "thank you", "nothing",
+            "stop the timer", "never mind the calendar, what's the weather", "say goodbye to my sister for me",
+            "is that it?", "that's it for the groceries, add eggs", "bye bye birdie is on tonight",
+        )) {
+            assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        }
+    }
 }

@@ -318,3 +318,13 @@ def test_the_day_read_is_graded_not_the_dates_the_model_sent():
     wrong = base[:6] + [L("LIVE_TEST", 'read window="Tuesday 2026-11-17" date_note=false')] + base[6:]
     _, runs = parse(wrong)
     assert any("missed" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+
+
+def test_a_goodbye_case_passes_only_when_the_conversation_ended():
+    case = {"id": "bye", "say": "Goodbye, Alfred.", "expect": {"ends": True}}
+    lines = [l for l in case_lines("bye", "Goodbye, Alfred.", [], "") if "assistant text" not in l]
+    ended = lines[:3] + [L("LIVE_TEST", "ended reason=sleep_phrase")] + lines[3:]
+    _, runs = parse(ended)
+    assert ve.score_case(case, runs[0], phone=False).passed
+    _, runs = parse(lines)
+    assert any("did not end" in f for f in ve.score_case(case, runs[0], phone=False).failures)

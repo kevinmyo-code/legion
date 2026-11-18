@@ -85,10 +85,43 @@ object WakePhrases {
      * model already told to recognise all of those (`end_conversation`'s description): a missed
      * backstop costs one more turn, a false one hangs up on someone mid-sentence.
      */
-    fun isSleepPhrase(transcript: String): Boolean {
+    fun isSleepPhrase(transcript: String, companionName: String = ""): Boolean {
         val t = normalise(transcript)
         if (t.isEmpty()) return false
-        return t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED)
+        return t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || isStopPhrase(t, normalise(companionName))
+    }
+
+    /**
+     * The stop and goodbye phrases (Kevin, 2026-11-18: "telling alfred goodbye should stop the turn
+     * right? same like midcon"; the list Midcon ships), in [normalise]d form. Unlike [SLEEP] these
+     * must be the WHOLE turn: "stop the music" and "that's all I need from the pantry" are requests.
+     */
+    val STOP_PHRASES: Set<String> = setOf(
+        "stop", "never mind", "that s all", "that s it", "that will be all", "that ll be all", "go away",
+        "stand down", "bye", "goodbye", "good bye", "thanks bye", "ok bye", "okay bye", "we re done", "i m done",
+    )
+
+    private val LEAD_INS = setOf("hey", "ok", "okay")
+
+    /**
+     * [t] (normalised) is a stop phrase once the companion's [name] (normalised, at either end) and a
+     * leading hey/ok/okay are set aside: "Goodbye, Alfred", "Alfred, stop", "ok bye".
+     */
+    private fun isStopPhrase(t: String, name: String): Boolean {
+        if (t in STOP_PHRASES) return true
+        var words = t.split(' ')
+        val nameWords = name.split(' ').filter { it.isNotEmpty() }
+        fun dropName() {
+            if (nameWords.isEmpty()) return
+            if (words.take(nameWords.size) == nameWords) words = words.drop(nameWords.size)
+            if (words.takeLast(nameWords.size) == nameWords) words = words.dropLast(nameWords.size)
+        }
+        dropName()
+        while (words.size > 1 && words.first() in LEAD_INS && words.joinToString(" ") !in STOP_PHRASES) {
+            words = words.drop(1)
+            dropName()
+        }
+        return words.joinToString(" ") in STOP_PHRASES
     }
 
     /**

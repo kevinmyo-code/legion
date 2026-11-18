@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.AriaBrain
+import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiUsageMeter
@@ -1061,7 +1062,10 @@ internal class CascadeSession(
             host.crisis()
             return
         }
-        if (WakePhrases.isSleepPhrase(heard)) {
+        // "Stop", "goodbye", "that's all": the whole of his latest words, so a stop said during a lookup
+        // ends the conversation instead of being merged into the request it interrupted.
+        val name = CompanionProfile.name(ctx)
+        if (WakePhrases.isSleepPhrase(words, name) || WakePhrases.isSleepPhrase(heard, name)) {
             discardDraftOf(u, "not_answered")
             recordTurn(heard, "")
             endByVoice()
@@ -2063,7 +2067,8 @@ internal class CascadeSession(
 
     /** Long enough, and nothing [runTurn] would stop before the model (crisis, the sleep phrase). */
     private fun draftable(heard: String): Boolean =
-        SpeculationRules.longEnough(heard) && !CrisisDetector.detect(heard) && !WakePhrases.isSleepPhrase(heard)
+        SpeculationRules.longEnough(heard) && !CrisisDetector.detect(heard) &&
+            !WakePhrases.isSleepPhrase(heard, CompanionProfile.name(ctx))
 
     /** The model is asked on [heard]; its text and tool calls are held ([SpeculativeAnswer]). */
     @Suppress("ReturnCount")

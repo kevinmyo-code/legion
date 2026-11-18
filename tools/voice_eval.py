@@ -153,6 +153,7 @@ class Turn:
     fillers: list[str] = field(default_factory=list)  # the holding lines the laptop harness logged
     to_voice: str = ""  # what the cloud voice would be handed, tags included (laptop harness)
     read_windows: list[str] = field(default_factory=list)  # days a calendar read covered (laptop harness)
+    ended: bool = False  # the stop/goodbye rule ended the conversation on this turn (laptop harness)
 
     @property
     def answer(self) -> str:
@@ -202,6 +203,8 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
                     cur.turns[-1].answer_parts = [json.loads(msg.split("text=", 1)[1])]
                 except (IndexError, ValueError):
                     pass
+            elif word == "ended" and cur is not None and cur.turns:
+                cur.turns[-1].ended = True
             elif word == "read" and cur is not None and cur.turns:
                 try:
                     cur.turns[-1].read_windows.append(json.loads(msg.split("window=", 1)[1].rsplit(" date_note=", 1)[0]))
@@ -395,7 +398,11 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
                         for c in turn.calls)
         if open_task and EMPTY_CLAIM.search(answer):
             fails.append("said nothing is due while a tool result shows an open task")
-    if expect.get("silent"):
+    if expect.get("ends") and not phone and not turn.ended:
+        fails.append("the conversation did not end on a stop or goodbye")
+    if expect.get("ends") is False and turn.ended:
+        fails.append("the conversation ended on words that are not a stop or goodbye")
+    if expect.get("silent") or expect.get("ends"):
         # Nothing was heard, so nothing is said and nothing runs (2026-11-17: no-voice audio is silence).
         if answer:
             fails.append(f"said something on silence: {answer[:80]}")
