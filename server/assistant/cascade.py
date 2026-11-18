@@ -606,11 +606,13 @@ class Speaker:
             return
         if not self._first_out:
             # The answer's first clause is spoken as soon as it exists (section 8.2), and with no
-            # tag: tags stay off an answer's first sentence (section 9).
+            # tag: tags stay off an answer's first sentence (section 9). Only for words written to
+            # be said (`expressive`: the model's, the greeting); code's own lines (a figure, his
+            # profile) are never cut, which once put "2026." in a request of its own.
             self._first_out = True
             lead, more = _first_sentence(spoken)
             spoken = f"{speech_tags.untagged(lead)} {more}".strip()
-            head, rest = first_clause(spoken)
+            head, rest = first_clause(spoken) if expressive else (spoken, "")
             self._submit(head)
             if rest:
                 self._pending.append(rest)
