@@ -816,8 +816,8 @@ export class CascadeClient {
     this.afterReply = null
     this.replyFrom = input.greet ? null : this.deps.now()
     this.set({ phase: 'live', notice: null })
-    const startedConversation = this.conversationId === null
-    const request: TurnRequest = {
+    let startedConversation = this.conversationId === null
+    let request: TurnRequest = {
       ...input,
       ...(input.greet ? { greetingHistory: this.caps.history() } : {}),
       conversationId: this.conversationId,
@@ -827,10 +827,19 @@ export class CascadeClient {
     }
     let start: TurnStart
     try {
-      start = await postTurn(
-        () => this.deps.startTurn(request, abort.signal),
-        () => generation === this.turnGeneration,
-      )
+      const post = () =>
+        postTurn(
+          () => this.deps.startTurn(request, abort.signal),
+          () => generation === this.turnGeneration,
+        )
+      start = await post()
+      if (!start.ok && start.code === 'no_conversation' && request.conversationId && generation === this.turnGeneration) {
+        // The engine no longer has this conversation: the same words start a new one, once.
+        this.conversationId = null
+        startedConversation = true
+        request = { ...request, conversationId: null, preface: this.preface(Boolean(input.greet)) }
+        start = await post()
+      }
     } catch {
       if (generation !== this.turnGeneration) return
       this.turnId = null

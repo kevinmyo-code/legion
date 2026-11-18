@@ -526,6 +526,34 @@ describe('CascadeClient', () => {
     expect(client.getState().ended).toBe('Demo sessions last 5 minutes.')
   })
 
+  const lost: TurnStart = { ok: false, status: 404, detail: 'No conversation with that id is yours.', code: 'no_conversation' }
+
+  it('a conversation the engine lost: the same words go again as a new conversation, once', async () => {
+    const { client, audio, requests } = build([greeting(), lost, { ok: true, events: stream(reply('Fine.')) }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    expect(requests).toHaveLength(3)
+    expect(requests[1].conversationId).toBe('c-1')
+    expect(requests[2].conversationId).toBeNull()
+    expect(requests[2].audio).toBe(requests[1].audio)
+    expect(client.getState().lines.at(-1)).toMatchObject({ kind: 'ai', text: 'Fine.' })
+    drained(audio)
+    expect(client.getState().mic).toBe('on')
+  })
+
+  it('lost twice: closes with words instead of looping', async () => {
+    const { client, audio, requests } = build([greeting(), lost, lost])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    expect(requests).toHaveLength(3)
+    expect(audio.micOpen).toBe(false)
+    expect(client.getState().notice?.text).toBe('No conversation with that id is yours.')
+  })
+
   it('an interrupt tells the engine once, with the aborted turn id', async () => {
     async function* slow(): AsyncGenerator<SseEvent> {
       yield { type: 'sentence', data: { text: 'A long answer.' } }

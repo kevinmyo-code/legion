@@ -17,6 +17,10 @@ export type Refusal =
 
 export function readRefusal(status: number, detail: string | null, code: string | null, inConversation: boolean): Refusal {
   if (code === 'busy') return { type: 'wait', text: STILL_BUSY }
+  if (code === 'no_conversation') {
+    // Already posted again as a new conversation (`CascadeClient.turn`); that failed too.
+    return { type: 'close', notice: { kind: 'mint-failed', text: detail ?? 'The engine lost this conversation. Tap to start a new one.' } }
+  }
   const timeLimit = code !== null ? code === 'time_limit' : status === 409
   if (timeLimit && inConversation) return { type: 'end', text: detail }
   const notice = closingNotice(status, detail)
