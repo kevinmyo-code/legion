@@ -129,7 +129,7 @@ FALLBACK = ("Working on it.", "One moment.")
 # The acknowledgement said at once when a turn clearly needs a look (voice-persona section 8.2),
 # before any tool starts. It claims nothing: it says a look is coming, not that one ran.
 ACK_TOOL = "__ack__"
-ACK = ("Yeah, one sec.", "Sure, one sec.", "<breath> Okay.", "Mm, one sec.")
+ACK = ("Yeah, one sec.", "Sure, one sec.", "Okay, one sec.", "Mm, one sec.")
 
 
 def all_lines() -> tuple[str, ...]:

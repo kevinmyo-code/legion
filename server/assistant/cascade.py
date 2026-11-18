@@ -416,7 +416,9 @@ class FillerAudio:
         def fetch() -> None:
             for line in missing:
                 try:
-                    audio = b"".join(speech.speak(line, voice, Spoken()))
+                    # Through the same tag rules as an answer (round 2 speech review 6).
+                    said = speech_tags.for_speech(line, expressive=True)
+                    audio = b"".join(speech.speak(said, voice, Spoken()))
                 except (SpeechFailure, OSError):
                     audio = b""
                 with self._lock:

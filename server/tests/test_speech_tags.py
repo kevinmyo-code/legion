@@ -112,6 +112,17 @@ def test_the_scripted_lines_carry_only_allowed_tags():
     for line in fillers.ACK:
         for tag in speech_tags._TAG.findall(line):
             assert f"<{tag}>" in speech_tags.ALLOWED
+
+
+def test_a_filler_line_goes_to_speech_through_the_tag_rules():
+    # Round 2 speech review 6: "<breath> Okay." went to speech raw, a tag on a two-word line.
+    from tests.test_assistant_cascade import FakeSpeech
+
+    speech = FakeSpeech()
+    audio = cascade.FillerAudio(spawn=lambda work: work())
+    audio.warm(speech, "Puck", ["<breath> Okay.", "<chuckle> Checking the calendar for you now."])
+    said = [text for text, _voice in speech.spoken]
+    assert "Okay." in said and "<breath> Okay." not in said
     for line in (cascade.NOT_ANSWERED_MODEL, cascade.NOT_ANSWERED_TIMEOUT, cascade.NO_TEXT):
         assert not speech_tags.has_tag(line)
 
