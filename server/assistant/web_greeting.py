@@ -49,7 +49,7 @@ MAX_AVOID_LINES = 3
 # (2026-11-17), so every greeting, scripted or model-worded, keeps to `MAX_GREETING_WORDS`.
 MAX_GREETING_WORDS = 14
 RECRUITER_OPENING = (
-    "I'm {who}. <breath> Ask about {whom} or the tour. Chats are recorded to improve me."
+    "I'm {who}. Ask about {whom} or the tour. Chats are recorded to improve me."
 )
 
 

@@ -23,8 +23,8 @@ tags: [adr]
   - The model writes every figure exactly. Captions, the record and every check keep the exact one, so the exact figure is on screen in the same turn. The live gate's heard-back check accepts the code-rounded form and rejects any other.
 - **Expression tags** (`assistant/speech_tags.py`), used liberally in casual sentences, at most one per sentence, no cap per reply.
   - Allowed: the human sounds on Google's speech page that passed a heard test in our shape for both voices on 2026-11-17 (`.legion/reports/tag-heard-test-1117.json`). That is 16 tags, among them `<short pause>`, `<chuckle>`, `<laugh>`, `<sigh>`, `<phew>`, `<gasp>`, `<breath>` and `<tsk>`. Never `<long pause>`, and no distressed or non-human sounds.
-  - Code lines carry them on purpose: the demo opening, the tour's lighter lines. The model may write them too; one prompt line lists them.
-  - Code enforces the rules whatever the model writes: unknown tags are removed. No tag goes on a sentence with a figure, date or time, a refusal or error, or a question confirming a change, nor on verbatim, failure or notice lines.
+  - Code lines carry them on purpose: the tour's lighter lines. The demo opening is spoken plain (it holds the recording notice; round 4, 2026-11-17). The model may write them too; one prompt line lists them.
+  - Code enforces the rules per sentence, whatever the model writes: unknown tags are removed. No tag goes on a sentence with a figure, date or time, a refusal or error, or a question confirming a change, nor on verbatim, failure or notice lines.
   - Tags exist only on the text sent to speech. Captions, the conversation record, the next turn's history, logs, the funnel, the strip and the figure and honesty checks see the text without them.
 - **How it talks:** one prompt note (`cascade.PERSONA_NOTE`) asks for a friendly, quick, slightly dry colleague: one sentence unless asked, contractions, occasional lead-ins, small talk that never delays the answer, and every figure written exactly.
 - **Sounding human** (voice-persona section 8, Kevin: *"yes to all 6"*):

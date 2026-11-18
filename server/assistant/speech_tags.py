@@ -146,16 +146,26 @@ def casual(plain: str) -> bool:
 
 
 def for_speech(text: str, *, expressive: bool = True) -> str:
-    """What is sent to speech. Keeps the first allowed tag of an expressive sentence and removes
-    every other tag. A sentence with a figure, date or time, a refusal or a confirmation keeps
-    none."""
+    """What is sent to speech. Each sentence is judged on its own (round 4 speech E2: the word
+    count was taken over the whole line, so a tag rode on a six-word sentence): a casual sentence
+    of an expressive line keeps its first allowed tag; every other tag is removed. A sentence with
+    a figure, date or time, a refusal or a confirmation keeps none."""
     text = text or ""
     if not any(c in text for c in "<[*"):
         return text
-    plain = untagged(text)
-    if not expressive or not casual(plain):
+    if not expressive:
+        return untagged(text)
+    return _tidy(" ".join(_one_sentence(part) for part in _SENTENCE_END.split(_unmarked(text))))
+
+
+# Where one sentence ends and the next begins (a tag at the start of the next stays with it).
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def _one_sentence(sentence: str) -> str:
+    plain = untagged(sentence)
+    if not casual(plain):
         return plain
-    text = _unmarked(text)
     kept = False
 
     def one(match: re.Match) -> str:
@@ -166,4 +176,4 @@ def for_speech(text: str, *, expressive: bool = True) -> str:
             return f" {tag} "
         return " "
 
-    return _tidy(_TAG.sub(one, text))
+    return _tidy(_TAG.sub(one, sentence))
