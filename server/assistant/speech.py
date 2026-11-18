@@ -401,6 +401,7 @@ class GeminiSpeech:
         sent = 0
         retried = False
         legacy = False
+        fell_back = False
         until = self.bad_voices.get(voice)
         if until is not None and self._clock() < until:
             voice = FALLBACK_VOICE
@@ -428,6 +429,12 @@ class GeminiSpeech:
                     legacy = True
                 elif _worth_retry(said) and not retried:
                     retried = True
+                elif voice != FALLBACK_VOICE and not fell_back:
+                    # Any other failure in the chosen voice (an in-stream error says only its
+                    # code): this sentence once more in the fallback voice rather than silence
+                    # (round 4 speech N3). Nothing is marked; the next sentence tries the voice.
+                    fell_back = True
+                    voice, legacy, retried = FALLBACK_VOICE, False, False
                 else:
                     raise SpeechFailure(spoken.failed or "tts_failed") from None
                 spoken.failed = None
