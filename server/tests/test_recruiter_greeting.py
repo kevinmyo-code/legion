@@ -188,7 +188,7 @@ def test_the_not_shared_rule_is_scoped_to_facts_about_kevin(visitor):
     from demo.tools import ABOUT_KEVIN, NOT_SHARED
 
     text, _ = _prompt(visitor)
-    assert "anything about Kevin it does not say" in text
+    assert "When none of its sections covers the question" in text
     assert "That rule is for facts about Kevin only" in text
     assert "what a visa, a law or a term is" in text
     assert "is not about Kevin, so answer it plainly from general knowledge" in text

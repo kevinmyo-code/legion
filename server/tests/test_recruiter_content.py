@@ -364,17 +364,23 @@ def _tool(client, name, args=None):
     return client.post("/api/assistant/tool", {"name": name, "args": args or {}}, format="json")
 
 
-def test_about_kevin_returns_the_profile_sections(recruiter, tmp_path):
+def test_about_kevin_returns_the_picked_sections_to_say_word_for_word(recruiter, tmp_path):
+    # The Live path (`POST /api/assistant/tool`) has no code speaker: its model is handed the
+    # sentences to say. The cascade never hands them over (`tests/test_profile_verbatim.py`).
     load_fake(tmp_path)
-    response = _tool(recruiter, "about_kevin")
+    response = _tool(recruiter, "about_kevin", {"sections": ["experience", "location"]})
     assert response.status_code == 200, response.data
     assert response.data["is_error"] is False
     text = response.data["text"]
-    assert "Experience:\nFake experience: three years of pretend work" in text
-    assert "Location:\nFakeville, Nowhere." in text
-    assert "Kevin hasn't shared that here; ask him directly" in text
+    assert text.startswith("Say exactly these sentences about Kevin, word for word")
+    assert "Fake experience: three years of pretend work at Example Corp." in text
+    assert "Fakeville, Nowhere." in text
     # Nothing outside `profile` rides along.
     assert "Fake case study" not in text
+    # None picked: the not-shared line, nothing of the profile.
+    none = _tool(recruiter, "about_kevin")
+    assert "Kevin hasn't shared that here; ask him directly." in none.data["text"]
+    assert "pretend work" not in none.data["text"]
 
 
 def test_about_kevin_with_nothing_loaded_says_so_in_words(recruiter):
@@ -579,7 +585,7 @@ def test_a_labelled_code_reads_its_own_version_and_the_resume_code_the_full(db, 
     assert page.data["assets"] == {"report": None, "resume": None, "resume_image": None}
     assert stranger.get("/api/demo/asset/resume").status_code == 404
     assert stranger.get("/api/demo/asset/report").status_code == 404
-    about = _tool(stranger, "about_kevin").data["text"]
+    about = _tool(stranger, "about_kevin", {"sections": ["experience"]}).data["text"]
     assert "Stripped experience line." in about
     assert "three years of pretend work" not in about
 
