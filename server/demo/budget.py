@@ -286,7 +286,7 @@ def _release_code(code_id: int, day: date, cents: int) -> None:
 
 
 def _reserve(
-    cents: int, cap: int, counter: str, now: datetime | None, user=None
+    cents: int, cap: int, counter: str | None, now: datetime | None, user=None
 ) -> Reservation | None:
     """Add `cents` to today's reservations if the total stays within `cap`
     and within the caller's capped code, if any. One conditional UPDATE each:
@@ -298,8 +298,9 @@ def _reserve(
     if code is not None and not _reserve_code(code, day, cents):
         return None
     _ensure_day(day)
+    counted = {counter: F(counter) + 1} if counter else {}
     fitted = DemoBudgetDay.objects.filter(day=day, reserved_cents__lte=cap - cents).update(
-        reserved_cents=F("reserved_cents") + cents, **{counter: F(counter) + 1}
+        reserved_cents=F("reserved_cents") + cents, **counted
     )
     if not fitted:
         if code is not None:
@@ -368,6 +369,16 @@ def reserve_cascade_turn(
     )
     cap = lim.voice_cap_cents if spoken else lim.budget_cents
     return _reserve(cents, cap, "text_calls", now, user)
+
+
+def reserve_speech_requests(
+    requests: int, now: datetime | None = None, user=None
+) -> Reservation | None:
+    """Reserve `requests` more text-to-speech requests for a turn already running, against the
+    VOICE cap, just before they are made (round 3 speech S4: a long answer reserves as it goes).
+    Not counted as another call. None: it did not fit, and the rest is shown, not said."""
+    lim = limits()
+    return _reserve(speech_requests_cents(requests), lim.voice_cap_cents, None, now, user)
 
 
 def release_unused(

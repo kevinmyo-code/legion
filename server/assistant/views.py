@@ -932,6 +932,7 @@ def _turn_sse(
     reserved_speech=0,
     cancelled=None,
     answered=None,
+    more_speech=None,
 ):
     report = cascade.TurnReport()
     answered = answered or (lambda: None)
@@ -951,6 +952,7 @@ def _turn_sse(
             companion_name=companion_name,
             cancelled=cancelled or (lambda: False),
             on_write=answered,
+            more_speech=more_speech or (lambda n: True),
             model_name=voice_engine.text_model(),
             model=model,
             speech=speech,
@@ -1054,6 +1056,14 @@ TURN_REFUSAL_CODES = {
 BUSY_RETRY_MS = 1000
 
 
+def _more_speech(user):
+    """How a running turn reserves more speech requests (round 3 S4): against the demo budget for
+    a visit, without limit (bar the turn's ceiling) for a member."""
+    if not demo_budget.counts(user):
+        return lambda n: True
+    return lambda n: demo_budget.reserve_speech_requests(n, user=user) is not None
+
+
 def _answered(user, turn_id) -> bool:
     """Whether `turn_id` already reached a state `user` could have received (round 3 N5)."""
     from assistant.models import TurnSeen
@@ -1117,7 +1127,8 @@ class AssistantTurnView(_AssistantView):
             "said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, "
             "outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm "
             "(base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); "
-            "`speech_failed` {reason}; `done` {status, final_text, writes_ran, words?, end? (the "
+            "`speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer is "
+            "shown, not spoken); `done` {status, final_text, writes_ran, words?, end? (the "
             "conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing "
             "was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's "
             "estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no "
@@ -1345,6 +1356,7 @@ class AssistantTurnView(_AssistantView):
                     reserved_speech,
                     cascade.CancelCheck(request.user.pk, data.get("turn_id")),
                     functools.partial(_mark_answered, request.user, data.get("turn_id")),
+                    _more_speech(request.user),
                 ),
                 content_type="text/event-stream",
             )

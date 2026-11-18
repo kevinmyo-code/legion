@@ -505,9 +505,12 @@ class _Job:
 # as one request) or "sentence" (one request per sentence, the phone's old shape). Kept as a
 # constant while the two are measured against each other (section 8.3); the loser goes.
 SPEECH_GROUPING = "breath"
-# Speech requests one turn may make: what `LEGION_DEMO_COST_PER_SPEECH_TURN_USD` (one cent by
-# default) covers with retries: about 12 sentences grouped into these (finding 6).
+# Speech requests reserved before a turn starts (finding 6). A longer answer reserves more as it
+# goes, one request at a time, up to `TTS_REQUEST_CEILING` (round 3 speech S4: the 12-sentence
+# limit spoken one sentence a request, plus the closing lines); one is always kept back for a
+# closing honesty line.
 MAX_TTS_REQUESTS = 6
+TTS_REQUEST_CEILING = 16
 GROUP_SENTENCES = 3
 GROUP_CHARS = 400
 # A first sentence longer than this many words has its first clause spoken on its own.
@@ -569,6 +572,13 @@ class Speaker:
         self.skipped = 0
         self.cancelled = _never
         self.cancelled_often = _never
+        # Speech requests this turn may make now, and how to reserve more (round 3 S4).
+        self.allowed = MAX_TTS_REQUESTS
+        self.more: Callable[[int], bool] = lambda n: True
+        # Set for the turn's closing lines: they may use the request kept back for them.
+        self.closing = False
+        self.stopped = False
+        self._notices: list[ev.Event] = []
 
     def spoken_text(self, text: str, expressive: bool = False) -> str:
         """What goes to speech for `text`: its figures rounded like a person says them
@@ -608,14 +618,28 @@ class Speaker:
     def _submit(self, spoken: str) -> None:
         if self.cancelled():
             return
-        if self.requests >= MAX_TTS_REQUESTS:
-            # What the turn's speech reserve covers (finding 6); the rest is shown, not said.
+        if not self._may_speak():
+            # Past what could be reserved: the rest is shown, not said, and the page is told
+            # once (round 3 S4). The closing lines still have the request kept back for them.
             self.skipped += 1
+            if not self.stopped:
+                self.stopped = True
+                self._notices.append(ev.Event("speech_stopped", {"reason": "limit"}))
             return
         self.requests += 1
         job = _Job(spoken, queue.Queue(), Spoken(), threading.Event())
         self.jobs.append(job)
         self._pool.submit(self._run, job)
+
+    def _may_speak(self) -> bool:
+        def room() -> bool:
+            return self.requests < (self.allowed if self.closing else self.allowed - 1)
+
+        if room():
+            return True
+        if self.allowed < TTS_REQUEST_CEILING and self.more(1):
+            self.allowed += 1
+        return room()
 
     def _run(self, job: _Job) -> None:
         started = time.monotonic()
@@ -642,6 +666,8 @@ class Speaker:
         return ev.Event("audio", data)
 
     def _take(self, block: bool) -> Iterator[ev.Event]:
+        while self._notices:
+            yield self._notices.pop(0)
         while self.jobs:
             if self.cancelled_often():
                 # Stopped: what is queued or still speaking is dropped, nothing more is asked for.
@@ -1096,6 +1122,7 @@ def run_turn(
     companion_name: str = "",
     cancelled: Callable[[], bool] = _never,
     on_write: Callable[[], None] = lambda: None,
+    more_speech: Callable[[int], bool] = lambda n: True,
 ) -> Iterator[ev.Event]:
     """Yields the turn's events. Fills `report` as it goes, so a caller that stops reading (the
     browser hung up) still knows what happened. `cancelled` is asked at every stage boundary: once
@@ -1126,6 +1153,7 @@ def run_turn(
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
     speaker.cancelled = cancelled
     speaker.cancelled_often = getattr(cancelled, "often", cancelled)
+    speaker.more = more_speech
     if cancelled():
         # Cancelled before it started (a cancel sent for a `busy` turn that was then re-sent):
         # no transcription, greeting call or speech is paid for (round 3 N4).
@@ -1542,6 +1570,9 @@ def _answer(
         )
         for c in door.calls
     )
+    # The answer's own words go to speech first; what follows may use the request kept back.
+    speaker.flush()
+    speaker.closing = True
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
         if honest(text):
