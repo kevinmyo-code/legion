@@ -323,4 +323,13 @@ class FollowUpWindowTest {
             ),
         )
     }
+
+    @Test
+    fun `a question gets the longer window, a statement keeps the ruled 8 seconds`() {
+        assertEquals(FollowUpWindow.QUESTION_WINDOW_MS, FollowUpWindow.windowAfter("Want me to look into it?"))
+        assertEquals(FollowUpWindow.QUESTION_WINDOW_MS, FollowUpWindow.windowAfter("Didn't catch that. Say it again? "))
+        assertEquals(FollowUpWindow.WINDOW_MS, FollowUpWindow.windowAfter("The quiz is due tonight."))
+        assertEquals(FollowUpWindow.WINDOW_MS, FollowUpWindow.windowAfter(null))
+        assertEquals(8_000L, FollowUpWindow.WINDOW_MS)
+    }
 }

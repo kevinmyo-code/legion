@@ -4,6 +4,7 @@ import com.kevin.legion.service.ChatTurn
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
+import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
@@ -179,8 +180,10 @@ object CascadePrompt {
     const val VOICE_CLAUSE =
         "Spoken output: what you write is read aloud by a separate voice, as you write it. Write plain " +
             "spoken sentences only: no markdown, lists, headings, emoji, links or symbols. Write numbers, " +
-            "money, times and units the way you would say them. Keep replies short unless asked for " +
-            "detail. When a tool will take a moment, a few words first are fine."
+            "money, times and units the way you would say them. Answer in one short sentence unless he " +
+            "asks for more, and say each thing once. When a tool will take a moment, a few words first are fine. " +
+            "Now and then, in a casual moment only, one of <chuckle>, <laugh>, <sigh> or <short pause> may go " +
+            "in a sentence; never with figures, codes or bad news."
 
     data class Split(val cacheable: String, val volatile: String)
 
@@ -325,8 +328,15 @@ internal object ScriptedLines {
      */
     val FILLERS = listOf("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.")
 
-    /** The opening acks, the fillers and the check-in closers ([com.kevin.legion.service.checkin.ClosingLines]). */
-    val KEEP: Set<String> = (AckLines.DEFAULT + FILLERS + com.kevin.legion.service.checkin.ClosingLines.LINES).toSet()
+    /**
+     * Said when his words were not caught or not believed (2026-11-17): a question, so the follow-up
+     * window after it is the longer one ([com.kevin.legion.service.FollowUpWindow.windowAfter]).
+     */
+    const val MISSED = "Didn't catch that. Say it again?"
+
+    /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
+    val KEEP: Set<String> =
+        (AckLines.DEFAULT + FILLERS + MISSED + ToolFillers.ALL + ClosingLines.LINES).toSet()
 
     /**
      * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename
@@ -352,15 +362,17 @@ internal object ScriptedLines {
         !anyText && !fillerPlayed && toolNames.any { it in SLOW_TOOLS }
 
     /**
-     * Whether the filler is said now (2026-11-16):
-     * - only from memory: a line whose audio is not in hand would cost a TTS round trip (805 ms
-     *   measured) and could hold the answer up behind it, so it is skipped and its audio fetched
-     *   for next time instead;
-     * - only with barge-in on: once a filler is audible the phone counts the reply as playing, and
-     *   half-duplex (Bluetooth, a call) does not listen then, so words said during the lookup would
-     *   be lost instead of merged into his turn.
+     * Whether the filler is said now: only from memory (2026-11-16): a line whose audio is not in
+     * hand would cost a TTS round trip (805 ms measured) and could hold the answer up behind it, so
+     * it is skipped and its audio fetched for next time instead.
+     *
+     * Half-duplex too, since 2026-11-17 (all 12 fillers of that day's car drive were skipped there,
+     * "I didn't hear much of the filler words"). The mic is deaf while the line plays, as for any
+     * reply, so its echo cannot start a turn; once it has drained the session listens again until
+     * the answer's first audio ([CascadeSession]'s `onFillerPlayed`), so words said during the
+     * lookup still merge into his turn as they did without a filler.
      */
-    fun fillerNow(due: Boolean, inHand: Boolean, bargeIn: Boolean): Boolean = due && inHand && bargeIn
+    fun fillerNow(due: Boolean, inHand: Boolean): Boolean = due && inHand
 }
 
 /** The cascade's `LIVE_LATENCY` lines. The `key_ms=<n>` shape `tools/voice_latency.py` reads. */

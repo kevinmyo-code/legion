@@ -33,4 +33,33 @@ class RelativeDayTest {
     @Test fun `a resolved day is said back with its weekday`() {
         assertEquals("Monday 2026-11-16", RelativeDay.label(LocalDate.of(2026, 11, 16)))
     }
+
+    // ---- his own word wins over the model's arithmetic (2026-11-17 evening eval) -------------------
+
+    private val tue = LocalDate.of(2026, 11, 17)
+
+    @Test fun `the one day word he said is the day he meant`() {
+        assertEquals(tue.plusDays(1), RelativeDay.saidDay("and tomorrow?", tue))
+        assertEquals(tue.plusDays(1), RelativeDay.saidDay("What about tomorrow", tue))
+        assertEquals(tue, RelativeDay.saidDay("what do I have due today", tue))
+        assertEquals(tue, RelativeDay.saidDay("anything tonight?", tue))
+        assertEquals(tue.minusDays(1), RelativeDay.saidDay("what did I miss yesterday", tue))
+    }
+
+    @Test fun `anything more than one plain day word is left to the model`() {
+        for (s in listOf(
+            "the day after tomorrow", "tomorrow and the next day", "tomorrow or Friday", "this week",
+            "tomorrow, the 19th", "what's due next Tuesday", "today and tomorrow", "", null,
+        )) {
+            assertNull(s, RelativeDay.saidDay(s, tue))
+        }
+    }
+
+    @Test fun `a one-day read of another day becomes the day he said, a range or the right day is kept`() {
+        val tomorrow = tue.plusDays(1)
+        assertEquals(tomorrow to tomorrow, RelativeDay.correct(tue.plusDays(2), tue.plusDays(2), tomorrow))
+        assertNull(RelativeDay.correct(tomorrow, tomorrow, tomorrow))
+        assertNull(RelativeDay.correct(tue, tue.plusDays(6), tomorrow))
+        assertNull(RelativeDay.correct(tue.plusDays(2), tue.plusDays(2), null))
+    }
 }

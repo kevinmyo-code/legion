@@ -100,14 +100,16 @@ class CloudSpeechTest {
     }
 
     @Test
-    fun `the voice request asks for audio in Puck, in the 3_8 shape or the older one`() {
+    fun `the voice request asks for audio in Alfred's default voice, in the 3_8 shape or the older one`() {
+        assertEquals("en-gb-advisor-3", CloudSpeechWire.VOICE)
+        assertEquals("Puck", CloudSpeechWire.FALLBACK_VOICE)
         val now = CloudSpeechWire.speak("Invented line.", legacyVoice = false)
         val cfg = now.getJSONObject("generationConfig")
         assertEquals("AUDIO", cfg.getJSONArray("responseModalities").getString(0))
-        assertEquals("Puck", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
+        assertEquals("en-gb-advisor-3", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
         val old = CloudSpeechWire.speak("Invented line.", legacyVoice = true)
         assertEquals(
-            "Puck",
+            "en-gb-advisor-3",
             old.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
                 .getJSONObject("prebuiltVoiceConfig").getString("voiceName"),
         )
@@ -227,6 +229,93 @@ class CloudSpeechTest {
         u.end()
         assertEquals(SttResult.Failed("timeout"), u.result(150))
         withTimeout(2_000) { cancelled.await() }
+    }
+
+    @Test
+    fun `transcription is pinned to English and carries the vocabulary line when there is one`() {
+        val plain = CloudSpeechWire.transcribe(pcm(300)).getJSONObject("systemInstruction").getJSONArray("parts")
+            .getJSONObject(0).getString("text")
+        assertTrue(plain.contains("English"))
+        assertFalse(plain.contains("in the language they speak"))
+        assertFalse(plain.contains("Words he often says"))
+        val hint = SttGuard.hint()
+        val withHint = CloudSpeechWire.transcribe(pcm(300), hint).getJSONObject("systemInstruction")
+            .getJSONArray("parts").getJSONObject(0).getString("text")
+        assertTrue(withHint.endsWith(hint))
+    }
+
+    @Test
+    fun `a request that hangs is abandoned and the same audio asked again once, on a fresh call`() = runBlocking<Unit> {
+        var n = 0
+        val fake = FakeGemini { _, _, onEvent ->
+            if (n++ == 0) awaitCancellation()
+            onEvent(textEv("Clear the codes on the invented truck."))
+            onEvent(usageEv(80, 9))
+            StreamOutcome.Ok
+        }
+        val logs = Collections.synchronizedList(mutableListOf<String>())
+        val stt = GeminiStt(fake, scope, log = { logs.add(it) }, attemptTimeoutMs = 200)
+        val r = withTimeout(3_000) { stt.transcribe(pcm(400)) }
+        assertEquals("Clear the codes on the invented truck.", (r as SttResult.Text).text)
+        assertEquals(2, fake.calls.size)
+        // The same audio both times.
+        assertEquals(fake.calls[0].second.toString(), fake.calls[1].second.toString())
+        assertTrue(logs.any { it.startsWith("stt_cloud_retry after=hung_200") })
+    }
+
+    @Test
+    fun `two hung requests end as a timeout well inside the final deadline`() = runBlocking<Unit> {
+        val fake = FakeGemini { _, _, _ -> awaitCancellation() }
+        val stt = GeminiStt(fake, scope, attemptTimeoutMs = 150)
+        val t0 = System.currentTimeMillis()
+        assertEquals(SttResult.Failed("timeout"), withTimeout(3_000) { stt.transcribe(pcm(400)) })
+        assertTrue(System.currentTimeMillis() - t0 < 1_500)
+        assertEquals(2, fake.calls.size)
+        assertTrue(2 * GeminiStt.ATTEMPT_TIMEOUT_MS < CascadeTimings.CLOUD_STT_FINAL_TIMEOUT_MS)
+    }
+
+    @Test
+    fun `a voice Google refuses by name falls back to Puck, never silence, and its clips are keyed by voice`() = runBlocking<Unit> {
+        val voices = Collections.synchronizedList(mutableListOf<String>())
+        val fake = FakeGemini { _, body, onEvent ->
+            val vc = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
+            val v = vc.optString("voice").ifEmpty { vc.optJSONObject("prebuiltVoiceConfig")?.optString("voiceName").orEmpty() }
+            voices.add(v)
+            if (v == "en-us-neno") {
+                StreamOutcome.HttpError(400, "invalid argument")
+            } else {
+                onEvent(audioEv(byteArrayOf(1, 2)))
+                StreamOutcome.Ok
+            }
+        }
+        val kept = ConcurrentHashMap<String, ByteArray>()
+        val logs = Collections.synchronizedList(mutableListOf<String>())
+        val tts = GeminiTts(fake, scope, log = { logs.add(it) }, keepLines = setOf("Listening."), kept = kept, voice = "en-us-neno")
+        assertArrayEquals(byteArrayOf(1, 2), collect(tts.speak("Listening.")))
+        assertEquals("Puck", voices.last())
+        // The kept clip is filed under the voice that spoke it.
+        assertTrue(kept.keys.single().contains("|Puck|"))
+        assertTrue(tts.performsTags)
+        // A second line goes straight to Puck; the fallback is logged once.
+        collect(tts.speak("Invented second line."))
+        assertEquals(1, logs.count { it.startsWith("tts_voice_fallback") })
+    }
+
+    @Test
+    fun `a voice id is kept only if Google speaks a test line in it`() = runBlocking<Unit> {
+        val fake = FakeGemini { _, body, onEvent ->
+            val v = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
+                .optString("voice")
+            if (v == "en-gb-invented") {
+                onEvent(audioEv(byteArrayOf(1, 2)))
+                StreamOutcome.Ok
+            } else {
+                StreamOutcome.HttpError(400, "invalid argument")
+            }
+        }
+        assertTrue(VoiceEngineSettings.testVoice("en-gb-invented", fake))
+        assertFalse("a bad id fails, never falls back to Puck", VoiceEngineSettings.testVoice("en-gb-nope", fake))
+        assertFalse("nothing odd is sent", VoiceEngineSettings.testVoice("a b; c", fake))
     }
 
     @Test

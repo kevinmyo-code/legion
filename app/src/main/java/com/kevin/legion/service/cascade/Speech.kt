@@ -67,6 +67,12 @@ interface TextToSpeech {
 
     /** Fetches the audio of those [lines] not yet kept, for next time; the number asked for. */
     fun warm(lines: Collection<String>): Int = 0
+
+    /**
+     * True when the voice performs expression tags ([TtsTags]) instead of reading them aloud: Gemini
+     * TTS does; any other voice gets every tag stripped.
+     */
+    val performsTags: Boolean get() = false
 }
 
 interface StreamingSpeechClip : SpeechClip {

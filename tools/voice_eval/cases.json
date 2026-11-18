@@ -262,6 +262,113 @@
         "calls": ["look_up/ask_mail"],
         "answer_not": ["(?i)(I'?ve|I have) (remembered|saved)"]
       }
+    },
+    {
+      "id": "no_filler_after_answer",
+      "say": "what's due today",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "answer_not": ["(?i)(just a (second|sec|moment)|give me a (second|sec|moment)|one sec|hang on|bear with me)\\W*$"]
+      }
+    },
+    {
+      "id": "garbage_transcript",
+      "say": "neutralizó las prioridades del coche.",
+      "expect": {
+        "not_calls": ["car", "car/clear_codes"],
+        "answer_has": ["(?i)catch"]
+      }
+    },
+    {
+      "id": "stt_audio_cars",
+      "say": "which cars do I have on file",
+      "stt_audio": true,
+      "expect": {
+        "calls": ["ask/ask_fleet|car|list_vehicles"],
+        "not_calls": ["car/switch_vehicle"]
+      }
+    },
+    {
+      "id": "stt_audio_oil",
+      "say": "when is the Ranger due for an oil change",
+      "stt_audio": true,
+      "expect": {
+        "calls": ["ask/ask_fleet"],
+        "not_calls": ["car/clear_codes"]
+      }
+    },
+    {
+      "id": "stt_audio_switch",
+      "say": "switch to the Ranger",
+      "stt_audio": true,
+      "write": true,
+      "expect": {
+        "calls": ["car/switch_vehicle"],
+        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)ranger"}}}
+      }
+    },
+    {
+      "id": "filler_specialist",
+      "say": "how is the Ranger's battery doing",
+      "why": "Tool-aware holding line (2026-11-17): the car specialist route says so as it starts",
+      "expect": {
+        "calls": ["ask/ask_fleet"],
+        "filler_has": ["(?i)car specialist"]
+      }
+    },
+    {
+      "id": "filler_calendar",
+      "say": "what's on my calendar tomorrow",
+      "why": "Tool-aware holding line: a calendar read says it is checking the calendar",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "filler_has": ["(?i)calendar"]
+      }
+    },
+    {
+      "id": "filler_web",
+      "say": "search the web for the tallest mountain in Africa",
+      "why": "Web search is Google Search inside the model call: no tool starts, so no holding line can honestly be chosen",
+      "expect": {
+        "no_filler": true
+      }
+    },
+    {
+      "id": "tags_casual",
+      "say": "ha, I finally finished that essay, I'm done for the night",
+      "why": "Expression tags (Kevin 2026-11-17): a casual moment MAY carry an allowed tag; none is read as a word",
+      "expect": {
+        "tts_not": ["<(?!chuckle>|laugh>|sigh>|short pause>)"]
+      }
+    },
+    {
+      "id": "tags_never_on_money",
+      "say": "what's my checking balance",
+      "why": "Expression tags: a money answer never carries one",
+      "expect": {
+        "tts_not": ["<"]
+      }
+    },
+    {
+      "id": "burmese_enabled",
+      "say": "မနက်ဖြန် ကျွန်တော့် ပြက္ခဒိန်မှာ ဘာတွေရှိလဲ။",
+      "stt_audio": true,
+      "why": "Languages (Kevin 2026-11-17): Burmese in his setting; spoken Burmese is kept and answered in Burmese. Burmese quality cannot be judged here, only the script",
+      "fixture": {
+        "languages": ["Burmese"]
+      },
+      "expect": {
+        "answer_has": ["[\\u1000-\\u109F]"]
+      }
+    },
+    {
+      "id": "burmese_default_missed",
+      "say": "မနက်ဖြန် ကျွန်တော့် ပြက္ခဒိန်မှာ ဘာတွေရှိလဲ။",
+      "stt_audio": true,
+      "why": "Languages: with the default setting (English only) the transcriber answers no-speech for Burmese, so it is silence: nothing said, nothing run (the no-voice rule beats a spoken miss)",
+      "expect": {
+        "silent": true
+      }
     }
   ]
 }

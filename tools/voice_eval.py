@@ -150,6 +150,8 @@ class Turn:
     calls: list[ToolCall] = field(default_factory=list)
     answer_parts: list[str] = field(default_factory=list)
     timings: dict[str, int] = field(default_factory=dict)
+    fillers: list[str] = field(default_factory=list)  # the holding lines the laptop harness logged
+    to_voice: str = ""  # what the cloud voice would be handed, tags included (laptop harness)
 
     @property
     def answer(self) -> str:
@@ -197,6 +199,17 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
                 # The laptop harness's spoken answer (made-up data), which the record may redact.
                 try:
                     cur.turns[-1].answer_parts = [json.loads(msg.split("text=", 1)[1])]
+                except (IndexError, ValueError):
+                    pass
+            elif word == "tts" and cur is not None and cur.turns:
+                try:
+                    cur.turns[-1].to_voice = json.loads(msg.split("text=", 1)[1])
+                except (IndexError, ValueError):
+                    pass
+            elif word == "filler" and cur is not None and cur.turns:
+                # The tool-aware holding line the phone would say as a tool starts (laptop harness).
+                try:
+                    cur.turns[-1].fillers.append(json.loads(msg.split("text=", 1)[1]))
                 except (IndexError, ValueError):
                     pass
             elif word == "note" and cur is not None:
@@ -344,6 +357,21 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
     for rx in expect.get("answer_not", []):
         if re.search(rx, answer, re.I):
             fails.append(f"answer has /{rx}/")
+    # The holding line said as the tool started (laptop harness only; the phone logs no words for it).
+    if not phone:
+        heard_fillers = " | ".join(turn.fillers)
+        for rx in expect.get("filler_has", []):
+            if not any(re.search(rx, f, re.I) for f in turn.fillers):
+                fails.append(f"no holding line matches /{rx}/; heard {heard_fillers or 'none'}")
+        if expect.get("no_filler") and turn.fillers:
+            fails.append(f"a holding line was said: {heard_fillers}")
+    # Expression tags (2026-11-17): never in what he reads or what is kept, never read aloud as words.
+    if re.search(r"<\s*[a-z]|\bchuckles?\b|\bsighs\b", answer, re.I):
+        fails.append("the answer text carries an expression tag or its word")
+    if not phone:
+        for rx in expect.get("tts_not", []):
+            if re.search(rx, turn.to_voice, re.I):
+                fails.append(f"the voice was handed /{rx}/: {turn.to_voice[:120]}")
     if expect.get("no_empty_claim"):
         # An open task in the result: a task row not done, or a non-empty `due` block (fix/greet-and-due).
         # The `due` block leads with its counts, so `"open":N` survives the audit line's 400-character cut.
@@ -351,7 +379,13 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
                         for c in turn.calls)
         if open_task and EMPTY_CLAIM.search(answer):
             fails.append("said nothing is due while a tool result shows an open task")
-    if not answer:
+    if expect.get("silent"):
+        # Nothing was heard, so nothing is said and nothing runs (2026-11-17: no-voice audio is silence).
+        if answer:
+            fails.append(f"said something on silence: {answer[:80]}")
+        if turn.calls:
+            fails.append("called a tool on silence")
+    elif not answer:
         fails.append("no answer text")
     # Outcome checks (2026-11-15): the change landed, whichever tool the model reached it by. Not
     # on a phone write that test mode refuses (nothing can land there).

@@ -3,6 +3,7 @@ package com.kevin.legion.service.cascade
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.media.PlaybackParams
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -16,7 +17,16 @@ import java.util.concurrent.atomic.AtomicInteger
  * usage. [flush] stops a reply at once (barge-in, tap) and makes every write still in flight for
  * the old reply a no-op.
  */
-internal class ReplyPlayer(val sampleRate: Int, private val callAudio: () -> Boolean) {
+internal class ReplyPlayer(
+    val sampleRate: Int,
+    private val callAudio: () -> Boolean,
+    /**
+     * Speaking speed, pitch kept (2026-11-17, Kevin: "the cloud assistant talks too slow"): read when
+     * the track is built, so a Settings change applies from the next conversation. Every voice and
+     * every scripted clip plays through here, so all of them speed up alike.
+     */
+    private val speed: () -> Float = { 1f },
+) {
     private val lock = Any()
     private var track: AudioTrack? = null
     @Volatile private var framesWritten = 0L
@@ -126,6 +136,11 @@ internal class ReplyPlayer(val sampleRate: Int, private val callAudio: () -> Boo
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         t.setVolume(AudioTrack.getMaxVolume())
+        val rate = VoiceEngineSettings.clampSpeed(speed())
+        if (rate != 1f) {
+            // Time-stretched, pitch kept. A device that refuses plays at normal speed rather than not at all.
+            runCatching { t.playbackParams = PlaybackParams().setSpeed(rate).setPitch(1f) }
+        }
         t.play()
         framesWritten = 0
         return t

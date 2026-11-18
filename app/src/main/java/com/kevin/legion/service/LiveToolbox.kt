@@ -1262,7 +1262,7 @@ object LiveToolbox {
             "read_mail" -> readMail(context, args)
             "track_package" -> trackPackage(context)
             "flight_status" -> flightStatus(context)
-            "read_calendar" -> readCalendar(context, args)
+            "read_calendar" -> readCalendar(context, args, userText)
             "complete_task" -> nameIt(
                 completeTask(context, args, onNoMatch = {
                     tickReminderOrTodo(context, args.optString("title"), args.optBoolean("done", true))
@@ -2120,12 +2120,31 @@ object LiveToolbox {
      * [Event.structuredMeta] (a JSON object string). This function just decodes that column
      * straight into the `meta` field below - same shape the model always saw, sourced differently.
      */
-    @Suppress("CyclomaticComplexMethod") // one dispatch; a split scatters the decision
-    private suspend fun readCalendar(context: Context, args: JSONObject): JSONObject {
+    private suspend fun readCalendar(context: Context, args: JSONObject, userText: String? = null): JSONObject {
         val zone = java.time.ZoneId.systemDefault()
-        val window = parseCalendarWindow(
-            args.optString("from"), args.optString("to"), zone,
-        ) ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
+        // His own day word wins over a one-day date the model worked out (RelativeDay.saidDay).
+        val today = RelativeDay.today(zone)
+        val asked = RelativeDay.parse(args.optString("from"), today)
+            ?.let { f -> RelativeDay.parse(args.optString("to"), today)?.let { f to it } }
+        val said = asked?.let { (f, t) -> RelativeDay.correct(f, t, RelativeDay.saidDay(userText, today)) }
+        val from = said?.first?.toString() ?: args.optString("from")
+        val to = said?.second?.toString() ?: args.optString("to")
+        val window = parseCalendarWindow(from, to, zone) ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
+        if (said != null) {
+            val note = "Read for ${RelativeDay.label(said.first)}, the day he said, not the date asked for."
+            return readCalendarWindow(context, zone, window, args.optString("city")).put("date_note", note)
+        }
+        return readCalendarWindow(context, zone, window, args.optString("city"))
+    }
+
+    /** [readCalendar] once its window is settled. */
+    @Suppress("CyclomaticComplexMethod") // one dispatch; a split scatters the decision
+    private suspend fun readCalendarWindow(
+        context: Context,
+        zone: java.time.ZoneId,
+        window: Pair<Long, Long>,
+        city: String,
+    ): JSONObject {
         val (startMs, endMs) = window
 
         // [activeByKindInLocalWindow], not the raw DAO query - an all-day row's `startsAt` is UTC
@@ -2204,8 +2223,7 @@ object LiveToolbox {
         o.put("window", saidWindow)
         // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
         // user could do, not plans, and `count` and the empty-window sentence stay about plans.
-        com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone,
-            args.optString("city"))
+        com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone, city)
         return o
     }
 
@@ -5096,12 +5114,15 @@ object LiveToolbox {
         code: String,
         seed: Map<String, Pair<String, String>>,
         info: Map<String, Pair<String, String>>,
+        /** The AI label as heard: the short spoken form, or null once it was said ([SpokenCarLines]). */
+        aiLabel: String? = "(${DtcMeanings.AI_LABEL})",
     ): String {
         val name = info[code]?.first
         return when {
             name == null -> code
             code in seed -> "$code, $name"
-            else -> "$code, $name (${DtcMeanings.AI_LABEL})"
+            aiLabel == null -> "$code, $name"
+            else -> "$code, $name $aiLabel".trimEnd()
         }
     }
 
@@ -5161,6 +5182,10 @@ object LiveToolbox {
     internal const val ENGINE_CODES_NOT_READ = "The engine's stored-code read (OBD mode 03) got no real answer, so " +
         "its codes are not known and nothing is known to be clear."
 
+    /** [ENGINE_CODES_NOT_READ] as heard: the same claim without the parenthesis read aloud (2026-11-17). */
+    internal const val ENGINE_CODES_NOT_READ_SPOKEN = "The engine's code read got no real answer, so its codes " +
+        "are not known and nothing is known to be clear."
+
     /**
      * The engine code read's words, spoken by the phone itself, word for word (stage 7 diagnostics,
      * 2026-11-17: "No stored engine codes ..." came out as "Clean bill" through the model).
@@ -5171,6 +5196,7 @@ object LiveToolbox {
     internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
         "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
 
+    @Suppress("CyclomaticComplexMethod", "ReturnCount") // read, empty, failed, each code
     private suspend fun getCodes(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return result(false, "The OBD adapter isn't connected, so I can't read any codes.")
@@ -5179,7 +5205,9 @@ object LiveToolbox {
         // Mode 03 answer is a failed read and is said as one, never as "no codes".
         val raw = ObdBluetoothManager.getDtcCodesRaw()
         val parser = com.kevin.legion.vehicle.ObdResponseParser
-        if (!parser.isValidDtcReply(raw)) return spokenRead(result(false, ENGINE_CODES_NOT_READ), ENGINE_CODES_NOT_READ)
+        if (!parser.isValidDtcReply(raw)) {
+            return spokenRead(result(false, ENGINE_CODES_NOT_READ), ENGINE_CODES_NOT_READ_SPOKEN)
+        }
         val codes = parser.dtcCodes(raw)
         if (codes.isEmpty()) {
             ToolCards.codes(context, ActiveVehicle.connectedCarId(context), codes, emptyMap())
@@ -5199,6 +5227,11 @@ object LiveToolbox {
         GlanceCardController.show(glance)
         lookUpUnknownCodes(context, codes, seed, learned, glance)
         val spoken = codes.joinToString("; ") { spokenCode(it, seed, info) }
+        // Heard: the AI label in its short form, at most once a conversation (2026-11-17: the whole
+        // parenthesis was read aloud on every answer). The result and the screen keep it whole.
+        val aiCodes = codes.any { it !in seed && info[it] != null }
+        val heardLabel = if (aiCodes && SpokenCarLines.sayAiLabel()) SpokenCarLines.AI_LABEL_SPOKEN else null
+        val heardCodes = codes.joinToString("; ") { spokenCode(it, seed, info, heardLabel) }
         // Each live code's freeze frame (2026-11-03): the snapshot saved with the newest stored
         // event that carries the code. Mode 02 is not re-read here - ten more PID round trips
         // inside an 8 s tool budget - and the stored frame is the ECU's same latched snapshot.
@@ -5224,7 +5257,7 @@ object LiveToolbox {
             perCode.put(o)
         }
         if (mac != null && stored.isNotEmpty()) VoiceModalController.show(VoiceModalTarget.CODES, mac)
-        val said = (if (codes.size == 1) "Stored engine code: " else "Stored engine codes: ") + "$spoken."
+        val said = (if (codes.size == 1) "Stored engine code: " else "Stored engine codes: ") + "$heardCodes."
         return spokenRead(result(true, "${codes.size} code(s) stored: $spoken.").put("codes", perCode), said)
     }
 

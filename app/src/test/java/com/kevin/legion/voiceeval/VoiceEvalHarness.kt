@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures and assertions read best on one line
+
 package com.kevin.legion.voiceeval
 
 import android.content.Context
@@ -18,15 +20,40 @@ import com.kevin.legion.service.cascade.CascadeSession
 import com.kevin.legion.service.cascade.ContextCacheStore
 import com.kevin.legion.service.cascade.GeminiStreamTransport
 import com.kevin.legion.service.cascade.GeminiTextLoop
+import com.kevin.legion.service.cascade.GeminiStt
+import com.kevin.legion.service.cascade.GeminiTts
+import com.kevin.legion.service.cascade.ScriptedLines
+import com.kevin.legion.service.cascade.SttGuard
+import com.kevin.legion.service.cascade.SttResult
+import com.kevin.legion.service.cascade.CloudSpeechWire
+import com.kevin.legion.service.cascade.SentenceSplitter
+import com.kevin.legion.service.cascade.SpokenLanguages
+import com.kevin.legion.service.cascade.ToolFillers
+import com.kevin.legion.service.cascade.TtsTags
 import com.kevin.legion.service.tools.LiveSurface
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
-/** One eval case as the harness needs it: an id and what is said, turn by turn. */
-internal data class EvalCase(val id: String, val turns: List<String>, val write: Boolean)
+/**
+ * One eval case as the harness needs it: an id and what is said, turn by turn. [dongle] "unknown"
+ * plugs a made-up OBD adapter in whose car nobody has named (no VIN); [sttAudio] speaks each turn
+ * with the cloud voice and transcribes it with the cloud transcriber before the model hears it.
+ */
+internal data class EvalCase(
+    val id: String,
+    val turns: List<String>,
+    val write: Boolean,
+    val sttAudio: Boolean = false,
+    /** The languages besides English he has in Settings for this case ([SpokenLanguages]). */
+    val languages: List<String> = emptyList(),
+)
 
 /** Reads the shared case files (`tools/voice_eval/cases.json` and any private ones). */
 internal object VoiceEvalCases {
@@ -37,7 +64,15 @@ internal object VoiceEvalCases {
             val turns = c.optJSONArray("turns")?.let { t ->
                 (0 until t.length()).map { t.getJSONObject(it).getString("say") }
             } ?: listOf(c.getString("say"))
-            EvalCase(c.getString("id"), turns, c.optBoolean("write", false))
+            EvalCase(
+                c.getString("id"),
+                turns,
+                c.optBoolean("write", false),
+                languages = c.optJSONObject("fixture")?.optJSONArray("languages")?.let { a ->
+                    (0 until a.length()).map { a.getString(it) }
+                }.orEmpty(),
+                sttAudio = c.optBoolean("stt_audio", false),
+            )
         }
     }
 
@@ -72,6 +107,11 @@ internal class VoiceEvalHarness(
 
     suspend fun runCase(case: EvalCase) {
         out(TEST_TAG, "case_begin id=${LiveAudit.token(case.id)}")
+        runTurns(case)
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements") // the session's turn order, in one place
+    private suspend fun runTurns(case: EvalCase) {
         val audit = LiveAudit(sink = { out(LiveAudit.TAG, it) }, onSession = {})
         audit.enabled = true
         audit.sessionStart("eval+${prefix.model}", emptySet())
@@ -87,21 +127,77 @@ internal class VoiceEvalHarness(
             },
         )
         val history = mutableListOf<ChatTurn>()
+        val languages = listOf(SpokenLanguages.ENGLISH) + case.languages.mapNotNull { SpokenLanguages.byName(it) }
+        var current = SpokenLanguages.ENGLISH
         val started = now()
-        for (heard in case.turns) {
+        for (said in case.turns) {
+            val heardRaw = if (case.sttAudio) {
+                transcribeSpoken(said, SpokenLanguages.sttInstruction(languages, current))
+            } else {
+                said
+            }
+            // The session's gate on what the transcriber wrote ([SttGuard]): a transcript it does not
+            // believe never reaches the model; the missed line is said instead.
+            val verdict = SttGuard.verdict(heardRaw, 0L, accepted = languages)
+            if (verdict is SttGuard.Verdict.Drop && verdict.reason !in SttGuard.SILENT_REASONS) {
+                audit.user(heardRaw, final = true)
+                out(LiveLatency.TAG, "stt_rejected reason=${verdict.reason} chars=${heardRaw.length}")
+                audit.assistant(ScriptedLines.MISSED, readThrough = false)
+                out(TEST_TAG, "heard text=${LiveAudit.quote(ScriptedLines.MISSED)}")
+                audit.turnComplete()
+                history.add(ChatTurn(fromUser = true, text = heardRaw))
+                history.add(ChatTurn(fromUser = false, text = ScriptedLines.MISSED))
+                continue
+            }
+            val heard = (verdict as? SttGuard.Verdict.Keep)?.text.orEmpty()
+            // Nothing was heard (no voice, or a transcript dropped as silence): the session says nothing.
+            if (heard.isBlank()) {
+                audit.user(heard, final = true)
+                out(TEST_TAG, "heard text=\"\"")
+                audit.turnComplete()
+                continue
+            }
+            // The session's language rule (CascadeSession.followLanguage), cloud voice.
+            val asked = SpokenLanguages.request(heard, languages)
+            if (asked is SpokenLanguages.Switch.NotInSettings) {
+                audit.user(heard, final = true)
+                val line = SpokenLanguages.notInSettingsLine(asked.name)
+                audit.assistant(line, readThrough = false)
+                out(TEST_TAG, "heard text=${LiveAudit.quote(line)}")
+                audit.turnComplete()
+                continue
+            }
+            ((asked as? SpokenLanguages.Switch.To)?.language ?: SpokenLanguages.writtenIn(heard, languages))?.let {
+                if (it != current) out(TEST_TAG, "language_switch to=${it.name}")
+                current = it
+            }
             audit.user(heard, final = true)
             val t0 = now()
             var firstMs = -1L
+            var fillerSaid = false
+            val raw = StringBuilder()
             val result = loop.answer(
                 prefix,
-                CascadePrompt.contents(history, heard, preamble),
+                CascadePrompt.contents(history, heard, preamble + SpokenLanguages.turnNote(current)),
                 executor(audit, heard),
                 object : GeminiTextLoop.Listener {
                     override fun onText(delta: String) {
                         if (firstMs < 0) firstMs = now() - t0
+                        raw.append(delta)
                     }
 
                     override fun onReadThrough(source: String) = audit.readThrough(source)
+
+                    // The holding line the phone would say as these tools start ([ToolFillers]).
+                    override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {
+                        if (firstMs >= 0 || fillerSaid) return
+                        val plan = ToolFillers.plan(
+                            calls.map { (n, a) -> ToolFillers.Call(n, a, CascadeRules.isWrite(n, a)) },
+                        ) ?: return
+                        fillerSaid = true
+                        val line = ToolFillers.pick(plan.lines, null, 0)
+                        out(TEST_TAG, "filler at=${if (plan.slow) "start" else "late"} text=${LiveAudit.quote(line)}")
+                    }
                 },
             )
             out(LiveLatency.TAG, CascadeLines.usage(prefix.model, result.usage))
@@ -114,6 +210,12 @@ internal class VoiceEvalHarness(
             // What would be heard, even when the record redacts it (made-up data only): the scorer
             // reads this line first (2026-11-17, ADR 0090 guard cases score the spoken answer).
             out(TEST_TAG, "heard text=${LiveAudit.quote(said)}")
+            // What the cloud voice would be handed, tags and all ([TtsTags], as ReplySpeaker applies them).
+            val budget = TtsTags.Budget()
+            val splitter = SentenceSplitter()
+            val toVoice = (splitter.feed(raw.toString()) + listOfNotNull(splitter.flush()))
+                .joinToString(" ") { TtsTags.forSpeech(it, budget) }
+            out(TEST_TAG, "tts text=${LiveAudit.quote(toVoice)}")
             audit.turnComplete()
             out(
                 LiveLatency.TAG,
@@ -124,6 +226,30 @@ internal class VoiceEvalHarness(
         }
         audit.sessionEnd("eval")
         out(TEST_TAG, "case_end id=${LiveAudit.token(case.id)} ms=${now() - started}")
+    }
+
+    /**
+     * [text] spoken by the cloud voice (Gemini TTS, 24 kHz) and heard back by the cloud transcriber
+     * (16 kHz), as a spoken turn is: proves the transcriber's English pinning on real audio.
+     */
+    private suspend fun transcribeSpoken(text: String, instruction: String): String {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val tts = GeminiTts(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.TTS, m, u).line()) })
+            val clip = tts.speak(text)
+            val pcm24 = java.io.ByteArrayOutputStream()
+            withTimeoutOrNull(STT_AUDIO_TIMEOUT_MS) { for (f in clip.frames) pcm24.write(f) }
+            val pcm16 = downsample24to16(pcm24.toByteArray())
+            val stt = GeminiStt(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.STT, m, u).line()) },
+                log = { out(LiveLatency.TAG, it) }, instruction = { instruction })
+            val r = stt.transcribe(pcm16)
+            val heard = (r as? SttResult.Text)?.text.orEmpty()
+            out(TEST_TAG, "stt_audio audio_ms=${pcm16.size / 32} result=${if (r is SttResult.Text) "text" else r.toString()} " +
+                "voice=${CloudSpeechWire.VOICE} sent=${LiveAudit.quote(text)} heard=${LiveAudit.quote(heard)}")
+            return heard
+        } finally {
+            scope.cancel()
+        }
     }
 
     private fun executor(audit: LiveAudit, heard: String) = TextToolExecutor { name, args, readThrough ->
@@ -177,6 +303,24 @@ internal class VoiceEvalHarness(
 
     companion object {
         const val TEST_TAG = "LIVE_TEST"
+        private const val STT_AUDIO_TIMEOUT_MS = 20_000L
+
+        /** 16-bit mono, 24 kHz to 16 kHz: two samples out of every three, linear between them. */
+        fun downsample24to16(pcm: ByteArray): ByteArray {
+            val n = pcm.size / 2
+            fun at(i: Int): Int = if (i >= n) 0 else ((pcm[2 * i].toInt() and 0xff) or (pcm[2 * i + 1].toInt() shl 8)).toShort().toInt()
+            val outN = n * 2 / 3
+            val out = ByteArray(outN * 2)
+            for (j in 0 until outN) {
+                val pos = j * 3 / 2.0
+                val i = pos.toInt()
+                val frac = pos - i
+                val v = (at(i) * (1 - frac) + at(i + 1) * frac).toInt()
+                out[2 * j] = (v and 0xff).toByte()
+                out[2 * j + 1] = ((v shr 8) and 0xff).toByte()
+            }
+            return out
+        }
 
         /**
          * Tools whose whole effect is a screen (LiveSessionController owns them). `navigate` opens the

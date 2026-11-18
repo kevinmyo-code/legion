@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // assertions read best on one line
+
 package com.kevin.legion.service
 
 import com.kevin.legion.backend.EventKind
@@ -97,5 +99,20 @@ class ReadCalendarDueBlockTest {
         assertEquals(0, r.getInt("count"))
         assertEquals(1, r.getJSONObject("due").getInt("open"))
         assertEquals("Nothing on the calendar in that window; what is due is under due.", r.getString("message"))
+    }
+
+    @Test
+    fun `and tomorrow read as the day after tomorrow is read for tomorrow, as he said`() = runBlocking {
+        val today = LocalDate.now(zone)
+        val wrong = today.plusDays(2).toString()
+        val args = JSONObject().put("action", "read_calendar").put("from", wrong).put("to", wrong)
+        val r = LiveToolbox.dispatch(context, "read_calendar", args, userText = "and tomorrow?")!!
+        assertTrue(r.toString(), r.getString("window").endsWith(today.plusDays(1).toString()))
+        assertTrue(r.has("date_note"))
+        // A range, or no day word: the model's dates stand.
+        val week = JSONObject().put("action", "read_calendar").put("from", today.toString()).put("to", wrong)
+        assertTrue(!LiveToolbox.dispatch(context, "read_calendar", week, userText = "and tomorrow?")!!.has("date_note"))
+        val plain = LiveToolbox.dispatch(context, "read_calendar", JSONObject(args.toString()), userText = "what about Thursday")!!
+        assertTrue(plain.getString("window").endsWith(wrong))
     }
 }
