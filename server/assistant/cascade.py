@@ -1047,8 +1047,9 @@ def run_turn(
     door = WebDoor(request, conversation_id, turn)
     report.door = door
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
-    if speak:
-        # The filler lines' audio, fetched while the floor is theirs (spec 22).
+    if speak and turn_input.audio is None:
+        # The filler lines' audio, fetched while the floor is theirs (spec 22). For audio, only
+        # once speech was heard: room noise must cost nothing (round 2 cloud run, 2026-11-17).
         timings["speech_fetched"] = filler_audio.warm(speech, voice)
     try:
         if turn_input.greet:
@@ -1095,6 +1096,8 @@ def run_turn(
                 report.status = "nothing_heard"
                 yield ev.done("nothing_heard", "", False, ignored="no_speech")
                 return
+            if turn_input.audio is not None:
+                timings["speech_fetched"] = filler_audio.warm(speech, voice)
             if words is None or tour.is_skip(words) or tour.is_stop(words):
                 yield from _tour(request, door, speaker, report, turn_input.tour_beat, words)
                 return
@@ -1180,6 +1183,8 @@ def _answer(
             stt_output_tokens=heard.output_tokens,
         )
         words = heard.text
+        if words:
+            timings["speech_fetched"] = filler_audio.warm(speech, speaker.voice)
         if not words:
             # No speech (2026-11-17: room noise must never become a reply). Silence: no reply, no
             # filler, nothing on screen; the page listens again with a fresh window. Whether a paid

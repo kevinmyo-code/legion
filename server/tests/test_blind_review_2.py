@@ -27,6 +27,9 @@ from tests.test_no_speech import _pcm, _speechlike
 
 pytestmark = pytest.mark.django_db
 
+# The real transport, taken at import: `conftest._no_agent_model` replaces it for every test.
+REAL_LINES = runtime_model.UrllibTransport.lines
+
 
 # ---- finding 6: a transcription cut off mid-response is retried, then a spoken miss -------------
 
@@ -50,7 +53,7 @@ class _CutOff:
     [
         ConnectionResetError("reset by peer"),
         http.client.IncompleteRead(b"partial"),
-        TimeoutError("read timed out"),
+        TimeoutError("read timed out"),  # a control: handled before the fix too
     ],
 )
 def test_a_transcription_cut_off_mid_response_is_retried_then_a_speech_failure(monkeypatch, exc):
@@ -60,6 +63,7 @@ def test_a_transcription_cut_off_mid_response_is_retried_then_a_speech_failure(m
         calls.append(req.full_url)
         return _CutOff(exc)
 
+    monkeypatch.setattr(runtime_model.UrllibTransport, "lines", REAL_LINES)
     monkeypatch.setattr(runtime_model.urllib.request, "urlopen", urlopen)
     real = GeminiSpeech(lambda: "key", stt_model="stt")
     with pytest.raises(SpeechFailure):
@@ -323,8 +327,10 @@ def test_speech_is_reserved_per_request_and_given_back_when_unused(visitor, engi
     from assistant import cascade, fillers
 
     lines = len(set(fillers.all_lines()) | set(cascade.SPOKEN_FAILURES))
-    # One text call used; the speech share; one speech request plus the lines set out to be made.
-    assert day.reserved_cents == 1 + 1 + budget.speech_requests_cents(1 + lines)
+    requests = len(engine.speech.spoken)
+    # One text call used; the speech share; the turn's speech requests and the lines set out to be
+    # made are kept; the rest of the reserve (six requests, the cache call) went back.
+    assert day.reserved_cents == 1 + 1 + budget.speech_requests_cents(requests + lines)
 
 
 # ---- finding 9: the record rollover does not reset a demo conversation's time limit -------------

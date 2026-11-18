@@ -725,7 +725,10 @@ def test_a_visitor_greeting_keeps_its_speech_reservation(visitor, engine, settin
     # turn's share, its one speech request, and the filler and failure lines it set out to make
     # (round 2 turn review 8: those were paid and never reserved).
     lines = len(set(fillers.all_lines()) | set(cascade.SPOKEN_FAILURES))
-    assert day.reserved_cents == 1 + budget.speech_requests_cents(1 + lines)
+    # The opening's own speech requests (its first clause goes alone, the rest in one more).
+    requests = len(engine.speech.spoken)
+    assert requests == 2
+    assert day.reserved_cents == 1 + budget.speech_requests_cents(requests + lines)
 
 
 def test_a_claimed_change_after_a_refused_write_is_not_said(member, engine):
