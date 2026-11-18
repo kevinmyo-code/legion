@@ -63,6 +63,17 @@ class TypesetBucketsAndIconsTest {
     }
 
     @Test
+    fun `a work twin on the home row says work, so it never looks like the personal copy`() {
+        val personal = DockSlotUi(DockPin("example.mail", 0), apps[3], "Mail", icon = null, paused = false)
+        val work = DockSlotUi(DockPin("example.mail", 1), apps[4], "Mail", icon = null, paused = false)
+        assertNull(slotTile(personal).note)
+        assertEquals("work", slotTile(work).note)
+        val workShortcut = com.kevin.legion.ui.apps.PinnedShortcuts
+            .asDrawerApp("example.browser", "s", "Board", true, 1, "Browser")
+        assertEquals("Browser, work", slotTile(DockSlotUi(DockPin("s", 1), workShortcut, "Board", null, false)).note)
+    }
+
+    @Test
     fun `a pinned app carries its icon and says why it cannot open`() {
         val pin = DockPin("example.mail", 1)
         val paused = DockSlotUi(pin, apps[4], "Mail", icon = null, paused = true)

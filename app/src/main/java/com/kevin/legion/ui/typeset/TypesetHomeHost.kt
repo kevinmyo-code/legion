@@ -184,7 +184,10 @@ internal fun slotTile(slot: DockSlotUi): TypesetDockTile {
     val shortcut = slot.app?.shortcutId != null
     return TypesetDockTile(
         monogram, slot.label, icon = slot.icon, status = status,
-        note = slot.app?.origin.takeIf { shortcut },
+        // Who made a shortcut, and "work" for a work-profile app or shortcut: the icons are one ink now,
+        // so a personal and a work copy must differ in words (review 2026-11-18).
+        note = listOfNotNull(slot.app?.origin.takeIf { shortcut }, "work".takeIf { slot.app?.isWork == true })
+            .joinToString(", ").ifBlank { null },
         isShortcut = shortcut,
     )
 }
