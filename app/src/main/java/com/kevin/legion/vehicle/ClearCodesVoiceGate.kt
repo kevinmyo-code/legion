@@ -16,7 +16,9 @@ package com.kevin.legion.vehicle
  *  1. an ask is pending and younger than [TTL_MS];
  *  2. the words of the turn making the confirmed call are not the asking turn's words (the answer
  *     has to come after the question);
- *  3. those words are a plain yes ([isExplicitYes]).
+ *  3. those words are a plain yes ([isExplicitYes]);
+ *  4. the clip they came from carried a voice: at least [YES_MIN_VOICED_MS] of it, or no measure
+ *     (2026-11-18: a noise burst written down as "yes" must not wipe readiness monitors).
  * Words that cannot be heard (an empty transcript) are not a yes. The confirmed call consumes the
  * ask whatever it then finds, so one yes buys one clear.
  *
@@ -44,12 +46,13 @@ class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMil
      * Decides a `confirmed=true` call. Null means it may go ahead (and the ask is consumed); a
      * string is the refusal to return, in words that say nothing was sent and what to do instead.
      */
-    fun checkConfirmed(userText: String?): String? {
+    fun checkConfirmed(userText: String?, voicedMs: Long? = null): String? {
         val ask = pending
         val words = normalise(userText)
         val refusal = when {
             ask == null || clock() - ask.atMs > TTL_MS -> NO_QUESTION
             words.isEmpty() -> UNHEARD
+            voicedMs != null && voicedMs < YES_MIN_VOICED_MS -> UNHEARD
             words == ask.askTurnWords -> NOT_ANSWERED_YET
             !isExplicitYes(userText.orEmpty()) -> notAYes(userText.orEmpty().trim())
             else -> null
@@ -58,7 +61,18 @@ class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMil
         return refusal
     }
 
+    /**
+     * How much voice the clip of the turn making a call carried (the session's measure, in the call's
+     * coroutine context); absent off the voice path.
+     */
+    class HeardVoice(val voicedMs: Long?) : kotlin.coroutines.AbstractCoroutineContextElement(HeardVoice) {
+        companion object Key : kotlin.coroutines.CoroutineContext.Key<HeardVoice>
+    }
+
     companion object {
+        /** A yes that clears codes needs this much voice under it: stricter than any other turn. */
+        const val YES_MIN_VOICED_MS = 150L
+
         /** How long a confirm question stays answerable. Long enough for a slow answer, short enough
          * that a yes about something else ten minutes later cannot reach back to it. */
         const val TTL_MS = 3 * 60_000L

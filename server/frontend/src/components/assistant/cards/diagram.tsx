@@ -1,5 +1,5 @@
 import { Maximize2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useState } from 'react'
 
 import { FitView, type Size } from './fit-view'
 import { usePresenter } from './presenter-context'
@@ -74,8 +74,13 @@ export function svgSize(svg: string): Size | null {
  */
 function useSvg(card: DiagramCard, size?: Size) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
-  const highlight = useMemo(() => new Set(card.highlight), [card.highlight])
-  useEffect(() => {
+  // Keyed on the highlighted ids, not the array: the same diagram shown again (a new card object,
+  // equal content) keeps the picture already drawn (live demo, 2026-11-18: it flickered).
+  const highlightKey = card.highlight.join('\u0000')
+  const highlight = useMemo(() => new Set(highlightKey ? highlightKey.split('\u0000') : []), [highlightKey])
+  // Layout effects: the picture is drawn and sized before the browser paints, so opening the
+  // dialog is one paint, never an empty panel first.
+  useLayoutEffect(() => {
     if (!host) return
     const svg = cleanSvg(card.svg)
     host.replaceChildren()
@@ -93,7 +98,7 @@ function useSvg(card: DiagramCard, size?: Size) {
   }, [host, card.svg, highlight])
   const width = size?.width
   const height = size?.height
-  useEffect(() => {
+  useLayoutEffect(() => {
     const svg = host?.querySelector('svg')
     if (!svg || width === undefined || height === undefined) return
     svg.style.width = `${width}px`

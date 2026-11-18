@@ -86,7 +86,7 @@
           "say": "and tomorrow?",
           "expect": {
             "calls": ["day/read_calendar"],
-            "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+            "read_day": ["{today+1}"]
           }
         }
       ],
@@ -101,7 +101,7 @@
           "say": "what about tomorrow?",
           "expect": {
             "calls": ["day/read_calendar"],
-            "args_all": {"day/read_calendar": {"from": {"lte": "{today+1}"}, "to": {"gte": "{today+1}"}}}
+            "read_day": ["{today+1}"]
           }
         }
       ]
@@ -261,6 +261,183 @@
       "expect": {
         "calls": ["look_up/ask_mail"],
         "answer_not": ["(?i)(I'?ve|I have) (remembered|saved)"]
+      }
+    },
+    {
+      "id": "no_filler_after_answer",
+      "say": "what's due today",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "answer_not": ["(?i)(just a (second|sec|moment)|give me a (second|sec|moment)|one sec|hang on|bear with me)\\W*$"]
+      }
+    },
+    {
+      "id": "mostly_spanish_sentence_is_missed",
+      "say": "dijo que no hay nada para hoy, gracias.",
+      "why": "Transcript guard: a sentence two thirds Spanish-only words gets the spoken miss and reaches no tool (was garbage_transcript; reworded 2026-11-17, so it tests the 2/3 rule, not the 11-17 failure)",
+      "expect": {
+        "not_calls": ["car", "car/clear_codes"],
+        "missed": true
+      }
+    },
+    {
+      "id": "car_request_with_spanish_words_11_17_shape",
+      "say": "pues clear the codes del truck ahora",
+      "why": "The 2026-11-17 failure SHAPE, invented words: English speech written back as a car request with a few Spanish-looking words, and a car tool run on it. Right behaviour: the spoken miss, no car tool. The 2/3 rule keeps this sentence (3 of 7), so this case is EXPECTED TO FAIL until the guard catches the shape; report its true result",
+      "expect": {
+        "not_calls": ["car/clear_codes"],
+        "missed": true
+      }
+    },
+    {
+      "id": "stt_audio_cars",
+      "say": "which cars do I have on file",
+      "stt_audio": true,
+      "expect": {
+        "calls": ["ask/ask_fleet|car|list_vehicles"],
+        "not_calls": ["car/switch_vehicle"]
+      }
+    },
+    {
+      "id": "stt_audio_oil",
+      "say": "when is the Ranger due for an oil change",
+      "stt_audio": true,
+      "expect": {
+        "calls": ["ask/ask_fleet"],
+        "not_calls": ["car/clear_codes"]
+      }
+    },
+    {
+      "id": "stt_audio_switch",
+      "say": "switch to the Ranger",
+      "stt_audio": true,
+      "write": true,
+      "expect": {
+        "calls": ["car/switch_vehicle"],
+        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)ranger"}}}
+      }
+    },
+    {
+      "id": "filler_specialist",
+      "say": "how is the Ranger's battery doing",
+      "why": "Tool-aware holding line (2026-11-17): the car specialist route says so as it starts",
+      "expect": {
+        "calls": ["ask/ask_fleet"],
+        "filler_has": ["(?i)car specialist"]
+      }
+    },
+    {
+      "id": "filler_calendar",
+      "say": "what's on my calendar tomorrow",
+      "why": "Tool-aware holding line: a calendar read says it is checking the calendar",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "filler_has": ["(?i)calendar"]
+      }
+    },
+    {
+      "id": "filler_web",
+      "say": "search the web for the tallest mountain in Africa",
+      "why": "Web search is Google Search inside the model call: no tool starts, so no holding line can honestly be chosen",
+      "expect": {
+        "no_filler": true
+      }
+    },
+    {
+      "id": "tags_casual",
+      "say": "ha, that lecture went better than I thought",
+      "why": "Expression tags (2026-11-17): a casual moment MAY carry an allowed tag; none is read as a word",
+      "proves_nothing_on": "laptop: the harness hands the voice TtsTags.forSpeech's output, which already strips a tag not on the list, so tts_not cannot fire; TtsTagsTest proves the strip",
+      "expect": {
+        "tts_not": ["<(?!chuckle>|laugh>|sigh>|short pause>)"]
+      }
+    },
+    {
+      "id": "tags_never_on_money",
+      "say": "what's my checking balance",
+      "why": "Expression tags: a money answer never carries one",
+      "expect": {
+        "tts_not": ["<"]
+      }
+    },
+    {
+      "id": "burmese_enabled",
+      "say": "မနက်ဖြန် ကျွန်တော့် ပြက္ခဒိန်မှာ ဘာတွေရှိလဲ။",
+      "stt_audio": true,
+      "why": "Languages (Kevin 2026-11-17): Burmese in his setting; spoken Burmese is kept and answered in Burmese. Burmese quality cannot be judged here, only the script",
+      "fixture": {
+        "languages": ["Burmese"]
+      },
+      "expect": {
+        "answer_has": ["[\\u1000-\\u109F]"]
+      }
+    },
+    {
+      "id": "burmese_default_missed",
+      "say": "မနက်ဖြန် ကျွန်တော့် ပြက္ခဒိန်မှာ ဘာတွေရှိလဲ။",
+      "stt_audio": true,
+      "why": "Languages: with the default setting (English only) the transcriber answers no-speech for Burmese, so it is silence: nothing said, nothing run (the no-voice rule beats a spoken miss)",
+      "expect": {
+        "silent": true
+      }
+    },
+    {
+      "id": "short_answer_kept",
+      "stt_audio": true,
+      "turns": [
+        {"say": "ask me how many days ahead I want to see, then read my calendar for that many days", "expect": {"answer_has": ["[?]"]}},
+        {"say": "Five.", "expect": {"calls": ["day/read_calendar"], "answer_not": ["(?i)catch"]}}
+      ],
+      "why": "Proves a spoken one-word number that answers his assistant's question is heard as speech (never dropped as noise or a miss) and acted on as the answer, with no write (2026-11-18: reworked from a bare Five. with no question before it)"
+    },
+    {
+      "id": "lone_word_no_context",
+      "say": "Five.",
+      "stt_audio": true,
+      "known_limit": "lone_word_write",
+      "why": "Recorded known limit, never fails the gate (2026-11-18, Kevin's ruling A: ship 1a with it; the installed build has it too). A bare one-word turn with no context reaches the model, which may run a write (one run switched the active car) and not say so. Each run records KNOWN LIMIT lone_word_write: <tool/action> when a write succeeded. Follow-up, next phone update: a completed write the reply does not confirm is spoken by code (CascadeSession.answerTurn + ScriptedLines.doneLine, a phrase for the car switch)",
+      "expect": {
+        "answer_not": ["(?i)catch"]
+      }
+    },
+    {
+      "id": "spanish_word_in_english",
+      "say": "add jalapeño peppers to my shopping list",
+      "stt_audio": true,
+      "write": true,
+      "why": "Voice review 2026-11-17: an English sentence with one Spanish-looking word is English",
+      "expect": {
+        "calls": ["manage_checklist/add|manage_item/add"],
+        "answer_not": ["(?i)catch"]
+      }
+    },
+    {
+      "id": "place_name_in_english",
+      "say": "navigate to El Paso",
+      "stt_audio": true,
+      "why": "Voice review 2026-11-17: a Spanish place name in an English request is English",
+      "expect": {
+        "calls": ["navigate"],
+        "answer_not": ["(?i)catch"]
+      }
+    },
+    {
+      "id": "goodbye_ends",
+      "turns": [
+        {"say": "what's due today", "expect": {"calls": ["day/read_calendar"]}},
+        {"say": "Goodbye, Alfred.", "expect": {"ends": true}}
+      ],
+      "why": "2026-11-18: goodbye ends the conversation in code, nothing more is answered",
+      "proves_nothing_on": "laptop: the harness calls WakePhrases.isSleepPhrase itself, not the session; WakePhrasesTest proves the phrases and CascadeWiringTest 'a stop is checked before every noise guard' proves the session's wiring"
+    },
+    {
+      "id": "stop_the_music_is_a_request",
+      "say": "stop the music",
+      "why": "2026-11-18: words that only use stop are a request, never an end",
+      "proves_nothing_on": "laptop: the end is the harness's own WakePhrases call, not the session's; WakePhrasesTest 'sentences that only use those words never end it' proves it",
+      "expect": {
+        "ends": false,
+        "calls": ["control_music|play_music"]
       }
     }
   ]

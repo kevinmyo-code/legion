@@ -874,6 +874,8 @@ object ObdBluetoothManager {
         val wasConnected = connectedDeviceAddress != null
         connectedDeviceAddress = null
         appContext?.let { DongleCarController.onDisconnected(it) }
+        // A clear question asked on this connection cannot be answered on the next one.
+        DtcClearController.forgetClearQuestion()
         // Symmetric with finishConnect: losing the dongle can flip
         // ActiveVehicle.current() back to the default vehicle id too.
         if (wasConnected) appContext?.let { ActiveVehicle.notifyResolutionChanged(it) }

@@ -35,8 +35,18 @@ interface SttUtterance {
 }
 
 sealed interface SttResult {
-    /** [text] may be empty (nothing intelligible). [decodeMs] is the service's own figure. */
-    data class Text(val text: String, val lang: String?, val audioMs: Long?, val decodeMs: Long?) : SttResult
+    /**
+     * [text] may be empty (nothing intelligible). [decodeMs] is the service's own figure. [voicedMs]:
+     * how much of the audio stood above its own quiet floor ([SttGuard.voicedMs]); null when the
+     * audio was not here to measure.
+     */
+    data class Text(
+        val text: String,
+        val lang: String?,
+        val audioMs: Long?,
+        val decodeMs: Long?,
+        val voicedMs: Long? = null,
+    ) : SttResult
 
     /** Nothing usable: [reason] is a short token for the log (`timeout`, `busy`, `dropped`, ...). */
     data class Failed(val reason: String) : SttResult
@@ -67,6 +77,12 @@ interface TextToSpeech {
 
     /** Fetches the audio of those [lines] not yet kept, for next time; the number asked for. */
     fun warm(lines: Collection<String>): Int = 0
+
+    /**
+     * True when the voice performs expression tags ([TtsTags]) instead of reading them aloud: Gemini
+     * TTS does; any other voice gets every tag stripped.
+     */
+    val performsTags: Boolean get() = false
 }
 
 interface StreamingSpeechClip : SpeechClip {
