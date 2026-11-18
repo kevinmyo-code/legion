@@ -173,7 +173,7 @@ private const val SEGMENTS_RPM = 14
 private const val BAR_TRANSITION_MS = 650
 
 /** One raw reading plus its worded staleness (never a bare number - CLAUDE.md §4/§7, [relativeAge] discipline carried over from [com.kevin.legion.ui.fleet.buildLiveRows]). [raw] is always the PID's own native unit - km/h for speed (converted to mph at the read site below via [kmhToMph]), and now Celsius for coolant too (ticket 07: no conversion needed, the PID and the display finally agree). */
-private data class DrivingSample(val raw: Float, val age: String)
+internal data class DrivingSample(val raw: Float, val age: String)
 
 @Composable
 fun DrivingModeScreen(onExit: () -> Unit) {
@@ -311,7 +311,7 @@ fun DrivingModeScreen(onExit: () -> Unit) {
 
 /** Plain UI: the instrument-panel layout with no Room/OBD reference, see the file doc's state-holder split. */
 @Composable
-private fun DrivingModeContent(
+internal fun DrivingModeContent(
     vehicleName: String,
     linkLive: Boolean,
     clock: String,
