@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
 import com.kevin.legion.ui.apps.DockPin
 import com.kevin.legion.ui.apps.DrawerApp
 import com.kevin.legion.ui.apps.letterFolders
@@ -190,6 +191,38 @@ class TypesetBucketsAndIconsTest {
         assertEquals(1, added)
         composeTestRule.onNodeWithText("Cancel").performClick()
         assertEquals(1, cancelled)
+    }
+
+    @Test
+    fun `a shortcut on the home row offers Remove shortcut, asks once, and has no Move`() {
+        var removed = 0
+        val tile = TypesetDockTile("We", "Weather board", note = "Browser", isShortcut = true)
+        composeTestRule.setContent {
+            SoftTheme {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(400.dp, 900.dp)) {
+                    TypesetHomeContent(
+                        glance = TypesetGlance(
+                            "Monday, 9 November", "14:20",
+                            TypesetFigure("15:30", null, "Study group"),
+                            TypesetFigure("3", null, "due today"),
+                            TypesetFigure("1", null, "left"),
+                        ),
+                        phase = OrbPhase.IDLE,
+                        status = "Tap to talk",
+                        night = false,
+                        cards = emptyList(),
+                        actions = TypesetHomeActions(onUnpin = { removed++ }),
+                        dock = listOf(tile),
+                    )
+                }
+            }
+        }
+        composeTestRule.onNodeWithText("Weather board").performTouchInput { longClick() }
+        composeTestRule.onNodeWithText("Move left").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Remove shortcut").performClick()
+        assertEquals(0, removed)
+        composeTestRule.onNodeWithText("Remove").performClick()
+        assertEquals(1, removed)
     }
 
     @Test

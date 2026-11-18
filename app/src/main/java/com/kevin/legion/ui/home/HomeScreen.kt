@@ -348,7 +348,7 @@ fun HomeScreen(
                 // A pinned shortcut comes off LEGION's home through LauncherApps; the cache re-reads.
                 val handle = snapshot.handles[shortcut.profileKey]
                 dockMessage = handle?.let {
-                    com.kevin.legion.ui.apps.PinnedShortcutsAndroid.unpin(context, shortcut, snapshot.shortcuts, it)
+                    com.kevin.legion.ui.apps.PinnedShortcutsAndroid.unpin(context, shortcut, it)
                 } ?: "Couldn't find the profile ${shortcut.label} belongs to."
                 scope.launch {
                     drawerSnapshot = runCatching { AppDrawerCache.refresh(context) }.getOrNull() ?: snapshot

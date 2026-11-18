@@ -447,6 +447,7 @@ private fun Dock(tiles: List<TypesetDockTile>, tier: FitTier, actions: TypesetHo
 @Composable
 private fun RowScope.DockTile(t: TypesetDockTile, actions: TypesetHomeActions) {
     var menu by remember { mutableStateOf(false) }
+    var confirming by remember { mutableStateOf(false) }
     Box(Modifier.weight(1f)) {
         Row {
             TypesetIconCell(
@@ -458,16 +459,35 @@ private fun RowScope.DockTile(t: TypesetDockTile, actions: TypesetHomeActions) {
                 note = t.note,
             ) { AppGlyph(t.icon, t.monogram) }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            listOf(
-                "Unpin ${t.name}" to actions.onUnpin,
-                "Move left" to actions.onMoveLeft,
-                "Move right" to actions.onMoveRight,
-            ).forEach { (words, go) ->
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false; confirming = false }) {
+            // A shortcut (review 2026-11-18): it says what it does, asks once, and has no Move (it
+            // sits after the pinned apps, by name). An app keeps the old dock's unpin and move.
+            val items = when {
+                !t.isShortcut -> listOf(
+                    "Unpin ${t.name}" to actions.onUnpin,
+                    "Move left" to actions.onMoveLeft,
+                    "Move right" to actions.onMoveRight,
+                )
+                !confirming -> listOf(REMOVE_SHORTCUT to { _: TypesetDockTile -> confirming = true; menu = true })
+                else -> listOf(
+                    "Remove" to actions.onUnpin,
+                    "Keep" to { _: TypesetDockTile -> },
+                )
+            }
+            if (t.isShortcut && confirming) {
+                Text(
+                    "Remove ${t.name} from the home screen and All apps?",
+                    style = TypesetType.small,
+                    color = SoftColors.text,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+            items.forEach { (words, go) ->
                 DropdownMenuItem(
                     text = { Text(words, style = TypesetType.small) },
                     onClick = {
                         menu = false
+                        confirming = false
                         go(t)
                     },
                 )
@@ -477,6 +497,9 @@ private fun RowScope.DockTile(t: TypesetDockTile, actions: TypesetHomeActions) {
 }
 
 private const val CASH_LINES = 2
+
+/** What a shortcut's menu says: it takes the shortcut off everywhere, not just this row. */
+internal const val REMOVE_SHORTCUT = "Remove shortcut"
 private val Gutter = 16.dp
 private val FigureColumn = 128.dp
 private val MinTime = 48.dp

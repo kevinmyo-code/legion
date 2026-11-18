@@ -198,18 +198,18 @@ fun AppsScreen() {
     }
 
     pinMenuApp?.takeIf { it.shortcutId != null }?.let { shortcut ->
-        // A pinned shortcut is on the home row already: its one action is to take it off.
-        PinMenuSheet(
-            app = shortcut,
-            pinned = true,
+        // A pinned shortcut's one action takes it off the home row AND All apps, so it says so and
+        // asks once (review 2026-11-18).
+        RemoveShortcutSheet(
+            shortcut = shortcut,
             onDismiss = { pinMenuApp = null },
-            onTogglePin = {
+            onRemove = {
                 val state = loaded
                 val handle = state?.handles?.get(shortcut.profileKey)
                 message = if (state == null || handle == null) {
                     "Couldn't find the profile ${shortcut.label} belongs to."
                 } else {
-                    PinnedShortcutsAndroid.unpin(context, shortcut, state.shortcuts, handle)
+                    PinnedShortcutsAndroid.unpin(context, shortcut, handle)
                 }
                 pinMenuApp = null
                 reload++
@@ -240,6 +240,47 @@ fun AppsScreen() {
                 pinMenuApp = null
             },
         )
+    }
+}
+
+/**
+ * Long-press on a pinned shortcut: "Remove shortcut", then once more "Remove", because it comes off
+ * the home screen and All apps both. Only that shortcut goes; the app's other pins stay.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun RemoveShortcutSheet(shortcut: DrawerApp, onDismiss: () -> Unit, onRemove: () -> Unit) {
+    var confirming by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Text(
+            shortcut.label,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        if (confirming) {
+            Text(
+                "Remove ${shortcut.label} from the home screen and All apps?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            SheetRow("Remove", onRemove)
+            SheetRow("Keep", onDismiss)
+        } else {
+            SheetRow(com.kevin.legion.ui.typeset.REMOVE_SHORTCUT) { confirming = true }
+        }
+    }
+}
+
+@Composable
+private fun SheetRow(words: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(52.dp).clickable(onClick = onClick).padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(words, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 

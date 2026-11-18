@@ -48,14 +48,11 @@ internal object PinnedShortcuts {
     )
 
     /**
-     * The ids still pinned for [remove]'s package and profile once it is gone.
-     * `LauncherApps.pinShortcuts` replaces a package's whole set, so removing one means re-pinning
-     * the rest.
+     * The ids to keep pinned once [removeId] is gone, from the package's own pinned list (disabled
+     * pins included). `LauncherApps.pinShortcuts` replaces a package's whole set, so removing one
+     * means re-pinning every other one, or they would go too (review 2026-11-18).
      */
-    fun remainingIds(pinned: List<DrawerApp>, remove: DrawerApp): List<String> = pinned
-        .filter { it.packageName == remove.packageName && it.profileKey == remove.profileKey }
-        .mapNotNull { it.shortcutId }
-        .filter { it != remove.shortcutId }
+    fun remainingIds(pinnedIds: List<String>, removeId: String): List<String> = pinnedIds.filter { it != removeId }
 
     fun <T> homeRow(apps: List<T>, shortcuts: List<T>, max: Int = HOME_ROW_MAX): List<T> = (apps + shortcuts).take(max)
 }
@@ -181,11 +178,17 @@ internal object PinnedShortcutsAndroid {
     }
 
     /** Removes [shortcut] from LEGION's home, keeping the package's other pins; or says why not. */
-    fun unpin(context: Context, shortcut: DrawerApp, all: List<DrawerApp>, handle: UserHandle): String? {
+    fun unpin(context: Context, shortcut: DrawerApp, handle: UserHandle): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return TOO_OLD
         return runCatching {
-            context.getSystemService(LauncherApps::class.java)
-                .pinShortcuts(shortcut.packageName, PinnedShortcuts.remainingIds(all, shortcut), handle)
+            val apps = context.getSystemService(LauncherApps::class.java)
+            // The package's pinned set as the system holds it now, disabled pins included.
+            val query = LauncherApps.ShortcutQuery()
+                .setPackage(shortcut.packageName)
+                .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
+            val ids = apps.getShortcuts(query, handle).orEmpty().map { it.id }
+            val keep = PinnedShortcuts.remainingIds(ids, shortcut.shortcutId.orEmpty())
+            apps.pinShortcuts(shortcut.packageName, keep, handle)
             null
         }.getOrElse { "Couldn't remove ${shortcut.label}: ${it.message ?: it.javaClass.simpleName}" }
     }

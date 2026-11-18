@@ -43,7 +43,8 @@ class PinnedShortcutsTest {
 
     @Test
     fun `a shortcut carries where it came from, or says it is a shortcut`() {
-        val fromBrowser = PinnedShortcuts.asDrawerApp("example.browser", "w", "Bank login", false, 0, origin = "Browser")
+        val fromBrowser =
+            PinnedShortcuts.asDrawerApp("example.browser", "w", "Bank login", false, 0, origin = "Browser")
         assertEquals("Browser", fromBrowser.origin)
         assertEquals("shortcut", PinnedShortcuts.asDrawerApp("example.x", "x", "X", false, 0, origin = null).origin)
         // An app has no origin line.
@@ -51,13 +52,11 @@ class PinnedShortcutsTest {
     }
 
     @Test
-    fun `removing one shortcut keeps the package's others pinned (pinShortcuts replaces the set)`() {
-        val a = shortcut("a", "Alpha")
-        val b = shortcut("b", "Beta")
-        val other = shortcut("c", "Gamma", pkg = "example.other")
-        val work = shortcut("d", "Delta", serial = 10)
-        assertEquals(listOf("b"), PinnedShortcuts.remainingIds(listOf(a, b, other, work), remove = a))
-        assertEquals(emptyList<String>(), PinnedShortcuts.remainingIds(listOf(a), remove = a))
+    fun `removing one shortcut re-pins every other pin of its package, disabled ones too`() {
+        // The ids come from the system's own pinned list for the package, disabled pins included
+        // (pinShortcuts replaces the whole set, so anything left out would be dropped).
+        assertEquals(listOf("b", "off"), PinnedShortcuts.remainingIds(listOf("a", "b", "off"), removeId = "a"))
+        assertEquals(emptyList<String>(), PinnedShortcuts.remainingIds(listOf("a"), removeId = "a"))
     }
 
     @Test
