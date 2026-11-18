@@ -527,6 +527,28 @@ describe('the demo', () => {
     }
   })
 
+  it("an abandoned entry's timer never abandons the newer entry", async () => {
+    vi.useFakeTimers()
+    try {
+      const prepare = vi.fn((_signal: AbortSignal) => new Promise<boolean>(() => {}))
+      const t = build([spoken('Hi.')], { prepare })
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(ENTRY_TAP_MS + 500)
+      t.client.interrupt()
+      expect(t.audio.micOpen).toBe(false)
+      // The first entry was aborted, so the page's request can stop.
+      expect(prepare.mock.calls[0][0].aborted).toBe(true)
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(ENTRY_MS - ENTRY_TAP_MS)
+      // Past the first entry's 12 s, inside the second's: the second is still entering.
+      expect(t.audio.micOpen).toBe(true)
+      expect(t.client.getState().mic).toBe('starting')
+      expect(prepare.mock.calls[1][0].aborted).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('a client the page let go of during the entry asks the engine for nothing', async () => {
     let enter: (ok: boolean) => void = () => {}
     const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>((resolve) => (enter = resolve)) })

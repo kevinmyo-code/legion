@@ -184,7 +184,7 @@ let csrfPrimed = false
  * code, demo closed, too many tries, no demo household) are already sentences,
  * so they are shown as they come; a status with no words gets one here.
  */
-export async function enterDemo(code: string, ref?: string): Promise<EnterResult> {
+export async function enterDemo(code: string, ref?: string, signal?: AbortSignal): Promise<EnterResult> {
   try {
     if (!csrfPrimed) {
       // The enter door is CSRF-exempt by construction (no authentication
@@ -195,7 +195,7 @@ export async function enterDemo(code: string, ref?: string): Promise<EnterResult
     }
     const slug = cleanRef(ref)
     const body = slug ? { code, ref: slug } : { code }
-    const { data, error, response } = await api.POST('/api/demo/enter', { body })
+    const { data, error, response } = await api.POST('/api/demo/enter', { body, signal })
     if (data) return { ok: true }
     const detail = (error as { detail?: string } | undefined)?.detail
     if (detail) return { ok: false, message: detail }
