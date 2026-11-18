@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,9 +40,10 @@ import com.kevin.legion.ui.theme.soft.TypesetType
 /**
  * One entry on the Typeset front page drawn as a small icon with its words under it (Kevin,
  * 2026-11-17: "little icons with the description text below them"): a 24dp glyph,
- * the label in one line of small serif under it, ellipsised, the whole cell one tap target of at
- * least 48dp. At the default font a cell is exactly a 48dp row, the height the word line had, so the
- * front page's fit ladder gives up nothing for the icons; at font 1.3 a row grows by a few dp.
+ * the label in one line of small serif under it (shrunk to fit, down to 9sp, then ellipsised), the
+ * whole cell one tap target of at least 48dp. At the default font a cell is exactly a 48dp row,
+ * the height the word line had, so the front page's fit ladder gives up nothing for the icons; at
+ * font 1.3 a row grows by a few dp.
  * The label stays the visible text (the screen map and `tools/phone` tap by it).
  *
  * State is never colour alone: [dimmed] (a group or pin that cannot open now) halves the icon and
@@ -63,20 +66,26 @@ internal fun RowScope.TypesetIconCell(
     Column(
         modifier.weight(weight)
             .heightIn(min = TapTarget)
-            .combinedClickable(role = Role.Button, onClickLabel = label, onClick = onClick, onLongClick = onLongClick)
-            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)
-            .padding(horizontal = 1.dp),
+            .combinedClickable(
+                role = Role.Button,
+                onClickLabel = "Open $label",
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Box(Modifier.size(GlyphBox).alpha(if (dimmed) DIMMED else 1f), contentAlignment = Alignment.Center) { icon() }
-        Text(
+        val style = if (italic) IconLabel.copy(fontStyle = FontStyle.Italic) else IconLabel
+        // Shrinks to fit before it ever ellipsises (review 2026-11-18: "Mon...", "Brea..." at font 1.3).
+        BasicText(
             label,
-            style = if (italic) IconLabel.copy(fontStyle = FontStyle.Italic) else IconLabel,
-            color = if (dimmed || italic) SoftColors.text2 else SoftColors.text,
+            style = style.copy(color = if (dimmed || italic) SoftColors.text2 else SoftColors.text)
+                .copy(textAlign = TextAlign.Center),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+            autoSize = TextAutoSize.StepBased(minFontSize = MinLabel, maxFontSize = style.fontSize, stepSize = 0.5.sp),
             modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
         )
     }
@@ -137,6 +146,9 @@ internal fun contentsIcon(name: String): Int = when (name) {
 private val GlyphBox = 24.dp
 private val GlyphSize = 24.dp
 private const val DIMMED = 0.5f
+
+/** The smallest a label shrinks to before it ellipsises. */
+private val MinLabel = 9.sp
 
 /** Small serif for a label under an icon: one step under `small`, so seven fit a phone's width. */
 internal val IconLabel = TypesetType.small.copy(fontSize = 12.sp, lineHeight = 14.sp)

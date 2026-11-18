@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -264,10 +265,35 @@ private fun Contents(perRow: Int, actions: TypesetHomeActions) {
         "Ideas" to actions.onOpenIdeas, "Brief" to actions.onBrief, "Media" to actions.onOpenMedia,
         "More" to actions.onMore,
     )
-    IconRows(TypesetHomeDerive.CONTENTS, perRow) { name ->
-        TypesetIconCell(name, onClick = go[name] ?: {}) { Glyph(contentsIcon(name)) }
+    // The grid runs into the page's side margins (review 2026-11-18): seven cells across a 360dp
+    // phone are then 51dp each, not 47; a phone too narrow even for that gets six to a row.
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val full = maxWidth + Gutter * 2
+        val cols = contentsColumns(perRow, full)
+        Box(Modifier.bleed(Gutter)) {
+            Column {
+                IconRows(TypesetHomeDerive.CONTENTS, cols) { name ->
+                    TypesetIconCell(name, onClick = go[name] ?: {}) { Glyph(contentsIcon(name)) }
+                }
+            }
+        }
     }
     HorizontalDivider(thickness = 1.dp, color = SoftColors.barRule)
+}
+
+/** How many contents cells to a row: the tier's count, one fewer while a cell would be under 48dp. */
+internal fun contentsColumns(perRow: Int, width: Dp): Int {
+    var cols = perRow
+    while (cols > 1 && width / cols < TapTarget) cols--
+    return cols
+}
+
+/** Lays the content out [by] wider on each side than its parent allows, centred: into the margins. */
+private fun Modifier.bleed(by: Dp): Modifier = layout { measurable, constraints ->
+    val extra = by.roundToPx() * 2
+    val w = constraints.maxWidth + extra
+    val placeable = measurable.measure(constraints.copy(minWidth = w, maxWidth = w))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-extra / 2, 0) }
 }
 
 /**
