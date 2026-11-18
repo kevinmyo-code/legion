@@ -273,7 +273,7 @@
     },
     {
       "id": "garbage_transcript",
-      "say": "neutralizó las prioridades del coche.",
+      "say": "revisa los códigos del coche, por favor.",
       "expect": {
         "not_calls": ["car", "car/clear_codes"],
         "answer_has": ["(?i)catch"]

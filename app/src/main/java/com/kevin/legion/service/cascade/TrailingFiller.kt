@@ -2,7 +2,7 @@ package com.kevin.legion.service.cascade
 
 /**
  * A filler-only sentence after real content is never spoken (2026-11-17 phone logs: twice the last
- * thing he heard was "Just a second." / "Give me a second with that." after a finished answer, and
+ * thing he heard was "Just a second." / "Give me a second on that." after a finished answer, and
  * he waited for an answer that never came while the follow-up window ran out).
  *
  * Applied to every model sentence in [GeminiTextLoop], after [FillerTurn.Hold] and the verbatim
@@ -77,7 +77,7 @@ internal class TrailingFiller(private val contentBefore: () -> Boolean) : Senten
         /** Past this many characters an unfinished sentence is no longer held. */
         private const val HOLD_MAX_CHARS = 60
 
-        /** "Just a second.", "Give me a second with that.", "One sec.", "Hang on.", "Bear with me." */
+        /** "Just a second.", "Give me a second on that.", "One sec.", "Hang on.", "Bear with me." */
         private val WAIT = Regex(
             "^(ok(ay)?,?\\s+)?(just|give me|wait|one|hang on,?|hold on,?)?\\s*(a|one)?\\s*" +
                 "(sec|second|moment|minute|tick)s?(\\s+(with|on) (that|this|it))?(,?\\s*please)?$",

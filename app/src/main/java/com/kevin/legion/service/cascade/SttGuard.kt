@@ -2,7 +2,7 @@ package com.kevin.legion.service.cascade
 
 /**
  * What the cloud transcriber is told, and what of its answer is believed (2026-11-17 phone logs:
- * English speech came back as "Cuidado.", "¿Qué dijiste?", "enutralizó prioridades." and "嗯", and the
+ * English speech came back as short Spanish phrases and a Chinese interjection, and the
  * last Spanish one reached the model, which called `car clear_codes` on it).
  *
  * Two halves, both pure:
@@ -115,7 +115,7 @@ internal object SttGuard {
     /** Common Spanish words that are not English words too ("no", "me", "a" are not here). */
     private val SPANISH_WORDS = setOf(
         "que", "qué", "el", "los", "las", "del", "por", "para", "con", "una", "pero", "porque", "cómo",
-        "dónde", "esto", "eso", "esta", "está", "estoy", "dijiste", "cuidado", "gracias", "hola", "sí", "muy",
+        "dónde", "esto", "eso", "esta", "está", "estoy", "dijo", "gracias", "hola", "sí", "muy",
         "hay", "tengo", "quiero", "puedes", "vamos", "bueno", "ahora", "entonces", "nada", "todo", "también",
         "oye", "mira", "claro", "vale", "lo", "le", "les", "es", "mi", "tu", "su", "nos",
     )

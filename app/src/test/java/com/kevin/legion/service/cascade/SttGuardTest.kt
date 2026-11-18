@@ -15,9 +15,9 @@ class SttGuardTest {
 
     @Test
     fun `spanish and other-script fragments are not believed`() {
-        assertEquals("not_english", drop("Cuidado.")?.reason)
+        assertEquals("not_english", drop("Oye, mira.")?.reason)
         assertEquals("not_english", drop("¿Qué pasó?")?.reason)
-        assertEquals("not_english", drop("neutralizó las prioridades.")?.reason)
+        assertEquals("not_english", drop("cambió las prioridades del día.")?.reason)
         assertEquals("not_english_script", drop("嗯")?.reason)
         assertEquals("not_english_script", drop("Привет")?.reason)
     }

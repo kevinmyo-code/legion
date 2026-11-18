@@ -17,7 +17,7 @@ class TrailingFillerTest {
 
     @Test
     fun `the wait lines seen on the phone are filler, answers are not`() {
-        for (s in listOf("Just a second.", "Give me a second with that.", "One sec.", "Hang on.", "Bear with me.",
+        for (s in listOf("Just a second.", "Give me a second on that.", "One sec.", "Hang on.", "Bear with me.",
             "Checking.", "One moment.", "Let me look.", "Okay, just a moment.")) {
             assertTrue(s, TrailingFiller.isFiller(s))
         }
@@ -29,8 +29,8 @@ class TrailingFillerTest {
 
     @Test
     fun `after content a wait line is dropped, streamed in pieces or not`() {
-        assertEquals("I missed that. " to 1, run("I missed that. Give me a second with that."))
-        assertEquals("I missed that. " to 1, run("I missed th", "at. Give me a sec", "ond with that."))
+        assertEquals("I missed that. " to 1, run("I missed that. Give me a second on that."))
+        assertEquals("I missed that. " to 1, run("I missed th", "at. Give me a sec", "ond on that."))
         assertEquals("" to 1, run("Just a second.", before = true))
     }
 

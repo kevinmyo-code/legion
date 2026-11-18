@@ -591,7 +591,7 @@ class GeminiTextLoopTest {
     @Test
     fun `a wait line after real content is never spoken, in the same round or a later one`() = runBlocking<Unit> {
         // One round, no tool: the answer, then a wait line.
-        val a = Scripted(ok(textEv("I missed that. "), textEv("Give me a second with that.")))
+        val a = Scripted(ok(textEv("I missed that. "), textEv("Give me a second on that.")))
         val la = Collect()
         val ra = loop(a).answer(prefix, contents, okTool, la)
         assertEquals("I missed that. ", la.text.toString())
