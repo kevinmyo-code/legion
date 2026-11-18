@@ -154,6 +154,7 @@ class Turn:
     to_voice: str = ""  # what the cloud voice would be handed, tags included (laptop harness)
     read_windows: list[str] = field(default_factory=list)  # days a calendar read covered (laptop harness)
     ended: bool = False  # the stop/goodbye rule ended the conversation on this turn (laptop harness)
+    missed: str = ""  # the transcript guard's drop reason when the turn got the spoken miss (laptop harness)
 
     @property
     def answer(self) -> str:
@@ -171,6 +172,7 @@ class CaseRun:
     model: str = ""
     ms: int | None = None
     ended: bool = False
+    voiced_ms: list[int] = field(default_factory=list)  # each spoken turn's voiced audio (laptop harness)
 
 
 def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
@@ -205,6 +207,12 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
                     pass
             elif word == "ended" and cur is not None and cur.turns:
                 cur.turns[-1].ended = True
+            elif word == "stt_audio" and cur is not None:
+                v = fields.get("voiced_ms", "")
+                if v.isdigit():
+                    cur.voiced_ms.append(int(v))
+            elif word == "missed" and cur is not None and cur.turns:
+                cur.turns[-1].missed = fields.get("reason", "") or "yes"
             elif word == "read" and cur is not None and cur.turns:
                 try:
                     cur.turns[-1].read_windows.append(json.loads(msg.split("window=", 1)[1].rsplit(" date_note=", 1)[0]))
@@ -374,11 +382,20 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
                 fails.append(f"no holding line matches /{rx}/; heard {heard_fillers or 'none'}")
         if expect.get("no_filler") and turn.fillers:
             fails.append(f"a holding line was said: {heard_fillers}")
-    # The day a calendar read covered (2026-11-17): graded on what was READ, so a wrong date the model
-    # sent and the phone corrected to the day he said is right, and a wrong day read is wrong.
+    # The day a calendar read covered (2026-11-17): on the laptop, graded on what was READ, so a wrong
+    # date the model sent and the phone corrected to the day he said is right. The phone logs no read
+    # window, so there every calendar call's own from/to ARGUMENT must cover the day (2026-11-18 review:
+    # the phone layer graded no date at all).
     for day in expect.get("read_day", []):
         want = expand(day, today)
         if phone:
+            reads = [c for c in turn.calls if matches(c, "day/read_calendar")]
+            if not reads:
+                fails.append(f"no calendar call; wanted {want}")
+            for c in reads:
+                span = [_arg_day(c.args.get(k), today) for k in ("from", "to")]
+                if not (span[0] and span[1] and span[0] <= want <= span[1]):
+                    fails.append(f"a calendar call asked for {json.dumps(c.args, sort_keys=True)}, not {want}")
             continue
         if not turn.read_windows:
             fails.append(f"no calendar read; wanted {want}")
@@ -398,6 +415,10 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
                         for c in turn.calls)
         if open_task and EMPTY_CLAIM.search(answer):
             fails.append("said nothing is due while a tool result shows an open task")
+    # The spoken miss came from the transcript guard, not from the model's own words (2026-11-18 review:
+    # `answer_has catch` passed on the model saying it did not catch something).
+    if expect.get("missed") and not phone and not turn.missed:
+        fails.append("the transcript reached the model; wanted the spoken miss")
     if expect.get("ends") and not phone and not turn.ended:
         fails.append("the conversation did not end on a stop or goodbye")
     if expect.get("ends") is False and turn.ended:
@@ -437,6 +458,15 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
     return fails, warns
 
 
+def _arg_day(value, today: datetime.date) -> str | None:
+    """A date argument as the phone resolves it: yyyy-MM-dd, or today / tomorrow / yesterday."""
+    v = str(value or "").strip().lower()
+    words = {"today": 0, "tomorrow": 1, "yesterday": -1}
+    if v in words:
+        return str(today + datetime.timedelta(days=words[v]))
+    return v if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) else None
+
+
 def _window_covers(window: str, day: str) -> bool:
     """A harness `read window` ("Wednesday 2026-11-18" or "... to Friday 2026-11-20") covers `day`."""
     dates = re.findall(r"\d{4}-\d{2}-\d{2}", window)
@@ -465,6 +495,10 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
         fails.append("case did not finish (timed out or aborted)")
     if len(run.turns) < len(turns):
         fails.append(f"{len(run.turns)} of {len(turns)} turns answered")
+    # A spoken case whose voice made no audio proves nothing: an empty clip is heard as silence and
+    # would pass a `silent` case (2026-11-18 review).
+    if case.get("stt_audio") and not phone and (not run.voiced_ms or 0 in run.voiced_ms):
+        fails.append("the voice made no audio for a spoken turn; nothing was tested")
     for i, (spec, got) in enumerate(zip(turns, run.turns)):
         expect = dict(spec.get("expect", {}))
         if not phone:
@@ -477,6 +511,9 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
         prefix = f"turn {i + 1}: " if len(turns) > 1 else ""
         fails += [prefix + x for x in f]
         warns += [prefix + x for x in w]
+    layer = "phone" if phone else "laptop"
+    if str(case.get("proves_nothing_on", "")).startswith(layer):
+        warns.append(f"proves nothing on the {layer}: {case['proves_nothing_on'].split(':', 1)[-1].strip()}")
     return Verdict(not fails, fails, warns)
 
 

@@ -134,23 +134,28 @@ internal class VoiceEvalHarness(
         var lastSaid: String? = null
         val started = now()
         for (said in case.turns) {
-            val (heardRaw, audioMs) = if (case.sttAudio) {
+            val (heardRaw, voicedMs) = if (case.sttAudio) {
                 transcribeSpoken(said, SpokenLanguages.sttInstruction(languages, current))
             } else {
-                said to 0L
+                said to null
             }
-            // The session's gate on what the transcriber wrote ([SttGuard]), with the audio's length when
-            // there was audio: a transcript it does not believe never reaches the model.
-            val verdict = SttGuard.verdict(
-                heardRaw,
-                audioMs,
-                accepted = languages,
-                afterQuestion = FollowUpWindow.isQuestion(lastSaid),
-            )
+            // The session's stop and goodbye rule ([WakePhrases.isSleepPhrase]), before every guard: the
+            // conversation ends, nothing is answered. After a question only a hard stop.
+            if (WakePhrases.isSleepPhrase(heardRaw, "Alfred", afterQuestion = FollowUpWindow.isQuestion(lastSaid))) {
+                audit.user(heardRaw, final = true)
+                out(TEST_TAG, "ended reason=sleep_phrase")
+                out(TEST_TAG, "heard text=\"\"")
+                audit.turnComplete()
+                break
+            }
+            // The session's gate on what the transcriber wrote ([SttGuard]), with the audio's voiced length
+            // when there was audio: a transcript it does not believe never reaches the model.
+            val verdict = SttGuard.verdict(heardRaw, voicedMs, accepted = languages)
             if (verdict is SttGuard.Verdict.Drop && verdict.reason !in SttGuard.SILENT_REASONS) {
                 audit.user(heardRaw, final = true)
                 out(LiveLatency.TAG, "stt_rejected reason=${verdict.reason} chars=${heardRaw.length}")
                 audit.assistant(ScriptedLines.MISSED, readThrough = false)
+                out(TEST_TAG, "missed reason=${verdict.reason}")
                 out(TEST_TAG, "heard text=${LiveAudit.quote(ScriptedLines.MISSED)}")
                 audit.turnComplete()
                 history.add(ChatTurn(fromUser = true, text = heardRaw))
@@ -165,17 +170,8 @@ internal class VoiceEvalHarness(
                 audit.turnComplete()
                 continue
             }
-            // The session's stop and goodbye rule ([WakePhrases.isSleepPhrase]): the conversation ends,
-            // nothing is answered.
-            if (WakePhrases.isSleepPhrase(heard, "Alfred")) {
-                audit.user(heard, final = true)
-                out(TEST_TAG, "ended reason=sleep_phrase")
-                out(TEST_TAG, "heard text=\"\"")
-                audit.turnComplete()
-                break
-            }
             // The session's own language rule ([SpokenLanguages.decide]), cloud voice.
-            when (val d = SpokenLanguages.decide(heard, languages, current, cloud = true)) {
+            when (val d = SpokenLanguages.decide(heard, languages, current, cloud = true, companionName = "Alfred")) {
                 is SpokenLanguages.Decision.Refuse -> {
                     audit.user(heard, final = true)
                     audit.assistant(d.line, readThrough = false)
@@ -251,21 +247,23 @@ internal class VoiceEvalHarness(
      * [text] spoken by the cloud voice (Gemini TTS, 24 kHz) and heard back by the cloud transcriber
      * (16 kHz), as a spoken turn is: proves the transcriber's English pinning on real audio.
      */
-    private suspend fun transcribeSpoken(text: String, instruction: String): Pair<String, Long> {
+    private suspend fun transcribeSpoken(text: String, instruction: String): Pair<String, Long?> {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
             val tts = GeminiTts(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.TTS, m, u).line()) })
             val clip = tts.speak(text)
             val pcm24 = java.io.ByteArrayOutputStream()
             withTimeoutOrNull(STT_AUDIO_TIMEOUT_MS) { for (f in clip.frames) pcm24.write(f) }
-            val pcm16 = downsample24to16(pcm24.toByteArray())
+            // The phone's turn holds its pre-roll and end-of-turn silence; the clip gets the same.
+            val pcm16 = ByteArray(PRE_ROLL_PAD_MS * 32) + downsample24to16(pcm24.toByteArray()) + ByteArray(END_PAD_MS * 32)
             val stt = GeminiStt(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.STT, m, u).line()) },
                 log = { out(LiveLatency.TAG, it) }, instruction = { instruction })
             val r = stt.transcribe(pcm16)
             val heard = (r as? SttResult.Text)?.text.orEmpty()
-            out(TEST_TAG, "stt_audio audio_ms=${pcm16.size / 32} result=${if (r is SttResult.Text) "text" else r.toString()} " +
+            val voiced = SttGuard.voicedMs(pcm16)
+            out(TEST_TAG, "stt_audio audio_ms=${pcm16.size / 32} voiced_ms=$voiced result=${if (r is SttResult.Text) "text" else r.toString()} " +
                 "voice=${CloudSpeechWire.VOICE} sent=${LiveAudit.quote(text)} heard=${LiveAudit.quote(heard)}")
-            return heard to (pcm16.size / 32).toLong()
+            return heard to voiced
         } finally {
             scope.cancel()
         }
@@ -329,6 +327,8 @@ internal class VoiceEvalHarness(
     companion object {
         const val TEST_TAG = "LIVE_TEST"
         private const val STT_AUDIO_TIMEOUT_MS = 20_000L
+        private const val PRE_ROLL_PAD_MS = 300
+        private const val END_PAD_MS = 600
 
         /** 16-bit mono, 24 kHz to 16 kHz: two samples out of every three, linear between them. */
         fun downsample24to16(pcm: ByteArray): ByteArray {

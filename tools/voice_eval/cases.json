@@ -272,11 +272,21 @@
       }
     },
     {
-      "id": "garbage_transcript",
+      "id": "mostly_spanish_sentence_is_missed",
       "say": "dijo que no hay nada para hoy, gracias.",
+      "why": "Transcript guard: a sentence two thirds Spanish-only words gets the spoken miss and reaches no tool (was garbage_transcript; reworded 2026-11-17, so it tests the 2/3 rule, not the 11-17 failure)",
       "expect": {
         "not_calls": ["car", "car/clear_codes"],
-        "answer_has": ["(?i)catch"]
+        "missed": true
+      }
+    },
+    {
+      "id": "car_request_with_spanish_words_11_17_shape",
+      "say": "pues clear the codes del truck ahora",
+      "why": "The 2026-11-17 failure SHAPE, invented words: English speech written back as a car request with a few Spanish-looking words, and a car tool run on it. Right behaviour: the spoken miss, no car tool. The 2/3 rule keeps this sentence (3 of 7), so this case is EXPECTED TO FAIL until the guard catches the shape; report its true result",
+      "expect": {
+        "not_calls": ["car/clear_codes"],
+        "missed": true
       }
     },
     {
@@ -336,7 +346,8 @@
     {
       "id": "tags_casual",
       "say": "ha, that lecture went better than I thought",
-      "why": "Expression tags (Kevin 2026-11-17): a casual moment MAY carry an allowed tag; none is read as a word",
+      "why": "Expression tags (2026-11-17): a casual moment MAY carry an allowed tag; none is read as a word",
+      "proves_nothing_on": "laptop: the harness hands the voice TtsTags.forSpeech's output, which already strips a tag not on the list, so tts_not cannot fire; TtsTagsTest proves the strip",
       "expect": {
         "tts_not": ["<(?!chuckle>|laugh>|sigh>|short pause>)"]
       }
@@ -406,12 +417,14 @@
         {"say": "what's due today", "expect": {"calls": ["day/read_calendar"]}},
         {"say": "Goodbye, Alfred.", "expect": {"ends": true}}
       ],
-      "why": "Kevin 2026-11-18: goodbye ends the conversation in code, nothing more is answered"
+      "why": "2026-11-18: goodbye ends the conversation in code, nothing more is answered",
+      "proves_nothing_on": "laptop: the harness calls WakePhrases.isSleepPhrase itself, not the session; WakePhrasesTest proves the phrases and CascadeWiringTest 'a stop is checked before every noise guard' proves the session's wiring"
     },
     {
       "id": "stop_the_music_is_a_request",
       "say": "stop the music",
-      "why": "Kevin 2026-11-18: words that only use stop are a request, never an end",
+      "why": "2026-11-18: words that only use stop are a request, never an end",
+      "proves_nothing_on": "laptop: the end is the harness's own WakePhrases call, not the session's; WakePhrasesTest 'sentences that only use those words never end it' proves it",
       "expect": {
         "ends": false,
         "calls": ["control_music|play_music"]
