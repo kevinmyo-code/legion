@@ -100,19 +100,13 @@ class CloudSpeechTest {
     }
 
     @Test
-    fun `the voice request asks for audio in Alfred's default voice, in the 3_8 shape or the older one`() {
+    fun `the voice request asks for audio in Alfred's default voice, in the 3_8 shape`() {
         assertEquals("en-gb-advisor-3", CloudSpeechWire.VOICE)
         assertEquals("Puck", CloudSpeechWire.FALLBACK_VOICE)
-        val now = CloudSpeechWire.speak("Invented line.", legacyVoice = false)
+        val now = CloudSpeechWire.speak("Invented line.")
         val cfg = now.getJSONObject("generationConfig")
         assertEquals("AUDIO", cfg.getJSONArray("responseModalities").getString(0))
         assertEquals("en-gb-advisor-3", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
-        val old = CloudSpeechWire.speak("Invented line.", legacyVoice = true)
-        assertEquals(
-            "en-gb-advisor-3",
-            old.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
-                .getJSONObject("prebuiltVoiceConfig").getString("voiceName"),
-        )
         assertEquals("Invented line.", now.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text"))
     }
 
@@ -254,7 +248,7 @@ class CloudSpeechTest {
             StreamOutcome.Ok
         }
         val logs = Collections.synchronizedList(mutableListOf<String>())
-        val stt = GeminiStt(fake, scope, log = { logs.add(it) }, attemptTimeoutMs = 200)
+        val stt = GeminiStt(fake, scope, log = { logs.add(it) }, attemptTimeoutMs = { 200L })
         val r = withTimeout(3_000) { stt.transcribe(pcm(400)) }
         assertEquals("Clear the codes on the invented truck.", (r as SttResult.Text).text)
         assertEquals(2, fake.calls.size)
@@ -266,12 +260,23 @@ class CloudSpeechTest {
     @Test
     fun `two hung requests end as a timeout well inside the final deadline`() = runBlocking<Unit> {
         val fake = FakeGemini { _, _, _ -> awaitCancellation() }
-        val stt = GeminiStt(fake, scope, attemptTimeoutMs = 150)
+        val stt = GeminiStt(fake, scope, attemptTimeoutMs = { 150L })
         val t0 = System.currentTimeMillis()
         assertEquals(SttResult.Failed("timeout"), withTimeout(3_000) { stt.transcribe(pcm(400)) })
         assertTrue(System.currentTimeMillis() - t0 < 1_500)
         assertEquals(2, fake.calls.size)
-        assertTrue(2 * GeminiStt.ATTEMPT_TIMEOUT_MS < CascadeTimings.CLOUD_STT_FINAL_TIMEOUT_MS)
+        assertTrue(2 * GeminiStt.ATTEMPT_CAP_MS < CascadeTimings.CLOUD_STT_FINAL_TIMEOUT_MS)
+    }
+
+    @Test
+    fun `a longer utterance gets a longer transcription deadline, capped`() {
+        assertEquals(3_500L, GeminiStt.attemptTimeoutFor(1_000))
+        assertEquals(3_500L, GeminiStt.attemptTimeoutFor(4_000))
+        assertEquals(4_000L, GeminiStt.attemptTimeoutFor(4_001))
+        assertEquals(4_000L, GeminiStt.attemptTimeoutFor(5_000))
+        assertEquals(4_500L, GeminiStt.attemptTimeoutFor(6_000))
+        assertEquals(7_500L, GeminiStt.attemptTimeoutFor(12_000))
+        assertEquals(8_000L, GeminiStt.attemptTimeoutFor(28_000))
     }
 
     @Test
@@ -285,7 +290,7 @@ class CloudSpeechTest {
         }.apply { isDaemon = true; start() }
         try {
             val transport = OkHttpGemini(key = { "invented-key" }, api = "http://127.0.0.1:${server.localPort}/v1beta")
-            val stt = GeminiStt(transport, scope, attemptTimeoutMs = 400)
+            val stt = GeminiStt(transport, scope, attemptTimeoutMs = { 400L })
             val t0 = System.currentTimeMillis()
             assertEquals(SttResult.Failed("timeout"), withTimeout(5_000) { stt.transcribe(pcm(400)) })
             assertTrue("took ${System.currentTimeMillis() - t0} ms", System.currentTimeMillis() - t0 < 2_500)
@@ -325,7 +330,7 @@ class CloudSpeechTest {
             val v = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig").optString("voice")
             if (v == "en-xx-invented") {
                 gate.await()
-                StreamOutcome.HttpError(400, "invalid argument")
+                StreamOutcome.HttpError(400, UNKNOWN_VOICE)
             } else {
                 onEvent(audioEv(byteArrayOf(3, 4)))
                 StreamOutcome.Ok
@@ -354,10 +359,10 @@ class CloudSpeechTest {
         val voices = Collections.synchronizedList(mutableListOf<String>())
         val fake = FakeGemini { _, body, onEvent ->
             val vc = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
-            val v = vc.optString("voice").ifEmpty { vc.optJSONObject("prebuiltVoiceConfig")?.optString("voiceName").orEmpty() }
+            val v = vc.optString("voice")
             voices.add(v)
-            if (v == "en-us-neno") {
-                StreamOutcome.HttpError(400, "invalid argument")
+            if (v == "en-xx-other") {
+                StreamOutcome.HttpError(400, UNKNOWN_VOICE)
             } else {
                 onEvent(audioEv(byteArrayOf(1, 2)))
                 StreamOutcome.Ok
@@ -365,7 +370,7 @@ class CloudSpeechTest {
         }
         val kept = ConcurrentHashMap<String, ByteArray>()
         val logs = Collections.synchronizedList(mutableListOf<String>())
-        val tts = GeminiTts(fake, scope, log = { logs.add(it) }, keepLines = setOf("Listening."), kept = kept, voice = "en-us-neno")
+        val tts = GeminiTts(fake, scope, log = { logs.add(it) }, keepLines = setOf("Listening."), kept = kept, voice = "en-xx-other")
         assertArrayEquals(byteArrayOf(1, 2), collect(tts.speak("Listening.")))
         assertEquals("Puck", voices.last())
         // The kept clip is filed under the voice that spoke it.
@@ -386,7 +391,7 @@ class CloudSpeechTest {
                 onEvent(audioEv(byteArrayOf(1, 2)))
                 StreamOutcome.Ok
             } else {
-                StreamOutcome.HttpError(400, "invalid argument")
+                StreamOutcome.HttpError(400, UNKNOWN_VOICE)
             }
         }
         assertTrue(VoiceEngineSettings.testVoice("en-gb-invented", fake))
@@ -442,20 +447,64 @@ class CloudSpeechTest {
     }
 
     @Test
-    fun `a refused voice shape is retried once in the older shape, then kept`() = runBlocking<Unit> {
-        val fake = FakeGemini { _, body, on ->
-            val vc = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
-            if (vc.has("voice")) {
-                StreamOutcome.HttpError(400, "Invalid JSON payload received. Unknown name \"voice\" at 'generation_config.speech_config.voice_config'")
-            } else {
-                on(audioEv(byteArrayOf(1, 2)))
-                StreamOutcome.Ok
+    fun `only Google's two voice refusals move a clip to Puck, any other 400 fails it with no memory`() = runBlocking<Unit> {
+        for (refusal in listOf(UNKNOWN_VOICE, EMPTY_VOICE)) {
+            GeminiTts.forgetRefusedVoiceForTest()
+            val voices = Collections.synchronizedList(mutableListOf<String>())
+            val fake = FakeGemini { _, body, on ->
+                val v = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice")
+                voices.add(v)
+                if (v == "Puck") {
+                    on(audioEv(byteArrayOf(1, 2)))
+                    StreamOutcome.Ok
+                } else {
+                    StreamOutcome.HttpError(400, refusal)
+                }
             }
+            assertArrayEquals(refusal, byteArrayOf(1, 2), collect(GeminiTts(fake, scope, voice = "en-xx-invented").speak("Invented.")))
+            assertEquals(refusal, listOf("en-xx-invented", "Puck"), voices)
         }
-        val tts = GeminiTts(fake, scope)
-        assertArrayEquals(byteArrayOf(1, 2), collect(tts.speak("First.")))
-        assertArrayEquals(byteArrayOf(1, 2), collect(tts.speak("Second.")))
-        assertEquals("one refusal, then the older shape for good", 3, fake.calls.size)
+        GeminiTts.forgetRefusedVoiceForTest()
+        val voices = Collections.synchronizedList(mutableListOf<String>())
+        val other = FakeGemini { _, body, _ ->
+            voices.add(body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
+            StreamOutcome.HttpError(400, EMPTY_TEXT)
+        }
+        val clip = GeminiTts(other, scope, voice = "en-xx-invented").speak("Invented.")
+        collect(clip)
+        assertEquals(TtsOutcome.Failed("http_400"), clip.outcome())
+        assertEquals("no Puck, no second try", listOf("en-xx-invented"), voices)
+        // Nothing remembered: the next conversation asks in his voice again.
+        val next = FakeGemini { _, body, on ->
+            assertEquals("en-xx-invented", body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
+            on(audioEv(byteArrayOf(5)))
+            StreamOutcome.Ok
+        }
+        collect(GeminiTts(next, scope, voice = "en-xx-invented").speak("Invented again."))
+    }
+
+    @Test
+    fun `a clip with no audio by the first-audio deadline is asked again once, then fails, never hangs`() = runBlocking<Unit> {
+        val tries = AtomicInteger(0)
+        val hangsOnce = FakeGemini { _, _, on ->
+            if (tries.incrementAndGet() == 1) awaitCancellation()
+            on(audioEv(byteArrayOf(9, 9)))
+            StreamOutcome.Ok
+        }
+        val clip = GeminiTts(hangsOnce, scope, firstAudioDeadlineMs = 200).speak("Invented.")
+        assertArrayEquals(byteArrayOf(9, 9), withTimeout(1_500) { collect(clip) })
+        assertEquals(2, tries.get())
+        val always = AtomicInteger(0)
+        val hangs = FakeGemini { _, _, _ ->
+            always.incrementAndGet()
+            awaitCancellation()
+        }
+        val dead = GeminiTts(hangs, scope, firstAudioDeadlineMs = 200).speak("Invented.")
+        val outcome = withTimeout(1_500) { dead.outcome() }
+        assertEquals(TtsOutcome.Failed("network_first_audio_timeout"), outcome)
+        assertEquals("one retry, no more", 2, always.get())
+        // The reply's own wait is longer than both tries, so the retry is never cut short.
+        assertTrue(CascadeTimings.CLOUD_TTS_FIRST_AUDIO_TIMEOUT_MS > 2 * GeminiTts.FIRST_AUDIO_MS)
     }
 
     @Test
@@ -605,5 +654,12 @@ class CloudSpeechTest {
         assertEquals("capped", 10, kept.keptAudio()!!.size)
         assertEquals(1, kept.id)
         assertNull(TurnUtterance(inner, backend, keepAudio = false).keptAudio())
+    }
+
+    private companion object {
+        // Google's 400 bodies, measured 2026-11-18 (the voice name here is invented).
+        const val UNKNOWN_VOICE = "No matching speaker voice found for name: en-xx-invented and language: "
+        const val EMPTY_VOICE = "Received empty voice name."
+        const val EMPTY_TEXT = "Input string cannot be empty."
     }
 }
