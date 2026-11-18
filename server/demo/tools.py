@@ -105,8 +105,9 @@ SPOKEN_DESCRIPTION = (
     "answer; the turn ends there. Call it FIRST for any question about Kevin himself, and say "
     "nothing about him yourself, before or after: you are never shown his profile, so anything "
     "you said about him would be made up. Pick sections by id: "
-    f"{SECTIONS_PLACEHOLDER}. For a general question about him, pick the two or three that "
-    "introduce him best. For a pointed one, pick a section only when its title names it; when no "
+    f"{SECTIONS_PLACEHOLDER}. For a general question about him (who he is, his background, "
+    f'"tell me about him"), pick {profile_text.OVERVIEW} alone: code reads his sections in his '
+    "own order. For a pointed one, pick a section only when its title names it; when no "
     "title does (his visa, work authorisation or sponsorship, say, unless a title names it), "
     "call it with no sections, never with the nearest ones: "
     f'code then says "{NOT_SHARED}." For more of a long section, call it again with rest_of set '
@@ -133,15 +134,17 @@ def spoken_for(user) -> EngineTool:
     titles of THIS visitor's content version, never a sentence of them."""
     _row, sections = _row_and_sections(user)
     listing = "; ".join(f"{s.id} ({s.title})" for s in sections) or "none (nothing shared yet)"
+    if sections:
+        listing = f"{profile_text.OVERVIEW} (a general question about him); {listing}"
     schema = dict(ABOUT_KEVIN_SPOKEN.input_schema)
     properties = dict(schema["properties"])
     if sections:
-        ids = [s.id for s in sections]
+        ids = [profile_text.OVERVIEW, *(s.id for s in sections)]
         properties["sections"] = {
             **properties["sections"],
             "items": {"type": "string", "enum": ids},
         }
-        properties["rest_of"] = {**properties["rest_of"], "enum": ids}
+        properties["rest_of"] = {**properties["rest_of"], "enum": ids[1:]}
     schema["properties"] = properties
     description = ABOUT_KEVIN_SPOKEN.description.replace(SECTIONS_PLACEHOLDER, listing)
     return dataclasses.replace(ABOUT_KEVIN_SPOKEN, input_schema=schema, description=description)

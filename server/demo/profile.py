@@ -39,6 +39,11 @@ OFFER_KEYS = ("none", *OFFERS)
 # Where the loader keeps the profile's own section order, beside it in the content blob.
 PROFILE_ORDER = "profile_order"
 
+# The pick for a general question about him ("Tell me about Kevin."): every section from the top
+# of his file, so what leads is his choice, by the order he wrote them, never the model's guess
+# from titles (the 2026-11-18 replay: Location, Availability and Roles, never Experience).
+OVERVIEW = "overview"
+
 # Words that end in a full stop without ending a sentence. Lower-cased, without the stop.
 _ABBREVIATIONS = frozenset(
     {
@@ -158,7 +163,8 @@ def speak(sections: list[Section], chosen: list[str], rest_of: str | None = None
             more = f"There's more on {section.title} than I can read out here; ask him directly."
         return Spoken(tuple(rest[:CAP]), (section.title,), more)
     wanted = set(chosen or [])
-    picked = [s for s in sections if s.id in wanted]
+    # `overview` with named ids too is still the overview: his order decides.
+    picked = sections if OVERVIEW in wanted else [s for s in sections if s.id in wanted]
     if not picked:
         return Spoken((NOT_SHARED_LINE,), (), None)
     first = picked[0]
