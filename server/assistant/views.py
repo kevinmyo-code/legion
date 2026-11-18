@@ -1102,12 +1102,25 @@ def _mark_answered(user, turn_id) -> None:
 
     if not turn_id:
         return
+    # Not swallowed (round 4 R4): without the mark, a re-send after a committed write would make
+    # the change again. Tried once more; then logged as an error (the history's "(Done: x)" line
+    # is the last guard).
+    for attempt in (1, 2):
+        try:
+            with transaction.atomic():
+                TurnSeen.objects.get_or_create(turn_id=turn_id, user=user)
+            break
+        except DatabaseError:
+            if attempt == 2:
+                cascade.log.error(
+                    "assistant cascade: turn mark failed twice; a re-send may repeat this turn",
+                    exc_info=True,
+                )
+                return
     try:
-        with transaction.atomic():
-            TurnSeen.objects.get_or_create(turn_id=turn_id, user=user)
         TurnSeen.objects.filter(at__lt=datetime.now(UTC) - timedelta(days=1)).delete()
     except DatabaseError:
-        cascade.log.warning("assistant cascade: turn mark failed", exc_info=True)
+        cascade.log.warning("assistant cascade: turn mark prune failed", exc_info=True)
 
 
 class _TurnThrottled(exceptions.APIException):
