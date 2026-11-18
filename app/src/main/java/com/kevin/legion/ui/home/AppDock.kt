@@ -2,7 +2,7 @@
 
 package com.kevin.legion.ui.home
 
-import androidx.compose.foundation.Image
+import com.kevin.legion.ui.apps.AppMark
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -155,7 +155,7 @@ private fun RowScope.DockIcon(slot: DockSlotUi, onClick: () -> Unit, onLongClick
         ) {
             val icon = slot.icon
             if (icon != null) {
-                Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(44.dp))
+                AppMark(icon, modifier = Modifier.size(44.dp))
             }
             // icon == null with slot.app != null: the drawer snapshot hasn't warmed this icon yet -
             // the label below still shows, per ticket's own "show the label while an icon loads".

@@ -8,8 +8,6 @@ import android.os.UserHandle
 import android.os.UserManager
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,6 +54,9 @@ internal object AppDrawerCache {
 
     @Volatile private var cached: Loaded? = null
     private val icons = ConcurrentHashMap<String, ImageBitmap>()
+
+    /** Apps whose icon gave no readable mark; tried again only when the package changes. */
+    private val unreadable: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var callbackRegistered = false
@@ -104,6 +105,7 @@ internal object AppDrawerCache {
     /** A package changed: drop its icons so they are redrawn, and refresh in the background. */
     private fun changed(context: Context, packageNames: List<String>) {
         evictIcons(icons, packageNames)
+        unreadable.removeAll { key -> key.split('/').getOrNull(1) in packageNames.toSet() }
         scope.launch { runCatching { refresh(context) } }
     }
 
@@ -128,16 +130,21 @@ internal object AppDrawerCache {
                 if (!isWork && ownEntry) continue
                 apps += DrawerApp(info.label.toString(), component.packageName, component.className, isWork, key)
                 val k = iconKey(key, component.packageName, component.className)
-                // The slow part, and now only done for icons not already held.
-                if (!icons.containsKey(k)) {
-                    runCatching { info.getBadgedIcon(0).toBitmap(ICON_PX, ICON_PX).asImageBitmap() }
-                        .getOrNull()?.let { icons[k] = it }
+                // The slow part, and now only done for marks not already held or already found
+                // unreadable. A mark is monochrome (Kevin, 2026-11-18): AppMonochrome picks the layer;
+                // an app with no readable mark has no entry and shows its monogram.
+                if (!icons.containsKey(k) && k !in unreadable) {
+                    when (val mark = runCatching { AppMonochrome.mark(info.getIcon(0), ICON_PX) }.getOrNull()) {
+                        null -> unreadable += k
+                        else -> icons[k] = mark
+                    }
                 }
             }
         }
         // Forget icons for apps that are gone, so the map can't grow forever.
         val live = apps.mapTo(HashSet()) { iconKey(it.profileKey, it.packageName, it.className) }
         icons.keys.retainAll(live)
+        unreadable.retainAll(live)
         val paused = work?.let { runCatching { userManager.isQuietModeEnabled(it) }.getOrDefault(false) } ?: false
         return Loaded(apps, HashMap(icons), handles, work, paused)
     }

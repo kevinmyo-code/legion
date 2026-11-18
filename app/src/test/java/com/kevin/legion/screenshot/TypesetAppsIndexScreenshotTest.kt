@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -31,7 +32,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The Typeset app tray (ADR 0081) in letter buckets again (home-ui 2026-11-17): the folder grid by
  * day and by night, a folder open over the page, and the find line's flat matches with "work" and
- * "blocked" in words. Real launcher icons need a device, so each made-up app gets a solid square;
+ * "blocked" in words. Real marks need a device, so each made-up app gets a disc, drawn in the screen
+ * ink whatever its colour (Kevin, 2026-11-18: monochrome icons);
  * one app has no icon, to show the monogram it falls back to.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -73,7 +75,7 @@ class TypesetAppsIndexScreenshotTest {
 
     private val icons: Map<String, ImageBitmap> = apps.filter { it.label != "Courier" }.mapIndexed { i, a ->
         val bitmap = ImageBitmap(48, 48)
-        Canvas(bitmap).drawRect(0f, 0f, 48f, 48f, Paint().apply { color = palette[i % palette.size] })
+        Canvas(bitmap).drawCircle(Offset(24f, 24f), 16f, Paint().apply { color = palette[i % palette.size] })
         iconKey(a.profileKey, a.packageName, a.className) to bitmap
     }.toMap()
 

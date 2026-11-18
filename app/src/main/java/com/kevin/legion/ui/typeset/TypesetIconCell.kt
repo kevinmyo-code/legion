@@ -2,8 +2,8 @@
 
 package com.kevin.legion.ui.typeset
 
+import com.kevin.legion.ui.apps.AppMark
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -97,13 +97,14 @@ internal fun Glyph(@DrawableRes res: Int, quiet: Boolean = false) =
     MsIcon(res, contentDescription = null, tint = if (quiet) SoftColors.text2 else SoftColors.text, size = GlyphSize)
 
 /**
- * An app's own launcher icon (the drawer cache's bitmap, full colour, the same one All apps shows),
- * or, while it is loading or gone, its two-letter monogram in a ruled square.
+ * An app's monochrome mark in the screen's ink ([com.kevin.legion.ui.apps.AppMark]: its themed-icon
+ * layer, else its foreground as a silhouette; Kevin 2026-11-18, never colour logos), or, while it is
+ * loading, gone or has no readable mark, its two-letter monogram in a ruled square.
  */
 @Composable
 internal fun AppGlyph(icon: ImageBitmap?, monogram: String) {
     if (icon != null) {
-        Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(GlyphBox))
+        AppMark(icon, modifier = Modifier.size(GlyphBox))
     } else {
         Box(Modifier.size(GlyphBox).border(1.dp, SoftColors.outline), contentAlignment = Alignment.Center) {
             Text(monogram, style = IconLabel, color = SoftColors.text, maxLines = 1)

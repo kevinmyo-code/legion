@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.typeset
 
+import com.kevin.legion.ui.apps.AppMark
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -11,7 +12,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,7 +55,7 @@ import com.kevin.legion.ui.theme.soft.TypesetType
  * The Typeset app tray (ADR 0081), in letter buckets again (Kevin, 2026-11-17: "i want them in the
  * alphabet buckets like how it used to be"): the folder grid `eb124d20` gave All apps on 2026-10-02
  * (one folder per letter, A to Z then #, accents folded to their base letter, each a 2 x 2 of its
- * first four apps' icons over the letter and the count), which `3f563dd4` replaced outside Matrix
+ * first four apps' marks over the letter and the count), which `3f563dd4` replaced outside Matrix
  * with a text index. Drawn here in Typeset: square ruled tiles on paper, serif letters. A tap on a
  * folder opens it over the page ([openFolder], hoisted): the letter, "N apps", and its apps three to
  * a row, icon over name. Kept from the index: the "Find an app" line (typing shows every match as a
@@ -185,7 +185,7 @@ private fun WorkLine(paused: Boolean, onToggle: () -> Unit) {
 const val WORK_PAUSED_LINE = "Work apps are paused. Tap to turn them on."
 const val WORK_PAUSE_LINE = "Pause work apps"
 
-/** A letter bucket: a ruled square holding its first four apps' icons, the letter and the count under it. */
+/** A letter bucket: a ruled square holding its first four apps' ink marks, the letter and the count under it. */
 @Composable
 private fun FolderTile(
     folder: LetterFolder,
@@ -232,7 +232,7 @@ private fun FolderTile(
 private fun MiniIcon(icon: ImageBitmap?, app: DrawerApp?) {
     Box(Modifier.size(MiniIconSize), contentAlignment = Alignment.Center) {
         when {
-            icon != null -> Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(MiniIconSize))
+            icon != null -> AppMark(icon, modifier = Modifier.size(MiniIconSize))
             app != null -> Box(
                 Modifier.size(MiniIconSize).background(SoftColors.card),
                 contentAlignment = Alignment.Center,
@@ -318,7 +318,7 @@ private fun AppCell(
     ) {
         Box(Modifier.size(AppIconSize).alpha(if (isBlocked) DIMMED else 1f), contentAlignment = Alignment.Center) {
             if (icon != null) {
-                Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(AppIconSize))
+                AppMark(icon, modifier = Modifier.size(AppIconSize))
             } else {
                 Box(Modifier.size(AppIconSize).border(1.dp, SoftColors.outline), contentAlignment = Alignment.Center) {
                     Text(app.label.take(2), style = TypesetType.bodyStrong, color = SoftColors.text)

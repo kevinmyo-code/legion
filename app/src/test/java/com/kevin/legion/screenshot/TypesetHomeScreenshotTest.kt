@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -165,11 +166,13 @@ class TypesetHomeScreenshotTest {
 
         private fun icon(color: Color): ImageBitmap {
             val bitmap = ImageBitmap(48, 48)
-            Canvas(bitmap).drawRect(0f, 0f, 48f, 48f, Paint().apply { this.color = color })
+            // A disc, not a full square: a mark is a shape on transparent, tinted with the ink.
+            Canvas(bitmap).drawCircle(Offset(24f, 24f), 16f, Paint().apply { this.color = color })
             return bitmap
         }
 
-        // Made-up apps; solid squares stand in for launcher icons (they need a device).
+        // Made-up apps; discs stand in for monochrome marks (real ones need a device). Whatever their
+        // colour, every mark draws in the screen ink (Kevin, 2026-11-18: monochrome icons).
         private val GREEN = icon(Color(0xFF3F7D5C))
         private val BLUE = icon(Color(0xFF4A6AA8))
         private val AMBER = icon(Color(0xFFB3862A))

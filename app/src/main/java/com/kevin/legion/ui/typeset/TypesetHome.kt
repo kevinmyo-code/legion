@@ -440,7 +440,7 @@ private fun Dock(tiles: List<TypesetDockTile>, tier: FitTier, actions: TypesetHo
 }
 
 /**
- * A pinned app: its own launcher icon with its name under it (Kevin, 2026-11-17); tap opens it, long
+ * A pinned app: its monochrome mark with its name under it (Kevin, 2026-11-17/18); tap opens it, long
  * press offers the old dock's unpin and move, in words. A paused work app or one no longer installed
  * is dimmed and says so to TalkBack ([TypesetDockTile.status]).
  */

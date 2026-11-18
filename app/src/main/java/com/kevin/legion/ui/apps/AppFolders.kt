@@ -2,7 +2,6 @@
 
 package com.kevin.legion.ui.apps
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -109,7 +108,7 @@ private fun FolderTile(folder: LetterFolder, icons: Map<String, ImageBitmap>, on
                         val app = shown.getOrNull(i)
                         val icon = app?.let { icons[iconKey(it.profileKey, it.packageName, it.className)] }
                         if (icon != null) {
-                            Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(25.dp))
+                            AppMark(icon, modifier = Modifier.size(25.dp))
                         } else {
                             Spacer(Modifier.size(25.dp))
                         }
@@ -179,7 +178,7 @@ internal fun AppIconCell(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-            if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(44.dp))
+            if (icon != null) AppMark(icon, modifier = Modifier.size(44.dp))
         }
         Text(
             app.label,

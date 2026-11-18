@@ -2,8 +2,8 @@
 
 package com.kevin.legion.ui.home
 
+import com.kevin.legion.ui.apps.AppMark
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -309,7 +309,7 @@ private fun CategoryButton(
             ) {
                 val appIcon = singleAppIcon(ui)
                 if (appIcon != null) {
-                    Image(bitmap = appIcon, contentDescription = null, modifier = Modifier.size(SINGLE_APP_ICON_DP.dp))
+                    AppMark(appIcon, modifier = Modifier.size(SINGLE_APP_ICON_DP.dp))
                 } else {
                     MsIcon(
                         res = look.icon,

@@ -33,7 +33,7 @@ import com.kevin.legion.ui.theme.soft.TypesetType
 /**
  * One app group on the Typeset front page (the old home's category row: Bank, Music, Maps, Mail,
  * Chat) as a small icon with its short name under it (Kevin, 2026-11-17: "same for bank music maps
- * mail"). The icon is the picked app's own launcher icon when exactly one installed app is picked
+ * mail"). The icon is the picked app's monochrome mark (2026-11-18) when exactly one installed app is picked
  * (the old row's rule, Kevin 2026-10-09: "if a bucket has only one app, take the icon of that app"),
  * otherwise the group's glyph from the repo's set ([lookOf]) in ink. The taps are the old row's own
  * (`CategoryRow`): one app opens it, several ask which in a sheet, none opens the chooser, long

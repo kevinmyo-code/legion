@@ -27,8 +27,9 @@ data class TypesetFigure(
 )
 
 /**
- * A dock tile: the app's launcher icon over its name (Kevin, 2026-11-17), the two-letter monogram
- * standing in while the icon is loading or the app is gone. [status] is a reason it cannot open now,
+ * A dock tile: the app's monochrome mark over its name (Kevin, 2026-11-17/18), the two-letter
+ * monogram standing in while the mark is loading, the app is gone, or it has no readable mark.
+ * [status] is a reason it cannot open now,
  * in words ("Paused", "Not installed"), null when it can.
  */
 data class TypesetDockTile(
