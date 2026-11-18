@@ -33,6 +33,7 @@ CAP = 5
 OFFERS = {
     "resume": "Want to see his résumé?",
     "contact": "Want to know how to reach him?",
+    "diagram": "Want the diagram for that?",
 }
 OFFER_KEYS = ("none", *OFFERS)
 
@@ -58,7 +59,6 @@ _INITIAL = re.compile(r"^[A-Z]\.$")
 # A possible end: . ! or ? (and any closing quote or bracket), then space, then what may open a
 # sentence.
 _END = re.compile(r"[.!?][\"'”’)\]]*\s+(?=[A-Z0-9\"'“‘(\[])")
-_BULLET = re.compile(r"^\s*(?:[-*•·]|\d+[.)])\s+")
 
 
 def _ends_here(text: str, stop_at: int) -> bool:
@@ -74,10 +74,11 @@ def _ends_here(text: str, stop_at: int) -> bool:
 
 
 def split_sentences(text: str) -> list[str]:
-    """`text` as sentences, in order, every character of each kept (but a list bullet)."""
+    """`text` as sentences, in order, every character of each kept: a list's bullet or number
+    is part of what he wrote and is said as written."""
     out: list[str] = []
     for raw in (text or "").splitlines():
-        line = _BULLET.sub("", raw).strip()
+        line = raw.strip()
         if not line:
             continue
         start = 0
@@ -132,37 +133,66 @@ def sections_of(profile: dict | None, order: list | None = None) -> list[Section
 @dataclass(frozen=True)
 class Spoken:
     lines: tuple[str, ...]
-    # The sections read (titles), for the record's history marker; empty for "not shared".
+    # The sections read (titles), for the record's history marker; empty when none was.
     read: tuple[str, ...]
     # The closing line that names what was left out, if anything was.
     more: str | None
+    # Which part of a long section was read ("sentences 6 to 10 of 14"), for the marker, so the
+    # next turn knows where to carry on.
+    part: str | None = None
 
 
 MORE = "There's more; just ask."
+# The "more" line names at most this many titles, then "and more".
+MORE_TITLES = 4
 
 
 def _more_on(sections: list[Section]) -> str:
-    return f"There's more on {', '.join(s.title for s in sections)}; just ask."
+    names = [s.title for s in sections]
+    if len(names) > MORE_TITLES:
+        named = ", ".join(names[:MORE_TITLES]) + " and more"
+    else:
+        named = ", ".join(names)
+    return f"There's more on {named}; just ask."
 
 
-def speak(sections: list[Section], chosen: list[str], rest_of: str | None = None) -> Spoken:
+def _part(start: int, end: int, total: int) -> str | None:
+    return None if start == 0 and end == total else f"sentences {start + 1} to {end} of {total}"
+
+
+def speak(
+    sections: list[Section],
+    chosen: list[str],
+    rest_of: str | None = None,
+    from_sentence: int | None = None,
+    ordered: bool = True,
+) -> Spoken:
     """What is said for the picked section ids. Unknown ids are ignored; none left is "not shared".
 
     The cap: the picked sections are spoken WHOLE, in the order Kevin wrote them (his own order of
     importance), while they fit in `CAP` sentences; the first that does not fit and every one after
-    it are named in one line, in the same order. When the first picked section alone is longer
-    than `CAP`, its first `CAP` sentences are said and the line says there is more (naming the
-    others too, when others were picked); `rest_of=<its id>` gives the next `CAP`. No sentence is
-    ever cut or picked from inside a section otherwise."""
+    it are named in one line, in the same order (at most `MORE_TITLES`, then "and more"). When the
+    first picked section alone is longer than `CAP`, its first `CAP` sentences are said and the line
+    says there is more. `rest_of=<id>` carries on from `from_sentence` (default the one after the
+    first `CAP`), `CAP` at a time; past its end it says so. `overview` reads every section from the
+    top of his file, but only when his order is known (`ordered`): without it nothing leads by
+    accident, and it asks which one, naming the titles. No sentence is ever cut or reworded."""
     by_id = {s.id: s for s in sections}
     if rest_of in by_id:
         section = by_id[rest_of]
-        rest = section.sentences[CAP:] or section.sentences
-        more = None
-        if len(rest) > CAP:
-            more = f"There's more on {section.title} than I can read out here; ask him directly."
-        return Spoken(tuple(rest[:CAP]), (section.title,), more)
+        total = len(section.sentences)
+        start = max((from_sentence or CAP + 1) - 1, 0)
+        if start >= total:
+            return Spoken((f"That's all of {section.title}.",), (), None)
+        lines = section.sentences[start : start + CAP]
+        end = start + len(lines)
+        return Spoken(
+            lines, (section.title,), MORE if end < total else None, _part(start, end, total)
+        )
     wanted = set(chosen or [])
+    if OVERVIEW in wanted and not ordered:
+        titles = ", ".join(s.title for s in sections)
+        return Spoken((f"I can tell you about {titles}; which one?",), (), None)
     # `overview` with named ids too is still the overview: his order decides.
     picked = sections if OVERVIEW in wanted else [s for s in sections if s.id in wanted]
     if not picked:
@@ -170,7 +200,8 @@ def speak(sections: list[Section], chosen: list[str], rest_of: str | None = None
     first = picked[0]
     if len(first.sentences) > CAP:
         more = _more_on(picked) if len(picked) > 1 else MORE
-        return Spoken(first.sentences[:CAP], (first.title,), more)
+        part = _part(0, CAP, len(first.sentences))
+        return Spoken(first.sentences[:CAP], (first.title,), more, part)
     kept: list[Section] = []
     used = 0
     for section in picked:
@@ -183,10 +214,9 @@ def speak(sections: list[Section], chosen: list[str], rest_of: str | None = None
     return Spoken(lines, tuple(s.title for s in kept), _more_on(left) if left else None)
 
 
-def offer_line(offer: str | None, *, has_resume: bool, has_contact: bool) -> str | None:
+def offer_line(
+    offer: str | None, *, has_resume: bool, has_contact: bool, has_diagram: bool = False
+) -> str | None:
     """The model's chosen closing line, only when this visit can show what it offers."""
-    if offer == "resume" and has_resume:
-        return OFFERS["resume"]
-    if offer == "contact" and has_contact:
-        return OFFERS["contact"]
-    return None
+    can = {"resume": has_resume, "contact": has_contact, "diagram": has_diagram}
+    return OFFERS[offer] if can.get(offer or "") else None

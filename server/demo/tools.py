@@ -35,7 +35,7 @@ NOT_SHARED = profile_text.NOT_SHARED
 
 NO_PROFILE = (
     "Nothing was read. Kevin hasn't shared a profile on this engine yet, so there is nothing "
-    f"to answer from. Say: \"{NOT_SHARED}.\""
+    f'to answer from. Say: "{NOT_SHARED}."'
 )
 
 DESCRIPTION = (
@@ -43,7 +43,7 @@ DESCRIPTION = (
     "his experience, skills, location, work authorisation, availability, what he is looking "
     "for, and how to reach him, one section each. Answer questions about Kevin ONLY from this "
     "text, in its own words. Anything about Kevin it does not say - including anything you "
-    f"could guess from it - is not known: say \"{NOT_SHARED}.\" Never use the demo household's "
+    f'could guess from it - is not known: say "{NOT_SHARED}." Never use the demo household\'s '
     "data to answer about Kevin; that household is made up. This rule is for facts ABOUT KEVIN "
     "only. A general question that merely comes up - what a visa such as the H-1B1 is, what a "
     "term means, how something works - is not about Kevin: never answer it with that sentence; "
@@ -61,7 +61,7 @@ def _about_kevin(request, arguments: dict) -> ToolResult:
     sections = "\n\n".join(f"{name}:\n{text.strip()}" for name, text in profile.items())
     return ok(
         "Kevin's profile, as he wrote it. Answer questions about Kevin only from this; for "
-        f"anything about Kevin it does not say, say \"{NOT_SHARED}.\" A general question (what a "
+        f'anything about Kevin it does not say, say "{NOT_SHARED}." A general question (what a '
         "visa or a term is) is not about Kevin: answer that from general knowledge or web_search."
         f"\n\n{sections}",
         {"sections": list(profile)},
@@ -111,7 +111,9 @@ SPOKEN_DESCRIPTION = (
     "title does (his visa, work authorisation or sponsorship, say, unless a title names it), "
     "call it with no sections, never with the nearest ones: "
     f'code then says "{NOT_SHARED}." For more of a long section, call it again with rest_of set '
-    "to that id. offer adds one closing question (resume or contact) when it would help. Never "
+    "to that id (and from_sentence when the history says where it stopped). offer adds one "
+    "closing question (resume, contact, or diagram for his work on a project) when it would "
+    "help. Never "
     "use the demo household's data to answer about Kevin; that household is made up. This tool "
     "is for facts ABOUT KEVIN only. A general question that merely comes up - what a visa such as "
     "the H-1B1 is, what a term means, how something works - is not about Kevin: never call this "
@@ -126,13 +128,13 @@ def _row_and_sections(user):
     row = RecruiterContent.for_user(user)
     content = (row.content or {}) if row is not None else {}
     order = content.get(profile_text.PROFILE_ORDER)
-    return row, profile_text.sections_of(content.get("profile"), order)
+    return row, profile_text.sections_of(content.get("profile"), order), bool(order)
 
 
 def spoken_for(user) -> EngineTool:
     """The cascade's `about_kevin` as `user`'s assistant is told about it: the section ids and
     titles of THIS visitor's content version, never a sentence of them."""
-    _row, sections = _row_and_sections(user)
+    _row, sections, _ordered = _row_and_sections(user)
     listing = "; ".join(f"{s.id} ({s.title})" for s in sections) or "none (nothing shared yet)"
     if sections:
         listing = f"{profile_text.OVERVIEW} (a general question about him); {listing}"
@@ -150,17 +152,33 @@ def spoken_for(user) -> EngineTool:
     return dataclasses.replace(ABOUT_KEVIN_SPOKEN, input_schema=schema, description=description)
 
 
+def _has_diagram(user) -> bool:
+    """Whether this visitor can be shown any diagram (`diagrams.catalogue.available`)."""
+    from diagrams.catalogue import VIEWS, available
+
+    return any(available(user, project) for project in VIEWS)
+
+
 def _about_kevin_spoken(request, arguments: dict) -> ToolResult:
-    row, sections = _row_and_sections(getattr(request, "user", None))
+    user = getattr(request, "user", None)
+    row, sections, ordered = _row_and_sections(user)
     if not sections:
         return refused(NO_PROFILE)
     chosen = [c for c in arguments.get("sections") or [] if isinstance(c, str)]
-    spoken = profile_text.speak(sections, chosen, arguments.get("rest_of") or None)
+    start = arguments.get("from_sentence")
+    spoken = profile_text.speak(
+        sections,
+        chosen,
+        arguments.get("rest_of") or None,
+        from_sentence=start if isinstance(start, int) else None,
+        ordered=ordered,
+    )
     links = (row.content or {}).get("links") or {}
     closing = spoken.more or profile_text.offer_line(
         arguments.get("offer"),
         has_resume=row.resume is not None,
         has_contact=any(links.values()),
+        has_diagram=_has_diagram(user),
     )
     lines = [*spoken.lines, *([closing] if closing else [])]
     if spoken.read:
@@ -169,12 +187,14 @@ def _about_kevin_spoken(request, arguments: dict) -> ToolResult:
             f"Done: read aloud and shown, word for word, from Kevin's profile: {titles}. The "
             "turn ends here."
         )
-        replay = f"(Read aloud from Kevin's profile: {titles}.)"
+        part = f", {spoken.part}" if spoken.part else ""
+        replay = f"(Read aloud from Kevin's profile: {titles}{part}.)"
         if closing:
             # Fixed words and titles only: kept so a "yes" or "go on" next turn has its question.
             replay += f" {closing}"
     else:
-        for_model = f'Done: said "{profile_text.NOT_SHARED_LINE}" The turn ends here.'
+        # Code's fixed lines only (not shared, all read, which one): nothing of his to hide.
+        for_model = f'Done: said "{" ".join(lines)}" The turn ends here.'
         replay = None
     return ok(
         for_model,
@@ -208,7 +228,15 @@ ABOUT_KEVIN_SPOKEN = EngineTool(
             },
             "rest_of": {
                 "type": "string",
-                "description": "A long section's id, to read the part after what was read.",
+                "description": "A long section's id, to read on from where it stopped.",
+            },
+            "from_sentence": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "With rest_of: the sentence to carry on from (the history says which were "
+                    "read). Leave it out after the first part."
+                ),
             },
         },
         "required": [],
