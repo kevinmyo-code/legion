@@ -360,7 +360,8 @@ def test_the_tour_is_the_demos_alone_and_takes_no_text(member, visitor, engine):
 # =============================================================================
 
 
-def test_a_funnel_step_is_counted_anonymously_with_a_clean_ref(client):
+def test_a_funnel_step_is_counted_anonymously_with_a_clean_ref(client, monkeypatch):
+    monkeypatch.setenv("LEGION_DEMO_REFS", "indeed,acme")
     for _ in range(2):
         response = client.post(
             "/api/demo/funnel", {"event": "page_load", "ref": "Indeed!"}, format="json"
@@ -373,7 +374,8 @@ def test_a_funnel_step_is_counted_anonymously_with_a_clean_ref(client):
     assert DemoFunnelDay.objects.count() == 1
 
 
-def test_the_funnel_command_prints_counts_per_day_and_ref():
+def test_the_funnel_command_prints_counts_per_day_and_ref(monkeypatch):
+    monkeypatch.setenv("LEGION_DEMO_REFS", "li")
     funnel.count("page_load", "li")
     funnel.count("orb_tap", "li")
     funnel.count("page_load", "")
@@ -382,6 +384,26 @@ def test_the_funnel_command_prints_counts_per_day_and_ref():
     text = out.getvalue()
     assert "page_load" in text and "tour_finished" in text
     assert " li " in text or "li  " in text
+
+
+def test_an_unknown_or_free_text_ref_is_counted_as_other(monkeypatch):
+    # Round 2 finding 13: any slug a link author typed made a row of its own.
+    monkeypatch.setenv("LEGION_DEMO_REFS", "acme")
+    funnel.count("page_load", "jane-doe-from-acme")
+    funnel.count("page_load", "acme")
+    funnel.count("page_load", "")
+    refs = sorted(DemoFunnelDay.objects.values_list("ref", flat=True))
+    assert refs == ["", "acme", funnel.OTHER_REF]
+
+
+def test_a_day_holds_a_bounded_number_of_refs(monkeypatch):
+    refs = [f"co{i}" for i in range(funnel.MAX_REFS_A_DAY + 5)]
+    monkeypatch.setenv("LEGION_DEMO_REFS", ",".join(refs))
+    for ref in refs:
+        funnel.count("page_load", ref)
+    kept = set(DemoFunnelDay.objects.values_list("ref", flat=True))
+    assert len(kept - {funnel.OTHER_REF}) == funnel.MAX_REFS_A_DAY
+    assert funnel.OTHER_REF in kept
 
 
 def test_funnel_rows_age_out_with_the_visitor_retention():
