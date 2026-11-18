@@ -190,7 +190,8 @@ _NO_SPEECH = re.compile(
     # A note in brackets or stars and nothing else ("[inaudible]", "(silence)", "*music*"), or a
     # plain "no speech" sentence. A spoken "Nothing." is an answer and stays.
     r"^\s*(?:[\[\(\*<][^\]\)\*>]{1,40}[\]\)\*>]\s*)+$"
-    r"|^\s*(?:no speech|no audio|no intelligible speech|inaudible|unintelligible)[\s.!]*$",
+    r"|^\s*(?:no (?:intelligible |audible |clear )?(?:speech|audio|words)"
+    r"(?: (?:detected|present|heard|found))?|inaudible|unintelligible|silence)[\s.!]*$",
     re.I,
 )
 _ONLY_PUNCTUATION = re.compile(r"^[\W_]*$")
@@ -204,10 +205,8 @@ def clean_transcript(raw: str) -> str:
         text = text[1:-1].strip()
     if _ONLY_PUNCTUATION.match(text) or _NO_SPEECH.match(text):
         return ""
-    # A note among the words ("[laughs] okay sure") is not something they said.
-    text = re.sub(r"\s*[\[\(][a-z][a-z ]{0,30}[\]\)]\s*", " ", text, flags=re.I).strip()
-    if _ONLY_PUNCTUATION.match(text):
-        return ""
+    # Words around a marker are real speech and are kept as written (round 3 speech, small c:
+    # "(two percent)" was cut from a real sentence).
     if _echoes_the_instruction(text):
         return ""
     return text
